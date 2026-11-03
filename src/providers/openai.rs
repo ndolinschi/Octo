@@ -95,7 +95,6 @@ fn forward_or_default_header(
     upstream
 }
 
-/// Picks an outbound header from the client request, or from config when absent.
 pub fn resolve_outbound_header(
     parts: &Parts,
     name: &str,
