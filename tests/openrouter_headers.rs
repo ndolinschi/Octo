@@ -1,5 +1,5 @@
 use axum::http::{header, request::Parts, HeaderMap, HeaderValue, Request};
-use octo::providers::resolve_outbound_header;
+use octo::providers::openrouter::resolve_outbound_header;
 
 fn parts_with(headers: HeaderMap) -> Parts {
     let mut request = Request::builder().body(()).unwrap();

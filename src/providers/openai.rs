@@ -1,17 +1,17 @@
 use axum::{
     body::Body,
-    http::{header, request::Parts, HeaderValue, Request, Response},
+    http::{header, Request, Response},
 };
-use reqwest::{Client, RequestBuilder};
+use reqwest::Client;
 
+use super::openrouter::{self, AttributionDefaults};
 use super::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
 #[derive(Clone)]
 pub struct OpenAi {
     chat_completions_url: String,
-    default_http_referer: Option<String>,
-    default_openrouter_title: Option<String>,
+    openrouter: AttributionDefaults,
     max_body_bytes: usize,
 }
 
@@ -24,8 +24,7 @@ impl OpenAi {
     ) -> Self {
         Self {
             chat_completions_url,
-            default_http_referer,
-            default_openrouter_title,
+            openrouter: AttributionDefaults::new(default_http_referer, default_openrouter_title),
             max_body_bytes,
         }
     }
@@ -39,8 +38,7 @@ impl OpenAi {
         client: &Client,
         request: Request<Body>,
     ) -> Result<Response<Body>, ProxyError> {
-        let default_http_referer = self.default_http_referer.clone();
-        let default_openrouter_title = self.default_openrouter_title.clone();
+        let openrouter = self.openrouter.clone();
         proxy_post(
             client,
             self.chat_completions_url(),
@@ -50,58 +48,10 @@ impl OpenAi {
                 if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
                     upstream = upstream.header(header::AUTHORIZATION, value);
                 }
-                upstream = apply_openrouter_attribution(
-                    upstream,
-                    parts,
-                    default_http_referer.as_deref(),
-                    default_openrouter_title.as_deref(),
-                );
+                upstream = openrouter::apply_attribution(upstream, parts, &openrouter);
                 forward_content_type(upstream, parts)
             },
         )
         .await
     }
-}
-
-fn apply_openrouter_attribution(
-    mut upstream: RequestBuilder,
-    parts: &Parts,
-    default_http_referer: Option<&str>,
-    default_openrouter_title: Option<&str>,
-) -> RequestBuilder {
-    upstream = forward_or_default_header(upstream, parts, header::REFERER, default_http_referer);
-    upstream = forward_or_default_header(
-        upstream,
-        parts,
-        "x-openrouter-title",
-        default_openrouter_title,
-    );
-    if let Some(value) = parts.headers.get("x-title") {
-        upstream = upstream.header("x-title", value);
-    }
-    upstream
-}
-
-fn forward_or_default_header(
-    mut upstream: RequestBuilder,
-    parts: &Parts,
-    name: impl AsRef<str>,
-    default: Option<&str>,
-) -> RequestBuilder {
-    let name = name.as_ref();
-    if let Some(value) = resolve_outbound_header(parts, name, default) {
-        upstream = upstream.header(name, value);
-    }
-    upstream
-}
-
-pub fn resolve_outbound_header(
-    parts: &Parts,
-    name: &str,
-    default: Option<&str>,
-) -> Option<HeaderValue> {
-    if let Some(value) = parts.headers.get(name) {
-        return Some(value.clone());
-    }
-    default.and_then(|value| HeaderValue::from_str(value).ok())
 }
