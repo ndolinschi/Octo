@@ -1,3 +1,6 @@
 [submodule ".cursor/skills/superpowers"]
 	path = .cursor/skills/superpowers
 	url = https://github.com/obra/superpowers.git
+[submodule ".cursor/skills/ponytail"]
+	path = .cursor/skills/ponytail
+	url = https://github.com/DietrichGebert/ponytail.git

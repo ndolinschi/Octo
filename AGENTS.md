@@ -4,17 +4,41 @@ Instructions for AI coding agents working in this repository.
 
 ## Project
 
-**Octo** is a Rust application crate (`octo`), edition **2021**, built with **Cargo**. Source lives under `src/`. The repo root is the crate root (there is a single `Cargo.toml`).
+**Octo** is a Rust **HTTP proxy** (Axum 0.8, Tokio 1) in a single application crate (`octo`), edition **2021**. It exposes provider-shaped routes on a local bind address and forwards requests upstream with streaming responses.
+
+| Local route | Upstream (defaults in `config.toml`) |
+| --- | --- |
+| `POST /v1/chat/completions` | [OpenRouter](https://openrouter.ai/) OpenAI-compatible API |
+| `POST /v1/messages` | Anthropic Messages API |
+
+OpenAI-style chat is **not** wired to `api.openai.com` by default: `openai.chat_completions_url` points at OpenRouter so clients use OpenRouter model slugs (e.g. `openai/gpt-4o-mini`) and a Bearer OpenRouter API key. Anthropic still targets `api.anthropic.com` unless changed in config.
+
+User-facing curl examples and model samples: [README.md](./README.md).
 
 ## Environment setup
 
-After clone, initialize vendored Superpowers:
+After clone, initialize vendored skills:
 
 ```bash
 git submodule update --init --recursive
 ```
 
 Rust toolchain: install via [rustup](https://rustup.rs/). Verify with `cargo --version`.
+
+Run the proxy from the repo root (reads `./config.toml` unless overridden):
+
+```bash
+cargo run
+```
+
+Default listen address: `127.0.0.1:8080` (`[server].bind_addr`).
+
+Vendored agent skills (after submodule init):
+
+| Pack | Path |
+| --- | --- |
+| Superpowers | `.cursor/skills/superpowers/` |
+| Ponytail | `.cursor/skills/ponytail/` |
 
 ### Editor
 
@@ -23,6 +47,50 @@ Use **rust-analyzer** in Cursor/VS Code. Open the repository root (folder contai
 Recommended extensions (see `.vscode/extensions.json`):
 
 - `rust-lang.rust-analyzer`
+
+## Configuration
+
+All operational defaults live in root **`config.toml`**, not as literals in Rust.
+
+- Override path: environment variable **`OCTO_CONFIG`** (path to another TOML file).
+- Loader: `src/config.rs` (serde + `toml`); maps sections into `Config` used by `AppState`.
+
+Typical keys:
+
+- `[server]` — `bind_addr`
+- `[limits]` — `max_body_bytes` (request body cap for proxy reads)
+- `[openai]` — `chat_completions_url`, `chat_completions_path`, optional `http_referer` and `openrouter_title` (OpenRouter attribution defaults when the client omits them)
+- `[anthropic]` — `messages_url`, `messages_path`, `api_version` (default `anthropic-version` when the client omits it)
+
+To use direct OpenAI instead of OpenRouter, set `openai.chat_completions_url` to `https://api.openai.com/v1/chat/completions`.
+
+Do not commit API keys; clients send credentials per request (`Authorization` for OpenRouter/OpenAI-style chat, `x-api-key` for Anthropic).
+
+## Code layout
+
+| Area | Role |
+| --- | --- |
+| `src/main.rs` | Tracing init; calls `proxy::run()` |
+| `src/config.rs` | Load TOML → `Config` |
+| `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, `OpenAi`, `Anthropic` |
+| `src/routes.rs` | App router: `TraceLayer`, state |
+| `src/proxy/mod.rs` | Bind, serve, graceful shutdown |
+| `src/proxy/routes.rs` | Proxy route paths from config |
+| `src/proxy/handler.rs` | Thin Axum handlers |
+| `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/502) |
+| `src/providers/openai.rs` | Chat completions forward (auth, OpenRouter attribution, content-type) |
+| `src/providers/anthropic.rs` | Messages forward (`x-api-key`, `anthropic-version`) |
+| `src/providers/utils.rs` | Buffered POST proxy, streaming body, allowlisted response headers |
+
+Conventions for edits: `.cursor/rules/octo-rust.mdc` (module boundaries, no Rust comments unless asked, fmt/clippy/test before finishing).
+
+## Proxy behavior (agents should preserve)
+
+- **Request bodies:** read up to `max_body_bytes`, then POST upstream; stream response bytes back.
+- **OpenAI route:** forward `Authorization`; apply client `Referer` / `X-OpenRouter-Title` (or config defaults); default `Content-Type` to JSON if missing.
+- **Anthropic route:** forward `x-api-key`; `anthropic-version` from client or config default.
+- **Response headers:** pass through a safe allowlist (`Content-Type`, `Cache-Control`, `x-request-id`, `retry-after`, `openai-*`, `x-ratelimit-*`, `anthropic-ratelimit-*`).
+- **Errors:** proxy failures return JSON, not plain text.
 
 ## Superpowers
 
@@ -43,6 +111,24 @@ This repo includes Superpowers skills as a git submodule:
    Invoke `using-superpowers` at the start of work, then use process skills when relevant (`brainstorming`, `writing-plans`, `test-driven-development`, `systematic-debugging`, etc.).
 
 User messages and this file take precedence over skills.
+
+## Ponytail
+
+Ponytail (“lazy senior dev”) is vendored at:
+
+`.cursor/skills/ponytail/`
+
+Project rule `.cursor/rules/ponytail-bootstrap.mdc` applies every session. Read the main skill before substantive coding:
+
+`.cursor/skills/ponytail/skills/ponytail/SKILL.md`
+
+Optional Cursor hooks (level switching via `/ponytail …` in chat):
+
+```bash
+node .cursor/skills/ponytail/scripts/cursor-hooks.js install --project
+```
+
+Upstream install docs: `.cursor/skills/ponytail/INSTALL.md` and `.cursor/skills/ponytail/docs/cursor-hooks.md`.
 
 ## Rust rules
 
@@ -65,6 +151,8 @@ Do not fight the borrow checker; match existing style; keep diffs minimal unless
 | Format | `cargo fmt` |
 | Lint | `cargo clippy -- -D warnings` |
 
+Optional: `RUST_LOG=debug cargo run` for more tracing (default filter is `info`).
+
 ## Git
 
 - Feature branches: `cursor/<short-description>-a705`
@@ -73,6 +161,7 @@ Do not fight the borrow checker; match existing style; keep diffs minimal unless
 
 ## What not to do
 
-- Do not commit `target/`
+- Do not commit `target/` or local secrets (API keys in config or env files checked into git)
+- Do not hardcode bind URLs, paths, or limits in Rust when they belong in `config.toml`
 - Do not add large dependencies without a clear requirement
 - Do not skip verification when a Superpowers skill requires it (tests, repro steps, etc.)
