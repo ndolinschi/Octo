@@ -1,0 +1,14 @@
+---
+description: Octo crate context and Rust quality bar for this repository
+globs: "**/*.rs,Cargo.toml,Cargo.lock"
+alwaysApply: false
+---
+
+# Octo — Rust development
+
+- **Crate:** `octo` — single binary application (Rust 2021). Entry point: `src/main.rs`.
+- **Complexity:** treat as a **simple single-crate** project. Prefer `.cursor/rules/rust/simple/single-crate.mdc` and `.cursor/rules/rust/core/code-quality.mdc` unless the user expands scope (workspace, web API, CLI framework, etc.).
+- **Rule set:** follow `.cursor/rules/rust/main.mdc` for feature detection and linked rules from [cursor-rust-rules](https://github.com/tyrchen/cursor-rust-rules).
+- **Before finishing Rust changes:** run `cargo fmt`, `cargo clippy -- -D warnings` (when clippy is available), and `cargo test`.
+- **Errors:** prefer `Result` and `?`; avoid `unwrap()` / `expect()` outside tests or documented invariants.
+- **Commit:** `Cargo.lock` stays tracked (application crate).

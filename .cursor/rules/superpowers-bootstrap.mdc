@@ -1,0 +1,39 @@
+---
+description: Load Superpowers skill workflow for Cursor agents in this repository
+alwaysApply: true
+---
+
+# Superpowers (project-local)
+
+This repository vendors [Superpowers](https://github.com/obra/superpowers) under `.cursor/skills/superpowers/`.
+
+**Before substantive work**, read and follow the relevant skill:
+
+`.cursor/skills/superpowers/skills/{skill-name}/SKILL.md`
+
+Start with `using-superpowers`, then invoke process skills when they apply (for example `brainstorming` before new features, `systematic-debugging` for bugs, `test-driven-development` during implementation).
+
+## Cursor tool mapping
+
+When a skill references another harness, use Cursor equivalents:
+
+| Skill / doc reference | Cursor |
+| --- | --- |
+| `Skill` / read a skill | `Read` on `.cursor/skills/superpowers/skills/{name}/SKILL.md` |
+| `Bash` | `Shell` |
+| `Edit` | `StrReplace` |
+| `TodoWrite`, `Task`, `Read`, `Write` | Same names |
+
+## IDE plugin (recommended)
+
+For automatic session bootstrap and hooks, install the marketplace plugin in Cursor Agent chat:
+
+```text
+/add-plugin superpowers
+```
+
+The vendored copy keeps skills pinned for this repo and works in environments without the plugin (for example Cloud Agents).
+
+## Precedence
+
+Instructions in `AGENTS.md` and direct user messages override skills. Skills override default agent behavior.
