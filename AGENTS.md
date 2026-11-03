@@ -87,7 +87,7 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | `src/providers/llm/claude.rs` | Claude Messages forward (`Claude`; `[llm.messages] backend = "claude"`, legacy `anthropic`) |
 | `src/providers/decision/traits.rs` | `Decisions` trait |
 | `src/providers/decision/wire.rs` | Config wiring + `Providers<D>` |
-| `src/providers/decision/openrouter.rs` | OpenRouter alpha Decisions forward (implements trait) |
+| `src/providers/decision/openrouter.rs` | OpenRouter Decisions forward (`OpenRouter`; `[decision] backend = "openrouter"`) |
 | `src/providers/openrouter/attribution.rs` | Shared Referer / title defaults for OpenRouter upstreams |
 | `src/providers/utils.rs` | Buffered POST proxy, streaming body, allowlisted response headers |
 
