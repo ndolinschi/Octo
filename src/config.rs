@@ -63,6 +63,6 @@ fn env_or(key: &str, default: &str) -> String {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("invalid {ENV_MAX_BODY_BYTES} value")]
+    #[error("invalid OCTO_MAX_BODY_BYTES value")]
     InvalidMaxBodyBytes,
 }
