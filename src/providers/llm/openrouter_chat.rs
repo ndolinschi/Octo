@@ -1,22 +1,21 @@
 use axum::{
     body::Body,
-    http::{header, Request, Response},
+    http::{Request, Response},
 };
 use reqwest::Client;
 
 use super::traits::ChatCompletions;
 use crate::providers::openrouter::{self, AttributionDefaults};
-use crate::providers::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
 #[derive(Clone)]
-pub struct OpenAi {
+pub struct OpenRouterChat {
     chat_completions_url: String,
     openrouter: AttributionDefaults,
     max_body_bytes: usize,
 }
 
-impl OpenAi {
+impl OpenRouterChat {
     pub fn new(
         chat_completions_url: String,
         default_http_referer: Option<String>,
@@ -35,7 +34,7 @@ impl OpenAi {
     }
 }
 
-impl ChatCompletions for OpenAi {
+impl ChatCompletions for OpenRouterChat {
     fn upstream_url(&self) -> &str {
         self.chat_completions_url()
     }
@@ -49,18 +48,12 @@ impl ChatCompletions for OpenAi {
         let url = self.chat_completions_url.clone();
         let max_body_bytes = self.max_body_bytes;
         async move {
-            proxy_post(
+            openrouter::authorized_attributed_post(
                 client,
                 &url,
                 max_body_bytes,
+                &openrouter,
                 request,
-                move |mut upstream, parts| {
-                    if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
-                        upstream = upstream.header(header::AUTHORIZATION, value);
-                    }
-                    upstream = openrouter::apply_attribution(upstream, parts, &openrouter);
-                    forward_content_type(upstream, parts)
-                },
             )
             .await
         }

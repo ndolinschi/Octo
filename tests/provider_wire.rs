@@ -4,6 +4,9 @@ use octo::providers::{decision, llm};
 fn sample_config() -> Config {
     Config {
         bind_addr: "127.0.0.1:8080".to_string(),
+        allow_remote: false,
+        upstream_connect_timeout_secs: 30,
+        upstream_request_timeout_secs: 600,
         openrouter_chat_completions_url: "https://openrouter.ai/api/v1/chat/completions"
             .to_string(),
         openrouter_chat_completions_path: "/v1/chat/completions".to_string(),

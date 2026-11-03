@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use serde::Deserialize;
@@ -5,6 +6,9 @@ use serde::Deserialize;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub bind_addr: String,
+    pub allow_remote: bool,
+    pub upstream_connect_timeout_secs: u64,
+    pub upstream_request_timeout_secs: u64,
     pub openrouter_chat_completions_url: String,
     pub openrouter_chat_completions_path: String,
     pub openrouter_decisions_url: String,
@@ -23,6 +27,8 @@ pub struct Config {
 #[derive(Clone, Debug, Deserialize)]
 struct ConfigFile {
     server: ServerSection,
+    #[serde(default)]
+    upstream: UpstreamSection,
     limits: LimitsSection,
     #[serde(alias = "openai")]
     openrouter: OpenRouterSection,
@@ -36,6 +42,33 @@ struct ConfigFile {
 #[derive(Clone, Debug, Deserialize)]
 struct ServerSection {
     bind_addr: String,
+    #[serde(default)]
+    allow_remote: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct UpstreamSection {
+    #[serde(default = "default_upstream_connect_timeout_secs")]
+    connect_timeout_secs: u64,
+    #[serde(default = "default_upstream_request_timeout_secs")]
+    request_timeout_secs: u64,
+}
+
+impl Default for UpstreamSection {
+    fn default() -> Self {
+        Self {
+            connect_timeout_secs: default_upstream_connect_timeout_secs(),
+            request_timeout_secs: default_upstream_request_timeout_secs(),
+        }
+    }
+}
+
+fn default_upstream_connect_timeout_secs() -> u64 {
+    30
+}
+
+fn default_upstream_request_timeout_secs() -> u64 {
+    600
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -163,6 +196,9 @@ impl Config {
         })?;
         Ok(Self {
             bind_addr: file.server.bind_addr,
+            allow_remote: file.server.allow_remote,
+            upstream_connect_timeout_secs: file.upstream.connect_timeout_secs,
+            upstream_request_timeout_secs: file.upstream.request_timeout_secs,
             openrouter_chat_completions_url: file.openrouter.chat_completions_url,
             openrouter_chat_completions_path: file.openrouter.chat_completions_path,
             openrouter_decisions_url: file.openrouter.decisions_url,
@@ -177,6 +213,25 @@ impl Config {
             llm_messages_backend: file.llm.messages.backend,
             decision_backend: file.decision.backend,
         })
+    }
+
+    pub fn parse_bind_addr(&self) -> Result<SocketAddr, ConfigError> {
+        self.bind_addr
+            .parse()
+            .map_err(|source| ConfigError::InvalidBindAddr {
+                addr: self.bind_addr.clone(),
+                source,
+            })
+    }
+
+    pub fn ensure_bind_allowed(&self) -> Result<SocketAddr, ConfigError> {
+        let addr = self.parse_bind_addr()?;
+        if !addr.ip().is_loopback() && !self.allow_remote {
+            return Err(ConfigError::RemoteBindNotAllowed {
+                addr: self.bind_addr.clone(),
+            });
+        }
+        Ok(addr)
     }
 }
 
@@ -202,4 +257,14 @@ pub enum ConfigError {
     },
     #[error("unknown {kind} backend {name}")]
     UnknownBackend { kind: &'static str, name: String },
+    #[error("invalid bind_addr {addr}")]
+    InvalidBindAddr {
+        addr: String,
+        #[source]
+        source: std::net::AddrParseError,
+    },
+    #[error(
+        "bind_addr {addr} is not loopback; set server.allow_remote = true to listen on non-loopback addresses"
+    )]
+    RemoteBindNotAllowed { addr: String },
 }

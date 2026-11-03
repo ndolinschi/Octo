@@ -1,5 +1,10 @@
 [server]
 bind_addr = "127.0.0.1:8080"
+allow_remote = false
+
+[upstream]
+connect_timeout_secs = 30
+request_timeout_secs = 600
 
 [limits]
 max_body_bytes = 10485760

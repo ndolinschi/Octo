@@ -1,7 +1,7 @@
 use crate::config::{Config, ConfigError};
 
 use super::anthropic::Anthropic;
-use super::openai::OpenAi;
+use super::openrouter_chat::OpenRouterChat;
 
 #[derive(Clone)]
 pub struct Providers<C, M> {
@@ -9,12 +9,12 @@ pub struct Providers<C, M> {
     pub messages: M,
 }
 
-pub type Wired = Providers<OpenAi, Anthropic>;
+pub type Wired = Providers<OpenRouterChat, Anthropic>;
 
 impl Wired {
     pub fn from_config(config: &Config) -> Result<Self, ConfigError> {
         let chat = match config.llm_chat_backend.as_str() {
-            "openrouter" => OpenAi::new(
+            "openrouter" => OpenRouterChat::new(
                 config.openrouter_chat_completions_url.clone(),
                 config.openrouter_http_referer.clone(),
                 config.openrouter_title.clone(),

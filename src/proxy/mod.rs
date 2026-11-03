@@ -2,9 +2,7 @@ pub mod error;
 pub mod handler;
 pub mod routes;
 
-use std::net::SocketAddr;
-
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::providers::decision::Decisions;
@@ -14,7 +12,13 @@ use crate::state::AppState;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = Config::load()?;
-    let addr: SocketAddr = config.bind_addr.parse()?;
+    let addr = config.ensure_bind_allowed()?;
+    if config.allow_remote && !addr.ip().is_loopback() {
+        warn!(
+            %addr,
+            "listening on non-loopback address; Octo has no client authentication"
+        );
+    }
     let state = AppState::new(config.clone()).map_err(|err| {
         tracing::error!(%err, "failed to build application state");
         err

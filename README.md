@@ -66,7 +66,7 @@ curl http://127.0.0.1:8080/v1/chat/completions \
 
 Streaming works the same way: add `"stream": true` to the JSON body.
 
-Listens on `127.0.0.1:8080` by default. Edit [`config.toml`](./config.toml) for bind address, OpenRouter chat and decisions URLs/paths, default `http_referer` / `openrouter_title`, body size limit, and Anthropic settings. Use `OCTO_CONFIG` to point at a different TOML file.
+Listens on `127.0.0.1:8080` by default. Octo loads `./config.toml` from the process **current working directory** unless you set `OCTO_CONFIG` to an absolute or relative path (run from the repo root, or point `OCTO_CONFIG` at your file). Edit [`config.toml`](./config.toml) for bind address, `server.allow_remote`, upstream timeouts, OpenRouter chat and decisions URLs/paths, default `http_referer` / `openrouter_title`, body size limit, and Anthropic settings.
 
 ### Config migration from `[openai]`
 

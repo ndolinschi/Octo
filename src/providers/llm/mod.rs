@@ -1,5 +1,5 @@
 mod anthropic;
-mod openai;
+mod openrouter_chat;
 mod traits;
 mod wire;
 
