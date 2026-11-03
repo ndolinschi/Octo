@@ -3,7 +3,6 @@ use axum::{
     response::Response,
 };
 
-use crate::providers::{AnthropicCompatible, OpenAICompatible};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
 
