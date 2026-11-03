@@ -1,0 +1,7 @@
+[openrouter]
+chat_completions_url = "https://openrouter.ai/api/v1/chat/completions"
+chat_completions_path = "/v1/chat/completions"
+decisions_url = "https://openrouter.ai/api/alpha/decisions"
+decisions_path = "/v1/decisions"
+http_referer = "http://127.0.0.1:8080"
+openrouter_title = "Octo"

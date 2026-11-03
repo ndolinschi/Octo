@@ -1,0 +1,4 @@
+[anthropic]
+messages_url = "https://api.anthropic.com/v1/messages"
+messages_path = "/v1/messages"
+api_version = "2023-06-01"

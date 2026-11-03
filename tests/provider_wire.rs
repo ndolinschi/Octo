@@ -3,10 +3,20 @@ mod support;
 use octo::config::{Config, ConfigError};
 use octo::providers::decision;
 use octo::state::AppState;
+use std::path::Path;
 use support::sample_config;
 
 #[test]
-fn unknown_llm_messages_backend_rejected_at_startup() {
+fn loads_split_config_directory() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("config");
+    let config = Config::load_from_directory(&dir).unwrap();
+    assert_eq!(config.bind_addr, "127.0.0.1:8080");
+    assert_eq!(config.llm_chat_backend, "openai");
+    assert_eq!(config.decision_backend, "openrouter");
+}
+
+#[test]
+fn unknown_messages_backend_is_rejected() {
     let mut config = sample_config(1024);
     config.llm_messages_backend = "bedrock".to_string();
     assert!(AppState::new(config).is_err());

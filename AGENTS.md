@@ -37,7 +37,8 @@ git submodule update --init --recursive
 
 Rust toolchain: install via [rustup](https://rustup.rs/). Verify with `cargo --version`.
 
-Run the proxy from the repo root (reads `./config.toml` unless overridden):
+Run the proxy from the repo root (loads the **`config/`** directory unless overridden):
+
 
 ```bash
 cargo run
@@ -62,20 +63,24 @@ Recommended extensions (see `.vscode/extensions.json`):
 
 ## Configuration
 
-All operational defaults live in root **`config.toml`**, not as literals in Rust.
+Operational defaults live under **`config/`** (one focused TOML file per area), not as literals in Rust.
 
-- Override path: environment variable **`OCTO_CONFIG`** (path to another TOML file).
-- Loader: `src/config.rs` (serde + `toml`); maps sections into `Config` used by `AppState`.
+| File | Contents |
+| --- | --- |
+| `config/server.toml` | `[server]` — `bind_addr`, `allow_remote` |
+| `config/upstream.toml` | `[upstream]` — connect and request timeouts |
+| `config/limits.toml` | `[limits]` — `max_body_bytes` |
+| `config/openai.toml` | `[openai]` — direct OpenAI chat URL |
+| `config/openrouter.toml` | `[openrouter]` — chat/decisions URLs, paths, attribution defaults |
+| `config/anthropic.toml` | `[anthropic]` — messages URL, path, API version |
+| `config/llm.toml` | `[llm.chat]` / `[llm.messages]` backend defaults |
+| `config/decision.toml` | `[decision]` backend |
 
-Typical keys:
+- **Default load:** merge all files in `./config/` (run from repo root).
+- **`OCTO_CONFIG`:** path to another **`config/`** directory or a single legacy **`config.toml`** file (monolithic override).
+- Loader: `src/config.rs` merges fragments, then maps into `Config` for `AppState`.
 
-- `[server]` — `bind_addr`
-- `[limits]` — `max_body_bytes` (request body cap for proxy reads)
-- `[openai]` — direct OpenAI chat `chat_completions_url` (default `https://api.openai.com/v1/chat/completions`)
-- `[openrouter]` — OpenRouter chat `chat_completions_url`, `decisions_url`, paths, optional `http_referer` and `openrouter_title`
-- `[llm.chat]` / `[llm.messages]` — `backend` sets the **default** chat upstream when path/body omit a provider (`openai` or `openrouter`). `[llm.messages].backend` (`claude` or legacy `anthropic`) selects the messages implementation at startup (Claude only today; dispatched in `AppState.messages_provider`).
-- `[decision]` — `backend` selects decision implementation (`openrouter` today; `openai` when added)
-- `[anthropic]` — `messages_url`, `messages_path`, `api_version` (default `anthropic-version` when the client omits it)
+Section semantics (same as before, split across files above):
 
 To use OpenRouter for chat, POST with `"type": "OPENROUTER"` or use `/openrouter/completions`. OpenRouter model slugs and Bearer keys apply on that path; direct OpenAI uses `/v1/chat/completions` (default) or `/openai/completions` with an OpenAI API key.
 
@@ -190,6 +195,6 @@ Optional: `RUST_LOG=debug cargo run` for more tracing (default filter is `info`)
 ## What not to do
 
 - Do not commit `target/` or local secrets (API keys in config or env files checked into git)
-- Do not hardcode bind URLs, paths, or limits in Rust when they belong in `config.toml`
+- Do not hardcode bind URLs, paths, or limits in Rust when they belong in `config/`
 - Do not add large dependencies without a clear requirement
 - Do not skip verification when a Superpowers skill requires it (tests, repro steps, etc.)

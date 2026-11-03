@@ -14,7 +14,7 @@ cargo run
 
 ## OpenAI-compatible chat (OpenAI and OpenRouter)
 
-[`config.toml`](./config.toml) wires **direct OpenAI** (`[openai].chat_completions_url`) and **OpenRouter** (`[openrouter].chat_completions_url`). Default chat upstream when the request does not pin a provider: `[llm.chat].backend` (`openai` or `openrouter`).
+[`config/`](./config/) wires **direct OpenAI** (`config/openai.toml`) and **OpenRouter** (`config/openrouter.toml`). Default chat upstream when the request does not pin a provider: `config/llm.toml` → `[llm.chat].backend` (`openai` or `openrouter`).
 
 **Pick OpenRouter** with JSON `"type": "OPENROUTER"` (or `"octo_provider"`), path `/openrouter/completions`, or set `[llm.chat] backend = "openrouter"` as the default.
 
@@ -60,7 +60,7 @@ curl http://127.0.0.1:8080/openrouter/completions \
   }'
 ```
 
-Optional OpenRouter attribution (overrides [`config.toml`](./config.toml) defaults when set):
+Optional OpenRouter attribution (overrides `config/openrouter.toml` defaults when set):
 
 ```bash
 curl http://127.0.0.1:8080/openrouter/completions \
@@ -73,7 +73,7 @@ curl http://127.0.0.1:8080/openrouter/completions \
 
 Streaming works the same way: add `"stream": true` to the JSON body.
 
-Listens on `127.0.0.1:8080` by default. Octo loads `./config.toml` from the process **current working directory** unless you set `OCTO_CONFIG` to an absolute or relative path (run from the repo root, or point `OCTO_CONFIG` at your file). Edit [`config.toml`](./config.toml) for bind address, `server.allow_remote`, upstream timeouts, OpenRouter chat and decisions URLs/paths, default `http_referer` / `openrouter_title`, body size limit, and Anthropic settings.
+Listens on `127.0.0.1:8080` by default. Octo loads the **`config/`** directory from the process **current working directory** unless you set **`OCTO_CONFIG`** to another directory or a single TOML file. Run from the repo root, or point `OCTO_CONFIG` at your layout.
 
 **Security:** With `allow_remote = true`, anyone who can reach the bind address may use Octo as an unauthenticated forwarder to the URLs in config. Use loopback or a trusted network only. **`GET /health`** returns 200 when the process is up.
 
@@ -115,4 +115,4 @@ curl http://127.0.0.1:8080/v1/messages \
   -d '{"model":"claude-3-5-sonnet-20241022","max_tokens":1024,"system":"You are a helpful assistant.","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-Anthropic upstream and defaults are configured in [`config.toml`](./config.toml).
+Anthropic upstream and defaults are in `config/anthropic.toml`.

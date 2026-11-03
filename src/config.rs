@@ -1,7 +1,20 @@
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use toml::map::Map;
+use toml::Value;
+
+const CONFIG_DIR_FILES: &[&str] = &[
+    "server.toml",
+    "upstream.toml",
+    "limits.toml",
+    "openai.toml",
+    "openrouter.toml",
+    "anthropic.toml",
+    "llm.toml",
+    "decision.toml",
+];
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -202,10 +215,46 @@ fn default_decision_backend() -> String {
 
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
-        Self::load_from_path(&config_path())
+        match config_location()? {
+            ConfigLocation::Directory(dir) => Self::load_from_directory(&dir),
+            ConfigLocation::File(path) => Self::load_from_path(&path),
+        }
     }
 
-    pub fn load_from_path(path: &std::path::Path) -> Result<Self, ConfigError> {
+    pub fn load_from_directory(dir: &Path) -> Result<Self, ConfigError> {
+        let mut merged = Map::new();
+        for name in CONFIG_DIR_FILES {
+            let path = dir.join(name);
+            let contents = std::fs::read_to_string(&path).map_err(|source| ConfigError::Read {
+                path: path.clone(),
+                source,
+            })?;
+            let table: Value = toml::from_str(&contents).map_err(|source| ConfigError::Parse {
+                path: path.clone(),
+                source,
+            })?;
+            let Value::Table(table) = table else {
+                return Err(ConfigError::InvalidFragment { path });
+            };
+            merge_tables(&mut merged, table);
+        }
+        let serialized = toml::to_string(&Value::Table(merged)).map_err(|source| {
+            ConfigError::Serialize {
+                path: dir.to_path_buf(),
+                source,
+            }
+        })?;
+        let file: ConfigFile = toml::from_str(&serialized).map_err(|source| ConfigError::Parse {
+            path: dir.to_path_buf(),
+            source,
+        })?;
+        Ok(config_from_file(file))
+    }
+
+    pub fn load_from_path(path: &Path) -> Result<Self, ConfigError> {
+        if path.is_dir() {
+            return Self::load_from_directory(path);
+        }
         let contents = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
             path: path.to_path_buf(),
             source,
@@ -214,26 +263,7 @@ impl Config {
             path: path.to_path_buf(),
             source,
         })?;
-        Ok(Self {
-            bind_addr: file.server.bind_addr,
-            allow_remote: file.server.allow_remote,
-            upstream_connect_timeout_secs: file.upstream.connect_timeout_secs,
-            upstream_request_timeout_secs: file.upstream.request_timeout_secs,
-            openai_chat_completions_url: file.openai.chat_completions_url,
-            openrouter_chat_completions_url: file.openrouter.chat_completions_url,
-            openrouter_chat_completions_path: file.openrouter.chat_completions_path,
-            openrouter_decisions_url: file.openrouter.decisions_url,
-            openrouter_decisions_path: file.openrouter.decisions_path,
-            openrouter_http_referer: file.openrouter.http_referer,
-            openrouter_title: file.openrouter.openrouter_title,
-            anthropic_messages_url: file.anthropic.messages_url,
-            anthropic_api_version: file.anthropic.api_version,
-            anthropic_messages_path: file.anthropic.messages_path,
-            max_body_bytes: file.limits.max_body_bytes,
-            llm_chat_backend: file.llm.chat.backend,
-            llm_messages_backend: file.llm.messages.backend,
-            decision_backend: file.decision.backend,
-        })
+        Ok(config_from_file(file))
     }
 
     pub fn parse_bind_addr(&self) -> Result<SocketAddr, ConfigError> {
@@ -256,10 +286,69 @@ impl Config {
     }
 }
 
-fn config_path() -> PathBuf {
-    std::env::var("OCTO_CONFIG")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("config.toml"))
+enum ConfigLocation {
+    Directory(PathBuf),
+    File(PathBuf),
+}
+
+fn config_location() -> Result<ConfigLocation, ConfigError> {
+    if let Ok(raw) = std::env::var("OCTO_CONFIG") {
+        let path = PathBuf::from(raw);
+        if path.is_dir() {
+            return Ok(ConfigLocation::Directory(path));
+        }
+        return Ok(ConfigLocation::File(path));
+    }
+    let dir = PathBuf::from("config");
+    if dir.is_dir() {
+        return Ok(ConfigLocation::Directory(dir));
+    }
+    let file = PathBuf::from("config.toml");
+    if file.is_file() {
+        return Ok(ConfigLocation::File(file));
+    }
+    Ok(ConfigLocation::Directory(dir))
+}
+
+fn merge_tables(into: &mut Map<String, Value>, from: Map<String, Value>) {
+    for (key, value) in from {
+        if let Value::Table(incoming) = value {
+            match into.get_mut(&key) {
+                Some(Value::Table(existing)) => {
+                    merge_tables(existing, incoming);
+                    continue;
+                }
+                None | Some(_) => {
+                    into.insert(key, Value::Table(incoming));
+                }
+            }
+        } else {
+            into.insert(key, value);
+        }
+    }
+}
+
+fn config_from_file(file: ConfigFile) -> Config {
+    Config {
+        bind_addr: file.server.bind_addr,
+        allow_remote: file.server.allow_remote,
+        upstream_connect_timeout_secs: file.upstream.connect_timeout_secs,
+        upstream_request_timeout_secs: file.upstream.request_timeout_secs,
+        openai_chat_completions_url: file.openai.chat_completions_url,
+        openrouter_chat_completions_url: file.openrouter.chat_completions_url,
+        openrouter_chat_completions_path: file.openrouter.chat_completions_path,
+        openrouter_decisions_url: file.openrouter.decisions_url,
+        openrouter_decisions_path: file.openrouter.decisions_path,
+        openrouter_http_referer: file.openrouter.http_referer,
+        openrouter_title: file.openrouter.openrouter_title,
+        anthropic_messages_url: file.anthropic.messages_url,
+        anthropic_api_version: file.anthropic.api_version,
+        anthropic_messages_path: file.anthropic.messages_path,
+        max_body_bytes: file.limits.max_body_bytes,
+        llm_chat_backend: file.llm.chat.backend,
+        llm_messages_backend: file.llm.messages.backend,
+        decision_backend: file.decision.backend,
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -276,6 +365,14 @@ pub enum ConfigError {
         #[source]
         source: toml::de::Error,
     },
+    #[error("config fragment at {path} must be a TOML table")]
+    InvalidFragment { path: PathBuf },
+    #[error("failed to serialize merged config at {path}")]
+    Serialize {
+        path: PathBuf,
+        #[source]
+        source: toml::ser::Error,
+    },
     #[error("unknown {kind} backend {name}")]
     UnknownBackend { kind: &'static str, name: String },
     #[error("invalid bind_addr {addr}")]
@@ -285,7 +382,7 @@ pub enum ConfigError {
         source: std::net::AddrParseError,
     },
     #[error(
-        "bind_addr {addr} is not loopback; set server.allow_remote = true to listen on non-loopback addresses"
+        "bind_addr {addr} is not loopback; set allow_remote = true in config/server.toml"
     )]
     RemoteBindNotAllowed { addr: String },
 }
