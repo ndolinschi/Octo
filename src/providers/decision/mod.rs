@@ -3,4 +3,4 @@ mod openrouter;
 mod traits;
 
 pub use backend::Wired as Providers;
-pub use traits::DecisionsForward;
+pub use traits::Decisions;

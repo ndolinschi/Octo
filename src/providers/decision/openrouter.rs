@@ -4,7 +4,7 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::traits::DecisionsForward;
+use super::traits::Decisions;
 use crate::providers::openrouter::{self, AttributionDefaults};
 use crate::providers::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
@@ -35,7 +35,7 @@ impl OpenRouter {
     }
 }
 
-impl DecisionsForward for OpenRouter {
+impl Decisions for OpenRouter {
     fn upstream_url(&self) -> &str {
         self.decisions_url()
     }

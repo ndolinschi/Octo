@@ -85,8 +85,8 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | `src/providers/llm/backend.rs` | Config-selected enums + `Providers<C, M>` wiring |
 | `src/providers/llm/openai.rs` | OpenRouter-shaped chat forward (implements trait) |
 | `src/providers/llm/anthropic.rs` | Messages forward (implements trait) |
-| `src/providers/decision/traits.rs` | `DecisionsForward` |
-| `src/providers/decision/backend.rs` | Config-selected `DecisionsBackend` + `Providers<D>` |
+| `src/providers/decision/traits.rs` | `Decisions` trait |
+| `src/providers/decision/backend.rs` | Config wiring + `Providers<D>` |
 | `src/providers/decision/openrouter.rs` | OpenRouter alpha Decisions forward (implements trait) |
 | `src/providers/openrouter/attribution.rs` | Shared Referer / title defaults for OpenRouter upstreams |
 | `src/providers/utils.rs` | Buffered POST proxy, streaming body, allowlisted response headers |
