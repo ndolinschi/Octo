@@ -20,8 +20,11 @@ async fn forward_chat(
     let body_bytes = to_bytes(body, max_body)
         .await
         .map_err(ProxyError::from_read_body)?;
-    let (provider, upstream_body) =
-        resolve_chat_provider(path_hint, &body_bytes);
+    let (provider, upstream_body) = resolve_chat_provider(
+        path_hint,
+        &body_bytes,
+        state.default_chat_provider,
+    );
     let request = Request::from_parts(parts, Body::from(upstream_body));
     match provider {
         ChatCompatProvider::OpenAi => {

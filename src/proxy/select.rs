@@ -26,11 +26,10 @@ pub fn strip_chat_provider_from_body(bytes: &[u8]) -> (Option<ChatCompatProvider
     let Value::Object(mut map) = value else {
         return (None, bytes.to_vec());
     };
+    let type_removed = map.remove("type");
+    let octo_removed = map.remove("octo_provider");
     let mut provider = None;
-    if let Some(value) = map
-        .remove("type")
-        .or_else(|| map.remove("octo_provider"))
-    {
+    if let Some(value) = type_removed.or(octo_removed) {
         if let Some(token) = value.as_str() {
             provider = parse_chat_provider_token(token);
         }
@@ -39,14 +38,19 @@ pub fn strip_chat_provider_from_body(bytes: &[u8]) -> (Option<ChatCompatProvider
     (provider, out)
 }
 
+pub fn chat_compat_from_llm_backend(raw: &str) -> Option<ChatCompatProvider> {
+    parse_chat_provider_token(raw)
+}
+
 pub fn resolve_chat_provider(
     path_hint: Option<ChatCompatProvider>,
     body: &[u8],
+    config_default: ChatCompatProvider,
 ) -> (ChatCompatProvider, Vec<u8>) {
     let (body_hint, stripped) = strip_chat_provider_from_body(body);
     let provider = path_hint
         .or(body_hint)
-        .unwrap_or(ChatCompatProvider::OpenAi);
+        .unwrap_or(config_default);
     (provider, stripped)
 }
 
@@ -75,14 +79,15 @@ mod tests {
     fn path_hint_overrides_body() {
         let body = br#"{"type":"OPENROUTER","model":"x"}"#;
         let (provider, _) =
-            resolve_chat_provider(Some(ChatCompatProvider::OpenAi), body);
+            resolve_chat_provider(Some(ChatCompatProvider::OpenAi), body, ChatCompatProvider::OpenRouter);
         assert_eq!(provider, ChatCompatProvider::OpenAi);
     }
 
     #[test]
     fn default_is_openai() {
         let body = br#"{"model":"x"}"#;
-        let (provider, _) = resolve_chat_provider(None, body);
+        let (provider, _) =
+            resolve_chat_provider(None, body, ChatCompatProvider::OpenAi);
         assert_eq!(provider, ChatCompatProvider::OpenAi);
     }
 }

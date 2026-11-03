@@ -1,5 +1,6 @@
 use octo::config::{Config, ConfigError};
 use octo::providers::decision;
+use octo::state::AppState;
 
 fn sample_config() -> Config {
     Config {
@@ -23,6 +24,13 @@ fn sample_config() -> Config {
         llm_messages_backend: "claude".to_string(),
         decision_backend: "openrouter".to_string(),
     }
+}
+
+#[test]
+fn unknown_llm_messages_backend_rejected_at_startup() {
+    let mut config = sample_config();
+    config.llm_messages_backend = "bedrock".to_string();
+    assert!(AppState::new(config).is_err());
 }
 
 #[test]

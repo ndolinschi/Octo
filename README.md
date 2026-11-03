@@ -12,11 +12,27 @@ cargo build
 cargo run
 ```
 
-## OpenAI-compatible chat proxy (OpenRouter)
+## OpenAI-compatible chat (OpenAI and OpenRouter)
 
-[`config.toml`](./config.toml) defaults chat to **direct OpenAI** (`[openai].chat_completions_url`). OpenRouter chat URL lives under `[openrouter].chat_completions_url`. Use OpenRouter model slugs when you select OpenRouter (body `"type": "OPENROUTER"` or `/openrouter/completions`).
+[`config.toml`](./config.toml) wires **direct OpenAI** (`[openai].chat_completions_url`) and **OpenRouter** (`[openrouter].chat_completions_url`). Default chat upstream when the request does not pin a provider: `[llm.chat].backend` (`openai` or `openrouter`).
 
-With the server running (`cargo run`):
+**Pick OpenRouter** with JSON `"type": "OPENROUTER"` (or `"octo_provider"`), path `/openrouter/completions`, or set `[llm.chat] backend = "openrouter"` as the default.
+
+### Direct OpenAI (default backend)
+
+```bash
+export OPENAI_API_KEY="sk-..."
+
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Say hello in one sentence."}]
+  }'
+```
+
+### OpenRouter (explicit selection)
 
 ```bash
 export OPENROUTER_API_KEY="sk-or-v1-..."
@@ -25,15 +41,16 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OPENROUTER_API_KEY" \
   -d '{
+    "type": "OPENROUTER",
     "model": "openai/gpt-4o-mini",
     "messages": [{"role": "user", "content": "Say hello in one sentence."}]
   }'
 ```
 
-Other models on the same endpoint (OpenRouter slugs):
+Same request via path alias (no `type` in body):
 
 ```bash
-curl http://127.0.0.1:8080/v1/chat/completions \
+curl http://127.0.0.1:8080/openrouter/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OPENROUTER_API_KEY" \
   -d '{
@@ -43,20 +60,10 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   }'
 ```
 
-```bash
-curl http://127.0.0.1:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-  -d '{
-    "model": "google/gemini-2.0-flash-001",
-    "messages": [{"role": "user", "content": "Name three primary colors."}]
-  }'
-```
-
 Optional OpenRouter attribution (overrides [`config.toml`](./config.toml) defaults when set):
 
 ```bash
-curl http://127.0.0.1:8080/v1/chat/completions \
+curl http://127.0.0.1:8080/openrouter/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OPENROUTER_API_KEY" \
   -H "Referer: https://myapp.example" \
@@ -68,9 +75,9 @@ Streaming works the same way: add `"stream": true` to the JSON body.
 
 Listens on `127.0.0.1:8080` by default. Octo loads `./config.toml` from the process **current working directory** unless you set `OCTO_CONFIG` to an absolute or relative path (run from the repo root, or point `OCTO_CONFIG` at your file). Edit [`config.toml`](./config.toml) for bind address, `server.allow_remote`, upstream timeouts, OpenRouter chat and decisions URLs/paths, default `http_referer` / `openrouter_title`, body size limit, and Anthropic settings.
 
-### Config migration from `[openai]`
+### Config migration from `[openai]` table name
 
-Older configs used `[openai]` for chat URL and attribution. That table still loads (as an alias for `[openrouter]`). Add optional `[llm.chat]`, `[llm.messages]`, and `[decision]` blocks to pin backends; if omitted, defaults are `openai` / `claude` / `openrouter` (`openrouter` and `anthropic` backend strings still load for older configs).
+Older configs used a TOML table named `[openai]` for **OpenRouter** URLs. Rename that table to **`[openrouter]`** and add a dedicated **`[openai]`** section for direct OpenAI (`chat_completions_url`). Chat routing uses JSON `type`, path aliases, and `[llm.chat].backend` as the default when path/body omit a provider.
 
 ## OpenRouter Decisions (alpha)
 

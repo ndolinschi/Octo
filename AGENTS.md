@@ -12,7 +12,7 @@ Instructions for AI coding agents working in this repository.
 | `POST /v1/decisions` (+ OpenRouter aliases) | OpenRouter alpha Decisions |
 | `POST /v1/messages` (+ Claude/Anthropic aliases) | Anthropic Messages API |
 
-**OpenAI-compatible chat (same JSON body):** default upstream is **`[openai].chat_completions_url`** (`https://api.openai.com/v1/chat/completions`). Pick OpenRouter instead with a JSON `"type"` field (stripped before upstream): `OPEN_AI`, `OPENAI`, `OPENROUTER`, `openrouter`, etc., or `"octo_provider"` with the same tokens. **Path wins over body.** Default when omitted: OpenAI.
+**OpenAI-compatible chat (same JSON body):** upstream is chosen by **path alias**, then JSON `"type"` / `"octo_provider"`, then **`[llm.chat].backend`** (default `openai`). Values: `OPEN_AI`, `OPENAI`, `OPENROUTER`, `openrouter`, etc. Octo strips those fields before upstream.
 
 **Path aliases (provider pinned by URL):**
 
@@ -73,7 +73,7 @@ Typical keys:
 - `[limits]` — `max_body_bytes` (request body cap for proxy reads)
 - `[openai]` — direct OpenAI chat `chat_completions_url` (default `https://api.openai.com/v1/chat/completions`)
 - `[openrouter]` — OpenRouter chat `chat_completions_url`, `decisions_url`, paths, optional `http_referer` and `openrouter_title`
-- `[llm.chat]` / `[llm.messages]` — `backend` selects implementation (`openai`, `claude`, …; legacy `openrouter` / `anthropic` still accepted)
+- `[llm.chat]` / `[llm.messages]` — `backend` sets the **default** chat upstream when path/body omit a provider (`openai` or `openrouter`; legacy `openrouter` on chat still accepted). Messages backend must be `claude` or legacy `anthropic` (Claude implementation only today).
 - `[decision]` — `backend` selects decision implementation (`openrouter` today; `openai` when added)
 - `[anthropic]` — `messages_url`, `messages_path`, `api_version` (default `anthropic-version` when the client omits it)
 
@@ -87,7 +87,7 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | --- | --- |
 | `src/main.rs` | Tracing init; calls `proxy::run()` |
 | `src/config.rs` | Load TOML → `Config` |
-| `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, generic `llm::Providers`, `decision::Providers` |
+| `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, default chat provider, `llm::Wired`, `decision::Providers` |
 | `src/routes.rs` | App router: `TraceLayer`, state |
 | `src/proxy/mod.rs` | Bind, serve, graceful shutdown |
 | `src/proxy/routes.rs` | Proxy route paths from config |
