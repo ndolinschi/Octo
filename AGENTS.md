@@ -102,15 +102,14 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | `src/proxy/routes.rs` | Proxy route paths from config; `GET /health` |
 | `src/proxy/handler.rs` | Thin Axum handlers |
 | `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
-| `src/providers/llm/traits.rs` | `ChatCompletions`, `Messages` |
-| `src/providers/llm/wire.rs` | Config wiring + `Providers<C, M>` |
+| `src/providers/llm/traits.rs` | `ChatCompletions` (upstream URL), `Messages` |
+| `src/providers/llm/wire.rs` | Config wiring + `Providers` (OpenAI, OpenRouter, Claude) |
 | `src/providers/llm/openai.rs` | Direct OpenAI chat (`OpenAI`) |
 | `src/providers/llm/openrouter.rs` | OpenRouter OpenAI-compatible chat (`OpenRouter`) |
 | `src/providers/llm/claude.rs` | Claude Messages forward (`Claude`) |
 | `src/proxy/select.rs` | Chat `type` / path provider resolution |
-| `src/providers/decision/traits.rs` | `Decisions` trait |
-| `src/providers/decision/wire.rs` | Config wiring + `Providers<D>` |
-| `src/providers/decision/openrouter.rs` | OpenRouter Decisions forward (`OpenRouter`; `[decision] backend = "openrouter"`) |
+| `src/providers/decision/wire.rs` | Config wiring + `Providers` |
+| `src/providers/decision/openrouter.rs` | OpenRouter Decisions forward (`[decision] backend = "openrouter"`) |
 | `src/providers/openrouter/attribution.rs` | Shared Referer / title defaults for OpenRouter upstreams |
 | `src/providers/utils.rs` | Buffered POST proxy, streaming body, allowlisted response headers |
 
