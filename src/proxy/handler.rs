@@ -1,52 +1,28 @@
 use axum::{
     body::{to_bytes, Body},
     extract::{Request, State},
-    http::{header, StatusCode},
-    response::{IntoResponse, Response},
+    http::header,
+    response::Response,
 };
 use futures_util::StreamExt;
 use tracing::info;
 
+use crate::providers::OpenAICompatible;
+use crate::proxy::error::ProxyError;
 use crate::state::AppState;
-
-pub const UPSTREAM_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
-
-const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
-
-#[derive(Debug, thiserror::Error)]
-pub enum ProxyError {
-    #[error("failed to read request body")]
-    ReadBody(#[source] axum::Error),
-    #[error("upstream request failed")]
-    Upstream(#[from] reqwest::Error),
-    #[error("failed to build response")]
-    BuildResponse,
-}
-
-impl IntoResponse for ProxyError {
-    fn into_response(self) -> Response {
-        let (status, message) = match &self {
-            ProxyError::ReadBody(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ProxyError::Upstream(_) | ProxyError::BuildResponse => {
-                (StatusCode::BAD_GATEWAY, self.to_string())
-            }
-        };
-        (status, message).into_response()
-    }
-}
 
 pub async fn chat_completions(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
+    let max_body = state.provider.max_body_bytes();
+    let upstream_url = state.provider.chat_completions_url();
+
     let (parts, body) = request.into_parts();
-    let body_bytes = to_bytes(body, MAX_BODY_BYTES)
+    let body_bytes = to_bytes(body, max_body)
         .await
         .map_err(ProxyError::ReadBody)?;
-    let mut upstream = state
-        .client
-        .post(UPSTREAM_CHAT_COMPLETIONS_URL)
-        .body(body_bytes);
+    let mut upstream = state.client.post(upstream_url).body(body_bytes);
 
     if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
         upstream = upstream.header(header::AUTHORIZATION, value);
