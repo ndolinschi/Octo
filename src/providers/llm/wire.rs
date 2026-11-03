@@ -1,45 +1,34 @@
-use crate::config::{Config, ConfigError};
+use crate::config::Config;
 
 use super::claude::Claude;
 use super::openai::OpenAI;
+use super::openrouter::OpenRouter;
 
 #[derive(Clone)]
-pub struct Providers<C, M> {
-    pub chat: C,
-    pub messages: M,
+pub struct Wired {
+    pub openai: OpenAI,
+    pub openrouter: OpenRouter,
+    pub claude: Claude,
 }
 
-pub type Wired = Providers<OpenAI, Claude>;
-
 impl Wired {
-    pub fn from_config(config: &Config) -> Result<Self, ConfigError> {
-        let chat = match config.llm_chat_backend.as_str() {
-            "openai" | "openrouter" => OpenAI::new(
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            openai: OpenAI::new(
+                config.openai_chat_completions_url.clone(),
+                config.max_body_bytes,
+            ),
+            openrouter: OpenRouter::new(
                 config.openrouter_chat_completions_url.clone(),
                 config.openrouter_http_referer.clone(),
                 config.openrouter_title.clone(),
                 config.max_body_bytes,
             ),
-            other => {
-                return Err(ConfigError::UnknownBackend {
-                    kind: "llm.chat",
-                    name: other.to_string(),
-                });
-            }
-        };
-        let messages = match config.llm_messages_backend.as_str() {
-            "claude" | "anthropic" => Claude::new(
+            claude: Claude::new(
                 config.anthropic_messages_url.clone(),
                 config.anthropic_api_version.clone(),
                 config.max_body_bytes,
             ),
-            other => {
-                return Err(ConfigError::UnknownBackend {
-                    kind: "llm.messages",
-                    name: other.to_string(),
-                });
-            }
-        };
-        Ok(Self { chat, messages })
+        }
     }
 }

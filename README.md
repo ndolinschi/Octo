@@ -14,7 +14,7 @@ cargo run
 
 ## OpenAI-compatible chat proxy (OpenRouter)
 
-[`config.toml`](./config.toml) points chat completions at [OpenRouter](https://openrouter.ai/) (`https://openrouter.ai/api/v1/chat/completions`). Octo keeps the same OpenAI-style path on your server (`POST /v1/chat/completions`): send a Bearer token (your OpenRouter API key), pick any OpenRouter model slug in the JSON `model` field, and Octo forwards the request upstream.
+[`config.toml`](./config.toml) defaults chat to **direct OpenAI** (`[openai].chat_completions_url`). OpenRouter chat URL lives under `[openrouter].chat_completions_url`. Use OpenRouter model slugs when you select OpenRouter (body `"type": "OPENROUTER"` or `/openrouter/completions`).
 
 With the server running (`cargo run`):
 

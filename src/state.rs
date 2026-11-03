@@ -22,7 +22,7 @@ impl AppState {
                 .connect_timeout(connect_timeout)
                 .timeout(request_timeout)
                 .build()?,
-            llm: llm::Providers::from_config(&config)?,
+            llm: llm::Providers::from_config(&config),
             decision: decision::Providers::from_config(&config)?,
             config,
         })

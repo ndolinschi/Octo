@@ -8,11 +8,22 @@ Instructions for AI coding agents working in this repository.
 
 | Local route | Upstream (defaults in `config.toml`) |
 | --- | --- |
-| `POST /v1/chat/completions` | [OpenRouter](https://openrouter.ai/) OpenAI-compatible API |
-| `POST /v1/decisions` | OpenRouter [alpha Decisions](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request) (Jev / structured decisions) |
-| `POST /v1/messages` | Anthropic Messages API |
+| `POST /v1/chat/completions` (and OpenAI-compat aliases below) | Direct OpenAI **or** OpenRouter, selected per request |
+| `POST /v1/decisions` (+ OpenRouter aliases) | OpenRouter alpha Decisions |
+| `POST /v1/messages` (+ Claude/Anthropic aliases) | Anthropic Messages API |
 
-OpenAI-style chat is **not** wired to `api.openai.com` by default: `[openrouter].chat_completions_url` points at OpenRouter so clients use OpenRouter model slugs (e.g. `openai/gpt-4o-mini`) and a Bearer OpenRouter API key. Decisions use the same key on `POST /v1/decisions` (forwarded to OpenRouter alpha Decisions). Anthropic still targets `api.anthropic.com` unless changed in config.
+**OpenAI-compatible chat (same JSON body):** default upstream is **`[openai].chat_completions_url`** (`https://api.openai.com/v1/chat/completions`). Pick OpenRouter instead with a JSON `"type"` field (stripped before upstream): `OPEN_AI`, `OPENAI`, `OPENROUTER`, `openrouter`, etc., or `"octo_provider"` with the same tokens. **Path wins over body.** Default when omitted: OpenAI.
+
+**Path aliases (provider pinned by URL):**
+
+| Alias paths | Provider |
+| --- | --- |
+| `/openai/completions`, `/openai/v1/chat/completions` | OpenAI |
+| `/openrouter/completions`, `/openrouter/v1/chat/completions` | OpenRouter |
+| `/claude/messages`, `/claude/v1/messages`, `/anthropic/messages`, `/anthropic/v1/messages` | Claude |
+| `/openrouter/decisions`, `/openrouter/v1/decisions` | OpenRouter Decisions |
+
+Config primary paths (`chat_completions_path`, `messages_path`, `decisions_path`) still apply; default chat path uses body/path selection above.
 
 User-facing curl examples and model samples: [README.md](./README.md).
 
@@ -60,12 +71,13 @@ Typical keys:
 
 - `[server]` — `bind_addr`
 - `[limits]` — `max_body_bytes` (request body cap for proxy reads)
-- `[openrouter]` — `chat_completions_url`, `chat_completions_path`, `decisions_url`, `decisions_path`, optional `http_referer` and `openrouter_title` (attribution defaults when the client omits them)
+- `[openai]` — direct OpenAI chat `chat_completions_url` (default `https://api.openai.com/v1/chat/completions`)
+- `[openrouter]` — OpenRouter chat `chat_completions_url`, `decisions_url`, paths, optional `http_referer` and `openrouter_title`
 - `[llm.chat]` / `[llm.messages]` — `backend` selects implementation (`openai`, `claude`, …; legacy `openrouter` / `anthropic` still accepted)
 - `[decision]` — `backend` selects decision implementation (`openrouter` today; `openai` when added)
 - `[anthropic]` — `messages_url`, `messages_path`, `api_version` (default `anthropic-version` when the client omits it)
 
-To use direct OpenAI chat instead of OpenRouter, set `openrouter.chat_completions_url` to `https://api.openai.com/v1/chat/completions`.
+To use OpenRouter for chat, POST with `"type": "OPENROUTER"` or use `/openrouter/completions`. OpenRouter model slugs and Bearer keys apply on that path; direct OpenAI uses `/v1/chat/completions` (default) or `/openai/completions` with an OpenAI API key.
 
 Do not commit API keys; clients send credentials per request (`Authorization` for OpenRouter/OpenAI-style chat, `x-api-key` for Anthropic).
 
@@ -83,8 +95,10 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
 | `src/providers/llm/traits.rs` | `ChatCompletions`, `Messages` |
 | `src/providers/llm/wire.rs` | Config wiring + `Providers<C, M>` |
-| `src/providers/llm/openai.rs` | OpenAI-compatible chat forward (`OpenAI`; `[llm.chat] backend = "openai"`, legacy `openrouter`) |
-| `src/providers/llm/claude.rs` | Claude Messages forward (`Claude`; `[llm.messages] backend = "claude"`, legacy `anthropic`) |
+| `src/providers/llm/openai.rs` | Direct OpenAI chat (`OpenAI`) |
+| `src/providers/llm/openrouter.rs` | OpenRouter OpenAI-compatible chat (`OpenRouter`) |
+| `src/providers/llm/claude.rs` | Claude Messages forward (`Claude`) |
+| `src/proxy/select.rs` | Chat `type` / path provider resolution |
 | `src/providers/decision/traits.rs` | `Decisions` trait |
 | `src/providers/decision/wire.rs` | Config wiring + `Providers<D>` |
 | `src/providers/decision/openrouter.rs` | OpenRouter Decisions forward (`OpenRouter`; `[decision] backend = "openrouter"`) |

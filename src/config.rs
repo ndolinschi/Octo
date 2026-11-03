@@ -9,6 +9,7 @@ pub struct Config {
     pub allow_remote: bool,
     pub upstream_connect_timeout_secs: u64,
     pub upstream_request_timeout_secs: u64,
+    pub openai_chat_completions_url: String,
     pub openrouter_chat_completions_url: String,
     pub openrouter_chat_completions_path: String,
     pub openrouter_decisions_url: String,
@@ -30,7 +31,8 @@ struct ConfigFile {
     #[serde(default)]
     upstream: UpstreamSection,
     limits: LimitsSection,
-    #[serde(alias = "openai")]
+    #[serde(default)]
+    openai: OpenAiSection,
     openrouter: OpenRouterSection,
     #[serde(default)]
     llm: LlmSection,
@@ -74,6 +76,24 @@ fn default_upstream_request_timeout_secs() -> u64 {
 #[derive(Clone, Debug, Deserialize)]
 struct LimitsSection {
     max_body_bytes: usize,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct OpenAiSection {
+    #[serde(default = "default_openai_chat_completions_url")]
+    chat_completions_url: String,
+}
+
+fn default_openai_chat_completions_url() -> String {
+    "https://api.openai.com/v1/chat/completions".to_string()
+}
+
+impl Default for OpenAiSection {
+    fn default() -> Self {
+        Self {
+            chat_completions_url: default_openai_chat_completions_url(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -199,6 +219,7 @@ impl Config {
             allow_remote: file.server.allow_remote,
             upstream_connect_timeout_secs: file.upstream.connect_timeout_secs,
             upstream_request_timeout_secs: file.upstream.request_timeout_secs,
+            openai_chat_completions_url: file.openai.chat_completions_url,
             openrouter_chat_completions_url: file.openrouter.chat_completions_url,
             openrouter_chat_completions_path: file.openrouter.chat_completions_path,
             openrouter_decisions_url: file.openrouter.decisions_url,

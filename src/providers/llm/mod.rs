@@ -1,5 +1,6 @@
 mod claude;
 mod openai;
+mod openrouter;
 mod traits;
 mod wire;
 

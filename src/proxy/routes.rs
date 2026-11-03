@@ -10,12 +10,34 @@ pub fn router(config: &Config) -> Router<AppState> {
             config.openrouter_chat_completions_path.as_str(),
             post(handler::chat_completions),
         )
+        .route("/openai/completions", post(handler::chat_completions_openai))
+        .route(
+            "/openai/v1/chat/completions",
+            post(handler::chat_completions_openai),
+        )
+        .route(
+            "/openrouter/completions",
+            post(handler::chat_completions_openrouter),
+        )
+        .route(
+            "/openrouter/v1/chat/completions",
+            post(handler::chat_completions_openrouter),
+        )
         .route(
             config.openrouter_decisions_path.as_str(),
             post(handler::decisions),
         )
+        .route("/openrouter/decisions", post(handler::decisions))
+        .route("/openrouter/v1/decisions", post(handler::decisions))
         .route(
             config.anthropic_messages_path.as_str(),
             post(handler::messages),
+        )
+        .route("/claude/messages", post(handler::messages_claude))
+        .route("/claude/v1/messages", post(handler::messages_claude))
+        .route("/anthropic/messages", post(handler::messages_anthropic))
+        .route(
+            "/anthropic/v1/messages",
+            post(handler::messages_anthropic),
         )
 }

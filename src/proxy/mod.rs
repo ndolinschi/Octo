@@ -1,6 +1,7 @@
 pub mod error;
 pub mod handler;
 pub mod routes;
+pub mod select;
 
 use tracing::{info, warn};
 
@@ -25,9 +26,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     })?;
     info!(
         chat_backend = %config.llm_chat_backend,
-        chat_url = state.llm.chat.upstream_url(),
+        chat_url = state.llm.openai.upstream_url(),
+        openrouter_chat_url = state.llm.openrouter.upstream_url(),
         messages_backend = %config.llm_messages_backend,
-        messages_url = state.llm.messages.upstream_url(),
+        messages_url = state.llm.claude.upstream_url(),
         decisions_backend = %config.decision_backend,
         decisions_url = state.decision.decisions.upstream_url(),
         "upstream urls"
