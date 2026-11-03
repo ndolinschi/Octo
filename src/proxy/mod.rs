@@ -11,7 +11,7 @@ use crate::routes::router;
 use crate::state::AppState;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let config = Config::from_env()?;
+    let config = Config::load()?;
     let addr: SocketAddr = config.bind_addr.parse()?;
     let state = AppState::new(config.clone())?;
     info!(

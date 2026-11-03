@@ -1,18 +1,6 @@
-const DEFAULT_BIND_ADDR: &str = "127.0.0.1:8080";
-const DEFAULT_OPENAI_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
-const DEFAULT_ANTHROPIC_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
-const DEFAULT_ANTHROPIC_API_VERSION: &str = "2023-06-01";
-const DEFAULT_MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
-const DEFAULT_OPENAI_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
-const DEFAULT_ANTHROPIC_MESSAGES_PATH: &str = "/v1/messages";
+use std::path::PathBuf;
 
-const ENV_BIND_ADDR: &str = "OCTO_BIND_ADDR";
-const ENV_OPENAI_CHAT_COMPLETIONS_URL: &str = "OCTO_OPENAI_CHAT_COMPLETIONS_URL";
-const ENV_ANTHROPIC_MESSAGES_URL: &str = "OCTO_ANTHROPIC_MESSAGES_URL";
-const ENV_ANTHROPIC_API_VERSION: &str = "OCTO_ANTHROPIC_API_VERSION";
-const ENV_MAX_BODY_BYTES: &str = "OCTO_MAX_BODY_BYTES";
-const ENV_OPENAI_CHAT_COMPLETIONS_PATH: &str = "OCTO_OPENAI_CHAT_COMPLETIONS_PATH";
-const ENV_ANTHROPIC_MESSAGES_PATH: &str = "OCTO_ANTHROPIC_MESSAGES_PATH";
+use serde::Deserialize;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -22,47 +10,87 @@ pub struct Config {
     pub anthropic_api_version: String,
     pub max_body_bytes: usize,
     pub openai_chat_completions_path: String,
+    pub openai_http_referer: Option<String>,
+    pub openai_openrouter_title: Option<String>,
     pub anthropic_messages_path: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct ConfigFile {
+    server: ServerSection,
+    limits: LimitsSection,
+    openai: OpenAiSection,
+    anthropic: AnthropicSection,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ServerSection {
+    bind_addr: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct LimitsSection {
+    max_body_bytes: usize,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct OpenAiSection {
+    chat_completions_url: String,
+    chat_completions_path: String,
+    #[serde(default)]
+    http_referer: Option<String>,
+    #[serde(default)]
+    openrouter_title: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct AnthropicSection {
+    messages_url: String,
+    messages_path: String,
+    api_version: String,
+}
+
 impl Config {
-    pub fn from_env() -> Result<Self, ConfigError> {
-        let max_body_bytes = match std::env::var(ENV_MAX_BODY_BYTES) {
-            Ok(value) => value
-                .parse()
-                .map_err(|_| ConfigError::InvalidMaxBodyBytes)?,
-            Err(_) => DEFAULT_MAX_BODY_BYTES,
-        };
+    pub fn load() -> Result<Self, ConfigError> {
+        let path = config_path();
+        let contents = std::fs::read_to_string(&path).map_err(|source| ConfigError::Read {
+            path: path.clone(),
+            source,
+        })?;
+        let file: ConfigFile =
+            toml::from_str(&contents).map_err(|source| ConfigError::Parse { path, source })?;
         Ok(Self {
-            bind_addr: env_or(ENV_BIND_ADDR, DEFAULT_BIND_ADDR),
-            openai_chat_completions_url: env_or(
-                ENV_OPENAI_CHAT_COMPLETIONS_URL,
-                DEFAULT_OPENAI_CHAT_COMPLETIONS_URL,
-            ),
-            anthropic_messages_url: env_or(
-                ENV_ANTHROPIC_MESSAGES_URL,
-                DEFAULT_ANTHROPIC_MESSAGES_URL,
-            ),
-            anthropic_api_version: env_or(ENV_ANTHROPIC_API_VERSION, DEFAULT_ANTHROPIC_API_VERSION),
-            max_body_bytes,
-            openai_chat_completions_path: env_or(
-                ENV_OPENAI_CHAT_COMPLETIONS_PATH,
-                DEFAULT_OPENAI_CHAT_COMPLETIONS_PATH,
-            ),
-            anthropic_messages_path: env_or(
-                ENV_ANTHROPIC_MESSAGES_PATH,
-                DEFAULT_ANTHROPIC_MESSAGES_PATH,
-            ),
+            bind_addr: file.server.bind_addr,
+            openai_chat_completions_url: file.openai.chat_completions_url,
+            anthropic_messages_url: file.anthropic.messages_url,
+            anthropic_api_version: file.anthropic.api_version,
+            max_body_bytes: file.limits.max_body_bytes,
+            openai_chat_completions_path: file.openai.chat_completions_path,
+            openai_http_referer: file.openai.http_referer,
+            openai_openrouter_title: file.openai.openrouter_title,
+            anthropic_messages_path: file.anthropic.messages_path,
         })
     }
 }
 
-fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key).unwrap_or_else(|_| default.to_string())
+fn config_path() -> PathBuf {
+    std::env::var("OCTO_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("config.toml"))
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("invalid OCTO_MAX_BODY_BYTES value")]
-    InvalidMaxBodyBytes,
+    #[error("failed to read config at {path}")]
+    Read {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to parse config at {path}")]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
 }

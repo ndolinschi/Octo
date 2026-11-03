@@ -16,7 +16,12 @@ impl AppState {
         let max_body_bytes = config.max_body_bytes;
         Ok(Self {
             client: Client::builder().build()?,
-            openai: OpenAi::new(config.openai_chat_completions_url.clone(), max_body_bytes),
+            openai: OpenAi::new(
+                config.openai_chat_completions_url.clone(),
+                config.openai_http_referer.clone(),
+                config.openai_openrouter_title.clone(),
+                max_body_bytes,
+            ),
             anthropic: Anthropic::new(
                 config.anthropic_messages_url.clone(),
                 config.anthropic_api_version.clone(),
