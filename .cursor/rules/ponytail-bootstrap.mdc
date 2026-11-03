@@ -1,0 +1,38 @@
+---
+description: Load Ponytail lazy-senior-dev skills vendored in this repository
+alwaysApply: true
+---
+
+# Ponytail (project-local)
+
+This repository vendors [Ponytail](https://github.com/DietrichGebert/ponytail) under `.cursor/skills/ponytail/`.
+
+For substantive coding work (implement, fix, refactor, review, dependency choices), read and follow:
+
+`.cursor/skills/ponytail/skills/ponytail/SKILL.md`
+
+Other skills in the same tree:
+
+| Skill | Path |
+| --- | --- |
+| Review a diff | `.cursor/skills/ponytail/skills/ponytail-review/SKILL.md` |
+| Repo quality audit | `.cursor/skills/ponytail/skills/ponytail-audit/SKILL.md` |
+| Technical debt ledger | `.cursor/skills/ponytail/skills/ponytail-debt/SKILL.md` |
+| Impact scoreboard | `.cursor/skills/ponytail/skills/ponytail-gain/SKILL.md` |
+| Quick reference | `.cursor/skills/ponytail/skills/ponytail-help/SKILL.md` |
+
+Use the `Read` tool on these paths (same as Superpowers). In Cursor chat you can also attach skills manually or send `/ponytail lite`, `/ponytail full`, `/ponytail ultra`, or `/ponytail off` as plain messages when [project hooks](#cursor-hooks) are installed.
+
+## Cursor hooks (optional)
+
+Project-level hooks live in `.cursor/hooks.json` when installed. They inject the active Ponytail level at session start and track `/ponytail` mode switches. Re-install after moving the submodule:
+
+```bash
+node .cursor/skills/ponytail/scripts/cursor-hooks.js install --project
+```
+
+Do not add `.cursor/rules/ponytail.mdc` from the submodule while using these hooks; Ponytail treats the always-on rule and hooks as alternatives.
+
+## Precedence
+
+`AGENTS.md` and direct user messages override Ponytail. Ponytail and Superpowers can both apply; resolve conflicts in favor of the user and this repo’s `AGENTS.md`.

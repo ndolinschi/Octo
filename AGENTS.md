@@ -16,6 +16,13 @@ git submodule update --init --recursive
 
 Rust toolchain: install via [rustup](https://rustup.rs/). Verify with `cargo --version`.
 
+Vendored agent skills (after submodule init):
+
+| Pack | Path |
+| --- | --- |
+| Superpowers | `.cursor/skills/superpowers/` |
+| Ponytail | `.cursor/skills/ponytail/` |
+
 ### Editor
 
 Use **rust-analyzer** in Cursor/VS Code. Open the repository root (folder containing `Cargo.toml`).
@@ -43,6 +50,24 @@ This repo includes Superpowers skills as a git submodule:
    Invoke `using-superpowers` at the start of work, then use process skills when relevant (`brainstorming`, `writing-plans`, `test-driven-development`, `systematic-debugging`, etc.).
 
 User messages and this file take precedence over skills.
+
+## Ponytail
+
+Ponytail (“lazy senior dev”) is vendored at:
+
+`.cursor/skills/ponytail/`
+
+Project rule `.cursor/rules/ponytail-bootstrap.mdc` applies every session. Read the main skill before substantive coding:
+
+`.cursor/skills/ponytail/skills/ponytail/SKILL.md`
+
+Optional Cursor hooks (level switching via `/ponytail …` in chat):
+
+```bash
+node .cursor/skills/ponytail/scripts/cursor-hooks.js install --project
+```
+
+Upstream install docs: `.cursor/skills/ponytail/INSTALL.md` and `.cursor/skills/ponytail/docs/cursor-hooks.md`.
 
 ## Rust rules
 
