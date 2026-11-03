@@ -68,6 +68,10 @@ Streaming works the same way: add `"stream": true` to the JSON body.
 
 Listens on `127.0.0.1:8080` by default. Edit [`config.toml`](./config.toml) for bind address, OpenRouter chat and decisions URLs/paths, default `http_referer` / `openrouter_title`, body size limit, and Anthropic settings. Use `OCTO_CONFIG` to point at a different TOML file.
 
+### Config migration from `[openai]`
+
+Older configs used `[openai]` for chat URL and attribution. That table still loads (as an alias for `[openrouter]`). Add optional `[llm.chat]`, `[llm.messages]`, and `[decision]` blocks to pin backends; if omitted, defaults are `openrouter` / `anthropic` / `openrouter`. New fields `decisions_url` and `decisions_path` default to OpenRouter alpha Decisions and `/v1/decisions` when absent.
+
 ## OpenRouter Decisions (alpha)
 
 Same API key as chat. Local path defaults to `POST /v1/decisions` (upstream: OpenRouter alpha Decisions). See [OpenRouter Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request).

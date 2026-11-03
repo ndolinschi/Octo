@@ -24,8 +24,11 @@ pub struct Config {
 struct ConfigFile {
     server: ServerSection,
     limits: LimitsSection,
+    #[serde(alias = "openai")]
     openrouter: OpenRouterSection,
+    #[serde(default)]
     llm: LlmSection,
+    #[serde(default)]
     decision: DecisionSection,
     anthropic: AnthropicSection,
 }
@@ -44,12 +47,22 @@ struct LimitsSection {
 struct OpenRouterSection {
     chat_completions_url: String,
     chat_completions_path: String,
+    #[serde(default = "default_decisions_url")]
     decisions_url: String,
+    #[serde(default = "default_decisions_path")]
     decisions_path: String,
     #[serde(default)]
     http_referer: Option<String>,
     #[serde(default)]
     openrouter_title: Option<String>,
+}
+
+fn default_decisions_url() -> String {
+    "https://openrouter.ai/api/alpha/decisions".to_string()
+}
+
+fn default_decisions_path() -> String {
+    "/v1/decisions".to_string()
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -61,7 +74,9 @@ struct AnthropicSection {
 
 #[derive(Clone, Debug, Deserialize)]
 struct LlmSection {
+    #[serde(default)]
     chat: ChatBackendSection,
+    #[serde(default)]
     messages: MessagesBackendSection,
 }
 
@@ -83,6 +98,43 @@ struct MessagesBackendSection {
     backend: String,
 }
 
+impl Default for ChatBackendSection {
+    fn default() -> Self {
+        Self {
+            backend: default_llm_chat_backend(),
+        }
+    }
+}
+
+impl Default for MessagesBackendSection {
+    fn default() -> Self {
+        Self {
+            backend: default_llm_messages_backend(),
+        }
+    }
+}
+
+impl Default for LlmSection {
+    fn default() -> Self {
+        Self {
+            chat: ChatBackendSection {
+                backend: default_llm_chat_backend(),
+            },
+            messages: MessagesBackendSection {
+                backend: default_llm_messages_backend(),
+            },
+        }
+    }
+}
+
+impl Default for DecisionSection {
+    fn default() -> Self {
+        Self {
+            backend: default_decision_backend(),
+        }
+    }
+}
+
 fn default_llm_chat_backend() -> String {
     "openrouter".to_string()
 }
@@ -97,13 +149,18 @@ fn default_decision_backend() -> String {
 
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
-        let path = config_path();
-        let contents = std::fs::read_to_string(&path).map_err(|source| ConfigError::Read {
-            path: path.clone(),
+        Self::load_from_path(&config_path())
+    }
+
+    pub fn load_from_path(path: &std::path::Path) -> Result<Self, ConfigError> {
+        let contents = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+            path: path.to_path_buf(),
             source,
         })?;
-        let file: ConfigFile =
-            toml::from_str(&contents).map_err(|source| ConfigError::Parse { path, source })?;
+        let file: ConfigFile = toml::from_str(&contents).map_err(|source| ConfigError::Parse {
+            path: path.to_path_buf(),
+            source,
+        })?;
         Ok(Self {
             bind_addr: file.server.bind_addr,
             openrouter_chat_completions_url: file.openrouter.chat_completions_url,

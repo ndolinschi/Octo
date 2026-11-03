@@ -83,7 +83,7 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
 | `src/providers/llm/traits.rs` | `ChatCompletions`, `Messages` |
 | `src/providers/llm/wire.rs` | Config wiring + `Providers<C, M>` |
-| `src/providers/llm/openai.rs` | OpenRouter-shaped chat forward (implements trait) |
+| `src/providers/llm/openai.rs` | OpenRouter-shaped chat forward (`[llm.chat] backend = "openrouter"`); not direct OpenAI API yet |
 | `src/providers/llm/anthropic.rs` | Messages forward (implements trait) |
 | `src/providers/decision/traits.rs` | `Decisions` trait |
 | `src/providers/decision/wire.rs` | Config wiring + `Providers<D>` |
