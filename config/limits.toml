@@ -1,0 +1,2 @@
+[limits]
+max_body_bytes = 10485760
