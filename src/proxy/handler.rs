@@ -3,7 +3,7 @@ use axum::{
     response::Response,
 };
 
-use crate::providers::OpenAICompatible;
+use crate::providers::{AnthropicCompatible, OpenAICompatible};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
 
@@ -12,7 +12,17 @@ pub async fn chat_completions(
     request: Request,
 ) -> Result<Response, ProxyError> {
     state
-        .provider
+        .openai
         .forward_chat_completions(&state.client, request)
+        .await
+}
+
+pub async fn messages(
+    State(state): State<AppState>,
+    request: Request,
+) -> Result<Response, ProxyError> {
+    state
+        .anthropic
+        .forward_messages(&state.client, request)
         .await
 }
