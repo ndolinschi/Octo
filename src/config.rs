@@ -5,21 +5,23 @@ use serde::Deserialize;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub bind_addr: String,
-    pub openai_chat_completions_url: String,
+    pub openrouter_chat_completions_url: String,
+    pub openrouter_chat_completions_path: String,
+    pub openrouter_decisions_url: String,
+    pub openrouter_decisions_path: String,
+    pub openrouter_http_referer: Option<String>,
+    pub openrouter_title: Option<String>,
     pub anthropic_messages_url: String,
     pub anthropic_api_version: String,
-    pub max_body_bytes: usize,
-    pub openai_chat_completions_path: String,
-    pub openai_http_referer: Option<String>,
-    pub openai_openrouter_title: Option<String>,
     pub anthropic_messages_path: String,
+    pub max_body_bytes: usize,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 struct ConfigFile {
     server: ServerSection,
     limits: LimitsSection,
-    openai: OpenAiSection,
+    openrouter: OpenRouterSection,
     anthropic: AnthropicSection,
 }
 
@@ -34,9 +36,11 @@ struct LimitsSection {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct OpenAiSection {
+struct OpenRouterSection {
     chat_completions_url: String,
     chat_completions_path: String,
+    decisions_url: String,
+    decisions_path: String,
     #[serde(default)]
     http_referer: Option<String>,
     #[serde(default)]
@@ -61,14 +65,16 @@ impl Config {
             toml::from_str(&contents).map_err(|source| ConfigError::Parse { path, source })?;
         Ok(Self {
             bind_addr: file.server.bind_addr,
-            openai_chat_completions_url: file.openai.chat_completions_url,
+            openrouter_chat_completions_url: file.openrouter.chat_completions_url,
+            openrouter_chat_completions_path: file.openrouter.chat_completions_path,
+            openrouter_decisions_url: file.openrouter.decisions_url,
+            openrouter_decisions_path: file.openrouter.decisions_path,
+            openrouter_http_referer: file.openrouter.http_referer,
+            openrouter_title: file.openrouter.openrouter_title,
             anthropic_messages_url: file.anthropic.messages_url,
             anthropic_api_version: file.anthropic.api_version,
-            max_body_bytes: file.limits.max_body_bytes,
-            openai_chat_completions_path: file.openai.chat_completions_path,
-            openai_http_referer: file.openai.http_referer,
-            openai_openrouter_title: file.openai.openrouter_title,
             anthropic_messages_path: file.anthropic.messages_path,
+            max_body_bytes: file.limits.max_body_bytes,
         })
     }
 }

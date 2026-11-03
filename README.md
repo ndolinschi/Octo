@@ -66,7 +66,31 @@ curl http://127.0.0.1:8080/v1/chat/completions \
 
 Streaming works the same way: add `"stream": true` to the JSON body.
 
-Listens on `127.0.0.1:8080` by default. Edit [`config.toml`](./config.toml) for bind address, upstream URL (set `openai.chat_completions_url` back to `https://api.openai.com/v1/chat/completions` for direct OpenAI), default `http_referer` / `openrouter_title`, route paths, body size limit, and Anthropic settings. Use `OCTO_CONFIG` to point at a different TOML file.
+Listens on `127.0.0.1:8080` by default. Edit [`config.toml`](./config.toml) for bind address, OpenRouter chat and decisions URLs/paths, default `http_referer` / `openrouter_title`, body size limit, and Anthropic settings. Use `OCTO_CONFIG` to point at a different TOML file.
+
+## OpenRouter Decisions (alpha)
+
+Same API key as chat. Local path defaults to `POST /v1/decisions` (upstream: OpenRouter alpha Decisions). See [OpenRouter Decisions API](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request).
+
+```bash
+curl http://127.0.0.1:8080/v1/decisions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+  -d '{
+    "model": "typesafe/jev-1.13",
+    "state": {"ticket": "Checkout shows a blank screen after Pay."},
+    "questions": {
+      "is_bug": {
+        "type": "noul",
+        "instructions": "Is the customer reporting broken behavior?",
+        "criteria": {
+          "true": "Broken or unexpected product behavior.",
+          "false": "Question or feature request."
+        }
+      }
+    }
+  }'
+```
 
 ## Anthropic messages proxy
 

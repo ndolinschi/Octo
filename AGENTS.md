@@ -9,9 +9,10 @@ Instructions for AI coding agents working in this repository.
 | Local route | Upstream (defaults in `config.toml`) |
 | --- | --- |
 | `POST /v1/chat/completions` | [OpenRouter](https://openrouter.ai/) OpenAI-compatible API |
+| `POST /v1/decisions` | OpenRouter [alpha Decisions](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request) (Jev / structured decisions) |
 | `POST /v1/messages` | Anthropic Messages API |
 
-OpenAI-style chat is **not** wired to `api.openai.com` by default: `openai.chat_completions_url` points at OpenRouter so clients use OpenRouter model slugs (e.g. `openai/gpt-4o-mini`) and a Bearer OpenRouter API key. Anthropic still targets `api.anthropic.com` unless changed in config.
+OpenAI-style chat is **not** wired to `api.openai.com` by default: `[openrouter].chat_completions_url` points at OpenRouter so clients use OpenRouter model slugs (e.g. `openai/gpt-4o-mini`) and a Bearer OpenRouter API key. Decisions use the same key on `POST /v1/decisions` (forwarded to OpenRouter alpha Decisions). Anthropic still targets `api.anthropic.com` unless changed in config.
 
 User-facing curl examples and model samples: [README.md](./README.md).
 
@@ -59,10 +60,10 @@ Typical keys:
 
 - `[server]` — `bind_addr`
 - `[limits]` — `max_body_bytes` (request body cap for proxy reads)
-- `[openai]` — `chat_completions_url`, `chat_completions_path`, optional `http_referer` and `openrouter_title` (OpenRouter attribution defaults when the client omits them)
+- `[openrouter]` — `chat_completions_url`, `chat_completions_path`, `decisions_url`, `decisions_path`, optional `http_referer` and `openrouter_title` (attribution defaults when the client omits them)
 - `[anthropic]` — `messages_url`, `messages_path`, `api_version` (default `anthropic-version` when the client omits it)
 
-To use direct OpenAI instead of OpenRouter, set `openai.chat_completions_url` to `https://api.openai.com/v1/chat/completions`.
+To use direct OpenAI chat instead of OpenRouter, set `openrouter.chat_completions_url` to `https://api.openai.com/v1/chat/completions`.
 
 Do not commit API keys; clients send credentials per request (`Authorization` for OpenRouter/OpenAI-style chat, `x-api-key` for Anthropic).
 
@@ -72,14 +73,17 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | --- | --- |
 | `src/main.rs` | Tracing init; calls `proxy::run()` |
 | `src/config.rs` | Load TOML → `Config` |
-| `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, `OpenAi`, `Anthropic` |
+| `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, `llm::Providers`, `decision::Providers` |
 | `src/routes.rs` | App router: `TraceLayer`, state |
 | `src/proxy/mod.rs` | Bind, serve, graceful shutdown |
 | `src/proxy/routes.rs` | Proxy route paths from config |
 | `src/proxy/handler.rs` | Thin Axum handlers |
-| `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/502) |
-| `src/providers/openai.rs` | Chat completions forward (auth, OpenRouter attribution, content-type) |
-| `src/providers/anthropic.rs` | Messages forward (`x-api-key`, `anthropic-version`) |
+| `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
+| `src/providers/llm/openai.rs` | Chat completions forward (auth, OpenRouter attribution, content-type) |
+| `src/providers/llm/anthropic.rs` | Messages forward (`x-api-key`, `anthropic-version`) |
+| `src/providers/decision/openrouter.rs` | OpenRouter alpha Decisions forward |
+| `src/providers/decision/openai.rs` | Reserved for direct OpenAI Decisions API (not routed yet) |
+| `src/providers/openrouter/attribution.rs` | Shared Referer / title defaults for OpenRouter upstreams |
 | `src/providers/utils.rs` | Buffered POST proxy, streaming body, allowlisted response headers |
 
 Conventions for edits: `.cursor/rules/octo-rust.mdc` (module boundaries, no Rust comments unless asked, fmt/clippy/test before finishing).
@@ -87,7 +91,8 @@ Conventions for edits: `.cursor/rules/octo-rust.mdc` (module boundaries, no Rust
 ## Proxy behavior (agents should preserve)
 
 - **Request bodies:** read up to `max_body_bytes`, then POST upstream; stream response bytes back.
-- **OpenAI route:** forward `Authorization`; apply client `Referer` / `X-OpenRouter-Title` (or config defaults); default `Content-Type` to JSON if missing.
+- **Chat route:** forward `Authorization`; apply client `Referer` / `X-OpenRouter-Title` (or config defaults); default `Content-Type` to JSON if missing.
+- **Decisions route:** same auth and OpenRouter attribution as chat; body forwarded unchanged to `decisions_url`.
 - **Anthropic route:** forward `x-api-key`; `anthropic-version` from client or config default.
 - **Response headers:** pass through a safe allowlist (`Content-Type`, `Cache-Control`, `x-request-id`, `retry-after`, `openai-*`, `x-ratelimit-*`, `anthropic-ratelimit-*`).
 - **Errors:** proxy failures return JSON, not plain text.

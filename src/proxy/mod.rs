@@ -15,8 +15,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr: SocketAddr = config.bind_addr.parse()?;
     let state = AppState::new(config.clone())?;
     info!(
-        openai_url = state.openai.chat_completions_url(),
-        anthropic_url = state.anthropic.messages_url(),
+        chat_url = state.llm.openai.chat_completions_url(),
+        decisions_url = state.decision.openrouter.decisions_url(),
+        anthropic_url = state.llm.anthropic.messages_url(),
         "upstream urls"
     );
     let app = router(state);

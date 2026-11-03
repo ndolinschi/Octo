@@ -4,7 +4,7 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::utils::{forward_content_type, proxy_post};
+use crate::providers::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
 #[derive(Clone)]
@@ -32,18 +32,19 @@ impl Anthropic {
         client: &Client,
         request: Request<Body>,
     ) -> Result<Response<Body>, ProxyError> {
+        let default_api_version = self.default_api_version.clone();
         proxy_post(
             client,
             self.messages_url(),
             self.max_body_bytes,
             request,
-            |mut upstream, parts| {
+            move |mut upstream, parts| {
                 if let Some(value) = parts.headers.get("x-api-key") {
                     upstream = upstream.header("x-api-key", value);
                 }
                 upstream = match parts.headers.get("anthropic-version") {
                     Some(value) => upstream.header("anthropic-version", value),
-                    None => upstream.header("anthropic-version", &self.default_api_version),
+                    None => upstream.header("anthropic-version", &default_api_version),
                 };
                 forward_content_type(upstream, parts)
             },
