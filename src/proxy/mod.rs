@@ -7,17 +7,22 @@ use std::net::SocketAddr;
 use tracing::info;
 
 use crate::config::Config;
+use crate::providers::decision::DecisionsForward;
+use crate::providers::llm::{ChatCompletionsForward, MessagesForward};
 use crate::routes::router;
 use crate::state::AppState;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = Config::load()?;
     let addr: SocketAddr = config.bind_addr.parse()?;
-    let state = AppState::new(config.clone())?;
+    let state = AppState::new(config.clone()).map_err(|err| {
+        tracing::error!(%err, "failed to build application state");
+        err
+    })?;
     info!(
-        chat_url = state.llm.openai.chat_completions_url(),
-        decisions_url = state.decision.openrouter.decisions_url(),
-        anthropic_url = state.llm.anthropic.messages_url(),
+        chat_url = state.llm.chat.upstream_url(),
+        decisions_url = state.decision.decisions.upstream_url(),
+        anthropic_url = state.llm.messages.upstream_url(),
         "upstream urls"
     );
     let app = router(state);

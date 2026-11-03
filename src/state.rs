@@ -1,6 +1,6 @@
 use reqwest::Client;
 
-use crate::config::Config;
+use crate::config::{Config, ConfigError};
 use crate::providers::{decision, llm};
 
 #[derive(Clone)]
@@ -12,27 +12,20 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(config: Config) -> Result<Self, reqwest::Error> {
-        let max_body_bytes = config.max_body_bytes;
-        let http_referer = config.openrouter_http_referer.clone();
-        let openrouter_title = config.openrouter_title.clone();
+    pub fn new(config: Config) -> Result<Self, AppStateError> {
         Ok(Self {
             client: Client::builder().build()?,
-            llm: llm::Providers::new(
-                config.openrouter_chat_completions_url.clone(),
-                config.anthropic_messages_url.clone(),
-                config.anthropic_api_version.clone(),
-                http_referer.clone(),
-                openrouter_title.clone(),
-                max_body_bytes,
-            ),
-            decision: decision::Providers::new(
-                config.openrouter_decisions_url.clone(),
-                http_referer,
-                openrouter_title,
-                max_body_bytes,
-            ),
+            llm: llm::Providers::from_config(&config)?,
+            decision: decision::Providers::from_config(&config)?,
             config,
         })
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AppStateError {
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+    #[error(transparent)]
+    Client(#[from] reqwest::Error),
 }

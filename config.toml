@@ -12,6 +12,15 @@ decisions_path = "/v1/decisions"
 http_referer = "http://127.0.0.1:8080"
 openrouter_title = "Octo"
 
+[llm.chat]
+backend = "openrouter"
+
+[llm.messages]
+backend = "anthropic"
+
+[decision]
+backend = "openrouter"
+
 [anthropic]
 messages_url = "https://api.anthropic.com/v1/messages"
 messages_path = "/v1/messages"

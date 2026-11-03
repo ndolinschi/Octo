@@ -4,6 +4,7 @@ use axum::{
 };
 use reqwest::Client;
 
+use super::traits::ChatCompletionsForward;
 use crate::providers::openrouter::{self, AttributionDefaults};
 use crate::providers::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
@@ -32,26 +33,36 @@ impl OpenAi {
     pub fn chat_completions_url(&self) -> &str {
         &self.chat_completions_url
     }
+}
 
-    pub async fn forward_chat_completions(
+impl ChatCompletionsForward for OpenAi {
+    fn upstream_url(&self) -> &str {
+        self.chat_completions_url()
+    }
+
+    fn forward_chat_completions(
         &self,
         client: &Client,
         request: Request<Body>,
-    ) -> Result<Response<Body>, ProxyError> {
+    ) -> impl std::future::Future<Output = Result<Response<Body>, ProxyError>> + Send {
         let openrouter = self.openrouter.clone();
-        proxy_post(
-            client,
-            self.chat_completions_url(),
-            self.max_body_bytes,
-            request,
-            move |mut upstream, parts| {
-                if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
-                    upstream = upstream.header(header::AUTHORIZATION, value);
-                }
-                upstream = openrouter::apply_attribution(upstream, parts, &openrouter);
-                forward_content_type(upstream, parts)
-            },
-        )
-        .await
+        let url = self.chat_completions_url.clone();
+        let max_body_bytes = self.max_body_bytes;
+        async move {
+            proxy_post(
+                client,
+                &url,
+                max_body_bytes,
+                request,
+                move |mut upstream, parts| {
+                    if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
+                        upstream = upstream.header(header::AUTHORIZATION, value);
+                    }
+                    upstream = openrouter::apply_attribution(upstream, parts, &openrouter);
+                    forward_content_type(upstream, parts)
+                },
+            )
+            .await
+        }
     }
 }

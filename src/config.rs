@@ -15,6 +15,9 @@ pub struct Config {
     pub anthropic_api_version: String,
     pub anthropic_messages_path: String,
     pub max_body_bytes: usize,
+    pub llm_chat_backend: String,
+    pub llm_messages_backend: String,
+    pub decision_backend: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -22,6 +25,8 @@ struct ConfigFile {
     server: ServerSection,
     limits: LimitsSection,
     openrouter: OpenRouterSection,
+    llm: LlmSection,
+    decision: DecisionSection,
     anthropic: AnthropicSection,
 }
 
@@ -54,6 +59,42 @@ struct AnthropicSection {
     api_version: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct LlmSection {
+    chat: ChatBackendSection,
+    messages: MessagesBackendSection,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DecisionSection {
+    #[serde(default = "default_decision_backend")]
+    backend: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ChatBackendSection {
+    #[serde(default = "default_llm_chat_backend")]
+    backend: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct MessagesBackendSection {
+    #[serde(default = "default_llm_messages_backend")]
+    backend: String,
+}
+
+fn default_llm_chat_backend() -> String {
+    "openrouter".to_string()
+}
+
+fn default_llm_messages_backend() -> String {
+    "anthropic".to_string()
+}
+
+fn default_decision_backend() -> String {
+    "openrouter".to_string()
+}
+
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         let path = config_path();
@@ -75,6 +116,9 @@ impl Config {
             anthropic_api_version: file.anthropic.api_version,
             anthropic_messages_path: file.anthropic.messages_path,
             max_body_bytes: file.limits.max_body_bytes,
+            llm_chat_backend: file.llm.chat.backend,
+            llm_messages_backend: file.llm.messages.backend,
+            decision_backend: file.decision.backend,
         })
     }
 }
@@ -99,4 +143,6 @@ pub enum ConfigError {
         #[source]
         source: toml::de::Error,
     },
+    #[error("unknown {kind} backend {name}")]
+    UnknownBackend { kind: &'static str, name: String },
 }

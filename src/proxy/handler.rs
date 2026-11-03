@@ -3,6 +3,8 @@ use axum::{
     response::Response,
 };
 
+use crate::providers::decision::DecisionsForward;
+use crate::providers::llm::{ChatCompletionsForward, MessagesForward};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
 
@@ -12,7 +14,7 @@ pub async fn chat_completions(
 ) -> Result<Response, ProxyError> {
     state
         .llm
-        .openai
+        .chat
         .forward_chat_completions(&state.client, request)
         .await
 }
@@ -23,7 +25,7 @@ pub async fn messages(
 ) -> Result<Response, ProxyError> {
     state
         .llm
-        .anthropic
+        .messages
         .forward_messages(&state.client, request)
         .await
 }
@@ -34,7 +36,7 @@ pub async fn decisions(
 ) -> Result<Response, ProxyError> {
     state
         .decision
-        .openrouter
+        .decisions
         .forward_decisions(&state.client, request)
         .await
 }

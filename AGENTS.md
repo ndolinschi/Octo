@@ -61,6 +61,8 @@ Typical keys:
 - `[server]` — `bind_addr`
 - `[limits]` — `max_body_bytes` (request body cap for proxy reads)
 - `[openrouter]` — `chat_completions_url`, `chat_completions_path`, `decisions_url`, `decisions_path`, optional `http_referer` and `openrouter_title` (attribution defaults when the client omits them)
+- `[llm.chat]` / `[llm.messages]` — `backend` selects implementation (`openrouter`, `anthropic`, …)
+- `[decision]` — `backend` selects decision implementation (`openrouter` today; `openai` when added)
 - `[anthropic]` — `messages_url`, `messages_path`, `api_version` (default `anthropic-version` when the client omits it)
 
 To use direct OpenAI chat instead of OpenRouter, set `openrouter.chat_completions_url` to `https://api.openai.com/v1/chat/completions`.
@@ -73,15 +75,19 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | --- | --- |
 | `src/main.rs` | Tracing init; calls `proxy::run()` |
 | `src/config.rs` | Load TOML → `Config` |
-| `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, `llm::Providers`, `decision::Providers` |
+| `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, generic `llm::Providers`, `decision::Providers` |
 | `src/routes.rs` | App router: `TraceLayer`, state |
 | `src/proxy/mod.rs` | Bind, serve, graceful shutdown |
 | `src/proxy/routes.rs` | Proxy route paths from config |
 | `src/proxy/handler.rs` | Thin Axum handlers |
 | `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
-| `src/providers/llm/openai.rs` | Chat completions forward (auth, OpenRouter attribution, content-type) |
-| `src/providers/llm/anthropic.rs` | Messages forward (`x-api-key`, `anthropic-version`) |
-| `src/providers/decision/openrouter.rs` | OpenRouter alpha Decisions forward |
+| `src/providers/llm/traits.rs` | `ChatCompletionsForward`, `MessagesForward` |
+| `src/providers/llm/backend.rs` | Config-selected enums + `Providers<C, M>` wiring |
+| `src/providers/llm/openai.rs` | OpenRouter-shaped chat forward (implements trait) |
+| `src/providers/llm/anthropic.rs` | Messages forward (implements trait) |
+| `src/providers/decision/traits.rs` | `DecisionsForward` |
+| `src/providers/decision/backend.rs` | Config-selected `DecisionsBackend` + `Providers<D>` |
+| `src/providers/decision/openrouter.rs` | OpenRouter alpha Decisions forward (implements trait) |
 | `src/providers/openrouter/attribution.rs` | Shared Referer / title defaults for OpenRouter upstreams |
 | `src/providers/utils.rs` | Buffered POST proxy, streaming body, allowlisted response headers |
 
