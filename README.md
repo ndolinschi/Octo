@@ -70,7 +70,7 @@ Listens on `127.0.0.1:8080` by default. Octo loads `./config.toml` from the proc
 
 ### Config migration from `[openai]`
 
-Older configs used `[openai]` for chat URL and attribution. That table still loads (as an alias for `[openrouter]`). Add optional `[llm.chat]`, `[llm.messages]`, and `[decision]` blocks to pin backends; if omitted, defaults are `openrouter` / `anthropic` / `openrouter`. New fields `decisions_url` and `decisions_path` default to OpenRouter alpha Decisions and `/v1/decisions` when absent.
+Older configs used `[openai]` for chat URL and attribution. That table still loads (as an alias for `[openrouter]`). Add optional `[llm.chat]`, `[llm.messages]`, and `[decision]` blocks to pin backends; if omitted, defaults are `openai` / `claude` / `openrouter` (`openrouter` and `anthropic` backend strings still load for older configs).
 
 ## OpenRouter Decisions (alpha)
 

@@ -18,8 +18,8 @@ fn sample_config() -> Config {
         anthropic_api_version: "2023-06-01".to_string(),
         anthropic_messages_path: "/v1/messages".to_string(),
         max_body_bytes: 1024,
-        llm_chat_backend: "openrouter".to_string(),
-        llm_messages_backend: "anthropic".to_string(),
+        llm_chat_backend: "openai".to_string(),
+        llm_messages_backend: "claude".to_string(),
         decision_backend: "openrouter".to_string(),
     }
 }
@@ -81,7 +81,7 @@ api_version = "2023-06-01"
     .unwrap();
     let config = Config::load_from_path(&path).unwrap();
     let _ = std::fs::remove_file(&path);
-    assert_eq!(config.llm_chat_backend, "openrouter");
+    assert_eq!(config.llm_chat_backend, "openai");
     assert_eq!(config.decision_backend, "openrouter");
     assert_eq!(
         config.openrouter_decisions_url,

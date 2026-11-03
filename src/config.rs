@@ -169,11 +169,11 @@ impl Default for DecisionSection {
 }
 
 fn default_llm_chat_backend() -> String {
-    "openrouter".to_string()
+    "openai".to_string()
 }
 
 fn default_llm_messages_backend() -> String {
-    "anthropic".to_string()
+    "claude".to_string()
 }
 
 fn default_decision_backend() -> String {

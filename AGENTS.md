@@ -61,7 +61,7 @@ Typical keys:
 - `[server]` — `bind_addr`
 - `[limits]` — `max_body_bytes` (request body cap for proxy reads)
 - `[openrouter]` — `chat_completions_url`, `chat_completions_path`, `decisions_url`, `decisions_path`, optional `http_referer` and `openrouter_title` (attribution defaults when the client omits them)
-- `[llm.chat]` / `[llm.messages]` — `backend` selects implementation (`openrouter`, `anthropic`, …)
+- `[llm.chat]` / `[llm.messages]` — `backend` selects implementation (`openai`, `claude`, …; legacy `openrouter` / `anthropic` still accepted)
 - `[decision]` — `backend` selects decision implementation (`openrouter` today; `openai` when added)
 - `[anthropic]` — `messages_url`, `messages_path`, `api_version` (default `anthropic-version` when the client omits it)
 
@@ -83,8 +83,8 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
 | `src/providers/llm/traits.rs` | `ChatCompletions`, `Messages` |
 | `src/providers/llm/wire.rs` | Config wiring + `Providers<C, M>` |
-| `src/providers/llm/openrouter_chat.rs` | OpenRouter-shaped chat forward (`[llm.chat] backend = "openrouter"`) |
-| `src/providers/llm/anthropic.rs` | Messages forward (implements trait) |
+| `src/providers/llm/openai.rs` | OpenAI-compatible chat forward (`OpenAI`; `[llm.chat] backend = "openai"`, legacy `openrouter`) |
+| `src/providers/llm/claude.rs` | Claude Messages forward (`Claude`; `[llm.messages] backend = "claude"`, legacy `anthropic`) |
 | `src/providers/decision/traits.rs` | `Decisions` trait |
 | `src/providers/decision/wire.rs` | Config wiring + `Providers<D>` |
 | `src/providers/decision/openrouter.rs` | OpenRouter alpha Decisions forward (implements trait) |

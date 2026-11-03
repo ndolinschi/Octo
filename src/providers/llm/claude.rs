@@ -9,13 +9,13 @@ use crate::providers::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
 #[derive(Clone)]
-pub struct Anthropic {
+pub struct Claude {
     messages_url: String,
     default_api_version: String,
     max_body_bytes: usize,
 }
 
-impl Anthropic {
+impl Claude {
     pub fn new(messages_url: String, default_api_version: String, max_body_bytes: usize) -> Self {
         Self {
             messages_url,
@@ -29,7 +29,7 @@ impl Anthropic {
     }
 }
 
-impl Messages for Anthropic {
+impl Messages for Claude {
     fn upstream_url(&self) -> &str {
         self.messages_url()
     }

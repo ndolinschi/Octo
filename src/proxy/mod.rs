@@ -27,9 +27,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         chat_backend = %config.llm_chat_backend,
         chat_url = state.llm.chat.upstream_url(),
         messages_backend = %config.llm_messages_backend,
+        messages_url = state.llm.messages.upstream_url(),
         decisions_backend = %config.decision_backend,
         decisions_url = state.decision.decisions.upstream_url(),
-        anthropic_url = state.llm.messages.upstream_url(),
         "upstream urls"
     );
     let app = router(state);

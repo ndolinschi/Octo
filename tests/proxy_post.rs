@@ -67,8 +67,8 @@ fn sample_config(max_body_bytes: usize) -> Config {
         anthropic_api_version: "2023-06-01".to_string(),
         anthropic_messages_path: "/v1/messages".to_string(),
         max_body_bytes,
-        llm_chat_backend: "openrouter".to_string(),
-        llm_messages_backend: "anthropic".to_string(),
+        llm_chat_backend: "openai".to_string(),
+        llm_messages_backend: "claude".to_string(),
         decision_backend: "openrouter".to_string(),
     }
 }

@@ -9,13 +9,13 @@ use crate::providers::openrouter::{self, AttributionDefaults};
 use crate::proxy::error::ProxyError;
 
 #[derive(Clone)]
-pub struct OpenRouterChat {
+pub struct OpenAI {
     chat_completions_url: String,
     openrouter: AttributionDefaults,
     max_body_bytes: usize,
 }
 
-impl OpenRouterChat {
+impl OpenAI {
     pub fn new(
         chat_completions_url: String,
         default_http_referer: Option<String>,
@@ -34,7 +34,7 @@ impl OpenRouterChat {
     }
 }
 
-impl ChatCompletions for OpenRouterChat {
+impl ChatCompletions for OpenAI {
     fn upstream_url(&self) -> &str {
         self.chat_completions_url()
     }
