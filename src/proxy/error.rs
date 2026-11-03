@@ -2,6 +2,8 @@ use axum::{
     http::{header, StatusCode},
     response::{IntoResponse, Response},
 };
+use http_body_util::LengthLimitError;
+use std::error::Error;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProxyError {
@@ -17,12 +19,23 @@ pub enum ProxyError {
 
 impl ProxyError {
     pub(crate) fn from_read_body(err: axum::Error) -> Self {
-        if err.to_string().contains("length limit exceeded") {
+        if is_length_limit(&err) {
             Self::BodyTooLarge
         } else {
             Self::ReadBody(err)
         }
     }
+}
+
+fn is_length_limit(err: &(dyn Error + 'static)) -> bool {
+    let mut current = Some(err);
+    while let Some(source) = current {
+        if source.downcast_ref::<LengthLimitError>().is_some() {
+            return true;
+        }
+        current = source.source();
+    }
+    false
 }
 
 impl IntoResponse for ProxyError {
@@ -35,5 +48,23 @@ impl IntoResponse for ProxyError {
         };
         let body = format!(r#"{{"error":"{error}"}}"#);
         (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::{to_bytes, Body};
+
+    use super::{is_length_limit, ProxyError};
+
+    #[tokio::test]
+    async fn length_limit_maps_to_body_too_large() {
+        let body = Body::from(vec![0_u8; 64]);
+        let err = to_bytes(body, 8).await.unwrap_err();
+        assert!(is_length_limit(&err));
+        assert!(matches!(
+            ProxyError::from_read_body(err),
+            ProxyError::BodyTooLarge
+        ));
     }
 }
