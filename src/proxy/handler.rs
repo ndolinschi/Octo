@@ -20,11 +20,8 @@ async fn forward_chat(
     let body_bytes = to_bytes(body, max_body)
         .await
         .map_err(ProxyError::from_read_body)?;
-    let (provider, upstream_body) = resolve_chat_provider(
-        path_hint,
-        &body_bytes,
-        state.default_chat_provider,
-    )?;
+    let (provider, upstream_body) =
+        resolve_chat_provider(path_hint, &body_bytes, state.default_chat_provider)?;
     let body_bytes = Bytes::from(upstream_body);
     match provider {
         ChatCompatProvider::OpenAi => {
@@ -65,10 +62,7 @@ pub async fn chat_completions_openrouter(
     forward_chat(&state, request, Some(ChatCompatProvider::OpenRouter)).await
 }
 
-async fn forward_messages(
-    state: &AppState,
-    request: Request,
-) -> Result<Response, ProxyError> {
+async fn forward_messages(state: &AppState, request: Request) -> Result<Response, ProxyError> {
     match state.messages_provider {
         MessagesProvider::Claude => {
             state

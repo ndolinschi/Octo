@@ -3,12 +3,7 @@
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use axum::{
-    extract::Request,
-    http::StatusCode,
-    routing::post,
-    Router,
-};
+use axum::{extract::Request, http::StatusCode, routing::post, Router};
 use octo::config::Config;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -36,9 +31,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
     }
 }
 
-pub async fn spawn_uri_capture_server(
-    route: &str,
-) -> (SocketAddr, Arc<Mutex<Option<String>>>) {
+pub async fn spawn_uri_capture_server(route: &str) -> (SocketAddr, Arc<Mutex<Option<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let captured = Arc::new(Mutex::new(None::<String>));
@@ -80,21 +73,19 @@ pub async fn spawn_header_capture_server(
         let _ = ready_tx.send(());
         let app = Router::new().route(
             route.as_str(),
-            post(
-                move |request: Request<axum::body::Body>| {
-                    let captured_task = captured_task.clone();
-                    let header_name = header_name.clone();
-                    async move {
-                        let value = request
-                            .headers()
-                            .get(header_name.as_str())
-                            .and_then(|v| v.to_str().ok())
-                            .map(str::to_string);
-                        *captured_task.lock().unwrap() = value;
-                        StatusCode::OK
-                    }
-                },
-            ),
+            post(move |request: Request<axum::body::Body>| {
+                let captured_task = captured_task.clone();
+                let header_name = header_name.clone();
+                async move {
+                    let value = request
+                        .headers()
+                        .get(header_name.as_str())
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string);
+                    *captured_task.lock().unwrap() = value;
+                    StatusCode::OK
+                }
+            }),
         );
         axum::serve(listener, app).await.unwrap();
     });

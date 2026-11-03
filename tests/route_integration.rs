@@ -21,14 +21,13 @@ async fn messages_route_forwards_x_api_key() {
         .uri("/v1/messages")
         .header(header::CONTENT_TYPE, "application/json")
         .header("x-api-key", "secret-key")
-        .body(Body::from(r#"{"model":"claude","max_tokens":1,"messages":[]}"#))
+        .body(Body::from(
+            r#"{"model":"claude","max_tokens":1,"messages":[]}"#,
+        ))
         .unwrap();
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        captured.lock().unwrap().as_deref(),
-        Some("secret-key")
-    );
+    assert_eq!(captured.lock().unwrap().as_deref(), Some("secret-key"));
 }
 
 #[tokio::test]
@@ -43,14 +42,13 @@ async fn decisions_route_hits_configured_upstream_path() {
         .uri("/v1/decisions")
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::AUTHORIZATION, "Bearer test")
-        .body(Body::from(r#"{"model":"typesafe/jev-1.13","state":{},"questions":{}}"#))
+        .body(Body::from(
+            r#"{"model":"typesafe/jev-1.13","state":{},"questions":{}}"#,
+        ))
         .unwrap();
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        captured.lock().unwrap().as_deref(),
-        Some("/decisions")
-    );
+    assert_eq!(captured.lock().unwrap().as_deref(), Some("/decisions"));
 }
 
 #[tokio::test]

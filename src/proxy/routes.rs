@@ -1,4 +1,7 @@
-use axum::{routing::{get, post}, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 
 use crate::config::Config;
 use crate::proxy::handler;
@@ -11,7 +14,10 @@ pub fn router(config: &Config) -> Router<AppState> {
             config.openrouter_chat_completions_path.as_str(),
             post(handler::chat_completions),
         )
-        .route("/openai/completions", post(handler::chat_completions_openai))
+        .route(
+            "/openai/completions",
+            post(handler::chat_completions_openai),
+        )
         .route(
             "/openai/v1/chat/completions",
             post(handler::chat_completions_openai),
@@ -37,8 +43,5 @@ pub fn router(config: &Config) -> Router<AppState> {
         .route("/claude/messages", post(handler::messages))
         .route("/claude/v1/messages", post(handler::messages))
         .route("/anthropic/messages", post(handler::messages))
-        .route(
-            "/anthropic/v1/messages",
-            post(handler::messages),
-        )
+        .route("/anthropic/v1/messages", post(handler::messages))
 }

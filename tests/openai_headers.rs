@@ -27,8 +27,5 @@ async fn openai_organization_header_is_forwarded() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        captured.lock().unwrap().as_deref(),
-        Some("org-test")
-    );
+    assert_eq!(captured.lock().unwrap().as_deref(), Some("org-test"));
 }

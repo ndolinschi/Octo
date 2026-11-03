@@ -38,14 +38,8 @@ impl OpenRouter {
     ) -> Result<Response<Body>, ProxyError> {
         let openrouter = self.openrouter.clone();
         let url = self.chat_completions_url.clone();
-        openrouter::authorized_attributed_post_bytes(
-            client,
-            &url,
-            parts,
-            body_bytes,
-            &openrouter,
-        )
-        .await
+        openrouter::authorized_attributed_post_bytes(client, &url, parts, body_bytes, &openrouter)
+            .await
     }
 }
 

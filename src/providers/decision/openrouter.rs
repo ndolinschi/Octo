@@ -40,13 +40,7 @@ impl OpenRouter {
         let openrouter = self.openrouter.clone();
         let url = self.decisions_url.clone();
         let max_body_bytes = self.max_body_bytes;
-        openrouter::authorized_attributed_post(
-            client,
-            &url,
-            max_body_bytes,
-            &openrouter,
-            request,
-        )
-        .await
+        openrouter::authorized_attributed_post(client, &url, max_body_bytes, &openrouter, request)
+            .await
     }
 }

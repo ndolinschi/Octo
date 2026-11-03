@@ -31,10 +31,12 @@ async fn mock_upstream(
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
     *capture.0.lock().unwrap() = auth;
-    let body = to_bytes(body, usize::MAX)
-        .await
-        .unwrap_or_default();
-    (StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], body)
+    let body = to_bytes(body, usize::MAX).await.unwrap_or_default();
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/json")],
+        body,
+    )
 }
 
 async fn spawn_mock_upstream() -> (String, UpstreamCapture) {
@@ -42,9 +44,7 @@ async fn spawn_mock_upstream() -> (String, UpstreamCapture) {
     let app = Router::new()
         .route("/echo", post(mock_upstream))
         .with_state(capture.clone());
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
@@ -67,18 +67,12 @@ async fn proxy_post_forwards_auth_and_streams_response() {
         .body(Body::from(r#"{"ok":true}"#))
         .unwrap();
 
-    let response = proxy_post(
-        &client,
-        &url,
-        4096,
-        request,
-        |mut upstream, parts| {
-            if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
-                upstream = upstream.header(header::AUTHORIZATION, value);
-            }
-            forward_content_type(upstream, parts)
-        },
-    )
+    let response = proxy_post(&client, &url, 4096, request, |mut upstream, parts| {
+        if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
+            upstream = upstream.header(header::AUTHORIZATION, value);
+        }
+        forward_content_type(upstream, parts)
+    })
     .await
     .unwrap();
 

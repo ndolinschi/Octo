@@ -77,10 +77,7 @@ pub fn forward_content_type(upstream: RequestBuilder, parts: &Parts) -> RequestB
     }
 }
 
-pub fn apply_openai_request_headers(
-    mut upstream: RequestBuilder,
-    parts: &Parts,
-) -> RequestBuilder {
+pub fn apply_openai_request_headers(mut upstream: RequestBuilder, parts: &Parts) -> RequestBuilder {
     if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
         upstream = upstream.header(header::AUTHORIZATION, value);
     }

@@ -28,10 +28,7 @@ async fn chat_route_body_type_openrouter_selects_openrouter_upstream() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        captured.lock().unwrap().as_deref(),
-        Some("/upstream")
-    );
+    assert_eq!(captured.lock().unwrap().as_deref(), Some("/upstream"));
 }
 
 #[tokio::test]
@@ -51,10 +48,7 @@ async fn chat_path_alias_openrouter_without_body_type() {
 
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        captured.lock().unwrap().as_deref(),
-        Some("/upstream")
-    );
+    assert_eq!(captured.lock().unwrap().as_deref(), Some("/upstream"));
 }
 
 #[tokio::test]
@@ -135,8 +129,5 @@ async fn invalid_type_falls_back_to_octo_provider() {
         .unwrap();
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        captured.lock().unwrap().as_deref(),
-        Some("/upstream")
-    );
+    assert_eq!(captured.lock().unwrap().as_deref(), Some("/upstream"));
 }

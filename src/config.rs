@@ -296,12 +296,13 @@ impl Config {
             };
             merge_tables(&mut merged, table);
         }
-        let file: ConfigFile = Value::Table(merged)
-            .try_into()
-            .map_err(|source| ConfigError::Parse {
-                path: dir.to_path_buf(),
-                source,
-            })?;
+        let file: ConfigFile =
+            Value::Table(merged)
+                .try_into()
+                .map_err(|source| ConfigError::Parse {
+                    path: dir.to_path_buf(),
+                    source,
+                })?;
         Ok(config_from_file(file))
     }
 
@@ -429,8 +430,6 @@ pub enum ConfigError {
         #[source]
         source: std::net::AddrParseError,
     },
-    #[error(
-        "bind_addr {addr} is not loopback; set allow_remote = true in config/server.toml"
-    )]
+    #[error("bind_addr {addr} is not loopback; set allow_remote = true in config/server.toml")]
     RemoteBindNotAllowed { addr: String },
 }

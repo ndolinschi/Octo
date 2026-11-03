@@ -18,20 +18,16 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: Config) -> Result<Self, AppStateError> {
-        let default_chat_provider =
-            select::chat_compat_from_llm_backend(&config.llm_chat_backend).ok_or_else(|| {
-                ConfigError::UnknownBackend {
-                    kind: "llm.chat",
-                    name: config.llm_chat_backend.clone(),
-                }
+        let default_chat_provider = select::chat_compat_from_llm_backend(&config.llm_chat_backend)
+            .ok_or_else(|| ConfigError::UnknownBackend {
+                kind: "llm.chat",
+                name: config.llm_chat_backend.clone(),
             })?;
-        let messages_provider =
-            select::parse_messages_provider_token(&config.llm_messages_backend).ok_or_else(
-                || ConfigError::UnknownBackend {
-                    kind: "llm.messages",
-                    name: config.llm_messages_backend.clone(),
-                },
-            )?;
+        let messages_provider = select::parse_messages_provider_token(&config.llm_messages_backend)
+            .ok_or_else(|| ConfigError::UnknownBackend {
+                kind: "llm.messages",
+                name: config.llm_messages_backend.clone(),
+            })?;
         let connect_timeout = Duration::from_secs(config.upstream_connect_timeout_secs);
         let request_timeout = Duration::from_secs(config.upstream_request_timeout_secs);
         Ok(Self {

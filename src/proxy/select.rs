@@ -102,9 +102,7 @@ pub fn resolve_chat_provider(
     let body_hint = body_hint_from_selectors(&type_removed, &octo_removed);
     validate_body_selectors(path_hint, &type_removed, &octo_removed, body_hint)?;
 
-    let provider = path_hint
-        .or(body_hint)
-        .unwrap_or(config_default);
+    let provider = path_hint.or(body_hint).unwrap_or(config_default);
     Ok((provider, out))
 }
 
@@ -122,7 +120,8 @@ mod tests {
     #[test]
     fn body_type_openrouter_stripped() {
         let body = br#"{"type":"OPENROUTER","model":"x","messages":[]}"#;
-        let (provider, out) = resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
+        let (provider, out) =
+            resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
         assert_eq!(provider, ChatCompatProvider::OpenRouter);
         let v: Value = serde_json::from_slice(&out).unwrap();
         assert!(v.get("type").is_none());
@@ -144,8 +143,7 @@ mod tests {
     #[test]
     fn default_is_config_backend() {
         let body = br#"{"model":"x"}"#;
-        let (provider, _) =
-            resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
+        let (provider, _) = resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
         assert_eq!(provider, ChatCompatProvider::OpenAi);
     }
 
@@ -175,16 +173,14 @@ mod tests {
     #[test]
     fn null_type_uses_default_provider() {
         let body = br#"{"type":null,"model":"x"}"#;
-        let (provider, _) =
-            resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
+        let (provider, _) = resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
         assert_eq!(provider, ChatCompatProvider::OpenAi);
     }
 
     #[test]
     fn invalid_type_falls_back_to_octo_provider() {
         let body = br#"{"type":"bogus","octo_provider":"OPENROUTER","model":"x"}"#;
-        let (provider, _) =
-            resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
+        let (provider, _) = resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
         assert_eq!(provider, ChatCompatProvider::OpenRouter);
     }
 
