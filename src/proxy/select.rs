@@ -89,7 +89,7 @@ pub fn resolve_chat_provider(
     config_default: ChatCompatProvider,
 ) -> Result<(ChatCompatProvider, Vec<u8>), ProxyError> {
     let Ok(value) = serde_json::from_slice::<Value>(body) else {
-        return Ok((path_hint.unwrap_or(config_default), body.to_vec()));
+        return Err(ProxyError::InvalidChatBody);
     };
     let Value::Object(mut map) = value else {
         return Ok((path_hint.unwrap_or(config_default), body.to_vec()));
@@ -186,5 +186,14 @@ mod tests {
         let (provider, _) =
             resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
         assert_eq!(provider, ChatCompatProvider::OpenRouter);
+    }
+
+    #[test]
+    fn invalid_json_returns_error() {
+        let body = br#"{"type":"OPENROUTER","model":"x""#;
+        assert!(matches!(
+            resolve_chat_provider(None, body, ChatCompatProvider::OpenAi),
+            Err(ProxyError::InvalidChatBody)
+        ));
     }
 }

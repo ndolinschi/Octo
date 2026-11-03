@@ -4,7 +4,6 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::traits::Decisions;
 use crate::providers::openrouter::{self, AttributionDefaults};
 use crate::proxy::error::ProxyError;
 
@@ -29,33 +28,25 @@ impl OpenRouter {
         }
     }
 
-    pub fn decisions_url(&self) -> &str {
+    pub fn upstream_url(&self) -> &str {
         &self.decisions_url
     }
-}
 
-impl Decisions for OpenRouter {
-    fn upstream_url(&self) -> &str {
-        self.decisions_url()
-    }
-
-    fn forward_decisions(
+    pub async fn forward_decisions(
         &self,
         client: &Client,
         request: Request<Body>,
-    ) -> impl std::future::Future<Output = Result<Response<Body>, ProxyError>> + Send {
+    ) -> Result<Response<Body>, ProxyError> {
         let openrouter = self.openrouter.clone();
         let url = self.decisions_url.clone();
         let max_body_bytes = self.max_body_bytes;
-        async move {
-            openrouter::authorized_attributed_post(
-                client,
-                &url,
-                max_body_bytes,
-                &openrouter,
-                request,
-            )
-            .await
-        }
+        openrouter::authorized_attributed_post(
+            client,
+            &url,
+            max_body_bytes,
+            &openrouter,
+            request,
+        )
+        .await
     }
 }

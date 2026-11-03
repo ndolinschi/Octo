@@ -46,11 +46,13 @@ struct ConfigFile {
     limits: LimitsSection,
     #[serde(default)]
     openai: OpenAiSection,
+    #[serde(default)]
     openrouter: OpenRouterSection,
     #[serde(default)]
     llm: LlmSection,
     #[serde(default)]
     decision: DecisionSection,
+    #[serde(default)]
     anthropic: AnthropicSection,
 }
 
@@ -111,7 +113,9 @@ impl Default for OpenAiSection {
 
 #[derive(Clone, Debug, Deserialize)]
 struct OpenRouterSection {
+    #[serde(default = "default_openrouter_chat_completions_url")]
     chat_completions_url: String,
+    #[serde(default = "default_openrouter_chat_completions_path")]
     chat_completions_path: String,
     #[serde(default = "default_decisions_url")]
     decisions_url: String,
@@ -121,6 +125,27 @@ struct OpenRouterSection {
     http_referer: Option<String>,
     #[serde(default)]
     openrouter_title: Option<String>,
+}
+
+fn default_openrouter_chat_completions_url() -> String {
+    "https://openrouter.ai/api/v1/chat/completions".to_string()
+}
+
+fn default_openrouter_chat_completions_path() -> String {
+    "/v1/chat/completions".to_string()
+}
+
+impl Default for OpenRouterSection {
+    fn default() -> Self {
+        Self {
+            chat_completions_url: default_openrouter_chat_completions_url(),
+            chat_completions_path: default_openrouter_chat_completions_path(),
+            decisions_url: default_decisions_url(),
+            decisions_path: default_decisions_path(),
+            http_referer: None,
+            openrouter_title: None,
+        }
+    }
 }
 
 fn default_decisions_url() -> String {
@@ -133,9 +158,34 @@ fn default_decisions_path() -> String {
 
 #[derive(Clone, Debug, Deserialize)]
 struct AnthropicSection {
+    #[serde(default = "default_anthropic_messages_url")]
     messages_url: String,
+    #[serde(default = "default_anthropic_messages_path")]
     messages_path: String,
+    #[serde(default = "default_anthropic_api_version")]
     api_version: String,
+}
+
+fn default_anthropic_messages_url() -> String {
+    "https://api.anthropic.com/v1/messages".to_string()
+}
+
+fn default_anthropic_messages_path() -> String {
+    "/v1/messages".to_string()
+}
+
+fn default_anthropic_api_version() -> String {
+    "2023-06-01".to_string()
+}
+
+impl Default for AnthropicSection {
+    fn default() -> Self {
+        Self {
+            messages_url: default_anthropic_messages_url(),
+            messages_path: default_anthropic_messages_path(),
+            api_version: default_anthropic_api_version(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -222,13 +272,21 @@ impl Config {
     }
 
     pub fn load_from_directory(dir: &Path) -> Result<Self, ConfigError> {
+        use std::io::ErrorKind;
+
         let mut merged = Map::new();
         for name in CONFIG_DIR_FILES {
             let path = dir.join(name);
-            let contents = std::fs::read_to_string(&path).map_err(|source| ConfigError::Read {
-                path: path.clone(),
-                source,
-            })?;
+            let contents = match std::fs::read_to_string(&path) {
+                Ok(contents) => contents,
+                Err(source) if source.kind() == ErrorKind::NotFound => continue,
+                Err(source) => {
+                    return Err(ConfigError::Read {
+                        path: path.clone(),
+                        source,
+                    });
+                }
+            };
             let table: Value = toml::from_str(&contents).map_err(|source| ConfigError::Parse {
                 path: path.clone(),
                 source,
@@ -238,16 +296,12 @@ impl Config {
             };
             merge_tables(&mut merged, table);
         }
-        let serialized = toml::to_string(&Value::Table(merged)).map_err(|source| {
-            ConfigError::Serialize {
+        let file: ConfigFile = Value::Table(merged)
+            .try_into()
+            .map_err(|source| ConfigError::Parse {
                 path: dir.to_path_buf(),
                 source,
-            }
-        })?;
-        let file: ConfigFile = toml::from_str(&serialized).map_err(|source| ConfigError::Parse {
-            path: dir.to_path_buf(),
-            source,
-        })?;
+            })?;
         Ok(config_from_file(file))
     }
 
@@ -367,12 +421,6 @@ pub enum ConfigError {
     },
     #[error("config fragment at {path} must be a TOML table")]
     InvalidFragment { path: PathBuf },
-    #[error("failed to serialize merged config at {path}")]
-    Serialize {
-        path: PathBuf,
-        #[source]
-        source: toml::ser::Error,
-    },
     #[error("unknown {kind} backend {name}")]
     UnknownBackend { kind: &'static str, name: String },
     #[error("invalid bind_addr {addr}")]

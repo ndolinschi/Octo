@@ -3,15 +3,13 @@ use crate::config::{Config, ConfigError};
 use super::openrouter::OpenRouter;
 
 #[derive(Clone)]
-pub struct Providers<D> {
-    pub decisions: D,
+pub struct Providers {
+    pub openrouter: OpenRouter,
 }
 
-pub type Wired = Providers<OpenRouter>;
-
-impl Wired {
+impl Providers {
     pub fn from_config(config: &Config) -> Result<Self, ConfigError> {
-        let decisions = match config.decision_backend.as_str() {
+        let openrouter = match config.decision_backend.as_str() {
             "openrouter" => OpenRouter::new(
                 config.openrouter_decisions_url.clone(),
                 config.openrouter_http_referer.clone(),
@@ -25,6 +23,6 @@ impl Wired {
                 });
             }
         };
-        Ok(Self { decisions })
+        Ok(Self { openrouter })
     }
 }

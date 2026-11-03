@@ -76,3 +76,18 @@ pub fn forward_content_type(upstream: RequestBuilder, parts: &Parts) -> RequestB
         None => upstream.header(header::CONTENT_TYPE, "application/json"),
     }
 }
+
+pub fn apply_openai_request_headers(
+    mut upstream: RequestBuilder,
+    parts: &Parts,
+) -> RequestBuilder {
+    if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
+        upstream = upstream.header(header::AUTHORIZATION, value);
+    }
+    for (name, value) in parts.headers.iter() {
+        if name.as_str().starts_with("openai-") {
+            upstream = upstream.header(name, value);
+        }
+    }
+    forward_content_type(upstream, parts)
+}

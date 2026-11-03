@@ -15,6 +15,8 @@ pub enum ProxyError {
     Upstream(#[from] reqwest::Error),
     #[error("invalid provider selector in {field}: {token}")]
     InvalidProviderSelector { field: &'static str, token: String },
+    #[error("invalid chat request body")]
+    InvalidChatBody,
     #[error("failed to build response")]
     BuildResponse,
 }
@@ -50,6 +52,7 @@ impl IntoResponse for ProxyError {
             ProxyError::InvalidProviderSelector { .. } => {
                 (StatusCode::BAD_REQUEST, "invalid provider selector")
             }
+            ProxyError::InvalidChatBody => (StatusCode::BAD_REQUEST, "invalid chat request body"),
         };
         let body = format!(r#"{{"error":"{error}"}}"#);
         (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()

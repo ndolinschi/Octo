@@ -6,7 +6,7 @@ Instructions for AI coding agents working in this repository.
 
 **Octo** is a Rust **HTTP proxy** (Axum 0.8, Tokio 1) in a single application crate (`octo`), edition **2021**. It exposes provider-shaped routes on a local bind address and forwards requests upstream with streaming responses.
 
-| Local route | Upstream (defaults in `config.toml`) |
+| Local route | Upstream (defaults in `config/`) |
 | --- | --- |
 | `POST /v1/chat/completions` (and OpenAI-compat aliases below) | Direct OpenAI **or** OpenRouter, selected per request |
 | `POST /v1/decisions` (+ OpenRouter aliases) | OpenRouter alpha Decisions |
@@ -76,7 +76,7 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 | `config/llm.toml` | `[llm.chat]` / `[llm.messages]` backend defaults |
 | `config/decision.toml` | `[decision]` backend |
 
-- **Default load:** merge all files in `./config/` (run from repo root).
+- **Default load:** merge present files in `./config/` (known fragment names; missing files are skipped). Run from repo root.
 - **`OCTO_CONFIG`:** path to another **`config/`** directory or a single legacy **`config.toml`** file (monolithic override).
 - Loader: `src/config.rs` merges fragments, then maps into `Config` for `AppState`.
 

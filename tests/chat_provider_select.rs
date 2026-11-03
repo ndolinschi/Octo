@@ -103,6 +103,21 @@ async fn invalid_chat_type_returns_400() {
 }
 
 #[tokio::test]
+async fn malformed_chat_json_returns_400() {
+    let config = sample_config(4096);
+    let state = AppState::new(config).unwrap();
+    let app = routes::router(state);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/chat/completions")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"type":"OPENROUTER","model":"x""#))
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn invalid_type_falls_back_to_octo_provider() {
     let (addr, captured) = spawn_uri_capture_server("/upstream").await;
     let mut config = sample_config(4096);

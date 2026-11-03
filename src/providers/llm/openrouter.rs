@@ -1,6 +1,6 @@
 use axum::{
     body::{Body, Bytes},
-    http::{request::Parts, Request, Response},
+    http::{request::Parts, Response},
 };
 use reqwest::Client;
 
@@ -12,7 +12,6 @@ use crate::proxy::error::ProxyError;
 pub struct OpenRouter {
     chat_completions_url: String,
     openrouter: AttributionDefaults,
-    max_body_bytes: usize,
 }
 
 impl OpenRouter {
@@ -20,12 +19,10 @@ impl OpenRouter {
         chat_completions_url: String,
         default_http_referer: Option<String>,
         default_openrouter_title: Option<String>,
-        max_body_bytes: usize,
     ) -> Self {
         Self {
             chat_completions_url,
             openrouter: AttributionDefaults::new(default_http_referer, default_openrouter_title),
-            max_body_bytes,
         }
     }
 
@@ -55,25 +52,5 @@ impl OpenRouter {
 impl ChatCompletions for OpenRouter {
     fn upstream_url(&self) -> &str {
         self.chat_completions_url()
-    }
-
-    fn forward_chat_completions(
-        &self,
-        client: &Client,
-        request: Request<Body>,
-    ) -> impl std::future::Future<Output = Result<Response<Body>, ProxyError>> + Send {
-        let openrouter = self.openrouter.clone();
-        let url = self.chat_completions_url.clone();
-        let max_body_bytes = self.max_body_bytes;
-        async move {
-            openrouter::authorized_attributed_post(
-                client,
-                &url,
-                max_body_bytes,
-                &openrouter,
-                request,
-            )
-            .await
-        }
     }
 }

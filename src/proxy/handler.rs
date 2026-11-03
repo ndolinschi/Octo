@@ -5,7 +5,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use crate::providers::decision::Decisions;
 use crate::providers::llm::Messages;
 use crate::proxy::error::ProxyError;
 use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider, MessagesProvider};
@@ -88,27 +87,13 @@ pub async fn messages(
     forward_messages(&state, request).await
 }
 
-pub async fn messages_claude(
-    State(state): State<AppState>,
-    request: Request,
-) -> Result<Response, ProxyError> {
-    forward_messages(&state, request).await
-}
-
-pub async fn messages_anthropic(
-    State(state): State<AppState>,
-    request: Request,
-) -> Result<Response, ProxyError> {
-    forward_messages(&state, request).await
-}
-
 pub async fn decisions(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
     state
         .decision
-        .decisions
+        .openrouter
         .forward_decisions(&state.client, request)
         .await
 }
