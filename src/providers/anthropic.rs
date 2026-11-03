@@ -4,11 +4,10 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::utils::{forward_content_type, proxy_post};
+use super::utils::{forward_content_type, proxy_post, MAX_BODY_BYTES};
 use crate::proxy::error::ProxyError;
 
 const DEFAULT_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
-const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 const API_VERSION: &str = "2023-06-01";
 
 #[derive(Clone)]

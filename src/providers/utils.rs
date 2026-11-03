@@ -1,12 +1,26 @@
 use axum::{
     body::{to_bytes, Body},
-    http::{header, request::Parts, Request, Response},
+    http::{header, request::Parts, HeaderName, Request, Response},
 };
 use futures_util::StreamExt;
 use reqwest::{Client, RequestBuilder};
 use tracing::info;
 
 use crate::proxy::error::ProxyError;
+
+pub const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
+
+fn should_forward_response_header(name: &HeaderName) -> bool {
+    if name == header::CONTENT_TYPE || name == header::CACHE_CONTROL {
+        return true;
+    }
+    let name = name.as_str();
+    name == "x-request-id"
+        || name == "retry-after"
+        || name.starts_with("openai-")
+        || name.starts_with("x-ratelimit-")
+        || name.starts_with("anthropic-ratelimit-")
+}
 
 pub async fn upstream_to_response(
     upstream: reqwest::Response,
@@ -16,12 +30,10 @@ pub async fn upstream_to_response(
 
     let mut response_builder = Response::builder().status(status);
 
-    if let Some(content_type) = upstream.headers().get(header::CONTENT_TYPE) {
-        response_builder = response_builder.header(header::CONTENT_TYPE, content_type);
-    }
-
-    if let Some(cache_control) = upstream.headers().get(header::CACHE_CONTROL) {
-        response_builder = response_builder.header(header::CACHE_CONTROL, cache_control);
+    for (name, value) in upstream.headers() {
+        if should_forward_response_header(name) {
+            response_builder = response_builder.header(name, value);
+        }
     }
 
     let stream = upstream

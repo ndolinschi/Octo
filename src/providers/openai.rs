@@ -4,11 +4,10 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::utils::{forward_content_type, proxy_post};
+use super::utils::{forward_content_type, proxy_post, MAX_BODY_BYTES};
 use crate::proxy::error::ProxyError;
 
 const DEFAULT_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
-const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct OpenAi {

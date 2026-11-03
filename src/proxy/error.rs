@@ -1,5 +1,5 @@
 use axum::{
-    http::StatusCode,
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
 };
 
@@ -15,12 +15,12 @@ pub enum ProxyError {
 
 impl IntoResponse for ProxyError {
     fn into_response(self) -> Response {
-        let (status, message) = match &self {
-            ProxyError::ReadBody(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            ProxyError::Upstream(_) | ProxyError::BuildResponse => {
-                (StatusCode::BAD_GATEWAY, self.to_string())
-            }
+        let (status, error) = match &self {
+            ProxyError::ReadBody(_) => (StatusCode::BAD_REQUEST, "failed to read request body"),
+            ProxyError::Upstream(_) => (StatusCode::BAD_GATEWAY, "upstream request failed"),
+            ProxyError::BuildResponse => (StatusCode::BAD_GATEWAY, "failed to build response"),
         };
-        (status, message).into_response()
+        let body = format!(r#"{{"error":"{error}"}}"#);
+        (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
     }
 }
