@@ -1,7 +1,9 @@
 # OpenAI chat completions proxy — design
 
 **Date:** 2026-11-03  
-**Status:** approved
+**Status:** superseded (2026-11-03) — see [`AGENTS.md`](../../../AGENTS.md) and [`README.md`](../../../README.md) for current behavior (OpenRouter default upstream, `config.toml`, Anthropic route, OpenRouter attribution).
+
+> The sections below describe the original v1 slice. They are kept for history; do not treat fixed `api.openai.com` or “no config” as current requirements.
 
 ## Intent and why
 

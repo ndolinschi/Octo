@@ -1,5 +1,7 @@
 # OpenAI chat proxy implementation plan
 
+> **Superseded:** Implementation evolved to OpenRouter + `config.toml` (+ Anthropic proxy). Current operator docs: [`AGENTS.md`](../../AGENTS.md). Tasks below reflect the original v1 plan; most are done under the expanded scope.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans or implement task-by-task.
 
 **Goal:** Axum proxy on `127.0.0.1:8080` forwarding `POST /v1/chat/completions` to OpenAI with pass-through auth and streaming.
@@ -17,7 +19,8 @@
 
 ## Tasks
 
-- [ ] Add dependencies to `Cargo.toml`
-- [ ] Implement `src/proxy/handler.rs` and `src/proxy/mod.rs`
-- [ ] Replace `src/main.rs` with tokio + tracing + serve
-- [ ] Verify build and clippy
+- [x] Add dependencies to `Cargo.toml`
+- [x] Implement `src/proxy/handler.rs` and `src/proxy/mod.rs`
+- [x] Replace `src/main.rs` with tokio + tracing + serve
+- [x] Verify build and clippy
+- [x] OpenRouter upstream + attribution defaults (follow-up; see `AGENTS.md`)

@@ -54,7 +54,7 @@ pub async fn proxy_post(
     let (parts, body) = request.into_parts();
     let body_bytes = to_bytes(body, max_body)
         .await
-        .map_err(ProxyError::ReadBody)?;
+        .map_err(ProxyError::from_read_body)?;
     let upstream_request = apply_headers(client.post(url).body(body_bytes), &parts);
     let upstream_response = upstream_request.send().await?;
     upstream_to_response(upstream_response).await

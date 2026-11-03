@@ -59,7 +59,7 @@ Optional OpenRouter attribution (overrides [`config.toml`](./config.toml) defaul
 curl http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-  -H "HTTP-Referer: https://myapp.example" \
+  -H "Referer: https://myapp.example" \
   -H "X-OpenRouter-Title: My App" \
   -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
 ```
