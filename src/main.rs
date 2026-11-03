@@ -1,9 +1,3 @@
-mod config;
-mod providers;
-mod proxy;
-mod routes;
-mod state;
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -13,7 +7,7 @@ async fn main() {
         )
         .init();
 
-    if let Err(err) = proxy::run().await {
+    if let Err(err) = octo::proxy::run().await {
         tracing::error!(%err, "proxy exited with error");
         std::process::exit(1);
     }

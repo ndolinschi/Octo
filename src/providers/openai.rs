@@ -89,13 +89,14 @@ fn forward_or_default_header(
     default: Option<&str>,
 ) -> RequestBuilder {
     let name = name.as_ref();
-    if let Some(value) = outbound_header_value(parts, name, default) {
+    if let Some(value) = resolve_outbound_header(parts, name, default) {
         upstream = upstream.header(name, value);
     }
     upstream
 }
 
-fn outbound_header_value(
+/// Picks an outbound header from the client request, or from config when absent.
+pub fn resolve_outbound_header(
     parts: &Parts,
     name: &str,
     default: Option<&str>,
@@ -104,57 +105,4 @@ fn outbound_header_value(
         return Some(value.clone());
     }
     default.and_then(|value| HeaderValue::from_str(value).ok())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::http::HeaderMap;
-
-    fn parts_with(headers: HeaderMap) -> Parts {
-        let mut request = Request::builder().body(()).unwrap();
-        *request.headers_mut() = headers;
-        request.into_parts().0
-    }
-
-    #[test]
-    fn referer_client_overrides_config_default() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::REFERER,
-            HeaderValue::from_static("https://client.example"),
-        );
-        let parts = parts_with(headers);
-        let header = outbound_header_value(&parts, "referer", Some("https://default.example"))
-            .unwrap();
-        let value = header.to_str().unwrap();
-        assert_eq!(value, "https://client.example");
-    }
-
-    #[test]
-    fn referer_uses_config_default_when_client_absent() {
-        let parts = parts_with(HeaderMap::new());
-        let header = outbound_header_value(&parts, "referer", Some("https://default.example"))
-            .unwrap();
-        let value = header.to_str().unwrap();
-        assert_eq!(value, "https://default.example");
-    }
-
-    #[test]
-    fn openrouter_title_client_overrides_default() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-openrouter-title",
-            HeaderValue::from_static("Client Title"),
-        );
-        let parts = parts_with(headers);
-        let value = outbound_header_value(&parts, "x-openrouter-title", Some("Octo")).unwrap();
-        assert_eq!(value.to_str().unwrap(), "Client Title");
-    }
-
-    #[test]
-    fn x_title_only_from_client() {
-        let parts = parts_with(HeaderMap::new());
-        assert!(outbound_header_value(&parts, "x-title", None).is_none());
-    }
 }
