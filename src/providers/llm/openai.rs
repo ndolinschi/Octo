@@ -4,7 +4,7 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::traits::ChatCompletionsForward;
+use super::traits::ChatCompletions;
 use crate::providers::openrouter::{self, AttributionDefaults};
 use crate::providers::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
@@ -35,7 +35,7 @@ impl OpenAi {
     }
 }
 
-impl ChatCompletionsForward for OpenAi {
+impl ChatCompletions for OpenAi {
     fn upstream_url(&self) -> &str {
         self.chat_completions_url()
     }

@@ -8,7 +8,7 @@ use tracing::info;
 
 use crate::config::Config;
 use crate::providers::decision::Decisions;
-use crate::providers::llm::{ChatCompletionsForward, MessagesForward};
+use crate::providers::llm::{ChatCompletions, Messages};
 use crate::routes::router;
 use crate::state::AppState;
 

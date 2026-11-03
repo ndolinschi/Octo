@@ -1,7 +1,7 @@
 mod anthropic;
-mod backend;
 mod openai;
 mod traits;
+mod wire;
 
-pub use backend::Wired as Providers;
-pub use traits::{ChatCompletionsForward, MessagesForward};
+pub use traits::{ChatCompletions, Messages};
+pub use wire::Wired as Providers;

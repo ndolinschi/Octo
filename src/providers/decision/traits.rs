@@ -7,7 +7,7 @@ use std::future::Future;
 
 use crate::proxy::error::ProxyError;
 
-pub trait Decisions: Clone + Send + Sync + 'static {
+pub trait Decisions: Clone + Send + Sync {
     fn upstream_url(&self) -> &str;
 
     fn forward_decisions(

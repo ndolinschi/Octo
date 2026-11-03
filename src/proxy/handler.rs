@@ -4,7 +4,7 @@ use axum::{
 };
 
 use crate::providers::decision::Decisions;
-use crate::providers::llm::{ChatCompletionsForward, MessagesForward};
+use crate::providers::llm::{ChatCompletions, Messages};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
 

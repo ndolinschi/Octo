@@ -7,7 +7,7 @@ use std::future::Future;
 
 use crate::proxy::error::ProxyError;
 
-pub trait ChatCompletionsForward: Clone + Send + Sync + 'static {
+pub trait ChatCompletions: Clone + Send + Sync {
     fn upstream_url(&self) -> &str;
 
     fn forward_chat_completions(
@@ -17,7 +17,7 @@ pub trait ChatCompletionsForward: Clone + Send + Sync + 'static {
     ) -> impl Future<Output = Result<Response<Body>, ProxyError>> + Send;
 }
 
-pub trait MessagesForward: Clone + Send + Sync + 'static {
+pub trait Messages: Clone + Send + Sync {
     fn upstream_url(&self) -> &str;
 
     fn forward_messages(

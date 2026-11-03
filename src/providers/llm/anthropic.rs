@@ -4,7 +4,7 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::traits::MessagesForward;
+use super::traits::Messages;
 use crate::providers::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
@@ -29,7 +29,7 @@ impl Anthropic {
     }
 }
 
-impl MessagesForward for Anthropic {
+impl Messages for Anthropic {
     fn upstream_url(&self) -> &str {
         self.messages_url()
     }
