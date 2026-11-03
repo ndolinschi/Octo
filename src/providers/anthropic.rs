@@ -4,29 +4,22 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::utils::{forward_content_type, proxy_post, MAX_BODY_BYTES};
+use super::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
-
-const DEFAULT_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
-const API_VERSION: &str = "2023-06-01";
 
 #[derive(Clone)]
 pub struct Anthropic {
     messages_url: String,
-}
-
-impl Default for Anthropic {
-    fn default() -> Self {
-        Self {
-            messages_url: DEFAULT_MESSAGES_URL.to_string(),
-        }
-    }
+    default_api_version: String,
+    max_body_bytes: usize,
 }
 
 impl Anthropic {
-    pub fn with_messages_url(url: impl Into<String>) -> Self {
+    pub fn new(messages_url: String, default_api_version: String, max_body_bytes: usize) -> Self {
         Self {
-            messages_url: url.into(),
+            messages_url,
+            default_api_version,
+            max_body_bytes,
         }
     }
 
@@ -42,7 +35,7 @@ impl Anthropic {
         proxy_post(
             client,
             self.messages_url(),
-            MAX_BODY_BYTES,
+            self.max_body_bytes,
             request,
             |mut upstream, parts| {
                 if let Some(value) = parts.headers.get("x-api-key") {
@@ -50,7 +43,7 @@ impl Anthropic {
                 }
                 upstream = match parts.headers.get("anthropic-version") {
                     Some(value) => upstream.header("anthropic-version", value),
-                    None => upstream.header("anthropic-version", API_VERSION),
+                    None => upstream.header("anthropic-version", &self.default_api_version),
                 };
                 forward_content_type(upstream, parts)
             },

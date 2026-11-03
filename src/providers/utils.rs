@@ -8,8 +8,6 @@ use tracing::info;
 
 use crate::proxy::error::ProxyError;
 
-pub const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
-
 fn should_forward_response_header(name: &HeaderName) -> bool {
     if name == header::CONTENT_TYPE || name == header::CACHE_CONTROL {
         return true;

@@ -4,28 +4,20 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::utils::{forward_content_type, proxy_post, MAX_BODY_BYTES};
+use super::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
-
-const DEFAULT_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
 
 #[derive(Clone)]
 pub struct OpenAi {
     chat_completions_url: String,
-}
-
-impl Default for OpenAi {
-    fn default() -> Self {
-        Self {
-            chat_completions_url: DEFAULT_CHAT_COMPLETIONS_URL.to_string(),
-        }
-    }
+    max_body_bytes: usize,
 }
 
 impl OpenAi {
-    pub fn with_chat_completions_url(url: impl Into<String>) -> Self {
+    pub fn new(chat_completions_url: String, max_body_bytes: usize) -> Self {
         Self {
-            chat_completions_url: url.into(),
+            chat_completions_url,
+            max_body_bytes,
         }
     }
 
@@ -41,7 +33,7 @@ impl OpenAi {
         proxy_post(
             client,
             self.chat_completions_url(),
-            MAX_BODY_BYTES,
+            self.max_body_bytes,
             request,
             |mut upstream, parts| {
                 if let Some(value) = parts.headers.get(header::AUTHORIZATION) {

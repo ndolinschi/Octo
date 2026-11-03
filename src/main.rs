@@ -1,3 +1,4 @@
+mod config;
 mod providers;
 mod proxy;
 mod routes;

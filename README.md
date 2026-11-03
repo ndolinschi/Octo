@@ -23,7 +23,7 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-Listens on `127.0.0.1:8080`; upstream is `https://api.openai.com/v1/chat/completions` unless overridden with `OCTO_OPENAI_CHAT_COMPLETIONS_URL`.
+Listens on `127.0.0.1:8080` by default (`OCTO_BIND_ADDR`). Upstream URLs, route paths, body size limit, and Anthropic default API version are defined in `src/config.rs` and can be overridden with `OCTO_*` environment variables (see that file for names and defaults).
 
 ## Anthropic messages proxy
 
@@ -35,4 +35,4 @@ curl http://127.0.0.1:8080/v1/messages \
   -d '{"model":"claude-3-5-sonnet-20241022","max_tokens":1024,"system":"You are a helpful assistant.","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-Upstream is `https://api.anthropic.com/v1/messages` unless overridden with `OCTO_ANTHROPIC_MESSAGES_URL`.
+Upstream defaults match the public Anthropic API; override with `OCTO_ANTHROPIC_MESSAGES_URL` and related vars in `src/config.rs`.
