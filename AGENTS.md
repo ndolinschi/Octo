@@ -114,7 +114,7 @@ Conventions for edits: `.cursor/rules/octo-rust.mdc` (module boundaries, no Rust
 - **Decisions route:** same auth and OpenRouter attribution as chat; body forwarded unchanged to `decisions_url`.
 - **Anthropic route:** forward `x-api-key`; `anthropic-version` from client or config default.
 - **Response headers:** pass through a safe allowlist (`Content-Type`, `Cache-Control`, `x-request-id`, `retry-after`, `openai-*`, `x-ratelimit-*`, `anthropic-ratelimit-*`).
-- **Errors:** proxy failures return JSON, not plain text.
+- **Errors:** proxy failures return JSON, not plain text. Unknown chat `type` / `octo_provider` (when the route is not path-pinned) returns **400** `invalid provider selector`.
 
 ## Superpowers
 

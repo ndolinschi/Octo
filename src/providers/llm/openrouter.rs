@@ -1,6 +1,6 @@
 use axum::{
-    body::Body,
-    http::{Request, Response},
+    body::{Body, Bytes},
+    http::{request::Parts, Request, Response},
 };
 use reqwest::Client;
 
@@ -31,6 +31,24 @@ impl OpenRouter {
 
     pub fn chat_completions_url(&self) -> &str {
         &self.chat_completions_url
+    }
+
+    pub async fn forward_chat_buffered(
+        &self,
+        client: &Client,
+        parts: Parts,
+        body_bytes: Bytes,
+    ) -> Result<Response<Body>, ProxyError> {
+        let openrouter = self.openrouter.clone();
+        let url = self.chat_completions_url.clone();
+        openrouter::authorized_attributed_post_bytes(
+            client,
+            &url,
+            parts,
+            body_bytes,
+            &openrouter,
+        )
+        .await
     }
 }
 

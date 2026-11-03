@@ -1,5 +1,5 @@
 use axum::{
-    body::{to_bytes, Body},
+    body::{to_bytes, Body, Bytes},
     http::{header, request::Parts, HeaderName, Request, Response},
 };
 use futures_util::StreamExt;
@@ -44,6 +44,18 @@ pub async fn upstream_to_response(
         .map_err(|_| ProxyError::BuildResponse)
 }
 
+pub async fn proxy_post_bytes(
+    client: &Client,
+    url: &str,
+    parts: Parts,
+    body_bytes: Bytes,
+    apply_headers: impl FnOnce(RequestBuilder, &Parts) -> RequestBuilder,
+) -> Result<Response<Body>, ProxyError> {
+    let upstream_request = apply_headers(client.post(url).body(body_bytes), &parts);
+    let upstream_response = upstream_request.send().await?;
+    upstream_to_response(upstream_response).await
+}
+
 pub async fn proxy_post(
     client: &Client,
     url: &str,
@@ -55,9 +67,7 @@ pub async fn proxy_post(
     let body_bytes = to_bytes(body, max_body)
         .await
         .map_err(ProxyError::from_read_body)?;
-    let upstream_request = apply_headers(client.post(url).body(body_bytes), &parts);
-    let upstream_response = upstream_request.send().await?;
-    upstream_to_response(upstream_response).await
+    proxy_post_bytes(client, url, parts, body_bytes, apply_headers).await
 }
 
 pub fn forward_content_type(upstream: RequestBuilder, parts: &Parts) -> RequestBuilder {

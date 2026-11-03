@@ -1,13 +1,13 @@
 use axum::{
-    body::{to_bytes, Body},
+    body::{to_bytes, Bytes},
     extract::{Request, State},
     response::Response,
 };
 
 use crate::providers::decision::Decisions;
-use crate::providers::llm::{ChatCompletions, Messages};
+use crate::providers::llm::Messages;
 use crate::proxy::error::ProxyError;
-use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider, MessagesProvider};
+use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider};
 use crate::state::AppState;
 
 async fn forward_chat(
@@ -24,21 +24,21 @@ async fn forward_chat(
         path_hint,
         &body_bytes,
         state.default_chat_provider,
-    );
-    let request = Request::from_parts(parts, Body::from(upstream_body));
+    )?;
+    let body_bytes = Bytes::from(upstream_body);
     match provider {
         ChatCompatProvider::OpenAi => {
             state
                 .llm
                 .openai
-                .forward_chat_completions(&state.client, request)
+                .forward_chat_buffered(&state.client, parts, body_bytes)
                 .await
         }
         ChatCompatProvider::OpenRouter => {
             state
                 .llm
                 .openrouter
-                .forward_chat_completions(&state.client, request)
+                .forward_chat_buffered(&state.client, parts, body_bytes)
                 .await
         }
     }
@@ -65,10 +65,9 @@ pub async fn chat_completions_openrouter(
     forward_chat(&state, request, Some(ChatCompatProvider::OpenRouter)).await
 }
 
-async fn forward_messages(
-    state: &AppState,
+pub async fn messages(
+    State(state): State<AppState>,
     request: Request,
-    _path_hint: Option<MessagesProvider>,
 ) -> Result<Response, ProxyError> {
     state
         .llm
@@ -77,25 +76,18 @@ async fn forward_messages(
         .await
 }
 
-pub async fn messages(
-    State(state): State<AppState>,
-    request: Request,
-) -> Result<Response, ProxyError> {
-    forward_messages(&state, request, Some(MessagesProvider::Claude)).await
-}
-
 pub async fn messages_claude(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
-    forward_messages(&state, request, Some(MessagesProvider::Claude)).await
+    messages(State(state), request).await
 }
 
 pub async fn messages_anthropic(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
-    forward_messages(&state, request, Some(MessagesProvider::Claude)).await
+    messages(State(state), request).await
 }
 
 pub async fn decisions(

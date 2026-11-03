@@ -128,3 +128,18 @@ fn unknown_llm_chat_backend_rejected_at_startup() {
     config.llm_chat_backend = "direct-openai".to_string();
     assert!(AppState::new(config).is_err());
 }
+
+#[tokio::test]
+async fn invalid_chat_type_returns_400() {
+    let config = sample_config(4096);
+    let state = AppState::new(config).unwrap();
+    let app = routes::router(state);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/chat/completions")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"type":"bogus","model":"x"}"#))
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}

@@ -13,6 +13,8 @@ pub enum ProxyError {
     BodyTooLarge,
     #[error("upstream request failed")]
     Upstream(#[from] reqwest::Error),
+    #[error("invalid provider selector in {field}: {token}")]
+    InvalidProviderSelector { field: &'static str, token: String },
     #[error("failed to build response")]
     BuildResponse,
 }
@@ -45,6 +47,9 @@ impl IntoResponse for ProxyError {
             ProxyError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "request body too large"),
             ProxyError::Upstream(_) => (StatusCode::BAD_GATEWAY, "upstream request failed"),
             ProxyError::BuildResponse => (StatusCode::BAD_GATEWAY, "failed to build response"),
+            ProxyError::InvalidProviderSelector { .. } => {
+                (StatusCode::BAD_REQUEST, "invalid provider selector")
+            }
         };
         let body = format!(r#"{{"error":"{error}"}}"#);
         (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()

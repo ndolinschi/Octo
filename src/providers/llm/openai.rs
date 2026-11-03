@@ -1,11 +1,11 @@
 use axum::{
-    body::Body,
-    http::{header, Request, Response},
+    body::{Body, Bytes},
+    http::{header, request::Parts, Request, Response},
 };
 use reqwest::Client;
 
 use super::traits::ChatCompletions;
-use crate::providers::utils::{forward_content_type, proxy_post};
+use crate::providers::utils::{forward_content_type, proxy_post, proxy_post_bytes};
 use crate::proxy::error::ProxyError;
 
 #[derive(Clone)]
@@ -24,6 +24,28 @@ impl OpenAI {
 
     pub fn chat_completions_url(&self) -> &str {
         &self.chat_completions_url
+    }
+
+    pub async fn forward_chat_buffered(
+        &self,
+        client: &Client,
+        parts: Parts,
+        body_bytes: Bytes,
+    ) -> Result<Response<Body>, ProxyError> {
+        let url = self.chat_completions_url.clone();
+        proxy_post_bytes(
+            client,
+            &url,
+            parts,
+            body_bytes,
+            move |mut upstream, parts| {
+                if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
+                    upstream = upstream.header(header::AUTHORIZATION, value);
+                }
+                forward_content_type(upstream, parts)
+            },
+        )
+        .await
     }
 }
 
