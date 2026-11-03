@@ -12,3 +12,4 @@ alwaysApply: false
 - **Before finishing Rust changes:** run `cargo fmt`, `cargo clippy -- -D warnings` (when clippy is available), and `cargo test`.
 - **Errors:** prefer `Result` and `?`; avoid `unwrap()` / `expect()` outside tests or documented invariants.
 - **Commit:** `Cargo.lock` stays tracked (application crate).
+- **Comments:** do not add comments in Rust source (`//`, `///`, `//!`, or block comments). Keep code self-explanatory; only add comments when the user explicitly requests them.

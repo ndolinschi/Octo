@@ -11,7 +11,6 @@ use crate::proxy::AppState;
 
 pub const UPSTREAM_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
 
-/// Maximum request body size forwarded to upstream.
 const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
