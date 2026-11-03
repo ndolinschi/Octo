@@ -11,3 +11,16 @@ git submodule update --init --recursive
 cargo build
 cargo run
 ```
+
+## OpenAI chat proxy
+
+With the server running (`cargo run`), forward chat completions through Octo (pass-through `Authorization` and JSON body):
+
+```bash
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+```
+
+Listens on `127.0.0.1:8080`; upstream is `https://api.openai.com/v1/chat/completions`.
