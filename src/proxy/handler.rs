@@ -7,7 +7,7 @@ use axum::{
 use futures_util::StreamExt;
 use tracing::info;
 
-use crate::proxy::AppState;
+use crate::state::AppState;
 
 pub const UPSTREAM_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/completions";
 

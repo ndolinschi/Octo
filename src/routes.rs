@@ -1,7 +1,8 @@
 use axum::{routing::post, Router};
 use tower_http::trace::TraceLayer;
 
-use super::{handler, AppState};
+use crate::proxy::handler;
+use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
     Router::new()

@@ -13,4 +13,4 @@ alwaysApply: false
 - **Errors:** prefer `Result` and `?`; avoid `unwrap()` / `expect()` outside tests or documented invariants.
 - **Commit:** `Cargo.lock` stays tracked (application crate).
 - **Comments:** do not add comments in Rust source (`//`, `///`, `//!`, or block comments). Keep code self-explanatory; only add comments when the user explicitly requests them.
-- **Module layout:** keep `mod.rs` thin (submodules, re-exports, startup). Put shared application state in `state.rs`, Axum route wiring in `routes.rs`, request handlers in `handler.rs` (or named handler files). Do not pile router, state, handlers, and server lifecycle into one file.
+- **Module layout:** keep each `mod.rs` thin (submodules, re-exports, startup). Put shared application state in `state.rs`, Axum route wiring in `routes.rs`, request handlers under the feature module (e.g. `proxy/handler.rs`). Do not pile router, state, handlers, and server lifecycle into one file.

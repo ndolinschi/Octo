@@ -1,14 +1,11 @@
-mod handler;
-mod routes;
-mod state;
+pub mod handler;
 
 use std::net::SocketAddr;
 
 use tracing::info;
 
-pub use state::AppState;
-
-use routes::router;
+use crate::routes::router;
+use crate::state::AppState;
 
 const BIND_ADDR: &str = "127.0.0.1:8080";
 
