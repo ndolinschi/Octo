@@ -82,7 +82,6 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | `src/providers/llm/openai.rs` | Chat completions forward (auth, OpenRouter attribution, content-type) |
 | `src/providers/llm/anthropic.rs` | Messages forward (`x-api-key`, `anthropic-version`) |
 | `src/providers/decision/openrouter.rs` | OpenRouter alpha Decisions forward |
-| `src/providers/decision/openai.rs` | Reserved for direct OpenAI Decisions API (not routed yet) |
 | `src/providers/openrouter/attribution.rs` | Shared Referer / title defaults for OpenRouter upstreams |
 | `src/providers/utils.rs` | Buffered POST proxy, streaming body, allowlisted response headers |
 

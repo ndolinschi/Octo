@@ -1,4 +1,3 @@
-pub mod openai;
 mod openrouter;
 
 pub use openrouter::OpenRouter;
