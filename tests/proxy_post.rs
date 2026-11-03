@@ -1,3 +1,5 @@
+mod support;
+
 use std::sync::{Arc, Mutex};
 
 use axum::{
@@ -8,12 +10,12 @@ use axum::{
     routing::post,
     Router,
 };
-use octo::config::Config;
 use octo::providers::utils::{forward_content_type, proxy_post};
 use octo::proxy::error::ProxyError;
 use octo::routes;
 use octo::state::AppState;
 use reqwest::Client;
+use support::sample_config;
 use tower::ServiceExt;
 
 #[derive(Clone, Default)]
@@ -44,34 +46,13 @@ async fn spawn_mock_upstream() -> (String, UpstreamCapture) {
         .await
         .unwrap();
     let addr = listener.local_addr().unwrap();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
+        let _ = ready_tx.send(());
         axum::serve(listener, app).await.unwrap();
     });
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    ready_rx.await.unwrap();
     (format!("http://{addr}/echo"), capture)
-}
-
-fn sample_config(max_body_bytes: usize) -> Config {
-    Config {
-        bind_addr: "127.0.0.1:8080".to_string(),
-        allow_remote: false,
-        upstream_connect_timeout_secs: 30,
-        upstream_request_timeout_secs: 600,
-        openai_chat_completions_url: "https://api.openai.com/v1/chat/completions".to_string(),
-        openrouter_chat_completions_url: "https://example.com/chat".to_string(),
-        openrouter_chat_completions_path: "/v1/chat/completions".to_string(),
-        openrouter_decisions_url: "https://example.com/decisions".to_string(),
-        openrouter_decisions_path: "/v1/decisions".to_string(),
-        openrouter_http_referer: None,
-        openrouter_title: None,
-        anthropic_messages_url: "https://example.com/messages".to_string(),
-        anthropic_api_version: "2023-06-01".to_string(),
-        anthropic_messages_path: "/v1/messages".to_string(),
-        max_body_bytes,
-        llm_chat_backend: "openai".to_string(),
-        llm_messages_backend: "claude".to_string(),
-        decision_backend: "openrouter".to_string(),
-    }
 }
 
 #[tokio::test]

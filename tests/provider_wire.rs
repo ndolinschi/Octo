@@ -1,41 +1,20 @@
+mod support;
+
 use octo::config::{Config, ConfigError};
 use octo::providers::decision;
 use octo::state::AppState;
-
-fn sample_config() -> Config {
-    Config {
-        bind_addr: "127.0.0.1:8080".to_string(),
-        allow_remote: false,
-        upstream_connect_timeout_secs: 30,
-        upstream_request_timeout_secs: 600,
-        openai_chat_completions_url: "https://api.openai.com/v1/chat/completions".to_string(),
-        openrouter_chat_completions_url: "https://openrouter.ai/api/v1/chat/completions"
-            .to_string(),
-        openrouter_chat_completions_path: "/v1/chat/completions".to_string(),
-        openrouter_decisions_url: "https://openrouter.ai/api/alpha/decisions".to_string(),
-        openrouter_decisions_path: "/v1/decisions".to_string(),
-        openrouter_http_referer: None,
-        openrouter_title: None,
-        anthropic_messages_url: "https://api.anthropic.com/v1/messages".to_string(),
-        anthropic_api_version: "2023-06-01".to_string(),
-        anthropic_messages_path: "/v1/messages".to_string(),
-        max_body_bytes: 1024,
-        llm_chat_backend: "openai".to_string(),
-        llm_messages_backend: "claude".to_string(),
-        decision_backend: "openrouter".to_string(),
-    }
-}
+use support::sample_config;
 
 #[test]
 fn unknown_llm_messages_backend_rejected_at_startup() {
-    let mut config = sample_config();
+    let mut config = sample_config(1024);
     config.llm_messages_backend = "bedrock".to_string();
     assert!(AppState::new(config).is_err());
 }
 
 #[test]
 fn unknown_decision_backend_is_rejected() {
-    let mut config = sample_config();
+    let mut config = sample_config(1024);
     config.decision_backend = "openai".to_string();
     assert!(matches!(
         decision::Providers::from_config(&config),

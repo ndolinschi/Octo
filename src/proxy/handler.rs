@@ -1,13 +1,14 @@
 use axum::{
     body::{to_bytes, Bytes},
     extract::{Request, State},
-    response::Response,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 
 use crate::providers::decision::Decisions;
 use crate::providers::llm::Messages;
 use crate::proxy::error::ProxyError;
-use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider};
+use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider, MessagesProvider};
 use crate::state::AppState;
 
 async fn forward_chat(
@@ -65,29 +66,40 @@ pub async fn chat_completions_openrouter(
     forward_chat(&state, request, Some(ChatCompatProvider::OpenRouter)).await
 }
 
+async fn forward_messages(
+    state: &AppState,
+    request: Request,
+) -> Result<Response, ProxyError> {
+    match state.messages_provider {
+        MessagesProvider::Claude => {
+            state
+                .llm
+                .claude
+                .forward_messages(&state.client, request)
+                .await
+        }
+    }
+}
+
 pub async fn messages(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
-    state
-        .llm
-        .claude
-        .forward_messages(&state.client, request)
-        .await
+    forward_messages(&state, request).await
 }
 
 pub async fn messages_claude(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
-    messages(State(state), request).await
+    forward_messages(&state, request).await
 }
 
 pub async fn messages_anthropic(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
-    messages(State(state), request).await
+    forward_messages(&state, request).await
 }
 
 pub async fn decisions(
@@ -99,4 +111,8 @@ pub async fn decisions(
         .decisions
         .forward_decisions(&state.client, request)
         .await
+}
+
+pub async fn health() -> impl IntoResponse {
+    StatusCode::OK
 }

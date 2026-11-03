@@ -21,28 +21,62 @@ pub fn parse_chat_provider_token(raw: &str) -> Option<ChatCompatProvider> {
     }
 }
 
-fn body_selector_error(
-    type_removed: Option<Value>,
-    octo_removed: Option<Value>,
-) -> Option<ProxyError> {
-    if let Some(value) = type_removed {
-        return invalid_selector_value("type", &value);
-    }
-    if let Some(value) = octo_removed {
-        return invalid_selector_value("octo_provider", &value);
-    }
-    None
+fn provider_from_value(value: &Value) -> Option<ChatCompatProvider> {
+    value.as_str().and_then(parse_chat_provider_token)
 }
 
-fn invalid_selector_value(field: &'static str, value: &Value) -> Option<ProxyError> {
-    let token = match value {
-        Value::String(raw) => raw.clone(),
-        other => other.to_string(),
+fn invalid_string_selector(field: &'static str, value: &Value) -> Option<ProxyError> {
+    let Value::String(raw) = value else {
+        return None;
     };
-    if parse_chat_provider_token(&token).is_some() {
+    if parse_chat_provider_token(raw).is_some() {
         return None;
     }
-    Some(ProxyError::InvalidProviderSelector { field, token })
+    Some(ProxyError::InvalidProviderSelector {
+        field,
+        token: raw.clone(),
+    })
+}
+
+fn body_hint_from_selectors(
+    type_removed: &Option<Value>,
+    octo_removed: &Option<Value>,
+) -> Option<ChatCompatProvider> {
+    if let Some(value) = type_removed {
+        if let Some(provider) = provider_from_value(value) {
+            return Some(provider);
+        }
+    }
+    octo_removed.as_ref().and_then(provider_from_value)
+}
+
+fn validate_body_selectors(
+    path_hint: Option<ChatCompatProvider>,
+    type_removed: &Option<Value>,
+    octo_removed: &Option<Value>,
+    body_hint: Option<ChatCompatProvider>,
+) -> Result<(), ProxyError> {
+    if path_hint.is_some() || body_hint.is_some() {
+        return Ok(());
+    }
+    if let Some(value) = type_removed {
+        if let Some(err) = invalid_string_selector("type", value) {
+            if octo_removed
+                .as_ref()
+                .and_then(provider_from_value)
+                .is_some()
+            {
+                return Ok(());
+            }
+            return Err(err);
+        }
+    }
+    if let Some(value) = octo_removed {
+        if let Some(err) = invalid_string_selector("octo_provider", value) {
+            return Err(err);
+        }
+    }
+    Ok(())
 }
 
 pub fn chat_compat_from_llm_backend(raw: &str) -> Option<ChatCompatProvider> {
@@ -65,18 +99,8 @@ pub fn resolve_chat_provider(
     let octo_removed = map.remove("octo_provider");
     let out = serde_json::to_vec(&Value::Object(map)).unwrap_or_else(|_| body.to_vec());
 
-    let mut body_hint = None;
-    if let Some(value) = type_removed.as_ref().or(octo_removed.as_ref()) {
-        if let Some(token) = value.as_str() {
-            body_hint = parse_chat_provider_token(token);
-        }
-    }
-
-    if path_hint.is_none() {
-        if let Some(err) = body_selector_error(type_removed, octo_removed) {
-            return Err(err);
-        }
-    }
+    let body_hint = body_hint_from_selectors(&type_removed, &octo_removed);
+    validate_body_selectors(path_hint, &type_removed, &octo_removed, body_hint)?;
 
     let provider = path_hint
         .or(body_hint)
@@ -146,5 +170,21 @@ mod tests {
         assert_eq!(provider, ChatCompatProvider::OpenRouter);
         let v: Value = serde_json::from_slice(&out).unwrap();
         assert!(v.get("type").is_none());
+    }
+
+    #[test]
+    fn null_type_uses_default_provider() {
+        let body = br#"{"type":null,"model":"x"}"#;
+        let (provider, _) =
+            resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
+        assert_eq!(provider, ChatCompatProvider::OpenAi);
+    }
+
+    #[test]
+    fn invalid_type_falls_back_to_octo_provider() {
+        let body = br#"{"type":"bogus","octo_provider":"OPENROUTER","model":"x"}"#;
+        let (provider, _) =
+            resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
+        assert_eq!(provider, ChatCompatProvider::OpenRouter);
     }
 }

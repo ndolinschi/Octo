@@ -75,6 +75,8 @@ Streaming works the same way: add `"stream": true` to the JSON body.
 
 Listens on `127.0.0.1:8080` by default. Octo loads `./config.toml` from the process **current working directory** unless you set `OCTO_CONFIG` to an absolute or relative path (run from the repo root, or point `OCTO_CONFIG` at your file). Edit [`config.toml`](./config.toml) for bind address, `server.allow_remote`, upstream timeouts, OpenRouter chat and decisions URLs/paths, default `http_referer` / `openrouter_title`, body size limit, and Anthropic settings.
 
+**Security:** With `allow_remote = true`, anyone who can reach the bind address may use Octo as an unauthenticated forwarder to the URLs in config. Use loopback or a trusted network only. **`GET /health`** returns 200 when the process is up.
+
 ### Config migration from `[openai]` table name
 
 Older configs used a TOML table named `[openai]` for **OpenRouter** URLs. Rename that table to **`[openrouter]`** and add a dedicated **`[openai]`** section for direct OpenAI (`chat_completions_url`). Chat routing uses JSON `type`, path aliases, and `[llm.chat].backend` as the default when path/body omit a provider.

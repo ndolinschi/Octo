@@ -73,13 +73,17 @@ Typical keys:
 - `[limits]` — `max_body_bytes` (request body cap for proxy reads)
 - `[openai]` — direct OpenAI chat `chat_completions_url` (default `https://api.openai.com/v1/chat/completions`)
 - `[openrouter]` — OpenRouter chat `chat_completions_url`, `decisions_url`, paths, optional `http_referer` and `openrouter_title`
-- `[llm.chat]` / `[llm.messages]` — `backend` sets the **default** chat upstream when path/body omit a provider (`openai` or `openrouter`; legacy `openrouter` on chat still accepted). Messages backend must be `claude` or legacy `anthropic` (Claude implementation only today).
+- `[llm.chat]` / `[llm.messages]` — `backend` sets the **default** chat upstream when path/body omit a provider (`openai` or `openrouter`). `[llm.messages].backend` (`claude` or legacy `anthropic`) selects the messages implementation at startup (Claude only today; dispatched in `AppState.messages_provider`).
 - `[decision]` — `backend` selects decision implementation (`openrouter` today; `openai` when added)
 - `[anthropic]` — `messages_url`, `messages_path`, `api_version` (default `anthropic-version` when the client omits it)
 
 To use OpenRouter for chat, POST with `"type": "OPENROUTER"` or use `/openrouter/completions`. OpenRouter model slugs and Bearer keys apply on that path; direct OpenAI uses `/v1/chat/completions` (default) or `/openai/completions` with an OpenAI API key.
 
 Do not commit API keys; clients send credentials per request (`Authorization` for OpenRouter/OpenAI-style chat, `x-api-key` for Anthropic).
+
+**Threat model:** Octo has no proxy-side authentication. Default `server.allow_remote = false` binds loopback only. If you set `allow_remote = true`, treat the bind address like an open HTTP forwarder on your network (firewall/VPN only). Do not point upstream URLs at internal services you would not expose to clients holding API keys. `GET /health` returns 200 for liveness checks only.
+
+**Upstream timeouts:** `[upstream].request_timeout_secs` (default 600) applies to the full reqwest call including streaming response bodies; very long SSE may need a higher limit.
 
 ## Code layout
 
@@ -90,7 +94,7 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 | `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, default chat provider, `llm::Wired`, `decision::Providers` |
 | `src/routes.rs` | App router: `TraceLayer`, state |
 | `src/proxy/mod.rs` | Bind, serve, graceful shutdown |
-| `src/proxy/routes.rs` | Proxy route paths from config |
+| `src/proxy/routes.rs` | Proxy route paths from config; `GET /health` |
 | `src/proxy/handler.rs` | Thin Axum handlers |
 | `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
 | `src/providers/llm/traits.rs` | `ChatCompletions`, `Messages` |
