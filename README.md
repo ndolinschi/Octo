@@ -23,7 +23,7 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-Listens on `127.0.0.1:8080`; upstream is `https://api.openai.com/v1/chat/completions`.
+Listens on `127.0.0.1:8080`; upstream is `https://api.openai.com/v1/chat/completions` unless overridden with `OCTO_OPENAI_CHAT_COMPLETIONS_URL`.
 
 ## Anthropic messages proxy
 
@@ -35,4 +35,4 @@ curl http://127.0.0.1:8080/v1/messages \
   -d '{"model":"claude-3-5-sonnet-20241022","max_tokens":1024,"system":"You are a helpful assistant.","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-Upstream is `https://api.anthropic.com/v1/messages`.
+Upstream is `https://api.anthropic.com/v1/messages` unless overridden with `OCTO_ANTHROPIC_MESSAGES_URL`.

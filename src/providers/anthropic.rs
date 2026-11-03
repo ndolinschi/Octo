@@ -7,14 +7,34 @@ use reqwest::Client;
 use super::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
-const MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
+const DEFAULT_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
 const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 const API_VERSION: &str = "2023-06-01";
 
-#[derive(Clone, Default)]
-pub struct Anthropic;
+#[derive(Clone)]
+pub struct Anthropic {
+    messages_url: String,
+}
+
+impl Default for Anthropic {
+    fn default() -> Self {
+        Self {
+            messages_url: DEFAULT_MESSAGES_URL.to_string(),
+        }
+    }
+}
 
 impl Anthropic {
+    pub fn with_messages_url(url: impl Into<String>) -> Self {
+        Self {
+            messages_url: url.into(),
+        }
+    }
+
+    pub fn messages_url(&self) -> &str {
+        &self.messages_url
+    }
+
     pub async fn forward_messages(
         &self,
         client: &Client,
@@ -22,7 +42,7 @@ impl Anthropic {
     ) -> Result<Response<Body>, ProxyError> {
         proxy_post(
             client,
-            MESSAGES_URL,
+            self.messages_url(),
             MAX_BODY_BYTES,
             request,
             |mut upstream, parts| {

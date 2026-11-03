@@ -10,11 +10,11 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> Result<Self, reqwest::Error> {
+    pub fn with_providers(openai: OpenAi, anthropic: Anthropic) -> Result<Self, reqwest::Error> {
         Ok(Self {
             client: Client::builder().build()?,
-            openai: OpenAi,
-            anthropic: Anthropic,
+            openai,
+            anthropic,
         })
     }
 }
