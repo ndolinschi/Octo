@@ -199,7 +199,7 @@ async fn autoroute(state: &AppState, request: Request, chat: bool) -> Result<Res
     .await;
     match turn {
         Turn::Forward(forward) => {
-            let hook = session.clone().map(|id| {
+            let hook = (!chat).then(|| session.clone()).flatten().map(|id| {
                 let auto = state.auto.clone();
                 Arc::new(move |text: &str| {
                     if stop_reason_is(text, "model_context_window_exceeded") {
@@ -296,8 +296,6 @@ async fn compact_upstream(
             )
         {
             state.auto.mark_awaiting_compact(&id);
-        } else {
-            state.auto.clear_awaiting_compact(&id);
         }
     }
     record_compact(state, parts, &sent, status, &bytes, started);

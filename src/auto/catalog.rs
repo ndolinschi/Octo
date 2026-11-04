@@ -64,6 +64,8 @@ pub fn larger_fit<'a>(
     let current_window = context_length(models, current);
     candidates.iter().copied().find(|slug| {
         let window = context_length(models, slug);
-        window > current_window && window.saturating_sub(max_tokens) >= input_tokens
+        window > current_window
+            && window.saturating_sub(super::metrics::output_reserve(window, max_tokens))
+                >= input_tokens
     })
 }

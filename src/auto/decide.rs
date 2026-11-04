@@ -98,10 +98,12 @@ pub async fn decide(
             if metrics::dropped(row.prev_input_tokens_est, client_tokens) {
                 choice = None;
                 forced_reason = Some("reclassify".to_string());
-            } else {
+            } else if allow_compact {
                 let outgoing = shaped(&body, &row.model, &row.tools);
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
                 return compact_turn(&outgoing, &row.model, models.as_ref());
+            } else if let Some(id) = body::session_id(&body) {
+                auto.clear_awaiting_compact(&id);
             }
         }
     }
@@ -188,6 +190,7 @@ async fn route(
             &outgoing,
             &model,
             &tools,
+            reason.clone(),
             estimate.input_tokens_est,
             models,
             allow_compact,
@@ -207,6 +210,7 @@ async fn route(
                 &outgoing,
                 &model,
                 &tools,
+                reason,
                 estimate.input_tokens_est,
                 models,
                 allow_compact,
@@ -230,13 +234,14 @@ async fn finish_overflow(
     outgoing: &Value,
     model: &str,
     tools: &[String],
+    reason: Option<String>,
     input_tokens_est: u64,
     models: Option<&OpenRouterModels>,
     allow_compact: bool,
 ) -> Turn {
     if !allow_compact {
         remember(auto, body, model, tools, input_tokens_est, false).await;
-        return forward_shaped(body, model, tools, None);
+        return forward_shaped(body, model, tools, reason);
     }
     remember(auto, body, model, tools, input_tokens_est, true).await;
     compact_turn(outgoing, model, models)
