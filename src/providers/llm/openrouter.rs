@@ -4,7 +4,6 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::traits::ChatCompletions;
 use crate::providers::openrouter::{self, AttributionDefaults};
 use crate::proxy::error::ProxyError;
 
@@ -48,11 +47,5 @@ impl OpenRouter {
             observe,
         )
         .await
-    }
-}
-
-impl ChatCompletions for OpenRouter {
-    fn upstream_url(&self) -> &str {
-        self.chat_completions_url()
     }
 }

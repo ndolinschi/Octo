@@ -75,7 +75,7 @@ pub async fn proxy_post_bytes(
         Err(err) => {
             if let Some(mut capture) = capture {
                 capture.started = started;
-                capture.finish(502, Vec::new(), 0);
+                capture.finish(502, Vec::new(), Vec::new(), 0);
             }
             return Err(err.into());
         }
@@ -139,9 +139,14 @@ impl Capture {
         }
     }
 
-    fn finish(self, status: u16, output: Vec<u8>, response_bytes: usize) {
+    fn finish(self, status: u16, output: Vec<u8>, tail: Vec<u8>, response_bytes: usize) {
         let output_text = String::from_utf8_lossy(&output).into_owned();
-        let (input_tokens, output_tokens, cost) = usage_from_output(&output_text);
+        let tail_text = String::from_utf8_lossy(&tail);
+        let head = usage_from_output(&output_text);
+        let tail_usage = usage_from_output(&tail_text);
+        let input_tokens = head.0.or(tail_usage.0);
+        let output_tokens = tail_usage.1.or(head.1);
+        let cost = tail_usage.2.or(head.2);
         let latency_ms = self.started.elapsed().as_millis() as u64;
         self.observe.history.record(FinishedCall {
             kind: self.observe.kind,
@@ -162,10 +167,13 @@ impl Capture {
     }
 }
 
+const USAGE_TAIL: usize = 64 * 1024;
+
 struct Tee<S> {
     inner: S,
     status: u16,
     buf: Vec<u8>,
+    tail: Vec<u8>,
     response_bytes: usize,
     capture_limit: usize,
     capture: Option<Capture>,
@@ -178,6 +186,7 @@ impl<S> Tee<S> {
             inner,
             status,
             buf: Vec::new(),
+            tail: Vec::new(),
             response_bytes: 0,
             capture_limit,
             capture: Some(capture),
@@ -201,14 +210,23 @@ where
                     let take = room.min(chunk.len());
                     this.buf.extend_from_slice(&chunk[..take]);
                 }
+                this.tail.extend_from_slice(&chunk);
+                if this.tail.len() > USAGE_TAIL {
+                    let drop_n = this.tail.len() - USAGE_TAIL;
+                    this.tail.drain(..drop_n);
+                }
                 Poll::Ready(Some(Ok(chunk)))
             }
-            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
+            Poll::Ready(Some(Err(err))) => {
+                this.status = 502;
+                Poll::Ready(Some(Err(err)))
+            }
             Poll::Ready(None) => {
                 if let Some(capture) = this.capture.take() {
                     capture.finish(
                         this.status,
                         std::mem::take(&mut this.buf),
+                        std::mem::take(&mut this.tail),
                         this.response_bytes,
                     );
                 }
@@ -225,6 +243,7 @@ impl<S> Drop for Tee<S> {
             capture.finish(
                 self.status,
                 std::mem::take(&mut self.buf),
+                std::mem::take(&mut self.tail),
                 self.response_bytes,
             );
         }

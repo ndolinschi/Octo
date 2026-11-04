@@ -6,7 +6,6 @@ use axum::{
 };
 
 use crate::history::CallObserve;
-use crate::providers::llm::Messages;
 use crate::proxy::error::ProxyError;
 use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider, MessagesProvider};
 use crate::state::AppState;

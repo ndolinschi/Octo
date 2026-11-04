@@ -7,7 +7,6 @@ use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::history::History;
-use crate::providers::llm::{ChatCompletions, Messages};
 use crate::proxy::select::ChatCompatProvider;
 use crate::routes::router;
 use crate::state::AppState;
@@ -44,27 +43,31 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
     let (default_chat_provider, default_chat_url) = match state.default_chat_provider {
-        ChatCompatProvider::OpenAi => ("openai", state.llm.openai.upstream_url()),
-        ChatCompatProvider::OpenRouter => ("openrouter", state.llm.openrouter.upstream_url()),
+        ChatCompatProvider::OpenAi => ("openai", state.llm.openai.chat_completions_url()),
+        ChatCompatProvider::OpenRouter => {
+            ("openrouter", state.llm.openrouter.chat_completions_url())
+        }
     };
     info!(
         chat_backend = %config.llm_chat_backend,
         default_chat_provider,
         default_chat_url,
-        openai_chat_url = state.llm.openai.upstream_url(),
-        openrouter_chat_url = state.llm.openrouter.upstream_url(),
+        openai_chat_url = state.llm.openai.chat_completions_url(),
+        openrouter_chat_url = state.llm.openrouter.chat_completions_url(),
         messages_backend = %config.llm_messages_backend,
-        messages_url = state.llm.claude.upstream_url(),
+        messages_url = state.llm.claude.messages_url(),
         decisions_backend = %config.decision_backend,
         decisions_url = state.decision.openrouter.upstream_url(),
         "upstream urls"
     );
+    let history = state.history.clone();
     let app = router(state);
     info!(%addr, "listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+    history.drain().await;
     Ok(())
 }
 

@@ -4,7 +4,6 @@ use axum::{
 };
 use reqwest::Client;
 
-use super::traits::ChatCompletions;
 use crate::history::CallObserve;
 use crate::providers::utils::{apply_openai_request_headers, proxy_post_bytes};
 use crate::proxy::error::ProxyError;
@@ -42,11 +41,5 @@ impl OpenAI {
             observe,
         )
         .await
-    }
-}
-
-impl ChatCompletions for OpenAI {
-    fn upstream_url(&self) -> &str {
-        self.chat_completions_url()
     }
 }

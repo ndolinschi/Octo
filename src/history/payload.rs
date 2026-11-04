@@ -72,7 +72,7 @@ pub fn usage_from_output(output: &str) -> (Option<i64>, Option<i64>, Option<f64>
     merge_usage(&mut found, output);
     for line in output.lines() {
         let line = line.trim();
-        let payload = line.strip_prefix("data:").map(str::trim).unwrap_or("");
+        let payload = line.strip_prefix("data:").map(str::trim).unwrap_or(line);
         if payload.is_empty() || payload == "[DONE]" {
             continue;
         }

@@ -167,3 +167,188 @@ async fn missing_token_is_not_a_shared_identity() {
     }
     assert_eq!(token_hash, None);
 }
+
+#[tokio::test]
+async fn decisions_response_is_stored_with_its_kind() {
+    let (url, _) = support::spawn_header_capture_server("/echo", "authorization").await;
+    let history = History::connect("sqlite::memory:", "test-token-key", 1024)
+        .await
+        .unwrap();
+    let client = Client::builder().build().unwrap();
+    let request = Request::builder()
+        .method("POST")
+        .uri("http://127.0.0.1:8080/v1/decisions")
+        .header(header::AUTHORIZATION, "Bearer sk-decision")
+        .body(Body::from(r#"{"model":"router","input":"pick"}"#))
+        .unwrap();
+    let response = proxy_post(
+        &client,
+        &format!("http://{url}/echo"),
+        4096,
+        request,
+        forward_content_type,
+        Some(CallObserve {
+            history: history.clone(),
+            kind: "decision",
+            provider: "openrouter",
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let mut body = response.into_body().into_data_stream();
+    while body.next().await.is_some() {}
+
+    let row = wait_row(
+        &history,
+        "SELECT kind, provider, message, output, status FROM calls",
+    )
+    .await;
+    let kind: String = row.get("kind");
+    let provider: String = row.get("provider");
+    let message: String = row.get("message");
+    let status: i64 = row.get("status");
+    assert_eq!(kind, "decision");
+    assert_eq!(provider, "openrouter");
+    assert_eq!(message, "pick");
+    assert_eq!(status, 200);
+}
+
+#[tokio::test]
+async fn usage_past_the_stored_prefix_is_kept() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let payload = format!(
+        "{}{}",
+        "X".repeat(70_000),
+        "\n{\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":9,\"cost\":1.5}}"
+    );
+    let payload_task = payload.clone();
+    tokio::spawn(async move {
+        let app = Router::new().route(
+            "/echo",
+            post(move || {
+                let payload_task = payload_task.clone();
+                async move { payload_task }
+            }),
+        );
+        axum::serve(listener, app).await.unwrap();
+    });
+    let history = History::connect("sqlite::memory:", "test-token-key", 4)
+        .await
+        .unwrap();
+    let client = Client::builder().build().unwrap();
+    let request = Request::builder()
+        .method("POST")
+        .uri("http://127.0.0.1:8080/v1/chat/completions")
+        .header(header::AUTHORIZATION, "Bearer sk-secret")
+        .body(Body::from("{}"))
+        .unwrap();
+    let response = proxy_post(
+        &client,
+        &format!("http://{addr}/echo"),
+        4096,
+        request,
+        forward_content_type,
+        Some(CallObserve {
+            history: history.clone(),
+            kind: "llm",
+            provider: "openai",
+        }),
+    )
+    .await
+    .unwrap();
+    let mut body = response.into_body().into_data_stream();
+    let mut got = Vec::new();
+    while let Some(chunk) = body.next().await {
+        got.extend_from_slice(&chunk.unwrap());
+    }
+    drop(body);
+    assert_eq!(got, payload.as_bytes());
+    let row = wait_row(
+        &history,
+        "SELECT output, input_tokens, output_tokens, cost, response_bytes FROM calls",
+    )
+    .await;
+    let output: String = row.get("output");
+    let input_tokens: i64 = row.get("input_tokens");
+    let output_tokens: i64 = row.get("output_tokens");
+    let cost: f64 = row.get("cost");
+    let response_bytes: i64 = row.get("response_bytes");
+    assert_eq!(output, "XXXX");
+    assert_eq!(input_tokens, 8);
+    assert_eq!(output_tokens, 9);
+    assert_eq!(cost, 1.5);
+    assert_eq!(response_bytes, payload.len() as i64);
+}
+
+#[tokio::test]
+async fn upstream_chunk_error_is_stored_as_failure() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut socket = listener.accept().await.unwrap().0;
+        let mut buf = Vec::new();
+        let mut tmp = [0_u8; 1024];
+        loop {
+            let n = socket.read(&mut tmp).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&tmp[..n]);
+            if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                break;
+            }
+        }
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\npartial")
+            .await
+            .unwrap();
+    });
+    let history = History::connect("sqlite::memory:", "test-token-key", 1024)
+        .await
+        .unwrap();
+    let client = Client::builder().build().unwrap();
+    let request = Request::builder()
+        .method("POST")
+        .uri("http://127.0.0.1:8080/v1/chat/completions")
+        .body(Body::from("{}"))
+        .unwrap();
+    let response = proxy_post(
+        &client,
+        &format!("http://{addr}/echo"),
+        4096,
+        request,
+        forward_content_type,
+        Some(CallObserve {
+            history: history.clone(),
+            kind: "llm",
+            provider: "openai",
+        }),
+    )
+    .await
+    .unwrap();
+    let mut body = response.into_body().into_data_stream();
+    while body.next().await.is_some() {}
+    drop(body);
+    let row = wait_row(&history, "SELECT status, output FROM calls").await;
+    let status: i64 = row.get("status");
+    let output: String = row.get("output");
+    assert_eq!(status, 502);
+    assert_eq!(output, "partial");
+}
+
+async fn wait_row(history: &History, sql: &str) -> sqlx::sqlite::SqliteRow {
+    for _ in 0..50 {
+        if let Some(row) = sqlx::query(sql)
+            .fetch_optional(history.pool().unwrap())
+            .await
+            .unwrap()
+        {
+            return row;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("history row");
+}

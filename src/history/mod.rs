@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,7 +7,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
-use tokio::sync::Semaphore;
+use tokio::sync::{Notify, Semaphore};
 
 mod payload;
 
@@ -46,6 +47,8 @@ pub struct History {
     token_key: Vec<u8>,
     capture_limit: usize,
     inserts: Arc<Semaphore>,
+    inflight: Arc<AtomicUsize>,
+    idle: Arc<Notify>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -100,6 +103,8 @@ impl History {
             token_key: Vec::new(),
             capture_limit: 0,
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
+            inflight: Arc::new(AtomicUsize::new(0)),
+            idle: Arc::new(Notify::new()),
         }
     }
 
@@ -146,11 +151,35 @@ impl History {
             token_key: key,
             capture_limit,
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
+            inflight: Arc::new(AtomicUsize::new(0)),
+            idle: Arc::new(Notify::new()),
         })
     }
 
     pub fn enabled(&self) -> bool {
         self.pool.is_some()
+    }
+
+    pub async fn drain(&self) {
+        let timeout = Duration::from_secs(5);
+        let started = tokio::time::Instant::now();
+        loop {
+            if self.inflight.load(Ordering::Acquire) == 0 {
+                return;
+            }
+            let left = timeout.saturating_sub(started.elapsed());
+            if left.is_zero() {
+                tracing::warn!(
+                    remaining = self.inflight.load(Ordering::Acquire),
+                    "history drain timed out"
+                );
+                return;
+            }
+            tokio::select! {
+                _ = self.idle.notified() => {}
+                _ = tokio::time::sleep(left) => {}
+            }
+        }
     }
 
     pub fn pool(&self) -> Option<&SqlitePool> {
@@ -177,8 +206,20 @@ impl History {
             );
             return;
         };
+        self.inflight.fetch_add(1, Ordering::AcqRel);
+        let inflight = self.inflight.clone();
+        let idle = self.idle.clone();
         tokio::spawn(async move {
             let _permit = permit;
+            struct Done(Arc<AtomicUsize>, Arc<Notify>);
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    if self.0.fetch_sub(1, Ordering::AcqRel) == 1 {
+                        self.1.notify_waiters();
+                    }
+                }
+            }
+            let _done = Done(inflight, idle);
             let captured_bytes = call.request_bytes.saturating_add(call.response_bytes);
             match insert_call(&pool, &call).await {
                 Ok(()) => {
