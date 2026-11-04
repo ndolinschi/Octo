@@ -8,12 +8,9 @@ use super::types::{Asked, ClassifyRequest};
 
 pub async fn classify(request: ClassifyRequest<'_>) -> Asked {
     let started = Instant::now();
-    let request_body = questions::payload(
-        request.user_text,
-        request.tool_names,
-        request.current_tools,
-    )
-    .to_string();
+    let request_body =
+        questions::payload(request.user_text, request.tool_names, request.current_tools)
+            .to_string();
     let sent = send(&request, request_body).await;
     finish(sent, started.elapsed().as_millis(), request.tool_names)
 }
