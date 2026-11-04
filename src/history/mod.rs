@@ -9,8 +9,12 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use tokio::sync::{Notify, Semaphore};
 
+mod call;
+mod error;
 mod payload;
 
+pub use call::{CallObserve, FinishedCall};
+pub use error::HistoryError;
 pub use payload::{describe_input, token_from_headers, usage_from_output};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -40,7 +44,6 @@ CREATE INDEX IF NOT EXISTS calls_kind_created ON calls(kind, created_at);
 
 const INSERT_SLOTS: usize = 32;
 
-/// Side store for decisions and LLM calls. A missing pool records nothing.
 #[derive(Clone)]
 pub struct History {
     pool: Option<SqlitePool>,
@@ -49,51 +52,6 @@ pub struct History {
     inserts: Arc<Semaphore>,
     inflight: Arc<AtomicUsize>,
     idle: Arc<Notify>,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum HistoryError {
-    #[error("failed to prepare history database at {path}")]
-    Open {
-        path: String,
-        #[source]
-        source: sqlx::Error,
-    },
-    #[error("failed to create history directory {path}")]
-    CreateDir {
-        path: String,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("failed to read history token key at {path}")]
-    ReadKey {
-        path: String,
-        #[source]
-        source: std::io::Error,
-    },
-}
-
-pub struct CallObserve {
-    pub history: History,
-    pub kind: &'static str,
-    pub provider: &'static str,
-}
-
-pub struct FinishedCall {
-    pub kind: &'static str,
-    pub provider: String,
-    pub model: Option<String>,
-    pub token_hash: Option<String>,
-    pub message: Option<String>,
-    pub input: String,
-    pub output: String,
-    pub status: u16,
-    pub latency_ms: u64,
-    pub request_bytes: usize,
-    pub response_bytes: usize,
-    pub input_tokens: Option<i64>,
-    pub output_tokens: Option<i64>,
-    pub cost: Option<f64>,
 }
 
 impl History {
@@ -186,7 +144,6 @@ impl History {
         self.pool.as_ref()
     }
 
-    /// Keyed hash of the caller credential. Equal secrets match; the raw secret is not stored.
     pub fn token_hash(&self, secret: &str) -> String {
         let mut mac =
             HmacSha256::new_from_slice(&self.token_key).expect("hmac accepts any key length");
