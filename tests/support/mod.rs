@@ -21,6 +21,8 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         openrouter_decisions_path: "/v1/decisions".to_string(),
         openrouter_http_referer: None,
         openrouter_title: None,
+        openrouter_messages_url: "https://openrouter.example/messages".to_string(),
+        openrouter_messages_path: "/v1/messages".to_string(),
         anthropic_messages_url: "https://example.com/messages".to_string(),
         anthropic_api_version: "2023-06-01".to_string(),
         anthropic_messages_path: "/v1/messages".to_string(),
@@ -28,6 +30,8 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         llm_chat_backend: "openai".to_string(),
         llm_messages_backend: "claude".to_string(),
         decision_backend: "openrouter".to_string(),
+        history_database_path: "sqlite::memory:".to_string(),
+        history_token_key: "test-token-key".to_string(),
     }
 }
 

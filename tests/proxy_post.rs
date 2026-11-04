@@ -67,12 +67,19 @@ async fn proxy_post_forwards_auth_and_streams_response() {
         .body(Body::from(r#"{"ok":true}"#))
         .unwrap();
 
-    let response = proxy_post(&client, &url, 4096, request, |mut upstream, parts| {
-        if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
-            upstream = upstream.header(header::AUTHORIZATION, value);
-        }
-        forward_content_type(upstream, parts)
-    })
+    let response = proxy_post(
+        &client,
+        &url,
+        4096,
+        request,
+        |mut upstream, parts| {
+            if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
+                upstream = upstream.header(header::AUTHORIZATION, value);
+            }
+            forward_content_type(upstream, parts)
+        },
+        None,
+    )
     .await
     .unwrap();
 
@@ -99,7 +106,8 @@ async fn proxy_post_maps_oversized_body_to_413() {
         "http://127.0.0.1:9/unused",
         64,
         request,
-        |upstream, parts| forward_content_type(upstream, parts),
+        forward_content_type,
+        None,
     )
     .await
     .unwrap_err();
@@ -126,7 +134,8 @@ async fn proxy_post_maps_upstream_failure_to_502() {
         "http://127.0.0.1:1/refused",
         4096,
         request,
-        |upstream, parts| forward_content_type(upstream, parts),
+        forward_content_type,
+        None,
     )
     .await
     .unwrap_err();

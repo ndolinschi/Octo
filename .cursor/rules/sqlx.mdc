@@ -1,0 +1,14 @@
+---
+description: SQLx queries and the history database connection
+alwaysApply: true
+---
+
+# SQLx
+
+Open SQLite from `config/history.toml` through `SqliteConnectOptions` in `src/history/connect.rs`: create the file when it is missing, and use WAL for a file database.
+
+Use `query!` and `query_as!` for static SQL so parameters and column types are checked at compile time. Use `query_scalar!` for one column. Use `sqlx::query` or `QueryBuilder` only when the SQL text is built at runtime.
+
+Bind every value. Do not build SQL with `format!`. Map nullable columns to `Option<T>`. Name the columns in the select list.
+
+After changing a query, refresh the offline cache with `cargo sqlx prepare -- --tests` while `SQLX_OFFLINE=false` and `DATABASE_URL` point at a migrated SQLite file. Commit `.sqlx`.

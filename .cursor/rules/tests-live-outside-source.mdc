@@ -1,0 +1,10 @@
+---
+description: Tests live under tests/, not inside source files
+alwaysApply: true
+---
+
+# Tests stay out of source files
+
+Do not add `#[cfg(test)]` modules or `#[test]` functions under `src/`. Put tests in `tests/` as integration tests that call the public API.
+
+When a source file is doing more than one job, split it. Persistence, parsing, and file permissions do not belong in the same type. Prefer a focused module such as `payload.rs` for request and response parsing. Use a library for a solved problem, such as `hex` for encoding, instead of a local helper.

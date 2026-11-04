@@ -4,6 +4,7 @@ use axum::{
 };
 use reqwest::Client;
 
+use crate::history::CallObserve;
 use crate::providers::openrouter::{self, AttributionDefaults};
 use crate::proxy::error::ProxyError;
 
@@ -36,11 +37,19 @@ impl OpenRouter {
         &self,
         client: &Client,
         request: Request<Body>,
+        observe: Option<CallObserve>,
     ) -> Result<Response<Body>, ProxyError> {
         let openrouter = self.openrouter.clone();
         let url = self.decisions_url.clone();
         let max_body_bytes = self.max_body_bytes;
-        openrouter::authorized_attributed_post(client, &url, max_body_bytes, &openrouter, request)
-            .await
+        openrouter::authorized_attributed_post(
+            client,
+            &url,
+            max_body_bytes,
+            &openrouter,
+            request,
+            observe,
+        )
+        .await
     }
 }

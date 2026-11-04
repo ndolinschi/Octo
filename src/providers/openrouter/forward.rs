@@ -5,6 +5,7 @@ use axum::{
 use reqwest::Client;
 
 use super::{apply_attribution, AttributionDefaults};
+use crate::history::CallObserve;
 use crate::providers::utils::{forward_content_type, proxy_post, proxy_post_bytes};
 use crate::proxy::error::ProxyError;
 
@@ -14,6 +15,7 @@ pub async fn authorized_attributed_post(
     max_body_bytes: usize,
     openrouter: &AttributionDefaults,
     request: Request<Body>,
+    observe: Option<CallObserve>,
 ) -> Result<Response<Body>, ProxyError> {
     let openrouter = openrouter.clone();
     proxy_post(
@@ -28,6 +30,7 @@ pub async fn authorized_attributed_post(
             upstream = apply_attribution(upstream, parts, &openrouter);
             forward_content_type(upstream, parts)
         },
+        observe,
     )
     .await
 }
@@ -38,6 +41,7 @@ pub async fn authorized_attributed_post_bytes(
     parts: Parts,
     body_bytes: Bytes,
     openrouter: &AttributionDefaults,
+    observe: Option<CallObserve>,
 ) -> Result<Response<Body>, ProxyError> {
     let openrouter = openrouter.clone();
     proxy_post_bytes(
@@ -52,6 +56,7 @@ pub async fn authorized_attributed_post_bytes(
             upstream = apply_attribution(upstream, parts, &openrouter);
             forward_content_type(upstream, parts)
         },
+        observe,
     )
     .await
 }

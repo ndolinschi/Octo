@@ -14,6 +14,7 @@ const CONFIG_DIR_FILES: &[&str] = &[
     "anthropic.toml",
     "llm.toml",
     "decision.toml",
+    "history.toml",
 ];
 
 #[derive(Clone, Debug)]
@@ -29,6 +30,8 @@ pub struct Config {
     pub openrouter_decisions_path: String,
     pub openrouter_http_referer: Option<String>,
     pub openrouter_title: Option<String>,
+    pub openrouter_messages_url: String,
+    pub openrouter_messages_path: String,
     pub anthropic_messages_url: String,
     pub anthropic_api_version: String,
     pub anthropic_messages_path: String,
@@ -36,6 +39,8 @@ pub struct Config {
     pub llm_chat_backend: String,
     pub llm_messages_backend: String,
     pub decision_backend: String,
+    pub history_database_path: String,
+    pub history_token_key: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -54,6 +59,8 @@ struct ConfigFile {
     decision: DecisionSection,
     #[serde(default)]
     anthropic: AnthropicSection,
+    #[serde(default)]
+    history: HistorySection,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -125,6 +132,10 @@ struct OpenRouterSection {
     http_referer: Option<String>,
     #[serde(default)]
     openrouter_title: Option<String>,
+    #[serde(default = "default_openrouter_messages_url")]
+    messages_url: String,
+    #[serde(default = "default_openrouter_messages_path")]
+    messages_path: String,
 }
 
 fn default_openrouter_chat_completions_url() -> String {
@@ -133,6 +144,14 @@ fn default_openrouter_chat_completions_url() -> String {
 
 fn default_openrouter_chat_completions_path() -> String {
     "/v1/chat/completions".to_string()
+}
+
+fn default_openrouter_messages_url() -> String {
+    "https://openrouter.ai/api/v1/messages".to_string()
+}
+
+fn default_openrouter_messages_path() -> String {
+    "/v1/messages".to_string()
 }
 
 impl Default for OpenRouterSection {
@@ -144,6 +163,8 @@ impl Default for OpenRouterSection {
             decisions_path: default_decisions_path(),
             http_referer: None,
             openrouter_title: None,
+            messages_url: default_openrouter_messages_url(),
+            messages_path: default_openrouter_messages_path(),
         }
     }
 }
@@ -261,6 +282,27 @@ fn default_llm_messages_backend() -> String {
 
 fn default_decision_backend() -> String {
     "openrouter".to_string()
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct HistorySection {
+    #[serde(default = "default_history_database_path")]
+    database_path: String,
+    #[serde(default)]
+    token_key: String,
+}
+
+impl Default for HistorySection {
+    fn default() -> Self {
+        Self {
+            database_path: default_history_database_path(),
+            token_key: String::new(),
+        }
+    }
+}
+
+fn default_history_database_path() -> String {
+    "data/history.sqlite".to_string()
 }
 
 impl Config {
@@ -396,6 +438,8 @@ fn config_from_file(file: ConfigFile) -> Config {
         openrouter_decisions_path: file.openrouter.decisions_path,
         openrouter_http_referer: file.openrouter.http_referer,
         openrouter_title: file.openrouter.openrouter_title,
+        openrouter_messages_url: file.openrouter.messages_url,
+        openrouter_messages_path: file.openrouter.messages_path,
         anthropic_messages_url: file.anthropic.messages_url,
         anthropic_api_version: file.anthropic.api_version,
         anthropic_messages_path: file.anthropic.messages_path,
@@ -403,6 +447,8 @@ fn config_from_file(file: ConfigFile) -> Config {
         llm_chat_backend: file.llm.chat.backend,
         llm_messages_backend: file.llm.messages.backend,
         decision_backend: file.decision.backend,
+        history_database_path: file.history.database_path,
+        history_token_key: file.history.token_key,
     }
 }
 

@@ -2,4 +2,4 @@
 backend = "openai"
 
 [llm.messages]
-backend = "claude"
+backend = "openrouter"
