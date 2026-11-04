@@ -48,18 +48,18 @@ pub async fn classify(
         "questions": {
             "is_hard": {
                 "type": "noul",
-                "instructions": "Is this turn a hard coding or reasoning task?",
+                "instructions": "Read user_text and the tool list and judge this turn on its own. Simple: one obvious step, a greeting, a title, a tiny rewrite, or a single lookup. Medium: a clear goal that needs a few reads or tool calls, or an explanation of code that is already there, without design or a long investigation. Hard: unknown-cause debugging, architecture, tradeoffs, or a change that spans several parts. Answer from that text. A band is not a default.",
                 "criteria": {
-                    "true": "Multi-step coding, debugging, or architecture.",
-                    "false": "Short reply, lookup, or a small edit."
+                    "true": "The turn is hard: unknown-cause debugging, architecture, tradeoffs, or a change across several parts.",
+                    "false": "The turn is simple or medium, as defined in the instructions."
                 }
             },
             "is_easy": {
                 "type": "noul",
-                "instructions": "Is this turn small enough for the cheapest model?",
+                "instructions": "Using the same reading of user_text, is this turn the simple band? Simple is one obvious step. Medium needs a few steps but has a clear goal. Hard is design, a long debug, or a wide change. Answer from the text, not from which band feels safest.",
                 "criteria": {
-                    "true": "Greeting, tiny rewrite, or one obvious lookup.",
-                    "false": "Needs planning or several tools."
+                    "true": "The turn is simple: a greeting, a title, a tiny rewrite, or one obvious lookup.",
+                    "false": "The turn is medium or hard, as defined in the instructions."
                 }
             },
             "tools_enough": {
