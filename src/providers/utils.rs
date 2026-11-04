@@ -1,11 +1,18 @@
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::Instant;
+
 use axum::{
     body::{to_bytes, Body, Bytes},
     http::{header, request::Parts, HeaderName, Request, Response},
 };
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt};
 use reqwest::{Client, RequestBuilder};
 use tracing::info;
 
+use crate::history::{
+    describe_input, token_from_headers, usage_from_output, CallObserve, FinishedCall,
+};
 use crate::proxy::error::ProxyError;
 
 fn should_forward_response_header(name: &HeaderName) -> bool {
@@ -20,11 +27,16 @@ fn should_forward_response_header(name: &HeaderName) -> bool {
         || name.starts_with("anthropic-ratelimit-")
 }
 
-pub async fn upstream_to_response(
+async fn upstream_to_response(
     upstream: reqwest::Response,
+    capture: Option<Capture>,
 ) -> Result<Response<Body>, ProxyError> {
     let status = upstream.status();
-    info!(%status, "upstream responded");
+    info!(
+        %status,
+        request_bytes = capture.as_ref().map(|c| c.request_bytes).unwrap_or(0),
+        "upstream responded"
+    );
 
     let mut response_builder = Response::builder().status(status);
 
@@ -37,7 +49,10 @@ pub async fn upstream_to_response(
     let stream = upstream
         .bytes_stream()
         .map(|chunk| chunk.map_err(std::io::Error::other));
-    let body = Body::from_stream(stream);
+    let body = match capture {
+        Some(capture) => Body::from_stream(Tee::new(stream, status.as_u16(), capture)),
+        None => Body::from_stream(stream),
+    };
 
     response_builder
         .body(body)
@@ -50,10 +65,26 @@ pub async fn proxy_post_bytes(
     parts: Parts,
     body_bytes: Bytes,
     apply_headers: impl FnOnce(RequestBuilder, &Parts) -> RequestBuilder,
+    observe: Option<CallObserve>,
 ) -> Result<Response<Body>, ProxyError> {
+    let capture = observe.map(|observe| Capture::from_request(&observe, &parts, &body_bytes));
+    let started = Instant::now();
     let upstream_request = apply_headers(client.post(url).body(body_bytes), &parts);
-    let upstream_response = upstream_request.send().await?;
-    upstream_to_response(upstream_response).await
+    let upstream_response = match upstream_request.send().await {
+        Ok(response) => response,
+        Err(err) => {
+            if let Some(mut capture) = capture {
+                capture.started = started;
+                capture.finish(502, Vec::new());
+            }
+            return Err(err.into());
+        }
+    };
+    let mut capture = capture;
+    if let Some(capture) = capture.as_mut() {
+        capture.started = started;
+    }
+    upstream_to_response(upstream_response, capture).await
 }
 
 pub async fn proxy_post(
@@ -62,12 +93,117 @@ pub async fn proxy_post(
     max_body: usize,
     request: Request<Body>,
     apply_headers: impl FnOnce(RequestBuilder, &Parts) -> RequestBuilder,
+    observe: Option<CallObserve>,
 ) -> Result<Response<Body>, ProxyError> {
     let (parts, body) = request.into_parts();
     let body_bytes = to_bytes(body, max_body)
         .await
         .map_err(ProxyError::from_read_body)?;
-    proxy_post_bytes(client, url, parts, body_bytes, apply_headers).await
+    proxy_post_bytes(client, url, parts, body_bytes, apply_headers, observe).await
+}
+
+struct Capture {
+    observe: CallObserve,
+    token_hash: String,
+    model: Option<String>,
+    message: Option<String>,
+    input: String,
+    request_bytes: usize,
+    started: Instant,
+}
+
+impl Capture {
+    fn from_request(observe: &CallObserve, parts: &Parts, body: &Bytes) -> Self {
+        let input = String::from_utf8_lossy(body).into_owned();
+        let (model, message) = describe_input(&input);
+        let secret = token_from_headers(&parts.headers);
+        Self {
+            token_hash: observe.history.token_hash(&secret),
+            observe: CallObserve {
+                history: observe.history.clone(),
+                kind: observe.kind,
+                provider: observe.provider,
+            },
+            model,
+            message,
+            request_bytes: body.len(),
+            input,
+            started: Instant::now(),
+        }
+    }
+
+    fn finish(self, status: u16, output: Vec<u8>) {
+        let output_text = String::from_utf8_lossy(&output).into_owned();
+        let (input_tokens, output_tokens, cost) = usage_from_output(&output_text);
+        let latency_ms = self.started.elapsed().as_millis() as u64;
+        self.observe.history.record(FinishedCall {
+            kind: self.observe.kind,
+            provider: self.observe.provider.to_string(),
+            model: self.model,
+            token_hash: self.token_hash,
+            message: self.message,
+            input: self.input,
+            output: output_text,
+            status,
+            latency_ms,
+            request_bytes: self.request_bytes,
+            response_bytes: output.len(),
+            input_tokens,
+            output_tokens,
+            cost,
+        });
+    }
+}
+
+struct Tee<S> {
+    inner: S,
+    status: u16,
+    buf: Vec<u8>,
+    capture: Option<Capture>,
+}
+
+impl<S> Tee<S> {
+    fn new(inner: S, status: u16, capture: Capture) -> Self {
+        Self {
+            inner,
+            status,
+            buf: Vec::new(),
+            capture: Some(capture),
+        }
+    }
+}
+
+impl<S> Stream for Tee<S>
+where
+    S: Stream<Item = Result<Bytes, std::io::Error>> + Unpin,
+{
+    type Item = Result<Bytes, std::io::Error>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.inner).poll_next(cx) {
+            Poll::Ready(Some(Ok(chunk))) => {
+                this.buf.extend_from_slice(&chunk);
+                Poll::Ready(Some(Ok(chunk)))
+            }
+            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
+            Poll::Ready(None) => {
+                if let Some(capture) = this.capture.take() {
+                    capture.finish(this.status, std::mem::take(&mut this.buf));
+                }
+                Poll::Ready(None)
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl<S> Drop for Tee<S> {
+    fn drop(&mut self) {
+        if let Some(capture) = self.capture.take() {
+            capture.finish(self.status, std::mem::take(&mut self.buf));
+        }
+    }
 }
 
 pub fn forward_content_type(upstream: RequestBuilder, parts: &Parts) -> RequestBuilder {

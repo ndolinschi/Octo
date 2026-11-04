@@ -6,6 +6,7 @@ pub mod select;
 use tracing::{info, warn};
 
 use crate::config::Config;
+use crate::history::History;
 use crate::providers::llm::{ChatCompletions, Messages};
 use crate::proxy::select::ChatCompatProvider;
 use crate::routes::router;
@@ -20,10 +21,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "listening on non-loopback address; Octo has no client authentication"
         );
     }
-    let state = AppState::new(config.clone()).map_err(|err| {
+    let mut state = AppState::new(config.clone()).map_err(|err| {
         tracing::error!(%err, "failed to build application state");
         err
     })?;
+    state.history = History::connect(&config.history_database_path, &config.history_token_key)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "failed to open history database");
+            err
+        })?;
+    info!(
+        database = %config.history_database_path,
+        "history database ready"
+    );
     let (default_chat_provider, default_chat_url) = match state.default_chat_provider {
         ChatCompatProvider::OpenAi => ("openai", state.llm.openai.upstream_url()),
         ChatCompatProvider::OpenRouter => ("openrouter", state.llm.openrouter.upstream_url()),

@@ -1,0 +1,5 @@
+[history]
+database_path = "data/history.sqlite"
+# Optional. When empty, a key is created beside the database so later
+# matches survive restarts. OCTO_HISTORY_TOKEN_KEY overrides this.
+token_key = ""

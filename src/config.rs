@@ -14,6 +14,7 @@ const CONFIG_DIR_FILES: &[&str] = &[
     "anthropic.toml",
     "llm.toml",
     "decision.toml",
+    "history.toml",
 ];
 
 #[derive(Clone, Debug)]
@@ -36,6 +37,8 @@ pub struct Config {
     pub llm_chat_backend: String,
     pub llm_messages_backend: String,
     pub decision_backend: String,
+    pub history_database_path: String,
+    pub history_token_key: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -54,6 +57,8 @@ struct ConfigFile {
     decision: DecisionSection,
     #[serde(default)]
     anthropic: AnthropicSection,
+    #[serde(default)]
+    history: HistorySection,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -263,6 +268,27 @@ fn default_decision_backend() -> String {
     "openrouter".to_string()
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct HistorySection {
+    #[serde(default = "default_history_database_path")]
+    database_path: String,
+    #[serde(default)]
+    token_key: String,
+}
+
+impl Default for HistorySection {
+    fn default() -> Self {
+        Self {
+            database_path: default_history_database_path(),
+            token_key: String::new(),
+        }
+    }
+}
+
+fn default_history_database_path() -> String {
+    "data/history.sqlite".to_string()
+}
+
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         match config_location()? {
@@ -403,6 +429,8 @@ fn config_from_file(file: ConfigFile) -> Config {
         llm_chat_backend: file.llm.chat.backend,
         llm_messages_backend: file.llm.messages.backend,
         decision_backend: file.decision.backend,
+        history_database_path: file.history.database_path,
+        history_token_key: file.history.token_key,
     }
 }
 

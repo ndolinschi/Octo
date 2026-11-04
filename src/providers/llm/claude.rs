@@ -5,6 +5,7 @@ use axum::{
 use reqwest::Client;
 
 use super::traits::Messages;
+use crate::history::CallObserve;
 use crate::providers::utils::{forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
@@ -38,6 +39,7 @@ impl Messages for Claude {
         &self,
         client: &Client,
         request: Request<Body>,
+        observe: Option<CallObserve>,
     ) -> impl std::future::Future<Output = Result<Response<Body>, ProxyError>> + Send {
         let default_api_version = self.default_api_version.clone();
         let url = self.messages_url.clone();
@@ -58,6 +60,7 @@ impl Messages for Claude {
                     };
                     forward_content_type(upstream, parts)
                 },
+                observe,
             )
             .await
         }

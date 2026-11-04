@@ -5,6 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
+use crate::history::CallObserve;
 use crate::providers::llm::Messages;
 use crate::proxy::error::ProxyError;
 use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider, MessagesProvider};
@@ -23,21 +24,27 @@ async fn forward_chat(
     let (provider, upstream_body) =
         resolve_chat_provider(path_hint, &body_bytes, state.default_chat_provider)?;
     let body_bytes = Bytes::from(upstream_body);
-    match provider {
-        ChatCompatProvider::OpenAi => {
-            state
-                .llm
-                .openai
-                .forward_chat_buffered(&state.client, parts, body_bytes)
-                .await
-        }
-        ChatCompatProvider::OpenRouter => {
-            state
-                .llm
-                .openrouter
-                .forward_chat_buffered(&state.client, parts, body_bytes)
-                .await
-        }
+    let (provider_name, forward) = match provider {
+        ChatCompatProvider::OpenAi => ("openai", true),
+        ChatCompatProvider::OpenRouter => ("openrouter", false),
+    };
+    let observe = Some(CallObserve {
+        history: state.history.clone(),
+        kind: "llm",
+        provider: provider_name,
+    });
+    if forward {
+        state
+            .llm
+            .openai
+            .forward_chat_buffered(&state.client, parts, body_bytes, observe)
+            .await
+    } else {
+        state
+            .llm
+            .openrouter
+            .forward_chat_buffered(&state.client, parts, body_bytes, observe)
+            .await
     }
 }
 
@@ -68,7 +75,15 @@ async fn forward_messages(state: &AppState, request: Request) -> Result<Response
             state
                 .llm
                 .claude
-                .forward_messages(&state.client, request)
+                .forward_messages(
+                    &state.client,
+                    request,
+                    Some(CallObserve {
+                        history: state.history.clone(),
+                        kind: "llm",
+                        provider: "claude",
+                    }),
+                )
                 .await
         }
     }
@@ -88,7 +103,15 @@ pub async fn decisions(
     state
         .decision
         .openrouter
-        .forward_decisions(&state.client, request)
+        .forward_decisions(
+            &state.client,
+            request,
+            Some(CallObserve {
+                history: state.history.clone(),
+                kind: "decision",
+                provider: "openrouter",
+            }),
+        )
         .await
 }
 

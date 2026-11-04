@@ -3,6 +3,7 @@ use std::time::Duration;
 use reqwest::Client;
 
 use crate::config::{Config, ConfigError};
+use crate::history::History;
 use crate::providers::{decision, llm};
 use crate::proxy::select::{self, ChatCompatProvider, MessagesProvider};
 
@@ -14,6 +15,7 @@ pub struct AppState {
     pub messages_provider: MessagesProvider,
     pub llm: llm::Providers,
     pub decision: decision::Providers,
+    pub history: History,
 }
 
 impl AppState {
@@ -39,6 +41,7 @@ impl AppState {
             messages_provider,
             llm: llm::Providers::from_config(&config),
             decision: decision::Providers::from_config(&config)?,
+            history: History::disabled(),
             config,
         })
     }
