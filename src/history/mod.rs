@@ -274,7 +274,7 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
     let kind = call.kind;
-    let provider = call.provider.as_str();
+    let provider = call.provider;
     let model = call.model.as_deref();
     let token_hash = call.token_hash.as_deref();
     let message = call.message.as_deref();

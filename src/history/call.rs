@@ -8,7 +8,7 @@ pub struct CallObserve {
 
 pub struct FinishedCall {
     pub kind: &'static str,
-    pub provider: String,
+    pub provider: &'static str,
     pub model: Option<String>,
     pub token_hash: Option<String>,
     pub message: Option<String>,

@@ -150,7 +150,7 @@ impl Capture {
         let latency_ms = self.started.elapsed().as_millis() as u64;
         self.observe.history.record(FinishedCall {
             kind: self.observe.kind,
-            provider: self.observe.provider.to_string(),
+            provider: self.observe.provider,
             model: self.model,
             token_hash: self.token_hash,
             message: self.message,
