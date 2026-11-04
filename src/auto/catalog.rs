@@ -2,9 +2,37 @@ use std::time::{Duration, Instant};
 
 use crate::providers::openrouter::OpenRouterModels;
 
-pub const LOW_MODEL: &str = "google/gemma-4-26b-a4b-it";
-pub const MID_MODEL: &str = "deepseek/deepseek-v4-flash";
-pub const HIGH_MODEL: &str = "~anthropic/claude-haiku-latest";
+use super::jev::Complexity;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tiers {
+    pub low: String,
+    pub mid: String,
+    pub high: String,
+}
+
+impl Tiers {
+    pub fn new(low: String, mid: String, high: String) -> Self {
+        Self { low, mid, high }
+    }
+
+    pub fn candidates(&self) -> [&str; 3] {
+        [self.low.as_str(), self.mid.as_str(), self.high.as_str()]
+    }
+
+    pub fn pick(&self, complexity: Complexity, preferred: Option<&str>) -> String {
+        match complexity {
+            Complexity::Low => self.low.clone(),
+            Complexity::Mid => self.mid.clone(),
+            Complexity::High => match preferred {
+                Some(preferred) if preferred != self.low && preferred != self.mid => {
+                    preferred.to_string()
+                }
+                _ => self.high.clone(),
+            },
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct CatalogCache {
@@ -39,19 +67,6 @@ pub fn context_length(models: Option<&OpenRouterModels>, slug: &str) -> u64 {
         .find(|model| model.id == slug)
         .and_then(|model| model.context_length)
         .unwrap_or(8192)
-}
-
-pub fn pick_model(complexity: crate::auto::jev::Complexity, preferred: Option<&str>) -> String {
-    match complexity {
-        crate::auto::jev::Complexity::Low => LOW_MODEL.to_string(),
-        crate::auto::jev::Complexity::Mid => MID_MODEL.to_string(),
-        crate::auto::jev::Complexity::High => match preferred {
-            Some(preferred) if preferred != LOW_MODEL && preferred != MID_MODEL => {
-                preferred.to_string()
-            }
-            _ => HIGH_MODEL.to_string(),
-        },
-    }
 }
 
 pub fn larger_fit(

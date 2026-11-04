@@ -15,25 +15,26 @@ use crate::providers::openrouter::OpenRouterModels;
 
 use super::action::{Compact, Forward, Turn};
 use super::body::{self, compaction_body};
-use super::catalog::{self, CatalogCache};
+use super::catalog::{self, CatalogCache, Tiers};
 use super::jev;
 use super::metrics::{self, context_estimate};
 use super::session::{SessionChoice, Sessions};
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
 const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
-const TIERS: [&str; 3] = [catalog::LOW_MODEL, catalog::MID_MODEL, catalog::HIGH_MODEL];
 
 #[derive(Clone)]
 pub struct Auto {
+    tiers: Tiers,
     sessions: Arc<SyncMutex<Sessions>>,
     catalog: Arc<Mutex<CatalogCache>>,
     gates: Arc<SyncMutex<HashMap<String, Arc<Mutex<()>>>>>,
 }
 
 impl Auto {
-    pub fn new() -> Self {
+    pub fn new(tiers: Tiers) -> Self {
         Self {
+            tiers,
             sessions: Arc::new(SyncMutex::new(Sessions::new(SESSION_TTL))),
             catalog: Arc::new(Mutex::new(CatalogCache::new(CATALOG_TTL))),
             gates: Arc::new(SyncMutex::new(HashMap::new())),
@@ -82,12 +83,6 @@ impl Auto {
     }
 }
 
-impl Default for Auto {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 pub async fn decide(
     auto: &Auto,
     history: &History,
@@ -130,7 +125,14 @@ pub async fn decide(
             } else if allow_compact {
                 let outgoing = shaped(&body, &row.model, &row.tools);
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
-                return compact_turn(&outgoing, &row.model, models.as_ref());
+                return compact_turn(
+                    auto,
+                    CompactPlan {
+                        body: &outgoing,
+                        model: &row.model,
+                        models: models.as_ref(),
+                    },
+                );
             } else if let Some(id) = actor.clone() {
                 auto.clear_awaiting_compact(&id);
             }
@@ -152,6 +154,7 @@ pub async fn decide(
                     api_key,
                     body: &body,
                     all_tools: &all_tools,
+                    tiers: &auto.tiers,
                 },
                 preferred.as_deref(),
                 &row.tools,
@@ -184,6 +187,7 @@ pub async fn decide(
                 api_key,
                 body: &body,
                 all_tools: &all_tools,
+                tiers: &auto.tiers,
             },
             preferred.as_deref(),
         )
@@ -260,7 +264,8 @@ async fn route(
     }
     if estimate.fill >= metrics::FILL_THRESHOLD {
         let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
-        if let Some(slug) = catalog::larger_fit(&TIERS, models, need, plan.reserve, &plan.model) {
+        let tiers = auto.tiers.candidates();
+        if let Some(slug) = catalog::larger_fit(&tiers, models, need, plan.reserve, &plan.model) {
             plan.model = slug;
             outgoing = shaped(&body, &plan.model, &plan.tools);
             plan.reason = Some("upgrade".to_string());
@@ -320,7 +325,20 @@ async fn finish_overflow(
     if plan.persist {
         remember(auto, body, &plan.model, &plan.tools, input_tokens_est, true).await;
     }
-    compact_turn(outgoing, &plan.model, models)
+    compact_turn(
+        auto,
+        CompactPlan {
+            body: outgoing,
+            model: &plan.model,
+            models,
+        },
+    )
+}
+
+struct CompactPlan<'a> {
+    body: &'a Value,
+    model: &'a str,
+    models: Option<&'a OpenRouterModels>,
 }
 
 fn forward_shaped(body: &Value, model: &str, tools: &[String], reason: Option<String>) -> Turn {
@@ -364,15 +382,14 @@ async fn remember(
     );
 }
 
-fn compact_turn(body: &Value, model: &str, models: Option<&OpenRouterModels>) -> Turn {
-    let current_window = catalog::context_length(models, model);
-    let fallback = TIERS
-        .iter()
-        .copied()
-        .find(|slug| *slug != model && catalog::context_length(models, slug) > current_window);
+fn compact_turn(auto: &Auto, plan: CompactPlan<'_>) -> Turn {
+    let current_window = catalog::context_length(plan.models, plan.model);
+    let fallback = auto.tiers.candidates().into_iter().find(|slug| {
+        *slug != plan.model && catalog::context_length(plan.models, slug) > current_window
+    });
     Turn::Compact(Compact {
-        body: serde_json::to_vec(&compaction_body(body, model)).unwrap_or_default(),
-        model: model.to_string(),
+        body: serde_json::to_vec(&compaction_body(plan.body, plan.model)).unwrap_or_default(),
+        model: plan.model.to_string(),
         fallback_model: fallback.map(str::to_string),
     })
 }
@@ -425,6 +442,7 @@ struct ClassifyCtx<'a> {
     api_key: &'a str,
     body: &'a Value,
     all_tools: &'a [String],
+    tiers: &'a Tiers,
 }
 
 async fn classify_fresh(
@@ -455,7 +473,7 @@ async fn classify_turn(
     .await;
     record_decision(ctx.history, ctx.session_id.clone(), purpose, &asked);
     let classified = asked.parsed?;
-    let model = catalog::pick_model(classified.complexity, preferred);
+    let model = ctx.tiers.pick(classified.complexity, preferred);
     let tools = jev::needed_tools(jev::ToolNeed {
         all: ctx.all_tools,
         current,

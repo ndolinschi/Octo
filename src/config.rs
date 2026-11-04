@@ -15,6 +15,7 @@ const CONFIG_DIR_FILES: &[&str] = &[
     "llm.toml",
     "decision.toml",
     "history.toml",
+    "autoroute.toml",
 ];
 
 #[derive(Clone, Debug)]
@@ -41,6 +42,9 @@ pub struct Config {
     pub decision_backend: String,
     pub history_database_path: String,
     pub history_token_key: String,
+    pub autoroute_low_model: String,
+    pub autoroute_mid_model: String,
+    pub autoroute_high_model: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -61,6 +65,8 @@ struct ConfigFile {
     anthropic: AnthropicSection,
     #[serde(default)]
     history: HistorySection,
+    #[serde(default)]
+    autoroute: AutorouteSection,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -305,6 +311,38 @@ fn default_history_database_path() -> String {
     "data/history.sqlite".to_string()
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct AutorouteSection {
+    #[serde(default = "default_autoroute_low_model")]
+    low: String,
+    #[serde(default = "default_autoroute_mid_model")]
+    mid: String,
+    #[serde(default = "default_autoroute_high_model")]
+    high: String,
+}
+
+impl Default for AutorouteSection {
+    fn default() -> Self {
+        Self {
+            low: default_autoroute_low_model(),
+            mid: default_autoroute_mid_model(),
+            high: default_autoroute_high_model(),
+        }
+    }
+}
+
+fn default_autoroute_low_model() -> String {
+    "google/gemma-4-26b-a4b-it".to_string()
+}
+
+fn default_autoroute_mid_model() -> String {
+    "deepseek/deepseek-v4-flash".to_string()
+}
+
+fn default_autoroute_high_model() -> String {
+    "~anthropic/claude-haiku-latest".to_string()
+}
+
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         match config_location()? {
@@ -449,6 +487,9 @@ fn config_from_file(file: ConfigFile) -> Config {
         decision_backend: file.decision.backend,
         history_database_path: file.history.database_path,
         history_token_key: file.history.token_key,
+        autoroute_low_model: file.autoroute.low,
+        autoroute_mid_model: file.autoroute.mid,
+        autoroute_high_model: file.autoroute.high,
     }
 }
 

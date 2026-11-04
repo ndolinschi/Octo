@@ -2,7 +2,7 @@ use serde_json::json;
 
 use octo::auto::{
     context_estimate, dropped, filter_tools, is_housekeeping, needed_tools, needs_compact,
-    output_reserve, pick_model, session_id, session_key, Complexity,
+    output_reserve, session_id, session_key, Complexity, Tiers,
 };
 
 #[test]
@@ -53,17 +53,19 @@ fn filter_keeps_named_tools_and_pick_respects_preference() {
     });
     filter_tools(&mut body, &["Read".to_string()]);
     assert_eq!(body["tools"].as_array().unwrap().len(), 1);
+    let tiers = Tiers::new("low-model".into(), "mid-model".into(), "high-model".into());
+    assert_eq!(tiers.pick(Complexity::Low, Some("custom")), "low-model");
     assert_eq!(
-        pick_model(Complexity::Low, Some("custom")),
-        "google/gemma-4-26b-a4b-it"
+        tiers.pick(Complexity::Mid, Some("anthropic/claude-sonnet-4.5")),
+        "mid-model"
     );
     assert_eq!(
-        pick_model(Complexity::Mid, Some("anthropic/claude-sonnet-4.5")),
-        "deepseek/deepseek-v4-flash"
+        tiers.pick(Complexity::High, Some("low-model")),
+        "high-model"
     );
     assert_eq!(
-        pick_model(Complexity::High, Some("google/gemma-4-26b-a4b-it")),
-        "~anthropic/claude-haiku-latest"
+        tiers.pick(Complexity::High, Some("custom/high")),
+        "custom/high"
     );
     assert_eq!(
         needed_tools(octo::auto::ToolNeed {
