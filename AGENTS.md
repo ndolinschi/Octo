@@ -39,7 +39,6 @@ Rust toolchain: install via [rustup](https://rustup.rs/). Verify with `cargo --v
 
 Run the proxy from the repo root (loads the **`config/`** directory unless overridden):
 
-
 ```bash
 cargo run
 ```
@@ -75,6 +74,7 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 | `config/anthropic.toml` | `[anthropic]` — messages URL, path, API version |
 | `config/llm.toml` | `[llm.chat]` / `[llm.messages]` backend defaults |
 | `config/decision.toml` | `[decision]` backend |
+| `config/history.toml` | `[history]` — SQLite path, optional token HMAC key |
 
 - **Default load:** merge present files in `./config/` (known fragment names; missing files are skipped). Run from repo root.
 - **`OCTO_CONFIG`:** path to another **`config/`** directory or a single legacy **`config.toml`** file (monolithic override).
@@ -90,30 +90,59 @@ Do not commit API keys; clients send credentials per request (`Authorization` fo
 
 **Upstream timeouts:** `[upstream].request_timeout_secs` (default 600) applies to the full reqwest call including streaming response bodies; very long SSE may need a higher limit.
 
+## Request history (SQLite)
+
+Octo records a **side copy** of proxied chat, decisions, and messages calls. Live proxy behavior is unchanged: bytes stream to the client immediately; persistence runs asynchronously.
+
+| Concern | Behavior |
+| --- | --- |
+| Database | SQLite via **sqlx** (`config/history.toml` → `database_path`, default `data/history.sqlite`) |
+| Schema | `migrations/` applied at connect; offline compile uses committed **`.sqlx/`** (`SQLX_OFFLINE=true` in `.cargo/config.toml`) |
+| Caller identity | HMAC-SHA256 of client secret (`Authorization` / `x-api-key`); raw tokens are not stored |
+| Token key | `OCTO_HISTORY_TOKEN_KEY` env, `history.token_key` in config, or auto-generated `.key` beside the DB (restrictive file permissions on Unix) |
+| Failure mode | If DB open/migrate fails, proxy keeps serving with history disabled |
+| Shutdown | Graceful drain waits for in-flight inserts (bounded queue) |
+
+**Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output capture, status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`). Prompts and full bodies are bounded by capture limit (`max_body_bytes` at connect), not logged verbatim in tracing.
+
+**Typed labels:** `CallKind` (`llm`, `decision`), `CallProvider` (`openai`, `openrouter`, `claude`) — map from `proxy/select.rs` enums at handlers. Metrics use newtypes in `src/history/metrics.rs` (`TokenCount`, `CostMicros`, `Millis`).
+
+Integration tests: `tests/history_store.rs`, `tests/history_payload.rs`. Do not add `#[cfg(test)]` modules in `src/` (see `.cursor/rules/tests-live-outside-source.mdc`).
+
+After changing SQL or `query!` macros:
+
+```bash
+export DATABASE_URL="sqlite:./prepare.db"
+cargo sqlx migrate run
+SQLX_OFFLINE=false cargo sqlx prepare -- --tests
+```
+
+Commit updated **`.sqlx/`** with the code change.
+
 ## Code layout
 
 | Area | Role |
 | --- | --- |
 | `src/main.rs` | Tracing init; calls `proxy::run()` |
 | `src/config.rs` | Load TOML → `Config` |
-| `src/state.rs` | `AppState`: `reqwest::Client`, `Config`, default chat provider, `llm::Wired`, `decision::Providers` |
+| `src/state.rs` | `AppState`: client, config, default chat provider, `llm::Wired`, `decision::Providers`, `history::History` |
 | `src/routes.rs` | App router: `TraceLayer`, state |
-| `src/proxy/mod.rs` | Bind, serve, graceful shutdown |
+| `src/proxy/mod.rs` | Bind, history connect, serve, graceful shutdown + history drain |
 | `src/proxy/routes.rs` | Proxy route paths from config; `GET /health` |
-| `src/proxy/handler.rs` | Thin Axum handlers |
+| `src/proxy/handler.rs` | Thin Axum handlers; builds `CallObserve` for history |
 | `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
-| `src/providers/llm/traits.rs` | `ChatCompletions` (upstream URL), `Messages` |
-| `src/providers/llm/wire.rs` | Config wiring + `Providers` (OpenAI, OpenRouter, Claude) |
-| `src/providers/llm/openai.rs` | Direct OpenAI chat (`OpenAI`) |
-| `src/providers/llm/openrouter.rs` | OpenRouter OpenAI-compatible chat (`OpenRouter`) |
-| `src/providers/llm/claude.rs` | Claude Messages forward (`Claude`) |
-| `src/proxy/select.rs` | Chat `type` / path provider resolution |
+| `src/proxy/select.rs` | Chat `type` / path provider resolution; `From` → `CallProvider` |
+| `src/history/` | SQLite pool, HMAC token hash, async inserts, payload parsing (`usage_from_output`) |
+| `src/providers/llm/wire.rs` | Config wiring + `Wired` (OpenAI, OpenRouter, Claude) |
+| `src/providers/llm/openai.rs` | Direct OpenAI chat |
+| `src/providers/llm/openrouter.rs` | OpenRouter OpenAI-compatible chat |
+| `src/providers/llm/claude.rs` | Claude Messages forward |
 | `src/providers/decision/wire.rs` | Config wiring + `Providers` |
-| `src/providers/decision/openrouter.rs` | OpenRouter Decisions forward (`[decision] backend = "openrouter"`) |
-| `src/providers/openrouter/attribution.rs` | Shared Referer / title defaults for OpenRouter upstreams |
-| `src/providers/utils.rs` | Buffered POST proxy, streaming body, allowlisted response headers |
+| `src/providers/decision/openrouter.rs` | OpenRouter Decisions forward |
+| `src/providers/openrouter/` | Shared attribution + forward helpers |
+| `src/providers/utils.rs` | Buffered POST proxy, stream tee + history capture, allowlisted response headers |
 
-Conventions for edits: `.cursor/rules/octo-rust.mdc` (module boundaries, no Rust comments unless asked, fmt/clippy/test before finishing).
+Conventions for edits: `.cursor/rules/octo-rust.mdc` (module boundaries, no Rust comments unless asked). Quality gates and SQLx rules below.
 
 ## Proxy behavior (agents should preserve)
 
@@ -123,6 +152,7 @@ Conventions for edits: `.cursor/rules/octo-rust.mdc` (module boundaries, no Rust
 - **Anthropic route:** forward `x-api-key`; `anthropic-version` from client or config default.
 - **Response headers:** pass through a safe allowlist (`Content-Type`, `Cache-Control`, `x-request-id`, `retry-after`, `openai-*`, `x-ratelimit-*`, `anthropic-ratelimit-*`).
 - **Errors:** proxy failures return JSON, not plain text. Unknown chat `type` / `octo_provider` (when the route is not path-pinned) returns **400** `invalid provider selector`.
+- **History:** must not block or alter streaming; usage JSON at the end of long SSE is captured via a rolling tail buffer in `providers/utils.rs`.
 
 ## Superpowers
 
@@ -168,8 +198,15 @@ Production-oriented Cursor rules from [tyrchen/cursor-rust-rules](https://github
 
 `.cursor/rules/rust/`
 
-- **Router:** `main.mdc` (applies when editing `*.rs` / `Cargo.toml`)
-- **This crate:** `octo-rust.mdc` — simple binary defaults
+| Rule | Purpose |
+| --- | --- |
+| `rust/main.mdc` | Router for feature-specific Rust rules |
+| `octo-rust.mdc` | Octo crate defaults (layout, comments, verify commands) |
+| `rust-pr-checklist.mdc` | Per-PR/file checklist: types, ownership, errors, async, API |
+| `verify-compiler.mdc` | Always run `cargo check` + `cargo clippy --all-targets -- -D warnings` |
+| `sqlx.mdc` | `query!`, bindings, `.sqlx` offline cache, connect in `history/connect.rs` |
+| `tests-live-outside-source.mdc` | Integration tests under `tests/` only |
+| `subagent-models.mdc` | Cloud subagents: `grok-4.7-low` or `composer-2.5` only |
 
 Do not fight the borrow checker; match existing style; keep diffs minimal unless the task requires more.
 
@@ -179,9 +216,11 @@ Do not fight the borrow checker; match existing style; keep diffs minimal unless
 | --- | --- |
 | Build | `cargo build` |
 | Run | `cargo run` |
+| Check | `cargo check` |
 | Test | `cargo test` |
 | Format | `cargo fmt` |
-| Lint | `cargo clippy -- -D warnings` |
+| Lint | `cargo clippy --all-targets -- -D warnings` |
+| SQLx cache | `SQLX_OFFLINE=false cargo sqlx prepare -- --tests` (with `DATABASE_URL` + migrated DB) |
 
 Optional: `RUST_LOG=debug cargo run` for more tracing (default filter is `info`).
 
@@ -190,6 +229,7 @@ Optional: `RUST_LOG=debug cargo run` for more tracing (default filter is `info`)
 - Feature branches: `cursor/<short-description>-a705`
 - Push with `git push -u origin <branch>`
 - Open pull requests against `main`
+- Commit **`.sqlx/`** when SQL or sqlx macros change; do not gitignore it
 
 ## What not to do
 
@@ -197,3 +237,5 @@ Optional: `RUST_LOG=debug cargo run` for more tracing (default filter is `info`)
 - Do not hardcode bind URLs, paths, or limits in Rust when they belong in `config/`
 - Do not add large dependencies without a clear requirement
 - Do not skip verification when a Superpowers skill requires it (tests, repro steps, etc.)
+- Do not use `f64` for stored money; use `CostMicros` / `cost_micros` in the database
+- Do not log raw client tokens or unbounded prompt bodies in tracing
