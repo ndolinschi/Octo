@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
 
 use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 use reqwest::Client;
 use serde_json::Value;
@@ -40,15 +40,23 @@ impl Auto {
         }
     }
 
-    fn gate(&self, session_id: &str) -> Arc<Mutex<()>> {
+    fn gate(&self, session_id: &str) -> SessionGate {
         let mut gates = match self.gates.lock() {
             Ok(gates) => gates,
             Err(poisoned) => poisoned.into_inner(),
         };
-        gates
+        let lock = gates
             .entry(session_id.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+            .clone();
+        drop(gates);
+        SessionGate {
+            gates: Arc::clone(&self.gates),
+            id: session_id.to_string(),
+            lock: Arc::clone(&lock),
+            guard: None,
+            pending: Some(lock),
+        }
     }
 
     pub fn mark_awaiting_compact(&self, session_id: &str) {
@@ -94,7 +102,7 @@ pub async fn decide(
     let reserve = body::max_tokens(&body);
     let client_tokens = metrics::estimate_tokens(counted_bytes(&body));
     let _session_turn = match body::session_id(&body) {
-        Some(id) => Some(auto.gate(&id).lock_owned().await),
+        Some(id) => Some(auto.gate(&id).acquire().await),
         None => None,
     };
     let models = load_models(auto, client, api_key).await;
@@ -131,7 +139,7 @@ pub async fn decide(
     let user_text = body::last_user_text(&body);
     let persist = !all_tools.is_empty();
     let (model, tools, reason) = if let Some(row) = choice {
-        if !persist || user_text.trim().is_empty() {
+        if user_text.trim().is_empty() {
             (row.model, row.tools, None)
         } else {
             match classify_turn(
@@ -356,6 +364,38 @@ fn compact_turn(body: &Value, model: &str, models: Option<&OpenRouterModels>) ->
         model: model.to_string(),
         fallback_model: fallback.map(str::to_string),
     })
+}
+
+struct SessionGate {
+    gates: Arc<SyncMutex<HashMap<String, Arc<Mutex<()>>>>>,
+    id: String,
+    lock: Arc<Mutex<()>>,
+    guard: Option<OwnedMutexGuard<()>>,
+    pending: Option<Arc<Mutex<()>>>,
+}
+
+impl SessionGate {
+    async fn acquire(mut self) -> Self {
+        let lock = self
+            .pending
+            .take()
+            .unwrap_or_else(|| Arc::clone(&self.lock));
+        self.guard = Some(lock.lock_owned().await);
+        self
+    }
+}
+
+impl Drop for SessionGate {
+    fn drop(&mut self) {
+        self.guard.take();
+        let mut gates = match self.gates.lock() {
+            Ok(gates) => gates,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if Arc::strong_count(&self.lock) == 2 {
+            gates.remove(&self.id);
+        }
+    }
 }
 
 fn passthrough(body: &Value) -> Turn {

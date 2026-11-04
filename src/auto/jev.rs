@@ -211,6 +211,9 @@ fn flag(answers: &Value, name: &str) -> Option<bool> {
     if let Some(flag) = answer.as_bool() {
         return Some(flag);
     }
+    if let Some(flag) = bool_word(answer) {
+        return Some(flag);
+    }
     if let Some(flag) = noul_flag(answer) {
         return Some(flag);
     }
@@ -222,6 +225,14 @@ fn flag(answers: &Value, name: &str) -> Option<bool> {
         return Some(flag);
     }
     match raw.as_str()? {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+fn bool_word(value: &Value) -> Option<bool> {
+    match value.as_str()? {
         "true" => Some(true),
         "false" => Some(false),
         _ => None,
@@ -298,5 +309,23 @@ mod tests {
         assert_eq!(row.is_easy, Some(true));
         assert_eq!(row.is_hard, Some(false));
         assert!(!row.tools_enough);
+
+        let boundary = json!({
+            "answers": {
+                "is_easy": {"noul": 0.5},
+                "is_hard": {"noul": 0.49}
+            }
+        });
+        let row = classified_from_value(&boundary, &[]);
+        assert_eq!((row.is_easy, row.is_hard), (Some(true), Some(false)));
+        assert_eq!(row.choice_rule, "low");
+
+        let words = json!({"is_easy": "false", "is_hard": "true"});
+        let row = classified_from_value(&words, &[]);
+        assert_eq!(row.choice_rule, "high");
+
+        let missing = json!({"answers": {}});
+        let row = classified_from_value(&missing, &[]);
+        assert_eq!(row.choice_rule, "mid_unanswered");
     }
 }
