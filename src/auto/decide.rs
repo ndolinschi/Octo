@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
 
@@ -27,6 +28,7 @@ const TIERS: [&str; 3] = [catalog::LOW_MODEL, catalog::MID_MODEL, catalog::HIGH_
 pub struct Auto {
     sessions: Arc<SyncMutex<Sessions>>,
     catalog: Arc<Mutex<CatalogCache>>,
+    gates: Arc<SyncMutex<HashMap<String, Arc<Mutex<()>>>>>,
 }
 
 impl Auto {
@@ -34,7 +36,19 @@ impl Auto {
         Self {
             sessions: Arc::new(SyncMutex::new(Sessions::new(SESSION_TTL))),
             catalog: Arc::new(Mutex::new(CatalogCache::new(CATALOG_TTL))),
+            gates: Arc::new(SyncMutex::new(HashMap::new())),
         }
+    }
+
+    fn gate(&self, session_id: &str) -> Arc<Mutex<()>> {
+        let mut gates = match self.gates.lock() {
+            Ok(gates) => gates,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        gates
+            .entry(session_id.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
     }
 
     pub fn mark_awaiting_compact(&self, session_id: &str) {
@@ -79,6 +93,10 @@ pub async fn decide(
     let all_tools = body::tool_names(&body);
     let reserve = body::max_tokens(&body);
     let client_tokens = metrics::estimate_tokens(counted_bytes(&body));
+    let _session_turn = match body::session_id(&body) {
+        Some(id) => Some(auto.gate(&id).lock_owned().await),
+        None => None,
+    };
     let models = load_models(auto, client, api_key).await;
     let mut choice = match body::session_id(&body) {
         Some(id) => auto
@@ -110,23 +128,41 @@ pub async fn decide(
         }
     }
 
+    let user_text = body::last_user_text(&body);
+    let persist = !all_tools.is_empty();
     let (model, tools, reason) = if let Some(row) = choice {
-        let (enough, missing) = tools_cover(
-            &ClassifyCtx {
-                history,
-                session_id: body::session_id(&body),
-                client,
-                decisions_url,
-                api_key,
-                body: &body,
-                all_tools: &all_tools,
-            },
-            &row.tools,
-        )
-        .await;
-        let tools = jev::needed_tools(&all_tools, &row.tools, enough, &missing);
-        let reason = (tools != row.tools).then(|| "tool_update".to_string());
-        (row.model, tools, reason)
+        if !persist || user_text.trim().is_empty() {
+            (row.model, row.tools, None)
+        } else {
+            match classify_turn(
+                &ClassifyCtx {
+                    history,
+                    session_id: body::session_id(&body),
+                    client,
+                    decisions_url,
+                    api_key,
+                    body: &body,
+                    all_tools: &all_tools,
+                },
+                preferred.as_deref(),
+                &row.tools,
+                "reclassify",
+            )
+            .await
+            {
+                Some((model, tools)) => {
+                    let reason = if model != row.model {
+                        Some("reclassify".to_string())
+                    } else if tools != row.tools {
+                        Some("tool_update".to_string())
+                    } else {
+                        None
+                    };
+                    (model, tools, reason)
+                }
+                None => (row.model, row.tools, None),
+            }
+        }
     } else {
         match classify_fresh(
             &ClassifyCtx {
@@ -167,6 +203,7 @@ pub async fn decide(
         models.as_ref(),
         reserve,
         allow_compact,
+        persist,
     )
     .await
 }
@@ -181,6 +218,7 @@ async fn route(
     models: Option<&OpenRouterModels>,
     reserve: u64,
     allow_compact: bool,
+    persist: bool,
 ) -> Turn {
     let mut outgoing = shaped(&body, &model, &tools);
     let estimate = context_estimate(
@@ -204,6 +242,7 @@ async fn route(
             estimate.input_tokens_est,
             models,
             allow_compact,
+            persist,
         )
         .await;
     }
@@ -224,12 +263,15 @@ async fn route(
                 estimate.input_tokens_est,
                 models,
                 allow_compact,
+                persist,
             )
             .await;
         }
     }
     let input_tokens_est = metrics::estimate_tokens(counted_bytes(&outgoing));
-    remember(auto, &body, &model, &tools, input_tokens_est, false).await;
+    if persist {
+        remember(auto, &body, &model, &tools, input_tokens_est, false).await;
+    }
     Turn::Forward(Forward {
         body: serde_json::to_vec(&outgoing).unwrap_or_default(),
         rerouting: i64::from(reason.is_some()),
@@ -248,12 +290,17 @@ async fn finish_overflow(
     input_tokens_est: u64,
     models: Option<&OpenRouterModels>,
     allow_compact: bool,
+    persist: bool,
 ) -> Turn {
     if !allow_compact {
-        remember(auto, body, model, tools, input_tokens_est, false).await;
+        if persist {
+            remember(auto, body, model, tools, input_tokens_est, false).await;
+        }
         return forward_shaped(body, model, tools, reason);
     }
-    remember(auto, body, model, tools, input_tokens_est, true).await;
+    if persist {
+        remember(auto, body, model, tools, input_tokens_est, true).await;
+    }
     compact_turn(outgoing, model, models)
 }
 
@@ -333,28 +380,17 @@ async fn classify_fresh(
     ctx: &ClassifyCtx<'_>,
     preferred: Option<&str>,
 ) -> Option<(String, Vec<String>)> {
-    if ctx.api_key.is_empty() {
-        return None;
-    }
-    let asked = jev::classify(
-        ctx.client,
-        ctx.decisions_url,
-        ctx.api_key,
-        &body::last_user_text(ctx.body),
-        ctx.all_tools,
-        &[],
-    )
-    .await;
-    record_decision(ctx.history, ctx.session_id.clone(), "classify", &asked);
-    let classified = asked.parsed?;
-    let model = catalog::pick_model(classified.complexity, preferred);
-    let tools = jev::needed_tools(ctx.all_tools, &[], false, &classified.missing_tools);
-    Some((model, tools))
+    classify_turn(ctx, preferred, &[], "classify").await
 }
 
-async fn tools_cover(ctx: &ClassifyCtx<'_>, current: &[String]) -> (bool, Vec<String>) {
+async fn classify_turn(
+    ctx: &ClassifyCtx<'_>,
+    preferred: Option<&str>,
+    current: &[String],
+    purpose: &str,
+) -> Option<(String, Vec<String>)> {
     if ctx.api_key.is_empty() {
-        return (true, Vec::new());
+        return None;
     }
     let asked = jev::classify(
         ctx.client,
@@ -365,11 +401,16 @@ async fn tools_cover(ctx: &ClassifyCtx<'_>, current: &[String]) -> (bool, Vec<St
         current,
     )
     .await;
-    record_decision(ctx.history, ctx.session_id.clone(), "tools", &asked);
-    match asked.parsed {
-        Some(row) => (row.tools_enough, row.missing_tools),
-        None => (true, Vec::new()),
-    }
+    record_decision(ctx.history, ctx.session_id.clone(), purpose, &asked);
+    let classified = asked.parsed?;
+    let model = catalog::pick_model(classified.complexity, preferred);
+    let tools = jev::needed_tools(
+        ctx.all_tools,
+        current,
+        classified.tools_enough,
+        &classified.missing_tools,
+    );
+    Some((model, tools))
 }
 
 fn record_decision(

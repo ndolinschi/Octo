@@ -204,13 +204,21 @@ fn current_is_empty(answers: &Value) -> bool {
     answers.get("tools_enough").is_none()
 }
 
+const NOUL_TRUE: f64 = 0.5;
+
 fn flag(answers: &Value, name: &str) -> Option<bool> {
     let answer = answers.get(name)?;
     if let Some(flag) = answer.as_bool() {
         return Some(flag);
     }
+    if let Some(flag) = noul_flag(answer) {
+        return Some(flag);
+    }
     let raw = answer.get("value").or_else(|| answer.get("answer"))?;
     if let Some(flag) = raw.as_bool() {
+        return Some(flag);
+    }
+    if let Some(flag) = noul_flag(raw) {
         return Some(flag);
     }
     match raw.as_str()? {
@@ -218,6 +226,14 @@ fn flag(answers: &Value, name: &str) -> Option<bool> {
         "false" => Some(false),
         _ => None,
     }
+}
+
+fn noul_flag(value: &Value) -> Option<bool> {
+    value
+        .get("noul")
+        .and_then(Value::as_f64)
+        .or_else(|| value.as_f64())
+        .map(|score| score >= NOUL_TRUE)
 }
 
 pub fn needed_tools(
@@ -254,7 +270,9 @@ pub fn needed_tools(
 
 #[cfg(test)]
 mod tests {
-    use super::{choice, Complexity};
+    use serde_json::json;
+
+    use super::{choice, classified_from_value, Complexity};
 
     #[test]
     fn mid_names_the_reason() {
@@ -263,5 +281,22 @@ mod tests {
         assert_eq!(choice(None, Some(false)).1, "mid_unanswered");
         assert_eq!(choice(Some(true), Some(false)), (Complexity::High, "high"));
         assert_eq!(choice(Some(false), Some(true)), (Complexity::Low, "low"));
+    }
+
+    #[test]
+    fn noul_score_at_half_is_true() {
+        let value = json!({
+            "answers": {
+                "is_easy": {"type": "noul", "noul": 0.81},
+                "is_hard": {"type": "noul", "noul": 0.14},
+                "tools_enough": {"type": "noul", "noul": 0.44}
+            }
+        });
+        let row = classified_from_value(&value, &[]);
+        assert_eq!(row.complexity, Complexity::Low);
+        assert_eq!(row.choice_rule, "low");
+        assert_eq!(row.is_easy, Some(true));
+        assert_eq!(row.is_hard, Some(false));
+        assert!(!row.tools_enough);
     }
 }
