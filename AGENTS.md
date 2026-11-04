@@ -103,9 +103,9 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 | Failure mode | If DB open/migrate fails, proxy keeps serving with history disabled |
 | Shutdown | Graceful drain waits for in-flight inserts (bounded queue) |
 
-**Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output capture, status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`). Prompts and full bodies are bounded by capture limit (`max_body_bytes` at connect), not logged verbatim in tracing.
+**Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output raw capture, **`request_payload` / `response_payload`** (JSON with `provider` + nested `payload` per vendor shape), status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`). Prompts are not logged verbatim in tracing.
 
-**Typed labels:** `CallKind` (`llm`, `decision`), `CallProvider` (`openai`, `openrouter`, `claude`) — map from `proxy/select.rs` enums at handlers. Metrics use newtypes in `src/history/metrics.rs` (`TokenCount`, `CostMicros`, `Millis`).
+**Payload modules:** `src/history/payload/` dispatches on `CallKind` + `CallProvider` (`openai_chat`, `claude`, `decision`, shared `common` for usage/SSE). OpenAI and OpenRouter chat share the OpenAI chat shape; decisions use `decision.rs`.
 
 Integration tests: `tests/history_store.rs`, `tests/history_payload.rs`. Do not add `#[cfg(test)]` modules in `src/` (see `.cursor/rules/tests-live-outside-source.mdc`).
 
