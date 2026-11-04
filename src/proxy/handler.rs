@@ -190,6 +190,7 @@ async fn autoroute(state: &AppState, request: Request, chat: bool) -> Result<Res
     let session = session_id(&value);
     let turn = decide(
         &state.auto,
+        &state.history,
         &state.client,
         &state.config.openrouter_decisions_url,
         &api_key,

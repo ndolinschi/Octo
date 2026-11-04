@@ -4,9 +4,22 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Classified {
     pub complexity: Complexity,
+    pub choice_rule: &'static str,
+    pub is_hard: Option<bool>,
+    pub is_easy: Option<bool>,
+    pub tools_enough_raw: Option<String>,
     pub tools: Vec<String>,
     pub tools_enough: bool,
     pub missing_tools: Vec<String>,
+}
+
+pub struct Asked {
+    pub request_body: String,
+    pub response_body: String,
+    pub status: u16,
+    pub latency_ms: u128,
+    pub parsed: Option<Classified>,
+    pub choice_rule: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,7 +36,8 @@ pub async fn classify(
     user_text: &str,
     tool_names: &[String],
     current_tools: &[String],
-) -> Option<Classified> {
+) -> Asked {
+    let started = std::time::Instant::now();
     let payload = json!({
         "model": "typesafe/jev-1.13",
         "state": {
@@ -58,41 +72,106 @@ pub async fn classify(
             }
         }
     });
+    let request_body = payload.to_string();
     let response = client
         .post(decisions_url)
         .bearer_auth(api_key)
         .header("content-type", "application/json")
-        .body(payload.to_string())
+        .body(request_body.clone())
         .send()
-        .await
-        .ok()?
-        .error_for_status()
-        .ok()?;
-    let text = response.text().await.ok()?;
-    let value: Value = serde_json::from_str(&text).ok()?;
-    Some(classified_from_value(&value, tool_names))
+        .await;
+    let latency_ms = started.elapsed().as_millis();
+    let Ok(response) = response else {
+        return Asked {
+            request_body,
+            response_body: String::new(),
+            status: 0,
+            latency_ms,
+            parsed: None,
+            choice_rule: "request_failed",
+        };
+    };
+    let status = response.status().as_u16();
+    let Ok(text) = response.text().await else {
+        return Asked {
+            request_body,
+            response_body: String::new(),
+            status,
+            latency_ms,
+            parsed: None,
+            choice_rule: "request_failed",
+        };
+    };
+    if !(200..300).contains(&status) {
+        return Asked {
+            request_body,
+            response_body: text,
+            status,
+            latency_ms,
+            parsed: None,
+            choice_rule: "request_failed",
+        };
+    }
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return Asked {
+            request_body,
+            response_body: text,
+            status,
+            latency_ms,
+            parsed: None,
+            choice_rule: "unparsed",
+        };
+    };
+    let parsed = classified_from_value(&value, tool_names);
+    let choice_rule = parsed.choice_rule;
+    Asked {
+        request_body,
+        response_body: text,
+        status,
+        latency_ms,
+        parsed: Some(parsed),
+        choice_rule,
+    }
+}
+
+pub fn choice(is_hard: Option<bool>, is_easy: Option<bool>) -> (Complexity, &'static str) {
+    match (is_hard, is_easy) {
+        (Some(true), Some(false)) => (Complexity::High, "high"),
+        (Some(false), Some(true)) => (Complexity::Low, "low"),
+        (Some(false), Some(false)) => (Complexity::Mid, "mid_both_false"),
+        (Some(true), Some(true)) => (Complexity::Mid, "mid_both_true"),
+        _ => (Complexity::Mid, "mid_unanswered"),
+    }
 }
 
 fn classified_from_value(value: &Value, tool_names: &[String]) -> Classified {
     let answers = value.get("answers").unwrap_or(value);
-    let hard = noul(answers, "is_hard");
-    let easy = noul(answers, "is_easy");
-    let complexity = if hard && !easy {
-        Complexity::High
-    } else if easy && !hard {
-        Complexity::Low
-    } else {
-        Complexity::Mid
-    };
+    let is_hard = flag(answers, "is_hard");
+    let is_easy = flag(answers, "is_easy");
+    let (complexity, choice_rule) = choice(is_hard, is_easy);
     let missing_tools = name_list(answers, "tools_enough");
-    let tools_enough =
-        (noul(answers, "tools_enough") && missing_tools.is_empty()) || current_is_empty(answers);
+    let tools_enough_raw = raw_answer(answers, "tools_enough");
+    let tools_enough = (flag(answers, "tools_enough") == Some(true) && missing_tools.is_empty())
+        || current_is_empty(answers);
     Classified {
         complexity,
+        choice_rule,
+        is_hard,
+        is_easy,
+        tools_enough_raw,
         tools: tool_names.to_vec(),
         tools_enough,
         missing_tools,
     }
+}
+
+fn raw_answer(answers: &Value, name: &str) -> Option<String> {
+    let answer = answers.get(name)?;
+    let raw = answer
+        .get("value")
+        .or_else(|| answer.get("answer"))
+        .unwrap_or(answer);
+    Some(raw.to_string())
 }
 
 fn name_list(answers: &Value, name: &str) -> Vec<String> {
@@ -125,18 +204,20 @@ fn current_is_empty(answers: &Value) -> bool {
     answers.get("tools_enough").is_none()
 }
 
-fn noul(answers: &Value, name: &str) -> bool {
-    let Some(answer) = answers.get(name) else {
-        return false;
-    };
+fn flag(answers: &Value, name: &str) -> Option<bool> {
+    let answer = answers.get(name)?;
     if let Some(flag) = answer.as_bool() {
-        return flag;
+        return Some(flag);
     }
-    answer
-        .get("value")
-        .or_else(|| answer.get("answer"))
-        .and_then(|v| v.as_bool().or_else(|| v.as_str().map(|s| s == "true")))
-        .unwrap_or(false)
+    let raw = answer.get("value").or_else(|| answer.get("answer"))?;
+    if let Some(flag) = raw.as_bool() {
+        return Some(flag);
+    }
+    match raw.as_str()? {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
 }
 
 pub fn needed_tools(
@@ -169,4 +250,18 @@ pub fn needed_tools(
         }
     }
     tools
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{choice, Complexity};
+
+    #[test]
+    fn mid_names_the_reason() {
+        assert_eq!(choice(Some(false), Some(false)).1, "mid_both_false");
+        assert_eq!(choice(Some(true), Some(true)).1, "mid_both_true");
+        assert_eq!(choice(None, Some(false)).1, "mid_unanswered");
+        assert_eq!(choice(Some(true), Some(false)), (Complexity::High, "high"));
+        assert_eq!(choice(Some(false), Some(true)), (Complexity::Low, "low"));
+    }
 }

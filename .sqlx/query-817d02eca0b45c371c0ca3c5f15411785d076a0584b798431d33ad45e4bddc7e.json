@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO decisions (\n            created_at, session_id, purpose, model, status, latency_ms, user_text,\n            is_hard, is_easy, tools_enough, complexity, choice_rule, missing_tools,\n            request_payload, response_payload\n        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 15
+    },
+    "nullable": []
+  },
+  "hash": "817d02eca0b45c371c0ca3c5f15411785d076a0584b798431d33ad45e4bddc7e"
+}

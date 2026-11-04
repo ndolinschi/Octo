@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 use reqwest::Client;
 use serde_json::Value;
 
+use crate::history::{DecisionRow, History};
 use crate::providers::openrouter::{fetch_models, DEFAULT_MODELS_URL};
 
 use crate::providers::openrouter::OpenRouterModels;
@@ -67,6 +68,7 @@ impl Default for Auto {
 
 pub async fn decide(
     auto: &Auto,
+    history: &History,
     client: &Client,
     decisions_url: &str,
     api_key: &str,
@@ -110,11 +112,15 @@ pub async fn decide(
 
     let (model, tools, reason) = if let Some(row) = choice {
         let (enough, missing) = tools_cover(
-            client,
-            decisions_url,
-            api_key,
-            &body,
-            &all_tools,
+            &ClassifyCtx {
+                history,
+                session_id: body::session_id(&body),
+                client,
+                decisions_url,
+                api_key,
+                body: &body,
+                all_tools: &all_tools,
+            },
             &row.tools,
         )
         .await;
@@ -123,11 +129,15 @@ pub async fn decide(
         (row.model, tools, reason)
     } else {
         match classify_fresh(
-            client,
-            decisions_url,
-            api_key,
-            &body,
-            &all_tools,
+            &ClassifyCtx {
+                history,
+                session_id: body::session_id(&body),
+                client,
+                decisions_url,
+                api_key,
+                body: &body,
+                all_tools: &all_tools,
+            },
             preferred.as_deref(),
         )
         .await
@@ -309,55 +319,99 @@ fn passthrough(body: &Value) -> Turn {
     })
 }
 
+struct ClassifyCtx<'a> {
+    history: &'a History,
+    session_id: Option<String>,
+    client: &'a Client,
+    decisions_url: &'a str,
+    api_key: &'a str,
+    body: &'a Value,
+    all_tools: &'a [String],
+}
+
 async fn classify_fresh(
-    client: &Client,
-    decisions_url: &str,
-    api_key: &str,
-    body: &Value,
-    all_tools: &[String],
+    ctx: &ClassifyCtx<'_>,
     preferred: Option<&str>,
 ) -> Option<(String, Vec<String>)> {
-    if api_key.is_empty() {
+    if ctx.api_key.is_empty() {
         return None;
     }
-    let classified = jev::classify(
-        client,
-        decisions_url,
-        api_key,
-        &body::last_user_text(body),
-        all_tools,
+    let asked = jev::classify(
+        ctx.client,
+        ctx.decisions_url,
+        ctx.api_key,
+        &body::last_user_text(ctx.body),
+        ctx.all_tools,
         &[],
     )
-    .await?;
+    .await;
+    record_decision(ctx.history, ctx.session_id.clone(), "classify", &asked);
+    let classified = asked.parsed?;
     let model = catalog::pick_model(classified.complexity, preferred);
-    let tools = jev::needed_tools(all_tools, &[], false, &classified.missing_tools);
+    let tools = jev::needed_tools(ctx.all_tools, &[], false, &classified.missing_tools);
     Some((model, tools))
 }
 
-async fn tools_cover(
-    client: &Client,
-    decisions_url: &str,
-    api_key: &str,
-    body: &Value,
-    all_tools: &[String],
-    current: &[String],
-) -> (bool, Vec<String>) {
-    if api_key.is_empty() {
+async fn tools_cover(ctx: &ClassifyCtx<'_>, current: &[String]) -> (bool, Vec<String>) {
+    if ctx.api_key.is_empty() {
         return (true, Vec::new());
     }
-    match jev::classify(
-        client,
-        decisions_url,
-        api_key,
-        &body::last_user_text(body),
-        all_tools,
+    let asked = jev::classify(
+        ctx.client,
+        ctx.decisions_url,
+        ctx.api_key,
+        &body::last_user_text(ctx.body),
+        ctx.all_tools,
         current,
     )
-    .await
-    {
+    .await;
+    record_decision(ctx.history, ctx.session_id.clone(), "tools", &asked);
+    match asked.parsed {
         Some(row) => (row.tools_enough, row.missing_tools),
         None => (true, Vec::new()),
     }
+}
+
+fn record_decision(
+    history: &History,
+    session_id: Option<String>,
+    purpose: &str,
+    asked: &jev::Asked,
+) {
+    let parsed = asked.parsed.as_ref();
+    history.record_decision(DecisionRow {
+        session_id,
+        purpose: purpose.to_string(),
+        model: "typesafe/jev-1.13".to_string(),
+        status: asked.status,
+        latency_ms: asked.latency_ms,
+        user_text: user_text_from_request(&asked.request_body),
+        is_hard: parsed.and_then(|row| row.is_hard),
+        is_easy: parsed.and_then(|row| row.is_easy),
+        tools_enough: parsed.and_then(|row| row.tools_enough_raw.clone()),
+        complexity: parsed.map(|row| match row.complexity {
+            jev::Complexity::Low => "low",
+            jev::Complexity::Mid => "mid",
+            jev::Complexity::High => "high",
+        }),
+        choice_rule: asked.choice_rule.to_string(),
+        missing_tools: parsed.map(|row| row.missing_tools.join(",")),
+        request_payload: asked.request_body.clone(),
+        response_payload: asked.response_body.clone(),
+    });
+}
+
+fn user_text_from_request(body: &str) -> String {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("state")
+                .and_then(|state| state.get("user_text"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
 }
 
 async fn load_models(auto: &Auto, client: &Client, api_key: &str) -> Option<OpenRouterModels> {

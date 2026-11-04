@@ -16,7 +16,7 @@ mod error;
 mod metrics;
 mod payload;
 
-pub use call::{CallObserve, FinishedCall};
+pub use call::{CallObserve, DecisionRow, FinishedCall};
 pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use error::HistoryError;
@@ -111,6 +111,41 @@ impl History {
             HmacSha256::new_from_slice(&self.token_key).map_err(|_| HistoryError::TokenKey)?;
         mac.update(secret.as_bytes());
         Ok(hex::encode(mac.finalize().into_bytes()))
+    }
+
+    pub fn record_decision(&self, row: DecisionRow) {
+        let Some(pool) = self.pool.clone() else {
+            return;
+        };
+        let limit = self.capture_limit;
+        let inserts = self.inserts.clone();
+        let inflight = self.inflight.clone();
+        let idle = self.idle.clone();
+        tokio::spawn(async move {
+            let Ok(Ok(permit)) =
+                tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await
+            else {
+                tracing::warn!(
+                    choice_rule = %row.choice_rule,
+                    "decision insert skipped; queue wait timed out"
+                );
+                return;
+            };
+            inflight.fetch_add(1, Ordering::AcqRel);
+            struct Done(Arc<AtomicUsize>, Arc<Notify>);
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    if self.0.fetch_sub(1, Ordering::AcqRel) == 1 {
+                        self.1.notify_waiters();
+                    }
+                }
+            }
+            let _done = Done(inflight, idle);
+            let _permit = permit;
+            if let Err(err) = insert_decision(&pool, &row, limit).await {
+                tracing::warn!(%err, choice_rule = %row.choice_rule, "decision insert failed");
+            }
+        });
     }
 
     pub fn record(&self, call: FinishedCall) {
@@ -287,6 +322,73 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<(), HistoryError> {
             path: path.display().to_string(),
             source,
         })?;
+    Ok(())
+}
+
+fn flag_to_sql(flag: Option<bool>) -> Option<i64> {
+    flag.map(i64::from)
+}
+
+fn clip(text: &str, limit: usize) -> String {
+    if limit == 0 || text.len() <= limit {
+        return text.to_string();
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_string()
+}
+
+async fn insert_decision(
+    pool: &SqlitePool,
+    row: &DecisionRow,
+    capture_limit: usize,
+) -> Result<(), sqlx::Error> {
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let session_id = row.session_id.as_deref();
+    let purpose = row.purpose.as_str();
+    let model = row.model.as_str();
+    let status = i64::from(row.status);
+    let latency_ms = i64::try_from(row.latency_ms).unwrap_or(i64::MAX);
+    let user_text = clip(&row.user_text, capture_limit);
+    let is_hard = flag_to_sql(row.is_hard);
+    let is_easy = flag_to_sql(row.is_easy);
+    let tools_enough = row.tools_enough.as_deref();
+    let complexity = row.complexity;
+    let choice_rule = row.choice_rule.as_str();
+    let missing_tools = row.missing_tools.as_deref();
+    let request_payload = clip(&row.request_payload, capture_limit);
+    let response_payload = clip(&row.response_payload, capture_limit);
+    sqlx::query!(
+        r#"
+        INSERT INTO decisions (
+            created_at, session_id, purpose, model, status, latency_ms, user_text,
+            is_hard, is_easy, tools_enough, complexity, choice_rule, missing_tools,
+            request_payload, response_payload
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+        created_at,
+        session_id,
+        purpose,
+        model,
+        status,
+        latency_ms,
+        user_text,
+        is_hard,
+        is_easy,
+        tools_enough,
+        complexity,
+        choice_rule,
+        missing_tools,
+        request_payload,
+        response_payload,
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

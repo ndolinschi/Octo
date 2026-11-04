@@ -16,6 +16,23 @@ pub struct CallObserve {
     pub on_response: Option<ResponseHook>,
 }
 
+pub struct DecisionRow {
+    pub session_id: Option<String>,
+    pub purpose: String,
+    pub model: String,
+    pub status: u16,
+    pub latency_ms: u128,
+    pub user_text: String,
+    pub is_hard: Option<bool>,
+    pub is_easy: Option<bool>,
+    pub tools_enough: Option<String>,
+    pub complexity: Option<&'static str>,
+    pub choice_rule: String,
+    pub missing_tools: Option<String>,
+    pub request_payload: String,
+    pub response_payload: String,
+}
+
 pub struct FinishedCall {
     pub kind: CallKind,
     pub provider: CallProvider,
