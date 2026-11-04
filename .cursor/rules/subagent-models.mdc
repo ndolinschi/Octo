@@ -1,0 +1,13 @@
+---
+description: Subagents may only use Grok 4.7 Low or Composer 2.5
+alwaysApply: true
+---
+
+# Subagent models
+
+When launching a subagent (Task tool or any other subagent), set `model` explicitly. Allowed slugs:
+
+- `grok-4.7-low` — Grok 4.7 Low. Default for review, research, and exploration.
+- `composer-2.5` — Composer 2.5. Use for implementation-heavy subagents.
+
+Do not launch High or Fast models. That includes every other slug: `inherit`, any `fast` variant, and any `medium`, `high`, `xhigh`, or `max` thinking level. If the user names a disallowed model, say it is not allowed and use one of the two slugs above.
