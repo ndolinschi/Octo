@@ -67,6 +67,9 @@ async fn streamed_response_is_forwarded_then_stored() {
             history: history.clone(),
             kind: CallKind::Llm,
             provider: CallProvider::OpenAi,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -128,6 +131,9 @@ async fn missing_token_is_not_a_shared_identity() {
             history: history.clone(),
             kind: CallKind::Decision,
             provider: CallProvider::OpenRouter,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -165,6 +171,9 @@ async fn decisions_response_is_stored_with_its_kind() {
             history: history.clone(),
             kind: CallKind::Decision,
             provider: CallProvider::OpenRouter,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -224,6 +233,9 @@ async fn usage_past_the_stored_prefix_is_kept() {
             history: history.clone(),
             kind: CallKind::Llm,
             provider: CallProvider::OpenAi,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -292,6 +304,9 @@ async fn upstream_chunk_error_is_stored_as_failure() {
             history: history.clone(),
             kind: CallKind::Llm,
             provider: CallProvider::OpenAi,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await

@@ -49,4 +49,9 @@ pub fn router(config: &Config) -> Router<AppState> {
             "/openrouter/v1/messages",
             post(handler::messages_openrouter),
         )
+        .route("/autoroute/v1/messages", post(handler::autoroute_messages))
+        .route(
+            "/autoroute/v1/chat/completions",
+            post(handler::autoroute_chat),
+        )
 }
