@@ -101,12 +101,13 @@ pub async fn decide(
     let all_tools = body::tool_names(&body);
     let reserve = body::max_tokens(&body);
     let client_tokens = metrics::estimate_tokens(counted_bytes(&body));
-    let _session_turn = match body::session_id(&body) {
+    let actor = body::session_key(&body);
+    let _session_turn = match actor.clone() {
         Some(id) => Some(auto.gate(&id).acquire().await),
         None => None,
     };
     let models = load_models(auto, client, api_key).await;
-    let mut choice = match body::session_id(&body) {
+    let mut choice = match actor.clone() {
         Some(id) => auto
             .sessions
             .lock()
@@ -130,7 +131,7 @@ pub async fn decide(
                 let outgoing = shaped(&body, &row.model, &row.tools);
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
                 return compact_turn(&outgoing, &row.model, models.as_ref());
-            } else if let Some(id) = body::session_id(&body) {
+            } else if let Some(id) = actor.clone() {
                 auto.clear_awaiting_compact(&id);
             }
         }
@@ -139,13 +140,13 @@ pub async fn decide(
     let user_text = body::last_user_text(&body);
     let persist = !all_tools.is_empty();
     let (model, tools, reason) = if let Some(row) = choice {
-        if user_text.trim().is_empty() {
+        if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
             (row.model, row.tools, None)
         } else {
             match classify_turn(
                 &ClassifyCtx {
                     history,
-                    session_id: body::session_id(&body),
+                    session_id: actor.clone(),
                     client,
                     decisions_url,
                     api_key,
@@ -171,11 +172,13 @@ pub async fn decide(
                 None => (row.model, row.tools, None),
             }
         }
+    } else if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
+        return passthrough(&body);
     } else {
         match classify_fresh(
             &ClassifyCtx {
                 history,
-                session_id: body::session_id(&body),
+                session_id: actor.clone(),
                 client,
                 decisions_url,
                 api_key,
@@ -193,7 +196,7 @@ pub async fn decide(
             ),
             None => {
                 if forced_reason.is_some() {
-                    if let Some(id) = body::session_id(&body) {
+                    if let Some(id) = actor.clone() {
                         auto.clear_awaiting_compact(&id);
                     }
                 }
@@ -335,7 +338,7 @@ async fn remember(
     prev_input_tokens_est: u64,
     awaiting_compact: bool,
 ) {
-    let Some(id) = body::session_id(body) else {
+    let Some(id) = body::session_key(body) else {
         return;
     };
     let Ok(mut sessions) = auto.sessions.lock() else {

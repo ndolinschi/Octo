@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use std::sync::Arc;
 
-use crate::auto::{decide, session_id, Compact, Turn};
+use crate::auto::{decide, session_key, Compact, Turn};
 use crate::history::{
     describe_input, request_payload, response_payload, token_from_headers, usage_from_output,
     CallKind, CallObserve, CallProvider, FinishedCall, Millis,
@@ -187,7 +187,7 @@ async fn autoroute(state: &AppState, request: Request, chat: bool) -> Result<Res
         .map_err(ProxyError::from_read_body)?;
     let api_key = token_from_headers(&parts.headers);
     let value: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
-    let session = session_id(&value);
+    let session = session_key(&value);
     let turn = decide(
         &state.auto,
         &state.history,
@@ -377,7 +377,7 @@ fn compact_failed(status: u16, body: &[u8]) -> bool {
 
 fn session_of_bytes(body: &[u8]) -> Option<String> {
     let value: Value = serde_json::from_slice(body).ok()?;
-    session_id(&value)
+    session_key(&value)
 }
 
 fn record_compact(

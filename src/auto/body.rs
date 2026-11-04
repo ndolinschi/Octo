@@ -10,6 +10,30 @@ pub fn session_id(body: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+pub fn session_key(body: &Value) -> Option<String> {
+    let id = session_id(body)?;
+    if is_subagent(body) {
+        Some(format!("{id}#subagent"))
+    } else {
+        Some(id)
+    }
+}
+
+pub fn is_subagent(body: &Value) -> bool {
+    system_text(body).contains("cc_is_subagent=true")
+}
+
+pub fn is_housekeeping(text: &str) -> bool {
+    text.contains("Write the title in the predominant language")
+        || text.contains("Describe your most recent action")
+        || text.contains("[SYSTEM NOTIFICATION - NOT USER INPUT]")
+        || text.contains("Current state: working")
+}
+
+fn system_text(body: &Value) -> String {
+    content_text(body.get("system"))
+}
+
 pub fn last_user_text(body: &Value) -> String {
     let Some(messages) = body.get("messages").and_then(Value::as_array) else {
         return String::new();

@@ -1,8 +1,8 @@
 use serde_json::json;
 
 use octo::auto::{
-    context_estimate, dropped, filter_tools, needed_tools, needs_compact, output_reserve,
-    pick_model, session_id, Complexity,
+    context_estimate, dropped, filter_tools, is_housekeeping, needed_tools, needs_compact,
+    output_reserve, pick_model, session_id, session_key, Complexity,
 };
 
 #[test]
@@ -13,6 +13,16 @@ fn session_id_comes_from_metadata_user_id() {
         }
     });
     assert_eq!(session_id(&body).as_deref(), Some("abc"));
+    assert_eq!(session_key(&body).as_deref(), Some("abc"));
+    let sub = json!({
+        "metadata": {"user_id": "{\"session_id\":\"abc\"}"},
+        "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;"
+    });
+    assert_eq!(session_key(&sub).as_deref(), Some("abc#subagent"));
+    assert!(is_housekeeping(
+        "Describe your most recent action in 3-5 words"
+    ));
+    assert!(!is_housekeeping("what is about this branch"));
 }
 
 #[test]
