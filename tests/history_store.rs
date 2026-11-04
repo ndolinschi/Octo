@@ -12,7 +12,6 @@ use futures_util::StreamExt;
 use octo::history::{CallObserve, History};
 use octo::providers::utils::{forward_content_type, proxy_post};
 use reqwest::Client;
-use sqlx::Row;
 use tokio::net::TcpListener;
 
 #[tokio::test]
@@ -88,40 +87,23 @@ async fn streamed_response_is_forwarded_then_stored() {
     drop(body);
 
     let hash = history.token_hash("sk-secret");
-    let mut stored = None;
-    for _ in 0..50 {
-        let row = sqlx::query(
-            "SELECT provider, model, message, input, output, token_hash, status, request_bytes, response_bytes FROM calls",
+    let row = poll_call(&history, || {
+        sqlx::query!(
+            "SELECT provider, model, message, input, output, token_hash, status, request_bytes, response_bytes FROM calls"
         )
         .fetch_optional(history.pool().unwrap())
-        .await
-        .unwrap();
-        if let Some(row) = row {
-            stored = Some(row);
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    let row = stored.expect("history row");
-    let provider: String = row.get("provider");
-    let model: String = row.get("model");
-    let message: String = row.get("message");
-    let stored_input: String = row.get("input");
-    let output: String = row.get("output");
-    let token_hash: String = row.get("token_hash");
-    let status: i64 = row.get("status");
-    let request_bytes: i64 = row.get("request_bytes");
-    let response_bytes: i64 = row.get("response_bytes");
-    assert_eq!(provider, "openai");
-    assert_eq!(model, "gpt-test");
-    assert_eq!(message, "hello");
-    assert_eq!(stored_input, input);
-    assert_eq!(output, "onetwo");
-    assert_eq!(token_hash, hash);
-    assert!(!token_hash.contains("sk-secret"));
-    assert_eq!(status, 200);
-    assert_eq!(request_bytes, input.len() as i64);
-    assert_eq!(response_bytes, 6);
+    })
+    .await;
+    assert_eq!(row.provider, "openai");
+    assert_eq!(row.model.as_deref(), Some("gpt-test"));
+    assert_eq!(row.message.as_deref(), Some("hello"));
+    assert_eq!(row.input, input);
+    assert_eq!(row.output, "onetwo");
+    assert_eq!(row.token_hash.as_deref(), Some(hash.as_str()));
+    assert!(!hash.contains("sk-secret"));
+    assert_eq!(row.status, 200);
+    assert_eq!(row.request_bytes, input.len() as i64);
+    assert_eq!(row.response_bytes, 6);
 }
 
 #[tokio::test]
@@ -153,18 +135,10 @@ async fn missing_token_is_not_a_shared_identity() {
     let mut body = response.into_body().into_data_stream();
     while body.next().await.is_some() {}
 
-    let mut token_hash = Some("pending".to_string());
-    for _ in 0..50 {
-        let row = sqlx::query("SELECT token_hash FROM calls")
-            .fetch_optional(history.pool().unwrap())
-            .await
-            .unwrap();
-        if let Some(row) = row {
-            token_hash = row.get("token_hash");
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    let token_hash = poll_call(&history, || {
+        sqlx::query_scalar!("SELECT token_hash FROM calls").fetch_optional(history.pool().unwrap())
+    })
+    .await;
     assert_eq!(token_hash, None);
 }
 
@@ -199,19 +173,15 @@ async fn decisions_response_is_stored_with_its_kind() {
     let mut body = response.into_body().into_data_stream();
     while body.next().await.is_some() {}
 
-    let row = wait_row(
-        &history,
-        "SELECT kind, provider, message, output, status FROM calls",
-    )
+    let row = poll_call(&history, || {
+        sqlx::query!("SELECT kind, provider, message, output, status FROM calls")
+            .fetch_optional(history.pool().unwrap())
+    })
     .await;
-    let kind: String = row.get("kind");
-    let provider: String = row.get("provider");
-    let message: String = row.get("message");
-    let status: i64 = row.get("status");
-    assert_eq!(kind, "decision");
-    assert_eq!(provider, "openrouter");
-    assert_eq!(message, "pick");
-    assert_eq!(status, 200);
+    assert_eq!(row.kind, "decision");
+    assert_eq!(row.provider, "openrouter");
+    assert_eq!(row.message.as_deref(), Some("pick"));
+    assert_eq!(row.status, 200);
 }
 
 #[tokio::test]
@@ -265,21 +235,16 @@ async fn usage_past_the_stored_prefix_is_kept() {
     }
     drop(body);
     assert_eq!(got, payload.as_bytes());
-    let row = wait_row(
-        &history,
-        "SELECT output, input_tokens, output_tokens, cost, response_bytes FROM calls",
-    )
+    let row = poll_call(&history, || {
+        sqlx::query!("SELECT output, input_tokens, output_tokens, cost, response_bytes FROM calls")
+            .fetch_optional(history.pool().unwrap())
+    })
     .await;
-    let output: String = row.get("output");
-    let input_tokens: i64 = row.get("input_tokens");
-    let output_tokens: i64 = row.get("output_tokens");
-    let cost: f64 = row.get("cost");
-    let response_bytes: i64 = row.get("response_bytes");
-    assert_eq!(output, "XXXX");
-    assert_eq!(input_tokens, 8);
-    assert_eq!(output_tokens, 9);
-    assert_eq!(cost, 1.5);
-    assert_eq!(response_bytes, payload.len() as i64);
+    assert_eq!(row.output, "XXXX");
+    assert_eq!(row.input_tokens, Some(8));
+    assert_eq!(row.output_tokens, Some(9));
+    assert_eq!(row.cost, Some(1.5));
+    assert_eq!(row.response_bytes, payload.len() as i64);
 }
 
 #[tokio::test]
@@ -332,20 +297,21 @@ async fn upstream_chunk_error_is_stored_as_failure() {
     let mut body = response.into_body().into_data_stream();
     while body.next().await.is_some() {}
     drop(body);
-    let row = wait_row(&history, "SELECT status, output FROM calls").await;
-    let status: i64 = row.get("status");
-    let output: String = row.get("output");
-    assert_eq!(status, 502);
-    assert_eq!(output, "partial");
+    let row = poll_call(&history, || {
+        sqlx::query!("SELECT status, output FROM calls").fetch_optional(history.pool().unwrap())
+    })
+    .await;
+    assert_eq!(row.status, 502);
+    assert_eq!(row.output, "partial");
 }
 
-async fn wait_row(history: &History, sql: &str) -> sqlx::sqlite::SqliteRow {
+async fn poll_call<T, F, Fut>(_: &History, mut load: F) -> T
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<Option<T>, sqlx::Error>>,
+{
     for _ in 0..50 {
-        if let Some(row) = sqlx::query(sql)
-            .fetch_optional(history.pool().unwrap())
-            .await
-            .unwrap()
-        {
+        if let Some(row) = load().await.unwrap() {
             return row;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;

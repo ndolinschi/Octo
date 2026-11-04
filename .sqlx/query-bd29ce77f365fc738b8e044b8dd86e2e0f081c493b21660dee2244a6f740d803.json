@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT output, input_tokens, output_tokens, cost, response_bytes FROM calls",
+  "describe": {
+    "columns": [
+      {
+        "name": "output",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "input_tokens",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "output_tokens",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cost",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "response_bytes",
+        "ordinal": 4,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "bd29ce77f365fc738b8e044b8dd86e2e0f081c493b21660dee2244a6f740d803"
+}

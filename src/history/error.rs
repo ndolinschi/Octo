@@ -12,6 +12,12 @@ pub enum HistoryError {
         #[source]
         source: std::io::Error,
     },
+    #[error("failed to migrate history database at {path}")]
+    Migrate {
+        path: String,
+        #[source]
+        source: sqlx::migrate::MigrateError,
+    },
     #[error("failed to read history token key at {path}")]
     ReadKey {
         path: String,
