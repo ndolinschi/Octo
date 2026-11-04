@@ -3,3 +3,5 @@ backend = "openai"
 
 [llm.messages]
 backend = "claude"
+# Use "openrouter" when Claude Code points at Octo/OpenRouter Messages API
+# (see config/claude-code.env.example).

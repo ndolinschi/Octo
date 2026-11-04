@@ -132,3 +132,7 @@ curl http://127.0.0.1:8080/openrouter/v1/messages \
 ```
 
 On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/llm.toml`, or send `"type": "OPENROUTER"` in the JSON body (stripped before upstream).
+
+### Claude Code + cheap OpenRouter models
+
+Claude Code reads **`ANTHROPIC_DEFAULT_*_MODEL`** and **`CLAUDE_CODE_SUBAGENT_MODEL`** (not Octo). Point it at Octo or OpenRouter, then map Haiku/Sonnet/Opus slots to cheap slugs. Example (Gemma for Haiku, DeepSeek Flash for Sonnet, Haiku-latest for Opus, Gemma for subagents): copy [`config/claude-code.env.example`](config/claude-code.env.example) and `source` it before `claude`.
