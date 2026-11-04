@@ -57,6 +57,39 @@ fn content_text(content: Option<&Value>) -> Option<String> {
     None
 }
 
+pub fn tail_suffix_bytes<'a>(prefix: &'a [u8], tail: &'a [u8], response_bytes: usize) -> &'a [u8] {
+    let tail_len = tail.len();
+    if tail_len == 0 {
+        return &[];
+    }
+    let tail_start = response_bytes.saturating_sub(tail_len);
+    let prefix_len = prefix.len();
+    if tail_start >= prefix_len {
+        return tail;
+    }
+    let skip = prefix_len - tail_start;
+    tail.get(skip..).unwrap_or(&[])
+}
+
+pub fn streaming_events(prefix: &str, tail: &str, response_bytes: usize) -> Vec<Value> {
+    let suffix = tail_suffix_bytes(prefix.as_bytes(), tail.as_bytes(), response_bytes);
+    let mut events = sse_events(prefix);
+    if suffix.is_empty() {
+        return events;
+    }
+    for event in sse_events(&String::from_utf8_lossy(suffix)) {
+        events.push(event);
+    }
+    events
+}
+
+pub fn streaming_response(format: &str, prefix: &str, tail: &str, response_bytes: usize) -> Value {
+    serde_json::json!({
+        "format": format,
+        "events": streaming_events(prefix, tail, response_bytes),
+    })
+}
+
 pub fn sse_events(captured: &str) -> Vec<Value> {
     let mut events = Vec::new();
     for line in captured.lines() {
@@ -86,9 +119,14 @@ pub fn usage_from_output(output: &str) -> ParsedUsage {
     found
 }
 
-pub fn usage_from_parts(prefix: &str, tail: &str) -> ParsedUsage {
+pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> ParsedUsage {
+    let suffix = tail_suffix_bytes(prefix.as_bytes(), tail.as_bytes(), response_bytes);
     let head = usage_from_output(prefix);
-    let end = usage_from_output(tail);
+    let end = if suffix.is_empty() {
+        ParsedUsage::EMPTY
+    } else {
+        usage_from_output(&String::from_utf8_lossy(suffix))
+    };
     ParsedUsage {
         input_tokens: head.input_tokens.or(end.input_tokens),
         output_tokens: end.output_tokens.or(head.output_tokens),

@@ -33,12 +33,30 @@ fn request_payload_tags_provider_and_preserves_json() {
 fn claude_response_payload_keeps_anthropic_events() {
     use octo::history::response_payload;
 
-    let output = "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n";
-    let raw = response_payload(CallKind::Llm, CallProvider::Claude, output, "");
+    let output =
+        "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n";
+    let raw = response_payload(
+        CallKind::Llm,
+        CallProvider::Claude,
+        output,
+        "",
+        output.len(),
+    );
     let value: Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(value["provider"], "claude");
     assert_eq!(value["payload"]["format"], "anthropic_messages");
     assert_eq!(value["payload"]["events"][0]["type"], "message_start");
+}
+
+#[test]
+fn response_payload_does_not_duplicate_short_sse() {
+    use octo::history::response_payload;
+
+    let line = "data: {\"type\":\"ping\"}\n\n";
+    let len = line.len();
+    let raw = response_payload(CallKind::Llm, CallProvider::OpenAi, line, line, len);
+    let value: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(value["payload"]["events"].as_array().unwrap().len(), 1);
 }
 
 #[test]

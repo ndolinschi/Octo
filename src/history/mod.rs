@@ -117,19 +117,31 @@ impl History {
         let Some(pool) = self.pool.clone() else {
             return;
         };
-        let Ok(permit) = self.inserts.clone().try_acquire_owned() else {
-            tracing::warn!(
-                kind = %call.kind,
-                provider = %call.provider,
-                "history insert skipped; queue full"
-            );
-            return;
-        };
-        self.inflight.fetch_add(1, Ordering::AcqRel);
+        let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
         tokio::spawn(async move {
-            let _permit = permit;
+            let permit =
+                match tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await {
+                    Ok(Ok(permit)) => permit,
+                    Ok(Err(_)) => {
+                        tracing::warn!(
+                            kind = %call.kind,
+                            provider = %call.provider,
+                            "history insert skipped; insert pool closed"
+                        );
+                        return;
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            kind = %call.kind,
+                            provider = %call.provider,
+                            "history insert skipped; queue wait timed out"
+                        );
+                        return;
+                    }
+                };
+            inflight.fetch_add(1, Ordering::AcqRel);
             struct Done(Arc<AtomicUsize>, Arc<Notify>);
             impl Drop for Done {
                 fn drop(&mut self) {
@@ -139,6 +151,7 @@ impl History {
                 }
             }
             let _done = Done(inflight, idle);
+            let _permit = permit;
             let captured_bytes = call.request_bytes.saturating_add(call.response_bytes);
             match insert_call(&pool, &call).await {
                 Ok(()) => {

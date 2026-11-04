@@ -123,10 +123,15 @@ impl Capture {
         let token_hash = if secret.is_empty() {
             None
         } else {
-            observe.history.token_hash(&secret).ok()
+            match observe.history.token_hash(&secret) {
+                Ok(hash) => Some(hash),
+                Err(err) => {
+                    tracing::warn!(%err, "history token hash failed");
+                    None
+                }
+            }
         };
-        let request_payload =
-            request_payload(observe.kind, observe.provider, &input);
+        let request_payload = request_payload(observe.kind, observe.provider, &input);
         Self {
             token_hash,
             observe: CallObserve {
@@ -147,12 +152,13 @@ impl Capture {
     fn finish(self, status: u16, output: Vec<u8>, tail: Vec<u8>, response_bytes: usize) {
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let tail_text = String::from_utf8_lossy(&tail);
-        let usage = usage_from_parts(&output_text, &tail_text);
+        let usage = usage_from_parts(&output_text, &tail_text, response_bytes);
         let response_payload = response_payload(
             self.observe.kind,
             self.observe.provider,
             &output_text,
             &tail_text,
+            response_bytes,
         );
         let latency_ms = Millis::new(self.started.elapsed().as_millis() as u64);
         self.observe.history.record(FinishedCall {

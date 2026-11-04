@@ -53,8 +53,8 @@ pub fn usage_from_output(output: &str) -> ParsedUsage {
     common::usage_from_output(output)
 }
 
-pub fn usage_from_parts(prefix: &str, tail: &str) -> ParsedUsage {
-    common::usage_from_parts(prefix, tail)
+pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> ParsedUsage {
+    common::usage_from_parts(prefix, tail, response_bytes)
 }
 
 pub fn request_payload(kind: CallKind, provider: CallProvider, body: &str) -> String {
@@ -71,12 +71,15 @@ pub fn response_payload(
     provider: CallProvider,
     prefix: &str,
     tail: &str,
+    response_bytes: usize,
 ) -> String {
     let inner = match (kind, provider) {
-        (CallKind::Decision, CallProvider::OpenRouter) => decision::response(prefix, tail),
-        (_, CallProvider::Claude) => claude::response(prefix, tail),
+        (CallKind::Decision, CallProvider::OpenRouter) => {
+            decision::response(prefix, tail, response_bytes)
+        }
+        (_, CallProvider::Claude) => claude::response(prefix, tail, response_bytes),
         (_, CallProvider::OpenAi | CallProvider::OpenRouter) => {
-            openai_chat::response(prefix, tail)
+            openai_chat::response(prefix, tail, response_bytes)
         }
     };
     envelope::tagged_string(provider, inner)
