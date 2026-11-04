@@ -110,6 +110,8 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 
 **Payload modules:** `src/history/payload/` dispatches on `CallKind` + `CallProvider` (`openai_chat`, `claude`, `decision`, shared `common` for usage/SSE). OpenAI and OpenRouter **chat** share the OpenAI chat shape; **messages** calls (`CallKind::Messages`, direct Anthropic or OpenRouter) use the Anthropic messages shape; decisions use `decision.rs`.
 
+**OpenRouter model catalog (routing):** `octo::providers::openrouter::fetch_models` GETs the public models API (`DEFAULT_MODELS_URL`), optionally with a Bearer key, and returns `OpenRouterModels { free, paid }` (`models_from_json` for tests). Free = `:free` suffix or zero prompt/completion pricing.
+
 Integration tests: `tests/history_store.rs`, `tests/history_payload.rs`. Do not add `#[cfg(test)]` modules in `src/` (see `.cursor/rules/tests-live-outside-source.mdc`).
 
 After changing SQL or `query!` macros:
