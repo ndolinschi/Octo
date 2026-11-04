@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use crate::history::CallObserve;
+use crate::history::{CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
 use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider, MessagesProvider};
 use crate::state::AppState;
@@ -23,14 +23,11 @@ async fn forward_chat(
     let (provider, upstream_body) =
         resolve_chat_provider(path_hint, &body_bytes, state.default_chat_provider)?;
     let body_bytes = Bytes::from(upstream_body);
-    let (provider_name, forward) = match provider {
-        ChatCompatProvider::OpenAi => ("openai", true),
-        ChatCompatProvider::OpenRouter => ("openrouter", false),
-    };
+    let forward = matches!(provider, ChatCompatProvider::OpenAi);
     let observe = Some(CallObserve {
         history: state.history.clone(),
-        kind: "llm",
-        provider: provider_name,
+        kind: CallKind::Llm,
+        provider: CallProvider::from(provider),
     });
     if forward {
         state
@@ -79,8 +76,8 @@ async fn forward_messages(state: &AppState, request: Request) -> Result<Response
                     request,
                     Some(CallObserve {
                         history: state.history.clone(),
-                        kind: "llm",
-                        provider: "claude",
+                        kind: CallKind::Llm,
+                        provider: CallProvider::Claude,
                     }),
                 )
                 .await
@@ -107,8 +104,8 @@ pub async fn decisions(
             request,
             Some(CallObserve {
                 history: state.history.clone(),
-                kind: "decision",
-                provider: "openrouter",
+                kind: CallKind::Decision,
+                provider: CallProvider::OpenRouter,
             }),
         )
         .await

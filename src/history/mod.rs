@@ -9,11 +9,15 @@ use sqlx::SqlitePool;
 use tokio::sync::{Notify, Semaphore};
 
 mod call;
+mod call_kind;
+mod call_provider;
 mod connect;
 mod error;
 mod payload;
 
 pub use call::{CallObserve, FinishedCall};
+pub use call_kind::CallKind;
+pub use call_provider::CallProvider;
 pub use error::HistoryError;
 pub use payload::{describe_input, token_from_headers, usage_from_output};
 
@@ -110,7 +114,7 @@ impl History {
         };
         let Ok(permit) = self.inserts.clone().try_acquire_owned() else {
             tracing::warn!(
-                kind = call.kind,
+                kind = %call.kind,
                 provider = %call.provider,
                 "history insert skipped; queue full"
             );
@@ -134,7 +138,7 @@ impl History {
             match insert_call(&pool, &call).await {
                 Ok(()) => {
                     tracing::info!(
-                        kind = call.kind,
+                        kind = %call.kind,
                         provider = %call.provider,
                         model = call.model.as_deref().unwrap_or(""),
                         status = call.status,
@@ -151,7 +155,7 @@ impl History {
                 Err(err) => {
                     tracing::warn!(
                         %err,
-                        kind = call.kind,
+                        kind = %call.kind,
                         provider = %call.provider,
                         status = call.status,
                         "history insert failed"
@@ -273,8 +277,8 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
-    let kind = call.kind;
-    let provider = call.provider;
+    let kind = call.kind.as_str();
+    let provider = call.provider.as_str();
     let model = call.model.as_deref();
     let token_hash = call.token_hash.as_deref();
     let message = call.message.as_deref();

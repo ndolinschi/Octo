@@ -9,7 +9,7 @@ use axum::{
     Router,
 };
 use futures_util::StreamExt;
-use octo::history::{CallObserve, History};
+use octo::history::{CallKind, CallObserve, CallProvider, History};
 use octo::providers::utils::{forward_content_type, proxy_post};
 use reqwest::Client;
 use tokio::net::TcpListener;
@@ -65,8 +65,8 @@ async fn streamed_response_is_forwarded_then_stored() {
         },
         Some(CallObserve {
             history: history.clone(),
-            kind: "llm",
-            provider: "openai",
+            kind: CallKind::Llm,
+            provider: CallProvider::OpenAi,
         }),
     )
     .await
@@ -126,8 +126,8 @@ async fn missing_token_is_not_a_shared_identity() {
         forward_content_type,
         Some(CallObserve {
             history: history.clone(),
-            kind: "decision",
-            provider: "openrouter",
+            kind: CallKind::Decision,
+            provider: CallProvider::OpenRouter,
         }),
     )
     .await
@@ -163,8 +163,8 @@ async fn decisions_response_is_stored_with_its_kind() {
         forward_content_type,
         Some(CallObserve {
             history: history.clone(),
-            kind: "decision",
-            provider: "openrouter",
+            kind: CallKind::Decision,
+            provider: CallProvider::OpenRouter,
         }),
     )
     .await
@@ -222,8 +222,8 @@ async fn usage_past_the_stored_prefix_is_kept() {
         forward_content_type,
         Some(CallObserve {
             history: history.clone(),
-            kind: "llm",
-            provider: "openai",
+            kind: CallKind::Llm,
+            provider: CallProvider::OpenAi,
         }),
     )
     .await
@@ -288,8 +288,8 @@ async fn upstream_chunk_error_is_stored_as_failure() {
         forward_content_type,
         Some(CallObserve {
             history: history.clone(),
-            kind: "llm",
-            provider: "openai",
+            kind: CallKind::Llm,
+            provider: CallProvider::OpenAi,
         }),
     )
     .await

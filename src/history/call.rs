@@ -1,14 +1,16 @@
+use super::call_kind::CallKind;
+use super::call_provider::CallProvider;
 use super::History;
 
 pub struct CallObserve {
     pub history: History,
-    pub kind: &'static str,
-    pub provider: &'static str,
+    pub kind: CallKind,
+    pub provider: CallProvider,
 }
 
 pub struct FinishedCall {
-    pub kind: &'static str,
-    pub provider: &'static str,
+    pub kind: CallKind,
+    pub provider: CallProvider,
     pub model: Option<String>,
     pub token_hash: Option<String>,
     pub message: Option<String>,

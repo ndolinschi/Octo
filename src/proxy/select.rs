@@ -113,6 +113,23 @@ pub fn parse_messages_provider_token(raw: &str) -> Option<MessagesProvider> {
     }
 }
 
+impl From<ChatCompatProvider> for crate::history::CallProvider {
+    fn from(value: ChatCompatProvider) -> Self {
+        match value {
+            ChatCompatProvider::OpenAi => Self::OpenAi,
+            ChatCompatProvider::OpenRouter => Self::OpenRouter,
+        }
+    }
+}
+
+impl From<MessagesProvider> for crate::history::CallProvider {
+    fn from(value: MessagesProvider) -> Self {
+        match value {
+            MessagesProvider::Claude => Self::Claude,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
