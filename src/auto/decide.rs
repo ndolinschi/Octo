@@ -208,34 +208,39 @@ pub async fn decide(
     route(
         auto,
         body,
-        model,
-        tools,
-        reason,
         models.as_ref(),
-        reserve,
-        allow_compact,
-        persist,
+        RoutePlan {
+            model,
+            tools,
+            reason,
+            reserve,
+            allow_compact,
+            persist,
+        },
     )
     .await
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn route(
-    auto: &Auto,
-    body: Value,
-    mut model: String,
+struct RoutePlan {
+    model: String,
     tools: Vec<String>,
-    mut reason: Option<String>,
-    models: Option<&OpenRouterModels>,
+    reason: Option<String>,
     reserve: u64,
     allow_compact: bool,
     persist: bool,
+}
+
+async fn route(
+    auto: &Auto,
+    body: Value,
+    models: Option<&OpenRouterModels>,
+    mut plan: RoutePlan,
 ) -> Turn {
-    let mut outgoing = shaped(&body, &model, &tools);
+    let mut outgoing = shaped(&body, &plan.model, &plan.tools);
     let estimate = context_estimate(
         counted_bytes(&outgoing),
-        catalog::context_length(models, &model),
-        reserve,
+        catalog::context_length(models, &plan.model),
+        plan.reserve,
     );
     tracing::debug!(
         input_tokens_est = estimate.input_tokens_est,
@@ -247,72 +252,75 @@ async fn route(
             auto,
             &body,
             &outgoing,
-            &model,
-            &tools,
-            reason.clone(),
-            estimate.input_tokens_est,
             models,
-            allow_compact,
-            persist,
+            estimate.input_tokens_est,
+            plan,
         )
         .await;
     }
     if estimate.fill >= metrics::FILL_THRESHOLD {
         let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
-        if let Some(slug) = catalog::larger_fit(&TIERS, models, need, reserve, &model) {
-            model = slug.to_string();
-            outgoing = shaped(&body, &model, &tools);
-            reason = Some("upgrade".to_string());
+        if let Some(slug) = catalog::larger_fit(&TIERS, models, need, plan.reserve, &plan.model) {
+            plan.model = slug;
+            outgoing = shaped(&body, &plan.model, &plan.tools);
+            plan.reason = Some("upgrade".to_string());
         } else {
             return finish_overflow(
                 auto,
                 &body,
                 &outgoing,
-                &model,
-                &tools,
-                reason,
-                estimate.input_tokens_est,
                 models,
-                allow_compact,
-                persist,
+                estimate.input_tokens_est,
+                plan,
             )
             .await;
         }
     }
     let input_tokens_est = metrics::estimate_tokens(counted_bytes(&outgoing));
-    if persist {
-        remember(auto, &body, &model, &tools, input_tokens_est, false).await;
+    if plan.persist {
+        remember(
+            auto,
+            &body,
+            &plan.model,
+            &plan.tools,
+            input_tokens_est,
+            false,
+        )
+        .await;
     }
     Turn::Forward(Forward {
         body: serde_json::to_vec(&outgoing).unwrap_or_default(),
-        rerouting: i64::from(reason.is_some()),
-        reason,
+        rerouting: i64::from(plan.reason.is_some()),
+        reason: plan.reason,
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn finish_overflow(
     auto: &Auto,
     body: &Value,
     outgoing: &Value,
-    model: &str,
-    tools: &[String],
-    reason: Option<String>,
-    input_tokens_est: u64,
     models: Option<&OpenRouterModels>,
-    allow_compact: bool,
-    persist: bool,
+    input_tokens_est: u64,
+    plan: RoutePlan,
 ) -> Turn {
-    if !allow_compact {
-        if persist {
-            remember(auto, body, model, tools, input_tokens_est, false).await;
+    if !plan.allow_compact {
+        if plan.persist {
+            remember(
+                auto,
+                body,
+                &plan.model,
+                &plan.tools,
+                input_tokens_est,
+                false,
+            )
+            .await;
         }
-        return forward_shaped(body, model, tools, reason);
+        return forward_shaped(body, &plan.model, &plan.tools, plan.reason);
     }
-    if persist {
-        remember(auto, body, model, tools, input_tokens_est, true).await;
+    if plan.persist {
+        remember(auto, body, &plan.model, &plan.tools, input_tokens_est, true).await;
     }
-    compact_turn(outgoing, model, models)
+    compact_turn(outgoing, &plan.model, models)
 }
 
 fn forward_shaped(body: &Value, model: &str, tools: &[String], reason: Option<String>) -> Turn {

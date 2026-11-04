@@ -19,6 +19,11 @@ fn session_id_comes_from_metadata_user_id() {
         "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;"
     });
     assert_eq!(session_key(&sub).as_deref(), Some("abc#subagent"));
+    let quoted = json!({
+        "metadata": {"user_id": "{\"session_id\":\"abc\"}"},
+        "system": "skill text mentions cc_is_subagent=true outside the billing header"
+    });
+    assert_eq!(session_key(&quoted).as_deref(), Some("abc"));
     assert!(is_housekeeping(
         "Describe your most recent action in 3-5 words"
     ));

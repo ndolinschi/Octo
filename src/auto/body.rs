@@ -1,5 +1,7 @@
 use serde_json::{json, Value};
 
+use crate::providers::llm::is_subagent;
+
 pub fn session_id(body: &Value) -> Option<String> {
     let raw = body.get("metadata")?.get("user_id")?;
     let text = raw.as_str()?;
@@ -19,19 +21,11 @@ pub fn session_key(body: &Value) -> Option<String> {
     }
 }
 
-pub fn is_subagent(body: &Value) -> bool {
-    system_text(body).contains("cc_is_subagent=true")
-}
-
 pub fn is_housekeeping(text: &str) -> bool {
     text.contains("Write the title in the predominant language")
         || text.contains("Describe your most recent action")
         || text.contains("[SYSTEM NOTIFICATION - NOT USER INPUT]")
         || text.contains("Current state: working")
-}
-
-fn system_text(body: &Value) -> String {
-    content_text(body.get("system"))
 }
 
 pub fn last_user_text(body: &Value) -> String {

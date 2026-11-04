@@ -54,18 +54,22 @@ pub fn pick_model(complexity: crate::auto::jev::Complexity, preferred: Option<&s
     }
 }
 
-pub fn larger_fit<'a>(
-    candidates: &'a [&'a str],
+pub fn larger_fit(
+    candidates: &[&str],
     models: Option<&OpenRouterModels>,
     input_tokens: u64,
     max_tokens: u64,
     current: &str,
-) -> Option<&'a str> {
+) -> Option<String> {
     let current_window = context_length(models, current);
-    candidates.iter().copied().find(|slug| {
-        let window = context_length(models, slug);
-        window > current_window
-            && window.saturating_sub(super::metrics::output_reserve(window, max_tokens))
-                >= input_tokens
-    })
+    candidates
+        .iter()
+        .copied()
+        .find(|slug| {
+            let window = context_length(models, slug);
+            window > current_window
+                && window.saturating_sub(super::metrics::output_reserve(window, max_tokens))
+                    >= input_tokens
+        })
+        .map(str::to_string)
 }

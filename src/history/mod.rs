@@ -22,8 +22,8 @@ pub use call_provider::CallProvider;
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
 pub use payload::{
-    describe_input, request_payload, response_payload, token_from_headers, usage_from_output,
-    usage_from_parts, ParsedUsage,
+    describe_input, is_subagent, request_payload, response_payload, token_from_headers,
+    usage_from_output, usage_from_parts, ParsedUsage,
 };
 
 type HmacSha256 = Hmac<Sha256>;
