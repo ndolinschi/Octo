@@ -296,13 +296,10 @@ mod tests {
 
     #[test]
     fn messages_body_type_openrouter_stripped() {
-        let body = br#"{"type":"OPENROUTER","model":"anthropic/claude","max_tokens":1,"messages":[]}"#;
-        let (provider, out) = resolve_messages_provider(
-            None,
-            body,
-            MessagesProvider::Claude,
-        )
-        .unwrap();
+        let body =
+            br#"{"type":"OPENROUTER","model":"anthropic/claude","max_tokens":1,"messages":[]}"#;
+        let (provider, out) =
+            resolve_messages_provider(None, body, MessagesProvider::Claude).unwrap();
         assert_eq!(provider, MessagesProvider::OpenRouter);
         let v: Value = serde_json::from_slice(&out).unwrap();
         assert!(v.get("type").is_none());

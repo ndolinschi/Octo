@@ -45,5 +45,8 @@ pub fn router(config: &Config) -> Router<AppState> {
         .route("/anthropic/messages", post(handler::messages_claude))
         .route("/anthropic/v1/messages", post(handler::messages_claude))
         .route("/openrouter/messages", post(handler::messages_openrouter))
-        .route("/openrouter/v1/messages", post(handler::messages_openrouter))
+        .route(
+            "/openrouter/v1/messages",
+            post(handler::messages_openrouter),
+        )
 }

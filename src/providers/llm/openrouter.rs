@@ -1,6 +1,6 @@
 use axum::{
     body::{Body, Bytes},
-    http::{header, request::Parts, Request, Response},
+    http::{request::Parts, Request, Response},
 };
 use reqwest::Client;
 

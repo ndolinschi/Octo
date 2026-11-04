@@ -1,4 +1,4 @@
-use octo::providers::openrouter::{models_from_json, OpenRouterModels};
+use octo::providers::openrouter::models_from_json;
 
 #[test]
 fn models_from_json_splits_free_and_paid() {
@@ -28,7 +28,10 @@ fn models_from_json_splits_free_and_paid() {
     assert_eq!(catalog.free.len(), 2);
     assert_eq!(catalog.paid.len(), 1);
     assert_eq!(catalog.paid[0].id, "vendor/paid-model");
-    assert!(catalog.free.iter().any(|m| m.id == "vendor/free-model:free"));
+    assert!(catalog
+        .free
+        .iter()
+        .any(|m| m.id == "vendor/free-model:free"));
     assert!(catalog.free.iter().any(|m| m.id == "vendor/zero-priced"));
 }
 

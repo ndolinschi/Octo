@@ -286,7 +286,10 @@ fn bearer_token_from_parts(parts: &Parts) -> Option<String> {
 }
 
 /// Claude Code sends `Authorization: Bearer` via `ANTHROPIC_AUTH_TOKEN`; Anthropic expects `x-api-key`.
-pub fn apply_anthropic_messages_auth(mut upstream: RequestBuilder, parts: &Parts) -> RequestBuilder {
+pub fn apply_anthropic_messages_auth(
+    mut upstream: RequestBuilder,
+    parts: &Parts,
+) -> RequestBuilder {
     if let Some(value) = parts.headers.get("x-api-key") {
         return upstream.header("x-api-key", value);
     }
@@ -296,7 +299,10 @@ pub fn apply_anthropic_messages_auth(mut upstream: RequestBuilder, parts: &Parts
     upstream
 }
 
-pub fn apply_openrouter_messages_auth(mut upstream: RequestBuilder, parts: &Parts) -> RequestBuilder {
+pub fn apply_openrouter_messages_auth(
+    mut upstream: RequestBuilder,
+    parts: &Parts,
+) -> RequestBuilder {
     if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
         return upstream.header(header::AUTHORIZATION, value);
     }

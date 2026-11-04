@@ -12,6 +12,24 @@ cargo build
 cargo run
 ```
 
+## Call history (SQLite)
+
+Octo writes a **side copy** of proxied calls to SQLite (`config/history.toml` → `database_path`, default `data/history.sqlite`). Live responses still stream to the client; inserts run in the background.
+
+- **Stored:** kind, provider, model, capped input/output, JSON `request_payload` / `response_payload`, tokens, cost (micro-dollars), latency — not raw API keys (HMAC of `Authorization` / `x-api-key`).
+- **Token key:** `OCTO_HISTORY_TOKEN_KEY` env, `history.token_key` in config, or auto-generated `.key` beside the DB (Unix file permissions).
+- **If the DB fails to open:** the proxy keeps serving with history disabled (see logs).
+
+Inspect the latest row:
+
+```bash
+sqlite3 data/history.sqlite "SELECT id, kind, provider, model, status FROM calls ORDER BY id DESC LIMIT 5;"
+```
+
+Manual smoke (chat + decisions + sample query): [`scripts/smoke-openrouter.sh`](scripts/smoke-openrouter.sh) (requires `OPENROUTER_API_KEY` and a running `cargo run`).
+
+Details: [AGENTS.md](./AGENTS.md#request-history-sqlite).
+
 ## OpenAI-compatible chat (OpenAI and OpenRouter)
 
 [`config/`](./config/) wires **direct OpenAI** (`config/openai.toml`) and **OpenRouter** (`config/openrouter.toml`). Default chat upstream when the request does not pin a provider: `config/llm.toml` → `[llm.chat].backend` (`openai` or `openrouter`).

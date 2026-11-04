@@ -7,7 +7,9 @@ use axum::{
 
 use crate::history::{CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
-use crate::proxy::select::{resolve_chat_provider, resolve_messages_provider, ChatCompatProvider, MessagesProvider};
+use crate::proxy::select::{
+    resolve_chat_provider, resolve_messages_provider, ChatCompatProvider, MessagesProvider,
+};
 use crate::state::AppState;
 
 async fn forward_chat(
@@ -75,11 +77,8 @@ async fn forward_messages(
     let body_bytes = to_bytes(body, max_body)
         .await
         .map_err(ProxyError::from_read_body)?;
-    let (provider, upstream_body) = resolve_messages_provider(
-        path_hint,
-        &body_bytes,
-        state.default_messages_provider,
-    )?;
+    let (provider, upstream_body) =
+        resolve_messages_provider(path_hint, &body_bytes, state.default_messages_provider)?;
     let request = Request::from_parts(parts, Body::from(upstream_body));
     let observe = Some(CallObserve {
         history: state.history.clone(),
