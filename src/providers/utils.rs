@@ -75,7 +75,7 @@ pub async fn proxy_post_bytes(
         Err(err) => {
             if let Some(mut capture) = capture {
                 capture.started = started;
-                capture.finish(502, Vec::new());
+                capture.finish(502, Vec::new(), 0);
             }
             return Err(err.into());
         }
@@ -104,11 +104,12 @@ pub async fn proxy_post(
 
 struct Capture {
     observe: CallObserve,
-    token_hash: String,
+    token_hash: Option<String>,
     model: Option<String>,
     message: Option<String>,
     input: String,
     request_bytes: usize,
+    capture_limit: usize,
     started: Instant,
 }
 
@@ -117,8 +118,13 @@ impl Capture {
         let input = String::from_utf8_lossy(body).into_owned();
         let (model, message) = describe_input(&input);
         let secret = token_from_headers(&parts.headers);
+        let token_hash = if secret.is_empty() {
+            None
+        } else {
+            Some(observe.history.token_hash(&secret))
+        };
         Self {
-            token_hash: observe.history.token_hash(&secret),
+            token_hash,
             observe: CallObserve {
                 history: observe.history.clone(),
                 kind: observe.kind,
@@ -127,12 +133,13 @@ impl Capture {
             model,
             message,
             request_bytes: body.len(),
+            capture_limit: observe.history.capture_limit(),
             input,
             started: Instant::now(),
         }
     }
 
-    fn finish(self, status: u16, output: Vec<u8>) {
+    fn finish(self, status: u16, output: Vec<u8>, response_bytes: usize) {
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let (input_tokens, output_tokens, cost) = usage_from_output(&output_text);
         let latency_ms = self.started.elapsed().as_millis() as u64;
@@ -147,7 +154,7 @@ impl Capture {
             status,
             latency_ms,
             request_bytes: self.request_bytes,
-            response_bytes: output.len(),
+            response_bytes,
             input_tokens,
             output_tokens,
             cost,
@@ -159,15 +166,20 @@ struct Tee<S> {
     inner: S,
     status: u16,
     buf: Vec<u8>,
+    response_bytes: usize,
+    capture_limit: usize,
     capture: Option<Capture>,
 }
 
 impl<S> Tee<S> {
     fn new(inner: S, status: u16, capture: Capture) -> Self {
+        let capture_limit = capture.capture_limit;
         Self {
             inner,
             status,
             buf: Vec::new(),
+            response_bytes: 0,
+            capture_limit,
             capture: Some(capture),
         }
     }
@@ -183,13 +195,22 @@ where
         let this = self.get_mut();
         match Pin::new(&mut this.inner).poll_next(cx) {
             Poll::Ready(Some(Ok(chunk))) => {
-                this.buf.extend_from_slice(&chunk);
+                this.response_bytes = this.response_bytes.saturating_add(chunk.len());
+                if this.buf.len() < this.capture_limit {
+                    let room = this.capture_limit - this.buf.len();
+                    let take = room.min(chunk.len());
+                    this.buf.extend_from_slice(&chunk[..take]);
+                }
                 Poll::Ready(Some(Ok(chunk)))
             }
             Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
             Poll::Ready(None) => {
                 if let Some(capture) = this.capture.take() {
-                    capture.finish(this.status, std::mem::take(&mut this.buf));
+                    capture.finish(
+                        this.status,
+                        std::mem::take(&mut this.buf),
+                        this.response_bytes,
+                    );
                 }
                 Poll::Ready(None)
             }
@@ -201,7 +222,11 @@ where
 impl<S> Drop for Tee<S> {
     fn drop(&mut self) {
         if let Some(capture) = self.capture.take() {
-            capture.finish(self.status, std::mem::take(&mut self.buf));
+            capture.finish(
+                self.status,
+                std::mem::take(&mut self.buf),
+                self.response_bytes,
+            );
         }
     }
 }

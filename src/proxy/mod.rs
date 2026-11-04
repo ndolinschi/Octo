@@ -25,16 +25,24 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::error!(%err, "failed to build application state");
         err
     })?;
-    state.history = History::connect(&config.history_database_path, &config.history_token_key)
-        .await
-        .map_err(|err| {
-            tracing::error!(%err, "failed to open history database");
-            err
-        })?;
-    info!(
-        database = %config.history_database_path,
-        "history database ready"
-    );
+    match History::connect(
+        &config.history_database_path,
+        &config.history_token_key,
+        config.max_body_bytes,
+    )
+    .await
+    {
+        Ok(history) => {
+            state.history = history;
+            info!(
+                database = %config.history_database_path,
+                "history database ready"
+            );
+        }
+        Err(err) => {
+            tracing::error!(%err, "history disabled; proxy will keep serving");
+        }
+    }
     let (default_chat_provider, default_chat_url) = match state.default_chat_provider {
         ChatCompatProvider::OpenAi => ("openai", state.llm.openai.upstream_url()),
         ChatCompatProvider::OpenRouter => ("openrouter", state.llm.openrouter.upstream_url()),
