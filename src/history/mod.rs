@@ -349,21 +349,7 @@ async fn insert_decision(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
-    let session_id = row.session_id.as_deref();
-    let purpose = row.purpose.as_str();
-    let model = row.model.as_str();
-    let status = i64::from(row.status);
-    let latency_ms = i64::try_from(row.latency_ms).unwrap_or(i64::MAX);
-    let user_text = clip(&row.user_text, capture_limit);
-    let is_hard = flag_to_sql(row.is_hard);
-    let is_easy = flag_to_sql(row.is_easy);
-    let tools_enough = row.tools_enough.as_deref();
-    let complexity = row.complexity;
-    let choice_rule = row.choice_rule.as_str();
-    let missing_tools = row.missing_tools.as_deref();
-    let request_payload = clip(&row.request_payload, capture_limit);
-    let response_payload = clip(&row.response_payload, capture_limit);
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO decisions (
             created_at, session_id, purpose, model, status, latency_ms, user_text,
@@ -371,22 +357,22 @@ async fn insert_decision(
             request_payload, response_payload
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
-        created_at,
-        session_id,
-        purpose,
-        model,
-        status,
-        latency_ms,
-        user_text,
-        is_hard,
-        is_easy,
-        tools_enough,
-        complexity,
-        choice_rule,
-        missing_tools,
-        request_payload,
-        response_payload,
     )
+    .bind(created_at)
+    .bind(&row.session_id)
+    .bind(&row.purpose)
+    .bind(&row.model)
+    .bind(i64::from(row.status))
+    .bind(i64::try_from(row.latency_ms).unwrap_or(i64::MAX))
+    .bind(clip(&row.user_text, capture_limit))
+    .bind(flag_to_sql(row.is_hard))
+    .bind(flag_to_sql(row.is_easy))
+    .bind(&row.tools_enough)
+    .bind(row.complexity)
+    .bind(&row.choice_rule)
+    .bind(&row.missing_tools)
+    .bind(clip(&row.request_payload, capture_limit))
+    .bind(clip(&row.response_payload, capture_limit))
     .execute(pool)
     .await?;
     Ok(())
