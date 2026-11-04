@@ -54,7 +54,7 @@ fn claude_response_payload_keeps_anthropic_events() {
     let output =
         "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n";
     let raw = response_payload(
-        CallKind::Llm,
+        CallKind::Messages,
         CallProvider::Claude,
         output,
         "",

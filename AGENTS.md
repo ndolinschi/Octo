@@ -14,7 +14,7 @@ Instructions for AI coding agents working in this repository.
 
 **OpenAI-compatible chat (same JSON body):** upstream is chosen by **path alias**, then JSON `"type"` / `"octo_provider"`, then **`[llm.chat].backend`** (default `openai`). Values: `OPEN_AI`, `OPENAI`, `OPENROUTER`, `openrouter`, etc. Octo strips those fields before upstream.
 
-**Anthropic Messages API (same JSON body):** upstream is chosen by **path alias**, then JSON `"type"` / `"octo_provider"`, then **`[llm.messages].backend`** (default `claude`). Values: `claude`, `anthropic`, `openrouter`, etc. Octo strips those fields before upstream.
+**Anthropic Messages API (same JSON body):** upstream is chosen by **path alias**, then JSON `"type"` / `"octo_provider"`, then **`[llm.messages].backend`**. Shipped **`config/llm.toml`** sets **`openrouter`** (Claude Code + Bearer → OpenRouter Messages). If the `[llm.messages]` section is omitted entirely, Rust serde defaults to **`claude`** (direct Anthropic, `x-api-key`). Values: `claude`, `anthropic`, `openrouter`, etc. Octo strips selector fields before upstream.
 
 **Path aliases (provider pinned by URL):**
 
@@ -104,6 +104,8 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 | Caller identity | HMAC-SHA256 of client secret (`Authorization` / `x-api-key`); raw tokens are not stored |
 | Token key | `OCTO_HISTORY_TOKEN_KEY` env, `history.token_key` in config, or auto-generated `.key` beside the DB (restrictive file permissions on Unix) |
 | Failure mode | If DB open/migrate fails, proxy keeps serving with history disabled |
+| Insert backpressure | Up to 32 concurrent inserts; waits up to **5s** for a slot, then **drops** the row (warn log). Bursts can lose history while the proxy still succeeds. |
+| Stream errors | If the upstream body stream fails after headers were sent, the client may see upstream status (e.g. 200) while history records **502** for that call. |
 | Shutdown | Graceful drain waits for in-flight inserts (bounded queue) |
 
 **Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output raw capture, **`request_payload` / `response_payload`** (JSON with `provider` + nested `payload` per vendor shape), status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`). Prompts are not logged verbatim in tracing.
@@ -112,7 +114,7 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 
 **OpenRouter model catalog (routing):** `octo::providers::openrouter::fetch_models` GETs the public models API (`DEFAULT_MODELS_URL`), optionally with a Bearer key, and returns `OpenRouterModels { free, paid }` (`models_from_json` for tests). Free = `:free` suffix or zero prompt/completion pricing.
 
-Integration tests: `tests/history_store.rs`, `tests/history_payload.rs`. Do not add `#[cfg(test)]` modules in `src/` (see `.cursor/rules/tests-live-outside-source.mdc`).
+Integration tests: `tests/history_store.rs`, `tests/history_payload.rs`, `tests/select_provider.rs`. Do not add `#[cfg(test)]` modules in `src/` (see `.cursor/rules/tests-live-outside-source.mdc`).
 
 After changing SQL or `query!` macros:
 

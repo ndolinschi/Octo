@@ -2,4 +2,5 @@
 backend = "openai"
 
 [llm.messages]
+# Shipped default: OpenRouter Messages (Bearer). Set "claude" for direct Anthropic (x-api-key).
 backend = "openrouter"
