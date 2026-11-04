@@ -194,6 +194,7 @@ async fn autoroute(state: &AppState, request: Request, chat: bool) -> Result<Res
         &state.config.openrouter_decisions_url,
         &api_key,
         value,
+        !chat,
     )
     .await;
     match turn {

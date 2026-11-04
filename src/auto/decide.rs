@@ -71,16 +71,13 @@ pub async fn decide(
     decisions_url: &str,
     api_key: &str,
     body: Value,
+    allow_compact: bool,
 ) -> Turn {
     let preferred = body::preferred_model(&body);
     let all_tools = body::tool_names(&body);
     let reserve = body::max_tokens(&body);
     let client_tokens = metrics::estimate_tokens(counted_bytes(&body));
     let models = load_models(auto, client, api_key).await;
-    if models.is_none() {
-        return passthrough(&body);
-    }
-
     let mut choice = match body::session_id(&body) {
         Some(id) => auto
             .sessions
@@ -89,6 +86,12 @@ pub async fn decide(
             .and_then(|mut sessions| sessions.get(&id)),
         None => None,
     };
+    if models.is_none() {
+        if let Some(row) = choice {
+            return forward_shaped(&body, &row.model, &row.tools, None);
+        }
+        return passthrough(&body);
+    }
     let mut forced_reason = None;
     if let Some(row) = choice.clone() {
         if row.awaiting_compact {
@@ -143,9 +146,20 @@ pub async fn decide(
         }
     };
 
-    route(auto, body, model, tools, reason, models.as_ref(), reserve).await
+    route(
+        auto,
+        body,
+        model,
+        tools,
+        reason,
+        models.as_ref(),
+        reserve,
+        allow_compact,
+    )
+    .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn route(
     auto: &Auto,
     body: Value,
@@ -154,6 +168,7 @@ async fn route(
     mut reason: Option<String>,
     models: Option<&OpenRouterModels>,
     reserve: u64,
+    allow_compact: bool,
 ) -> Turn {
     let mut outgoing = shaped(&body, &model, &tools);
     let estimate = context_estimate(
@@ -167,8 +182,17 @@ async fn route(
         "autoroute"
     );
     if estimate.usable < 1024 {
-        remember(auto, &body, &model, &tools, estimate.input_tokens_est, true).await;
-        return compact_turn(&outgoing, &model, models);
+        return finish_overflow(
+            auto,
+            &body,
+            &outgoing,
+            &model,
+            &tools,
+            estimate.input_tokens_est,
+            models,
+            allow_compact,
+        )
+        .await;
     }
     if estimate.fill >= metrics::FILL_THRESHOLD {
         let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
@@ -177,12 +201,49 @@ async fn route(
             outgoing = shaped(&body, &model, &tools);
             reason = Some("upgrade".to_string());
         } else {
-            remember(auto, &body, &model, &tools, estimate.input_tokens_est, true).await;
-            return compact_turn(&outgoing, &model, models);
+            return finish_overflow(
+                auto,
+                &body,
+                &outgoing,
+                &model,
+                &tools,
+                estimate.input_tokens_est,
+                models,
+                allow_compact,
+            )
+            .await;
         }
     }
     let input_tokens_est = metrics::estimate_tokens(counted_bytes(&outgoing));
     remember(auto, &body, &model, &tools, input_tokens_est, false).await;
+    Turn::Forward(Forward {
+        body: serde_json::to_vec(&outgoing).unwrap_or_default(),
+        rerouting: i64::from(reason.is_some()),
+        reason,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn finish_overflow(
+    auto: &Auto,
+    body: &Value,
+    outgoing: &Value,
+    model: &str,
+    tools: &[String],
+    input_tokens_est: u64,
+    models: Option<&OpenRouterModels>,
+    allow_compact: bool,
+) -> Turn {
+    if !allow_compact {
+        remember(auto, body, model, tools, input_tokens_est, false).await;
+        return forward_shaped(body, model, tools, None);
+    }
+    remember(auto, body, model, tools, input_tokens_est, true).await;
+    compact_turn(outgoing, model, models)
+}
+
+fn forward_shaped(body: &Value, model: &str, tools: &[String], reason: Option<String>) -> Turn {
+    let outgoing = shaped(body, model, tools);
     Turn::Forward(Forward {
         body: serde_json::to_vec(&outgoing).unwrap_or_default(),
         rerouting: i64::from(reason.is_some()),

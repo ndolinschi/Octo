@@ -11,4 +11,4 @@ pub use body::{filter_tools, session_id};
 pub use catalog::pick_model;
 pub use decide::{decide, Auto};
 pub use jev::{needed_tools, Complexity};
-pub use metrics::{context_estimate, dropped, needs_compact};
+pub use metrics::{context_estimate, dropped, needs_compact, output_reserve};

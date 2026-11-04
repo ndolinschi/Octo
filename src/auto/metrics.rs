@@ -11,8 +11,14 @@ pub fn estimate_tokens(bytes: usize) -> u64 {
     (bytes / 4) as u64
 }
 
+pub fn output_reserve(context_length: u64, max_tokens: u64) -> u64 {
+    let requested = if max_tokens == 0 { 4096 } else { max_tokens };
+    let cap = (context_length / 2).max(1);
+    requested.min(cap)
+}
+
 pub fn usable_window(context_length: u64, max_tokens: u64) -> u64 {
-    context_length.saturating_sub(max_tokens)
+    context_length.saturating_sub(output_reserve(context_length, max_tokens))
 }
 
 pub fn context_estimate(
@@ -21,7 +27,7 @@ pub fn context_estimate(
     max_tokens: u64,
 ) -> ContextEstimate {
     let input_tokens_est = estimate_tokens(input_bytes);
-    let usable = usable_window(context_length, max_tokens.max(1));
+    let usable = usable_window(context_length, max_tokens);
     let fill = if usable == 0 {
         1.0
     } else {

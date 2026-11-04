@@ -1,8 +1,8 @@
 use serde_json::json;
 
 use octo::auto::{
-    context_estimate, dropped, filter_tools, needed_tools, needs_compact, pick_model, session_id,
-    Complexity,
+    context_estimate, dropped, filter_tools, needed_tools, needs_compact, output_reserve,
+    pick_model, session_id, Complexity,
 };
 
 #[test]
@@ -17,12 +17,16 @@ fn session_id_comes_from_metadata_user_id() {
 
 #[test]
 fn fill_and_drop_follow_the_window() {
-    let estimate = context_estimate(4000, 5000, 4096);
+    let estimate = context_estimate(4000, 1500, 4096);
     assert_eq!(estimate.input_tokens_est, 1000);
     assert!(estimate.usable < 1024);
     assert!(needs_compact(estimate));
     let roomy = context_estimate(400, 100_000, 4096);
     assert!(!needs_compact(roomy));
+    let reserve = output_reserve(8192, 32_000);
+    assert!(reserve <= 4096);
+    let held = context_estimate(400, 8192, 32_000);
+    assert!(!needs_compact(held));
     assert!(dropped(1000, 400));
     assert!(!dropped(1000, 600));
 }
