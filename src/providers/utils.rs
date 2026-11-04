@@ -272,6 +272,44 @@ pub fn forward_content_type(upstream: RequestBuilder, parts: &Parts) -> RequestB
     }
 }
 
+fn bearer_token_from_parts(parts: &Parts) -> Option<String> {
+    let value = parts.headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    let token = value
+        .strip_prefix("Bearer ")
+        .or_else(|| value.strip_prefix("bearer "))
+        .unwrap_or(value);
+    if token.is_empty() {
+        None
+    } else {
+        Some(token.to_string())
+    }
+}
+
+/// Claude Code sends `Authorization: Bearer` via `ANTHROPIC_AUTH_TOKEN`; Anthropic expects `x-api-key`.
+pub fn apply_anthropic_messages_auth(mut upstream: RequestBuilder, parts: &Parts) -> RequestBuilder {
+    if let Some(value) = parts.headers.get("x-api-key") {
+        return upstream.header("x-api-key", value);
+    }
+    if let Some(token) = bearer_token_from_parts(parts) {
+        upstream = upstream.header("x-api-key", token);
+    }
+    upstream
+}
+
+pub fn apply_openrouter_messages_auth(mut upstream: RequestBuilder, parts: &Parts) -> RequestBuilder {
+    if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
+        return upstream.header(header::AUTHORIZATION, value);
+    }
+    if let Some(value) = parts.headers.get("x-api-key") {
+        if let Ok(token) = value.to_str() {
+            upstream = upstream.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+    } else if let Some(token) = bearer_token_from_parts(parts) {
+        upstream = upstream.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    upstream
+}
+
 pub fn apply_openai_request_headers(mut upstream: RequestBuilder, parts: &Parts) -> RequestBuilder {
     if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
         upstream = upstream.header(header::AUTHORIZATION, value);

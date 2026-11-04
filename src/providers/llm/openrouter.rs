@@ -5,7 +5,7 @@ use axum::{
 use reqwest::Client;
 
 use crate::providers::openrouter::{self, apply_attribution, AttributionDefaults};
-use crate::providers::utils::{forward_content_type, proxy_post};
+use crate::providers::utils::{apply_openrouter_messages_auth, forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
 #[derive(Clone)]
@@ -79,9 +79,7 @@ impl OpenRouter {
             max_body_bytes,
             request,
             move |mut upstream, parts| {
-                if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
-                    upstream = upstream.header(header::AUTHORIZATION, value);
-                }
+                upstream = apply_openrouter_messages_auth(upstream, parts);
                 upstream = apply_attribution(upstream, parts, &openrouter);
                 upstream = match parts.headers.get("anthropic-version") {
                     Some(value) => upstream.header("anthropic-version", value),

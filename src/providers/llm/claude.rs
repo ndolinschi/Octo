@@ -5,7 +5,7 @@ use axum::{
 use reqwest::Client;
 
 use crate::history::CallObserve;
-use crate::providers::utils::{forward_content_type, proxy_post};
+use crate::providers::utils::{apply_anthropic_messages_auth, forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
 #[derive(Clone)]
@@ -43,9 +43,7 @@ impl Claude {
             max_body_bytes,
             request,
             move |mut upstream, parts| {
-                if let Some(value) = parts.headers.get("x-api-key") {
-                    upstream = upstream.header("x-api-key", value);
-                }
+                upstream = apply_anthropic_messages_auth(upstream, parts);
                 upstream = match parts.headers.get("anthropic-version") {
                     Some(value) => upstream.header("anthropic-version", value),
                     None => upstream.header("anthropic-version", &default_api_version),

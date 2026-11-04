@@ -35,6 +35,53 @@ async fn openrouter_messages_route_forwards_authorization() {
 }
 
 #[tokio::test]
+async fn messages_route_forwards_bearer_as_openrouter_auth() {
+    let (addr, captured) = spawn_header_capture_server("/messages", "authorization").await;
+    let mut config = sample_config(4096);
+    config.openrouter_messages_url = format!("http://{addr}/messages");
+    config.llm_messages_backend = "openrouter".to_string();
+    let state = AppState::new(config).unwrap();
+    let app = routes::router(state);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, "Bearer openrouter-key")
+        .body(Body::from(
+            r#"{"model":"google/gemma-4-26b-a4b-it","max_tokens":1,"messages":[]}"#,
+        ))
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        captured.lock().unwrap().as_deref(),
+        Some("Bearer openrouter-key")
+    );
+}
+
+#[tokio::test]
+async fn claude_messages_route_maps_bearer_to_x_api_key() {
+    let (addr, captured) = spawn_header_capture_server("/messages", "x-api-key").await;
+    let mut config = sample_config(4096);
+    config.anthropic_messages_url = format!("http://{addr}/messages");
+    config.llm_messages_backend = "claude".to_string();
+    let state = AppState::new(config).unwrap();
+    let app = routes::router(state);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, "Bearer anthropic-key")
+        .body(Body::from(
+            r#"{"model":"claude-3-5-haiku-20241022","max_tokens":1,"messages":[]}"#,
+        ))
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(captured.lock().unwrap().as_deref(), Some("anthropic-key"));
+}
+
+#[tokio::test]
 async fn messages_route_forwards_x_api_key() {
     let (addr, captured) = spawn_header_capture_server("/messages", "x-api-key").await;
     let mut config = sample_config(4096);
