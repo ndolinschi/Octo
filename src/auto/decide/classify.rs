@@ -1,0 +1,107 @@
+use reqwest::Client;
+use serde_json::Value;
+
+use crate::history::{DecisionRow, History};
+
+use super::super::body;
+use super::super::catalog::Tiers;
+use super::super::jev;
+
+pub(super) struct ClassifyCtx<'a> {
+    pub history: &'a History,
+    pub session_id: Option<String>,
+    pub client: &'a Client,
+    pub decisions_url: &'a str,
+    pub api_key: &'a str,
+    pub body: &'a Value,
+    pub all_tools: &'a [String],
+    pub tiers: &'a Tiers,
+}
+
+pub(super) struct ClassifyTurn<'a> {
+    pub ctx: &'a ClassifyCtx<'a>,
+    pub preferred: Option<&'a str>,
+    pub current: &'a [String],
+    pub purpose: &'a str,
+}
+
+pub(super) async fn fresh(
+    ctx: &ClassifyCtx<'_>,
+    preferred: Option<&str>,
+) -> Option<(String, Vec<String>)> {
+    turn(ClassifyTurn {
+        ctx,
+        preferred,
+        current: &[],
+        purpose: "classify",
+    })
+    .await
+}
+
+pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)> {
+    if plan.ctx.api_key.is_empty() {
+        return None;
+    }
+    let user_text = body::last_user_text(plan.ctx.body);
+    let asked = jev::classify(jev::ClassifyRequest {
+        client: plan.ctx.client,
+        decisions_url: plan.ctx.decisions_url,
+        api_key: plan.ctx.api_key,
+        user_text: &user_text,
+        tool_names: plan.ctx.all_tools,
+        current_tools: plan.current,
+    })
+    .await;
+    record(
+        plan.ctx.history,
+        plan.ctx.session_id.clone(),
+        plan.purpose,
+        &asked,
+    );
+    let classified = asked.parsed?;
+    let model = plan.ctx.tiers.pick(classified.complexity, plan.preferred);
+    let tools = jev::needed_tools(jev::ToolNeed {
+        all: plan.ctx.all_tools,
+        current: plan.current,
+        enough: classified.tools_enough,
+        missing: &classified.missing_tools,
+    });
+    Some((model, tools))
+}
+
+fn record(history: &History, session_id: Option<String>, purpose: &str, asked: &jev::Asked) {
+    let parsed = asked.parsed.as_ref();
+    history.record_decision(DecisionRow {
+        session_id,
+        purpose: purpose.to_string(),
+        model: "typesafe/jev-1.13".to_string(),
+        status: asked.status,
+        latency_ms: asked.latency_ms,
+        user_text: user_text_from_request(&asked.request_body),
+        is_hard: parsed.and_then(|row| row.is_hard),
+        is_easy: parsed.and_then(|row| row.is_easy),
+        tools_enough: parsed.and_then(|row| row.tools_enough_raw.clone()),
+        complexity: parsed.map(|row| match row.complexity {
+            jev::Complexity::Low => "low",
+            jev::Complexity::Mid => "mid",
+            jev::Complexity::High => "high",
+        }),
+        choice_rule: asked.choice_rule.to_string(),
+        missing_tools: parsed.map(|row| row.missing_tools.join(",")),
+        request_payload: asked.request_body.clone(),
+        response_payload: asked.response_body.clone(),
+    });
+}
+
+fn user_text_from_request(body: &str) -> String {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("state")
+                .and_then(|state| state.get("user_text"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}

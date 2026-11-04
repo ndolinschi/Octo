@@ -1,9 +1,11 @@
 use serde_json::json;
 
 use octo::auto::{
-    context_estimate, dropped, filter_tools, is_housekeeping, needed_tools, needs_compact,
-    output_reserve, session_id, session_key, Complexity, Tiers,
+    context_estimate, dropped, filter_tools, is_housekeeping, larger_fit, needed_tools,
+    needs_compact, output_reserve, session_id, session_key, Complexity, LargerFit, Tiers,
 };
+use octo::auto::context_length;
+use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
 
 #[test]
 fn session_id_comes_from_metadata_user_id() {
@@ -79,4 +81,68 @@ fn filter_keeps_named_tools_and_pick_respects_preference() {
     let mut chat = json!({"tools": [{"type": "function", "function": {"name": "Bash"}}]});
     filter_tools(&mut chat, &["Bash".to_string()]);
     assert_eq!(chat["tools"].as_array().unwrap().len(), 1);
+}
+
+fn paid(id: &str, window: u64) -> OpenRouterModel {
+    OpenRouterModel {
+        id: id.to_string(),
+        name: id.to_string(),
+        is_free: false,
+        context_length: Some(window),
+    }
+}
+
+#[test]
+fn tilde_high_slug_reads_catalog_window_and_does_not_upgrade_to_low() {
+    let models = OpenRouterModels {
+        free: Vec::new(),
+        paid: vec![
+            paid("google/gemma", 128_000),
+            paid("deepseek/flash", 64_000),
+            paid("anthropic/claude-haiku-latest", 200_000),
+        ],
+    };
+    assert_eq!(
+        context_length(Some(&models), "~anthropic/claude-haiku-latest"),
+        200_000
+    );
+    let candidates = [
+        "google/gemma",
+        "deepseek/flash",
+        "~anthropic/claude-haiku-latest",
+    ];
+    assert_eq!(
+        larger_fit(LargerFit {
+            candidates: &candidates,
+            models: Some(&models),
+            input_tokens: 50_000,
+            max_tokens: 4096,
+            current: "~anthropic/claude-haiku-latest",
+        }),
+        None
+    );
+}
+
+#[test]
+fn larger_fit_chooses_smallest_window_that_still_fits() {
+    let models = OpenRouterModels {
+        free: Vec::new(),
+        paid: vec![
+            paid("low-model", 32_000),
+            paid("mid-model", 64_000),
+            paid("high-model", 200_000),
+        ],
+    };
+    let candidates = ["low-model", "mid-model", "high-model"];
+    assert_eq!(
+        larger_fit(LargerFit {
+            candidates: &candidates,
+            models: Some(&models),
+            input_tokens: 40_000,
+            max_tokens: 4096,
+            current: "low-model",
+        })
+        .as_deref(),
+        Some("mid-model")
+    );
 }
