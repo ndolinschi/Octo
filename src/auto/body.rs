@@ -50,7 +50,7 @@ pub fn tool_names(body: &Value) -> Vec<String> {
         .map(|tools| {
             tools
                 .iter()
-                .filter_map(|tool| tool.get("name").and_then(Value::as_str).map(str::to_string))
+                .filter_map(|tool| tool_name(tool).map(str::to_string))
                 .collect()
         })
         .unwrap_or_default()
@@ -72,11 +72,15 @@ pub fn filter_tools(body: &mut Value, keep: &[String]) {
     let Some(tools) = body.get_mut("tools").and_then(Value::as_array_mut) else {
         return;
     };
-    tools.retain(|tool| {
-        tool.get("name")
+    tools.retain(|tool| tool_name(tool).is_some_and(|name| keep.iter().any(|kept| kept == name)));
+}
+
+fn tool_name(tool: &Value) -> Option<&str> {
+    tool.get("name").and_then(Value::as_str).or_else(|| {
+        tool.get("function")
+            .and_then(|function| function.get("name"))
             .and_then(Value::as_str)
-            .is_some_and(|name| keep.iter().any(|kept| kept == name))
-    });
+    })
 }
 
 pub fn with_model(body: &Value, model: &str) -> Value {

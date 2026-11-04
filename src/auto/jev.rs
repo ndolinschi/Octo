@@ -6,6 +6,7 @@ pub struct Classified {
     pub complexity: Complexity,
     pub tools: Vec<String>,
     pub tools_enough: bool,
+    pub missing_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,10 +50,10 @@ pub async fn classify(
             },
             "tools_enough": {
                 "type": "noul",
-                "instructions": "Can current_tools finish this user_text?",
+                "instructions": "Can current_tools finish this user_text? If false, the value may be a comma-separated list of missing tool names from tools.",
                 "criteria": {
                     "true": "Every needed tool is already in current_tools, or no tool is needed.",
-                    "false": "The text needs a tool listed in tools but missing from current_tools."
+                    "false": "Name each tool in tools that is missing from current_tools, comma-separated."
                 }
             }
         }
@@ -83,12 +84,41 @@ fn classified_from_value(value: &Value, tool_names: &[String]) -> Classified {
     } else {
         Complexity::Mid
     };
-    let tools_enough = noul(answers, "tools_enough") || current_is_empty(answers);
+    let missing_tools = name_list(answers, "tools_enough");
+    let tools_enough =
+        (noul(answers, "tools_enough") && missing_tools.is_empty()) || current_is_empty(answers);
     Classified {
         complexity,
         tools: tool_names.to_vec(),
         tools_enough,
+        missing_tools,
     }
+}
+
+fn name_list(answers: &Value, name: &str) -> Vec<String> {
+    let Some(answer) = answers.get(name) else {
+        return Vec::new();
+    };
+    let raw = answer
+        .get("value")
+        .or_else(|| answer.get("answer"))
+        .unwrap_or(answer);
+    if let Some(items) = raw.as_array() {
+        return items
+            .iter()
+            .filter_map(|item| item.as_str().map(str::to_string))
+            .collect();
+    }
+    let Some(text) = raw.as_str() else {
+        return Vec::new();
+    };
+    if text == "true" || text == "false" {
+        return Vec::new();
+    }
+    text.split(',')
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
 }
 
 fn current_is_empty(answers: &Value) -> bool {
@@ -109,12 +139,34 @@ fn noul(answers: &Value, name: &str) -> bool {
         .unwrap_or(false)
 }
 
-pub fn needed_tools(all: &[String], current: &[String], enough: bool) -> Vec<String> {
-    if enough || current.is_empty() {
-        if current.is_empty() {
+pub fn needed_tools(
+    all: &[String],
+    current: &[String],
+    enough: bool,
+    missing: &[String],
+) -> Vec<String> {
+    if current.is_empty() {
+        let named: Vec<String> = missing
+            .iter()
+            .filter(|name| all.iter().any(|tool| tool == *name))
+            .cloned()
+            .collect();
+        if named.is_empty() {
             return all.to_vec();
         }
+        return named;
+    }
+    if enough {
         return current.to_vec();
     }
-    all.to_vec()
+    if missing.is_empty() {
+        return all.to_vec();
+    }
+    let mut tools = current.to_vec();
+    for name in missing {
+        if all.iter().any(|tool| tool == name) && !tools.iter().any(|tool| tool == name) {
+            tools.push(name.clone());
+        }
+    }
+    tools
 }

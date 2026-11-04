@@ -1,9 +1,13 @@
 use std::sync::Arc;
+use std::sync::Mutex as SyncMutex;
+
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 use reqwest::Client;
 use serde_json::Value;
-use tokio::sync::Mutex;
+
+use crate::providers::openrouter::{fetch_models, DEFAULT_MODELS_URL};
 
 use crate::providers::openrouter::OpenRouterModels;
 
@@ -20,22 +24,36 @@ const TIERS: [&str; 3] = [catalog::LOW_MODEL, catalog::MID_MODEL, catalog::HIGH_
 
 #[derive(Clone)]
 pub struct Auto {
-    sessions: Arc<Mutex<Sessions>>,
+    sessions: Arc<SyncMutex<Sessions>>,
     catalog: Arc<Mutex<CatalogCache>>,
 }
 
 impl Auto {
     pub fn new() -> Self {
         Self {
-            sessions: Arc::new(Mutex::new(Sessions::new(SESSION_TTL))),
+            sessions: Arc::new(SyncMutex::new(Sessions::new(SESSION_TTL))),
             catalog: Arc::new(Mutex::new(CatalogCache::new(CATALOG_TTL))),
         }
     }
 
-    pub async fn mark_awaiting_compact(&self, session_id: &str) {
-        let mut sessions = self.sessions.lock().await;
+    pub fn mark_awaiting_compact(&self, session_id: &str) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
         if let Some(mut choice) = sessions.get(session_id) {
             choice.awaiting_compact = true;
+            choice.seen = Instant::now();
+            sessions.insert(session_id.to_string(), choice);
+        }
+    }
+
+    pub fn clear_awaiting_compact(&self, session_id: &str) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        if let Some(mut choice) = sessions.get(session_id) {
+            choice.awaiting_compact = false;
+            choice.seen = Instant::now();
             sessions.insert(session_id.to_string(), choice);
         }
     }
@@ -59,9 +77,16 @@ pub async fn decide(
     let reserve = body::max_tokens(&body);
     let client_tokens = metrics::estimate_tokens(counted_bytes(&body));
     let models = load_models(auto, client, api_key).await;
+    if models.is_none() {
+        return passthrough(&body);
+    }
 
     let mut choice = match body::session_id(&body) {
-        Some(id) => auto.sessions.lock().await.get(&id),
+        Some(id) => auto
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|mut sessions| sessions.get(&id)),
         None => None,
     };
     let mut forced_reason = None;
@@ -71,13 +96,15 @@ pub async fn decide(
                 choice = None;
                 forced_reason = Some("reclassify".to_string());
             } else {
-                return compact_turn(&body, &row.model, models.as_ref());
+                let outgoing = shaped(&body, &row.model, &row.tools);
+                tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
+                return compact_turn(&outgoing, &row.model, models.as_ref());
             }
         }
     }
 
     let (model, tools, reason) = if let Some(row) = choice {
-        let enough = tools_cover(
+        let (enough, missing) = tools_cover(
             client,
             decisions_url,
             api_key,
@@ -86,7 +113,7 @@ pub async fn decide(
             &row.tools,
         )
         .await;
-        let tools = jev::needed_tools(&all_tools, &row.tools, enough);
+        let tools = jev::needed_tools(&all_tools, &row.tools, enough, &missing);
         let reason = (tools != row.tools).then(|| "tool_update".to_string());
         (row.model, tools, reason)
     } else {
@@ -105,7 +132,14 @@ pub async fn decide(
                 tools,
                 Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
             ),
-            None => return passthrough(&body),
+            None => {
+                if forced_reason.is_some() {
+                    if let Some(id) = body::session_id(&body) {
+                        auto.clear_awaiting_compact(&id);
+                    }
+                }
+                return passthrough(&body);
+            }
         }
     };
 
@@ -132,7 +166,11 @@ async fn route(
         fill = estimate.fill,
         "autoroute"
     );
-    if metrics::needs_compact(estimate) {
+    if estimate.usable < 1024 {
+        remember(auto, &body, &model, &tools, estimate.input_tokens_est, true).await;
+        return compact_turn(&outgoing, &model, models);
+    }
+    if estimate.fill >= metrics::FILL_THRESHOLD {
         let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
         if let Some(slug) = catalog::larger_fit(&TIERS, models, need, reserve, &model) {
             model = slug.to_string();
@@ -169,7 +207,10 @@ async fn remember(
     let Some(id) = body::session_id(body) else {
         return;
     };
-    auto.sessions.lock().await.insert(
+    let Ok(mut sessions) = auto.sessions.lock() else {
+        return;
+    };
+    sessions.insert(
         id,
         SessionChoice {
             model: model.to_string(),
@@ -223,7 +264,8 @@ async fn classify_fresh(
     )
     .await?;
     let model = catalog::pick_model(classified.complexity, preferred);
-    Some((model, all_tools.to_vec()))
+    let tools = jev::needed_tools(all_tools, &[], false, &classified.missing_tools);
+    Some((model, tools))
 }
 
 async fn tools_cover(
@@ -233,11 +275,11 @@ async fn tools_cover(
     body: &Value,
     all_tools: &[String],
     current: &[String],
-) -> bool {
+) -> (bool, Vec<String>) {
     if api_key.is_empty() {
-        return true;
+        return (true, Vec::new());
     }
-    jev::classify(
+    match jev::classify(
         client,
         decisions_url,
         api_key,
@@ -246,15 +288,24 @@ async fn tools_cover(
         current,
     )
     .await
-    .map(|row| row.tools_enough)
-    .unwrap_or(true)
+    {
+        Some(row) => (row.tools_enough, row.missing_tools),
+        None => (true, Vec::new()),
+    }
 }
 
 async fn load_models(auto: &Auto, client: &Client, api_key: &str) -> Option<OpenRouterModels> {
     if api_key.is_empty() {
         return None;
     }
-    auto.catalog.lock().await.models(client, api_key).await
+    if let Some(models) = auto.catalog.lock().await.fresh() {
+        return Some(models);
+    }
+    let models = fetch_models(client, DEFAULT_MODELS_URL, Some(api_key))
+        .await
+        .ok()?;
+    auto.catalog.lock().await.store(models.clone());
+    Some(models)
 }
 
 fn counted_bytes(body: &Value) -> usize {

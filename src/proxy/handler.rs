@@ -201,12 +201,8 @@ async fn autoroute(state: &AppState, request: Request, chat: bool) -> Result<Res
             let hook = session.clone().map(|id| {
                 let auto = state.auto.clone();
                 Arc::new(move |text: &str| {
-                    if text.contains("model_context_window_exceeded") {
-                        let auto = auto.clone();
-                        let id = id.clone();
-                        tokio::spawn(async move {
-                            auto.mark_awaiting_compact(&id).await;
-                        });
+                    if stop_reason_is(text, "model_context_window_exceeded") {
+                        auto.mark_awaiting_compact(&id);
                     }
                 }) as Arc<dyn Fn(&str) + Send + Sync>
             });
@@ -241,6 +237,30 @@ async fn autoroute(state: &AppState, request: Request, chat: bool) -> Result<Res
                     .await
             }
         }
+        Turn::Compact(compact) if chat => {
+            let mut payload: Value = serde_json::from_slice(&compact.body).unwrap_or(Value::Null);
+            if let Some(object) = payload.as_object_mut() {
+                object.remove("compaction");
+            }
+            let bytes = Bytes::from(serde_json::to_vec(&payload).unwrap_or(compact.body));
+            state
+                .llm
+                .openrouter
+                .forward_chat_buffered(
+                    &state.client,
+                    parts,
+                    bytes,
+                    Some(CallObserve {
+                        history: state.history.clone(),
+                        kind: CallKind::Llm,
+                        provider: CallProvider::OpenRouter,
+                        rerouting: 0,
+                        rerouting_reason: None,
+                        on_response: None,
+                    }),
+                )
+                .await
+        }
         Turn::Compact(compact) => compact_upstream(state, &parts, &compact).await,
     }
 }
@@ -268,7 +288,16 @@ async fn compact_upstream(
         (status, bytes, compact.body.clone())
     };
     if let Some(id) = session_of_bytes(&sent) {
-        state.auto.mark_awaiting_compact(&id).await;
+        if stop_reason_is(&String::from_utf8_lossy(&bytes), "compaction")
+            || stop_reason_is(
+                &String::from_utf8_lossy(&bytes),
+                "model_context_window_exceeded",
+            )
+        {
+            state.auto.mark_awaiting_compact(&id);
+        } else {
+            state.auto.clear_awaiting_compact(&id);
+        }
     }
     record_compact(state, parts, &sent, status, &bytes, started);
     let mut response = Response::new(Body::from(bytes.to_vec()));
@@ -311,6 +340,29 @@ async fn post_compact(
     let status = response.status().as_u16();
     let bytes = response.bytes().await?.to_vec();
     Ok((status, bytes))
+}
+
+fn stop_reason_is(text: &str, reason: &str) -> bool {
+    if let Ok(value) = serde_json::from_str::<Value>(text) {
+        return value.get("stop_reason").and_then(Value::as_str) == Some(reason);
+    }
+    text.lines().any(|line| {
+        let data = line.strip_prefix("data: ").unwrap_or(line);
+        serde_json::from_str::<Value>(data)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("stop_reason")
+                    .or_else(|| {
+                        value
+                            .get("delta")
+                            .and_then(|delta| delta.get("stop_reason"))
+                    })
+                    .and_then(Value::as_str)
+                    .map(|found| found == reason)
+            })
+            .unwrap_or(false)
+    })
 }
 
 fn compact_failed(status: u16, body: &[u8]) -> bool {

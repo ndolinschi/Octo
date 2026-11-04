@@ -1,8 +1,6 @@
 use std::time::{Duration, Instant};
 
-use reqwest::Client;
-
-use crate::providers::openrouter::{fetch_models, OpenRouterModels, DEFAULT_MODELS_URL};
+use crate::providers::openrouter::OpenRouterModels;
 
 pub const LOW_MODEL: &str = "google/gemma-4-26b-a4b-it";
 pub const MID_MODEL: &str = "deepseek/deepseek-v4-flash";
@@ -19,17 +17,14 @@ impl CatalogCache {
         Self { fetched: None, ttl }
     }
 
-    pub async fn models(&mut self, client: &Client, api_key: &str) -> Option<OpenRouterModels> {
-        if let Some((at, models)) = &self.fetched {
-            if at.elapsed() < self.ttl {
-                return Some(models.clone());
-            }
-        }
-        let models = fetch_models(client, DEFAULT_MODELS_URL, Some(api_key))
-            .await
-            .ok()?;
-        self.fetched = Some((Instant::now(), models.clone()));
-        Some(models)
+    pub fn fresh(&self) -> Option<OpenRouterModels> {
+        self.fetched
+            .as_ref()
+            .and_then(|(at, models)| (at.elapsed() < self.ttl).then(|| models.clone()))
+    }
+
+    pub fn store(&mut self, models: OpenRouterModels) {
+        self.fetched = Some((Instant::now(), models));
     }
 }
 
@@ -47,28 +42,16 @@ pub fn context_length(models: Option<&OpenRouterModels>, slug: &str) -> u64 {
 }
 
 pub fn pick_model(complexity: crate::auto::jev::Complexity, preferred: Option<&str>) -> String {
-    let tier = match complexity {
-        crate::auto::jev::Complexity::Low => LOW_MODEL,
-        crate::auto::jev::Complexity::Mid => MID_MODEL,
-        crate::auto::jev::Complexity::High => preferred.unwrap_or(HIGH_MODEL),
-    };
-    if complexity == crate::auto::jev::Complexity::High {
-        if let Some(preferred) = preferred {
-            if preferred == LOW_MODEL || preferred == MID_MODEL {
-                return HIGH_MODEL.to_string();
+    match complexity {
+        crate::auto::jev::Complexity::Low => LOW_MODEL.to_string(),
+        crate::auto::jev::Complexity::Mid => MID_MODEL.to_string(),
+        crate::auto::jev::Complexity::High => match preferred {
+            Some(preferred) if preferred != LOW_MODEL && preferred != MID_MODEL => {
+                preferred.to_string()
             }
-            return preferred.to_string();
-        }
+            _ => HIGH_MODEL.to_string(),
+        },
     }
-    if complexity == crate::auto::jev::Complexity::Low {
-        return LOW_MODEL.to_string();
-    }
-    if let Some(preferred) = preferred {
-        if preferred != LOW_MODEL {
-            return preferred.to_string();
-        }
-    }
-    tier.to_string()
 }
 
 pub fn larger_fit<'a>(
@@ -78,7 +61,9 @@ pub fn larger_fit<'a>(
     max_tokens: u64,
     current: &str,
 ) -> Option<&'a str> {
+    let current_window = context_length(models, current);
     candidates.iter().copied().find(|slug| {
-        *slug != current && context_length(models, slug).saturating_sub(max_tokens) >= input_tokens
+        let window = context_length(models, slug);
+        window > current_window && window.saturating_sub(max_tokens) >= input_tokens
     })
 }

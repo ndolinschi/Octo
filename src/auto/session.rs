@@ -26,7 +26,9 @@ impl Sessions {
 
     pub fn get(&mut self, id: &str) -> Option<SessionChoice> {
         self.expire();
-        self.rows.get(id).cloned()
+        let row = self.rows.get_mut(id)?;
+        row.seen = Instant::now();
+        Some(row.clone())
     }
 
     pub fn insert(&mut self, id: String, choice: SessionChoice) {

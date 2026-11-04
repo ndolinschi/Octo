@@ -39,11 +39,23 @@ fn filter_keeps_named_tools_and_pick_respects_preference() {
         "google/gemma-4-26b-a4b-it"
     );
     assert_eq!(
+        pick_model(Complexity::Mid, Some("anthropic/claude-sonnet-4.5")),
+        "deepseek/deepseek-v4-flash"
+    );
+    assert_eq!(
         pick_model(Complexity::High, Some("google/gemma-4-26b-a4b-it")),
         "~anthropic/claude-haiku-latest"
     );
     assert_eq!(
-        needed_tools(&["Bash".into(), "Read".into()], &["Read".into()], false),
-        vec!["Bash".to_string(), "Read".to_string()]
+        needed_tools(
+            &["Bash".into(), "Read".into()],
+            &["Read".into()],
+            false,
+            &["Bash".into()]
+        ),
+        vec!["Read".to_string(), "Bash".to_string()]
     );
+    let mut chat = json!({"tools": [{"type": "function", "function": {"name": "Bash"}}]});
+    filter_tools(&mut chat, &["Bash".to_string()]);
+    assert_eq!(chat["tools"].as_array().unwrap().len(), 1);
 }
