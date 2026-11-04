@@ -66,12 +66,12 @@ fn filter_keeps_named_tools_and_pick_respects_preference() {
         "~anthropic/claude-haiku-latest"
     );
     assert_eq!(
-        needed_tools(
-            &["Bash".into(), "Read".into()],
-            &["Read".into()],
-            false,
-            &["Bash".into()]
-        ),
+        needed_tools(octo::auto::ToolNeed {
+            all: &["Bash".into(), "Read".into()],
+            current: &["Read".into()],
+            enough: false,
+            missing: &["Bash".into()],
+        }),
         vec!["Read".to_string(), "Bash".to_string()]
     );
     let mut chat = json!({"tools": [{"type": "function", "function": {"name": "Bash"}}]});

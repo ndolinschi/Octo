@@ -443,24 +443,25 @@ async fn classify_turn(
     if ctx.api_key.is_empty() {
         return None;
     }
-    let asked = jev::classify(
-        ctx.client,
-        ctx.decisions_url,
-        ctx.api_key,
-        &body::last_user_text(ctx.body),
-        ctx.all_tools,
-        current,
-    )
+    let user_text = body::last_user_text(ctx.body);
+    let asked = jev::classify(jev::ClassifyRequest {
+        client: ctx.client,
+        decisions_url: ctx.decisions_url,
+        api_key: ctx.api_key,
+        user_text: &user_text,
+        tool_names: ctx.all_tools,
+        current_tools: current,
+    })
     .await;
     record_decision(ctx.history, ctx.session_id.clone(), purpose, &asked);
     let classified = asked.parsed?;
     let model = catalog::pick_model(classified.complexity, preferred);
-    let tools = jev::needed_tools(
-        ctx.all_tools,
+    let tools = jev::needed_tools(jev::ToolNeed {
+        all: ctx.all_tools,
         current,
-        classified.tools_enough,
-        &classified.missing_tools,
-    );
+        enough: classified.tools_enough,
+        missing: &classified.missing_tools,
+    });
     Some((model, tools))
 }
 
