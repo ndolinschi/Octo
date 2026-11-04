@@ -40,8 +40,10 @@ pub fn router(config: &Config) -> Router<AppState> {
             config.anthropic_messages_path.as_str(),
             post(handler::messages),
         )
-        .route("/claude/messages", post(handler::messages))
-        .route("/claude/v1/messages", post(handler::messages))
-        .route("/anthropic/messages", post(handler::messages))
-        .route("/anthropic/v1/messages", post(handler::messages))
+        .route("/claude/messages", post(handler::messages_claude))
+        .route("/claude/v1/messages", post(handler::messages_claude))
+        .route("/anthropic/messages", post(handler::messages_claude))
+        .route("/anthropic/v1/messages", post(handler::messages_claude))
+        .route("/openrouter/messages", post(handler::messages_openrouter))
+        .route("/openrouter/v1/messages", post(handler::messages_openrouter))
 }

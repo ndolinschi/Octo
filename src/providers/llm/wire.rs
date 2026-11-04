@@ -17,6 +17,9 @@ impl Wired {
             openai: OpenAI::new(config.openai_chat_completions_url.clone()),
             openrouter: OpenRouter::new(
                 config.openrouter_chat_completions_url.clone(),
+                config.openrouter_messages_url.clone(),
+                config.anthropic_api_version.clone(),
+                config.max_body_bytes,
                 config.openrouter_http_referer.clone(),
                 config.openrouter_title.clone(),
             ),

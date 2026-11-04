@@ -7,7 +7,7 @@ use tracing::{info, warn};
 
 use crate::config::Config;
 use crate::history::History;
-use crate::proxy::select::ChatCompatProvider;
+use crate::proxy::select::{ChatCompatProvider, MessagesProvider};
 use crate::routes::router;
 use crate::state::AppState;
 
@@ -48,6 +48,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             ("openrouter", state.llm.openrouter.chat_completions_url())
         }
     };
+    let (default_messages_provider, default_messages_url) = match state.default_messages_provider {
+        MessagesProvider::Claude => ("claude", state.llm.claude.messages_url()),
+        MessagesProvider::OpenRouter => ("openrouter", state.llm.openrouter.messages_url()),
+    };
     info!(
         chat_backend = %config.llm_chat_backend,
         default_chat_provider,
@@ -55,7 +59,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         openai_chat_url = state.llm.openai.chat_completions_url(),
         openrouter_chat_url = state.llm.openrouter.chat_completions_url(),
         messages_backend = %config.llm_messages_backend,
-        messages_url = state.llm.claude.messages_url(),
+        default_messages_provider,
+        default_messages_url,
+        claude_messages_url = state.llm.claude.messages_url(),
+        openrouter_messages_url = state.llm.openrouter.messages_url(),
         decisions_backend = %config.decision_backend,
         decisions_url = state.decision.openrouter.upstream_url(),
         "upstream urls"

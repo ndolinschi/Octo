@@ -13,6 +13,10 @@ fn loads_split_config_directory() {
     assert_eq!(config.bind_addr, "127.0.0.1:8080");
     assert_eq!(config.llm_chat_backend, "openai");
     assert_eq!(config.decision_backend, "openrouter");
+    assert_eq!(
+        config.openrouter_messages_url,
+        "https://openrouter.ai/api/v1/messages"
+    );
 }
 
 #[test]

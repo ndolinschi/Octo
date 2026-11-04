@@ -4,6 +4,7 @@ use std::fmt;
 #[serde(rename_all = "lowercase")]
 pub enum CallKind {
     Llm,
+    Messages,
     Decision,
 }
 
@@ -11,6 +12,7 @@ impl CallKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Llm => "llm",
+            Self::Messages => "messages",
             Self::Decision => "decision",
         }
     }

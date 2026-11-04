@@ -10,17 +10,20 @@ Instructions for AI coding agents working in this repository.
 | --- | --- |
 | `POST /v1/chat/completions` (and OpenAI-compat aliases below) | Direct OpenAI **or** OpenRouter, selected per request |
 | `POST /v1/decisions` (+ OpenRouter aliases) | OpenRouter alpha Decisions |
-| `POST /v1/messages` (+ Claude/Anthropic aliases) | Anthropic Messages API |
+| `POST /v1/messages` (+ aliases below) | Direct Anthropic **or** OpenRouter Messages API, selected per request |
 
 **OpenAI-compatible chat (same JSON body):** upstream is chosen by **path alias**, then JSON `"type"` / `"octo_provider"`, then **`[llm.chat].backend`** (default `openai`). Values: `OPEN_AI`, `OPENAI`, `OPENROUTER`, `openrouter`, etc. Octo strips those fields before upstream.
+
+**Anthropic Messages API (same JSON body):** upstream is chosen by **path alias**, then JSON `"type"` / `"octo_provider"`, then **`[llm.messages].backend`** (default `claude`). Values: `claude`, `anthropic`, `openrouter`, etc. Octo strips those fields before upstream.
 
 **Path aliases (provider pinned by URL):**
 
 | Alias paths | Provider |
 | --- | --- |
 | `/openai/completions`, `/openai/v1/chat/completions` | OpenAI |
-| `/openrouter/completions`, `/openrouter/v1/chat/completions` | OpenRouter |
-| `/claude/messages`, `/claude/v1/messages`, `/anthropic/messages`, `/anthropic/v1/messages` | Claude |
+| `/openrouter/completions`, `/openrouter/v1/chat/completions` | OpenRouter chat |
+| `/claude/messages`, `/claude/v1/messages`, `/anthropic/messages`, `/anthropic/v1/messages` | Anthropic (direct) |
+| `/openrouter/messages`, `/openrouter/v1/messages` | OpenRouter Messages API |
 | `/openrouter/decisions`, `/openrouter/v1/decisions` | OpenRouter Decisions |
 
 Config primary paths (`chat_completions_path`, `messages_path`, `decisions_path`) still apply; default chat path uses body/path selection above.
@@ -70,7 +73,7 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 | `config/upstream.toml` | `[upstream]` — connect and request timeouts |
 | `config/limits.toml` | `[limits]` — `max_body_bytes` |
 | `config/openai.toml` | `[openai]` — direct OpenAI chat URL |
-| `config/openrouter.toml` | `[openrouter]` — chat/decisions URLs, paths, attribution defaults |
+| `config/openrouter.toml` | `[openrouter]` — chat/decisions/messages URLs, paths, attribution defaults |
 | `config/anthropic.toml` | `[anthropic]` — messages URL, path, API version |
 | `config/llm.toml` | `[llm.chat]` / `[llm.messages]` backend defaults |
 | `config/decision.toml` | `[decision]` backend |
@@ -84,7 +87,7 @@ Section semantics (same as before, split across files above):
 
 To use OpenRouter for chat, POST with `"type": "OPENROUTER"` or use `/openrouter/completions`. OpenRouter model slugs and Bearer keys apply on that path; direct OpenAI uses `/v1/chat/completions` (default) or `/openai/completions` with an OpenAI API key.
 
-Do not commit API keys; clients send credentials per request (`Authorization` for OpenRouter/OpenAI-style chat, `x-api-key` for Anthropic).
+Do not commit API keys; clients send credentials per request (`Authorization` for OpenRouter/OpenAI-style chat and OpenRouter Messages, `x-api-key` for direct Anthropic Messages).
 
 **Threat model:** Octo has no proxy-side authentication. Default `server.allow_remote = false` binds loopback only. If you set `allow_remote = true`, treat the bind address like an open HTTP forwarder on your network (firewall/VPN only). Do not point upstream URLs at internal services you would not expose to clients holding API keys. `GET /health` returns 200 for liveness checks only.
 
@@ -105,7 +108,7 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 
 **Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output raw capture, **`request_payload` / `response_payload`** (JSON with `provider` + nested `payload` per vendor shape), status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`). Prompts are not logged verbatim in tracing.
 
-**Payload modules:** `src/history/payload/` dispatches on `CallKind` + `CallProvider` (`openai_chat`, `claude`, `decision`, shared `common` for usage/SSE). OpenAI and OpenRouter chat share the OpenAI chat shape; decisions use `decision.rs`.
+**Payload modules:** `src/history/payload/` dispatches on `CallKind` + `CallProvider` (`openai_chat`, `claude`, `decision`, shared `common` for usage/SSE). OpenAI and OpenRouter **chat** share the OpenAI chat shape; **messages** calls (`CallKind::Messages`, direct Anthropic or OpenRouter) use the Anthropic messages shape; decisions use `decision.rs`.
 
 Integration tests: `tests/history_store.rs`, `tests/history_payload.rs`. Do not add `#[cfg(test)]` modules in `src/` (see `.cursor/rules/tests-live-outside-source.mdc`).
 

@@ -116,3 +116,19 @@ curl http://127.0.0.1:8080/v1/messages \
 ```
 
 Anthropic upstream and defaults are in `config/anthropic.toml`.
+
+## OpenRouter Messages (Anthropic-compatible)
+
+Same Anthropic Messages JSON body and streaming behavior, but upstream is OpenRouter (`messages_url` in `config/openrouter.toml`, default `https://openrouter.ai/api/v1/messages`). Use **`Authorization: Bearer $OPENROUTER_API_KEY`**. Optional `anthropic-version` header; Octo forwards it or applies the default from `config/anthropic.toml`.
+
+Path alias (provider pinned):
+
+```bash
+curl http://127.0.0.1:8080/openrouter/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{"model":"anthropic/claude-sonnet-4","max_tokens":256,"messages":[{"role":"user","content":"Hello!"}]}'
+```
+
+On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/llm.toml`, or send `"type": "OPENROUTER"` in the JSON body (stripped before upstream).

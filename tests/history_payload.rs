@@ -30,6 +30,24 @@ fn request_payload_tags_provider_and_preserves_json() {
 }
 
 #[test]
+fn openrouter_messages_response_payload_uses_anthropic_format() {
+    use octo::history::response_payload;
+
+    let output =
+        "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n";
+    let raw = response_payload(
+        CallKind::Messages,
+        CallProvider::OpenRouter,
+        output,
+        "",
+        output.len(),
+    );
+    let value: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(value["provider"], "openrouter");
+    assert_eq!(value["payload"]["format"], "anthropic_messages");
+}
+
+#[test]
 fn claude_response_payload_keeps_anthropic_events() {
     use octo::history::response_payload;
 

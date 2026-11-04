@@ -1,5 +1,5 @@
 use axum::{
-    body::{to_bytes, Bytes},
+    body::{to_bytes, Body, Bytes},
     extract::{Request, State},
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -7,7 +7,7 @@ use axum::{
 
 use crate::history::{CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
-use crate::proxy::select::{resolve_chat_provider, ChatCompatProvider, MessagesProvider};
+use crate::proxy::select::{resolve_chat_provider, resolve_messages_provider, ChatCompatProvider, MessagesProvider};
 use crate::state::AppState;
 
 async fn forward_chat(
@@ -65,21 +65,40 @@ pub async fn chat_completions_openrouter(
     forward_chat(&state, request, Some(ChatCompatProvider::OpenRouter)).await
 }
 
-async fn forward_messages(state: &AppState, request: Request) -> Result<Response, ProxyError> {
-    match state.messages_provider {
+async fn forward_messages(
+    state: &AppState,
+    request: Request,
+    path_hint: Option<MessagesProvider>,
+) -> Result<Response, ProxyError> {
+    let max_body = state.config.max_body_bytes;
+    let (parts, body) = request.into_parts();
+    let body_bytes = to_bytes(body, max_body)
+        .await
+        .map_err(ProxyError::from_read_body)?;
+    let (provider, upstream_body) = resolve_messages_provider(
+        path_hint,
+        &body_bytes,
+        state.default_messages_provider,
+    )?;
+    let request = Request::from_parts(parts, Body::from(upstream_body));
+    let observe = Some(CallObserve {
+        history: state.history.clone(),
+        kind: CallKind::Messages,
+        provider: CallProvider::from(provider),
+    });
+    match provider {
         MessagesProvider::Claude => {
             state
                 .llm
                 .claude
-                .forward_messages(
-                    &state.client,
-                    request,
-                    Some(CallObserve {
-                        history: state.history.clone(),
-                        kind: CallKind::Llm,
-                        provider: CallProvider::Claude,
-                    }),
-                )
+                .forward_messages(&state.client, request, observe)
+                .await
+        }
+        MessagesProvider::OpenRouter => {
+            state
+                .llm
+                .openrouter
+                .forward_messages(&state.client, request, observe)
                 .await
         }
     }
@@ -89,7 +108,21 @@ pub async fn messages(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
-    forward_messages(&state, request).await
+    forward_messages(&state, request, None).await
+}
+
+pub async fn messages_claude(
+    State(state): State<AppState>,
+    request: Request,
+) -> Result<Response, ProxyError> {
+    forward_messages(&state, request, Some(MessagesProvider::Claude)).await
+}
+
+pub async fn messages_openrouter(
+    State(state): State<AppState>,
+    request: Request,
+) -> Result<Response, ProxyError> {
+    forward_messages(&state, request, Some(MessagesProvider::OpenRouter)).await
 }
 
 pub async fn decisions(
