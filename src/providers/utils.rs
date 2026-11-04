@@ -11,7 +11,7 @@ use reqwest::{Client, RequestBuilder};
 use tracing::info;
 
 use crate::history::{
-    describe_input, token_from_headers, usage_from_output, CallObserve, FinishedCall,
+    describe_input, token_from_headers, usage_from_output, CallObserve, FinishedCall, Millis,
 };
 use crate::proxy::error::ProxyError;
 
@@ -121,7 +121,7 @@ impl Capture {
         let token_hash = if secret.is_empty() {
             None
         } else {
-            Some(observe.history.token_hash(&secret))
+            observe.history.token_hash(&secret).ok()
         };
         Self {
             token_hash,
@@ -144,10 +144,10 @@ impl Capture {
         let tail_text = String::from_utf8_lossy(&tail);
         let head = usage_from_output(&output_text);
         let tail_usage = usage_from_output(&tail_text);
-        let input_tokens = head.0.or(tail_usage.0);
-        let output_tokens = tail_usage.1.or(head.1);
-        let cost = tail_usage.2.or(head.2);
-        let latency_ms = self.started.elapsed().as_millis() as u64;
+        let input_tokens = head.input_tokens.or(tail_usage.input_tokens);
+        let output_tokens = tail_usage.output_tokens.or(head.output_tokens);
+        let cost = tail_usage.cost.or(head.cost);
+        let latency_ms = Millis::new(self.started.elapsed().as_millis() as u64);
         self.observe.history.record(FinishedCall {
             kind: self.observe.kind,
             provider: self.observe.provider,

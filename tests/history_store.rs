@@ -86,7 +86,7 @@ async fn streamed_response_is_forwarded_then_stored() {
     assert!(body.next().await.is_none());
     drop(body);
 
-    let hash = history.token_hash("sk-secret");
+    let hash = history.token_hash("sk-secret").unwrap();
     let row = poll_call(&history, || {
         sqlx::query!(
             "SELECT provider, model, message, input, output, token_hash, status, request_bytes, response_bytes FROM calls"
@@ -236,14 +236,16 @@ async fn usage_past_the_stored_prefix_is_kept() {
     drop(body);
     assert_eq!(got, payload.as_bytes());
     let row = poll_call(&history, || {
-        sqlx::query!("SELECT output, input_tokens, output_tokens, cost, response_bytes FROM calls")
-            .fetch_optional(history.pool().unwrap())
+        sqlx::query!(
+            "SELECT output, input_tokens, output_tokens, cost_micros, response_bytes FROM calls"
+        )
+        .fetch_optional(history.pool().unwrap())
     })
     .await;
     assert_eq!(row.output, "XXXX");
     assert_eq!(row.input_tokens, Some(8));
     assert_eq!(row.output_tokens, Some(9));
-    assert_eq!(row.cost, Some(1.5));
+    assert_eq!(row.cost_micros, Some(1_500_000));
     assert_eq!(row.response_bytes, payload.len() as i64);
 }
 

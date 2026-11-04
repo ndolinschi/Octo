@@ -13,13 +13,15 @@ mod call_kind;
 mod call_provider;
 mod connect;
 mod error;
+mod metrics;
 mod payload;
 
 pub use call::{CallObserve, FinishedCall};
 pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use error::HistoryError;
-pub use payload::{describe_input, token_from_headers, usage_from_output};
+pub use metrics::{CostMicros, Millis, TokenCount};
+pub use payload::{describe_input, token_from_headers, usage_from_output, ParsedUsage};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -101,11 +103,11 @@ impl History {
         self.pool.as_ref()
     }
 
-    pub fn token_hash(&self, secret: &str) -> String {
+    pub fn token_hash(&self, secret: &str) -> Result<String, HistoryError> {
         let mut mac =
-            HmacSha256::new_from_slice(&self.token_key).expect("hmac accepts any key length");
+            HmacSha256::new_from_slice(&self.token_key).map_err(|_| HistoryError::TokenKey)?;
         mac.update(secret.as_bytes());
-        hex::encode(mac.finalize().into_bytes())
+        Ok(hex::encode(mac.finalize().into_bytes()))
     }
 
     pub fn record(&self, call: FinishedCall) {
@@ -142,13 +144,13 @@ impl History {
                         provider = %call.provider,
                         model = call.model.as_deref().unwrap_or(""),
                         status = call.status,
-                        latency_ms = call.latency_ms,
+                        latency_ms = call.latency_ms.0,
                         request_bytes = call.request_bytes,
                         response_bytes = call.response_bytes,
                         captured_bytes,
-                        input_tokens = call.input_tokens,
-                        output_tokens = call.output_tokens,
-                        cost = call.cost,
+                        input_tokens = ?call.input_tokens,
+                        output_tokens = ?call.output_tokens,
+                        cost_micros = ?call.cost.map(|c| c.0),
                         "call stored"
                     );
                 }
@@ -273,6 +275,8 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<(), HistoryError> {
 }
 
 async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx::Error> {
+    use metrics::{byte_len_to_sql, cost_micros_to_sql, millis_to_sql, token_count_to_sql};
+
     let created_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -285,17 +289,17 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let input = call.input.as_str();
     let output = call.output.as_str();
     let status = i64::from(call.status);
-    let latency_ms = call.latency_ms as i64;
-    let request_bytes = call.request_bytes as i64;
-    let response_bytes = call.response_bytes as i64;
-    let input_tokens = call.input_tokens;
-    let output_tokens = call.output_tokens;
-    let cost = call.cost;
+    let latency_ms = millis_to_sql(call.latency_ms);
+    let request_bytes = byte_len_to_sql(call.request_bytes);
+    let response_bytes = byte_len_to_sql(call.response_bytes);
+    let input_tokens = call.input_tokens.map(token_count_to_sql);
+    let output_tokens = call.output_tokens.map(token_count_to_sql);
+    let cost_micros = call.cost.map(cost_micros_to_sql);
     sqlx::query!(
         r#"
         INSERT INTO calls (
             created_at, kind, provider, model, token_hash, message, input, output,
-            status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost
+            status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
@@ -312,7 +316,7 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         response_bytes,
         input_tokens,
         output_tokens,
-        cost,
+        cost_micros,
     )
     .execute(pool)
     .await?;

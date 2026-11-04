@@ -24,4 +24,6 @@ pub enum HistoryError {
         #[source]
         source: std::io::Error,
     },
+    #[error("history token key is not valid for HMAC")]
+    TokenKey,
 }

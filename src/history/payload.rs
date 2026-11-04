@@ -1,5 +1,22 @@
 use serde_json::Value;
 
+use super::metrics::{CostMicros, TokenCount};
+
+#[derive(Clone, Copy)]
+pub struct ParsedUsage {
+    pub input_tokens: Option<TokenCount>,
+    pub output_tokens: Option<TokenCount>,
+    pub cost: Option<CostMicros>,
+}
+
+impl ParsedUsage {
+    const EMPTY: Self = Self {
+        input_tokens: None,
+        output_tokens: None,
+        cost: None,
+    };
+}
+
 pub fn token_from_headers(headers: &axum::http::HeaderMap) -> String {
     if let Some(value) = headers
         .get(axum::http::header::AUTHORIZATION)
@@ -67,56 +84,84 @@ fn content_text(content: Option<&Value>) -> Option<String> {
     None
 }
 
-pub fn usage_from_output(output: &str) -> (Option<i64>, Option<i64>, Option<f64>) {
-    let mut found = (None, None, None);
-    merge_usage(&mut found, output);
+pub fn usage_from_output(output: &str) -> ParsedUsage {
+    let mut found = ParsedUsage::EMPTY;
+    found = fold_usage(found, output);
     for line in output.lines() {
         let line = line.trim();
         let payload = line.strip_prefix("data:").map(str::trim).unwrap_or(line);
         if payload.is_empty() || payload == "[DONE]" {
             continue;
         }
-        merge_usage(&mut found, payload);
+        found = fold_usage(found, payload);
     }
     found
 }
 
-fn merge_usage(found: &mut (Option<i64>, Option<i64>, Option<f64>), raw: &str) {
+fn fold_usage(found: ParsedUsage, raw: &str) -> ParsedUsage {
     let Ok(value) = serde_json::from_str::<Value>(raw) else {
-        return;
+        return found;
     };
-    apply_usage(found, value.get("usage"));
+    let found = apply_usage(found, value.get("usage"));
     apply_usage(
         found,
         value
             .get("message")
             .and_then(|message| message.get("usage")),
-    );
+    )
 }
 
-fn apply_usage(found: &mut (Option<i64>, Option<i64>, Option<f64>), usage: Option<&Value>) {
+fn apply_usage(found: ParsedUsage, usage: Option<&Value>) -> ParsedUsage {
     let Some(usage) = usage else {
-        return;
+        return found;
     };
-    if let Some(input) =
-        json_i64(usage.get("prompt_tokens")).or_else(|| json_i64(usage.get("input_tokens")))
-    {
-        found.0 = Some(input);
-    }
-    if let Some(output) =
-        json_i64(usage.get("completion_tokens")).or_else(|| json_i64(usage.get("output_tokens")))
-    {
-        found.1 = Some(output);
-    }
-    if let Some(cost) = usage.get("cost").and_then(Value::as_f64) {
-        found.2 = Some(cost);
+    let input_tokens = json_token_count(usage.get("prompt_tokens"))
+        .or_else(|| json_token_count(usage.get("input_tokens")))
+        .or(found.input_tokens);
+    let output_tokens = json_token_count(usage.get("completion_tokens"))
+        .or_else(|| json_token_count(usage.get("output_tokens")))
+        .or(found.output_tokens);
+    let cost = json_cost_micros(usage.get("cost")).or(found.cost);
+    ParsedUsage {
+        input_tokens,
+        output_tokens,
+        cost,
     }
 }
 
-fn json_i64(value: Option<&Value>) -> Option<i64> {
+fn json_token_count(value: Option<&Value>) -> Option<TokenCount> {
     value.and_then(|v| {
-        v.as_i64()
-            .or_else(|| v.as_u64().map(|n| n as i64))
-            .or_else(|| v.as_f64().map(|n| n as i64))
+        if let Some(n) = v.as_u64() {
+            return Some(TokenCount(n));
+        }
+        if let Some(n) = v.as_i64() {
+            return u64::try_from(n).ok().map(TokenCount);
+        }
+        v.as_f64().and_then(|n| {
+            if n.is_finite() && n >= 0.0 {
+                Some(TokenCount(n as u64))
+            } else {
+                None
+            }
+        })
     })
+}
+
+fn json_cost_micros(value: Option<&Value>) -> Option<CostMicros> {
+    let v = value?;
+    if let Some(n) = v.as_u64() {
+        return Some(CostMicros(n));
+    }
+    if let Some(n) = v.as_i64() {
+        return u64::try_from(n).ok().map(CostMicros);
+    }
+    let n = v.as_f64()?;
+    if !n.is_finite() || n < 0.0 {
+        return None;
+    }
+    let micros = (n * 1_000_000.0).round();
+    if micros > u64::MAX as f64 {
+        return None;
+    }
+    Some(CostMicros(micros as u64))
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT output, input_tokens, output_tokens, cost, response_bytes FROM calls",
+  "query": "SELECT output, input_tokens, output_tokens, cost_micros, response_bytes FROM calls",
   "describe": {
     "columns": [
       {
@@ -19,9 +19,9 @@
         "type_info": "Integer"
       },
       {
-        "name": "cost",
+        "name": "cost_micros",
         "ordinal": 3,
-        "type_info": "Float"
+        "type_info": "Integer"
       },
       {
         "name": "response_bytes",
@@ -40,5 +40,5 @@
       false
     ]
   },
-  "hash": "bd29ce77f365fc738b8e044b8dd86e2e0f081c493b21660dee2244a6f740d803"
+  "hash": "6b7587bd04304f0ad61d1dadbb5a7542d728b9a58e0f2cca7f637788197f63bc"
 }
