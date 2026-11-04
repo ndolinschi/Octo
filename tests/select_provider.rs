@@ -7,8 +7,7 @@ use serde_json::Value;
 #[test]
 fn body_type_openrouter_stripped() {
     let body = br#"{"type":"OPENROUTER","model":"x","messages":[]}"#;
-    let (provider, out) =
-        resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
+    let (provider, out) = resolve_chat_provider(None, body, ChatCompatProvider::OpenAi).unwrap();
     assert_eq!(provider, ChatCompatProvider::OpenRouter);
     let v: Value = serde_json::from_slice(&out).unwrap();
     assert!(v.get("type").is_none());
@@ -83,8 +82,7 @@ fn invalid_json_returns_error() {
 #[test]
 fn messages_body_type_openrouter_stripped() {
     let body = br#"{"type":"OPENROUTER","model":"anthropic/claude","max_tokens":1,"messages":[]}"#;
-    let (provider, out) =
-        resolve_messages_provider(None, body, MessagesProvider::Claude).unwrap();
+    let (provider, out) = resolve_messages_provider(None, body, MessagesProvider::Claude).unwrap();
     assert_eq!(provider, MessagesProvider::OpenRouter);
     let v: Value = serde_json::from_slice(&out).unwrap();
     assert!(v.get("type").is_none());
