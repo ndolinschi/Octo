@@ -57,13 +57,12 @@ fn content_text(content: Option<&Value>) -> Option<String> {
     None
 }
 
-pub fn tail_suffix_bytes<'a>(prefix: &'a [u8], tail: &'a [u8], response_bytes: usize) -> &'a [u8] {
+pub fn tail_suffix_bytes(tail: &[u8], response_bytes: usize, prefix_len: usize) -> &[u8] {
     let tail_len = tail.len();
     if tail_len == 0 {
         return &[];
     }
     let tail_start = response_bytes.saturating_sub(tail_len);
-    let prefix_len = prefix.len();
     if tail_start >= prefix_len {
         return tail;
     }
@@ -72,7 +71,7 @@ pub fn tail_suffix_bytes<'a>(prefix: &'a [u8], tail: &'a [u8], response_bytes: u
 }
 
 pub fn streaming_events(prefix: &str, tail: &str, response_bytes: usize) -> Vec<Value> {
-    let suffix = tail_suffix_bytes(prefix.as_bytes(), tail.as_bytes(), response_bytes);
+    let suffix = tail_suffix_bytes(tail.as_bytes(), response_bytes, prefix.len());
     let mut events = sse_events(prefix);
     if suffix.is_empty() {
         return events;
@@ -120,7 +119,7 @@ pub fn usage_from_output(output: &str) -> ParsedUsage {
 }
 
 pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> ParsedUsage {
-    let suffix = tail_suffix_bytes(prefix.as_bytes(), tail.as_bytes(), response_bytes);
+    let suffix = tail_suffix_bytes(tail.as_bytes(), response_bytes, prefix.len());
     let head = usage_from_output(prefix);
     let end = if suffix.is_empty() {
         ParsedUsage::EMPTY

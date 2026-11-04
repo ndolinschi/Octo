@@ -10,7 +10,7 @@ pub fn request(body: &str) -> Value {
 }
 
 pub fn response(prefix: &str, tail: &str, response_bytes: usize) -> Value {
-    let suffix = common::tail_suffix_bytes(prefix.as_bytes(), tail.as_bytes(), response_bytes);
+    let suffix = common::tail_suffix_bytes(tail.as_bytes(), response_bytes, prefix.len());
     let tail_body = if suffix.is_empty() {
         Value::Null
     } else {
