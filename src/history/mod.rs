@@ -21,7 +21,10 @@ pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
-pub use payload::{describe_input, token_from_headers, usage_from_output, ParsedUsage};
+pub use payload::{
+    describe_input, request_payload, response_payload, token_from_headers, usage_from_output,
+    usage_from_parts, ParsedUsage,
+};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -288,6 +291,8 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let message = call.message.as_deref();
     let input = call.input.as_str();
     let output = call.output.as_str();
+    let request_payload = call.request_payload.as_str();
+    let response_payload = call.response_payload.as_str();
     let status = i64::from(call.status);
     let latency_ms = millis_to_sql(call.latency_ms);
     let request_bytes = byte_len_to_sql(call.request_bytes);
@@ -299,8 +304,9 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         r#"
         INSERT INTO calls (
             created_at, kind, provider, model, token_hash, message, input, output,
+            request_payload, response_payload,
             status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -310,6 +316,8 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         message,
         input,
         output,
+        request_payload,
+        response_payload,
         status,
         latency_ms,
         request_bytes,

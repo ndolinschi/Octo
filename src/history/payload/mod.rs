@@ -1,0 +1,83 @@
+mod claude;
+mod common;
+mod decision;
+mod envelope;
+mod openai_chat;
+
+use axum::http::HeaderMap;
+
+use super::call_kind::CallKind;
+use super::call_provider::CallProvider;
+
+#[derive(Clone, Copy)]
+pub struct ParsedUsage {
+    pub input_tokens: Option<super::TokenCount>,
+    pub output_tokens: Option<super::TokenCount>,
+    pub cost: Option<super::CostMicros>,
+}
+
+impl ParsedUsage {
+    pub(crate) const EMPTY: Self = Self {
+        input_tokens: None,
+        output_tokens: None,
+        cost: None,
+    };
+}
+
+pub fn token_from_headers(headers: &HeaderMap) -> String {
+    if let Some(value) = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
+        let secret = value
+            .strip_prefix("Bearer ")
+            .or_else(|| value.strip_prefix("bearer "))
+            .unwrap_or(value);
+        if !secret.is_empty() {
+            return secret.to_string();
+        }
+    }
+    if let Some(value) = headers.get("x-api-key").and_then(|v| v.to_str().ok()) {
+        if !value.is_empty() {
+            return value.to_string();
+        }
+    }
+    String::new()
+}
+
+pub fn describe_input(body: &str) -> (Option<String>, Option<String>) {
+    common::describe_input(body)
+}
+
+pub fn usage_from_output(output: &str) -> ParsedUsage {
+    common::usage_from_output(output)
+}
+
+pub fn usage_from_parts(prefix: &str, tail: &str) -> ParsedUsage {
+    common::usage_from_parts(prefix, tail)
+}
+
+pub fn request_payload(kind: CallKind, provider: CallProvider, body: &str) -> String {
+    let inner = match (kind, provider) {
+        (CallKind::Decision, CallProvider::OpenRouter) => decision::request(body),
+        (_, CallProvider::Claude) => claude::request(body),
+        (_, CallProvider::OpenAi | CallProvider::OpenRouter) => openai_chat::request(body),
+    };
+    envelope::tagged_string(provider, inner)
+}
+
+pub fn response_payload(
+    kind: CallKind,
+    provider: CallProvider,
+    prefix: &str,
+    tail: &str,
+) -> String {
+    let inner = match (kind, provider) {
+        (CallKind::Decision, CallProvider::OpenRouter) => decision::response(prefix, tail),
+        (_, CallProvider::Claude) => claude::response(prefix, tail),
+        (_, CallProvider::OpenAi | CallProvider::OpenRouter) => {
+            openai_chat::response(prefix, tail)
+        }
+    };
+    envelope::tagged_string(provider, inner)
+}

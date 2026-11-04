@@ -1,41 +1,14 @@
 use serde_json::Value;
 
-use super::metrics::{CostMicros, TokenCount};
+use super::super::metrics::{CostMicros, TokenCount};
+use super::ParsedUsage;
 
-#[derive(Clone, Copy)]
-pub struct ParsedUsage {
-    pub input_tokens: Option<TokenCount>,
-    pub output_tokens: Option<TokenCount>,
-    pub cost: Option<CostMicros>,
-}
-
-impl ParsedUsage {
-    const EMPTY: Self = Self {
-        input_tokens: None,
-        output_tokens: None,
-        cost: None,
-    };
-}
-
-pub fn token_from_headers(headers: &axum::http::HeaderMap) -> String {
-    if let Some(value) = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-    {
-        let secret = value
-            .strip_prefix("Bearer ")
-            .or_else(|| value.strip_prefix("bearer "))
-            .unwrap_or(value);
-        if !secret.is_empty() {
-            return secret.to_string();
-        }
-    }
-    if let Some(value) = headers.get("x-api-key").and_then(|v| v.to_str().ok()) {
-        if !value.is_empty() {
-            return value.to_string();
-        }
-    }
-    String::new()
+pub fn parse_json_body(body: &str) -> Value {
+    serde_json::from_str(body).unwrap_or_else(|_| {
+        serde_json::json!({
+            "raw": body,
+        })
+    })
 }
 
 pub fn describe_input(body: &str) -> (Option<String>, Option<String>) {
@@ -84,6 +57,21 @@ fn content_text(content: Option<&Value>) -> Option<String> {
     None
 }
 
+pub fn sse_events(captured: &str) -> Vec<Value> {
+    let mut events = Vec::new();
+    for line in captured.lines() {
+        let line = line.trim();
+        let payload = line.strip_prefix("data:").map(str::trim).unwrap_or(line);
+        if payload.is_empty() || payload == "[DONE]" {
+            continue;
+        }
+        if let Ok(value) = serde_json::from_str::<Value>(payload) {
+            events.push(value);
+        }
+    }
+    events
+}
+
 pub fn usage_from_output(output: &str) -> ParsedUsage {
     let mut found = ParsedUsage::EMPTY;
     found = fold_usage(found, output);
@@ -96,6 +84,16 @@ pub fn usage_from_output(output: &str) -> ParsedUsage {
         found = fold_usage(found, payload);
     }
     found
+}
+
+pub fn usage_from_parts(prefix: &str, tail: &str) -> ParsedUsage {
+    let head = usage_from_output(prefix);
+    let end = usage_from_output(tail);
+    ParsedUsage {
+        input_tokens: head.input_tokens.or(end.input_tokens),
+        output_tokens: end.output_tokens.or(head.output_tokens),
+        cost: end.cost.or(head.cost),
+    }
 }
 
 fn fold_usage(found: ParsedUsage, raw: &str) -> ParsedUsage {

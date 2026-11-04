@@ -17,6 +17,8 @@ pub struct FinishedCall {
     pub message: Option<String>,
     pub input: String,
     pub output: String,
+    pub request_payload: String,
+    pub response_payload: String,
     pub status: u16,
     pub latency_ms: Millis,
     pub request_bytes: usize,

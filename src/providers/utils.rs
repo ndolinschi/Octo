@@ -11,7 +11,8 @@ use reqwest::{Client, RequestBuilder};
 use tracing::info;
 
 use crate::history::{
-    describe_input, token_from_headers, usage_from_output, CallObserve, FinishedCall, Millis,
+    describe_input, request_payload, response_payload, token_from_headers, usage_from_parts,
+    CallObserve, FinishedCall, Millis,
 };
 use crate::proxy::error::ProxyError;
 
@@ -108,6 +109,7 @@ struct Capture {
     model: Option<String>,
     message: Option<String>,
     input: String,
+    request_payload: String,
     request_bytes: usize,
     capture_limit: usize,
     started: Instant,
@@ -123,6 +125,8 @@ impl Capture {
         } else {
             observe.history.token_hash(&secret).ok()
         };
+        let request_payload =
+            request_payload(observe.kind, observe.provider, &input);
         Self {
             token_hash,
             observe: CallObserve {
@@ -133,6 +137,7 @@ impl Capture {
             model,
             message,
             request_bytes: body.len(),
+            request_payload,
             capture_limit: observe.history.capture_limit(),
             input,
             started: Instant::now(),
@@ -142,11 +147,13 @@ impl Capture {
     fn finish(self, status: u16, output: Vec<u8>, tail: Vec<u8>, response_bytes: usize) {
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let tail_text = String::from_utf8_lossy(&tail);
-        let head = usage_from_output(&output_text);
-        let tail_usage = usage_from_output(&tail_text);
-        let input_tokens = head.input_tokens.or(tail_usage.input_tokens);
-        let output_tokens = tail_usage.output_tokens.or(head.output_tokens);
-        let cost = tail_usage.cost.or(head.cost);
+        let usage = usage_from_parts(&output_text, &tail_text);
+        let response_payload = response_payload(
+            self.observe.kind,
+            self.observe.provider,
+            &output_text,
+            &tail_text,
+        );
         let latency_ms = Millis::new(self.started.elapsed().as_millis() as u64);
         self.observe.history.record(FinishedCall {
             kind: self.observe.kind,
@@ -156,13 +163,15 @@ impl Capture {
             message: self.message,
             input: self.input,
             output: output_text,
+            request_payload: self.request_payload,
+            response_payload,
             status,
             latency_ms,
             request_bytes: self.request_bytes,
             response_bytes,
-            input_tokens,
-            output_tokens,
-            cost,
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cost: usage.cost,
         });
     }
 }

@@ -1,4 +1,8 @@
-use octo::history::{describe_input, usage_from_output, CostMicros, History, TokenCount};
+use octo::history::{
+    describe_input, request_payload, usage_from_output, CallKind, CallProvider, CostMicros,
+    History, TokenCount,
+};
+use serde_json::Value;
 
 #[tokio::test]
 async fn same_secret_matches_and_raw_secret_is_not_the_hash() {
@@ -10,6 +14,31 @@ async fn same_secret_matches_and_raw_secret_is_not_the_hash() {
     assert_eq!(left, right);
     assert_ne!(history.token_hash("sk-other").unwrap(), left);
     assert!(!left.contains("sk-user"));
+}
+
+#[test]
+fn request_payload_tags_provider_and_preserves_json() {
+    let raw = request_payload(
+        CallKind::Llm,
+        CallProvider::OpenAi,
+        r#"{"model":"gpt-test","messages":[]}"#,
+    );
+    let value: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(value["provider"], "openai");
+    assert_eq!(value["payload"]["format"], "openai_chat_completions");
+    assert_eq!(value["payload"]["body"]["model"], "gpt-test");
+}
+
+#[test]
+fn claude_response_payload_keeps_anthropic_events() {
+    use octo::history::response_payload;
+
+    let output = "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n";
+    let raw = response_payload(CallKind::Llm, CallProvider::Claude, output, "");
+    let value: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(value["provider"], "claude");
+    assert_eq!(value["payload"]["format"], "anthropic_messages");
+    assert_eq!(value["payload"]["events"][0]["type"], "message_start");
 }
 
 #[test]
