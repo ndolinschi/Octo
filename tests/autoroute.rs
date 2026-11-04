@@ -124,6 +124,23 @@ fn tilde_high_slug_reads_catalog_window_and_does_not_upgrade_to_low() {
 }
 
 #[test]
+fn high_pick_ignores_preferred_when_it_matches_low_or_mid_with_tilde() {
+    let tiers = Tiers::new(
+        "google/gemma".into(),
+        "deepseek/flash".into(),
+        "~anthropic/claude-haiku-latest".into(),
+    );
+    assert_eq!(
+        tiers.pick(Complexity::High, Some("~google/gemma")),
+        "~anthropic/claude-haiku-latest"
+    );
+    assert_eq!(
+        tiers.pick(Complexity::High, Some("custom/high")),
+        "custom/high"
+    );
+}
+
+#[test]
 fn larger_fit_chooses_smallest_window_that_still_fits() {
     let models = OpenRouterModels {
         free: Vec::new(),

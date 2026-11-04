@@ -169,10 +169,20 @@ pub(super) fn passthrough(body: &Value) -> Turn {
 
 pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
     let current_window = catalog::context_length(plan.models, plan.model);
-    let fallback = plan.auto.tiers.candidates().into_iter().find(|slug| {
-        !catalog::ids_match(slug, plan.model)
-            && catalog::context_length(plan.models, slug) > current_window
-    });
+    let fallback = plan
+        .auto
+        .tiers
+        .candidates()
+        .into_iter()
+        .filter_map(|slug| {
+            if catalog::ids_match(slug, plan.model) {
+                return None;
+            }
+            let window = catalog::context_length(plan.models, slug);
+            (window > current_window).then_some((window, slug))
+        })
+        .min_by_key(|(window, _)| *window)
+        .map(|(_, slug)| slug);
     match serde_json::to_vec(&compaction_body(plan.body, plan.model)) {
         Ok(body) => Turn::Compact(Compact {
             body,

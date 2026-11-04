@@ -15,10 +15,10 @@ use serde_json::Value;
 
 use crate::history::History;
 
-use super::body;
-use super::catalog::{CatalogCache, Tiers};
-use super::metrics;
 use super::action::Turn;
+use super::body;
+use super::catalog::{self, CatalogCache, Tiers};
+use super::metrics;
 
 use classify::{ClassifyCtx, ClassifyTurn};
 use gate::SessionGate;
@@ -161,7 +161,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             .await
             {
                 Some((model, tools)) => {
-                    let reason = if model != row.model {
+                    let reason = if !catalog::ids_match(&model, &row.model) {
                         Some("reclassify".to_string())
                     } else if tools != row.tools {
                         Some("tool_update".to_string())

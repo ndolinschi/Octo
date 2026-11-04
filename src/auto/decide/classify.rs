@@ -52,12 +52,12 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)
         current_tools: plan.current,
     })
     .await;
-    record(
-        plan.ctx.history,
-        plan.ctx.session_id.clone(),
-        plan.purpose,
-        &asked,
-    );
+    record(RecordPlan {
+        history: plan.ctx.history,
+        session_id: plan.ctx.session_id.clone(),
+        purpose: plan.purpose,
+        asked: &asked,
+    });
     let classified = asked.parsed?;
     let model = plan.ctx.tiers.pick(classified.complexity, plan.preferred);
     let tools = jev::needed_tools(jev::ToolNeed {
@@ -69,15 +69,22 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)
     Some((model, tools))
 }
 
-fn record(history: &History, session_id: Option<String>, purpose: &str, asked: &jev::Asked) {
-    let parsed = asked.parsed.as_ref();
-    history.record_decision(DecisionRow {
-        session_id,
-        purpose: purpose.to_string(),
+struct RecordPlan<'a> {
+    history: &'a History,
+    session_id: Option<String>,
+    purpose: &'a str,
+    asked: &'a jev::Asked,
+}
+
+fn record(plan: RecordPlan<'_>) {
+    let parsed = plan.asked.parsed.as_ref();
+    plan.history.record_decision(DecisionRow {
+        session_id: plan.session_id,
+        purpose: plan.purpose.to_string(),
         model: "typesafe/jev-1.13".to_string(),
-        status: asked.status,
-        latency_ms: asked.latency_ms,
-        user_text: user_text_from_request(&asked.request_body),
+        status: plan.asked.status,
+        latency_ms: plan.asked.latency_ms,
+        user_text: user_text_from_request(&plan.asked.request_body),
         is_hard: parsed.and_then(|row| row.is_hard),
         is_easy: parsed.and_then(|row| row.is_easy),
         tools_enough: parsed.and_then(|row| row.tools_enough_raw.clone()),
@@ -86,10 +93,10 @@ fn record(history: &History, session_id: Option<String>, purpose: &str, asked: &
             jev::Complexity::Mid => "mid",
             jev::Complexity::High => "high",
         }),
-        choice_rule: asked.choice_rule.to_string(),
+        choice_rule: plan.asked.choice_rule.to_string(),
         missing_tools: parsed.map(|row| row.missing_tools.join(",")),
-        request_payload: asked.request_body.clone(),
-        response_payload: asked.response_body.clone(),
+        request_payload: plan.asked.request_body.clone(),
+        response_payload: plan.asked.response_body.clone(),
     });
 }
 
