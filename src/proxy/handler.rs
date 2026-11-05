@@ -32,6 +32,11 @@ async fn forward_chat(
         provider: CallProvider::from(provider),
         rerouting: 0,
         rerouting_reason: None,
+        session_id: None,
+        tier_before: None,
+        tier_after: None,
+        trigger: "none".to_string(),
+        auto: None,
         on_response: None,
     });
     if forward {
@@ -89,6 +94,11 @@ async fn forward_messages(
         provider: CallProvider::from(provider),
         rerouting: 0,
         rerouting_reason: None,
+        session_id: None,
+        tier_before: None,
+        tier_after: None,
+        trigger: "none".to_string(),
+        auto: None,
         on_response: None,
     });
     match provider {
@@ -152,6 +162,11 @@ pub async fn decisions(
                 provider: CallProvider::OpenRouter,
                 rerouting: 0,
                 rerouting_reason: None,
+                session_id: None,
+                tier_before: None,
+                tier_after: None,
+                trigger: "none".to_string(),
+                auto: None,
                 on_response: None,
             }),
         )

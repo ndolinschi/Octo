@@ -21,6 +21,7 @@ pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
+pub use payload::cost_micros_from_json;
 pub use payload::{
     describe_input, is_subagent, request_payload, response_payload, token_from_headers,
     usage_from_output, usage_from_parts, ParsedUsage,
@@ -146,6 +147,24 @@ impl History {
                 tracing::warn!(%err, choice_rule = %row.choice_rule, "decision insert failed");
             }
         });
+    }
+
+    pub async fn session_cost_micros(&self, session_id: &str) -> Result<u64, HistoryError> {
+        let Some(pool) = self.pool.as_ref() else {
+            return Ok(0);
+        };
+        let row = sqlx::query!(
+            r#"
+            SELECT
+              (SELECT COALESCE(SUM(cost_micros), 0) FROM calls WHERE session_id = ?1) +
+              (SELECT COALESCE(SUM(cost_micros), 0) FROM decisions WHERE session_id = ?1)
+            AS total
+            "#,
+            session_id
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(u64::try_from(row.total).unwrap_or(u64::MAX))
     }
 
     pub fn record(&self, call: FinishedCall) {
@@ -345,6 +364,8 @@ async fn insert_decision(
     row: &DecisionRow,
     capture_limit: usize,
 ) -> Result<(), sqlx::Error> {
+    use metrics::cost_micros_to_sql;
+
     let created_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -365,13 +386,14 @@ async fn insert_decision(
     let missing_tools = row.missing_tools.as_deref();
     let request_payload = clip(&row.request_payload, capture_limit);
     let response_payload = clip(&row.response_payload, capture_limit);
+    let cost_micros = row.cost.map(cost_micros_to_sql);
     sqlx::query!(
         r#"
         INSERT INTO decisions (
             created_at, session_id, purpose, model, status, latency_ms, user_text,
             is_hard, is_easy, is_hard_score, is_easy_score, tools_enough, complexity, choice_rule, missing_tools,
-            request_payload, response_payload
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            request_payload, response_payload, cost_micros
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         session_id,
@@ -389,7 +411,8 @@ async fn insert_decision(
         choice_rule,
         missing_tools,
         request_payload,
-        response_payload
+        response_payload,
+        cost_micros
     )
     .execute(pool)
     .await?;
@@ -419,16 +442,20 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let input_tokens = call.input_tokens.map(token_count_to_sql);
     let output_tokens = call.output_tokens.map(token_count_to_sql);
     let cost_micros = call.cost.map(cost_micros_to_sql);
-    let rerouting = call.rerouting;
+    let rerouting = i64::from(call.tier_before.as_deref() != call.tier_after.as_deref());
     let rerouting_reason = call.rerouting_reason.as_deref();
+    let session_id = call.session_id.as_deref();
+    let tier_before = call.tier_before.as_deref();
+    let tier_after = call.tier_after.as_deref();
+    let trigger = call.trigger.as_str();
     sqlx::query!(
         r#"
         INSERT INTO calls (
             created_at, kind, provider, model, token_hash, message, input, output,
             request_payload, response_payload,
             status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros,
-            rerouting, rerouting_reason
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            rerouting, rerouting_reason, session_id, tier_before, tier_after, trigger
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -449,6 +476,10 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         cost_micros,
         rerouting,
         rerouting_reason,
+        session_id,
+        tier_before,
+        tier_after,
+        trigger
     )
     .execute(pool)
     .await?;

@@ -14,6 +14,7 @@ pub struct SessionChoice {
     pub last_stall: Option<String>,
     pub pending_down_band: Option<String>,
     pub down_count: u32,
+    pub cost_micros: u64,
 }
 
 impl SessionChoice {
@@ -30,6 +31,7 @@ impl SessionChoice {
             last_stall: None,
             pending_down_band: None,
             down_count: 0,
+            cost_micros: 0,
         }
     }
 }

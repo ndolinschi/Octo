@@ -69,6 +69,11 @@ async fn streamed_response_is_forwarded_then_stored() {
             provider: CallProvider::OpenAi,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -133,6 +138,11 @@ async fn missing_token_is_not_a_shared_identity() {
             provider: CallProvider::OpenRouter,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -173,6 +183,11 @@ async fn decisions_response_is_stored_with_its_kind() {
             provider: CallProvider::OpenRouter,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -235,6 +250,11 @@ async fn usage_past_the_stored_prefix_is_kept() {
             provider: CallProvider::OpenAi,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -306,6 +326,11 @@ async fn upstream_chunk_error_is_stored_as_failure() {
             provider: CallProvider::OpenAi,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -346,6 +371,7 @@ async fn decision_row_is_inserted_into_decisions() {
         missing_tools: Some(String::new()),
         request_payload: "{}".to_string(),
         response_payload: "{}".to_string(),
+        cost: None,
     });
     history.drain().await;
     let row = poll_call(&history, || async {

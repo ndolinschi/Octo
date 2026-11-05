@@ -10,7 +10,7 @@ use axum::{
 };
 use serde_json::Value;
 
-use crate::auto::{session_key, Compact, DecideRequest, Turn};
+use crate::auto::{session_key, Compact, DecideRequest, RouteMeta, Turn};
 use crate::history::{token_from_headers, CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
@@ -142,11 +142,13 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
         models: models.as_ref(),
     });
     let body = serde_json::to_vec(&shaped).ok()?;
-    let forward = crate::auto::Forward {
-        body,
-        rerouting: 1,
-        reason: Some("upstream_retry".to_string()),
+    let tier_after = plan.state.auto.tiers().band(&next).to_string();
+    let meta = RouteMeta {
+        tier_before: plan.forward.meta.tier_after.clone(),
+        tier_after,
+        trigger: "retry".to_string(),
     };
+    let forward = crate::auto::Forward { body, meta };
     Some(
         dispatch_forward(DispatchForward {
             state: plan.state,
@@ -168,14 +170,19 @@ struct DispatchForward<'a> {
 }
 
 async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyError> {
-    let hook = (!plan.chat).then_some(plan.session).flatten().map(|id| {
-        let auto = plan.state.auto.clone();
-        Arc::new(move |text: &str| {
-            if stop_reason_is(text, "model_context_window_exceeded") {
-                auto.mark_awaiting_compact(&id);
-            }
-        }) as Arc<dyn Fn(&str) + Send + Sync>
-    });
+    let session_id = plan.session.clone();
+    let hook = (!plan.chat)
+        .then_some(session_id.clone())
+        .flatten()
+        .map(|id| {
+            let auto = plan.state.auto.clone();
+            Arc::new(move |text: &str| {
+                if stop_reason_is(text, "model_context_window_exceeded") {
+                    auto.mark_awaiting_compact(&id);
+                }
+            }) as Arc<dyn Fn(&str) + Send + Sync>
+        });
+    let meta = &plan.forward.meta;
     let observe = Some(CallObserve {
         history: plan.state.history.clone(),
         kind: if plan.chat {
@@ -184,8 +191,13 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
             CallKind::Messages
         },
         provider: CallProvider::OpenRouter,
-        rerouting: plan.forward.rerouting,
-        rerouting_reason: plan.forward.reason.clone(),
+        rerouting: meta.rerouting(),
+        rerouting_reason: meta.legacy_reason(),
+        session_id,
+        tier_before: Some(meta.tier_before.clone()),
+        tier_after: Some(meta.tier_after.clone()),
+        trigger: meta.trigger.clone(),
+        auto: Some(plan.state.auto.clone()),
         on_response: hook,
     });
     if plan.chat {
@@ -249,6 +261,11 @@ async fn chat_compact(
                 provider: CallProvider::OpenRouter,
                 rerouting: 0,
                 rerouting_reason: None,
+                session_id: None,
+                tier_before: None,
+                tier_after: None,
+                trigger: "none".to_string(),
+                auto: None,
                 on_response: None,
             }),
         )

@@ -15,3 +15,5 @@ down_confirm = 2
 # Client model is honoured on High only when its slug (tilde-insensitive) is listed here.
 # Empty means always use the configured high slug.
 high_allow = []
+# Session spend cap in USD (0 = disabled). Counts JEV + LLM cost_micros for the session key.
+session_budget_usd = 0

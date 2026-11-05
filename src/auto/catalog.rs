@@ -16,6 +16,7 @@ pub struct Tiers {
     pub escalate_turns: u32,
     pub down_confirm: u32,
     pub high_allow: Vec<String>,
+    pub session_budget_micros: u64,
 }
 
 impl Tiers {
@@ -30,6 +31,7 @@ impl Tiers {
             escalate_turns: 3,
             down_confirm: 2,
             high_allow: Vec::new(),
+            session_budget_micros: 0,
         }
     }
 

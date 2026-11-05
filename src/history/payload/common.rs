@@ -200,3 +200,11 @@ fn json_cost_micros(value: Option<&Value>) -> Option<CostMicros> {
     }
     Some(CostMicros(micros as u64))
 }
+
+pub fn cost_micros_from_json(value: &Value) -> Option<CostMicros> {
+    json_cost_micros(value.get("cost")).or_else(|| {
+        value
+            .get("usage")
+            .and_then(|usage| json_cost_micros(usage.get("cost")))
+    })
+}

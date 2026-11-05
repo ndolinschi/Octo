@@ -13,6 +13,11 @@ pub struct CallObserve {
     pub provider: CallProvider,
     pub rerouting: i64,
     pub rerouting_reason: Option<String>,
+    pub session_id: Option<String>,
+    pub tier_before: Option<String>,
+    pub tier_after: Option<String>,
+    pub trigger: String,
+    pub auto: Option<crate::auto::Auto>,
     pub on_response: Option<ResponseHook>,
 }
 
@@ -33,6 +38,7 @@ pub struct DecisionRow {
     pub missing_tools: Option<String>,
     pub request_payload: String,
     pub response_payload: String,
+    pub cost: Option<CostMicros>,
 }
 
 pub struct FinishedCall {
@@ -54,4 +60,8 @@ pub struct FinishedCall {
     pub cost: Option<CostMicros>,
     pub rerouting: i64,
     pub rerouting_reason: Option<String>,
+    pub session_id: Option<String>,
+    pub tier_before: Option<String>,
+    pub tier_after: Option<String>,
+    pub trigger: String,
 }

@@ -21,6 +21,7 @@ pub struct Asked {
     pub latency_ms: u128,
     pub parsed: Option<Classified>,
     pub choice_rule: &'static str,
+    pub cost: Option<crate::history::CostMicros>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

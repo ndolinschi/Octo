@@ -61,6 +61,10 @@ pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> Pars
     common::usage_from_parts(prefix, tail, response_bytes)
 }
 
+pub fn cost_micros_from_json(value: &serde_json::Value) -> Option<super::CostMicros> {
+    common::cost_micros_from_json(value)
+}
+
 pub fn request_payload(kind: CallKind, provider: CallProvider, body: &str) -> String {
     let inner = match (kind, provider) {
         (CallKind::Decision, CallProvider::OpenRouter) => decision::request(body),

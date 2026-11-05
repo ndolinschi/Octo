@@ -156,5 +156,9 @@ fn record(plan: RecordPlan<'_>) {
         cost: usage.cost,
         rerouting: 0,
         rerouting_reason: None,
+        session_id: None,
+        tier_before: None,
+        tier_after: None,
+        trigger: "none".to_string(),
     });
 }

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n              (SELECT COALESCE(SUM(cost_micros), 0) FROM calls WHERE session_id = ?1) +\n              (SELECT COALESCE(SUM(cost_micros), 0) FROM decisions WHERE session_id = ?1)\n            AS total\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "total",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ad2ac4eb830ee8ab54261c88b62e98ccecbe8cb06e06d98b5e77ebe92e9c2ebc"
+}

@@ -4,11 +4,12 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use octo::auto::context_length;
 use octo::auto::{
-    apply_sticky, choice, choice_from_scores, classified, compaction_body, context_estimate,
-    decide, detect_stall, dropped, filter_tools, inspect, is_housekeeping, larger_fit,
-    max_completion_tokens, needed_tools, needs_compact, output_reserve, payload, session_id,
-    session_key, shape, with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan,
-    SessionChoice, ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
+    apply_sticky, cap_for_budget, choice, choice_from_scores, classified, compaction_body,
+    context_estimate, decide, detect_stall, dropped, filter_tools, inspect, is_housekeeping,
+    larger_fit, max_completion_tokens, needed_tools, needs_compact, output_reserve, payload,
+    session_id, session_key, shape, with_model, Auto, Complexity, DecideRequest, LargerFit,
+    PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers,
+    Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -36,7 +37,48 @@ fn session_id_comes_from_metadata_user_id() {
     assert!(is_housekeeping(
         "Describe your most recent action in 3-5 words"
     ));
+    assert!(is_housekeeping(
+        "[SUGGESTION MODE: Suggest what the user might naturally type next"
+    ));
+    assert!(is_housekeeping(
+        "The user stepped away and is coming back. Recap in under 40 words"
+    ));
     assert!(!is_housekeeping("what is about this branch"));
+}
+
+#[test]
+fn housekeeping_fixture_title_session() {
+    let text = "<session>\nHello world\n</session>\n\nWrite the title in the predominant language of the codebase.";
+    assert!(is_housekeeping(text));
+}
+
+#[test]
+fn route_meta_rerouting_matches_tier_change() {
+    let changed = RouteMeta::from_plan("low".into(), "mid".into(), Some("reclassify"));
+    assert_eq!(changed.rerouting(), 1);
+    assert_eq!(changed.trigger, "reclassify");
+    let same = RouteMeta::housekeeping("low");
+    assert_eq!(same.rerouting(), 0);
+    assert_eq!(same.trigger, "none");
+}
+
+#[test]
+fn session_budget_cap_clamps_high_to_mid() {
+    let tiers = Tiers::new("low-model".into(), "mid-model".into(), "high-model".into());
+    let mut tiers = tiers;
+    tiers.session_budget_micros = 100;
+    let mut sticky = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: None,
+        classified: Complexity::High,
+        preferred: None,
+        stall: None,
+        tool_results_only: false,
+    });
+    cap_for_budget(&mut sticky, &tiers, 100);
+    assert_eq!(sticky.sticky_band, "mid");
+    assert_eq!(sticky.model, "mid-model");
+    assert_eq!(sticky.reason.as_deref(), Some("budget_cap"));
 }
 
 #[test]
@@ -667,12 +709,9 @@ async fn decide_stall_escalates_without_catalog_or_jev() {
     let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
     assert_eq!(payload["model"], "mid-m");
     assert!(
-        forward
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.starts_with("stall_escalate:")),
-        "reason={:?}",
-        forward.reason
+        forward.meta.trigger.starts_with("stall:"),
+        "trigger={:?}",
+        forward.meta.trigger
     );
 }
 

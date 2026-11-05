@@ -29,6 +29,9 @@ pub fn is_housekeeping(text: &str) -> bool {
         || text.contains("Describe your most recent action")
         || text.contains("[SYSTEM NOTIFICATION - NOT USER INPUT]")
         || text.contains("Current state: working")
+        || text.contains("[SUGGESTION MODE:")
+        || text.contains("The user stepped away and is coming back")
+        || text.contains("Recap in under 40 words")
 }
 
 pub fn last_user_text(body: &Value) -> String {

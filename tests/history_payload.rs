@@ -1,6 +1,6 @@
 use octo::history::{
-    describe_input, request_payload, usage_from_output, CallKind, CallProvider, CostMicros,
-    History, TokenCount,
+    cost_micros_from_json, describe_input, request_payload, usage_from_output, CallKind,
+    CallProvider, CostMicros, History, TokenCount,
 };
 use serde_json::Value;
 
@@ -102,4 +102,10 @@ fn usage_reads_anthropic_message_events() {
     assert_eq!(usage.input_tokens, Some(TokenCount(11)));
     assert_eq!(usage.output_tokens, Some(TokenCount(9)));
     assert_eq!(usage.cost, None);
+}
+
+#[test]
+fn decisions_usage_cost_parses_to_micros() {
+    let body = serde_json::json!({"usage": {"cost": 0.000012}});
+    assert_eq!(cost_micros_from_json(&body), Some(CostMicros(12)));
 }

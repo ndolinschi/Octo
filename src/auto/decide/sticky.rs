@@ -155,6 +155,23 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
     }
 }
 
+pub fn cap_for_budget(out: &mut StickyOutcome, tiers: &Tiers, spent_micros: u64) {
+    if tiers.session_budget_micros == 0 || spent_micros < tiers.session_budget_micros {
+        return;
+    }
+    let mid_rank = catalog::band_rank("mid");
+    if catalog::band_rank(&out.sticky_band) > mid_rank {
+        out.sticky_band = "mid".to_string();
+        out.model = tiers.slug("mid");
+        out.reason = Some("budget_cap".to_string());
+        return;
+    }
+    if catalog::band_rank(tiers.band(&out.model)) > mid_rank {
+        out.model = tiers.slug("mid");
+        out.reason = Some("budget_cap".to_string());
+    }
+}
+
 fn higher_band<'a>(left: &'a str, right: &'a str) -> &'a str {
     if catalog::band_rank(left) >= catalog::band_rank(right) {
         left

@@ -29,6 +29,7 @@ fn loads_split_config_directory() {
     assert_eq!(config.autoroute_escalate_turns, 3);
     assert_eq!(config.autoroute_down_confirm, 2);
     assert!(config.autoroute_high_allow.is_empty());
+    assert_eq!(config.autoroute_session_budget_usd, 0.0);
 }
 
 #[test]

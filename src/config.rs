@@ -51,6 +51,7 @@ pub struct Config {
     pub autoroute_escalate_turns: u32,
     pub autoroute_down_confirm: u32,
     pub autoroute_high_allow: Vec<String>,
+    pub autoroute_session_budget_usd: f64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -337,6 +338,8 @@ struct AutorouteSection {
     down_confirm: u32,
     #[serde(default)]
     high_allow: Vec<String>,
+    #[serde(default = "default_autoroute_session_budget_usd")]
+    session_budget_usd: f64,
 }
 
 impl Default for AutorouteSection {
@@ -351,8 +354,13 @@ impl Default for AutorouteSection {
             escalate_turns: default_autoroute_escalate_turns(),
             down_confirm: default_autoroute_down_confirm(),
             high_allow: Vec::new(),
+            session_budget_usd: default_autoroute_session_budget_usd(),
         }
     }
+}
+
+fn default_autoroute_session_budget_usd() -> f64 {
+    0.0
 }
 
 fn default_autoroute_low_model() -> String {
@@ -540,6 +548,7 @@ fn config_from_file(file: ConfigFile) -> Config {
         autoroute_escalate_turns: file.autoroute.escalate_turns,
         autoroute_down_confirm: file.autoroute.down_confirm,
         autoroute_high_allow: file.autoroute.high_allow,
+        autoroute_session_budget_usd: file.autoroute.session_budget_usd,
     }
 }
 

@@ -41,6 +41,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_escalate_turns: 3,
         autoroute_down_confirm: 2,
         autoroute_high_allow: Vec::new(),
+        autoroute_session_budget_usd: 0.0,
     }
 }
 

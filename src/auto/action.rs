@@ -1,8 +1,9 @@
+use super::routing::RouteMeta;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Forward {
     pub body: Vec<u8>,
-    pub rerouting: i64,
-    pub reason: Option<String>,
+    pub meta: RouteMeta,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,17 +14,17 @@ pub struct Compact {
 }
 
 pub trait ModelAction {
-    fn rerouting(&self) -> (i64, Option<&str>);
+    fn rerouting(&self) -> (i64, Option<String>);
 }
 
 impl ModelAction for Forward {
-    fn rerouting(&self) -> (i64, Option<&str>) {
-        (self.rerouting, self.reason.as_deref())
+    fn rerouting(&self) -> (i64, Option<String>) {
+        (self.meta.rerouting(), self.meta.legacy_reason())
     }
 }
 
 impl ModelAction for Compact {
-    fn rerouting(&self) -> (i64, Option<&str>) {
+    fn rerouting(&self) -> (i64, Option<String>) {
         (0, None)
     }
 }
@@ -35,7 +36,7 @@ pub enum Turn {
 }
 
 impl ModelAction for Turn {
-    fn rerouting(&self) -> (i64, Option<&str>) {
+    fn rerouting(&self) -> (i64, Option<String>) {
         match self {
             Self::Forward(action) => action.rerouting(),
             Self::Compact(action) => action.rerouting(),

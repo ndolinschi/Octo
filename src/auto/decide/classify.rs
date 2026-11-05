@@ -6,8 +6,10 @@ use crate::history::{DecisionRow, History};
 use super::super::body;
 use super::super::catalog::Tiers;
 use super::super::jev;
+use super::super::Auto;
 
 pub(super) struct ClassifyCtx<'a> {
+    pub auto: &'a Auto,
     pub history: &'a History,
     pub session_id: Option<String>,
     pub client: &'a Client,
@@ -67,6 +69,7 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
     })
     .await;
     record(RecordPlan {
+        auto: plan.ctx.auto,
         history: plan.ctx.history,
         session_id: plan.ctx.session_id.clone(),
         purpose: plan.purpose,
@@ -88,6 +91,7 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
 }
 
 struct RecordPlan<'a> {
+    auto: &'a Auto,
     history: &'a History,
     session_id: Option<String>,
     purpose: &'a str,
@@ -96,6 +100,9 @@ struct RecordPlan<'a> {
 
 fn record(plan: RecordPlan<'_>) {
     let parsed = plan.asked.parsed.as_ref();
+    if let (Some(session_id), Some(cost)) = (&plan.session_id, plan.asked.cost) {
+        plan.auto.add_session_cost(session_id, cost.0);
+    }
     plan.history.record_decision(DecisionRow {
         session_id: plan.session_id,
         purpose: plan.purpose.to_string(),
@@ -117,6 +124,7 @@ fn record(plan: RecordPlan<'_>) {
         missing_tools: parsed.map(|row| row.missing_tools.join(",")),
         request_payload: plan.asked.request_body.clone(),
         response_payload: plan.asked.response_body.clone(),
+        cost: plan.asked.cost,
     });
 }
 

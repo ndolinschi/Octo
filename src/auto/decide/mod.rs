@@ -23,10 +23,11 @@ use super::jev::Complexity;
 use super::metrics;
 use super::stall;
 
+use super::session::SessionChoice;
 use classify::{ClassifyCtx, ClassifyTurn};
 use gate::SessionGate;
 use route::{RepeatCompact, RouteCtx, RoutePlan};
-use sticky::{apply as apply_sticky, StickyPlan};
+use sticky::{apply as apply_sticky, cap_for_budget, StickyPlan};
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
 const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
@@ -81,6 +82,31 @@ impl Auto {
             choice.seen = Instant::now();
             sessions.insert(session_id.to_string(), choice);
         }
+    }
+
+    pub fn session_cost_micros(&self, session_key: &str) -> u64 {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return 0;
+        };
+        sessions
+            .get(session_key)
+            .map(|row| row.cost_micros)
+            .unwrap_or(0)
+    }
+
+    pub fn add_session_cost(&self, session_key: &str, micros: u64) {
+        if micros == 0 {
+            return;
+        }
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        let mut row = sessions.get(session_key).unwrap_or_else(|| {
+            SessionChoice::fresh(String::new(), Vec::new(), "unset".to_string())
+        });
+        row.cost_micros = row.cost_micros.saturating_add(micros);
+        row.seen = Instant::now();
+        sessions.insert(session_key.to_string(), row);
     }
 }
 
@@ -142,6 +168,10 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
 
     let user_text = body::last_user_text(&req.body);
     let persist = !all_tools.is_empty();
+    let tier_before = choice
+        .as_ref()
+        .map(|row| row.sticky_band.clone())
+        .unwrap_or_else(|| "unset".to_string());
     let stall = stall::detect(&req.body, req.auto.tiers.stall_window);
     let tool_results_only = body::last_user_tool_results_only(&req.body);
     let current_tier = choice
@@ -149,6 +179,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .map(|row| row.sticky_band.as_str())
         .unwrap_or("unset");
     let classify_ctx = ClassifyCtx {
+        auto: req.auto,
         history: req.history,
         session_id: actor.clone(),
         client: req.client,
@@ -171,12 +202,27 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             body: req.body,
             models: loaded.as_ref(),
             previous_model: Some(row.model.clone()),
-            plan: session_plan(&row, None, reserve, req.allow_compact, persist),
+            plan: session_plan(&row, tier_before, None, reserve, req.allow_compact, persist),
         });
     }
 
+    if body::is_housekeeping(&user_text) {
+        if let Some(row) = choice {
+            return route::run(RouteCtx {
+                auto: req.auto,
+                body: req.body,
+                models: loaded.as_ref(),
+                previous_model: Some(row.model.clone()),
+                plan: session_plan(&row, tier_before, None, reserve, req.allow_compact, persist),
+            });
+        }
+        if stall.is_none() {
+            return route::passthrough(&req.body);
+        }
+    }
+
     let picked = if choice.is_some() {
-        if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
+        if user_text.trim().is_empty() {
             None
         } else {
             classify::turn(ClassifyTurn {
@@ -240,7 +286,11 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         ),
     };
 
-    let sticky = apply_sticky(StickyPlan {
+    let spent = actor
+        .as_ref()
+        .map(|id| req.auto.session_cost_micros(id))
+        .unwrap_or(0);
+    let mut sticky = apply_sticky(StickyPlan {
         tiers: &req.auto.tiers,
         choice: choice.as_ref(),
         classified,
@@ -248,6 +298,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         stall,
         tool_results_only,
     });
+    cap_for_budget(&mut sticky, &req.auto.tiers, spent);
     let previous_model = choice.as_ref().map(|row| row.model.clone());
     let reason = sticky.reason.or(classify_reason);
     route::run(RouteCtx {
@@ -259,6 +310,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             model: sticky.model,
             tools,
             reason,
+            tier_before,
             reserve,
             allow_compact: req.allow_compact,
             persist,
@@ -295,6 +347,7 @@ fn hold_without_classify(plan: HoldWithoutClassify<'_>) -> Option<super::session
 
 fn session_plan(
     row: &super::session::SessionChoice,
+    tier_before: String,
     reason: Option<String>,
     reserve: u64,
     allow_compact: bool,
@@ -304,6 +357,7 @@ fn session_plan(
         model: row.model.clone(),
         tools: row.tools.clone(),
         reason,
+        tier_before,
         reserve,
         allow_compact,
         persist,

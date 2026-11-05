@@ -8,6 +8,7 @@ use super::super::action::{Compact, Forward, Turn};
 use super::super::body::{self, compaction_body, ShapePlan};
 use super::super::catalog::{self, LargerFit};
 use super::super::metrics::{self, context_estimate};
+use super::super::routing::RouteMeta;
 use super::super::session::SessionChoice;
 use super::models::counted_bytes;
 use super::Auto;
@@ -16,6 +17,7 @@ pub(super) struct RoutePlan {
     pub model: String,
     pub tools: Vec<String>,
     pub reason: Option<String>,
+    pub tier_before: String,
     pub reserve: u64,
     pub allow_compact: bool,
     pub persist: bool,
@@ -144,7 +146,9 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             down_count: plan.down_count,
         });
     }
-    encode_forward(&outgoing, plan.reason)
+    let tier_after = ctx.auto.tiers().band(&plan.model).to_string();
+    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
+    encode_forward(&outgoing, meta)
 }
 
 fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
@@ -172,6 +176,8 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
             previous_model: ctx.previous_model,
             models: ctx.models,
             reason: plan.reason,
+            tier_before: plan.tier_before.clone(),
+            auto: ctx.auto,
         });
     }
     if plan.persist {
@@ -204,9 +210,13 @@ pub(super) struct ShapedForward<'a> {
     pub previous_model: Option<&'a str>,
     pub models: Option<&'a OpenRouterModels>,
     pub reason: Option<String>,
+    pub tier_before: String,
+    pub auto: &'a Auto,
 }
 
 pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
+    let tier_after = plan.auto.tiers().band(plan.model).to_string();
+    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
     encode_forward(
         &shaped(ShapeArgs {
             body: plan.body,
@@ -214,12 +224,13 @@ pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
             previous_model: plan.previous_model,
             models: plan.models,
         }),
-        plan.reason,
+        meta,
     )
 }
 
 pub(super) fn passthrough(body: &Value) -> Turn {
-    encode_forward(body, None)
+    let meta = RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None);
+    encode_forward(body, meta)
 }
 
 pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
@@ -274,6 +285,7 @@ fn remember(plan: RememberPlan<'_>) {
     let Ok(mut sessions) = plan.auto.sessions.lock() else {
         return;
     };
+    let cost_micros = sessions.get(&id).map(|row| row.cost_micros).unwrap_or(0);
     sessions.insert(
         id,
         SessionChoice {
@@ -288,23 +300,19 @@ fn remember(plan: RememberPlan<'_>) {
             last_stall: plan.last_stall.map(str::to_string),
             pending_down_band: plan.pending_down_band.map(str::to_string),
             down_count: plan.down_count,
+            cost_micros,
         },
     );
 }
 
-fn encode_forward(body: &Value, reason: Option<String>) -> Turn {
+fn encode_forward(body: &Value, meta: RouteMeta) -> Turn {
     match serde_json::to_vec(body) {
-        Ok(bytes) => Turn::Forward(Forward {
-            body: bytes,
-            rerouting: i64::from(reason.is_some()),
-            reason,
-        }),
+        Ok(bytes) => Turn::Forward(Forward { body: bytes, meta }),
         Err(err) => {
             tracing::error!(%err, "autoroute encode failed");
             Turn::Forward(Forward {
                 body: Vec::new(),
-                rerouting: 0,
-                reason: None,
+                meta: RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None),
             })
         }
     }

@@ -6,6 +6,8 @@ use super::parse;
 use super::questions::{self, PayloadPlan};
 use super::types::{Asked, ClassifyRequest};
 
+use crate::history::cost_micros_from_json;
+
 pub async fn classify(request: ClassifyRequest<'_>) -> Asked {
     let started = Instant::now();
     let request_body = questions::payload(PayloadPlan {
@@ -70,6 +72,7 @@ fn finish(sent: Sent, latency_ms: u128, request: &ClassifyRequest<'_>) -> Asked 
     };
     let parsed = parse::classified(&value, request.tool_names, request.thresholds);
     let choice_rule = parsed.choice_rule;
+    let cost = cost_micros_from_json(&value);
     Asked {
         request_body: sent.request_body,
         response_body: sent.response_body,
@@ -77,6 +80,7 @@ fn finish(sent: Sent, latency_ms: u128, request: &ClassifyRequest<'_>) -> Asked 
         latency_ms,
         parsed: Some(parsed),
         choice_rule,
+        cost,
     }
 }
 
@@ -88,5 +92,6 @@ fn unanswered(sent: Sent, latency_ms: u128, choice_rule: &'static str) -> Asked 
         latency_ms,
         parsed: None,
         choice_rule,
+        cost: None,
     }
 }
