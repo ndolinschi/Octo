@@ -5,11 +5,12 @@ use std::sync::Arc;
 use axum::{
     body::{to_bytes, Body, Bytes},
     extract::{Request, State},
+    http::StatusCode,
     response::Response,
 };
 use serde_json::Value;
 
-use crate::auto::{session_key, Compact, DecideRequest, Turn};
+use crate::auto::{session_key, Compact, DecideRequest, RouteMeta, Turn};
 use crate::history::{token_from_headers, CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
@@ -18,7 +19,9 @@ pub async fn messages(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
-    run(&state, request, false).await
+    run(&state, request, false)
+        .await
+        .map_err(ProxyError::as_anthropic_messages)
 }
 
 pub async fn chat(State(state): State<AppState>, request: Request) -> Result<Response, ProxyError> {
@@ -52,7 +55,6 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
                 forward,
                 session,
                 chat,
-                max_body,
             })
             .await
         }
@@ -67,12 +69,110 @@ struct ForwardTurn<'a> {
     forward: crate::auto::Forward,
     session: Option<String>,
     chat: bool,
-    max_body: usize,
 }
 
 async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
+    let ForwardTurn {
+        state,
+        parts,
+        forward,
+        session,
+        chat,
+    } = plan;
+    let retry_parts = clone_parts(&parts);
+    let retry_forward = forward.clone();
+    let first = dispatch_forward(DispatchForward {
+        state,
+        parts,
+        forward,
+        session: session.clone(),
+        chat,
+    })
+    .await;
+    match first {
+        Ok(response) if !chat && retryable_status(response.status()) => {
+            if let Some(retried) = retry_next_tier(RetryNext {
+                state,
+                parts: retry_parts,
+                forward: retry_forward,
+                session,
+                chat,
+            })
+            .await
+            {
+                return retried;
+            }
+            Ok(response)
+        }
+        Err(err) if !chat && retryable_error(&err) => {
+            if let Some(retried) = retry_next_tier(RetryNext {
+                state,
+                parts: retry_parts,
+                forward: retry_forward,
+                session,
+                chat,
+            })
+            .await
+            {
+                return retried;
+            }
+            Err(err)
+        }
+        other => other,
+    }
+}
+
+struct RetryNext<'a> {
+    state: &'a AppState,
+    parts: axum::http::request::Parts,
+    forward: crate::auto::Forward,
+    session: Option<String>,
+    chat: bool,
+}
+
+async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyError>> {
+    let payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
+    let current = payload.get("model").and_then(Value::as_str)?.to_string();
+    let next = plan.state.auto.tiers().next_up(&current)?;
+    let models = plan.state.auto.cached_models().await;
+    let shaped = crate::auto::shape(crate::auto::ShapePlan {
+        body: &payload,
+        model: &next,
+        previous_model: Some(current.as_str()),
+        models: models.as_ref(),
+    });
+    let body = serde_json::to_vec(&shaped).ok()?;
+    let tier_after = plan.state.auto.tiers().band(&next).to_string();
+    let meta = RouteMeta {
+        tier_before: plan.forward.meta.tier_after.clone(),
+        tier_after,
+        trigger: "retry".to_string(),
+    };
+    let forward = crate::auto::Forward { body, meta };
+    Some(
+        dispatch_forward(DispatchForward {
+            state: plan.state,
+            parts: plan.parts,
+            forward,
+            session: plan.session,
+            chat: plan.chat,
+        })
+        .await,
+    )
+}
+
+struct DispatchForward<'a> {
+    state: &'a AppState,
+    parts: axum::http::request::Parts,
+    forward: crate::auto::Forward,
+    session: Option<String>,
+    chat: bool,
+}
+
+async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyError> {
+    let session_id = plan.session.clone();
     let hook = (!plan.chat)
-        .then(|| plan.session.clone())
+        .then_some(session_id.clone())
         .flatten()
         .map(|id| {
             let auto = plan.state.auto.clone();
@@ -82,6 +182,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
                 }
             }) as Arc<dyn Fn(&str) + Send + Sync>
         });
+    let meta = &plan.forward.meta;
     let observe = Some(CallObserve {
         history: plan.state.history.clone(),
         kind: if plan.chat {
@@ -90,28 +191,51 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
             CallKind::Messages
         },
         provider: CallProvider::OpenRouter,
-        rerouting: plan.forward.rerouting,
-        rerouting_reason: plan.forward.reason.clone(),
+        rerouting: meta.rerouting(),
+        rerouting_reason: meta.legacy_reason(),
+        session_id,
+        tier_before: Some(meta.tier_before.clone()),
+        tier_after: Some(meta.tier_after.clone()),
+        trigger: meta.trigger.clone(),
+        auto: Some(plan.state.auto.clone()),
         on_response: hook,
     });
-    let request = Request::from_parts(plan.parts, Body::from(plan.forward.body));
     if plan.chat {
-        let (parts, body) = request.into_parts();
-        let bytes = to_bytes(body, plan.max_body)
-            .await
-            .map_err(ProxyError::from_read_body)?;
         plan.state
             .llm
             .openrouter
-            .forward_chat_buffered(&plan.state.client, parts, bytes, observe)
+            .forward_chat_buffered(
+                &plan.state.client,
+                plan.parts,
+                Bytes::from(plan.forward.body),
+                observe,
+            )
             .await
     } else {
+        let request = Request::from_parts(plan.parts, Body::from(plan.forward.body));
         plan.state
             .llm
             .openrouter
             .forward_messages(&plan.state.client, request, observe)
             .await
     }
+}
+
+fn clone_parts(parts: &axum::http::request::Parts) -> axum::http::request::Parts {
+    let mut cloned = Request::new(Body::empty()).into_parts().0;
+    cloned.method = parts.method.clone();
+    cloned.uri = parts.uri.clone();
+    cloned.version = parts.version;
+    cloned.headers = parts.headers.clone();
+    cloned
+}
+
+fn retryable_status(status: StatusCode) -> bool {
+    status.as_u16() == 429 || status.is_server_error()
+}
+
+fn retryable_error(err: &ProxyError) -> bool {
+    matches!(err, ProxyError::Upstream(source) if source.is_connect() || source.is_timeout())
 }
 
 async fn chat_compact(
@@ -137,6 +261,11 @@ async fn chat_compact(
                 provider: CallProvider::OpenRouter,
                 rerouting: 0,
                 rerouting_reason: None,
+                session_id: None,
+                tier_before: None,
+                tier_after: None,
+                trigger: "none".to_string(),
+                auto: None,
                 on_response: None,
             }),
         )

@@ -69,6 +69,11 @@ async fn streamed_response_is_forwarded_then_stored() {
             provider: CallProvider::OpenAi,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -133,6 +138,11 @@ async fn missing_token_is_not_a_shared_identity() {
             provider: CallProvider::OpenRouter,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -173,6 +183,11 @@ async fn decisions_response_is_stored_with_its_kind() {
             provider: CallProvider::OpenRouter,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -235,6 +250,11 @@ async fn usage_past_the_stored_prefix_is_kept() {
             provider: CallProvider::OpenAi,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -306,6 +326,11 @@ async fn upstream_chunk_error_is_stored_as_failure() {
             provider: CallProvider::OpenAi,
             rerouting: 0,
             rerouting_reason: None,
+            session_id: None,
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            auto: None,
             on_response: None,
         }),
     )
@@ -338,17 +363,20 @@ async fn decision_row_is_inserted_into_decisions() {
         user_text: "hello".to_string(),
         is_hard: Some(false),
         is_easy: Some(true),
+        is_hard_score: Some(0.12),
+        is_easy_score: Some(0.88),
         tools_enough: Some("true".to_string()),
         complexity: Some("low"),
         choice_rule: "is_easy".to_string(),
         missing_tools: Some(String::new()),
         request_payload: "{}".to_string(),
         response_payload: "{}".to_string(),
+        cost: None,
     });
     history.drain().await;
     let row = poll_call(&history, || async {
         let row = sqlx::query(
-            "SELECT session_id, purpose, complexity, choice_rule, user_text FROM decisions",
+            "SELECT session_id, purpose, complexity, choice_rule, user_text, is_hard_score, is_easy_score FROM decisions",
         )
         .fetch_optional(history.pool().unwrap())
         .await?;
@@ -360,6 +388,8 @@ async fn decision_row_is_inserted_into_decisions() {
                 row.get::<Option<String>, _>("complexity"),
                 row.get::<String, _>("choice_rule"),
                 row.get::<String, _>("user_text"),
+                row.get::<Option<f64>, _>("is_hard_score"),
+                row.get::<Option<f64>, _>("is_easy_score"),
             )
         }))
     })
@@ -367,6 +397,8 @@ async fn decision_row_is_inserted_into_decisions() {
     assert_eq!(row.0.as_deref(), Some("sess-1"));
     assert_eq!(row.1, "classify");
     assert_eq!(row.2.as_deref(), Some("low"));
+    assert_eq!(row.5, Some(0.12));
+    assert_eq!(row.6, Some(0.88));
     assert_eq!(row.3, "is_easy");
     assert_eq!(row.4, "hello");
 }

@@ -5,9 +5,10 @@ use serde_json::Value;
 use crate::providers::openrouter::OpenRouterModels;
 
 use super::super::action::{Compact, Forward, Turn};
-use super::super::body::{self, compaction_body};
+use super::super::body::{self, compaction_body, ShapePlan};
 use super::super::catalog::{self, LargerFit};
 use super::super::metrics::{self, context_estimate};
+use super::super::routing::RouteMeta;
 use super::super::session::SessionChoice;
 use super::models::counted_bytes;
 use super::Auto;
@@ -16,15 +17,23 @@ pub(super) struct RoutePlan {
     pub model: String,
     pub tools: Vec<String>,
     pub reason: Option<String>,
+    pub tier_before: String,
     pub reserve: u64,
     pub allow_compact: bool,
     pub persist: bool,
+    pub sticky_band: String,
+    pub escalate_remaining: u32,
+    pub escalate_band: Option<String>,
+    pub last_stall: Option<String>,
+    pub pending_down_band: Option<String>,
+    pub down_count: u32,
 }
 
 pub(super) struct RouteCtx<'a> {
     pub auto: &'a Auto,
     pub body: Value,
     pub models: Option<&'a OpenRouterModels>,
+    pub previous_model: Option<String>,
     pub plan: RoutePlan,
 }
 
@@ -33,6 +42,7 @@ struct OverflowCtx<'a> {
     body: &'a Value,
     outgoing: &'a Value,
     models: Option<&'a OpenRouterModels>,
+    previous_model: Option<&'a str>,
     input_tokens_est: u64,
     plan: RoutePlan,
 }
@@ -44,6 +54,12 @@ struct RememberPlan<'a> {
     tools: &'a [String],
     prev_input_tokens_est: u64,
     awaiting_compact: bool,
+    sticky_band: &'a str,
+    escalate_remaining: u32,
+    escalate_band: Option<&'a str>,
+    last_stall: Option<&'a str>,
+    pending_down_band: Option<&'a str>,
+    down_count: u32,
 }
 
 pub(super) struct RepeatCompact<'a> {
@@ -55,7 +71,13 @@ pub(super) struct RepeatCompact<'a> {
 
 pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
     let mut plan = ctx.plan;
-    let mut outgoing = shaped(&ctx.body, &plan.model, &plan.tools);
+    let previous = ctx.previous_model.as_deref();
+    let mut outgoing = shaped(ShapeArgs {
+        body: &ctx.body,
+        model: &plan.model,
+        previous_model: previous,
+        models: ctx.models,
+    });
     let estimate = context_estimate(
         counted_bytes(&outgoing),
         catalog::context_length(ctx.models, &plan.model),
@@ -72,11 +94,23 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             body: &ctx.body,
             outgoing: &outgoing,
             models: ctx.models,
+            previous_model: previous,
             input_tokens_est: estimate.input_tokens_est,
             plan,
         });
     }
     if estimate.fill >= metrics::FILL_THRESHOLD {
+        if plan.reason.as_deref() == Some("housekeeping") {
+            return finish_overflow(OverflowCtx {
+                auto: ctx.auto,
+                body: &ctx.body,
+                outgoing: &outgoing,
+                models: ctx.models,
+                previous_model: previous,
+                input_tokens_est: estimate.input_tokens_est,
+                plan,
+            });
+        }
         let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
         let tiers = ctx.auto.tiers.candidates();
         if let Some(slug) = catalog::larger_fit(LargerFit {
@@ -87,7 +121,12 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             current: &plan.model,
         }) {
             plan.model = slug;
-            outgoing = shaped(&ctx.body, &plan.model, &plan.tools);
+            outgoing = shaped(ShapeArgs {
+                body: &ctx.body,
+                model: &plan.model,
+                previous_model: previous,
+                models: ctx.models,
+            });
             plan.reason = Some("upgrade".to_string());
         } else {
             return finish_overflow(OverflowCtx {
@@ -95,6 +134,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 body: &ctx.body,
                 outgoing: &outgoing,
                 models: ctx.models,
+                previous_model: previous,
                 input_tokens_est: estimate.input_tokens_est,
                 plan,
             });
@@ -109,9 +149,17 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             tools: &plan.tools,
             prev_input_tokens_est: input_tokens_est,
             awaiting_compact: false,
+            sticky_band: &plan.sticky_band,
+            escalate_remaining: plan.escalate_remaining,
+            escalate_band: plan.escalate_band.as_deref(),
+            last_stall: plan.last_stall.as_deref(),
+            pending_down_band: plan.pending_down_band.as_deref(),
+            down_count: plan.down_count,
         });
     }
-    encode_forward(&outgoing, plan.reason)
+    let tier_after = ctx.auto.tiers().band(&plan.model).to_string();
+    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
+    encode_forward(&outgoing, meta)
 }
 
 fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
@@ -125,13 +173,22 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
                 tools: &plan.tools,
                 prev_input_tokens_est: ctx.input_tokens_est,
                 awaiting_compact: false,
+                sticky_band: &plan.sticky_band,
+                escalate_remaining: plan.escalate_remaining,
+                escalate_band: plan.escalate_band.as_deref(),
+                last_stall: plan.last_stall.as_deref(),
+                pending_down_band: plan.pending_down_band.as_deref(),
+                down_count: plan.down_count,
             });
         }
         return forward_shaped(ShapedForward {
             body: ctx.body,
             model: &plan.model,
-            tools: &plan.tools,
+            previous_model: ctx.previous_model,
+            models: ctx.models,
             reason: plan.reason,
+            tier_before: plan.tier_before.clone(),
+            auto: ctx.auto,
         });
     }
     if plan.persist {
@@ -142,6 +199,12 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
             tools: &plan.tools,
             prev_input_tokens_est: ctx.input_tokens_est,
             awaiting_compact: true,
+            sticky_band: &plan.sticky_band,
+            escalate_remaining: plan.escalate_remaining,
+            escalate_band: plan.escalate_band.as_deref(),
+            last_stall: plan.last_stall.as_deref(),
+            pending_down_band: plan.pending_down_band.as_deref(),
+            down_count: plan.down_count,
         });
     }
     repeat_compact(RepeatCompact {
@@ -155,16 +218,30 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
 pub(super) struct ShapedForward<'a> {
     pub body: &'a Value,
     pub model: &'a str,
-    pub tools: &'a [String],
+    pub previous_model: Option<&'a str>,
+    pub models: Option<&'a OpenRouterModels>,
     pub reason: Option<String>,
+    pub tier_before: String,
+    pub auto: &'a Auto,
 }
 
 pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
-    encode_forward(&shaped(plan.body, plan.model, plan.tools), plan.reason)
+    let tier_after = plan.auto.tiers().band(plan.model).to_string();
+    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
+    encode_forward(
+        &shaped(ShapeArgs {
+            body: plan.body,
+            model: plan.model,
+            previous_model: plan.previous_model,
+            models: plan.models,
+        }),
+        meta,
+    )
 }
 
 pub(super) fn passthrough(body: &Value) -> Turn {
-    encode_forward(body, None)
+    let meta = RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None);
+    encode_forward(body, meta)
 }
 
 pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
@@ -196,10 +273,20 @@ pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
     }
 }
 
-fn shaped(body: &Value, model: &str, tools: &[String]) -> Value {
-    let mut outgoing = body::with_model(body, model);
-    body::filter_tools(&mut outgoing, tools);
-    outgoing
+struct ShapeArgs<'a> {
+    body: &'a Value,
+    model: &'a str,
+    previous_model: Option<&'a str>,
+    models: Option<&'a OpenRouterModels>,
+}
+
+fn shaped(plan: ShapeArgs<'_>) -> Value {
+    body::shape(ShapePlan {
+        body: plan.body,
+        model: plan.model,
+        previous_model: plan.previous_model,
+        models: plan.models,
+    })
 }
 
 fn remember(plan: RememberPlan<'_>) {
@@ -209,6 +296,7 @@ fn remember(plan: RememberPlan<'_>) {
     let Ok(mut sessions) = plan.auto.sessions.lock() else {
         return;
     };
+    let cost_micros = sessions.get(&id).map(|row| row.cost_micros).unwrap_or(0);
     sessions.insert(
         id,
         SessionChoice {
@@ -217,23 +305,25 @@ fn remember(plan: RememberPlan<'_>) {
             prev_input_tokens_est: plan.prev_input_tokens_est,
             awaiting_compact: plan.awaiting_compact,
             seen: Instant::now(),
+            sticky_band: plan.sticky_band.to_string(),
+            escalate_remaining: plan.escalate_remaining,
+            escalate_band: plan.escalate_band.map(str::to_string),
+            last_stall: plan.last_stall.map(str::to_string),
+            pending_down_band: plan.pending_down_band.map(str::to_string),
+            down_count: plan.down_count,
+            cost_micros,
         },
     );
 }
 
-fn encode_forward(body: &Value, reason: Option<String>) -> Turn {
+fn encode_forward(body: &Value, meta: RouteMeta) -> Turn {
     match serde_json::to_vec(body) {
-        Ok(bytes) => Turn::Forward(Forward {
-            body: bytes,
-            rerouting: i64::from(reason.is_some()),
-            reason,
-        }),
+        Ok(bytes) => Turn::Forward(Forward { body: bytes, meta }),
         Err(err) => {
             tracing::error!(%err, "autoroute encode failed");
             Turn::Forward(Forward {
                 body: Vec::new(),
-                rerouting: 0,
-                reason: None,
+                meta: RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None),
             })
         }
     }

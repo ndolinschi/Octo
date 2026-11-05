@@ -9,6 +9,8 @@ pub struct OpenRouterModel {
     pub name: String,
     pub is_free: bool,
     pub context_length: Option<u64>,
+    pub max_completion_tokens: Option<u64>,
+    pub supported_parameters: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -46,6 +48,15 @@ struct ModelRecord {
     name: String,
     context_length: Option<u64>,
     pricing: ModelPricing,
+    #[serde(default)]
+    supported_parameters: Vec<String>,
+    #[serde(default)]
+    top_provider: Option<TopProvider>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TopProvider {
+    max_completion_tokens: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,6 +90,11 @@ pub fn models_from_json(body: &str) -> Result<OpenRouterModels, serde_json::Erro
             id: record.id,
             name: record.name,
             context_length: record.context_length,
+            max_completion_tokens: record
+                .top_provider
+                .as_ref()
+                .and_then(|provider| provider.max_completion_tokens),
+            supported_parameters: record.supported_parameters,
         };
         if model.is_free {
             free.push(model);

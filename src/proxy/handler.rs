@@ -32,6 +32,11 @@ async fn forward_chat(
         provider: CallProvider::from(provider),
         rerouting: 0,
         rerouting_reason: None,
+        session_id: None,
+        tier_before: None,
+        tier_after: None,
+        trigger: "none".to_string(),
+        auto: None,
         on_response: None,
     });
     if forward {
@@ -89,6 +94,11 @@ async fn forward_messages(
         provider: CallProvider::from(provider),
         rerouting: 0,
         rerouting_reason: None,
+        session_id: None,
+        tier_before: None,
+        tier_after: None,
+        trigger: "none".to_string(),
+        auto: None,
         on_response: None,
     });
     match provider {
@@ -113,21 +123,27 @@ pub async fn messages(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    forward_messages(&state, request, None).await
+    forward_messages(&state, request, None)
+        .await
+        .map_err(ProxyError::as_anthropic_messages)
 }
 
 pub async fn messages_claude(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    forward_messages(&state, request, Some(MessagesProvider::Claude)).await
+    forward_messages(&state, request, Some(MessagesProvider::Claude))
+        .await
+        .map_err(ProxyError::as_anthropic_messages)
 }
 
 pub async fn messages_openrouter(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    forward_messages(&state, request, Some(MessagesProvider::OpenRouter)).await
+    forward_messages(&state, request, Some(MessagesProvider::OpenRouter))
+        .await
+        .map_err(ProxyError::as_anthropic_messages)
 }
 
 pub async fn decisions(
@@ -146,6 +162,11 @@ pub async fn decisions(
                 provider: CallProvider::OpenRouter,
                 rerouting: 0,
                 rerouting_reason: None,
+                session_id: None,
+                tier_before: None,
+                tier_after: None,
+                trigger: "none".to_string(),
+                auto: None,
                 on_response: None,
             }),
         )

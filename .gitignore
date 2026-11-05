@@ -1,3 +1,4 @@
 /target
 .cursor/hooks.json
 /data
+prepare.db

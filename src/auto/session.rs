@@ -8,6 +8,32 @@ pub struct SessionChoice {
     pub prev_input_tokens_est: u64,
     pub awaiting_compact: bool,
     pub seen: Instant,
+    pub sticky_band: String,
+    pub escalate_remaining: u32,
+    pub escalate_band: Option<String>,
+    pub last_stall: Option<String>,
+    pub pending_down_band: Option<String>,
+    pub down_count: u32,
+    pub cost_micros: u64,
+}
+
+impl SessionChoice {
+    pub fn fresh(model: String, tools: Vec<String>, sticky_band: String) -> Self {
+        Self {
+            model,
+            tools,
+            prev_input_tokens_est: 0,
+            awaiting_compact: false,
+            seen: Instant::now(),
+            sticky_band,
+            escalate_remaining: 0,
+            escalate_band: None,
+            last_stall: None,
+            pending_down_band: None,
+            down_count: 0,
+            cost_micros: 0,
+        }
+    }
 }
 
 #[derive(Debug, Default)]

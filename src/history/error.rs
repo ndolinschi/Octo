@@ -26,4 +26,6 @@ pub enum HistoryError {
     },
     #[error("history token key is not valid for HMAC")]
     TokenKey,
+    #[error("history database query failed")]
+    Query(#[from] sqlx::Error),
 }

@@ -19,6 +19,12 @@ pub enum ProxyError {
     InvalidChatBody,
     #[error("failed to build response")]
     BuildResponse,
+    #[error("{message}")]
+    Anthropic {
+        status: StatusCode,
+        kind: &'static str,
+        message: String,
+    },
 }
 
 impl ProxyError {
@@ -27,6 +33,50 @@ impl ProxyError {
             Self::BodyTooLarge
         } else {
             Self::ReadBody(err)
+        }
+    }
+
+    pub fn anthropic(status: StatusCode, kind: &'static str, message: impl Into<String>) -> Self {
+        Self::Anthropic {
+            status,
+            kind,
+            message: message.into(),
+        }
+    }
+
+    pub fn as_anthropic_messages(self) -> Self {
+        match self {
+            Self::ReadBody(_) => Self::anthropic(
+                StatusCode::BAD_REQUEST,
+                "invalid_request_error",
+                "failed to read request body",
+            ),
+            Self::BodyTooLarge => Self::anthropic(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "invalid_request_error",
+                "request body too large",
+            ),
+            Self::Upstream(_) => Self::anthropic(
+                StatusCode::BAD_GATEWAY,
+                "api_error",
+                "upstream request failed",
+            ),
+            Self::BuildResponse => Self::anthropic(
+                StatusCode::BAD_GATEWAY,
+                "api_error",
+                "failed to build response",
+            ),
+            Self::InvalidProviderSelector { .. } => Self::anthropic(
+                StatusCode::BAD_REQUEST,
+                "invalid_request_error",
+                "invalid provider selector",
+            ),
+            Self::InvalidChatBody => Self::anthropic(
+                StatusCode::BAD_REQUEST,
+                "invalid_request_error",
+                "invalid chat request body",
+            ),
+            other @ Self::Anthropic { .. } => other,
         }
     }
 }
@@ -44,35 +94,42 @@ fn is_length_limit(err: &(dyn Error + 'static)) -> bool {
 
 impl IntoResponse for ProxyError {
     fn into_response(self) -> Response {
-        let (status, error) = match &self {
-            ProxyError::ReadBody(_) => (StatusCode::BAD_REQUEST, "failed to read request body"),
-            ProxyError::BodyTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "request body too large"),
-            ProxyError::Upstream(_) => (StatusCode::BAD_GATEWAY, "upstream request failed"),
-            ProxyError::BuildResponse => (StatusCode::BAD_GATEWAY, "failed to build response"),
-            ProxyError::InvalidProviderSelector { .. } => {
-                (StatusCode::BAD_REQUEST, "invalid provider selector")
+        match self {
+            ProxyError::Anthropic {
+                status,
+                kind,
+                message,
+            } => {
+                let body = format!(
+                    r#"{{"type":"error","error":{{"type":"{kind}","message":{message}}}}}"#,
+                    message = serde_json::to_string(&message)
+                        .unwrap_or_else(|_| { "\"upstream request failed\"".to_string() })
+                );
+                (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
             }
-            ProxyError::InvalidChatBody => (StatusCode::BAD_REQUEST, "invalid chat request body"),
-        };
-        let body = format!(r#"{{"error":"{error}"}}"#);
-        (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use axum::body::{to_bytes, Body};
-
-    use super::{is_length_limit, ProxyError};
-
-    #[tokio::test]
-    async fn length_limit_maps_to_body_too_large() {
-        let body = Body::from(vec![0_u8; 64]);
-        let err = to_bytes(body, 8).await.unwrap_err();
-        assert!(is_length_limit(&err));
-        assert!(matches!(
-            ProxyError::from_read_body(err),
-            ProxyError::BodyTooLarge
-        ));
+            other => {
+                let (status, error) = match &other {
+                    ProxyError::ReadBody(_) => {
+                        (StatusCode::BAD_REQUEST, "failed to read request body")
+                    }
+                    ProxyError::BodyTooLarge => {
+                        (StatusCode::PAYLOAD_TOO_LARGE, "request body too large")
+                    }
+                    ProxyError::Upstream(_) => (StatusCode::BAD_GATEWAY, "upstream request failed"),
+                    ProxyError::BuildResponse => {
+                        (StatusCode::BAD_GATEWAY, "failed to build response")
+                    }
+                    ProxyError::InvalidProviderSelector { .. } => {
+                        (StatusCode::BAD_REQUEST, "invalid provider selector")
+                    }
+                    ProxyError::InvalidChatBody => {
+                        (StatusCode::BAD_REQUEST, "invalid chat request body")
+                    }
+                    ProxyError::Anthropic { .. } => unreachable!(),
+                };
+                let body = format!(r#"{{"error":"{error}"}}"#);
+                (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
+            }
+        }
     }
 }

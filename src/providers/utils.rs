@@ -140,6 +140,11 @@ impl Capture {
                 provider: observe.provider,
                 rerouting: observe.rerouting,
                 rerouting_reason: observe.rerouting_reason.clone(),
+                session_id: observe.session_id.clone(),
+                tier_before: observe.tier_before.clone(),
+                tier_after: observe.tier_after.clone(),
+                trigger: observe.trigger.clone(),
+                auto: observe.auto.clone(),
                 on_response: observe.on_response.clone(),
             },
             model,
@@ -181,9 +186,21 @@ impl Capture {
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
             cost: usage.cost,
+            cache_read_tokens: usage.cache_read_tokens,
+            cache_write_tokens: usage.cache_write_tokens,
+            generation_id: usage.generation_id.clone(),
             rerouting: self.observe.rerouting,
             rerouting_reason: self.observe.rerouting_reason.clone(),
+            session_id: self.observe.session_id.clone(),
+            tier_before: self.observe.tier_before.clone(),
+            tier_after: self.observe.tier_after.clone(),
+            trigger: self.observe.trigger.clone(),
         });
+        if let (Some(auto), Some(session_id), Some(cost)) =
+            (&self.observe.auto, &self.observe.session_id, usage.cost)
+        {
+            auto.add_session_cost(session_id, cost.0);
+        }
         if let Some(hook) = self.observe.on_response {
             let text = if tail_text.is_empty() {
                 output_text

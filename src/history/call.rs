@@ -13,6 +13,11 @@ pub struct CallObserve {
     pub provider: CallProvider,
     pub rerouting: i64,
     pub rerouting_reason: Option<String>,
+    pub session_id: Option<String>,
+    pub tier_before: Option<String>,
+    pub tier_after: Option<String>,
+    pub trigger: String,
+    pub auto: Option<crate::auto::Auto>,
     pub on_response: Option<ResponseHook>,
 }
 
@@ -25,12 +30,15 @@ pub struct DecisionRow {
     pub user_text: String,
     pub is_hard: Option<bool>,
     pub is_easy: Option<bool>,
+    pub is_hard_score: Option<f64>,
+    pub is_easy_score: Option<f64>,
     pub tools_enough: Option<String>,
     pub complexity: Option<&'static str>,
     pub choice_rule: String,
     pub missing_tools: Option<String>,
     pub request_payload: String,
     pub response_payload: String,
+    pub cost: Option<CostMicros>,
 }
 
 pub struct FinishedCall {
@@ -50,6 +58,13 @@ pub struct FinishedCall {
     pub input_tokens: Option<TokenCount>,
     pub output_tokens: Option<TokenCount>,
     pub cost: Option<CostMicros>,
+    pub cache_read_tokens: Option<TokenCount>,
+    pub cache_write_tokens: Option<TokenCount>,
+    pub generation_id: Option<String>,
     pub rerouting: i64,
     pub rerouting_reason: Option<String>,
+    pub session_id: Option<String>,
+    pub tier_before: Option<String>,
+    pub tier_after: Option<String>,
+    pub trigger: String,
 }

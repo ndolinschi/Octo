@@ -3,16 +3,23 @@ use std::time::Instant;
 use serde_json::Value;
 
 use super::parse;
-use super::questions;
+use super::questions::{self, PayloadPlan};
 use super::types::{Asked, ClassifyRequest};
+
+use crate::history::cost_micros_from_json;
 
 pub async fn classify(request: ClassifyRequest<'_>) -> Asked {
     let started = Instant::now();
-    let request_body =
-        questions::payload(request.user_text, request.tool_names, request.current_tools)
-            .to_string();
+    let request_body = questions::payload(PayloadPlan {
+        user_text: request.user_text,
+        tool_names: request.tool_names,
+        current_tools: request.current_tools,
+        facts: request.facts,
+        current_tier: request.current_tier,
+    })
+    .to_string();
     let sent = send(&request, request_body).await;
-    finish(sent, started.elapsed().as_millis(), request.tool_names)
+    finish(sent, started.elapsed().as_millis(), &request)
 }
 
 struct Sent {
@@ -56,15 +63,16 @@ async fn send(request: &ClassifyRequest<'_>, request_body: String) -> Sent {
     }
 }
 
-fn finish(sent: Sent, latency_ms: u128, tool_names: &[String]) -> Asked {
+fn finish(sent: Sent, latency_ms: u128, request: &ClassifyRequest<'_>) -> Asked {
     if sent.failed {
         return unanswered(sent, latency_ms, "request_failed");
     }
     let Ok(value) = serde_json::from_str::<Value>(&sent.response_body) else {
         return unanswered(sent, latency_ms, "unparsed");
     };
-    let parsed = parse::classified(&value, tool_names);
+    let parsed = parse::classified(&value, request.tool_names, request.thresholds);
     let choice_rule = parsed.choice_rule;
+    let cost = cost_micros_from_json(&value);
     Asked {
         request_body: sent.request_body,
         response_body: sent.response_body,
@@ -72,6 +80,7 @@ fn finish(sent: Sent, latency_ms: u128, tool_names: &[String]) -> Asked {
         latency_ms,
         parsed: Some(parsed),
         choice_rule,
+        cost,
     }
 }
 
@@ -83,5 +92,6 @@ fn unanswered(sent: Sent, latency_ms: u128, choice_rule: &'static str) -> Asked 
         latency_ms,
         parsed: None,
         choice_rule,
+        cost: None,
     }
 }

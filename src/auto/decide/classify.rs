@@ -6,8 +6,10 @@ use crate::history::{DecisionRow, History};
 use super::super::body;
 use super::super::catalog::Tiers;
 use super::super::jev;
+use super::super::Auto;
 
 pub(super) struct ClassifyCtx<'a> {
+    pub auto: &'a Auto,
     pub history: &'a History,
     pub session_id: Option<String>,
     pub client: &'a Client,
@@ -16,6 +18,7 @@ pub(super) struct ClassifyCtx<'a> {
     pub body: &'a Value,
     pub all_tools: &'a [String],
     pub tiers: &'a Tiers,
+    pub current_tier: &'a str,
 }
 
 pub(super) struct ClassifyTurn<'a> {
@@ -25,10 +28,16 @@ pub(super) struct ClassifyTurn<'a> {
     pub purpose: &'a str,
 }
 
+pub(super) struct ClassifiedPick {
+    pub complexity: jev::Complexity,
+    pub model: String,
+    pub tools: Vec<String>,
+}
+
 pub(super) async fn fresh(
     ctx: &ClassifyCtx<'_>,
     preferred: Option<&str>,
-) -> Option<(String, Vec<String>)> {
+) -> Option<ClassifiedPick> {
     turn(ClassifyTurn {
         ctx,
         preferred,
@@ -38,11 +47,12 @@ pub(super) async fn fresh(
     .await
 }
 
-pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)> {
+pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
     if plan.ctx.api_key.is_empty() {
         return None;
     }
-    let user_text = body::last_user_text(plan.ctx.body);
+    let user_text = body::question_text(plan.ctx.body);
+    let facts = jev::inspect(plan.ctx.body, &user_text);
     let asked = jev::classify(jev::ClassifyRequest {
         client: plan.ctx.client,
         decisions_url: plan.ctx.decisions_url,
@@ -50,9 +60,16 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)
         user_text: &user_text,
         tool_names: plan.ctx.all_tools,
         current_tools: plan.current,
+        facts: &facts,
+        current_tier: plan.ctx.current_tier,
+        thresholds: jev::Thresholds {
+            hard: plan.ctx.tiers.hard_threshold,
+            easy: plan.ctx.tiers.easy_threshold,
+        },
     })
     .await;
     record(RecordPlan {
+        auto: plan.ctx.auto,
         history: plan.ctx.history,
         session_id: plan.ctx.session_id.clone(),
         purpose: plan.purpose,
@@ -66,10 +83,15 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)
         enough: classified.tools_enough,
         missing: &classified.missing_tools,
     });
-    Some((model, tools))
+    Some(ClassifiedPick {
+        complexity: classified.complexity,
+        model,
+        tools,
+    })
 }
 
 struct RecordPlan<'a> {
+    auto: &'a Auto,
     history: &'a History,
     session_id: Option<String>,
     purpose: &'a str,
@@ -78,15 +100,20 @@ struct RecordPlan<'a> {
 
 fn record(plan: RecordPlan<'_>) {
     let parsed = plan.asked.parsed.as_ref();
+    if let (Some(session_id), Some(cost)) = (&plan.session_id, plan.asked.cost) {
+        plan.auto.add_session_cost(session_id, cost.0);
+    }
     plan.history.record_decision(DecisionRow {
         session_id: plan.session_id,
         purpose: plan.purpose.to_string(),
         model: "typesafe/jev-1.13".to_string(),
         status: plan.asked.status,
         latency_ms: plan.asked.latency_ms,
-        user_text: user_text_from_request(&plan.asked.request_body),
+        user_text: body::cap_decision_text(&user_text_from_request(&plan.asked.request_body)),
         is_hard: parsed.and_then(|row| row.is_hard),
         is_easy: parsed.and_then(|row| row.is_easy),
+        is_hard_score: parsed.and_then(|row| row.is_hard_score),
+        is_easy_score: parsed.and_then(|row| row.is_easy_score),
         tools_enough: parsed.and_then(|row| row.tools_enough_raw.clone()),
         complexity: parsed.map(|row| match row.complexity {
             jev::Complexity::Low => "low",
@@ -97,6 +124,7 @@ fn record(plan: RecordPlan<'_>) {
         missing_tools: parsed.map(|row| row.missing_tools.join(",")),
         request_payload: plan.asked.request_body.clone(),
         response_payload: plan.asked.response_body.clone(),
+        cost: plan.asked.cost,
     });
 }
 

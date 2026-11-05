@@ -8,6 +8,14 @@ use crate::history::History;
 use crate::providers::{decision, llm};
 use crate::proxy::select::{self, ChatCompatProvider, MessagesProvider};
 
+fn session_budget_micros(usd: f64) -> u64 {
+    if !usd.is_finite() || usd <= 0.0 {
+        0
+    } else {
+        (usd * 1_000_000.0).round() as u64
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub client: Client,
@@ -46,11 +54,22 @@ impl AppState {
             llm: llm::Providers::from_config(&config),
             decision: decision::Providers::from_config(&config)?,
             history: History::disabled(),
-            auto: Auto::new(Tiers::new(
-                config.autoroute_low_model.clone(),
-                config.autoroute_mid_model.clone(),
-                config.autoroute_high_model.clone(),
-            )),
+            auto: Auto::new({
+                let mut tiers = Tiers::new(
+                    config.autoroute_low_model.clone(),
+                    config.autoroute_mid_model.clone(),
+                    config.autoroute_high_model.clone(),
+                );
+                tiers.hard_threshold = config.autoroute_hard_threshold;
+                tiers.easy_threshold = config.autoroute_easy_threshold;
+                tiers.stall_window = config.autoroute_stall_window;
+                tiers.escalate_turns = config.autoroute_escalate_turns;
+                tiers.down_confirm = config.autoroute_down_confirm;
+                tiers.high_allow = config.autoroute_high_allow.clone();
+                tiers.session_budget_micros =
+                    session_budget_micros(config.autoroute_session_budget_usd);
+                tiers
+            }),
             config,
         })
     }

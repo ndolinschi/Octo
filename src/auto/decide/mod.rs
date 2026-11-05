@@ -2,6 +2,7 @@ mod classify;
 mod gate;
 mod models;
 mod route;
+pub(crate) mod sticky;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,11 +19,15 @@ use crate::history::History;
 use super::action::Turn;
 use super::body;
 use super::catalog::{self, CatalogCache, Tiers};
+use super::jev::Complexity;
 use super::metrics;
+use super::stall;
 
+use super::session::SessionChoice;
 use classify::{ClassifyCtx, ClassifyTurn};
 use gate::SessionGate;
-use route::{RepeatCompact, RouteCtx, RoutePlan, ShapedForward};
+use route::{RepeatCompact, RouteCtx, RoutePlan};
+use sticky::{apply as apply_sticky, cap_for_budget, StickyOutcome, StickyPlan};
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
 const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
@@ -43,6 +48,14 @@ impl Auto {
             catalog: Arc::new(Mutex::new(CatalogCache::new(CATALOG_TTL))),
             gates: Arc::new(SyncMutex::new(HashMap::new())),
         }
+    }
+
+    pub fn tiers(&self) -> &Tiers {
+        &self.tiers
+    }
+
+    pub async fn cached_models(&self) -> Option<crate::providers::openrouter::OpenRouterModels> {
+        self.catalog.lock().await.fresh()
     }
 
     fn gate(&self, session_id: &str) -> SessionGate {
@@ -70,6 +83,59 @@ impl Auto {
             sessions.insert(session_id.to_string(), choice);
         }
     }
+
+    pub fn session_cost_micros(&self, session_key: &str) -> u64 {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return 0;
+        };
+        sessions
+            .get(session_key)
+            .map(|row| row.cost_micros)
+            .unwrap_or(0)
+    }
+
+    pub fn add_session_cost(&self, session_key: &str, micros: u64) {
+        if micros == 0 {
+            return;
+        }
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        let mut row = sessions.get(session_key).unwrap_or_else(|| {
+            SessionChoice::fresh(String::new(), Vec::new(), "unset".to_string())
+        });
+        row.cost_micros = row.cost_micros.saturating_add(micros);
+        row.seen = Instant::now();
+        sessions.insert(session_key.to_string(), row);
+    }
+
+    pub fn sync_session_cost_floor(&self, session_key: &str, floor_micros: u64) {
+        if floor_micros == 0 {
+            return;
+        }
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        let mut row = sessions.get(session_key).unwrap_or_else(|| {
+            SessionChoice::fresh(String::new(), Vec::new(), "unset".to_string())
+        });
+        if floor_micros > row.cost_micros {
+            row.cost_micros = floor_micros;
+            row.seen = Instant::now();
+            sessions.insert(session_key.to_string(), row);
+        }
+    }
+
+    pub fn seed_session(&self, session_key: &str, choice: SessionChoice) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        sessions.insert(session_key.to_string(), choice);
+    }
+
+    pub async fn seed_catalog(&self, models: crate::providers::openrouter::OpenRouterModels) {
+        self.catalog.lock().await.store(models);
+    }
 }
 
 pub struct DecideRequest<'a> {
@@ -88,6 +154,13 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
     let reserve = body::max_tokens(&req.body);
     let client_tokens = metrics::estimate_tokens(models::counted_bytes(&req.body));
     let actor = body::session_key(&req.body);
+    if let Some(id) = actor.clone() {
+        if req.auto.tiers().session_budget_micros > 0 && req.history.enabled() {
+            if let Ok(floor) = req.history.session_cost_micros(&id).await {
+                req.auto.sync_session_cost_floor(&id, floor);
+            }
+        }
+    }
     let _session_turn = match actor.clone() {
         Some(id) => Some(req.auto.gate(&id).acquire().await),
         None => None,
@@ -102,17 +175,44 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             .and_then(|mut sessions| sessions.get(&id)),
         None => None,
     };
-    if loaded.is_none() {
-        if let Some(row) = choice {
-            return route::forward_shaped(ShapedForward {
-                body: &req.body,
-                model: &row.model,
-                tools: &row.tools,
-                reason: None,
-            });
-        }
-        return route::passthrough(&req.body);
+    let raw_text = body::last_user_text(&req.body);
+    let question = body::question_text(&req.body);
+    let persist = !all_tools.is_empty();
+    let tier_before = choice
+        .as_ref()
+        .map(|row| row.sticky_band.clone())
+        .unwrap_or_else(|| "unset".to_string());
+
+    if body::is_housekeeping(&raw_text) {
+        let model = req.auto.tiers.pick(Complexity::Low, preferred.as_deref());
+        let row = choice.as_ref();
+        return route::run(RouteCtx {
+            auto: req.auto,
+            body: req.body,
+            models: loaded.as_ref(),
+            previous_model: row.map(|row| row.model.clone()),
+            plan: RoutePlan {
+                model,
+                tools: row
+                    .map(|row| row.tools.clone())
+                    .unwrap_or_else(|| all_tools.clone()),
+                reason: Some("housekeeping".to_string()),
+                tier_before,
+                reserve,
+                allow_compact: req.allow_compact,
+                persist: false,
+                sticky_band: row
+                    .map(|row| row.sticky_band.clone())
+                    .unwrap_or_else(|| "unset".to_string()),
+                escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
+                escalate_band: row.and_then(|row| row.escalate_band.clone()),
+                last_stall: row.and_then(|row| row.last_stall.clone()),
+                pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
+                down_count: row.map(|row| row.down_count).unwrap_or(0),
+            },
+        });
     }
+
     let mut forced_reason = None;
     if let Some(row) = choice.clone() {
         if row.awaiting_compact {
@@ -120,9 +220,12 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 choice = None;
                 forced_reason = Some("reclassify".to_string());
             } else if req.allow_compact {
-                let outgoing = body::with_model(&req.body, &row.model);
-                let mut outgoing = outgoing;
-                body::filter_tools(&mut outgoing, &row.tools);
+                let outgoing = body::shape(body::ShapePlan {
+                    body: &req.body,
+                    model: &row.model,
+                    previous_model: Some(row.model.as_str()),
+                    models: loaded.as_ref(),
+                });
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
                 return route::repeat_compact(RepeatCompact {
                     auto: req.auto,
@@ -136,9 +239,14 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         }
     }
 
-    let user_text = body::last_user_text(&req.body);
-    let persist = !all_tools.is_empty();
+    let stall = stall::detect(&req.body, req.auto.tiers.stall_window);
+    let tool_results_only = body::last_user_tool_results_only(&req.body);
+    let current_tier = choice
+        .as_ref()
+        .map(|row| row.sticky_band.as_str())
+        .unwrap_or("unset");
     let classify_ctx = ClassifyCtx {
+        auto: req.auto,
         history: req.history,
         session_id: actor.clone(),
         client: req.client,
@@ -147,63 +255,199 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         body: &req.body,
         all_tools: &all_tools,
         tiers: &req.auto.tiers,
+        current_tier,
     };
-    let (model, tools, reason) = if let Some(row) = choice {
-        if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
-            (row.model, row.tools, None)
+
+    let spent = actor
+        .as_ref()
+        .map(|id| req.auto.session_cost_micros(id))
+        .unwrap_or(0);
+
+    if let Some(row) = hold_without_classify(HoldWithoutClassify {
+        choice: choice.as_ref(),
+        stall,
+        tool_results_only,
+        question_text: &question,
+    }) {
+        return route::run(RouteCtx {
+            auto: req.auto,
+            body: req.body,
+            models: loaded.as_ref(),
+            previous_model: Some(row.model.clone()),
+            plan: session_plan_budget(SessionPlanBudget {
+                row: &row,
+                tier_before,
+                reason: None,
+                reserve,
+                allow_compact: req.allow_compact,
+                persist,
+                spent,
+                tiers: &req.auto.tiers,
+            }),
+        });
+    }
+
+    let picked = if choice.is_some() {
+        if question.trim().is_empty() {
+            None
         } else {
-            match classify::turn(ClassifyTurn {
+            classify::turn(ClassifyTurn {
                 ctx: &classify_ctx,
                 preferred: preferred.as_deref(),
-                current: &row.tools,
+                current: choice
+                    .as_ref()
+                    .map(|row| row.tools.as_slice())
+                    .unwrap_or(&[]),
                 purpose: "reclassify",
             })
             .await
-            {
-                Some((model, tools)) => {
-                    let reason = if !catalog::ids_match(&model, &row.model) {
-                        Some("reclassify".to_string())
-                    } else if tools != row.tools {
-                        Some("tool_update".to_string())
-                    } else {
-                        None
-                    };
-                    (model, tools, reason)
-                }
-                None => (row.model, row.tools, None),
-            }
         }
-    } else if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
-        return route::passthrough(&req.body);
+    } else if question.trim().is_empty() {
+        if stall.is_none() {
+            return route::passthrough(&req.body);
+        }
+        None
     } else {
         match classify::fresh(&classify_ctx, preferred.as_deref()).await {
-            Some((model, tools)) => (
-                model,
-                tools,
-                Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
-            ),
+            Some(pick) => Some(pick),
             None => {
                 if forced_reason.is_some() {
                     if let Some(id) = actor.clone() {
                         req.auto.clear_awaiting_compact(&id);
                     }
                 }
-                return route::passthrough(&req.body);
+                if stall.is_none() {
+                    return route::passthrough(&req.body);
+                }
+                None
             }
         }
     };
 
+    let (classified, tools, classify_reason) = match (picked, choice.clone()) {
+        (Some(pick), Some(row)) => {
+            let reason = if !catalog::ids_match(&pick.model, &row.model) {
+                Some("reclassify".to_string())
+            } else if pick.tools != row.tools {
+                Some("tool_update".to_string())
+            } else {
+                None
+            };
+            (pick.complexity, pick.tools, reason)
+        }
+        (Some(pick), None) => (
+            pick.complexity,
+            pick.tools,
+            Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
+        ),
+        (None, Some(row)) => (band_complexity(&row.sticky_band), row.tools.clone(), None),
+        (None, None) => (
+            if stall.is_some() {
+                Complexity::Low
+            } else {
+                Complexity::Mid
+            },
+            all_tools.clone(),
+            forced_reason,
+        ),
+    };
+
+    let mut sticky = apply_sticky(StickyPlan {
+        tiers: &req.auto.tiers,
+        choice: choice.as_ref(),
+        classified,
+        preferred: preferred.as_deref(),
+        stall,
+        tool_results_only,
+    });
+    cap_for_budget(&mut sticky, &req.auto.tiers, spent);
+    let previous_model = choice.as_ref().map(|row| row.model.clone());
+    let reason = sticky.reason.or(classify_reason);
     route::run(RouteCtx {
         auto: req.auto,
         body: req.body,
         models: loaded.as_ref(),
+        previous_model,
         plan: RoutePlan {
-            model,
+            model: sticky.model,
             tools,
             reason,
+            tier_before,
             reserve,
             allow_compact: req.allow_compact,
             persist,
+            sticky_band: sticky.sticky_band,
+            escalate_remaining: sticky.escalate_remaining,
+            escalate_band: sticky.escalate_band,
+            last_stall: sticky.last_stall,
+            pending_down_band: sticky.pending_down_band,
+            down_count: sticky.down_count,
         },
     })
+}
+
+struct HoldWithoutClassify<'a> {
+    choice: Option<&'a super::session::SessionChoice>,
+    stall: Option<stall::StallTrigger>,
+    tool_results_only: bool,
+    question_text: &'a str,
+}
+
+fn hold_without_classify(plan: HoldWithoutClassify<'_>) -> Option<super::session::SessionChoice> {
+    let row = plan.choice?;
+    if plan.stall.is_some() {
+        return None;
+    }
+    if plan.tool_results_only || plan.question_text.trim().is_empty() {
+        return Some(row.clone());
+    }
+    None
+}
+
+fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
+    let mut sticky = StickyOutcome {
+        model: plan.row.model.clone(),
+        sticky_band: plan.row.sticky_band.clone(),
+        escalate_remaining: plan.row.escalate_remaining,
+        escalate_band: plan.row.escalate_band.clone(),
+        last_stall: plan.row.last_stall.clone(),
+        pending_down_band: plan.row.pending_down_band.clone(),
+        down_count: plan.row.down_count,
+        reason: plan.reason,
+    };
+    cap_for_budget(&mut sticky, plan.tiers, plan.spent);
+    RoutePlan {
+        model: sticky.model,
+        tools: plan.row.tools.clone(),
+        reason: sticky.reason,
+        tier_before: plan.tier_before,
+        reserve: plan.reserve,
+        allow_compact: plan.allow_compact,
+        persist: plan.persist,
+        sticky_band: sticky.sticky_band,
+        escalate_remaining: plan.row.escalate_remaining,
+        escalate_band: plan.row.escalate_band.clone(),
+        last_stall: plan.row.last_stall.clone(),
+        pending_down_band: plan.row.pending_down_band.clone(),
+        down_count: plan.row.down_count,
+    }
+}
+
+struct SessionPlanBudget<'a> {
+    row: &'a super::session::SessionChoice,
+    tier_before: String,
+    reason: Option<String>,
+    reserve: u64,
+    allow_compact: bool,
+    persist: bool,
+    spent: u64,
+    tiers: &'a Tiers,
+}
+
+fn band_complexity(band: &str) -> Complexity {
+    match band {
+        "low" => Complexity::Low,
+        "high" => Complexity::High,
+        _ => Complexity::Mid,
+    }
 }

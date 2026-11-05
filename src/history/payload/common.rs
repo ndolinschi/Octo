@@ -130,6 +130,9 @@ pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> Pars
         input_tokens: head.input_tokens.or(end.input_tokens),
         output_tokens: end.output_tokens.or(head.output_tokens),
         cost: end.cost.or(head.cost),
+        cache_read_tokens: end.cache_read_tokens.or(head.cache_read_tokens),
+        cache_write_tokens: end.cache_write_tokens.or(head.cache_write_tokens),
+        generation_id: head.generation_id.or(end.generation_id),
     }
 }
 
@@ -137,6 +140,7 @@ fn fold_usage(found: ParsedUsage, raw: &str) -> ParsedUsage {
     let Ok(value) = serde_json::from_str::<Value>(raw) else {
         return found;
     };
+    let found = apply_generation_id(found, &value);
     let found = apply_usage(found, value.get("usage"));
     apply_usage(
         found,
@@ -144,6 +148,26 @@ fn fold_usage(found: ParsedUsage, raw: &str) -> ParsedUsage {
             .get("message")
             .and_then(|message| message.get("usage")),
     )
+}
+
+fn apply_generation_id(found: ParsedUsage, value: &Value) -> ParsedUsage {
+    if found.generation_id.is_some() {
+        return found;
+    }
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            value
+                .get("message")
+                .and_then(|message| message.get("id"))
+                .and_then(Value::as_str)
+        })
+        .map(str::to_string);
+    ParsedUsage {
+        generation_id: id,
+        ..found
+    }
 }
 
 fn apply_usage(found: ParsedUsage, usage: Option<&Value>) -> ParsedUsage {
@@ -157,10 +181,22 @@ fn apply_usage(found: ParsedUsage, usage: Option<&Value>) -> ParsedUsage {
         .or_else(|| json_token_count(usage.get("output_tokens")))
         .or(found.output_tokens);
     let cost = json_cost_micros(usage.get("cost")).or(found.cost);
+    let cache_read_tokens = json_token_count(usage.get("cache_read_input_tokens"))
+        .or_else(|| {
+            usage
+                .get("prompt_tokens_details")
+                .and_then(|details| json_token_count(details.get("cached_tokens")))
+        })
+        .or(found.cache_read_tokens);
+    let cache_write_tokens =
+        json_token_count(usage.get("cache_creation_input_tokens")).or(found.cache_write_tokens);
     ParsedUsage {
         input_tokens,
         output_tokens,
         cost,
+        cache_read_tokens,
+        cache_write_tokens,
+        generation_id: found.generation_id,
     }
 }
 
@@ -184,12 +220,6 @@ fn json_token_count(value: Option<&Value>) -> Option<TokenCount> {
 
 fn json_cost_micros(value: Option<&Value>) -> Option<CostMicros> {
     let v = value?;
-    if let Some(n) = v.as_u64() {
-        return Some(CostMicros(n));
-    }
-    if let Some(n) = v.as_i64() {
-        return u64::try_from(n).ok().map(CostMicros);
-    }
     let n = v.as_f64()?;
     if !n.is_finite() || n < 0.0 {
         return None;
@@ -199,4 +229,12 @@ fn json_cost_micros(value: Option<&Value>) -> Option<CostMicros> {
         return None;
     }
     Some(CostMicros(micros as u64))
+}
+
+pub fn cost_micros_from_json(value: &Value) -> Option<CostMicros> {
+    json_cost_micros(value.get("cost")).or_else(|| {
+        value
+            .get("usage")
+            .and_then(|usage| json_cost_micros(usage.get("cost")))
+    })
 }

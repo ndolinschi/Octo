@@ -45,6 +45,13 @@ pub struct Config {
     pub autoroute_low_model: String,
     pub autoroute_mid_model: String,
     pub autoroute_high_model: String,
+    pub autoroute_hard_threshold: f64,
+    pub autoroute_easy_threshold: f64,
+    pub autoroute_stall_window: u32,
+    pub autoroute_escalate_turns: u32,
+    pub autoroute_down_confirm: u32,
+    pub autoroute_high_allow: Vec<String>,
+    pub autoroute_session_budget_usd: f64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -319,6 +326,20 @@ struct AutorouteSection {
     mid: String,
     #[serde(default = "default_autoroute_high_model")]
     high: String,
+    #[serde(default = "default_autoroute_hard_threshold")]
+    hard_threshold: f64,
+    #[serde(default = "default_autoroute_easy_threshold")]
+    easy_threshold: f64,
+    #[serde(default = "default_autoroute_stall_window")]
+    stall_window: u32,
+    #[serde(default = "default_autoroute_escalate_turns")]
+    escalate_turns: u32,
+    #[serde(default = "default_autoroute_down_confirm")]
+    down_confirm: u32,
+    #[serde(default)]
+    high_allow: Vec<String>,
+    #[serde(default = "default_autoroute_session_budget_usd")]
+    session_budget_usd: f64,
 }
 
 impl Default for AutorouteSection {
@@ -327,8 +348,19 @@ impl Default for AutorouteSection {
             low: default_autoroute_low_model(),
             mid: default_autoroute_mid_model(),
             high: default_autoroute_high_model(),
+            hard_threshold: default_autoroute_hard_threshold(),
+            easy_threshold: default_autoroute_easy_threshold(),
+            stall_window: default_autoroute_stall_window(),
+            escalate_turns: default_autoroute_escalate_turns(),
+            down_confirm: default_autoroute_down_confirm(),
+            high_allow: Vec::new(),
+            session_budget_usd: default_autoroute_session_budget_usd(),
         }
     }
+}
+
+fn default_autoroute_session_budget_usd() -> f64 {
+    0.0
 }
 
 fn default_autoroute_low_model() -> String {
@@ -341,6 +373,26 @@ fn default_autoroute_mid_model() -> String {
 
 fn default_autoroute_high_model() -> String {
     "~anthropic/claude-haiku-latest".to_string()
+}
+
+fn default_autoroute_hard_threshold() -> f64 {
+    0.5
+}
+
+fn default_autoroute_easy_threshold() -> f64 {
+    0.5
+}
+
+fn default_autoroute_stall_window() -> u32 {
+    6
+}
+
+fn default_autoroute_escalate_turns() -> u32 {
+    3
+}
+
+fn default_autoroute_down_confirm() -> u32 {
+    2
 }
 
 impl Config {
@@ -490,6 +542,13 @@ fn config_from_file(file: ConfigFile) -> Config {
         autoroute_low_model: file.autoroute.low,
         autoroute_mid_model: file.autoroute.mid,
         autoroute_high_model: file.autoroute.high,
+        autoroute_hard_threshold: file.autoroute.hard_threshold,
+        autoroute_easy_threshold: file.autoroute.easy_threshold,
+        autoroute_stall_window: file.autoroute.stall_window,
+        autoroute_escalate_turns: file.autoroute.escalate_turns,
+        autoroute_down_confirm: file.autoroute.down_confirm,
+        autoroute_high_allow: file.autoroute.high_allow,
+        autoroute_session_budget_usd: file.autoroute.session_budget_usd,
     }
 }
 

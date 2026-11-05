@@ -21,6 +21,7 @@ pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
+pub use payload::cost_micros_from_json;
 pub use payload::{
     describe_input, is_subagent, request_payload, response_payload, token_from_headers,
     usage_from_output, usage_from_parts, ParsedUsage,
@@ -121,17 +122,8 @@ impl History {
         let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
+        inflight.fetch_add(1, Ordering::AcqRel);
         tokio::spawn(async move {
-            let Ok(Ok(permit)) =
-                tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await
-            else {
-                tracing::warn!(
-                    choice_rule = %row.choice_rule,
-                    "decision insert skipped; queue wait timed out"
-                );
-                return;
-            };
-            inflight.fetch_add(1, Ordering::AcqRel);
             struct Done(Arc<AtomicUsize>, Arc<Notify>);
             impl Drop for Done {
                 fn drop(&mut self) {
@@ -141,11 +133,38 @@ impl History {
                 }
             }
             let _done = Done(inflight, idle);
+            let Ok(Ok(permit)) =
+                tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await
+            else {
+                tracing::warn!(
+                    choice_rule = %row.choice_rule,
+                    "decision insert skipped; queue wait timed out"
+                );
+                return;
+            };
             let _permit = permit;
             if let Err(err) = insert_decision(&pool, &row, limit).await {
                 tracing::warn!(%err, choice_rule = %row.choice_rule, "decision insert failed");
             }
         });
+    }
+
+    pub async fn session_cost_micros(&self, session_id: &str) -> Result<u64, HistoryError> {
+        let Some(pool) = self.pool.as_ref() else {
+            return Ok(0);
+        };
+        let row = sqlx::query!(
+            r#"
+            SELECT
+              (SELECT COALESCE(SUM(cost_micros), 0) FROM calls WHERE session_id = ?1) +
+              (SELECT COALESCE(SUM(cost_micros), 0) FROM decisions WHERE session_id = ?1)
+            AS total
+            "#,
+            session_id
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(u64::try_from(row.total).unwrap_or(u64::MAX))
     }
 
     pub fn record(&self, call: FinishedCall) {
@@ -155,7 +174,17 @@ impl History {
         let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
+        inflight.fetch_add(1, Ordering::AcqRel);
         tokio::spawn(async move {
+            struct Done(Arc<AtomicUsize>, Arc<Notify>);
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    if self.0.fetch_sub(1, Ordering::AcqRel) == 1 {
+                        self.1.notify_waiters();
+                    }
+                }
+            }
+            let _done = Done(inflight, idle);
             let permit =
                 match tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await {
                     Ok(Ok(permit)) => permit,
@@ -176,16 +205,6 @@ impl History {
                         return;
                     }
                 };
-            inflight.fetch_add(1, Ordering::AcqRel);
-            struct Done(Arc<AtomicUsize>, Arc<Notify>);
-            impl Drop for Done {
-                fn drop(&mut self) {
-                    if self.0.fetch_sub(1, Ordering::AcqRel) == 1 {
-                        self.1.notify_waiters();
-                    }
-                }
-            }
-            let _done = Done(inflight, idle);
             let _permit = permit;
             let captured_bytes = call.request_bytes.saturating_add(call.response_bytes);
             match insert_call(&pool, &call).await {
@@ -345,34 +364,56 @@ async fn insert_decision(
     row: &DecisionRow,
     capture_limit: usize,
 ) -> Result<(), sqlx::Error> {
+    use metrics::cost_micros_to_sql;
+
     let created_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
-    sqlx::query(
+    let session_id = row.session_id.as_deref();
+    let purpose = row.purpose.as_str();
+    let model = row.model.as_str();
+    let status = i64::from(row.status);
+    let latency_ms = i64::try_from(row.latency_ms).unwrap_or(i64::MAX);
+    let user_text = clip(&row.user_text, capture_limit);
+    let is_hard = flag_to_sql(row.is_hard);
+    let is_easy = flag_to_sql(row.is_easy);
+    let is_hard_score = row.is_hard_score;
+    let is_easy_score = row.is_easy_score;
+    let tools_enough = row.tools_enough.as_deref();
+    let complexity = row.complexity;
+    let choice_rule = row.choice_rule.as_str();
+    let missing_tools = row.missing_tools.as_deref();
+    let request_payload = clip(&row.request_payload, capture_limit);
+    let response_payload = clip(&row.response_payload, capture_limit);
+    let cost_micros = row.cost.map(cost_micros_to_sql);
+    sqlx::query!(
         r#"
         INSERT INTO decisions (
             created_at, session_id, purpose, model, status, latency_ms, user_text,
-            is_hard, is_easy, tools_enough, complexity, choice_rule, missing_tools,
-            request_payload, response_payload
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_hard, is_easy, is_hard_score, is_easy_score, tools_enough, complexity, choice_rule, missing_tools,
+            request_payload, response_payload, cost_micros
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
+        created_at,
+        session_id,
+        purpose,
+        model,
+        status,
+        latency_ms,
+        user_text,
+        is_hard,
+        is_easy,
+        is_hard_score,
+        is_easy_score,
+        tools_enough,
+        complexity,
+        choice_rule,
+        missing_tools,
+        request_payload,
+        response_payload,
+        cost_micros
     )
-    .bind(created_at)
-    .bind(&row.session_id)
-    .bind(&row.purpose)
-    .bind(&row.model)
-    .bind(i64::from(row.status))
-    .bind(i64::try_from(row.latency_ms).unwrap_or(i64::MAX))
-    .bind(clip(&row.user_text, capture_limit))
-    .bind(flag_to_sql(row.is_hard))
-    .bind(flag_to_sql(row.is_easy))
-    .bind(&row.tools_enough)
-    .bind(row.complexity)
-    .bind(&row.choice_rule)
-    .bind(&row.missing_tools)
-    .bind(clip(&row.request_payload, capture_limit))
-    .bind(clip(&row.response_payload, capture_limit))
     .execute(pool)
     .await?;
     Ok(())
@@ -401,16 +442,24 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let input_tokens = call.input_tokens.map(token_count_to_sql);
     let output_tokens = call.output_tokens.map(token_count_to_sql);
     let cost_micros = call.cost.map(cost_micros_to_sql);
-    let rerouting = call.rerouting;
+    let cache_read_tokens = call.cache_read_tokens.map(token_count_to_sql);
+    let cache_write_tokens = call.cache_write_tokens.map(token_count_to_sql);
+    let generation_id = call.generation_id.as_deref();
+    let rerouting = i64::from(call.tier_before.as_deref() != call.tier_after.as_deref());
     let rerouting_reason = call.rerouting_reason.as_deref();
+    let session_id = call.session_id.as_deref();
+    let tier_before = call.tier_before.as_deref();
+    let tier_after = call.tier_after.as_deref();
+    let trigger = call.trigger.as_str();
     sqlx::query!(
         r#"
         INSERT INTO calls (
             created_at, kind, provider, model, token_hash, message, input, output,
             request_payload, response_payload,
             status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros,
-            rerouting, rerouting_reason
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cache_read_tokens, cache_write_tokens, generation_id,
+            rerouting, rerouting_reason, session_id, tier_before, tier_after, trigger
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -429,8 +478,15 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         input_tokens,
         output_tokens,
         cost_micros,
+        cache_read_tokens,
+        cache_write_tokens,
+        generation_id,
         rerouting,
         rerouting_reason,
+        session_id,
+        tier_before,
+        tier_after,
+        trigger
     )
     .execute(pool)
     .await?;
