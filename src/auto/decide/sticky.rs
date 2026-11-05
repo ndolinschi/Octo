@@ -21,7 +21,6 @@ pub struct StickyOutcome {
     pub pending_down_band: Option<String>,
     pub down_count: u32,
     pub reason: Option<String>,
-    pub skip_reclassify_hold: bool,
 }
 
 pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
@@ -73,9 +72,10 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
         escalate_band = Some(next.clone());
         escalate_remaining = plan.tiers.escalate_turns;
         last_stall = Some(trigger.as_str().to_string());
+        let live = higher_band(&next, &sticky_band);
         reason = Some(format!("stall_escalate:{}", trigger.as_str()));
         return StickyOutcome {
-            model: plan.tiers.slug(&next),
+            model: plan.tiers.slug(live),
             sticky_band,
             escalate_remaining,
             escalate_band,
@@ -83,7 +83,6 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
             pending_down_band,
             down_count,
             reason,
-            skip_reclassify_hold: false,
         };
     }
 
@@ -98,7 +97,6 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
                 pending_down_band: row.pending_down_band.clone(),
                 down_count: row.down_count,
                 reason: None,
-                skip_reclassify_hold: true,
             };
         }
     }
@@ -117,22 +115,26 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
                 pending_down_band,
                 down_count,
                 reason,
-                skip_reclassify_hold: false,
             };
         }
-        let band = escalate_band
+        let escalate = escalate_band
             .clone()
             .unwrap_or_else(|| catalog::bump_band(&sticky_band).to_string());
+        let live = higher_band(&escalate, &sticky_band).to_string();
+        if reason.as_deref() == Some("hysteresis_hold")
+            || catalog::band_rank(&sticky_band) > catalog::band_rank(&escalate)
+        {
+            reason = None;
+        }
         return StickyOutcome {
-            model: plan.tiers.slug(&band),
+            model: plan.tiers.slug(&live),
             sticky_band,
             escalate_remaining,
-            escalate_band: Some(band),
+            escalate_band: Some(escalate),
             last_stall,
             pending_down_band,
             down_count,
             reason,
-            skip_reclassify_hold: false,
         };
     }
 
@@ -150,6 +152,13 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
         pending_down_band,
         down_count,
         reason,
-        skip_reclassify_hold: false,
+    }
+}
+
+fn higher_band<'a>(left: &'a str, right: &'a str) -> &'a str {
+    if catalog::band_rank(left) >= catalog::band_rank(right) {
+        left
+    } else {
+        right
     }
 }

@@ -25,7 +25,7 @@ use super::stall;
 
 use classify::{ClassifyCtx, ClassifyTurn};
 use gate::SessionGate;
-use route::{RepeatCompact, RouteCtx, RoutePlan, ShapedForward};
+use route::{RepeatCompact, RouteCtx, RoutePlan};
 use sticky::{apply as apply_sticky, StickyPlan};
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
@@ -51,6 +51,10 @@ impl Auto {
 
     pub fn tiers(&self) -> &Tiers {
         &self.tiers
+    }
+
+    pub async fn cached_models(&self) -> Option<crate::providers::openrouter::OpenRouterModels> {
+        self.catalog.lock().await.fresh()
     }
 
     fn gate(&self, session_id: &str) -> SessionGate {
@@ -110,18 +114,6 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             .and_then(|mut sessions| sessions.get(&id)),
         None => None,
     };
-    if loaded.is_none() {
-        if let Some(row) = choice {
-            return route::forward_shaped(ShapedForward {
-                body: &req.body,
-                model: &row.model,
-                previous_model: Some(row.model.as_str()),
-                models: None,
-                reason: None,
-            });
-        }
-        return route::passthrough(&req.body);
-    }
     let mut forced_reason = None;
     if let Some(row) = choice.clone() {
         if row.awaiting_compact {
@@ -212,38 +204,10 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                         req.auto.clear_awaiting_compact(&id);
                     }
                 }
-                if let Some(trigger) = stall {
-                    let band = catalog::bump_band(
-                        choice
-                            .as_ref()
-                            .map(|row| row.sticky_band.as_str())
-                            .unwrap_or("low"),
-                    );
-                    return route::run(RouteCtx {
-                        auto: req.auto,
-                        body: req.body,
-                        models: loaded.as_ref(),
-                        previous_model: choice.as_ref().map(|row| row.model.clone()),
-                        plan: RoutePlan {
-                            model: req.auto.tiers.slug(band),
-                            tools: all_tools.clone(),
-                            reason: Some(format!("stall_escalate:{}", trigger.as_str())),
-                            reserve,
-                            allow_compact: req.allow_compact,
-                            persist,
-                            sticky_band: choice
-                                .as_ref()
-                                .map(|row| row.sticky_band.clone())
-                                .unwrap_or_else(|| "low".to_string()),
-                            escalate_remaining: req.auto.tiers.escalate_turns,
-                            escalate_band: Some(band.to_string()),
-                            last_stall: Some(trigger.as_str().to_string()),
-                            pending_down_band: None,
-                            down_count: 0,
-                        },
-                    });
+                if stall.is_none() {
+                    return route::passthrough(&req.body);
                 }
-                return route::passthrough(&req.body);
+                None
             }
         }
     };
@@ -265,7 +229,15 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
         ),
         (None, Some(row)) => (band_complexity(&row.sticky_band), row.tools.clone(), None),
-        (None, None) => (Complexity::Mid, all_tools.clone(), forced_reason),
+        (None, None) => (
+            if stall.is_some() {
+                Complexity::Low
+            } else {
+                Complexity::Mid
+            },
+            all_tools.clone(),
+            forced_reason,
+        ),
     };
 
     let sticky = apply_sticky(StickyPlan {

@@ -131,13 +131,17 @@ struct RetryNext<'a> {
 }
 
 async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyError>> {
-    let mut payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
-    let current = payload.get("model").and_then(Value::as_str)?;
-    let next = plan.state.auto.tiers().next_up(current)?;
-    if let Some(object) = payload.as_object_mut() {
-        object.insert("model".to_string(), Value::String(next));
-    }
-    let body = serde_json::to_vec(&payload).ok()?;
+    let payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
+    let current = payload.get("model").and_then(Value::as_str)?.to_string();
+    let next = plan.state.auto.tiers().next_up(&current)?;
+    let models = plan.state.auto.cached_models().await;
+    let shaped = crate::auto::shape(crate::auto::ShapePlan {
+        body: &payload,
+        model: &next,
+        previous_model: Some(current.as_str()),
+        models: models.as_ref(),
+    });
+    let body = serde_json::to_vec(&shaped).ok()?;
     let forward = crate::auto::Forward {
         body,
         rerouting: 1,

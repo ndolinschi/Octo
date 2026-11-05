@@ -5,11 +5,12 @@ use axum::response::IntoResponse;
 use octo::auto::context_length;
 use octo::auto::{
     apply_sticky, choice, choice_from_scores, classified, compaction_body, context_estimate,
-    detect_stall, dropped, filter_tools, inspect, is_housekeeping, larger_fit,
+    decide, detect_stall, dropped, filter_tools, inspect, is_housekeeping, larger_fit,
     max_completion_tokens, needed_tools, needs_compact, output_reserve, payload, session_id,
-    session_key, shape, with_model, Complexity, LargerFit, PayloadPlan, SessionChoice, ShapePlan,
-    StallTrigger, StickyPlan, Thresholds, Tiers,
+    session_key, shape, with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan,
+    SessionChoice, ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
 };
+use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
 use octo::proxy::error::ProxyError;
 
@@ -546,6 +547,21 @@ fn stall_escalates_then_releases_and_down_needs_confirm() {
     assert_eq!(dropped.model, "low-m");
     assert_eq!(dropped.sticky_band, "low");
     assert_eq!(dropped.down_count, 0);
+
+    let mut escalated_mid = SessionChoice::fresh("mid-m".into(), vec![], "low".into());
+    escalated_mid.escalate_remaining = 2;
+    escalated_mid.escalate_band = Some("mid".into());
+    let up_wins = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&escalated_mid),
+        classified: Complexity::High,
+        preferred: None,
+        stall: None,
+        tool_results_only: false,
+    });
+    assert_eq!(up_wins.sticky_band, "high");
+    assert_eq!(up_wins.model, "high-m");
+    assert_eq!(up_wins.escalate_remaining, 1);
 }
 
 #[test]
@@ -622,6 +638,41 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
     assert_eq!(
         shaped["tools"].as_array().unwrap().len(),
         fixture["tools"].as_array().unwrap().len()
+    );
+}
+
+#[tokio::test]
+async fn decide_stall_escalates_without_catalog_or_jev() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.escalate_turns = 3;
+    let auto = Auto::new(tiers);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/stall_repeated_edit.json")).unwrap();
+    assert!(detect_stall(&body, 6).is_some());
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "mid-m");
+    assert!(
+        forward
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.starts_with("stall_escalate:")),
+        "reason={:?}",
+        forward.reason
     );
 }
 
