@@ -220,12 +220,6 @@ fn json_token_count(value: Option<&Value>) -> Option<TokenCount> {
 
 fn json_cost_micros(value: Option<&Value>) -> Option<CostMicros> {
     let v = value?;
-    if let Some(n) = v.as_u64() {
-        return Some(CostMicros(n));
-    }
-    if let Some(n) = v.as_i64() {
-        return u64::try_from(n).ok().map(CostMicros);
-    }
     let n = v.as_f64()?;
     if !n.is_finite() || n < 0.0 {
         return None;

@@ -140,3 +140,12 @@ fn decisions_usage_cost_parses_to_micros() {
     let body = serde_json::json!({"usage": {"cost": 0.000012}});
     assert_eq!(cost_micros_from_json(&body), Some(CostMicros(12)));
 }
+
+#[test]
+fn whole_dollar_cost_scales_to_micros() {
+    let body = serde_json::json!({"usage": {"cost": 1}});
+    assert_eq!(cost_micros_from_json(&body), Some(CostMicros(1_000_000)));
+    let usage =
+        usage_from_output(r#"{"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":1}}"#);
+    assert_eq!(usage.cost, Some(CostMicros(1_000_000)));
+}
