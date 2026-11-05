@@ -196,10 +196,8 @@ pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
     }
 }
 
-fn shaped(body: &Value, model: &str, tools: &[String]) -> Value {
-    let mut outgoing = body::with_model(body, model);
-    body::filter_tools(&mut outgoing, tools);
-    outgoing
+fn shaped(body: &Value, model: &str, _tools: &[String]) -> Value {
+    body::with_model(body, model)
 }
 
 fn remember(plan: RememberPlan<'_>) {

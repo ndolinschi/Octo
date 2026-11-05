@@ -69,18 +69,58 @@ fn filter_keeps_named_tools_and_pick_respects_preference() {
         tiers.pick(Complexity::High, Some("custom/high")),
         "custom/high"
     );
-    assert_eq!(
-        needed_tools(octo::auto::ToolNeed {
-            all: &["Bash".into(), "Read".into()],
-            current: &["Read".into()],
-            enough: false,
-            missing: &["Bash".into()],
-        }),
-        vec!["Read".to_string(), "Bash".to_string()]
-    );
     let mut chat = json!({"tools": [{"type": "function", "function": {"name": "Bash"}}]});
     filter_tools(&mut chat, &["Bash".to_string()]);
     assert_eq!(chat["tools"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn first_turn_forwards_all_tools_when_jev_says_missing() {
+    let all = vec!["Bash".into(), "Read".into(), "Edit".into()];
+    let keep = needed_tools(octo::auto::ToolNeed {
+        all: &all,
+        current: &[],
+        enough: false,
+        missing: &["Bash".into()],
+    });
+    assert_eq!(keep, all);
+    let mut body = json!({
+        "tools": [
+            {"name": "Bash"},
+            {"name": "Read"},
+            {"name": "Edit"}
+        ]
+    });
+    filter_tools(&mut body, &keep);
+    assert_eq!(body["tools"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn later_turn_forwards_all_tools() {
+    let all = vec!["Bash".into(), "Read".into(), "Edit".into()];
+    let keep = needed_tools(octo::auto::ToolNeed {
+        all: &all,
+        current: &["Read".into()],
+        enough: true,
+        missing: &[],
+    });
+    assert_eq!(keep, all);
+    let keep_missing = needed_tools(octo::auto::ToolNeed {
+        all: &all,
+        current: &["Read".into()],
+        enough: false,
+        missing: &["Bash".into()],
+    });
+    assert_eq!(keep_missing, all);
+    let mut body = json!({
+        "tools": [
+            {"name": "Bash"},
+            {"name": "Read"},
+            {"name": "Edit"}
+        ]
+    });
+    filter_tools(&mut body, &keep_missing);
+    assert_eq!(body["tools"].as_array().unwrap().len(), 3);
 }
 
 fn paid(id: &str, window: u64) -> OpenRouterModel {
