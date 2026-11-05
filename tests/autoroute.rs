@@ -2,9 +2,10 @@ use serde_json::json;
 
 use octo::auto::context_length;
 use octo::auto::{
-    choice, choice_from_scores, classified, context_estimate, dropped, filter_tools, inspect,
-    is_housekeeping, larger_fit, needed_tools, needs_compact, output_reserve, payload, session_id,
-    session_key, with_model, Complexity, LargerFit, PayloadPlan, Thresholds, Tiers,
+    choice, choice_from_scores, classified, compaction_body, context_estimate, dropped,
+    filter_tools, inspect, is_housekeeping, larger_fit, needed_tools, needs_compact,
+    output_reserve, payload, session_id, session_key, with_model, Complexity, LargerFit,
+    PayloadPlan, Thresholds, Tiers,
 };
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
 
@@ -263,6 +264,19 @@ fn jev_payload_includes_enriched_state() {
     assert!(state["mentions_stack_trace"].as_bool().unwrap());
     assert!(state["mentions_tests"].as_bool().unwrap());
     assert!(!state["files_touched"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn compaction_body_forces_stream_false() {
+    let body = json!({
+        "model": "client-model",
+        "stream": true,
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let compact = compaction_body(&body, "compact-model");
+    assert_eq!(compact["model"], "compact-model");
+    assert_eq!(compact["stream"], false);
+    assert_eq!(compact["compaction"]["type"], "summarize");
 }
 
 #[test]
