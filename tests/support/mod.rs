@@ -35,6 +35,8 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_low_model: "google/gemma-4-26b-a4b-it".to_string(),
         autoroute_mid_model: "deepseek/deepseek-v4-flash".to_string(),
         autoroute_high_model: "~anthropic/claude-haiku-latest".to_string(),
+        autoroute_hard_threshold: 0.5,
+        autoroute_easy_threshold: 0.5,
     }
 }
 

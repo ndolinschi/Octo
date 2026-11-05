@@ -23,6 +23,8 @@ fn loads_split_config_directory() {
         config.autoroute_high_model,
         "~anthropic/claude-haiku-latest"
     );
+    assert_eq!(config.autoroute_hard_threshold, 0.5);
+    assert_eq!(config.autoroute_easy_threshold, 0.5);
 }
 
 #[test]

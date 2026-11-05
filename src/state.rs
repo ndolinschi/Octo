@@ -46,11 +46,16 @@ impl AppState {
             llm: llm::Providers::from_config(&config),
             decision: decision::Providers::from_config(&config)?,
             history: History::disabled(),
-            auto: Auto::new(Tiers::new(
-                config.autoroute_low_model.clone(),
-                config.autoroute_mid_model.clone(),
-                config.autoroute_high_model.clone(),
-            )),
+            auto: Auto::new({
+                let mut tiers = Tiers::new(
+                    config.autoroute_low_model.clone(),
+                    config.autoroute_mid_model.clone(),
+                    config.autoroute_high_model.clone(),
+                );
+                tiers.hard_threshold = config.autoroute_hard_threshold;
+                tiers.easy_threshold = config.autoroute_easy_threshold;
+                tiers
+            }),
             config,
         })
     }

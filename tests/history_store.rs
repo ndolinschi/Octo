@@ -338,6 +338,8 @@ async fn decision_row_is_inserted_into_decisions() {
         user_text: "hello".to_string(),
         is_hard: Some(false),
         is_easy: Some(true),
+        is_hard_score: Some(0.12),
+        is_easy_score: Some(0.88),
         tools_enough: Some("true".to_string()),
         complexity: Some("low"),
         choice_rule: "is_easy".to_string(),
@@ -348,7 +350,7 @@ async fn decision_row_is_inserted_into_decisions() {
     history.drain().await;
     let row = poll_call(&history, || async {
         let row = sqlx::query(
-            "SELECT session_id, purpose, complexity, choice_rule, user_text FROM decisions",
+            "SELECT session_id, purpose, complexity, choice_rule, user_text, is_hard_score, is_easy_score FROM decisions",
         )
         .fetch_optional(history.pool().unwrap())
         .await?;
@@ -360,6 +362,8 @@ async fn decision_row_is_inserted_into_decisions() {
                 row.get::<Option<String>, _>("complexity"),
                 row.get::<String, _>("choice_rule"),
                 row.get::<String, _>("user_text"),
+                row.get::<Option<f64>, _>("is_hard_score"),
+                row.get::<Option<f64>, _>("is_easy_score"),
             )
         }))
     })
@@ -367,6 +371,8 @@ async fn decision_row_is_inserted_into_decisions() {
     assert_eq!(row.0.as_deref(), Some("sess-1"));
     assert_eq!(row.1, "classify");
     assert_eq!(row.2.as_deref(), Some("low"));
+    assert_eq!(row.5, Some(0.12));
+    assert_eq!(row.6, Some(0.88));
     assert_eq!(row.3, "is_easy");
     assert_eq!(row.4, "hello");
 }

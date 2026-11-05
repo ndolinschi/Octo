@@ -136,6 +136,10 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
 
     let user_text = body::last_user_text(&req.body);
     let persist = !all_tools.is_empty();
+    let current_tier = choice
+        .as_ref()
+        .map(|row| req.auto.tiers.band(&row.model))
+        .unwrap_or("unset");
     let classify_ctx = ClassifyCtx {
         history: req.history,
         session_id: actor.clone(),
@@ -145,6 +149,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         body: &req.body,
         all_tools: &all_tools,
         tiers: &req.auto.tiers,
+        current_tier,
     };
     let (model, tools, reason) = if let Some(row) = choice {
         if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
