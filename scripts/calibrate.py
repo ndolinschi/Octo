@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import random
 import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
+
+REQUIRED_ORACLE_ARMS = ("always-low", "always-mid", "always-high")
 
 
 def load_jsonl(path: Path) -> list[dict]:
@@ -52,23 +55,6 @@ def complexity(hard: float | None, easy: float | None, hard_t: float, easy_t: fl
     return "mid"
 
 
-def arm_stats(rows: list[dict]) -> dict[str, dict[str, float]]:
-    by_arm: dict[str, list[dict]] = defaultdict(list)
-    for row in rows:
-        by_arm[str(row["arm"])].append(row)
-    stats = {}
-    for arm, items in by_arm.items():
-        solved = sum(1 for item in items if item.get("solved"))
-        cost = sum(float(item.get("cost_micros") or 0) for item in items)
-        n = len(items)
-        stats[arm] = {
-            "solve_rate": solved / n if n else 0.0,
-            "cost_micros": cost / n if n else 0.0,
-            "n": float(n),
-        }
-    return stats
-
-
 def task_arm_lookup(rows: list[dict]) -> dict[tuple[str, str], dict]:
     out = {}
     for row in rows:
@@ -81,6 +67,11 @@ def task_arm_lookup(rows: list[dict]) -> dict[tuple[str, str], dict]:
     return out
 
 
+def require_oracle_arms(oracle: dict[tuple[str, str], dict]) -> list[str]:
+    present = {arm for arm, _task in oracle}
+    return [arm for arm in REQUIRED_ORACLE_ARMS if arm not in present]
+
+
 def session_tier(
     session_id: str,
     decisions: dict[str, list[tuple[float | None, float | None]]],
@@ -90,7 +81,7 @@ def session_tier(
     scores = decisions.get(session_id) or []
     if not scores:
         return "mid"
-    hard, easy = scores[0]
+    hard, easy = scores[-1]
     return complexity(hard, easy, hard_t, easy_t)
 
 
@@ -124,8 +115,11 @@ def evaluate(
         total_cost += stats["cost"] / stats["n"] if stats["n"] else 0.0
     n = len(solved_flags) or 1
     solve_rate = sum(solved_flags) / n
-    solved = sum(solved_flags) or 1
-    cost_per_solved = (total_cost / 1_000_000.0) / solved
+    solved = sum(solved_flags)
+    if solved == 0:
+        cost_per_solved = math.inf
+    else:
+        cost_per_solved = (total_cost / 1_000_000.0) / solved
     return solve_rate, cost_per_solved, solved_flags
 
 
@@ -164,6 +158,13 @@ def main() -> int:
     eval_rows = load_jsonl(args.eval)
     decisions = load_decisions(args.db)
     oracle = task_arm_lookup(eval_rows)
+    missing_arms = require_oracle_arms(oracle)
+    if missing_arms:
+        print(
+            "missing required oracle arms: " + ", ".join(missing_arms),
+            file=sys.stderr,
+        )
+        return 1
 
     best = None
     for hard_t in grid(args.step):
@@ -171,7 +172,7 @@ def main() -> int:
             solve_rate, cost_per_solved, flags = evaluate(
                 eval_rows, decisions, hard_t, easy_t, oracle
             )
-            if cost_per_solved > args.cost_target:
+            if not math.isfinite(cost_per_solved) or cost_per_solved > args.cost_target:
                 continue
             candidate = (solve_rate, -cost_per_solved, hard_t, easy_t, flags)
             if best is None or candidate[:4] > best[:4]:

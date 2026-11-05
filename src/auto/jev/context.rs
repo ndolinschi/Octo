@@ -3,6 +3,11 @@ use serde_json::Value;
 const ERROR_LIMIT: usize = 3;
 const ERROR_CHARS: usize = 300;
 const FILE_LIMIT: usize = 20;
+const PATH_EXTENSIONS: &[&str] = &[
+    ".rs", ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".toml", ".md", ".json", ".yaml", ".yml",
+    ".txt", ".sql", ".sh", ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".rb", ".css", ".html",
+    ".xml", ".lock", ".cfg", ".ini", ".mjs", ".cjs", ".swift", ".php", ".cs", ".scala",
+];
 
 pub struct ContextFacts {
     pub recent_errors: Vec<String>,
@@ -121,7 +126,14 @@ fn looks_like_path(text: &str) -> bool {
     let text = text.trim();
     !text.is_empty()
         && text.len() < 512
-        && (text.contains('/') || text.contains('\\') || text.contains('.'))
+        && (text.contains('/') || text.contains('\\') || has_known_extension(text))
+}
+
+fn has_known_extension(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    PATH_EXTENSIONS
+        .iter()
+        .any(|ext| lower.ends_with(ext) && lower.len() > ext.len())
 }
 
 fn push_unique(files: &mut Vec<String>, path: &str) {
@@ -172,10 +184,27 @@ fn result_text(part: &Value) -> String {
 
 fn mentions_tests(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
-    lower.contains("test")
-        || lower.contains("pytest")
-        || lower.contains("jest")
+    has_word(&lower, "test")
+        || has_word(&lower, "tests")
+        || has_word(&lower, "pytest")
+        || has_word(&lower, "jest")
         || lower.contains("unit test")
+}
+
+fn has_word(haystack: &str, needle: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    let mut start = 0;
+    while let Some(rel) = haystack[start..].find(needle) {
+        let abs = start + rel;
+        let before_ok = abs == 0 || !bytes[abs - 1].is_ascii_alphanumeric();
+        let after = abs + needle.len();
+        let after_ok = after >= bytes.len() || !bytes[after].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs + 1;
+    }
+    false
 }
 
 fn mentions_stack_trace(text: &str) -> bool {

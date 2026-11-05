@@ -2,9 +2,9 @@ use serde_json::json;
 
 use octo::auto::context_length;
 use octo::auto::{
-    choice_from_scores, classified, context_estimate, dropped, filter_tools, inspect,
+    choice, choice_from_scores, classified, context_estimate, dropped, filter_tools, inspect,
     is_housekeeping, larger_fit, needed_tools, needs_compact, output_reserve, payload, session_id,
-    session_key, Complexity, LargerFit, PayloadPlan, Thresholds, Tiers,
+    session_key, with_model, Complexity, LargerFit, PayloadPlan, Thresholds, Tiers,
 };
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
 
@@ -85,15 +85,25 @@ fn first_turn_forwards_all_tools_when_jev_says_missing() {
         missing: &["Bash".into()],
     });
     assert_eq!(keep, all);
-    let mut body = json!({
+    let body = json!({
+        "model": "client-model",
         "tools": [
             {"name": "Bash"},
             {"name": "Read"},
             {"name": "Edit"}
         ]
     });
-    filter_tools(&mut body, &keep);
-    assert_eq!(body["tools"].as_array().unwrap().len(), 3);
+    let outgoing = with_model(&body, "mid-model");
+    assert_eq!(outgoing["model"], "mid-model");
+    assert_eq!(
+        outgoing["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect::<Vec<_>>(),
+        vec!["Bash", "Read", "Edit"]
+    );
 }
 
 #[test]
@@ -113,15 +123,17 @@ fn later_turn_forwards_all_tools() {
         missing: &["Bash".into()],
     });
     assert_eq!(keep_missing, all);
-    let mut body = json!({
+    let body = json!({
+        "model": "client-model",
         "tools": [
             {"name": "Bash"},
             {"name": "Read"},
             {"name": "Edit"}
         ]
     });
-    filter_tools(&mut body, &keep_missing);
-    assert_eq!(body["tools"].as_array().unwrap().len(), 3);
+    let outgoing = with_model(&body, "high-model");
+    assert_eq!(outgoing["model"], "high-model");
+    assert_eq!(outgoing["tools"].as_array().unwrap().len(), 3);
 }
 
 fn paid(id: &str, window: u64) -> OpenRouterModel {
@@ -217,18 +229,25 @@ fn jev_payload_includes_enriched_state() {
                 "role": "user",
                 "content": [
                     {"type": "tool_result", "is_error": true, "content": "error: boom"},
-                    {"type": "text", "text": "fix the traceback in src/a.rs and src/b.rs"}
+                    {"type": "text", "text": "fix the traceback in src/a.rs and src/b.rs and add a unit test"}
                 ]
             }
         ]
     });
-    let user_text = "fix the traceback in src/a.rs and src/b.rs";
+    let user_text = "fix the traceback in src/a.rs and src/b.rs and add a unit test";
     let facts = inspect(&body, user_text);
     assert_eq!(facts.turn_index, 1);
     assert_eq!(facts.recent_errors, vec!["error: boom".to_string()]);
     assert!(facts.files_touched.iter().any(|path| path == "src/a.rs"));
     assert!(facts.mentions_stack_trace);
     assert!(facts.mentions_multiple_files);
+    assert!(facts.mentions_tests);
+    let prose = inspect(
+        &json!({"messages": []}),
+        "ship the latest contest build v1.2.3",
+    );
+    assert!(!prose.mentions_tests);
+    assert!(!prose.mentions_multiple_files);
     let tools = vec!["Bash".into(), "Edit".into()];
     let value = payload(PayloadPlan {
         user_text,
@@ -242,23 +261,67 @@ fn jev_payload_includes_enriched_state() {
     assert_eq!(state["turn_index"], 1);
     assert_eq!(state["recent_errors"][0], "error: boom");
     assert!(state["mentions_stack_trace"].as_bool().unwrap());
+    assert!(state["mentions_tests"].as_bool().unwrap());
     assert!(!state["files_touched"].as_array().unwrap().is_empty());
 }
 
 #[test]
 fn threshold_parsing_picks_bands_from_noul_scores() {
+    assert_eq!(choice(Some(false), Some(false)).1, "mid_both_false");
+    assert_eq!(choice(Some(true), Some(true)).1, "mid_both_true");
+    assert_eq!(choice(None, Some(false)).1, "mid_unanswered");
+    assert_eq!(choice(Some(true), Some(false)), (Complexity::High, "high"));
+    assert_eq!(choice(Some(false), Some(true)), (Complexity::Low, "low"));
+
+    let thresholds = Thresholds::default();
     let value = json!({
+        "answers": {
+            "is_easy": {"type": "noul", "noul": 0.81},
+            "is_hard": {"type": "noul", "noul": 0.14},
+            "tools_enough": {"type": "noul", "noul": 0.44}
+        }
+    });
+    let row = classified(&value, &[], thresholds);
+    assert_eq!(row.complexity, Complexity::Low);
+    assert_eq!(row.choice_rule, "low");
+    assert_eq!(row.is_easy, Some(true));
+    assert_eq!(row.is_hard, Some(false));
+    assert_eq!(row.is_easy_score, Some(0.81));
+    assert_eq!(row.is_hard_score, Some(0.14));
+    assert!(!row.tools_enough);
+
+    let boundary = json!({
+        "answers": {
+            "is_easy": {"noul": 0.5},
+            "is_hard": {"noul": 0.49}
+        }
+    });
+    let row = classified(&boundary, &[], thresholds);
+    assert_eq!((row.is_easy, row.is_hard), (Some(true), Some(false)));
+    assert_eq!(row.choice_rule, "low");
+
+    let words = json!({"is_easy": "false", "is_hard": "true"});
+    let row = classified(&words, &[], thresholds);
+    assert_eq!(row.choice_rule, "high");
+    assert_eq!(row.is_hard_score, Some(1.0));
+    assert_eq!(row.is_easy_score, Some(0.0));
+
+    let missing = json!({"answers": {}});
+    let row = classified(&missing, &[], thresholds);
+    assert_eq!(row.choice_rule, "mid_unanswered");
+
+    let scored = json!({
         "answers": {
             "is_hard": {"noul": 0.62},
             "is_easy": {"noul": 0.41}
         }
     });
-    let default = classified(&value, &[], Thresholds::default());
+    let default = classified(&scored, &[], Thresholds::default());
     assert_eq!(default.choice_rule, "high");
     assert_eq!(default.is_hard_score, Some(0.62));
     assert_eq!(default.is_easy_score, Some(0.41));
     let raised = classified(
-        &value,
+        &scored,
         &[],
         Thresholds {
             hard: 0.7,
@@ -266,6 +329,28 @@ fn threshold_parsing_picks_bands_from_noul_scores() {
         },
     );
     assert_eq!(raised.choice_rule, "mid_both_false");
+    assert_eq!(
+        choice_from_scores(
+            Some(0.6),
+            Some(0.4),
+            Thresholds {
+                hard: 0.5,
+                easy: 0.5
+            }
+        ),
+        (Complexity::High, "high")
+    );
+    assert_eq!(
+        choice_from_scores(
+            Some(0.6),
+            Some(0.4),
+            Thresholds {
+                hard: 0.7,
+                easy: 0.5
+            }
+        ),
+        (Complexity::Mid, "mid_both_false")
+    );
     assert_eq!(
         choice_from_scores(
             Some(0.2),
