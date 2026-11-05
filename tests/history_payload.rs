@@ -105,6 +105,37 @@ fn usage_reads_anthropic_message_events() {
 }
 
 #[test]
+fn usage_reads_anthropic_cache_and_generation_id() {
+    let output = concat!(
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_abc\",\"usage\":{",
+        "\"input_tokens\":100,\"output_tokens\":1,",
+        "\"cache_read_input_tokens\":40,\"cache_creation_input_tokens\":60}}}\n\n",
+        "data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":5}}\n"
+    );
+    let usage = usage_from_output(output);
+    assert_eq!(usage.input_tokens, Some(TokenCount(100)));
+    assert_eq!(usage.output_tokens, Some(TokenCount(5)));
+    assert_eq!(usage.cache_read_tokens, Some(TokenCount(40)));
+    assert_eq!(usage.cache_write_tokens, Some(TokenCount(60)));
+    assert_eq!(usage.generation_id.as_deref(), Some("msg_abc"));
+}
+
+#[test]
+fn usage_reads_openai_cached_tokens_and_id() {
+    let output = concat!(
+        "{\"id\":\"chatcmpl-xyz\",\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":3,",
+        "\"prompt_tokens_details\":{\"cached_tokens\":12},\"cost\":0.01}}"
+    );
+    let usage = usage_from_output(output);
+    assert_eq!(usage.input_tokens, Some(TokenCount(20)));
+    assert_eq!(usage.output_tokens, Some(TokenCount(3)));
+    assert_eq!(usage.cache_read_tokens, Some(TokenCount(12)));
+    assert_eq!(usage.cache_write_tokens, None);
+    assert_eq!(usage.generation_id.as_deref(), Some("chatcmpl-xyz"));
+    assert_eq!(usage.cost, Some(CostMicros(10_000)));
+}
+
+#[test]
 fn decisions_usage_cost_parses_to_micros() {
     let body = serde_json::json!({"usage": {"cost": 0.000012}});
     assert_eq!(cost_micros_from_json(&body), Some(CostMicros(12)));

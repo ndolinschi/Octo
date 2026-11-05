@@ -6,9 +6,8 @@ pub fn normalize_trigger(reason: Option<&str>) -> String {
         return format!("stall:{kind}");
     }
     match reason {
-        "classify" | "reclassify" | "upgrade" | "retry" | "hysteresis_hold" | "budget_cap" => {
-            reason.to_string()
-        }
+        "classify" | "reclassify" | "upgrade" | "retry" | "hysteresis_hold" | "budget_cap"
+        | "housekeeping" => reason.to_string(),
         "tool_update" => "reclassify".to_string(),
         "upstream_retry" => "retry".to_string(),
         "stall_release" => "none".to_string(),
@@ -28,11 +27,11 @@ pub struct RouteMeta {
 }
 
 impl RouteMeta {
-    pub fn housekeeping(current_band: &str) -> Self {
+    pub fn housekeeping(tier_before: &str) -> Self {
         Self {
-            tier_before: current_band.to_string(),
-            tier_after: current_band.to_string(),
-            trigger: "none".to_string(),
+            tier_before: tier_before.to_string(),
+            tier_after: "low".to_string(),
+            trigger: "housekeeping".to_string(),
         }
     }
 

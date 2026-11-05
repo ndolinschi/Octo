@@ -32,6 +32,7 @@ pub fn is_housekeeping(text: &str) -> bool {
         || text.contains("[SUGGESTION MODE:")
         || text.contains("The user stepped away and is coming back")
         || text.contains("Recap in under 40 words")
+        || text.contains("2-4 word lowercase label for this job")
 }
 
 pub fn last_user_text(body: &Value) -> String {
@@ -45,6 +46,128 @@ pub fn last_user_text(body: &Value) -> String {
         return content_text(message.get("content"));
     }
     String::new()
+}
+
+pub fn question_text(body: &Value) -> String {
+    strip_question_noise(&last_user_text(body))
+}
+
+fn strip_question_noise(text: &str) -> String {
+    let without_blocks = remove_tagged_blocks(text);
+    strip_wrapper_tags(&without_blocks).trim().to_string()
+}
+
+fn is_wrapper_tag(name: &str) -> bool {
+    name.eq_ignore_ascii_case("session") || name.eq_ignore_ascii_case("conversation")
+}
+
+fn remove_tagged_blocks(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'<' {
+            let start = i;
+            while i < bytes.len() && bytes[i] != b'<' {
+                i += 1;
+            }
+            out.push_str(&text[start..i]);
+            continue;
+        }
+        let Some((tag_name, tag_len, self_closing)) = parse_open_tag(&text[i..]) else {
+            out.push('<');
+            i += 1;
+            continue;
+        };
+        if is_wrapper_tag(&tag_name) {
+            out.push_str(&text[i..i + tag_len]);
+            i += tag_len;
+            continue;
+        }
+        if self_closing {
+            i += tag_len;
+            continue;
+        }
+        let close = format!("</{tag_name}>");
+        let search_from = i + tag_len;
+        if let Some(rel) = find_closing_tag(&text[search_from..], &tag_name) {
+            i = search_from + rel + close.len();
+            continue;
+        }
+        out.push('<');
+        i += 1;
+    }
+    out
+}
+
+fn find_closing_tag(haystack: &str, tag_name: &str) -> Option<usize> {
+    let needle = format!("</{tag_name}>");
+    if let Some(at) = haystack.find(&needle) {
+        return Some(at);
+    }
+    let lower_needle = format!("</{}>", tag_name.to_ascii_lowercase());
+    let lower_hay = haystack.to_ascii_lowercase();
+    lower_hay.find(&lower_needle)
+}
+
+fn parse_open_tag(s: &str) -> Option<(String, usize, bool)> {
+    if !s.starts_with('<') || s.starts_with("</") {
+        return None;
+    }
+    let rest = &s[1..];
+    let name_end = rest.find(|c: char| c.is_whitespace() || c == '>' || c == '/')?;
+    if name_end == 0 {
+        return None;
+    }
+    let name = &rest[..name_end];
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return None;
+    }
+    let after_name = &rest[name_end..];
+    let gt = after_name.find('>')?;
+    let self_closing = after_name[..gt].trim_end().ends_with('/');
+    Some((name.to_string(), 1 + name_end + gt + 1, self_closing))
+}
+
+fn strip_wrapper_tags(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while !rest.is_empty() {
+        let Some(at) = rest.find('<') else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..at]);
+        rest = &rest[at..];
+        if let Some((name, len, _)) = parse_open_tag(rest) {
+            if is_wrapper_tag(&name) {
+                rest = &rest[len..];
+                continue;
+            }
+        }
+        if let Some(name) = closing_tag_name(rest) {
+            if is_wrapper_tag(name) {
+                rest = &rest[2 + name.len() + 1..];
+                continue;
+            }
+        }
+        out.push('<');
+        rest = &rest[1..];
+    }
+    out
+}
+
+fn closing_tag_name(s: &str) -> Option<&str> {
+    let rest = s.strip_prefix("</")?;
+    let gt = rest.find('>')?;
+    let name = rest[..gt].trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(name)
 }
 
 pub fn last_user_tool_results_only(body: &Value) -> bool {

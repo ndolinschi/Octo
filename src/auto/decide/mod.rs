@@ -197,7 +197,8 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         }
     }
 
-    let user_text = body::last_user_text(&req.body);
+    let raw_text = body::last_user_text(&req.body);
+    let question = body::question_text(&req.body);
     let persist = !all_tools.is_empty();
     let tier_before = choice
         .as_ref()
@@ -227,11 +228,41 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .map(|id| req.auto.session_cost_micros(id))
         .unwrap_or(0);
 
+    if body::is_housekeeping(&raw_text) {
+        let model = req.auto.tiers.pick(Complexity::Low, preferred.as_deref());
+        let row = choice.as_ref();
+        return route::run(RouteCtx {
+            auto: req.auto,
+            body: req.body,
+            models: loaded.as_ref(),
+            previous_model: row.map(|row| row.model.clone()),
+            plan: RoutePlan {
+                model,
+                tools: row
+                    .map(|row| row.tools.clone())
+                    .unwrap_or_else(|| all_tools.clone()),
+                reason: Some("housekeeping".to_string()),
+                tier_before,
+                reserve,
+                allow_compact: req.allow_compact,
+                persist: false,
+                sticky_band: row
+                    .map(|row| row.sticky_band.clone())
+                    .unwrap_or_else(|| "unset".to_string()),
+                escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
+                escalate_band: row.and_then(|row| row.escalate_band.clone()),
+                last_stall: row.and_then(|row| row.last_stall.clone()),
+                pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
+                down_count: row.map(|row| row.down_count).unwrap_or(0),
+            },
+        });
+    }
+
     if let Some(row) = hold_without_classify(HoldWithoutClassify {
         choice: choice.as_ref(),
         stall,
         tool_results_only,
-        user_text: &user_text,
+        question_text: &question,
     }) {
         return route::run(RouteCtx {
             auto: req.auto,
@@ -251,12 +282,8 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         });
     }
 
-    if body::is_housekeeping(&user_text) && choice.is_none() && stall.is_none() {
-        return route::passthrough(&req.body);
-    }
-
     let picked = if choice.is_some() {
-        if user_text.trim().is_empty() {
+        if question.trim().is_empty() {
             None
         } else {
             classify::turn(ClassifyTurn {
@@ -270,7 +297,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             })
             .await
         }
-    } else if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
+    } else if question.trim().is_empty() {
         if stall.is_none() {
             return route::passthrough(&req.body);
         }
@@ -358,7 +385,7 @@ struct HoldWithoutClassify<'a> {
     choice: Option<&'a super::session::SessionChoice>,
     stall: Option<stall::StallTrigger>,
     tool_results_only: bool,
-    user_text: &'a str,
+    question_text: &'a str,
 }
 
 fn hold_without_classify(plan: HoldWithoutClassify<'_>) -> Option<super::session::SessionChoice> {
@@ -366,10 +393,7 @@ fn hold_without_classify(plan: HoldWithoutClassify<'_>) -> Option<super::session
     if plan.stall.is_some() {
         return None;
     }
-    if plan.tool_results_only
-        || plan.user_text.trim().is_empty()
-        || body::is_housekeeping(plan.user_text)
-    {
+    if plan.tool_results_only || plan.question_text.trim().is_empty() {
         return Some(row.clone());
     }
     None

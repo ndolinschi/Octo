@@ -7,9 +7,9 @@ use octo::auto::{
     apply_sticky, cap_for_budget, choice, choice_from_scores, classified, compaction_body,
     context_estimate, decide, detect_stall, dropped, filter_tools, inspect, is_housekeeping,
     larger_fit, max_completion_tokens, needed_tools, needs_compact, output_reserve, payload,
-    session_id, session_key, shape, with_model, Auto, Complexity, DecideRequest, LargerFit,
-    PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers,
-    Turn,
+    question_text, session_id, session_key, shape, with_model, Auto, Complexity, DecideRequest,
+    LargerFit, PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan,
+    Thresholds, Tiers, Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -43,6 +43,9 @@ fn session_id_comes_from_metadata_user_id() {
     assert!(is_housekeeping(
         "The user stepped away and is coming back. Recap in under 40 words"
     ));
+    assert!(is_housekeeping(
+        "Current state: working\nWrite a 2-4 word lowercase label for this job"
+    ));
     assert!(!is_housekeeping("what is about this branch"));
 }
 
@@ -53,13 +56,33 @@ fn housekeeping_fixture_title_session() {
 }
 
 #[test]
+fn question_text_strips_system_reminder_keeps_question() {
+    let body = json!({
+        "messages": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "<system-reminder>\nYou are Claude Code. Mention tests often.\n</system-reminder>\n\nКакой порт слушает Octo?"
+                }
+            ]
+        }]
+    });
+    assert_eq!(question_text(&body), "Какой порт слушает Octo?");
+    let facts = inspect(&body, &question_text(&body));
+    assert!(!facts.mentions_tests);
+}
+
+#[test]
 fn route_meta_rerouting_matches_tier_change() {
     let changed = RouteMeta::from_plan("low".into(), "mid".into(), Some("reclassify"));
     assert_eq!(changed.rerouting(), 1);
     assert_eq!(changed.trigger, "reclassify");
-    let same = RouteMeta::housekeeping("low");
-    assert_eq!(same.rerouting(), 0);
-    assert_eq!(same.trigger, "none");
+    let same = RouteMeta::housekeeping("mid");
+    assert_eq!(same.tier_before, "mid");
+    assert_eq!(same.tier_after, "low");
+    assert_eq!(same.rerouting(), 1);
+    assert_eq!(same.trigger, "housekeeping");
 }
 
 #[test]
@@ -716,7 +739,7 @@ async fn decide_stall_escalates_without_catalog_or_jev() {
 }
 
 #[tokio::test]
-async fn stall_still_escalates_when_last_user_is_housekeeping() {
+async fn housekeeping_forces_low_even_when_stall_present() {
     let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
     tiers.escalate_turns = 3;
     let auto = Auto::new(tiers);
@@ -744,27 +767,28 @@ async fn stall_still_escalates_when_last_user_is_housekeeping() {
     };
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
-        "mid-m"
+        "low-m"
     );
-    assert!(forward.meta.trigger.starts_with("stall:"));
+    assert_eq!(forward.meta.trigger, "housekeeping");
+    assert_eq!(forward.meta.tier_after, "low");
 }
 
 #[tokio::test]
-async fn housekeeping_hold_applies_session_budget_cap() {
+async fn housekeeping_forces_low_without_touching_sticky() {
     let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
     tiers.session_budget_micros = 100;
     let auto = Auto::new(tiers);
-    auto.seed_session(
-        "budget-sess",
-        SessionChoice::fresh("high-m".into(), vec!["Read".into()], "high".into()),
-    );
-    auto.add_session_cost("budget-sess", 150);
+    let mut seeded = SessionChoice::fresh("high-m".into(), vec!["Read".into()], "high".into());
+    seeded.escalate_remaining = 2;
+    seeded.escalate_band = Some("mid".into());
+    auto.seed_session("hk-sess", seeded);
+    auto.add_session_cost("hk-sess", 150);
     let history = History::disabled();
     let client = reqwest::Client::new();
     let housekeeping = json!({
-        "metadata": {"user_id": "{\"session_id\":\"budget-sess\"}"},
+        "metadata": {"user_id": "{\"session_id\":\"hk-sess\"}"},
         "tools": [{"name": "Read"}],
-        "messages": [{"role": "user", "content": "[SUGGESTION MODE: Suggest what the user might type next"}]
+        "messages": [{"role": "user", "content": "Write a 2-4 word lowercase label for this job"}]
     });
     let turn = decide(DecideRequest {
         auto: &auto,
@@ -780,8 +804,69 @@ async fn housekeeping_hold_applies_session_budget_cap() {
         panic!("expected forward");
     };
     let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
-    assert_eq!(payload["model"], "mid-m");
-    assert_eq!(forward.meta.trigger, "budget_cap");
+    assert_eq!(payload["model"], "low-m");
+    assert_eq!(forward.meta.trigger, "housekeeping");
+    assert_eq!(forward.meta.tier_before, "high");
+    assert_eq!(forward.meta.tier_after, "low");
+    assert_eq!(auto.session_cost_micros("hk-sess"), 150);
+
+    let follow = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"hk-sess\"}"},
+            "tools": [{"name": "Read"}],
+            "messages": [{"role": "user", "content": ""}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(held) = follow else {
+        panic!("expected forward hold");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&held.body).unwrap()["model"],
+        "mid-m"
+    );
+    assert_eq!(held.meta.trigger, "budget_cap");
+}
+
+#[tokio::test]
+async fn housekeeping_writes_no_decisions_row() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    let history = History::connect("sqlite::memory:", "test-key", 64)
+        .await
+        .unwrap();
+    let client = reqwest::Client::new();
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "sk-test",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"hk-dec\"}"},
+            "tools": [{"name": "Read"}],
+            "messages": [{"role": "user", "content": "[SUGGESTION MODE: Suggest next"}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert_eq!(forward.meta.trigger, "housekeeping");
+    history.drain().await;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM decisions WHERE session_id = ?")
+        .bind("hk-dec")
+        .fetch_one(history.pool().expect("pool"))
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
 }
 
 #[tokio::test]

@@ -442,6 +442,9 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let input_tokens = call.input_tokens.map(token_count_to_sql);
     let output_tokens = call.output_tokens.map(token_count_to_sql);
     let cost_micros = call.cost.map(cost_micros_to_sql);
+    let cache_read_tokens = call.cache_read_tokens.map(token_count_to_sql);
+    let cache_write_tokens = call.cache_write_tokens.map(token_count_to_sql);
+    let generation_id = call.generation_id.as_deref();
     let rerouting = i64::from(call.tier_before.as_deref() != call.tier_after.as_deref());
     let rerouting_reason = call.rerouting_reason.as_deref();
     let session_id = call.session_id.as_deref();
@@ -454,8 +457,9 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
             created_at, kind, provider, model, token_hash, message, input, output,
             request_payload, response_payload,
             status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros,
+            cache_read_tokens, cache_write_tokens, generation_id,
             rerouting, rerouting_reason, session_id, tier_before, tier_after, trigger
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -474,6 +478,9 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         input_tokens,
         output_tokens,
         cost_micros,
+        cache_read_tokens,
+        cache_write_tokens,
+        generation_id,
         rerouting,
         rerouting_reason,
         session_id,
