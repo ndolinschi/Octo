@@ -113,6 +113,7 @@ pub fn compaction_body(body: &Value, model: &str) -> Value {
     let mut copy = with_model(body, model);
     if let Some(object) = copy.as_object_mut() {
         object.insert("compaction".to_string(), json!({"type": "summarize"}));
+        object.insert("stream".to_string(), json!(false));
     }
     copy
 }

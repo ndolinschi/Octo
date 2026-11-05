@@ -12,6 +12,8 @@ use crate::history::{
     describe_input, request_payload, response_payload, token_from_headers, usage_from_output,
     CallKind, CallProvider, FinishedCall, Millis,
 };
+use crate::providers::openrouter::{apply_attribution, AttributionDefaults};
+use crate::providers::utils::{apply_openrouter_messages_auth, forward_content_type};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
 
@@ -69,29 +71,26 @@ async fn post(
     parts: &axum::http::request::Parts,
     body: &[u8],
 ) -> Result<(u16, Vec<u8>), ProxyError> {
-    let secret = token_from_headers(&parts.headers);
-    let mut request = state
-        .client
-        .post(state.llm.openrouter.messages_url())
-        .header("anthropic-beta", "compact-2026-09-04")
-        .header(
+    let openrouter = AttributionDefaults::new(
+        state.config.openrouter_http_referer.clone(),
+        state.config.openrouter_title.clone(),
+    );
+    let mut request = state.client.post(state.llm.openrouter.messages_url());
+    request = apply_openrouter_messages_auth(request, parts);
+    request = apply_attribution(request, parts, &openrouter);
+    request = match parts.headers.get("anthropic-version") {
+        Some(value) => request.header("anthropic-version", value),
+        None => request.header(
             "anthropic-version",
-            parts
-                .headers
-                .get("anthropic-version")
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or(state.config.anthropic_api_version.as_str()),
-        )
-        .header(axum::http::header::CONTENT_TYPE, "application/json")
-        .bearer_auth(secret)
-        .body(body.to_vec());
-    if let Some(value) = parts.headers.get("http-referer") {
-        request = request.header("http-referer", value);
-    }
-    if let Some(value) = parts.headers.get("x-title") {
-        request = request.header("x-title", value);
-    }
-    let response = request.send().await?;
+            state.config.anthropic_api_version.as_str(),
+        ),
+    };
+    request = forward_content_type(request, parts);
+    let response = request
+        .header("anthropic-beta", "compact-2026-09-04")
+        .body(body.to_vec())
+        .send()
+        .await?;
     let status = response.status().as_u16();
     let bytes = response.bytes().await?.to_vec();
     Ok((status, bytes))
