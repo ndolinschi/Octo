@@ -16,14 +16,14 @@ mod error;
 mod metrics;
 mod payload;
 
-pub use call::{CallObserve, FinishedCall};
+pub use call::{CallObserve, DecisionRow, FinishedCall};
 pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
 pub use payload::{
-    describe_input, request_payload, response_payload, token_from_headers, usage_from_output,
-    usage_from_parts, ParsedUsage,
+    describe_input, is_subagent, request_payload, response_payload, token_from_headers,
+    usage_from_output, usage_from_parts, ParsedUsage,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -111,6 +111,41 @@ impl History {
             HmacSha256::new_from_slice(&self.token_key).map_err(|_| HistoryError::TokenKey)?;
         mac.update(secret.as_bytes());
         Ok(hex::encode(mac.finalize().into_bytes()))
+    }
+
+    pub fn record_decision(&self, row: DecisionRow) {
+        let Some(pool) = self.pool.clone() else {
+            return;
+        };
+        let limit = self.capture_limit;
+        let inserts = self.inserts.clone();
+        let inflight = self.inflight.clone();
+        let idle = self.idle.clone();
+        tokio::spawn(async move {
+            let Ok(Ok(permit)) =
+                tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await
+            else {
+                tracing::warn!(
+                    choice_rule = %row.choice_rule,
+                    "decision insert skipped; queue wait timed out"
+                );
+                return;
+            };
+            inflight.fetch_add(1, Ordering::AcqRel);
+            struct Done(Arc<AtomicUsize>, Arc<Notify>);
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    if self.0.fetch_sub(1, Ordering::AcqRel) == 1 {
+                        self.1.notify_waiters();
+                    }
+                }
+            }
+            let _done = Done(inflight, idle);
+            let _permit = permit;
+            if let Err(err) = insert_decision(&pool, &row, limit).await {
+                tracing::warn!(%err, choice_rule = %row.choice_rule, "decision insert failed");
+            }
+        });
     }
 
     pub fn record(&self, call: FinishedCall) {
@@ -290,6 +325,59 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<(), HistoryError> {
     Ok(())
 }
 
+fn flag_to_sql(flag: Option<bool>) -> Option<i64> {
+    flag.map(i64::from)
+}
+
+fn clip(text: &str, limit: usize) -> String {
+    if limit == 0 || text.len() <= limit {
+        return text.to_string();
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_string()
+}
+
+async fn insert_decision(
+    pool: &SqlitePool,
+    row: &DecisionRow,
+    capture_limit: usize,
+) -> Result<(), sqlx::Error> {
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    sqlx::query(
+        r#"
+        INSERT INTO decisions (
+            created_at, session_id, purpose, model, status, latency_ms, user_text,
+            is_hard, is_easy, tools_enough, complexity, choice_rule, missing_tools,
+            request_payload, response_payload
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(created_at)
+    .bind(&row.session_id)
+    .bind(&row.purpose)
+    .bind(&row.model)
+    .bind(i64::from(row.status))
+    .bind(i64::try_from(row.latency_ms).unwrap_or(i64::MAX))
+    .bind(clip(&row.user_text, capture_limit))
+    .bind(flag_to_sql(row.is_hard))
+    .bind(flag_to_sql(row.is_easy))
+    .bind(&row.tools_enough)
+    .bind(row.complexity)
+    .bind(&row.choice_rule)
+    .bind(&row.missing_tools)
+    .bind(clip(&row.request_payload, capture_limit))
+    .bind(clip(&row.response_payload, capture_limit))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx::Error> {
     use metrics::{byte_len_to_sql, cost_micros_to_sql, millis_to_sql, token_count_to_sql};
 
@@ -313,13 +401,16 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let input_tokens = call.input_tokens.map(token_count_to_sql);
     let output_tokens = call.output_tokens.map(token_count_to_sql);
     let cost_micros = call.cost.map(cost_micros_to_sql);
+    let rerouting = call.rerouting;
+    let rerouting_reason = call.rerouting_reason.as_deref();
     sqlx::query!(
         r#"
         INSERT INTO calls (
             created_at, kind, provider, model, token_hash, message, input, output,
             request_payload, response_payload,
-            status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros,
+            rerouting, rerouting_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -338,6 +429,8 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         input_tokens,
         output_tokens,
         cost_micros,
+        rerouting,
+        rerouting_reason,
     )
     .execute(pool)
     .await?;

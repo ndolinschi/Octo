@@ -1,0 +1,2 @@
+ALTER TABLE calls ADD COLUMN rerouting INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE calls ADD COLUMN rerouting_reason TEXT;

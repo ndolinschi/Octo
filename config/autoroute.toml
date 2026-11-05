@@ -1,0 +1,5 @@
+[autoroute]
+# Model slugs used by /autoroute when JEV picks a complexity band.
+low = "google/gemma-4-26b-a4b-it"
+mid = "deepseek/deepseek-v4-flash"
+high = "~anthropic/claude-haiku-latest"

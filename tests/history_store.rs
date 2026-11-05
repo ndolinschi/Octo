@@ -67,6 +67,9 @@ async fn streamed_response_is_forwarded_then_stored() {
             history: history.clone(),
             kind: CallKind::Llm,
             provider: CallProvider::OpenAi,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -128,6 +131,9 @@ async fn missing_token_is_not_a_shared_identity() {
             history: history.clone(),
             kind: CallKind::Decision,
             provider: CallProvider::OpenRouter,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -165,6 +171,9 @@ async fn decisions_response_is_stored_with_its_kind() {
             history: history.clone(),
             kind: CallKind::Decision,
             provider: CallProvider::OpenRouter,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -224,6 +233,9 @@ async fn usage_past_the_stored_prefix_is_kept() {
             history: history.clone(),
             kind: CallKind::Llm,
             provider: CallProvider::OpenAi,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -292,6 +304,9 @@ async fn upstream_chunk_error_is_stored_as_failure() {
             history: history.clone(),
             kind: CallKind::Llm,
             provider: CallProvider::OpenAi,
+            rerouting: 0,
+            rerouting_reason: None,
+            on_response: None,
         }),
     )
     .await
@@ -305,6 +320,55 @@ async fn upstream_chunk_error_is_stored_as_failure() {
     .await;
     assert_eq!(row.status, 502);
     assert_eq!(row.output, "partial");
+}
+
+#[tokio::test]
+async fn decision_row_is_inserted_into_decisions() {
+    use octo::history::DecisionRow;
+
+    let history = History::connect("sqlite::memory:", "test-token-key", 1024)
+        .await
+        .unwrap();
+    history.record_decision(DecisionRow {
+        session_id: Some("sess-1".to_string()),
+        purpose: "classify".to_string(),
+        model: "typesafe/jev-1.13".to_string(),
+        status: 200,
+        latency_ms: 12,
+        user_text: "hello".to_string(),
+        is_hard: Some(false),
+        is_easy: Some(true),
+        tools_enough: Some("true".to_string()),
+        complexity: Some("low"),
+        choice_rule: "is_easy".to_string(),
+        missing_tools: Some(String::new()),
+        request_payload: "{}".to_string(),
+        response_payload: "{}".to_string(),
+    });
+    history.drain().await;
+    let row = poll_call(&history, || async {
+        let row = sqlx::query(
+            "SELECT session_id, purpose, complexity, choice_rule, user_text FROM decisions",
+        )
+        .fetch_optional(history.pool().unwrap())
+        .await?;
+        Ok(row.map(|row| {
+            use sqlx::Row;
+            (
+                row.get::<Option<String>, _>("session_id"),
+                row.get::<String, _>("purpose"),
+                row.get::<Option<String>, _>("complexity"),
+                row.get::<String, _>("choice_rule"),
+                row.get::<String, _>("user_text"),
+            )
+        }))
+    })
+    .await;
+    assert_eq!(row.0.as_deref(), Some("sess-1"));
+    assert_eq!(row.1, "classify");
+    assert_eq!(row.2.as_deref(), Some("low"));
+    assert_eq!(row.3, "is_easy");
+    assert_eq!(row.4, "hello");
 }
 
 async fn poll_call<T, F, Fut>(_: &History, mut load: F) -> T

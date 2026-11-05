@@ -1,3 +1,4 @@
+pub mod auto;
 pub mod config;
 pub mod history;
 pub mod providers;

@@ -17,6 +17,12 @@ fn loads_split_config_directory() {
         config.openrouter_messages_url,
         "https://openrouter.ai/api/v1/messages"
     );
+    assert_eq!(config.autoroute_low_model, "google/gemma-4-26b-a4b-it");
+    assert_eq!(config.autoroute_mid_model, "deepseek/deepseek-v4-flash");
+    assert_eq!(
+        config.autoroute_high_model,
+        "~anthropic/claude-haiku-latest"
+    );
 }
 
 #[test]

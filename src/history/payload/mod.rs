@@ -45,6 +45,10 @@ pub fn token_from_headers(headers: &HeaderMap) -> String {
     String::new()
 }
 
+pub fn is_subagent(body: &serde_json::Value) -> bool {
+    claude::is_subagent(body)
+}
+
 pub fn describe_input(body: &str) -> (Option<String>, Option<String>) {
     common::describe_input(body)
 }

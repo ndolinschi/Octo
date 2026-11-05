@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use reqwest::Client;
 
+use crate::auto::{Auto, Tiers};
 use crate::config::{Config, ConfigError};
 use crate::history::History;
 use crate::providers::{decision, llm};
@@ -16,6 +17,7 @@ pub struct AppState {
     pub llm: llm::Providers,
     pub decision: decision::Providers,
     pub history: History,
+    pub auto: Auto,
 }
 
 impl AppState {
@@ -44,6 +46,11 @@ impl AppState {
             llm: llm::Providers::from_config(&config),
             decision: decision::Providers::from_config(&config)?,
             history: History::disabled(),
+            auto: Auto::new(Tiers::new(
+                config.autoroute_low_model.clone(),
+                config.autoroute_mid_model.clone(),
+                config.autoroute_high_model.clone(),
+            )),
             config,
         })
     }

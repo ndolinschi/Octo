@@ -2,7 +2,7 @@ use axum::{
     body::{to_bytes, Body, Bytes},
     extract::{Request, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::IntoResponse,
 };
 
 use crate::history::{CallKind, CallObserve, CallProvider};
@@ -16,7 +16,7 @@ async fn forward_chat(
     state: &AppState,
     request: Request,
     path_hint: Option<ChatCompatProvider>,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     let max_body = state.config.max_body_bytes;
     let (parts, body) = request.into_parts();
     let body_bytes = to_bytes(body, max_body)
@@ -30,6 +30,9 @@ async fn forward_chat(
         history: state.history.clone(),
         kind: CallKind::Llm,
         provider: CallProvider::from(provider),
+        rerouting: 0,
+        rerouting_reason: None,
+        on_response: None,
     });
     if forward {
         state
@@ -49,21 +52,21 @@ async fn forward_chat(
 pub async fn chat_completions(
     State(state): State<AppState>,
     request: Request,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     forward_chat(&state, request, None).await
 }
 
 pub async fn chat_completions_openai(
     State(state): State<AppState>,
     request: Request,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     forward_chat(&state, request, Some(ChatCompatProvider::OpenAi)).await
 }
 
 pub async fn chat_completions_openrouter(
     State(state): State<AppState>,
     request: Request,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     forward_chat(&state, request, Some(ChatCompatProvider::OpenRouter)).await
 }
 
@@ -71,7 +74,7 @@ async fn forward_messages(
     state: &AppState,
     request: Request,
     path_hint: Option<MessagesProvider>,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     let max_body = state.config.max_body_bytes;
     let (parts, body) = request.into_parts();
     let body_bytes = to_bytes(body, max_body)
@@ -84,6 +87,9 @@ async fn forward_messages(
         history: state.history.clone(),
         kind: CallKind::Messages,
         provider: CallProvider::from(provider),
+        rerouting: 0,
+        rerouting_reason: None,
+        on_response: None,
     });
     match provider {
         MessagesProvider::Claude => {
@@ -106,28 +112,28 @@ async fn forward_messages(
 pub async fn messages(
     State(state): State<AppState>,
     request: Request,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     forward_messages(&state, request, None).await
 }
 
 pub async fn messages_claude(
     State(state): State<AppState>,
     request: Request,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     forward_messages(&state, request, Some(MessagesProvider::Claude)).await
 }
 
 pub async fn messages_openrouter(
     State(state): State<AppState>,
     request: Request,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     forward_messages(&state, request, Some(MessagesProvider::OpenRouter)).await
 }
 
 pub async fn decisions(
     State(state): State<AppState>,
     request: Request,
-) -> Result<Response, ProxyError> {
+) -> Result<axum::response::Response, ProxyError> {
     state
         .decision
         .openrouter
@@ -138,6 +144,9 @@ pub async fn decisions(
                 history: state.history.clone(),
                 kind: CallKind::Decision,
                 provider: CallProvider::OpenRouter,
+                rerouting: 0,
+                rerouting_reason: None,
+                on_response: None,
             }),
         )
         .await

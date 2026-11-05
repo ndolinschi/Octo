@@ -1,3 +1,4 @@
+pub mod autoroute;
 pub mod error;
 pub mod handler;
 pub mod routes;

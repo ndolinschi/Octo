@@ -138,6 +138,9 @@ impl Capture {
                 history: observe.history.clone(),
                 kind: observe.kind,
                 provider: observe.provider,
+                rerouting: observe.rerouting,
+                rerouting_reason: observe.rerouting_reason.clone(),
+                on_response: observe.on_response.clone(),
             },
             model,
             message,
@@ -168,7 +171,7 @@ impl Capture {
             token_hash: self.token_hash,
             message: self.message,
             input: self.input,
-            output: output_text,
+            output: output_text.clone(),
             request_payload: self.request_payload,
             response_payload,
             status,
@@ -178,7 +181,17 @@ impl Capture {
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
             cost: usage.cost,
+            rerouting: self.observe.rerouting,
+            rerouting_reason: self.observe.rerouting_reason.clone(),
         });
+        if let Some(hook) = self.observe.on_response {
+            let text = if tail_text.is_empty() {
+                output_text
+            } else {
+                format!("{output_text}{tail_text}")
+            };
+            hook(&text);
+        }
     }
 }
 

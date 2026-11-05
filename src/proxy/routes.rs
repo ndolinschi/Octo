@@ -4,7 +4,7 @@ use axum::{
 };
 
 use crate::config::Config;
-use crate::proxy::handler;
+use crate::proxy::{autoroute, handler};
 use crate::state::AppState;
 
 pub fn router(config: &Config) -> Router<AppState> {
@@ -49,4 +49,6 @@ pub fn router(config: &Config) -> Router<AppState> {
             "/openrouter/v1/messages",
             post(handler::messages_openrouter),
         )
+        .route("/autoroute/v1/messages", post(autoroute::messages))
+        .route("/autoroute/v1/chat/completions", post(autoroute::chat))
 }

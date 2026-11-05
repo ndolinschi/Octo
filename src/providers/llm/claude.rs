@@ -4,7 +4,9 @@ use axum::{
 };
 use reqwest::Client;
 
-use crate::history::CallObserve;
+use serde_json::Value;
+
+use crate::history::{is_subagent as anthropic_subagent, CallObserve};
 use crate::providers::utils::{apply_anthropic_messages_auth, forward_content_type, proxy_post};
 use crate::proxy::error::ProxyError;
 
@@ -13,6 +15,10 @@ pub struct Claude {
     messages_url: String,
     default_api_version: String,
     max_body_bytes: usize,
+}
+
+pub fn is_subagent(body: &Value) -> bool {
+    anthropic_subagent(body)
 }
 
 impl Claude {
