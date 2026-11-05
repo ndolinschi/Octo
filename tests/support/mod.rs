@@ -37,6 +37,10 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_high_model: "~anthropic/claude-haiku-latest".to_string(),
         autoroute_hard_threshold: 0.5,
         autoroute_easy_threshold: 0.5,
+        autoroute_stall_window: 6,
+        autoroute_escalate_turns: 3,
+        autoroute_down_confirm: 2,
+        autoroute_high_allow: Vec::new(),
     }
 }
 
@@ -65,6 +69,54 @@ pub async fn spawn_uri_capture_server(route: &str) -> (SocketAddr, Arc<Mutex<Opt
     });
     ready_rx.await.unwrap();
     (addr, captured)
+}
+
+pub async fn spawn_status_sequence_server(
+    route: &str,
+    statuses: Vec<u16>,
+) -> (SocketAddr, Arc<Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let bodies = Arc::new(Mutex::new(Vec::<String>::new()));
+    let bodies_task = bodies.clone();
+    let statuses = Arc::new(Mutex::new(statuses));
+    let route = route.to_string();
+    let (ready_tx, ready_rx) = oneshot::channel();
+    tokio::spawn(async move {
+        let _ = ready_tx.send(());
+        let app = Router::new().route(
+            route.as_str(),
+            post(move |request: Request<axum::body::Body>| {
+                let bodies_task = bodies_task.clone();
+                let statuses = statuses.clone();
+                async move {
+                    let bytes = axum::body::to_bytes(request.into_body(), usize::MAX)
+                        .await
+                        .unwrap_or_default();
+                    bodies_task
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&bytes).into_owned());
+                    let status = {
+                        let mut rows = statuses.lock().unwrap();
+                        if rows.is_empty() {
+                            200
+                        } else {
+                            rows.remove(0)
+                        }
+                    };
+                    (
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::OK),
+                        [(axum::http::header::CONTENT_TYPE, "application/json")],
+                        r#"{"type":"message","role":"assistant","content":[]}"#,
+                    )
+                }
+            }),
+        );
+        axum::serve(listener, app).await.unwrap();
+    });
+    ready_rx.await.unwrap();
+    (addr, bodies)
 }
 
 pub async fn spawn_header_capture_server(

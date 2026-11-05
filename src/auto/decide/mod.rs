@@ -2,6 +2,7 @@ mod classify;
 mod gate;
 mod models;
 mod route;
+pub(crate) mod sticky;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,11 +19,14 @@ use crate::history::History;
 use super::action::Turn;
 use super::body;
 use super::catalog::{self, CatalogCache, Tiers};
+use super::jev::Complexity;
 use super::metrics;
+use super::stall;
 
 use classify::{ClassifyCtx, ClassifyTurn};
 use gate::SessionGate;
 use route::{RepeatCompact, RouteCtx, RoutePlan, ShapedForward};
+use sticky::{apply as apply_sticky, StickyPlan};
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
 const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
@@ -43,6 +47,10 @@ impl Auto {
             catalog: Arc::new(Mutex::new(CatalogCache::new(CATALOG_TTL))),
             gates: Arc::new(SyncMutex::new(HashMap::new())),
         }
+    }
+
+    pub fn tiers(&self) -> &Tiers {
+        &self.tiers
     }
 
     fn gate(&self, session_id: &str) -> SessionGate {
@@ -107,7 +115,8 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             return route::forward_shaped(ShapedForward {
                 body: &req.body,
                 model: &row.model,
-                tools: &row.tools,
+                previous_model: Some(row.model.as_str()),
+                models: None,
                 reason: None,
             });
         }
@@ -120,7 +129,12 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 choice = None;
                 forced_reason = Some("reclassify".to_string());
             } else if req.allow_compact {
-                let outgoing = body::with_model(&req.body, &row.model);
+                let outgoing = body::shape(body::ShapePlan {
+                    body: &req.body,
+                    model: &row.model,
+                    previous_model: Some(row.model.as_str()),
+                    models: loaded.as_ref(),
+                });
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
                 return route::repeat_compact(RepeatCompact {
                     auto: req.auto,
@@ -136,9 +150,11 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
 
     let user_text = body::last_user_text(&req.body);
     let persist = !all_tools.is_empty();
+    let stall = stall::detect(&req.body, req.auto.tiers.stall_window);
+    let tool_results_only = body::last_user_tool_results_only(&req.body);
     let current_tier = choice
         .as_ref()
-        .map(|row| req.auto.tiers.band(&row.model))
+        .map(|row| row.sticky_band.as_str())
         .unwrap_or("unset");
     let classify_ctx = ClassifyCtx {
         history: req.history,
@@ -151,62 +167,187 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         tiers: &req.auto.tiers,
         current_tier,
     };
-    let (model, tools, reason) = if let Some(row) = choice {
+
+    if let Some(row) = hold_without_classify(HoldWithoutClassify {
+        choice: choice.as_ref(),
+        stall,
+        tool_results_only,
+        user_text: &user_text,
+    }) {
+        return route::run(RouteCtx {
+            auto: req.auto,
+            body: req.body,
+            models: loaded.as_ref(),
+            previous_model: Some(row.model.clone()),
+            plan: session_plan(&row, None, reserve, req.allow_compact, persist),
+        });
+    }
+
+    let picked = if choice.is_some() {
         if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
-            (row.model, row.tools, None)
+            None
         } else {
-            match classify::turn(ClassifyTurn {
+            classify::turn(ClassifyTurn {
                 ctx: &classify_ctx,
                 preferred: preferred.as_deref(),
-                current: &row.tools,
+                current: choice
+                    .as_ref()
+                    .map(|row| row.tools.as_slice())
+                    .unwrap_or(&[]),
                 purpose: "reclassify",
             })
             .await
-            {
-                Some((model, tools)) => {
-                    let reason = if !catalog::ids_match(&model, &row.model) {
-                        Some("reclassify".to_string())
-                    } else if tools != row.tools {
-                        Some("tool_update".to_string())
-                    } else {
-                        None
-                    };
-                    (model, tools, reason)
-                }
-                None => (row.model, row.tools, None),
-            }
         }
     } else if user_text.trim().is_empty() || body::is_housekeeping(&user_text) {
-        return route::passthrough(&req.body);
+        if stall.is_none() {
+            return route::passthrough(&req.body);
+        }
+        None
     } else {
         match classify::fresh(&classify_ctx, preferred.as_deref()).await {
-            Some((model, tools)) => (
-                model,
-                tools,
-                Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
-            ),
+            Some(pick) => Some(pick),
             None => {
                 if forced_reason.is_some() {
                     if let Some(id) = actor.clone() {
                         req.auto.clear_awaiting_compact(&id);
                     }
                 }
+                if let Some(trigger) = stall {
+                    let band = catalog::bump_band(
+                        choice
+                            .as_ref()
+                            .map(|row| row.sticky_band.as_str())
+                            .unwrap_or("low"),
+                    );
+                    return route::run(RouteCtx {
+                        auto: req.auto,
+                        body: req.body,
+                        models: loaded.as_ref(),
+                        previous_model: choice.as_ref().map(|row| row.model.clone()),
+                        plan: RoutePlan {
+                            model: req.auto.tiers.slug(band),
+                            tools: all_tools.clone(),
+                            reason: Some(format!("stall_escalate:{}", trigger.as_str())),
+                            reserve,
+                            allow_compact: req.allow_compact,
+                            persist,
+                            sticky_band: choice
+                                .as_ref()
+                                .map(|row| row.sticky_band.clone())
+                                .unwrap_or_else(|| "low".to_string()),
+                            escalate_remaining: req.auto.tiers.escalate_turns,
+                            escalate_band: Some(band.to_string()),
+                            last_stall: Some(trigger.as_str().to_string()),
+                            pending_down_band: None,
+                            down_count: 0,
+                        },
+                    });
+                }
                 return route::passthrough(&req.body);
             }
         }
     };
 
+    let (classified, tools, classify_reason) = match (picked, choice.clone()) {
+        (Some(pick), Some(row)) => {
+            let reason = if !catalog::ids_match(&pick.model, &row.model) {
+                Some("reclassify".to_string())
+            } else if pick.tools != row.tools {
+                Some("tool_update".to_string())
+            } else {
+                None
+            };
+            (pick.complexity, pick.tools, reason)
+        }
+        (Some(pick), None) => (
+            pick.complexity,
+            pick.tools,
+            Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
+        ),
+        (None, Some(row)) => (band_complexity(&row.sticky_band), row.tools.clone(), None),
+        (None, None) => (Complexity::Mid, all_tools.clone(), forced_reason),
+    };
+
+    let sticky = apply_sticky(StickyPlan {
+        tiers: &req.auto.tiers,
+        choice: choice.as_ref(),
+        classified,
+        preferred: preferred.as_deref(),
+        stall,
+        tool_results_only,
+    });
+    let previous_model = choice.as_ref().map(|row| row.model.clone());
+    let reason = sticky.reason.or(classify_reason);
     route::run(RouteCtx {
         auto: req.auto,
         body: req.body,
         models: loaded.as_ref(),
+        previous_model,
         plan: RoutePlan {
-            model,
+            model: sticky.model,
             tools,
             reason,
             reserve,
             allow_compact: req.allow_compact,
             persist,
+            sticky_band: sticky.sticky_band,
+            escalate_remaining: sticky.escalate_remaining,
+            escalate_band: sticky.escalate_band,
+            last_stall: sticky.last_stall,
+            pending_down_band: sticky.pending_down_band,
+            down_count: sticky.down_count,
         },
     })
+}
+
+struct HoldWithoutClassify<'a> {
+    choice: Option<&'a super::session::SessionChoice>,
+    stall: Option<stall::StallTrigger>,
+    tool_results_only: bool,
+    user_text: &'a str,
+}
+
+fn hold_without_classify(plan: HoldWithoutClassify<'_>) -> Option<super::session::SessionChoice> {
+    let row = plan.choice?;
+    if plan.stall.is_some() {
+        return None;
+    }
+    if plan.tool_results_only
+        || plan.user_text.trim().is_empty()
+        || body::is_housekeeping(plan.user_text)
+    {
+        return Some(row.clone());
+    }
+    None
+}
+
+fn session_plan(
+    row: &super::session::SessionChoice,
+    reason: Option<String>,
+    reserve: u64,
+    allow_compact: bool,
+    persist: bool,
+) -> RoutePlan {
+    RoutePlan {
+        model: row.model.clone(),
+        tools: row.tools.clone(),
+        reason,
+        reserve,
+        allow_compact,
+        persist,
+        sticky_band: row.sticky_band.clone(),
+        escalate_remaining: row.escalate_remaining,
+        escalate_band: row.escalate_band.clone(),
+        last_stall: row.last_stall.clone(),
+        pending_down_band: row.pending_down_band.clone(),
+        down_count: row.down_count,
+    }
+}
+
+fn band_complexity(band: &str) -> Complexity {
+    match band {
+        "low" => Complexity::Low,
+        "high" => Complexity::High,
+        _ => Complexity::Mid,
+    }
 }

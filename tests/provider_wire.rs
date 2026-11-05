@@ -25,6 +25,10 @@ fn loads_split_config_directory() {
     );
     assert_eq!(config.autoroute_hard_threshold, 0.5);
     assert_eq!(config.autoroute_easy_threshold, 0.5);
+    assert_eq!(config.autoroute_stall_window, 6);
+    assert_eq!(config.autoroute_escalate_turns, 3);
+    assert_eq!(config.autoroute_down_confirm, 2);
+    assert!(config.autoroute_high_allow.is_empty());
 }
 
 #[test]

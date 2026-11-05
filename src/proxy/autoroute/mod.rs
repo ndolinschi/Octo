@@ -5,6 +5,7 @@ use std::sync::Arc;
 use axum::{
     body::{to_bytes, Body, Bytes},
     extract::{Request, State},
+    http::StatusCode,
     response::Response,
 };
 use serde_json::Value;
@@ -18,7 +19,9 @@ pub async fn messages(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<Response, ProxyError> {
-    run(&state, request, false).await
+    run(&state, request, false)
+        .await
+        .map_err(ProxyError::as_anthropic_messages)
 }
 
 pub async fn chat(State(state): State<AppState>, request: Request) -> Result<Response, ProxyError> {
@@ -52,7 +55,6 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
                 forward,
                 session,
                 chat,
-                max_body,
             })
             .await
         }
@@ -67,21 +69,109 @@ struct ForwardTurn<'a> {
     forward: crate::auto::Forward,
     session: Option<String>,
     chat: bool,
-    max_body: usize,
 }
 
 async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
-    let hook = (!plan.chat)
-        .then(|| plan.session.clone())
-        .flatten()
-        .map(|id| {
-            let auto = plan.state.auto.clone();
-            Arc::new(move |text: &str| {
-                if stop_reason_is(text, "model_context_window_exceeded") {
-                    auto.mark_awaiting_compact(&id);
-                }
-            }) as Arc<dyn Fn(&str) + Send + Sync>
-        });
+    let ForwardTurn {
+        state,
+        parts,
+        forward,
+        session,
+        chat,
+    } = plan;
+    let retry_parts = clone_parts(&parts);
+    let retry_forward = forward.clone();
+    let first = dispatch_forward(DispatchForward {
+        state,
+        parts,
+        forward,
+        session: session.clone(),
+        chat,
+    })
+    .await;
+    match first {
+        Ok(response) if !chat && retryable_status(response.status()) => {
+            if let Some(retried) = retry_next_tier(RetryNext {
+                state,
+                parts: retry_parts,
+                forward: retry_forward,
+                session,
+                chat,
+            })
+            .await
+            {
+                return retried;
+            }
+            Ok(response)
+        }
+        Err(err) if !chat && retryable_error(&err) => {
+            if let Some(retried) = retry_next_tier(RetryNext {
+                state,
+                parts: retry_parts,
+                forward: retry_forward,
+                session,
+                chat,
+            })
+            .await
+            {
+                return retried;
+            }
+            Err(err)
+        }
+        other => other,
+    }
+}
+
+struct RetryNext<'a> {
+    state: &'a AppState,
+    parts: axum::http::request::Parts,
+    forward: crate::auto::Forward,
+    session: Option<String>,
+    chat: bool,
+}
+
+async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyError>> {
+    let mut payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
+    let current = payload.get("model").and_then(Value::as_str)?;
+    let next = plan.state.auto.tiers().next_up(current)?;
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("model".to_string(), Value::String(next));
+    }
+    let body = serde_json::to_vec(&payload).ok()?;
+    let forward = crate::auto::Forward {
+        body,
+        rerouting: 1,
+        reason: Some("upstream_retry".to_string()),
+    };
+    Some(
+        dispatch_forward(DispatchForward {
+            state: plan.state,
+            parts: plan.parts,
+            forward,
+            session: plan.session,
+            chat: plan.chat,
+        })
+        .await,
+    )
+}
+
+struct DispatchForward<'a> {
+    state: &'a AppState,
+    parts: axum::http::request::Parts,
+    forward: crate::auto::Forward,
+    session: Option<String>,
+    chat: bool,
+}
+
+async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyError> {
+    let hook = (!plan.chat).then_some(plan.session).flatten().map(|id| {
+        let auto = plan.state.auto.clone();
+        Arc::new(move |text: &str| {
+            if stop_reason_is(text, "model_context_window_exceeded") {
+                auto.mark_awaiting_compact(&id);
+            }
+        }) as Arc<dyn Fn(&str) + Send + Sync>
+    });
     let observe = Some(CallObserve {
         history: plan.state.history.clone(),
         kind: if plan.chat {
@@ -94,24 +184,42 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
         rerouting_reason: plan.forward.reason.clone(),
         on_response: hook,
     });
-    let request = Request::from_parts(plan.parts, Body::from(plan.forward.body));
     if plan.chat {
-        let (parts, body) = request.into_parts();
-        let bytes = to_bytes(body, plan.max_body)
-            .await
-            .map_err(ProxyError::from_read_body)?;
         plan.state
             .llm
             .openrouter
-            .forward_chat_buffered(&plan.state.client, parts, bytes, observe)
+            .forward_chat_buffered(
+                &plan.state.client,
+                plan.parts,
+                Bytes::from(plan.forward.body),
+                observe,
+            )
             .await
     } else {
+        let request = Request::from_parts(plan.parts, Body::from(plan.forward.body));
         plan.state
             .llm
             .openrouter
             .forward_messages(&plan.state.client, request, observe)
             .await
     }
+}
+
+fn clone_parts(parts: &axum::http::request::Parts) -> axum::http::request::Parts {
+    let mut cloned = Request::new(Body::empty()).into_parts().0;
+    cloned.method = parts.method.clone();
+    cloned.uri = parts.uri.clone();
+    cloned.version = parts.version;
+    cloned.headers = parts.headers.clone();
+    cloned
+}
+
+fn retryable_status(status: StatusCode) -> bool {
+    status.as_u16() == 429 || status.is_server_error()
+}
+
+fn retryable_error(err: &ProxyError) -> bool {
+    matches!(err, ProxyError::Upstream(source) if source.is_connect() || source.is_timeout())
 }
 
 async fn chat_compact(

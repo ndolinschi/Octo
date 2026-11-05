@@ -1,6 +1,9 @@
 use serde_json::{json, Value};
 
 use crate::providers::llm::is_subagent;
+use crate::providers::openrouter::OpenRouterModels;
+
+use super::catalog::{self, ids_match};
 
 pub fn session_id(body: &Value) -> Option<String> {
     let raw = body.get("metadata")?.get("user_id")?;
@@ -39,6 +42,27 @@ pub fn last_user_text(body: &Value) -> String {
         return content_text(message.get("content"));
     }
     String::new()
+}
+
+pub fn last_user_tool_results_only(body: &Value) -> bool {
+    let Some(messages) = body.get("messages").and_then(Value::as_array) else {
+        return false;
+    };
+    for message in messages.iter().rev() {
+        if message.get("role").and_then(Value::as_str) != Some("user") {
+            continue;
+        }
+        let Some(parts) = message.get("content").and_then(Value::as_array) else {
+            return false;
+        };
+        if parts.is_empty() {
+            return false;
+        }
+        return parts
+            .iter()
+            .all(|part| part.get("type").and_then(Value::as_str) == Some("tool_result"));
+    }
+    false
 }
 
 fn content_text(content: Option<&Value>) -> String {
@@ -116,4 +140,67 @@ pub fn compaction_body(body: &Value, model: &str) -> Value {
         object.insert("stream".to_string(), json!(false));
     }
     copy
+}
+
+pub struct ShapePlan<'a> {
+    pub body: &'a Value,
+    pub model: &'a str,
+    pub previous_model: Option<&'a str>,
+    pub models: Option<&'a OpenRouterModels>,
+}
+
+pub fn shape(plan: ShapePlan<'_>) -> Value {
+    let mut copy = with_model(plan.body, plan.model);
+    let model_changed = plan
+        .previous_model
+        .is_some_and(|previous| !ids_match(previous, plan.model));
+    if model_changed {
+        strip_thinking_blocks(&mut copy);
+    }
+    clamp_max_tokens(&mut copy, plan.models, plan.model);
+    drop_unsupported_thinking(&mut copy, plan.models, plan.model);
+    copy
+}
+
+fn strip_thinking_blocks(body: &mut Value) {
+    let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for message in messages {
+        if message.get("role").and_then(Value::as_str) != Some("assistant") {
+            continue;
+        }
+        let Some(parts) = message.get_mut("content").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        parts.retain(|part| {
+            !matches!(
+                part.get("type").and_then(Value::as_str),
+                Some("thinking" | "redacted_thinking")
+            )
+        });
+    }
+}
+
+fn clamp_max_tokens(body: &mut Value, models: Option<&OpenRouterModels>, model: &str) {
+    let Some(limit) = catalog::max_completion_tokens(models, model) else {
+        return;
+    };
+    let Some(object) = body.as_object_mut() else {
+        return;
+    };
+    let current = object
+        .get("max_tokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(limit);
+    object.insert("max_tokens".to_string(), json!(current.min(limit)));
+}
+
+fn drop_unsupported_thinking(body: &mut Value, models: Option<&OpenRouterModels>, model: &str) {
+    if catalog::supports_reasoning(models, model) {
+        return;
+    }
+    if let Some(object) = body.as_object_mut() {
+        object.remove("thinking");
+    }
 }

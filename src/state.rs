@@ -54,6 +54,10 @@ impl AppState {
                 );
                 tiers.hard_threshold = config.autoroute_hard_threshold;
                 tiers.easy_threshold = config.autoroute_easy_threshold;
+                tiers.stall_window = config.autoroute_stall_window;
+                tiers.escalate_turns = config.autoroute_escalate_turns;
+                tiers.down_confirm = config.autoroute_down_confirm;
+                tiers.high_allow = config.autoroute_high_allow.clone();
                 tiers
             }),
             config,

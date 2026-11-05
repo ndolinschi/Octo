@@ -113,21 +113,27 @@ pub async fn messages(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    forward_messages(&state, request, None).await
+    forward_messages(&state, request, None)
+        .await
+        .map_err(ProxyError::as_anthropic_messages)
 }
 
 pub async fn messages_claude(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    forward_messages(&state, request, Some(MessagesProvider::Claude)).await
+    forward_messages(&state, request, Some(MessagesProvider::Claude))
+        .await
+        .map_err(ProxyError::as_anthropic_messages)
 }
 
 pub async fn messages_openrouter(
     State(state): State<AppState>,
     request: Request,
 ) -> Result<axum::response::Response, ProxyError> {
-    forward_messages(&state, request, Some(MessagesProvider::OpenRouter)).await
+    forward_messages(&state, request, Some(MessagesProvider::OpenRouter))
+        .await
+        .map_err(ProxyError::as_anthropic_messages)
 }
 
 pub async fn decisions(

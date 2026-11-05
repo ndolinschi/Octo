@@ -1,0 +1,19 @@
+{
+  "model": "google/gemma-4-26b-a4b-it",
+  "max_tokens": 32000,
+  "metadata": {
+    "user_id": "{\"device_id\":\"6a9d6d28d297f3bab973867721304260f23e7924cc27172b53fac01c60513645\",\"account_uuid\":\"\",\"session_id\":\"714fde94-12c5-48e5-9d75-67a7cf86bb9a\"}"
+  },
+  "tools": [],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "<session>\nwhat files do you see\n</session>\n\nWrite the title in the predominant language of the session \u2014 a stray word or code token in another language doesn't change it, and neither does the English "
+        }
+      ]
+    }
+  ]
+}

@@ -1,13 +1,17 @@
 use serde_json::json;
 
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use octo::auto::context_length;
 use octo::auto::{
-    choice, choice_from_scores, classified, compaction_body, context_estimate, dropped,
-    filter_tools, inspect, is_housekeeping, larger_fit, needed_tools, needs_compact,
-    output_reserve, payload, session_id, session_key, with_model, Complexity, LargerFit,
-    PayloadPlan, Thresholds, Tiers,
+    apply_sticky, choice, choice_from_scores, classified, compaction_body, context_estimate,
+    detect_stall, dropped, filter_tools, inspect, is_housekeeping, larger_fit,
+    max_completion_tokens, needed_tools, needs_compact, output_reserve, payload, session_id,
+    session_key, shape, with_model, Complexity, LargerFit, PayloadPlan, SessionChoice, ShapePlan,
+    StallTrigger, StickyPlan, Thresholds, Tiers,
 };
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
+use octo::proxy::error::ProxyError;
 
 #[test]
 fn session_id_comes_from_metadata_user_id() {
@@ -69,7 +73,7 @@ fn filter_keeps_named_tools_and_pick_respects_preference() {
     );
     assert_eq!(
         tiers.pick(Complexity::High, Some("custom/high")),
-        "custom/high"
+        "high-model"
     );
     let mut chat = json!({"tools": [{"type": "function", "function": {"name": "Bash"}}]});
     filter_tools(&mut chat, &["Bash".to_string()]);
@@ -143,6 +147,8 @@ fn paid(id: &str, window: u64) -> OpenRouterModel {
         name: id.to_string(),
         is_free: false,
         context_length: Some(window),
+        max_completion_tokens: None,
+        supported_parameters: Vec::new(),
     }
 }
 
@@ -178,12 +184,17 @@ fn tilde_high_slug_reads_catalog_window_and_does_not_upgrade_to_low() {
 }
 
 #[test]
-fn high_pick_ignores_preferred_when_it_matches_low_or_mid_with_tilde() {
-    let tiers = Tiers::new(
+fn high_pick_honours_preferred_only_when_allowlisted() {
+    let mut tiers = Tiers::new(
         "google/gemma".into(),
         "deepseek/flash".into(),
         "~anthropic/claude-haiku-latest".into(),
     );
+    assert_eq!(
+        tiers.pick(Complexity::High, Some("custom/high")),
+        "~anthropic/claude-haiku-latest"
+    );
+    tiers.high_allow = vec!["custom/high".into(), "~anthropic/claude-sonnet-4.5".into()];
     assert_eq!(
         tiers.pick(Complexity::High, Some("~google/gemma")),
         "~anthropic/claude-haiku-latest"
@@ -191,6 +202,10 @@ fn high_pick_ignores_preferred_when_it_matches_low_or_mid_with_tilde() {
     assert_eq!(
         tiers.pick(Complexity::High, Some("custom/high")),
         "custom/high"
+    );
+    assert_eq!(
+        tiers.pick(Complexity::High, Some("anthropic/claude-sonnet-4.5")),
+        "anthropic/claude-sonnet-4.5"
     );
 }
 
@@ -376,4 +391,263 @@ fn threshold_parsing_picks_bands_from_noul_scores() {
         ),
         (Complexity::Low, "low")
     );
+}
+
+fn tool_use(name: &str, input: serde_json::Value) -> serde_json::Value {
+    json!({"type": "tool_use", "name": name, "input": input})
+}
+
+fn assistant(blocks: Vec<serde_json::Value>) -> serde_json::Value {
+    json!({"role": "assistant", "content": blocks})
+}
+
+fn user_error() -> serde_json::Value {
+    json!({
+        "role": "user",
+        "content": [{"type": "tool_result", "is_error": true, "content": "boom"}]
+    })
+}
+
+#[test]
+fn stall_detects_repeated_call_error_streak_and_edit_streak() {
+    let input = json!({"file_path": "a.rs", "old_string": "x", "new_string": "y"});
+    let repeated = json!({
+        "messages": [
+            {"role": "user", "content": "go"},
+            assistant(vec![tool_use("Bash", input.clone())]),
+            user_error(),
+            assistant(vec![tool_use("Bash", input.clone())]),
+            user_error(),
+            assistant(vec![tool_use("Bash", input.clone())]),
+            user_error(),
+        ]
+    });
+    assert_eq!(detect_stall(&repeated, 6), Some(StallTrigger::RepeatedCall));
+
+    let errors = json!({
+        "messages": [
+            {"role": "user", "content": "go"},
+            assistant(vec![tool_use("Bash", json!({"command": "1"}))]),
+            user_error(),
+            assistant(vec![tool_use("Bash", json!({"command": "2"}))]),
+            user_error(),
+            assistant(vec![tool_use("Bash", json!({"command": "3"}))]),
+            user_error(),
+        ]
+    });
+    assert_eq!(detect_stall(&errors, 6), Some(StallTrigger::ErrorStreak));
+
+    let user_ok = json!({
+        "role": "user",
+        "content": [{"type": "tool_result", "is_error": false, "content": "ok"}]
+    });
+    let edits = json!({
+        "messages": [
+            {"role": "user", "content": "edit"},
+            assistant(vec![tool_use("Edit", json!({"file_path": "a"}))]),
+            user_ok.clone(),
+            assistant(vec![tool_use("Edit", json!({"file_path": "b"}))]),
+            user_ok.clone(),
+            assistant(vec![tool_use("StrReplace", json!({"file_path": "c"}))]),
+            user_ok.clone(),
+            assistant(vec![tool_use("Edit", json!({"file_path": "d"}))]),
+            user_ok.clone(),
+            assistant(vec![tool_use("Edit", json!({"file_path": "e"}))]),
+            user_ok.clone(),
+            assistant(vec![tool_use("Edit", json!({"file_path": "f"}))]),
+            user_ok,
+        ]
+    });
+    assert_eq!(detect_stall(&edits, 6), Some(StallTrigger::EditStreak));
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/stall_repeated_edit.json")).unwrap();
+    assert!(detect_stall(&fixture, 6).is_some());
+}
+
+#[test]
+fn stall_escalates_then_releases_and_down_needs_confirm() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.escalate_turns = 3;
+    tiers.down_confirm = 2;
+
+    let escalated = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: None,
+        classified: Complexity::Low,
+        preferred: None,
+        stall: Some(StallTrigger::RepeatedCall),
+        tool_results_only: false,
+    });
+    assert_eq!(escalated.model, "mid-m");
+    assert_eq!(
+        escalated.reason.as_deref(),
+        Some("stall_escalate:repeated_call")
+    );
+    assert_eq!(escalated.escalate_remaining, 3);
+
+    let mut choice = SessionChoice::fresh("mid-m".into(), vec!["Edit".into()], "low".into());
+    choice.escalate_remaining = 3;
+    choice.escalate_band = Some("mid".into());
+    choice.last_stall = Some("repeated_call".into());
+
+    let mut current = choice;
+    for expect in [2, 1] {
+        let next = apply_sticky(StickyPlan {
+            tiers: &tiers,
+            choice: Some(&current),
+            classified: Complexity::Low,
+            preferred: None,
+            stall: None,
+            tool_results_only: false,
+        });
+        assert_eq!(next.model, "mid-m");
+        assert_eq!(next.escalate_remaining, expect);
+        current.escalate_remaining = next.escalate_remaining;
+        current.escalate_band = next.escalate_band.clone();
+        current.model = next.model.clone();
+    }
+    let released = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&current),
+        classified: Complexity::Low,
+        preferred: None,
+        stall: None,
+        tool_results_only: false,
+    });
+    assert_eq!(released.model, "low-m");
+    assert_eq!(released.reason.as_deref(), Some("stall_release"));
+    assert_eq!(released.escalate_remaining, 0);
+
+    let sticky = SessionChoice::fresh("mid-m".into(), vec![], "mid".into());
+    let hold = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&sticky),
+        classified: Complexity::Low,
+        preferred: None,
+        stall: None,
+        tool_results_only: false,
+    });
+    assert_eq!(hold.model, "mid-m");
+    assert_eq!(hold.reason.as_deref(), Some("hysteresis_hold"));
+    assert_eq!(hold.down_count, 1);
+
+    let mut pending = sticky.clone();
+    pending.pending_down_band = Some("low".into());
+    pending.down_count = 1;
+    let dropped = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&pending),
+        classified: Complexity::Low,
+        preferred: None,
+        stall: None,
+        tool_results_only: false,
+    });
+    assert_eq!(dropped.model, "low-m");
+    assert_eq!(dropped.sticky_band, "low");
+    assert_eq!(dropped.down_count, 0);
+}
+
+#[test]
+fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
+    let body = json!({
+        "model": "old-model",
+        "max_tokens": 100000,
+        "thinking": {"type": "enabled"},
+        "tools": [{"name": "Bash"}, {"name": "Read"}],
+        "messages": [
+            {"role": "assistant", "content": [
+                {"type": "thinking", "thinking": "secret"},
+                {"type": "redacted_thinking", "data": "x"},
+                {"type": "text", "text": "hi"}
+            ]}
+        ]
+    });
+    let models = OpenRouterModels {
+        free: Vec::new(),
+        paid: vec![OpenRouterModel {
+            id: "new-model".into(),
+            name: "new".into(),
+            is_free: false,
+            context_length: Some(32_000),
+            max_completion_tokens: Some(4096),
+            supported_parameters: vec!["max_tokens".into()],
+        }],
+    };
+    let same = shape(ShapePlan {
+        body: &body,
+        model: "old-model",
+        previous_model: Some("old-model"),
+        models: Some(&models),
+    });
+    assert!(same["messages"][0]["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|part| part["type"] == "thinking"));
+
+    let changed = shape(ShapePlan {
+        body: &body,
+        model: "new-model",
+        previous_model: Some("old-model"),
+        models: Some(&models),
+    });
+    let parts = changed["messages"][0]["content"].as_array().unwrap();
+    assert!(parts.iter().all(|part| part["type"] != "thinking"));
+    assert!(parts.iter().all(|part| part["type"] != "redacted_thinking"));
+    assert_eq!(changed["max_tokens"], 4096);
+    assert!(changed.get("thinking").is_none());
+    assert_eq!(
+        changed["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect::<Vec<_>>(),
+        vec!["Bash", "Read"]
+    );
+    assert_eq!(
+        max_completion_tokens(Some(&models), "new-model"),
+        Some(4096)
+    );
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
+    let shaped = shape(ShapePlan {
+        body: &fixture,
+        model: "mid-model",
+        previous_model: Some("claude-sonnet-4-5"),
+        models: Some(&models),
+    });
+    assert_eq!(
+        shaped["tools"].as_array().unwrap().len(),
+        fixture["tools"].as_array().unwrap().len()
+    );
+}
+
+#[tokio::test]
+async fn anthropic_proxy_error_body_shape() {
+    let response = ProxyError::anthropic(
+        StatusCode::BAD_GATEWAY,
+        "api_error",
+        "upstream request failed",
+    )
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["type"], "error");
+    assert_eq!(value["error"]["type"], "api_error");
+    assert_eq!(value["error"]["message"], "upstream request failed");
+
+    let mapped = ProxyError::BodyTooLarge
+        .as_anthropic_messages()
+        .into_response();
+    let body = axum::body::to_bytes(mapped.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["error"]["type"], "invalid_request_error");
 }

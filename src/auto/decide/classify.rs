@@ -26,10 +26,16 @@ pub(super) struct ClassifyTurn<'a> {
     pub purpose: &'a str,
 }
 
+pub(super) struct ClassifiedPick {
+    pub complexity: jev::Complexity,
+    pub model: String,
+    pub tools: Vec<String>,
+}
+
 pub(super) async fn fresh(
     ctx: &ClassifyCtx<'_>,
     preferred: Option<&str>,
-) -> Option<(String, Vec<String>)> {
+) -> Option<ClassifiedPick> {
     turn(ClassifyTurn {
         ctx,
         preferred,
@@ -39,7 +45,7 @@ pub(super) async fn fresh(
     .await
 }
 
-pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)> {
+pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
     if plan.ctx.api_key.is_empty() {
         return None;
     }
@@ -74,7 +80,11 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)
         enough: classified.tools_enough,
         missing: &classified.missing_tools,
     });
-    Some((model, tools))
+    Some(ClassifiedPick {
+        complexity: classified.complexity,
+        model,
+        tools,
+    })
 }
 
 struct RecordPlan<'a> {

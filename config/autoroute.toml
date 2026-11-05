@@ -5,3 +5,13 @@ mid = "deepseek/deepseek-v4-flash"
 high = "~anthropic/claude-haiku-latest"
 hard_threshold = 0.5
 easy_threshold = 0.5
+
+# Stall detection looks at the last N non-housekeeping assistant turns / tool_use blocks.
+stall_window = 6
+# After a stall, stay one tier higher for this many subsequent requests.
+escalate_turns = 3
+# Consecutive lower classifications required before stepping the sticky tier down.
+down_confirm = 2
+# Client model is honoured on High only when its slug (tilde-insensitive) is listed here.
+# Empty means always use the configured high slug.
+high_allow = []

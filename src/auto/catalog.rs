@@ -12,6 +12,10 @@ pub struct Tiers {
     pub high: String,
     pub hard_threshold: f64,
     pub easy_threshold: f64,
+    pub stall_window: u32,
+    pub escalate_turns: u32,
+    pub down_confirm: u32,
+    pub high_allow: Vec<String>,
 }
 
 impl Tiers {
@@ -22,6 +26,10 @@ impl Tiers {
             high,
             hard_threshold: 0.5,
             easy_threshold: 0.5,
+            stall_window: 6,
+            escalate_turns: 3,
+            down_confirm: 2,
+            high_allow: Vec::new(),
         }
     }
 
@@ -41,19 +49,69 @@ impl Tiers {
         }
     }
 
+    pub fn slug(&self, band: &str) -> String {
+        match band {
+            "low" => self.low.clone(),
+            "mid" => self.mid.clone(),
+            "high" => self.high.clone(),
+            _ => self.mid.clone(),
+        }
+    }
+
+    pub fn next_up(&self, model: &str) -> Option<String> {
+        match self.band(model) {
+            "low" => Some(self.mid.clone()),
+            "mid" => Some(self.high.clone()),
+            _ => None,
+        }
+    }
+
     pub fn pick(&self, complexity: Complexity, preferred: Option<&str>) -> String {
         match complexity {
             Complexity::Low => self.low.clone(),
             Complexity::Mid => self.mid.clone(),
             Complexity::High => match preferred {
                 Some(preferred)
-                    if !ids_match(preferred, &self.low) && !ids_match(preferred, &self.mid) =>
+                    if self.high_allowed(preferred)
+                        && !ids_match(preferred, &self.low)
+                        && !ids_match(preferred, &self.mid) =>
                 {
                     preferred.to_string()
                 }
                 _ => self.high.clone(),
             },
         }
+    }
+
+    fn high_allowed(&self, preferred: &str) -> bool {
+        self.high_allow
+            .iter()
+            .any(|allowed| ids_match(preferred, allowed))
+    }
+}
+
+pub fn band_rank(band: &str) -> u8 {
+    match band {
+        "low" => 0,
+        "mid" => 1,
+        "high" => 2,
+        _ => 1,
+    }
+}
+
+pub fn complexity_band(complexity: Complexity) -> &'static str {
+    match complexity {
+        Complexity::Low => "low",
+        Complexity::Mid => "mid",
+        Complexity::High => "high",
+    }
+}
+
+pub fn bump_band(band: &str) -> &'static str {
+    match band {
+        "low" => "mid",
+        "mid" => "high",
+        _ => "high",
     }
 }
 
@@ -79,7 +137,6 @@ impl CatalogCache {
     }
 }
 
-/// OpenRouter preferred-model prefix; catalog ids are stored without it.
 pub fn bare_id(slug: &str) -> &str {
     slug.trim_start_matches('~')
 }
@@ -89,16 +146,36 @@ pub fn ids_match(left: &str, right: &str) -> bool {
 }
 
 pub fn context_length(models: Option<&OpenRouterModels>, slug: &str) -> u64 {
-    let Some(models) = models else {
-        return 8192;
-    };
+    lookup(models, slug)
+        .and_then(|model| model.context_length)
+        .unwrap_or(8192)
+}
+
+pub fn max_completion_tokens(models: Option<&OpenRouterModels>, slug: &str) -> Option<u64> {
+    lookup(models, slug).and_then(|model| model.max_completion_tokens)
+}
+
+pub fn supports_reasoning(models: Option<&OpenRouterModels>, slug: &str) -> bool {
+    lookup(models, slug)
+        .map(|model| {
+            model
+                .supported_parameters
+                .iter()
+                .any(|param| param == "reasoning" || param == "include_reasoning")
+        })
+        .unwrap_or(true)
+}
+
+fn lookup<'a>(
+    models: Option<&'a OpenRouterModels>,
+    slug: &str,
+) -> Option<&'a crate::providers::openrouter::OpenRouterModel> {
+    let models = models?;
     models
         .free
         .iter()
         .chain(models.paid.iter())
         .find(|model| ids_match(&model.id, slug))
-        .and_then(|model| model.context_length)
-        .unwrap_or(8192)
 }
 
 pub struct LargerFit<'a> {
@@ -109,7 +186,6 @@ pub struct LargerFit<'a> {
     pub current: &'a str,
 }
 
-/// Smallest window among tier candidates that still fits and is larger than `current`.
 pub fn larger_fit(plan: LargerFit<'_>) -> Option<String> {
     let current_window = context_length(plan.models, plan.current);
     plan.candidates
@@ -126,83 +202,4 @@ pub fn larger_fit(plan: LargerFit<'_>) -> Option<String> {
         })
         .min_by_key(|(window, _)| *window)
         .map(|(_, slug)| slug)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::providers::openrouter::OpenRouterModel;
-
-    fn paid(id: &str, context_length: u64) -> OpenRouterModel {
-        OpenRouterModel {
-            id: id.to_string(),
-            name: id.to_string(),
-            is_free: false,
-            context_length: Some(context_length),
-        }
-    }
-
-    fn catalog(models: Vec<OpenRouterModel>) -> OpenRouterModels {
-        OpenRouterModels {
-            free: Vec::new(),
-            paid: models,
-        }
-    }
-
-    #[test]
-    fn context_length_matches_tilde_preferred_slug() {
-        let models = catalog(vec![paid("anthropic/claude-haiku-latest", 200_000)]);
-        assert_eq!(
-            context_length(Some(&models), "~anthropic/claude-haiku-latest"),
-            200_000
-        );
-        assert_eq!(
-            context_length(Some(&models), "anthropic/claude-haiku-latest"),
-            200_000
-        );
-    }
-
-    #[test]
-    fn larger_fit_picks_smallest_larger_window_not_first_tier() {
-        let models = catalog(vec![
-            paid("low-model", 32_000),
-            paid("mid-model", 64_000),
-            paid("anthropic/claude-haiku-latest", 200_000),
-        ]);
-        let candidates = ["low-model", "mid-model", "~anthropic/claude-haiku-latest"];
-        let chosen = larger_fit(LargerFit {
-            candidates: &candidates,
-            models: Some(&models),
-            input_tokens: 40_000,
-            max_tokens: 4096,
-            current: "low-model",
-        });
-        assert_eq!(chosen.as_deref(), Some("mid-model"));
-    }
-
-    #[test]
-    fn larger_fit_does_not_downgrade_high_tilde_to_low() {
-        let models = catalog(vec![
-            paid("google/gemma", 128_000),
-            paid("deepseek/flash", 64_000),
-            paid("anthropic/claude-haiku-latest", 200_000),
-        ]);
-        let candidates = [
-            "google/gemma",
-            "deepseek/flash",
-            "~anthropic/claude-haiku-latest",
-        ];
-        let chosen = larger_fit(LargerFit {
-            candidates: &candidates,
-            models: Some(&models),
-            input_tokens: 50_000,
-            max_tokens: 4096,
-            current: "~anthropic/claude-haiku-latest",
-        });
-        assert_eq!(chosen, None);
-        assert_eq!(
-            context_length(Some(&models), "~anthropic/claude-haiku-latest"),
-            200_000
-        );
-    }
 }
