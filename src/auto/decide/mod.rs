@@ -121,8 +121,6 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 forced_reason = Some("reclassify".to_string());
             } else if req.allow_compact {
                 let outgoing = body::with_model(&req.body, &row.model);
-                let mut outgoing = outgoing;
-                body::filter_tools(&mut outgoing, &row.tools);
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
                 return route::repeat_compact(RepeatCompact {
                     auto: req.auto,
