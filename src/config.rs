@@ -45,6 +45,8 @@ pub struct Config {
     pub autoroute_low_model: String,
     pub autoroute_mid_model: String,
     pub autoroute_high_model: String,
+    pub autoroute_hard_threshold: f64,
+    pub autoroute_easy_threshold: f64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -319,6 +321,10 @@ struct AutorouteSection {
     mid: String,
     #[serde(default = "default_autoroute_high_model")]
     high: String,
+    #[serde(default = "default_autoroute_hard_threshold")]
+    hard_threshold: f64,
+    #[serde(default = "default_autoroute_easy_threshold")]
+    easy_threshold: f64,
 }
 
 impl Default for AutorouteSection {
@@ -327,6 +333,8 @@ impl Default for AutorouteSection {
             low: default_autoroute_low_model(),
             mid: default_autoroute_mid_model(),
             high: default_autoroute_high_model(),
+            hard_threshold: default_autoroute_hard_threshold(),
+            easy_threshold: default_autoroute_easy_threshold(),
         }
     }
 }
@@ -341,6 +349,14 @@ fn default_autoroute_mid_model() -> String {
 
 fn default_autoroute_high_model() -> String {
     "~anthropic/claude-haiku-latest".to_string()
+}
+
+fn default_autoroute_hard_threshold() -> f64 {
+    0.5
+}
+
+fn default_autoroute_easy_threshold() -> f64 {
+    0.5
 }
 
 impl Config {
@@ -490,6 +506,8 @@ fn config_from_file(file: ConfigFile) -> Config {
         autoroute_low_model: file.autoroute.low,
         autoroute_mid_model: file.autoroute.mid,
         autoroute_high_model: file.autoroute.high,
+        autoroute_hard_threshold: file.autoroute.hard_threshold,
+        autoroute_easy_threshold: file.autoroute.easy_threshold,
     }
 }
 

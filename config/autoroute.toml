@@ -3,3 +3,5 @@
 low = "google/gemma-4-26b-a4b-it"
 mid = "deepseek/deepseek-v4-flash"
 high = "~anthropic/claude-haiku-latest"
+hard_threshold = 0.5
+easy_threshold = 0.5

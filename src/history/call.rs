@@ -25,6 +25,8 @@ pub struct DecisionRow {
     pub user_text: String,
     pub is_hard: Option<bool>,
     pub is_easy: Option<bool>,
+    pub is_hard_score: Option<f64>,
+    pub is_easy_score: Option<f64>,
     pub tools_enough: Option<String>,
     pub complexity: Option<&'static str>,
     pub choice_rule: String,

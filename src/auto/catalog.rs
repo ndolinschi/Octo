@@ -5,20 +5,40 @@ use crate::providers::openrouter::OpenRouterModels;
 use super::jev::Complexity;
 use super::metrics;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Tiers {
     pub low: String,
     pub mid: String,
     pub high: String,
+    pub hard_threshold: f64,
+    pub easy_threshold: f64,
 }
 
 impl Tiers {
     pub fn new(low: String, mid: String, high: String) -> Self {
-        Self { low, mid, high }
+        Self {
+            low,
+            mid,
+            high,
+            hard_threshold: 0.5,
+            easy_threshold: 0.5,
+        }
     }
 
     pub fn candidates(&self) -> [&str; 3] {
         [self.low.as_str(), self.mid.as_str(), self.high.as_str()]
+    }
+
+    pub fn band(&self, model: &str) -> &'static str {
+        if ids_match(model, &self.low) {
+            "low"
+        } else if ids_match(model, &self.mid) {
+            "mid"
+        } else if ids_match(model, &self.high) {
+            "high"
+        } else {
+            "custom"
+        }
     }
 
     pub fn pick(&self, complexity: Complexity, preferred: Option<&str>) -> String {

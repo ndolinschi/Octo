@@ -16,6 +16,7 @@ pub(super) struct ClassifyCtx<'a> {
     pub body: &'a Value,
     pub all_tools: &'a [String],
     pub tiers: &'a Tiers,
+    pub current_tier: &'a str,
 }
 
 pub(super) struct ClassifyTurn<'a> {
@@ -43,6 +44,7 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)
         return None;
     }
     let user_text = body::last_user_text(plan.ctx.body);
+    let facts = jev::inspect(plan.ctx.body, &user_text);
     let asked = jev::classify(jev::ClassifyRequest {
         client: plan.ctx.client,
         decisions_url: plan.ctx.decisions_url,
@@ -50,6 +52,12 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<(String, Vec<String>)
         user_text: &user_text,
         tool_names: plan.ctx.all_tools,
         current_tools: plan.current,
+        facts: &facts,
+        current_tier: plan.ctx.current_tier,
+        thresholds: jev::Thresholds {
+            hard: plan.ctx.tiers.hard_threshold,
+            easy: plan.ctx.tiers.easy_threshold,
+        },
     })
     .await;
     record(RecordPlan {
@@ -87,6 +95,8 @@ fn record(plan: RecordPlan<'_>) {
         user_text: user_text_from_request(&plan.asked.request_body),
         is_hard: parsed.and_then(|row| row.is_hard),
         is_easy: parsed.and_then(|row| row.is_easy),
+        is_hard_score: parsed.and_then(|row| row.is_hard_score),
+        is_easy_score: parsed.and_then(|row| row.is_easy_score),
         tools_enough: parsed.and_then(|row| row.tools_enough_raw.clone()),
         complexity: parsed.map(|row| match row.complexity {
             jev::Complexity::Low => "low",

@@ -1,9 +1,13 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+use super::context::ContextFacts;
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Classified {
     pub complexity: Complexity,
     pub choice_rule: &'static str,
     pub is_hard: Option<bool>,
     pub is_easy: Option<bool>,
+    pub is_hard_score: Option<f64>,
+    pub is_easy_score: Option<f64>,
     pub tools_enough_raw: Option<String>,
     pub tools: Vec<String>,
     pub tools_enough: bool,
@@ -26,6 +30,21 @@ pub enum Complexity {
     High,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Thresholds {
+    pub hard: f64,
+    pub easy: f64,
+}
+
+impl Default for Thresholds {
+    fn default() -> Self {
+        Self {
+            hard: 0.5,
+            easy: 0.5,
+        }
+    }
+}
+
 pub struct ClassifyRequest<'a> {
     pub client: &'a reqwest::Client,
     pub decisions_url: &'a str,
@@ -33,6 +52,9 @@ pub struct ClassifyRequest<'a> {
     pub user_text: &'a str,
     pub tool_names: &'a [String],
     pub current_tools: &'a [String],
+    pub facts: &'a ContextFacts,
+    pub current_tier: &'a str,
+    pub thresholds: Thresholds,
 }
 
 pub struct ToolNeed<'a> {

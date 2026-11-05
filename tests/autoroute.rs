@@ -2,8 +2,9 @@ use serde_json::json;
 
 use octo::auto::context_length;
 use octo::auto::{
-    context_estimate, dropped, filter_tools, is_housekeeping, larger_fit, needed_tools,
-    needs_compact, output_reserve, session_id, session_key, Complexity, LargerFit, Tiers,
+    choice_from_scores, classified, context_estimate, dropped, filter_tools, inspect,
+    is_housekeeping, larger_fit, needed_tools, needs_compact, output_reserve, payload, session_id,
+    session_key, Complexity, LargerFit, PayloadPlan, Thresholds, Tiers,
 };
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
 
@@ -201,5 +202,79 @@ fn larger_fit_chooses_smallest_window_that_still_fits() {
         })
         .as_deref(),
         Some("mid-model")
+    );
+}
+
+#[test]
+fn jev_payload_includes_enriched_state() {
+    let body = json!({
+        "messages": [
+            {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "src/a.rs"}}]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "is_error": true, "content": "error: boom"},
+                    {"type": "text", "text": "fix the traceback in src/a.rs and src/b.rs"}
+                ]
+            }
+        ]
+    });
+    let user_text = "fix the traceback in src/a.rs and src/b.rs";
+    let facts = inspect(&body, user_text);
+    assert_eq!(facts.turn_index, 1);
+    assert_eq!(facts.recent_errors, vec!["error: boom".to_string()]);
+    assert!(facts.files_touched.iter().any(|path| path == "src/a.rs"));
+    assert!(facts.mentions_stack_trace);
+    assert!(facts.mentions_multiple_files);
+    let tools = vec!["Bash".into(), "Edit".into()];
+    let value = payload(PayloadPlan {
+        user_text,
+        tool_names: &tools,
+        current_tools: &tools,
+        facts: &facts,
+        current_tier: "low",
+    });
+    let state = &value["state"];
+    assert_eq!(state["current_tier"], "low");
+    assert_eq!(state["turn_index"], 1);
+    assert_eq!(state["recent_errors"][0], "error: boom");
+    assert!(state["mentions_stack_trace"].as_bool().unwrap());
+    assert!(!state["files_touched"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn threshold_parsing_picks_bands_from_noul_scores() {
+    let value = json!({
+        "answers": {
+            "is_hard": {"noul": 0.62},
+            "is_easy": {"noul": 0.41}
+        }
+    });
+    let default = classified(&value, &[], Thresholds::default());
+    assert_eq!(default.choice_rule, "high");
+    assert_eq!(default.is_hard_score, Some(0.62));
+    assert_eq!(default.is_easy_score, Some(0.41));
+    let raised = classified(
+        &value,
+        &[],
+        Thresholds {
+            hard: 0.7,
+            easy: 0.5,
+        },
+    );
+    assert_eq!(raised.choice_rule, "mid_both_false");
+    assert_eq!(
+        choice_from_scores(
+            Some(0.2),
+            Some(0.8),
+            Thresholds {
+                hard: 0.5,
+                easy: 0.5
+            }
+        ),
+        (Complexity::Low, "low")
     );
 }
