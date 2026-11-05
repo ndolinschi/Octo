@@ -1,10 +1,10 @@
 use serde_json::json;
 
+use octo::auto::context_length;
 use octo::auto::{
     context_estimate, dropped, filter_tools, is_housekeeping, larger_fit, needed_tools,
     needs_compact, output_reserve, session_id, session_key, Complexity, LargerFit, Tiers,
 };
-use octo::auto::context_length;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
 
 #[test]

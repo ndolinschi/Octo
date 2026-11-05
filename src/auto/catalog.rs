@@ -149,11 +149,7 @@ mod tests {
             paid("mid-model", 64_000),
             paid("anthropic/claude-haiku-latest", 200_000),
         ]);
-        let candidates = [
-            "low-model",
-            "mid-model",
-            "~anthropic/claude-haiku-latest",
-        ];
+        let candidates = ["low-model", "mid-model", "~anthropic/claude-haiku-latest"];
         let chosen = larger_fit(LargerFit {
             candidates: &candidates,
             models: Some(&models),

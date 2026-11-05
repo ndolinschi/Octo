@@ -21,10 +21,7 @@ pub async fn messages(
     run(&state, request, false).await
 }
 
-pub async fn chat(
-    State(state): State<AppState>,
-    request: Request,
-) -> Result<Response, ProxyError> {
+pub async fn chat(State(state): State<AppState>, request: Request) -> Result<Response, ProxyError> {
     run(&state, request, true).await
 }
 

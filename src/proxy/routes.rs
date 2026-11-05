@@ -50,8 +50,5 @@ pub fn router(config: &Config) -> Router<AppState> {
             post(handler::messages_openrouter),
         )
         .route("/autoroute/v1/messages", post(autoroute::messages))
-        .route(
-            "/autoroute/v1/chat/completions",
-            post(autoroute::chat),
-        )
+        .route("/autoroute/v1/chat/completions", post(autoroute::chat))
 }
