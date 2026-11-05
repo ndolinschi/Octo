@@ -6,11 +6,11 @@ use crate::providers::openrouter::{fetch_models, OpenRouterModels, DEFAULT_MODEL
 use super::Auto;
 
 pub(super) async fn load(auto: &Auto, client: &Client, api_key: &str) -> Option<OpenRouterModels> {
-    if api_key.is_empty() {
-        return None;
-    }
     if let Some(models) = auto.catalog.lock().await.fresh() {
         return Some(models);
+    }
+    if api_key.is_empty() {
+        return None;
     }
     let models = fetch_models(client, DEFAULT_MODELS_URL, Some(api_key))
         .await

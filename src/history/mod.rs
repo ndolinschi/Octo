@@ -122,17 +122,8 @@ impl History {
         let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
+        inflight.fetch_add(1, Ordering::AcqRel);
         tokio::spawn(async move {
-            let Ok(Ok(permit)) =
-                tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await
-            else {
-                tracing::warn!(
-                    choice_rule = %row.choice_rule,
-                    "decision insert skipped; queue wait timed out"
-                );
-                return;
-            };
-            inflight.fetch_add(1, Ordering::AcqRel);
             struct Done(Arc<AtomicUsize>, Arc<Notify>);
             impl Drop for Done {
                 fn drop(&mut self) {
@@ -142,6 +133,15 @@ impl History {
                 }
             }
             let _done = Done(inflight, idle);
+            let Ok(Ok(permit)) =
+                tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await
+            else {
+                tracing::warn!(
+                    choice_rule = %row.choice_rule,
+                    "decision insert skipped; queue wait timed out"
+                );
+                return;
+            };
             let _permit = permit;
             if let Err(err) = insert_decision(&pool, &row, limit).await {
                 tracing::warn!(%err, choice_rule = %row.choice_rule, "decision insert failed");
@@ -174,7 +174,17 @@ impl History {
         let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
+        inflight.fetch_add(1, Ordering::AcqRel);
         tokio::spawn(async move {
+            struct Done(Arc<AtomicUsize>, Arc<Notify>);
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    if self.0.fetch_sub(1, Ordering::AcqRel) == 1 {
+                        self.1.notify_waiters();
+                    }
+                }
+            }
+            let _done = Done(inflight, idle);
             let permit =
                 match tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await {
                     Ok(Ok(permit)) => permit,
@@ -195,16 +205,6 @@ impl History {
                         return;
                     }
                 };
-            inflight.fetch_add(1, Ordering::AcqRel);
-            struct Done(Arc<AtomicUsize>, Arc<Notify>);
-            impl Drop for Done {
-                fn drop(&mut self) {
-                    if self.0.fetch_sub(1, Ordering::AcqRel) == 1 {
-                        self.1.notify_waiters();
-                    }
-                }
-            }
-            let _done = Done(inflight, idle);
             let _permit = permit;
             let captured_bytes = call.request_bytes.saturating_add(call.response_bytes);
             match insert_call(&pool, &call).await {

@@ -132,6 +132,10 @@ impl Auto {
         };
         sessions.insert(session_key.to_string(), choice);
     }
+
+    pub async fn seed_catalog(&self, models: crate::providers::openrouter::OpenRouterModels) {
+        self.catalog.lock().await.store(models);
+    }
 }
 
 pub struct DecideRequest<'a> {
