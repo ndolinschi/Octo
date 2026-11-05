@@ -27,7 +27,7 @@ use super::session::SessionChoice;
 use classify::{ClassifyCtx, ClassifyTurn};
 use gate::SessionGate;
 use route::{RepeatCompact, RouteCtx, RoutePlan};
-use sticky::{apply as apply_sticky, cap_for_budget, StickyPlan};
+use sticky::{apply as apply_sticky, cap_for_budget, StickyOutcome, StickyPlan};
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
 const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
@@ -108,6 +108,30 @@ impl Auto {
         row.seen = Instant::now();
         sessions.insert(session_key.to_string(), row);
     }
+
+    pub fn sync_session_cost_floor(&self, session_key: &str, floor_micros: u64) {
+        if floor_micros == 0 {
+            return;
+        }
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        let mut row = sessions.get(session_key).unwrap_or_else(|| {
+            SessionChoice::fresh(String::new(), Vec::new(), "unset".to_string())
+        });
+        if floor_micros > row.cost_micros {
+            row.cost_micros = floor_micros;
+            row.seen = Instant::now();
+            sessions.insert(session_key.to_string(), row);
+        }
+    }
+
+    pub fn seed_session(&self, session_key: &str, choice: SessionChoice) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        sessions.insert(session_key.to_string(), choice);
+    }
 }
 
 pub struct DecideRequest<'a> {
@@ -126,6 +150,13 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
     let reserve = body::max_tokens(&req.body);
     let client_tokens = metrics::estimate_tokens(models::counted_bytes(&req.body));
     let actor = body::session_key(&req.body);
+    if let Some(id) = actor.clone() {
+        if req.auto.tiers().session_budget_micros > 0 && req.history.enabled() {
+            if let Ok(floor) = req.history.session_cost_micros(&id).await {
+                req.auto.sync_session_cost_floor(&id, floor);
+            }
+        }
+    }
     let _session_turn = match actor.clone() {
         Some(id) => Some(req.auto.gate(&id).acquire().await),
         None => None,
@@ -191,6 +222,11 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         current_tier,
     };
 
+    let spent = actor
+        .as_ref()
+        .map(|id| req.auto.session_cost_micros(id))
+        .unwrap_or(0);
+
     if let Some(row) = hold_without_classify(HoldWithoutClassify {
         choice: choice.as_ref(),
         stall,
@@ -202,23 +238,21 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             body: req.body,
             models: loaded.as_ref(),
             previous_model: Some(row.model.clone()),
-            plan: session_plan(&row, tier_before, None, reserve, req.allow_compact, persist),
+            plan: session_plan_budget(SessionPlanBudget {
+                row: &row,
+                tier_before,
+                reason: None,
+                reserve,
+                allow_compact: req.allow_compact,
+                persist,
+                spent,
+                tiers: &req.auto.tiers,
+            }),
         });
     }
 
-    if body::is_housekeeping(&user_text) {
-        if let Some(row) = choice {
-            return route::run(RouteCtx {
-                auto: req.auto,
-                body: req.body,
-                models: loaded.as_ref(),
-                previous_model: Some(row.model.clone()),
-                plan: session_plan(&row, tier_before, None, reserve, req.allow_compact, persist),
-            });
-        }
-        if stall.is_none() {
-            return route::passthrough(&req.body);
-        }
+    if body::is_housekeeping(&user_text) && choice.is_none() && stall.is_none() {
+        return route::passthrough(&req.body);
     }
 
     let picked = if choice.is_some() {
@@ -286,10 +320,6 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         ),
     };
 
-    let spent = actor
-        .as_ref()
-        .map(|id| req.auto.session_cost_micros(id))
-        .unwrap_or(0);
     let mut sticky = apply_sticky(StickyPlan {
         tiers: &req.auto.tiers,
         choice: choice.as_ref(),
@@ -345,29 +375,44 @@ fn hold_without_classify(plan: HoldWithoutClassify<'_>) -> Option<super::session
     None
 }
 
-fn session_plan(
-    row: &super::session::SessionChoice,
+fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
+    let mut sticky = StickyOutcome {
+        model: plan.row.model.clone(),
+        sticky_band: plan.row.sticky_band.clone(),
+        escalate_remaining: plan.row.escalate_remaining,
+        escalate_band: plan.row.escalate_band.clone(),
+        last_stall: plan.row.last_stall.clone(),
+        pending_down_band: plan.row.pending_down_band.clone(),
+        down_count: plan.row.down_count,
+        reason: plan.reason,
+    };
+    cap_for_budget(&mut sticky, plan.tiers, plan.spent);
+    RoutePlan {
+        model: sticky.model,
+        tools: plan.row.tools.clone(),
+        reason: sticky.reason,
+        tier_before: plan.tier_before,
+        reserve: plan.reserve,
+        allow_compact: plan.allow_compact,
+        persist: plan.persist,
+        sticky_band: sticky.sticky_band,
+        escalate_remaining: plan.row.escalate_remaining,
+        escalate_band: plan.row.escalate_band.clone(),
+        last_stall: plan.row.last_stall.clone(),
+        pending_down_band: plan.row.pending_down_band.clone(),
+        down_count: plan.row.down_count,
+    }
+}
+
+struct SessionPlanBudget<'a> {
+    row: &'a super::session::SessionChoice,
     tier_before: String,
     reason: Option<String>,
     reserve: u64,
     allow_compact: bool,
     persist: bool,
-) -> RoutePlan {
-    RoutePlan {
-        model: row.model.clone(),
-        tools: row.tools.clone(),
-        reason,
-        tier_before,
-        reserve,
-        allow_compact,
-        persist,
-        sticky_band: row.sticky_band.clone(),
-        escalate_remaining: row.escalate_remaining,
-        escalate_band: row.escalate_band.clone(),
-        last_stall: row.last_stall.clone(),
-        pending_down_band: row.pending_down_band.clone(),
-        down_count: row.down_count,
-    }
+    spent: u64,
+    tiers: &'a Tiers,
 }
 
 fn band_complexity(band: &str) -> Complexity {

@@ -716,6 +716,75 @@ async fn decide_stall_escalates_without_catalog_or_jev() {
 }
 
 #[tokio::test]
+async fn stall_still_escalates_when_last_user_is_housekeeping() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.escalate_turns = 3;
+    let auto = Auto::new(tiers);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let mut body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/stall_repeated_edit.json")).unwrap();
+    let messages = body["messages"].as_array_mut().unwrap();
+    messages.push(json!({
+        "role": "user",
+        "content": "[SUGGESTION MODE: Suggest what the user might type next"
+    }));
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "mid-m"
+    );
+    assert!(forward.meta.trigger.starts_with("stall:"));
+}
+
+#[tokio::test]
+async fn housekeeping_hold_applies_session_budget_cap() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.session_budget_micros = 100;
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "budget-sess",
+        SessionChoice::fresh("high-m".into(), vec!["Read".into()], "high".into()),
+    );
+    auto.add_session_cost("budget-sess", 150);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let housekeeping = json!({
+        "metadata": {"user_id": "{\"session_id\":\"budget-sess\"}"},
+        "tools": [{"name": "Read"}],
+        "messages": [{"role": "user", "content": "[SUGGESTION MODE: Suggest what the user might type next"}]
+    });
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: housekeeping,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "mid-m");
+    assert_eq!(forward.meta.trigger, "budget_cap");
+}
+
+#[tokio::test]
 async fn anthropic_proxy_error_body_shape() {
     let response = ProxyError::anthropic(
         StatusCode::BAD_GATEWAY,
