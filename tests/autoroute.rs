@@ -4,12 +4,12 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use octo::auto::context_length;
 use octo::auto::{
-    apply_sticky, cap_for_budget, choice, choice_from_scores, classified, compaction_body,
-    context_estimate, decide, detect_stall, dropped, filter_tools, inspect, is_housekeeping,
-    larger_fit, max_completion_tokens, needed_tools, needs_compact, output_reserve, payload,
-    question_text, session_id, session_key, shape, with_model, Auto, Complexity, DecideRequest,
-    LargerFit, PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan,
-    Thresholds, Tiers, Turn,
+    apply_sticky, cap_decision_text, cap_for_budget, choice, choice_from_scores, classified,
+    compaction_body, context_estimate, decide, detect_stall, dropped, filter_tools, inspect,
+    is_housekeeping, larger_fit, max_completion_tokens, needed_tools, needs_compact,
+    output_reserve, payload, question_text, session_id, session_key, shape, with_model, Auto,
+    Complexity, DecideRequest, LargerFit, PayloadPlan, RouteMeta, SessionChoice, ShapePlan,
+    StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -71,6 +71,24 @@ fn question_text_strips_system_reminder_keeps_question() {
     assert_eq!(question_text(&body), "Какой порт слушает Octo?");
     let facts = inspect(&body, &question_text(&body));
     assert!(!facts.mentions_tests);
+}
+
+#[test]
+fn question_text_keeps_session_and_conversation_inner() {
+    let body = json!({
+        "messages": [{
+            "role": "user",
+            "content": "<session>\nHello world\n</session>\n<conversation>ping</conversation>"
+        }]
+    });
+    assert_eq!(question_text(&body), "Hello world\n\nping");
+}
+
+#[test]
+fn decision_text_caps_at_2000_chars() {
+    let long: String = "я".repeat(2500);
+    let capped = cap_decision_text(&long);
+    assert_eq!(capped.chars().count(), 2000);
 }
 
 #[test]
@@ -832,6 +850,77 @@ async fn housekeeping_forces_low_without_touching_sticky() {
         "mid-m"
     );
     assert_eq!(held.meta.trigger, "budget_cap");
+}
+
+#[tokio::test]
+async fn empty_question_after_strip_holds_current_model() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "empty-q",
+        SessionChoice::fresh("mid-m".into(), vec!["Read".into()], "mid".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "sk-would-call-jev",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"empty-q\"}"},
+            "tools": [{"name": "Read"}],
+            "messages": [{
+                "role": "user",
+                "content": "<system-reminder>\nOnly noise here.\n</system-reminder>"
+            }]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "mid-m"
+    );
+    assert_eq!(forward.meta.trigger, "none");
+}
+
+#[tokio::test]
+async fn housekeeping_bypasses_awaiting_compact() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    let mut seeded = SessionChoice::fresh("high-m".into(), vec!["Read".into()], "high".into());
+    seeded.awaiting_compact = true;
+    seeded.prev_input_tokens_est = 1;
+    auto.seed_session("hk-compact", seeded);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"hk-compact\"}"},
+            "tools": [{"name": "Read"}],
+            "messages": [{"role": "user", "content": "[SUGGESTION MODE: Suggest next"}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward, got compact or other");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "low-m"
+    );
+    assert_eq!(forward.meta.trigger, "housekeeping");
 }
 
 #[tokio::test]

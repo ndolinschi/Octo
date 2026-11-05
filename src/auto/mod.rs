@@ -10,8 +10,9 @@ mod stall;
 
 pub use action::{Compact, Forward, ModelAction, Turn};
 pub use body::{
-    compaction_body, filter_tools, is_housekeeping, last_user_text, last_user_tool_results_only,
-    question_text, session_id, session_key, shape, with_model, ShapePlan,
+    cap_decision_text, compaction_body, filter_tools, is_housekeeping, last_user_text,
+    last_user_tool_results_only, question_text, session_id, session_key, shape, with_model,
+    ShapePlan,
 };
 pub use catalog::Tiers;
 pub use catalog::{

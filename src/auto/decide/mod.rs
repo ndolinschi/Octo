@@ -171,32 +171,6 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             .and_then(|mut sessions| sessions.get(&id)),
         None => None,
     };
-    let mut forced_reason = None;
-    if let Some(row) = choice.clone() {
-        if row.awaiting_compact {
-            if metrics::dropped(row.prev_input_tokens_est, client_tokens) {
-                choice = None;
-                forced_reason = Some("reclassify".to_string());
-            } else if req.allow_compact {
-                let outgoing = body::shape(body::ShapePlan {
-                    body: &req.body,
-                    model: &row.model,
-                    previous_model: Some(row.model.as_str()),
-                    models: loaded.as_ref(),
-                });
-                tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
-                return route::repeat_compact(RepeatCompact {
-                    auto: req.auto,
-                    body: &outgoing,
-                    model: &row.model,
-                    models: loaded.as_ref(),
-                });
-            } else if let Some(id) = actor.clone() {
-                req.auto.clear_awaiting_compact(&id);
-            }
-        }
-    }
-
     let raw_text = body::last_user_text(&req.body);
     let question = body::question_text(&req.body);
     let persist = !all_tools.is_empty();
@@ -204,29 +178,6 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .as_ref()
         .map(|row| row.sticky_band.clone())
         .unwrap_or_else(|| "unset".to_string());
-    let stall = stall::detect(&req.body, req.auto.tiers.stall_window);
-    let tool_results_only = body::last_user_tool_results_only(&req.body);
-    let current_tier = choice
-        .as_ref()
-        .map(|row| row.sticky_band.as_str())
-        .unwrap_or("unset");
-    let classify_ctx = ClassifyCtx {
-        auto: req.auto,
-        history: req.history,
-        session_id: actor.clone(),
-        client: req.client,
-        decisions_url: req.decisions_url,
-        api_key: req.api_key,
-        body: &req.body,
-        all_tools: &all_tools,
-        tiers: &req.auto.tiers,
-        current_tier,
-    };
-
-    let spent = actor
-        .as_ref()
-        .map(|id| req.auto.session_cost_micros(id))
-        .unwrap_or(0);
 
     if body::is_housekeeping(&raw_text) {
         let model = req.auto.tiers.pick(Complexity::Low, preferred.as_deref());
@@ -257,6 +208,56 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             },
         });
     }
+
+    let mut forced_reason = None;
+    if let Some(row) = choice.clone() {
+        if row.awaiting_compact {
+            if metrics::dropped(row.prev_input_tokens_est, client_tokens) {
+                choice = None;
+                forced_reason = Some("reclassify".to_string());
+            } else if req.allow_compact {
+                let outgoing = body::shape(body::ShapePlan {
+                    body: &req.body,
+                    model: &row.model,
+                    previous_model: Some(row.model.as_str()),
+                    models: loaded.as_ref(),
+                });
+                tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
+                return route::repeat_compact(RepeatCompact {
+                    auto: req.auto,
+                    body: &outgoing,
+                    model: &row.model,
+                    models: loaded.as_ref(),
+                });
+            } else if let Some(id) = actor.clone() {
+                req.auto.clear_awaiting_compact(&id);
+            }
+        }
+    }
+
+    let stall = stall::detect(&req.body, req.auto.tiers.stall_window);
+    let tool_results_only = body::last_user_tool_results_only(&req.body);
+    let current_tier = choice
+        .as_ref()
+        .map(|row| row.sticky_band.as_str())
+        .unwrap_or("unset");
+    let classify_ctx = ClassifyCtx {
+        auto: req.auto,
+        history: req.history,
+        session_id: actor.clone(),
+        client: req.client,
+        decisions_url: req.decisions_url,
+        api_key: req.api_key,
+        body: &req.body,
+        all_tools: &all_tools,
+        tiers: &req.auto.tiers,
+        current_tier,
+    };
+
+    let spent = actor
+        .as_ref()
+        .map(|id| req.auto.session_cost_micros(id))
+        .unwrap_or(0);
 
     if let Some(row) = hold_without_classify(HoldWithoutClassify {
         choice: choice.as_ref(),

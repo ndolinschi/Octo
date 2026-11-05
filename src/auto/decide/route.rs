@@ -100,6 +100,17 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         });
     }
     if estimate.fill >= metrics::FILL_THRESHOLD {
+        if plan.reason.as_deref() == Some("housekeeping") {
+            return finish_overflow(OverflowCtx {
+                auto: ctx.auto,
+                body: &ctx.body,
+                outgoing: &outgoing,
+                models: ctx.models,
+                previous_model: previous,
+                input_tokens_est: estimate.input_tokens_est,
+                plan,
+            });
+        }
         let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
         let tiers = ctx.auto.tiers.candidates();
         if let Some(slug) = catalog::larger_fit(LargerFit {

@@ -109,7 +109,7 @@ fn record(plan: RecordPlan<'_>) {
         model: "typesafe/jev-1.13".to_string(),
         status: plan.asked.status,
         latency_ms: plan.asked.latency_ms,
-        user_text: truncate_user_text(user_text_from_request(&plan.asked.request_body)),
+        user_text: body::cap_decision_text(&user_text_from_request(&plan.asked.request_body)),
         is_hard: parsed.and_then(|row| row.is_hard),
         is_easy: parsed.and_then(|row| row.is_easy),
         is_hard_score: parsed.and_then(|row| row.is_hard_score),
@@ -139,12 +139,4 @@ fn user_text_from_request(body: &str) -> String {
                 .map(str::to_string)
         })
         .unwrap_or_default()
-}
-
-fn truncate_user_text(text: String) -> String {
-    const MAX_CHARS: usize = 2000;
-    if text.chars().count() <= MAX_CHARS {
-        return text;
-    }
-    text.chars().take(MAX_CHARS).collect()
 }

@@ -52,6 +52,14 @@ pub fn question_text(body: &Value) -> String {
     strip_question_noise(&last_user_text(body))
 }
 
+pub fn cap_decision_text(text: &str) -> String {
+    const MAX_CHARS: usize = 2000;
+    if text.chars().count() <= MAX_CHARS {
+        return text.to_string();
+    }
+    text.chars().take(MAX_CHARS).collect()
+}
+
 fn strip_question_noise(text: &str) -> String {
     let without_blocks = remove_tagged_blocks(text);
     strip_wrapper_tags(&without_blocks).trim().to_string()
@@ -148,9 +156,9 @@ fn strip_wrapper_tags(text: &str) -> String {
                 continue;
             }
         }
-        if let Some(name) = closing_tag_name(rest) {
+        if let Some((name, len)) = closing_tag_name(rest) {
             if is_wrapper_tag(name) {
-                rest = &rest[2 + name.len() + 1..];
+                rest = &rest[len..];
                 continue;
             }
         }
@@ -160,14 +168,14 @@ fn strip_wrapper_tags(text: &str) -> String {
     out
 }
 
-fn closing_tag_name(s: &str) -> Option<&str> {
+fn closing_tag_name(s: &str) -> Option<(&str, usize)> {
     let rest = s.strip_prefix("</")?;
     let gt = rest.find('>')?;
     let name = rest[..gt].trim();
     if name.is_empty() {
         return None;
     }
-    Some(name)
+    Some((name, 2 + gt + 1))
 }
 
 pub fn last_user_tool_results_only(body: &Value) -> bool {
