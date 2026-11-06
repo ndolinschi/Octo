@@ -43,6 +43,7 @@ pub struct Config {
     pub decision_backend: String,
     pub history_database_path: String,
     pub history_token_key: String,
+    pub history_store_payloads: bool,
     pub autoroute_low_model: String,
     pub autoroute_mid_model: String,
     pub autoroute_high_model: String,
@@ -313,6 +314,8 @@ struct HistorySection {
     database_path: String,
     #[serde(default)]
     token_key: String,
+    #[serde(default = "default_history_store_payloads")]
+    store_payloads: bool,
 }
 
 impl Default for HistorySection {
@@ -320,8 +323,13 @@ impl Default for HistorySection {
         Self {
             database_path: default_history_database_path(),
             token_key: String::new(),
+            store_payloads: default_history_store_payloads(),
         }
     }
+}
+
+fn default_history_store_payloads() -> bool {
+    true
 }
 
 fn default_history_database_path() -> String {
@@ -593,6 +601,7 @@ fn config_from_file(file: ConfigFile) -> Config {
         decision_backend: file.decision.backend,
         history_database_path: file.history.database_path,
         history_token_key: file.history.token_key,
+        history_store_payloads: file.history.store_payloads,
         autoroute_low_model: file.autoroute.low,
         autoroute_mid_model: file.autoroute.mid,
         autoroute_high_model: file.autoroute.high,

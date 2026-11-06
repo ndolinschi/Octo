@@ -33,7 +33,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .await
     {
         Ok(history) => {
-            state.history = history.with_prices(config.prices.clone());
+            state.history = history
+                .with_prices(config.prices.clone())
+                .with_store_payloads(config.history_store_payloads);
             info!(
                 database = %config.history_database_path,
                 "history database ready"
