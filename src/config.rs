@@ -389,14 +389,10 @@ fn default_autoroute_allow_fallbacks() -> bool {
 
 #[derive(Clone, Debug, Deserialize, Default)]
 struct PriceRow {
-    #[serde(default)]
-    input: f64,
-    #[serde(default)]
-    cache_read: f64,
-    #[serde(default)]
-    cache_write: f64,
-    #[serde(default)]
-    output: f64,
+    input: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+    output: Option<f64>,
     #[serde(default)]
     billed_as: Option<String>,
 }
@@ -596,14 +592,19 @@ fn config_from_file(file: ConfigFile) -> Config {
                 .prices
                 .into_iter()
                 .map(|(slug, row)| {
+                    let rates_complete = row.input.is_some()
+                        && row.cache_read.is_some()
+                        && row.cache_write.is_some()
+                        && row.output.is_some();
                     (
                         slug,
                         ModelPrice {
-                            input: row.input,
-                            cache_read: row.cache_read,
-                            cache_write: row.cache_write,
-                            output: row.output,
+                            input: row.input.unwrap_or(0.0),
+                            cache_read: row.cache_read.unwrap_or(0.0),
+                            cache_write: row.cache_write.unwrap_or(0.0),
+                            output: row.output.unwrap_or(0.0),
                             billed_as: row.billed_as,
+                            rates_complete,
                         },
                     )
                 })
