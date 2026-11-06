@@ -9,7 +9,8 @@
 # Loads (if present), in order — later wins for the same var:
 #   1) experiments/.env
 #   2) repo-root .env   ← preferred place for OPENROUTER_API_KEY
-# Already-exported vars in the shell are kept (not overwritten).
+# Already-exported auth-related vars (OPENROUTER_API_KEY, ANTHROPIC_BASE_URL,
+# ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY) are kept when non-empty.
 #
 # Requires Octo on OCTO_BIND (default 127.0.0.1:8080) with
 # [llm.messages] backend = openrouter.
@@ -21,11 +22,19 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   _OCTO_ENV_SOURCED=1
 fi
 
-_octo_env_restore=
-if [[ -n "${-:-}" ]]; then
-  _octo_env_restore="${-}"
-fi
+# Remember only the options this script toggles; do not replay full $-
+# (interactive shells include letters like i/s that `set -…` rejects).
+_octo_had_e=0
+_octo_had_u=0
+case "$-" in *e*) _octo_had_e=1 ;; esac
+case "$-" in *u*) _octo_had_u=1 ;; esac
 set -eu
+
+_octo_restore_shell_opts() {
+  set +eu
+  if [[ "${_octo_had_e}" -eq 1 ]]; then set -e; fi
+  if [[ "${_octo_had_u}" -eq 1 ]]; then set -u; fi
+}
 
 _OCTO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export OCTO_BIND="${OCTO_BIND:-127.0.0.1:8080}"
@@ -58,14 +67,11 @@ _load_dotenv "${_OCTO_ROOT}/.env"
 
 _octo_env_fail() {
   echo "OPENROUTER_API_KEY missing. Add it to ${_OCTO_ROOT}/.env (see .env.example) and re-source." >&2
-  if [[ -n "${_octo_env_restore}" ]]; then
-    set +eu
-    set "-${_octo_env_restore}" 2>/dev/null || true
-  fi
-  unset -f _load_dotenv _octo_env_fail 2>/dev/null || true
+  _octo_restore_shell_opts
+  unset -f _load_dotenv _octo_env_fail _octo_restore_shell_opts 2>/dev/null || true
   unset _OCTO_ROOT _PRESERVE_OPENROUTER_API_KEY _PRESERVE_ANTHROPIC_BASE_URL \
     _PRESERVE_ANTHROPIC_AUTH_TOKEN _PRESERVE_ANTHROPIC_API_KEY \
-    _octo_env_restore _OCTO_ENV_SOURCED 2>/dev/null || true
+    _octo_had_e _octo_had_u _OCTO_ENV_SOURCED 2>/dev/null || true
   return 1
 }
 
@@ -104,11 +110,8 @@ if [[ "${CLAUDE_CODE_ENV_QUIET:-}" != "1" ]]; then
 fi
 
 # Restore caller's shell options and drop helpers when sourced.
-if [[ -n "${_octo_env_restore}" ]]; then
-  set +eu
-  set "-${_octo_env_restore}" 2>/dev/null || true
-fi
-unset -f _load_dotenv _octo_env_fail 2>/dev/null || true
+_octo_restore_shell_opts
+unset -f _load_dotenv _octo_env_fail _octo_restore_shell_opts 2>/dev/null || true
 unset _OCTO_ROOT _PRESERVE_OPENROUTER_API_KEY _PRESERVE_ANTHROPIC_BASE_URL \
   _PRESERVE_ANTHROPIC_AUTH_TOKEN _PRESERVE_ANTHROPIC_API_KEY \
-  _octo_env_restore _OCTO_ENV_SOURCED 2>/dev/null || true
+  _octo_had_e _octo_had_u _OCTO_ENV_SOURCED 2>/dev/null || true

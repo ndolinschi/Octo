@@ -7,7 +7,13 @@
 #   cp .env.example .env   # once
 #   ./scripts/claude-code-experiment.sh
 #   ./scripts/claude-code-experiment.sh -p "Только чтение. …"
+#   OCTO_CC_SKIP_PERMISSIONS=1 ./scripts/claude-code-experiment.sh
 #   ./scripts/claude-code-experiment.sh -- --allowedTools Read,Glob,Grep,Agent
+#
+# Permissions:
+#   -p (non-interactive) defaults to --dangerously-skip-permissions.
+#   Interactive defaults to normal permission prompts.
+#   Set OCTO_CC_SKIP_PERMISSIONS=1 to force skip; =0 to force prompts.
 #
 # Octo must already be running (cargo run) with autoroute on :8080.
 
@@ -69,18 +75,34 @@ if [[ "$has_add_dir" -eq 0 ]]; then
   ADD_DIR=(--add-dir "${OCTO_ROOT}")
 fi
 
+SKIP_PERMS=()
+case "${OCTO_CC_SKIP_PERMISSIONS:-}" in
+  1|true|TRUE|yes|YES)
+    SKIP_PERMS=(--dangerously-skip-permissions)
+    ;;
+  0|false|FALSE|no|NO)
+    SKIP_PERMS=()
+    ;;
+  *)
+    # Default: skip only for non-interactive (-p) sandbox runs.
+    if [[ "${PROMPT_MODE}" -eq 1 ]]; then
+      SKIP_PERMS=(--dangerously-skip-permissions)
+    fi
+    ;;
+esac
+
 if [[ "${PROMPT_MODE}" -eq 1 ]]; then
   if [[ -n "${PROMPT}" ]]; then
     printf '%s' "${PROMPT}" | exec "${CLAUDE_BIN}" -p \
-      --dangerously-skip-permissions \
+      "${SKIP_PERMS[@]}" \
       "${ADD_DIR[@]}" \
       "${EXTRA[@]}"
   else
     exec "${CLAUDE_BIN}" -p \
-      --dangerously-skip-permissions \
+      "${SKIP_PERMS[@]}" \
       "${ADD_DIR[@]}" \
       "${EXTRA[@]}"
   fi
 else
-  exec "${CLAUDE_BIN}" --dangerously-skip-permissions "${ADD_DIR[@]}" "${EXTRA[@]}"
+  exec "${CLAUDE_BIN}" "${SKIP_PERMS[@]}" "${ADD_DIR[@]}" "${EXTRA[@]}"
 fi

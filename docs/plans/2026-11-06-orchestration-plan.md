@@ -111,7 +111,7 @@
 | Startup overhead eats savings | P0+P3 keep subagents on low; batch reads per Agent; measure A2 before enabling default |
 | Low-quality handoffs (ants study 0/36 model-written) | Nudge requires files/lines/facts; P4 human key-point rubric |
 | Latency / wall time | Cap concurrent Agents; eval wall-time gate |
-| Permission prompts for Agent | Experiment script uses `--dangerously-skip-permissions` only in sandbox; document for interactive |
+| Permission prompts for Agent | `-p` defaults to `--dangerously-skip-permissions`; interactive does not unless `OCTO_CC_SKIP_PERMISSIONS=1` (documented in README) |
 | Cache invalidation from nudge | Byte-stable suffix; enable only when flag on; avoid per-turn edits |
 | Shared `#subagent` sticky (today) | **P0 first** |
 

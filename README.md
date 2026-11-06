@@ -156,11 +156,12 @@ On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/l
 Claude Code reads **`ANTHROPIC_DEFAULT_*_MODEL`** and **`CLAUDE_CODE_SUBAGENT_MODEL`** (not Octo). For local experiments through **`/autoroute`**:
 
 ```bash
-cp .env.example .env          # set OPENROUTER_API_KEY
+cp .env.example .env          # set OPENROUTER_API_KEY + Mistral ladder
 cargo run                     # Octo on 127.0.0.1:8080
 source scripts/claude-code-env.sh
-./scripts/claude-code-experiment.sh              # interactive
-./scripts/claude-code-experiment.sh -p "…"       # non-interactive
+./scripts/claude-code-experiment.sh              # interactive (permission prompts)
+./scripts/claude-code-experiment.sh -p "…"       # non-interactive (skips permissions)
+OCTO_CC_SKIP_PERMISSIONS=1 ./scripts/claude-code-experiment.sh  # force skip
 ```
 
-`.env.example` documents the Claude Code vars (`ANTHROPIC_BASE_URL`, `ANTHROPIC_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`) with the Mistral ladder. `scripts/claude-code-env.sh` sources `.env` (and optional `experiments/.env`), fills `ANTHROPIC_AUTH_TOKEN` from `OPENROUTER_API_KEY` when empty, and defaults Haiku/Sonnet/Opus → autoroute low/mid/high (`ministral-8b` → `mistral-small-3.1` → `devstral`). The experiment helper runs with cwd under gitignored `experiments/` and `--add-dir` on the repo root. Manual / non-autoroute recipes: [`config/claude-code.env.example`](config/claude-code.env.example).
+`.env.example` documents the Claude Code vars (`ANTHROPIC_BASE_URL`, `ANTHROPIC_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`) with the Mistral ladder. `scripts/claude-code-env.sh` sources `.env` (and optional `experiments/.env`), fills `ANTHROPIC_AUTH_TOKEN` from `OPENROUTER_API_KEY` when empty, and defaults Haiku/Sonnet/Opus → autoroute low/mid/high (`ministral-8b` → `mistral-small-3.1` → `devstral`). The experiment helper runs with cwd under gitignored `experiments/` and `--add-dir` on the repo root. Non-interactive (`-p`) defaults to `--dangerously-skip-permissions`; interactive does not unless `OCTO_CC_SKIP_PERMISSIONS=1`. Manual / non-autoroute recipes: [`config/claude-code.env.example`](config/claude-code.env.example).
