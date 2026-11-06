@@ -32,4 +32,6 @@ background_model_patterns = ["haiku"]
 # When true, bg_signal requests (except permission_check) route like housekeeping with
 # trigger background_model. Default false = no routing change.
 background_by_client_model = false
+# Server tools (web_search / web_fetch / code_execution): passthrough | online_suffix | reject.
+server_tool_mode = "passthrough"
 

@@ -58,6 +58,7 @@ pub struct Config {
     pub autoroute_allow_fallbacks: bool,
     pub autoroute_background_model_patterns: Vec<String>,
     pub autoroute_background_by_client_model: bool,
+    pub autoroute_server_tool_mode: String,
     pub prices: crate::history::PriceTable,
 }
 
@@ -359,6 +360,8 @@ struct AutorouteSection {
     background_model_patterns: Vec<String>,
     #[serde(default)]
     background_by_client_model: bool,
+    #[serde(default = "default_autoroute_server_tool_mode")]
+    server_tool_mode: String,
 }
 
 impl Default for AutorouteSection {
@@ -379,6 +382,7 @@ impl Default for AutorouteSection {
             allow_fallbacks: default_autoroute_allow_fallbacks(),
             background_model_patterns: default_autoroute_background_model_patterns(),
             background_by_client_model: false,
+            server_tool_mode: default_autoroute_server_tool_mode(),
         }
     }
 }
@@ -397,6 +401,10 @@ fn default_autoroute_allow_fallbacks() -> bool {
 
 fn default_autoroute_background_model_patterns() -> Vec<String> {
     vec!["haiku".to_string()]
+}
+
+fn default_autoroute_server_tool_mode() -> String {
+    "passthrough".to_string()
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -600,6 +608,7 @@ fn config_from_file(file: ConfigFile) -> Config {
         autoroute_allow_fallbacks: file.autoroute.allow_fallbacks,
         autoroute_background_model_patterns: file.autoroute.background_model_patterns,
         autoroute_background_by_client_model: file.autoroute.background_by_client_model,
+        autoroute_server_tool_mode: file.autoroute.server_tool_mode,
         prices: {
             use crate::history::{ModelPrice, PriceTable};
             let rows = file

@@ -22,6 +22,7 @@ pub struct Tiers {
     pub allow_fallbacks: bool,
     pub background_by_client_model: bool,
     pub background_model_patterns: Vec<String>,
+    pub server_tool_mode: String,
 }
 
 impl Tiers {
@@ -42,6 +43,7 @@ impl Tiers {
             allow_fallbacks: true,
             background_by_client_model: false,
             background_model_patterns: vec!["haiku".to_string()],
+            server_tool_mode: "passthrough".to_string(),
         }
     }
 

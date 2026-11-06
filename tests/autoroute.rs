@@ -8,9 +8,10 @@ use octo::auto::{
     classified, client_has_thinking, client_tool_names_csv, compaction_body, context_estimate,
     decide, detect_stall, dropped, filter_tools, inspect, is_housekeeping, is_permission_check,
     larger_fit, looks_like_text_tool_call, max_completion_tokens, needed_tools, needs_compact,
-    output_reserve, payload, question_text, session_id, session_key, shape, trim_housekeeping,
-    with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan, RouteMeta, SessionChoice,
-    ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
+    output_reserve, payload, question_text, server_tool_types, session_id, session_key, shape,
+    trim_housekeeping, with_model, with_online_suffix, Auto, Complexity, DecideRequest, LargerFit,
+    PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers,
+    Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -54,6 +55,24 @@ fn session_id_comes_from_metadata_user_id() {
 fn housekeeping_fixture_title_session() {
     let text = "<session>\nHello world\n</session>\n\nWrite the title in the predominant language of the codebase.";
     assert!(is_housekeeping(text));
+}
+
+#[test]
+fn server_tool_modes_helpers() {
+    let body = json!({
+        "model": "mistralai/devstral-2512",
+        "tools": [
+            {"type": "web_search_20250305"},
+            {"name": "Bash", "input_schema": {"type": "object"}}
+        ]
+    });
+    assert_eq!(server_tool_types(&body), vec!["web_search_20250305"]);
+    let online = with_online_suffix(&body);
+    assert_eq!(online["model"], "mistralai/devstral-2512:online");
+    let again = with_online_suffix(&online);
+    assert_eq!(again["model"], "mistralai/devstral-2512:online");
+    let passthrough = body.clone();
+    assert_eq!(passthrough["model"], body["model"]);
 }
 
 #[test]

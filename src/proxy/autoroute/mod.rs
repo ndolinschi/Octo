@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::auto::{
     bg_signal, client_has_thinking, client_tool_names_csv, is_housekeeping, last_user_text,
-    preferred_model, session_key, Compact, DecideRequest, RouteMeta, Turn,
+    preferred_model, server_tool_types, session_key, Compact, DecideRequest, RouteMeta, Turn,
 };
 use crate::history::{token_from_headers, CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
@@ -62,6 +62,19 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
     let value: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
     let session = session_key(&value);
     let signals = client_signals(&value, &state.config.autoroute_background_model_patterns);
+    let server_tools = server_tool_types(&value);
+    if let Some(tool) = server_tools.first() {
+        if state.config.autoroute_server_tool_mode == "reject" {
+            let err = ProxyError::anthropic(
+                StatusCode::BAD_REQUEST,
+                "invalid_request_error",
+                format!(
+                    "server tool `{tool}` is not supported by the autoroute ladder; set autoroute.server_tool_mode or remove the tool"
+                ),
+            );
+            return Err(if chat { err } else { err.as_anthropic_messages() });
+        }
+    }
     let turn = crate::auto::decide(DecideRequest {
         auto: &state.auto,
         history: &state.history,
@@ -73,7 +86,14 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
     })
     .await;
     match turn {
-        Turn::Forward(forward) => {
+        Turn::Forward(mut forward) => {
+            if let Some(tool) = server_tools.first() {
+                apply_server_tool_mode(
+                    &mut forward,
+                    tool,
+                    &state.config.autoroute_server_tool_mode,
+                );
+            }
             forward_turn(ForwardTurn {
                 state,
                 parts,
@@ -81,11 +101,25 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
                 session,
                 chat,
                 signals,
+                server_tool: server_tools.into_iter().next(),
             })
             .await
         }
         Turn::Compact(row) if chat => chat_compact(state, parts, row).await,
         Turn::Compact(row) => compact::upstream(state, &parts, &row).await,
+    }
+}
+
+fn apply_server_tool_mode(forward: &mut crate::auto::Forward, _tool: &str, mode: &str) {
+    if mode != "online_suffix" {
+        return;
+    }
+    let Ok(payload) = serde_json::from_slice::<Value>(&forward.body) else {
+        return;
+    };
+    let updated = crate::auto::with_online_suffix(&payload);
+    if let Ok(bytes) = serde_json::to_vec(&updated) {
+        forward.body = bytes;
     }
 }
 
@@ -96,6 +130,7 @@ struct ForwardTurn<'a> {
     session: Option<String>,
     chat: bool,
     signals: ClientSignals,
+    server_tool: Option<String>,
 }
 
 async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
@@ -106,6 +141,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
         session,
         chat,
         signals,
+        server_tool,
     } = plan;
     let retry_parts = clone_parts(&parts);
     let retry_forward = forward.clone();
@@ -116,6 +152,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
         session: session.clone(),
         chat,
         signals: signals.clone(),
+        server_tool: server_tool.clone(),
     })
     .await;
     match first {
@@ -127,6 +164,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
                 session,
                 chat,
                 signals: signals.clone(),
+                server_tool: server_tool.clone(),
             })
             .await
             {
@@ -142,6 +180,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
                 session,
                 chat,
                 signals,
+                server_tool,
             })
             .await
             {
@@ -160,6 +199,7 @@ struct RetryNext<'a> {
     session: Option<String>,
     chat: bool,
     signals: ClientSignals,
+    server_tool: Option<String>,
 }
 
 async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyError>> {
@@ -195,6 +235,7 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
             session: plan.session,
             chat: plan.chat,
             signals: plan.signals,
+            server_tool: plan.server_tool,
         })
         .await,
     )
@@ -207,6 +248,7 @@ struct DispatchForward<'a> {
     session: Option<String>,
     chat: bool,
     signals: ClientSignals,
+    server_tool: Option<String>,
 }
 
 async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyError> {
@@ -227,6 +269,11 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
             }) as Arc<dyn Fn(&str) + Send + Sync>
         });
     let meta = &plan.forward.meta;
+    let rerouting_reason = plan
+        .server_tool
+        .as_ref()
+        .map(|tool| format!("server_tool:{tool}"))
+        .or_else(|| meta.legacy_reason());
     let observe = Some(CallObserve {
         history: plan.state.history.clone(),
         kind: if plan.chat {
@@ -236,7 +283,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         },
         provider: CallProvider::OpenRouter,
         rerouting: meta.rerouting(),
-        rerouting_reason: meta.legacy_reason(),
+        rerouting_reason,
         session_id,
         tier_before: Some(meta.tier_before.clone()),
         tier_after: Some(meta.tier_after.clone()),

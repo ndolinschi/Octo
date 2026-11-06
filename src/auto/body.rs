@@ -439,6 +439,20 @@ pub fn server_tool_types(body: &Value) -> Vec<String> {
         .collect()
 }
 
+pub fn with_online_suffix(body: &Value) -> Value {
+    let mut copy = body.clone();
+    let Some(model) = copy.get("model").and_then(Value::as_str).map(str::to_string) else {
+        return copy;
+    };
+    if model.contains(":online") {
+        return copy;
+    }
+    if let Some(object) = copy.as_object_mut() {
+        object.insert("model".to_string(), json!(format!("{model}:online")));
+    }
+    copy
+}
+
 pub fn max_tokens(body: &Value) -> u64 {
     body.get("max_tokens")
         .and_then(Value::as_u64)
