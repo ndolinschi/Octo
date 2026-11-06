@@ -8,8 +8,8 @@ use octo::auto::{
     compaction_body, context_estimate, decide, detect_stall, dropped, filter_tools, inspect,
     is_housekeeping, larger_fit, looks_like_text_tool_call, max_completion_tokens, needed_tools,
     needs_compact, output_reserve, payload, question_text, session_id, session_key, shape,
-    with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan, RouteMeta, SessionChoice,
-    ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
+    trim_housekeeping, with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan,
+    RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -906,6 +906,153 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
     assert_eq!(empty["provider"], json!({"require_parameters": true}));
 }
 
+#[test]
+fn trim_housekeeping_keeps_system_tools_and_valid_slice() {
+    let mut body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
+    let messages = body["messages"].as_array_mut().unwrap();
+    for i in 0..8 {
+        messages.insert(
+            0,
+            json!({
+                "role": "user",
+                "content": format!("old turn {i}")
+            }),
+        );
+        messages.insert(
+            1,
+            json!({
+                "role": "assistant",
+                "content": [{"type": "text", "text": format!("reply {i}")}]
+            }),
+        );
+    }
+    messages.push(json!({
+        "role": "user",
+        "content": "Write the title in the predominant language of the codebase."
+    }));
+    let system = body["system"].clone();
+    let tools = body["tools"].clone();
+    let last = body["messages"].as_array().unwrap().last().cloned().unwrap();
+    let before = body["messages"].as_array().unwrap().len();
+    let trimmed = trim_housekeeping(&body, 6, 12_000);
+    assert!(trimmed.shortened);
+    assert_eq!(trimmed.trimmed_from_tokens, Some(12_000));
+    assert_eq!(trimmed.body["system"], system);
+    assert_eq!(trimmed.body["tools"], tools);
+    let after = trimmed.body["messages"].as_array().unwrap();
+    assert!(after.len() < before);
+    assert!(after.len() <= 6 + 2);
+    assert_eq!(after.last().unwrap(), &last);
+    assert_eq!(
+        after.first().unwrap()["role"].as_str(),
+        Some("user")
+    );
+    assert_ne!(
+        after
+            .first()
+            .unwrap()
+            .get("content")
+            .and_then(|c| c.as_array())
+            .map(|parts| parts
+                .iter()
+                .all(|p| p["type"] == "tool_result"))
+            .unwrap_or(false),
+        true
+    );
+}
+
+#[test]
+fn trim_housekeeping_short_history_unchanged() {
+    let body = json!({
+        "system": "sys",
+        "tools": [{"name": "Bash"}],
+        "messages": [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "yo"},
+            {"role": "user", "content": "Write the title in the predominant language"}
+        ]
+    });
+    let trimmed = trim_housekeeping(&body, 6, 100);
+    assert!(!trimmed.shortened);
+    assert_eq!(trimmed.trimmed_from_tokens, None);
+    assert_eq!(trimmed.body, body);
+}
+
+#[test]
+fn trim_housekeeping_drops_orphan_tool_results() {
+    let body = json!({
+        "messages": [
+            {"role": "user", "content": "start"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "old", "name": "Read", "input": {}}
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "old", "content": "gone"}
+            ]},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "keep", "name": "Read", "input": {}}
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "keep", "content": "ok"},
+                {"type": "tool_result", "tool_use_id": "old", "content": "orphan"}
+            ]},
+            {"role": "user", "content": "Describe your most recent action in 3-5 words"}
+        ]
+    });
+    let trimmed = trim_housekeeping(&body, 3, 500);
+    assert!(trimmed.shortened);
+    let msgs = trimmed.body["messages"].as_array().unwrap();
+    let tool_results: Vec<&str> = msgs
+        .iter()
+        .filter(|m| m["role"] == "user")
+        .flat_map(|m| m["content"].as_array().into_iter().flatten())
+        .filter(|p| p["type"] == "tool_result")
+        .filter_map(|p| p["tool_use_id"].as_str())
+        .collect();
+    assert!(tool_results.iter().all(|id| *id == "keep"));
+    assert_eq!(
+        msgs.last().unwrap()["content"],
+        "Describe your most recent action in 3-5 words"
+    );
+}
+
+#[tokio::test]
+async fn housekeeping_trimmed_trigger_when_history_long() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let mut body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
+    let messages = body["messages"].as_array_mut().unwrap();
+    for i in 0..10 {
+        messages.push(json!({"role": "user", "content": format!("turn {i}")}));
+        messages.push(json!({"role": "assistant", "content": format!("ok {i}")}));
+    }
+    messages.push(json!({
+        "role": "user",
+        "content": "Write the title in the predominant language of the codebase."
+    }));
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: false,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert_eq!(forward.meta.trigger, "housekeeping_trimmed");
+    assert!(forward.trimmed_from_tokens.is_some());
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert!(payload["messages"].as_array().unwrap().len() < 25);
+}
+
 #[tokio::test]
 async fn decide_stall_escalates_without_catalog_or_jev() {
     let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
@@ -969,7 +1116,11 @@ async fn housekeeping_forces_low_even_when_stall_present() {
         serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
         "low-m"
     );
-    assert_eq!(forward.meta.trigger, "housekeeping");
+    assert!(
+        forward.meta.trigger.starts_with("housekeeping"),
+        "trigger={:?}",
+        forward.meta.trigger
+    );
     assert_eq!(forward.meta.tier_after, "low");
 }
 

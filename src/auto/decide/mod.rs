@@ -211,9 +211,20 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
     if body::is_housekeeping(&raw_text) {
         let model = req.auto.tiers.pick(Complexity::Low, preferred.as_deref());
         let row = choice.as_ref();
+        let pre_tokens = metrics::estimate_tokens(models::counted_bytes(&req.body));
+        let trimmed = body::trim_housekeeping(
+            &req.body,
+            req.auto.tiers.housekeeping_keep_messages,
+            pre_tokens,
+        );
+        let reason = if trimmed.shortened {
+            "housekeeping_trimmed"
+        } else {
+            "housekeeping"
+        };
         return route::run(RouteCtx {
             auto: req.auto,
-            body: req.body,
+            body: trimmed.body,
             models: loaded.as_ref(),
             previous_model: row.map(|row| row.model.clone()),
             plan: RoutePlan {
@@ -221,7 +232,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 tools: row
                     .map(|row| row.tools.clone())
                     .unwrap_or_else(|| all_tools.clone()),
-                reason: Some("housekeeping".to_string()),
+                reason: Some(reason.to_string()),
                 tier_before,
                 reserve,
                 allow_compact: req.allow_compact,
@@ -234,6 +245,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 last_stall: row.and_then(|row| row.last_stall.clone()),
                 pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
                 down_count: row.map(|row| row.down_count).unwrap_or(0),
+                trimmed_from_tokens: trimmed.trimmed_from_tokens,
             },
         });
     }
@@ -409,6 +421,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             last_stall: sticky.last_stall,
             pending_down_band: sticky.pending_down_band,
             down_count: sticky.down_count,
+            trimmed_from_tokens: None,
         },
     })
 }
@@ -457,6 +470,7 @@ fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
         last_stall: plan.row.last_stall.clone(),
         pending_down_band: plan.row.pending_down_band.clone(),
         down_count: plan.row.down_count,
+        trimmed_from_tokens: None,
     }
 }
 

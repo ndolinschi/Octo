@@ -188,17 +188,134 @@ pub fn last_user_tool_results_only(body: &Value) -> bool {
         if message.get("role").and_then(Value::as_str) != Some("user") {
             continue;
         }
-        let Some(parts) = message.get("content").and_then(Value::as_array) else {
-            return false;
-        };
-        if parts.is_empty() {
-            return false;
-        }
-        return parts
-            .iter()
-            .all(|part| part.get("type").and_then(Value::as_str) == Some("tool_result"));
+        return message_tool_results_only(message);
     }
     false
+}
+
+fn message_tool_results_only(message: &Value) -> bool {
+    let Some(parts) = message.get("content").and_then(Value::as_array) else {
+        return false;
+    };
+    if parts.is_empty() {
+        return false;
+    }
+    parts
+        .iter()
+        .all(|part| part.get("type").and_then(Value::as_str) == Some("tool_result"))
+}
+
+fn is_valid_trim_start(message: &Value) -> bool {
+    message.get("role").and_then(Value::as_str) == Some("user")
+        && !message_tool_results_only(message)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HousekeepingTrim {
+    pub body: Value,
+    pub shortened: bool,
+    pub trimmed_from_tokens: Option<u64>,
+}
+
+pub fn trim_housekeeping(body: &Value, keep_messages: u32, pre_tokens: u64) -> HousekeepingTrim {
+    let Some(messages) = body.get("messages").and_then(Value::as_array) else {
+        return HousekeepingTrim {
+            body: body.clone(),
+            shortened: false,
+            trimmed_from_tokens: None,
+        };
+    };
+    let keep = keep_messages.max(1) as usize;
+    if messages.len() <= keep {
+        return HousekeepingTrim {
+            body: body.clone(),
+            shortened: false,
+            trimmed_from_tokens: None,
+        };
+    }
+    let mut start = messages.len().saturating_sub(keep);
+    let initial = start;
+    while start < messages.len() && !is_valid_trim_start(&messages[start]) {
+        start += 1;
+    }
+    if start >= messages.len() {
+        start = initial;
+        while start > 0 && !is_valid_trim_start(&messages[start]) {
+            start -= 1;
+        }
+        if !is_valid_trim_start(&messages[start]) {
+            return HousekeepingTrim {
+                body: body.clone(),
+                shortened: false,
+                trimmed_from_tokens: None,
+            };
+        }
+    }
+    let mut slice: Vec<Value> = messages[start..].to_vec();
+    drop_orphan_tool_results(&mut slice);
+    if slice.len() == messages.len() {
+        return HousekeepingTrim {
+            body: body.clone(),
+            shortened: false,
+            trimmed_from_tokens: None,
+        };
+    }
+    let mut copy = body.clone();
+    if let Some(object) = copy.as_object_mut() {
+        object.insert("messages".to_string(), Value::Array(slice));
+    }
+    HousekeepingTrim {
+        body: copy,
+        shortened: true,
+        trimmed_from_tokens: Some(pre_tokens),
+    }
+}
+
+fn drop_orphan_tool_results(messages: &mut Vec<Value>) {
+    let mut known = std::collections::HashSet::new();
+    for message in messages.iter() {
+        let Some(parts) = message.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        for part in parts {
+            if part.get("type").and_then(Value::as_str) != Some("tool_use") {
+                continue;
+            }
+            if let Some(id) = part.get("id").and_then(Value::as_str) {
+                known.insert(id.to_string());
+            }
+        }
+    }
+    let last = messages.len().saturating_sub(1);
+    for (index, message) in messages.iter_mut().enumerate() {
+        if index == last {
+            continue;
+        }
+        if message.get("role").and_then(Value::as_str) != Some("user") {
+            continue;
+        }
+        let Some(parts) = message.get_mut("content").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        parts.retain(|part| {
+            if part.get("type").and_then(Value::as_str) != Some("tool_result") {
+                return true;
+            }
+            part.get("tool_use_id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| known.contains(id))
+        });
+    }
+    messages.retain(|message| {
+        if message.get("role").and_then(Value::as_str) != Some("user") {
+            return true;
+        }
+        match message.get("content") {
+            Some(Value::Array(parts)) => !parts.is_empty(),
+            Some(Value::String(text)) => !text.is_empty(),
+            _ => true,
+        }
+    });
 }
 
 fn content_text(content: Option<&Value>) -> String {

@@ -27,6 +27,7 @@ pub(super) struct RoutePlan {
     pub last_stall: Option<String>,
     pub pending_down_band: Option<String>,
     pub down_count: u32,
+    pub trimmed_from_tokens: Option<u64>,
 }
 
 pub(super) struct RouteCtx<'a> {
@@ -163,7 +164,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
     }
     let tier_after = ctx.auto.tiers().band(&plan.model).to_string();
     let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
-    encode_forward(&outgoing, meta)
+    encode_forward(&outgoing, meta, plan.trimmed_from_tokens)
 }
 
 fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
@@ -193,6 +194,7 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
             reason: plan.reason,
             tier_before: plan.tier_before.clone(),
             auto: ctx.auto,
+            trimmed_from_tokens: plan.trimmed_from_tokens,
         });
     }
     if plan.persist {
@@ -227,6 +229,7 @@ pub(super) struct ShapedForward<'a> {
     pub reason: Option<String>,
     pub tier_before: String,
     pub auto: &'a Auto,
+    pub trimmed_from_tokens: Option<u64>,
 }
 
 pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
@@ -242,12 +245,13 @@ pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
             allow_fallbacks: plan.auto.tiers.allow_fallbacks,
         }),
         meta,
+        plan.trimmed_from_tokens,
     )
 }
 
 pub(super) fn passthrough(body: &Value) -> Turn {
     let meta = RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None);
-    encode_forward(body, meta)
+    encode_forward(body, meta, None)
 }
 
 pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
@@ -326,14 +330,19 @@ fn remember(plan: RememberPlan<'_>) {
     );
 }
 
-fn encode_forward(body: &Value, meta: RouteMeta) -> Turn {
+fn encode_forward(body: &Value, meta: RouteMeta, trimmed_from_tokens: Option<u64>) -> Turn {
     match serde_json::to_vec(body) {
-        Ok(bytes) => Turn::Forward(Forward { body: bytes, meta }),
+        Ok(bytes) => Turn::Forward(Forward {
+            body: bytes,
+            meta,
+            trimmed_from_tokens,
+        }),
         Err(err) => {
             tracing::error!(%err, "autoroute encode failed");
             Turn::Forward(Forward {
                 body: Vec::new(),
                 meta: RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None),
+                trimmed_from_tokens: None,
             })
         }
     }

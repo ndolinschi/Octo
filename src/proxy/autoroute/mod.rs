@@ -150,7 +150,11 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
         tier_after,
         trigger: "retry".to_string(),
     };
-    let forward = crate::auto::Forward { body, meta };
+    let forward = crate::auto::Forward {
+        body,
+        meta,
+        trimmed_from_tokens: None,
+    };
     Some(
         dispatch_forward(DispatchForward {
             state: plan.state,
@@ -203,7 +207,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         tier_before: Some(meta.tier_before.clone()),
         tier_after: Some(meta.tier_after.clone()),
         trigger: meta.trigger.clone(),
-        trimmed_from_tokens: None,
+        trimmed_from_tokens: plan.forward.trimmed_from_tokens,
         auto: Some(plan.state.auto.clone()),
         on_response: hook,
     });

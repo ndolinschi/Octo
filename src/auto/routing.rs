@@ -7,7 +7,7 @@ pub fn normalize_trigger(reason: Option<&str>) -> String {
     }
     match reason {
         "classify" | "reclassify" | "upgrade" | "retry" | "hysteresis_hold" | "budget_cap"
-        | "housekeeping" => reason.to_string(),
+        | "housekeeping" | "housekeeping_trimmed" | "permission_check" => reason.to_string(),
         "tool_update" => "reclassify".to_string(),
         "upstream_retry" => "retry".to_string(),
         "stall_release" => "none".to_string(),

@@ -4,6 +4,7 @@ use super::routing::RouteMeta;
 pub struct Forward {
     pub body: Vec<u8>,
     pub meta: RouteMeta,
+    pub trimmed_from_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
