@@ -927,6 +927,38 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
 }
 
 #[test]
+fn shape_strips_anthropic_only_fields_that_break_openrouter() {
+    let body = json!({
+        "model": "claude-sonnet-4-5",
+        "max_tokens": 1024,
+        "output_config": {"effort": "high"},
+        "safeguards": {"something": true},
+        "context_management": {
+            "edits": [{"type": "clear_thinking_20251015", "keep": "all"}]
+        },
+        "tools": [{"name": "Bash", "input_schema": {"type": "object"}}],
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let shaped = shape(ShapePlan::new(
+        &body,
+        "mistralai/devstral-2512",
+        Some("claude-sonnet-4-5"),
+        None,
+    ));
+    assert!(
+        shaped.get("output_config").is_none(),
+        "output_config + require_parameters 404s OpenRouter Mistral"
+    );
+    assert!(shaped.get("safeguards").is_none());
+    assert!(
+        shaped.get("context_management").is_some(),
+        "context_management is left alone"
+    );
+    assert_eq!(shaped["provider"]["require_parameters"], true);
+    assert_eq!(shaped["model"], "mistralai/devstral-2512");
+}
+
+#[test]
 fn shape_merges_provider_pin_without_dropping_require_parameters() {
     let body = json!({
         "model": "m",

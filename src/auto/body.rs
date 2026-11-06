@@ -436,6 +436,7 @@ pub fn shape(plan: ShapePlan<'_>) -> Value {
     }
     clamp_max_tokens(&mut copy, plan.models, plan.model);
     drop_unsupported_thinking(&mut copy, plan.models, plan.model);
+    drop_anthropic_only_fields(&mut copy);
     require_tool_parameters(&mut copy);
     merge_provider_pin(&mut copy, plan.provider_order, plan.allow_fallbacks);
     copy
@@ -532,4 +533,12 @@ fn drop_unsupported_thinking(body: &mut Value, models: Option<&OpenRouterModels>
     if let Some(object) = body.as_object_mut() {
         object.remove("thinking");
     }
+}
+
+fn drop_anthropic_only_fields(body: &mut Value) {
+    let Some(object) = body.as_object_mut() else {
+        return;
+    };
+    object.remove("output_config");
+    object.remove("safeguards");
 }
