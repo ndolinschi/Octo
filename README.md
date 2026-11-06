@@ -151,6 +151,10 @@ curl http://127.0.0.1:8080/openrouter/v1/messages \
 
 On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/llm.toml`, or send `"type": "OPENROUTER"` in the JSON body (stripped before upstream).
 
+### Autoroute model ladder (Mistral)
+
+`config/autoroute.toml` low/mid/high defaults are now **Mistral** (`ministral-8b-2512` → `mistral-small-3.1-24b-instruct` → `devstral-2512`), replacing the previous Gemma / DeepSeek / Haiku-latest ladder. This applies to **all** `/autoroute` traffic, not only Claude Code experiments.
+
 ### Claude Code + Octo autoroute (Mistral tiers)
 
 Claude Code reads **`ANTHROPIC_DEFAULT_*_MODEL`** and **`CLAUDE_CODE_SUBAGENT_MODEL`** (not Octo). For local experiments through **`/autoroute`**:

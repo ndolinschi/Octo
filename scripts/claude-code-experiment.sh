@@ -15,7 +15,8 @@
 #   Interactive defaults to normal permission prompts.
 #   Set OCTO_CC_SKIP_PERMISSIONS=1 to force skip; =0 to force prompts.
 #
-# Octo must already be running (cargo run) with autoroute on :8080.
+# Local Octo (/autoroute or /openrouter) must be running unless BASE_URL is remote.
+# Set OCTO_CC_REQUIRE_LOCAL=0 to skip the health check.
 
 set -euo pipefail
 
@@ -26,10 +27,21 @@ CLAUDE_CODE_ENV_QUIET=1 source "${ROOT}/scripts/claude-code-env.sh"
 mkdir -p "${OCTO_EXPERIMENTS_DIR}"
 cd "${OCTO_EXPERIMENTS_DIR}"
 
-if ! curl -sf -m 2 "http://${OCTO_BIND}/health" >/dev/null; then
-  echo "Octo health check failed at http://${OCTO_BIND}/health — start with: cargo run" >&2
-  exit 1
+_octo_needs_local_health=1
+case "${OCTO_CC_REQUIRE_LOCAL:-}" in
+  0|false|FALSE|no|NO) _octo_needs_local_health=0 ;;
+esac
+case "${ANTHROPIC_BASE_URL}" in
+  http://127.0.0.1:*|http://localhost:*|http://"[::1]":*) ;;
+  *) _octo_needs_local_health=0 ;;
+esac
+if [[ "${_octo_needs_local_health}" -eq 1 ]]; then
+  if ! curl -sf -m 2 "http://${OCTO_BIND}/health" >/dev/null; then
+    echo "Octo health check failed at http://${OCTO_BIND}/health — start with: cargo run" >&2
+    exit 1
+  fi
 fi
+unset _octo_needs_local_health
 
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 if ! command -v "${CLAUDE_BIN}" >/dev/null 2>&1; then
