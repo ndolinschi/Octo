@@ -7,6 +7,7 @@ pub enum StallTrigger {
     RepeatedCall,
     ErrorStreak,
     EditStreak,
+    TextToolCall,
 }
 
 impl StallTrigger {
@@ -15,12 +16,16 @@ impl StallTrigger {
             Self::RepeatedCall => "repeated_call",
             Self::ErrorStreak => "error_streak",
             Self::EditStreak => "edit_streak",
+            Self::TextToolCall => "text_tool_call",
         }
     }
 }
 
 pub fn detect(body: &Value, window: u32) -> Option<StallTrigger> {
     let window = window.max(1) as usize;
+    if super::text_tool_call::assistant_text_tool_call(body) {
+        return Some(StallTrigger::TextToolCall);
+    }
     if repeated_call(body, window) {
         return Some(StallTrigger::RepeatedCall);
     }

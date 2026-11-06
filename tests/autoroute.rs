@@ -6,10 +6,10 @@ use octo::auto::context_length;
 use octo::auto::{
     apply_sticky, cap_decision_text, cap_for_budget, choice, choice_from_scores, classified,
     compaction_body, context_estimate, decide, detect_stall, dropped, filter_tools, inspect,
-    is_housekeeping, larger_fit, max_completion_tokens, needed_tools, needs_compact,
-    output_reserve, payload, question_text, session_id, session_key, shape, with_model, Auto,
-    Complexity, DecideRequest, LargerFit, PayloadPlan, RouteMeta, SessionChoice, ShapePlan,
-    StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
+    is_housekeeping, larger_fit, looks_like_text_tool_call, max_completion_tokens, needed_tools,
+    needs_compact, output_reserve, payload, question_text, session_id, session_key, shape,
+    with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan, RouteMeta, SessionChoice,
+    ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -82,6 +82,29 @@ fn question_text_keeps_session_and_conversation_inner() {
         }]
     });
     assert_eq!(question_text(&body), "Hello world\n\nping");
+}
+
+#[test]
+fn question_text_keeps_command_args_from_plan_slash_command() {
+    let body = json!({
+        "messages": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "<system-reminder>\nIgnore this boilerplate.\n</system-reminder>\n<command-name>/plan</command-name>\n<command-message>plan</command-message>\n<command-args>Создай в папке ./taskq небольшую локальную очередь задач на Python.</command-args>\n<local-command-stdout>Enabled plan mode</local-command-stdout>"
+                }
+            ]
+        }],
+        "tools": [{"name": "Agent"}, {"name": "Bash"}]
+    });
+    let question = question_text(&body);
+    assert!(
+        question.contains("./taskq"),
+        "command-args task must survive strip, got {question:?}"
+    );
+    assert!(!question.contains("Ignore this boilerplate"));
+    assert!(!question.contains("Enabled plan mode"));
 }
 
 #[test]
@@ -550,6 +573,106 @@ fn stall_detects_repeated_call_error_streak_and_edit_streak() {
 }
 
 #[test]
+fn text_tool_call_detector_matches_agent_json_and_ignores_markdown_plan() {
+    let tools = ["Agent", "Bash", "Read"];
+    let agent_text = r#"[{"name": "Agent", "arguments": {"description": "Create task queue", "prompt": "build ./taskq"}}]"#;
+    assert!(looks_like_text_tool_call(agent_text, &tools));
+    assert!(looks_like_text_tool_call(
+        r#"{"name":"Bash","arguments":{"command":"ls"}}"#,
+        &tools
+    ));
+    assert!(looks_like_text_tool_call(
+        "Here:\n<tool_call>\n{\"name\": \"Read\", \"arguments\": {\"file_path\": \"/tmp/a\"}}\n</tool_call>",
+        &tools
+    ));
+    assert!(!looks_like_text_tool_call(
+        "### Plan\n\n1. Create ./taskq\n2. Add tests\n",
+        &tools
+    ));
+    assert!(!looks_like_text_tool_call(
+        r#"[{"name": "NotATool", "arguments": {}}]"#,
+        &tools
+    ));
+}
+
+#[test]
+fn detect_stall_flags_text_tool_call_in_last_assistant_message() {
+    let body = json!({
+        "tools": [
+            {"name": "Agent", "input_schema": {"type": "object"}},
+            {"name": "Bash", "input_schema": {"type": "object"}}
+        ],
+        "messages": [
+            {"role": "user", "content": "build taskq"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "[{\"name\": \"Agent\", \"arguments\": {\"description\": \"Create task queue\", \"prompt\": \"...\"}}]"}
+            ]},
+            {"role": "user", "content": "continue"}
+        ]
+    });
+    assert_eq!(detect_stall(&body, 6), Some(StallTrigger::TextToolCall));
+}
+
+#[test]
+fn text_tool_call_stall_escalates_mid_from_low() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.escalate_turns = 3;
+    let escalated = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: None,
+        classified: Complexity::Low,
+        preferred: None,
+        stall: Some(StallTrigger::TextToolCall),
+        tool_results_only: false,
+    });
+    assert_eq!(escalated.model, "mid-m");
+    assert_eq!(
+        escalated.reason.as_deref(),
+        Some("stall_escalate:text_tool_call")
+    );
+    assert_eq!(escalated.escalate_remaining, 3);
+}
+
+#[tokio::test]
+async fn mark_text_tool_call_escalate_bumps_next_forward_model() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.escalate_turns = 2;
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "sess-ttc",
+        SessionChoice::fresh("low-m".into(), vec!["Agent".into()], "low".into()),
+    );
+    auto.mark_text_tool_call_escalate("sess-ttc");
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body = json!({
+        "metadata": {"user_id": "{\"session_id\":\"sess-ttc\"}"},
+        "model": "low-m",
+        "max_tokens": 256,
+        "tools": [{"name": "Agent"}],
+        "messages": [{"role": "user", "content": "continue the task"}]
+    });
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    let outgoing: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(
+        outgoing["model"], "mid-m",
+        "session escalate from text_tool_call must bump model"
+    );
+}
+
+#[test]
 fn stall_escalates_then_releases_and_down_needs_confirm() {
     let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
     tiers.escalate_turns = 3;
@@ -709,6 +832,23 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         max_completion_tokens(Some(&models), "new-model"),
         Some(4096)
     );
+    assert_eq!(
+        changed["provider"]["require_parameters"], true,
+        "tools present → require_parameters"
+    );
+
+    let no_tools = json!({
+        "model": "old-model",
+        "max_tokens": 100,
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let plain = shape(ShapePlan {
+        body: &no_tools,
+        model: "old-model",
+        previous_model: None,
+        models: None,
+    });
+    assert!(plain.get("provider").is_none());
 
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
@@ -722,6 +862,7 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         shaped["tools"].as_array().unwrap().len(),
         fixture["tools"].as_array().unwrap().len()
     );
+    assert_eq!(shaped["provider"]["require_parameters"], true);
 }
 
 #[tokio::test]

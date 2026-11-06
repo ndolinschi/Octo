@@ -171,6 +171,7 @@ struct DispatchForward<'a> {
 
 async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyError> {
     let session_id = plan.session.clone();
+    let tool_names = forward_tool_names(&plan.forward.body);
     let hook = (!plan.chat)
         .then_some(session_id.clone())
         .flatten()
@@ -179,6 +180,9 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
             Arc::new(move |text: &str| {
                 if stop_reason_is(text, "model_context_window_exceeded") {
                     auto.mark_awaiting_compact(&id);
+                }
+                if crate::auto::response_has_text_tool_call(text, &tool_names) {
+                    auto.mark_text_tool_call_escalate(&id);
                 }
             }) as Arc<dyn Fn(&str) + Send + Sync>
         });
@@ -270,6 +274,22 @@ async fn chat_compact(
             }),
         )
         .await
+}
+
+fn forward_tool_names(body: &[u8]) -> Vec<String> {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return Vec::new();
+    };
+    value
+        .get("tools")
+        .and_then(Value::as_array)
+        .map(|tools| {
+            tools
+                .iter()
+                .filter_map(|tool| tool.get("name").and_then(Value::as_str).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub(super) fn stop_reason_is(text: &str, reason: &str) -> bool {

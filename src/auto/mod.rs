@@ -7,6 +7,7 @@ mod metrics;
 mod routing;
 mod session;
 mod stall;
+mod text_tool_call;
 
 pub use action::{Compact, Forward, ModelAction, Turn};
 pub use body::{
@@ -29,3 +30,4 @@ pub use metrics::{context_estimate, dropped, needs_compact, output_reserve};
 pub use routing::RouteMeta;
 pub use session::SessionChoice;
 pub use stall::{detect as detect_stall, StallTrigger};
+pub use text_tool_call::{looks_like_text_tool_call, response_has_text_tool_call};
