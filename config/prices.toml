@@ -1,0 +1,24 @@
+# Fill USD-per-1M-token rates from the provider console (e.g. Mistral / OpenRouter).
+# estimated_cost_micros uses these when any rate for the model is non-zero.
+# billed_as maps Octo/OpenRouter slug -> provider invoice name for reconcile_costs.py.
+
+[prices."mistralai/ministral-8b-2512"]
+input = 0.0
+cache_read = 0.0
+cache_write = 0.0
+output = 0.0
+# billed_as = "ministral-8b-2512"
+
+[prices."mistralai/mistral-small-3.1-24b-instruct"]
+input = 0.0
+cache_read = 0.0
+cache_write = 0.0
+output = 0.0
+# billed_as = "mistral-small-3.1-24b-instruct"
+
+[prices."mistralai/devstral-2512"]
+input = 0.0
+cache_read = 0.0
+cache_write = 0.0
+output = 0.0
+# billed_as = "mistral-medium-3-5"

@@ -201,6 +201,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         tier_before: Some(meta.tier_before.clone()),
         tier_after: Some(meta.tier_after.clone()),
         trigger: meta.trigger.clone(),
+        trimmed_from_tokens: None,
         auto: Some(plan.state.auto.clone()),
         on_response: hook,
     });
@@ -269,6 +270,7 @@ async fn chat_compact(
                 tier_before: None,
                 tier_after: None,
                 trigger: "none".to_string(),
+                trimmed_from_tokens: None,
                 auto: None,
                 on_response: None,
             }),

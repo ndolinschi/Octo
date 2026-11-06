@@ -12,6 +12,7 @@ mod call;
 mod call_kind;
 mod call_provider;
 mod connect;
+mod cost;
 mod error;
 mod metrics;
 mod payload;
@@ -19,6 +20,7 @@ mod payload;
 pub use call::{CallObserve, DecisionRow, FinishedCall};
 pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
+pub use cost::{resolve_cost, CostSource, ModelPrice, PriceTable, ResolvedCost};
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
 pub use payload::cost_micros_from_json;
@@ -36,6 +38,7 @@ pub struct History {
     pool: Option<SqlitePool>,
     token_key: Vec<u8>,
     capture_limit: usize,
+    prices: Arc<PriceTable>,
     inserts: Arc<Semaphore>,
     inflight: Arc<AtomicUsize>,
     idle: Arc<Notify>,
@@ -47,6 +50,7 @@ impl History {
             pool: None,
             token_key: Vec::new(),
             capture_limit: 0,
+            prices: Arc::new(PriceTable::default()),
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
@@ -55,6 +59,15 @@ impl History {
 
     pub fn capture_limit(&self) -> usize {
         self.capture_limit
+    }
+
+    pub fn prices(&self) -> &PriceTable {
+        &self.prices
+    }
+
+    pub fn with_prices(mut self, prices: PriceTable) -> Self {
+        self.prices = Arc::new(prices);
+        self
     }
 
     pub async fn connect(
@@ -71,6 +84,7 @@ impl History {
             pool: Some(pool),
             token_key: key,
             capture_limit,
+            prices: Arc::new(PriceTable::default()),
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
@@ -387,13 +401,18 @@ async fn insert_decision(
     let request_payload = clip(&row.request_payload, capture_limit);
     let response_payload = clip(&row.response_payload, capture_limit);
     let cost_micros = row.cost.map(cost_micros_to_sql);
+    let or_cost_micros = row.or_cost.map(cost_micros_to_sql);
+    let upstream_cost_micros = row.upstream_cost.map(cost_micros_to_sql);
+    let estimated_cost_micros = row.estimated_cost.map(cost_micros_to_sql);
+    let cost_source = row.cost_source.as_str();
     sqlx::query!(
         r#"
         INSERT INTO decisions (
             created_at, session_id, purpose, model, status, latency_ms, user_text,
             is_hard, is_easy, is_hard_score, is_easy_score, tools_enough, complexity, choice_rule, missing_tools,
-            request_payload, response_payload, cost_micros
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            request_payload, response_payload, cost_micros,
+            or_cost_micros, upstream_cost_micros, estimated_cost_micros, cost_source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         session_id,
@@ -412,7 +431,11 @@ async fn insert_decision(
         missing_tools,
         request_payload,
         response_payload,
-        cost_micros
+        cost_micros,
+        or_cost_micros,
+        upstream_cost_micros,
+        estimated_cost_micros,
+        cost_source
     )
     .execute(pool)
     .await?;
@@ -442,6 +465,15 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let input_tokens = call.input_tokens.map(token_count_to_sql);
     let output_tokens = call.output_tokens.map(token_count_to_sql);
     let cost_micros = call.cost.map(cost_micros_to_sql);
+    let or_cost_micros = call.or_cost.map(cost_micros_to_sql);
+    let upstream_cost_micros = call.upstream_cost.map(cost_micros_to_sql);
+    let estimated_cost_micros = call.estimated_cost.map(cost_micros_to_sql);
+    let cost_source = call.cost_source.as_str();
+    let is_byok = call.is_byok.map(|v| i64::from(v));
+    let upstream_provider = call.upstream_provider.as_deref();
+    let trimmed_from_tokens = call
+        .trimmed_from_tokens
+        .map(|n| i64::try_from(n).unwrap_or(i64::MAX));
     let cache_read_tokens = call.cache_read_tokens.map(token_count_to_sql);
     let cache_write_tokens = call.cache_write_tokens.map(token_count_to_sql);
     let generation_id = call.generation_id.as_deref();
@@ -458,8 +490,10 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
             request_payload, response_payload,
             status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros,
             cache_read_tokens, cache_write_tokens, generation_id,
-            rerouting, rerouting_reason, session_id, tier_before, tier_after, trigger
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            rerouting, rerouting_reason, session_id, tier_before, tier_after, trigger,
+            or_cost_micros, upstream_cost_micros, estimated_cost_micros, cost_source,
+            is_byok, upstream_provider, trimmed_from_tokens
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -486,7 +520,14 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         session_id,
         tier_before,
         tier_after,
-        trigger
+        trigger,
+        or_cost_micros,
+        upstream_cost_micros,
+        estimated_cost_micros,
+        cost_source,
+        is_byok,
+        upstream_provider,
+        trimmed_from_tokens
     )
     .execute(pool)
     .await?;

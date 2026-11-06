@@ -9,8 +9,8 @@ use serde_json::Value;
 
 use crate::auto::{session_key, Compact};
 use crate::history::{
-    describe_input, request_payload, response_payload, token_from_headers, usage_from_output,
-    CallKind, CallProvider, FinishedCall, Millis,
+    describe_input, request_payload, resolve_cost, response_payload, token_from_headers,
+    usage_from_output, CallKind, CallProvider, FinishedCall, Millis,
 };
 use crate::providers::openrouter::{apply_attribution, AttributionDefaults};
 use crate::providers::utils::{apply_openrouter_messages_auth, forward_content_type};
@@ -131,6 +131,7 @@ fn record(plan: RecordPlan<'_>) {
         plan.state.history.token_hash(&secret).ok()
     };
     let usage = usage_from_output(&output_text);
+    let resolved = resolve_cost(&usage, model.as_deref(), plan.state.history.prices());
     plan.state.history.record(FinishedCall {
         kind: CallKind::Messages,
         provider: CallProvider::OpenRouter,
@@ -153,7 +154,14 @@ fn record(plan: RecordPlan<'_>) {
         response_bytes: plan.output.len(),
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
-        cost: usage.cost,
+        cost: resolved.cost,
+        or_cost: resolved.or_cost,
+        upstream_cost: resolved.upstream_cost,
+        estimated_cost: resolved.estimated_cost,
+        cost_source: resolved.source.as_str().to_string(),
+        is_byok: resolved.is_byok,
+        upstream_provider: resolved.upstream_provider,
+        trimmed_from_tokens: None,
         cache_read_tokens: usage.cache_read_tokens,
         cache_write_tokens: usage.cache_write_tokens,
         generation_id: usage.generation_id.clone(),

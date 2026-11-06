@@ -9,11 +9,15 @@ use axum::http::HeaderMap;
 use super::call_kind::CallKind;
 use super::call_provider::CallProvider;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ParsedUsage {
     pub input_tokens: Option<super::TokenCount>,
     pub output_tokens: Option<super::TokenCount>,
     pub cost: Option<super::CostMicros>,
+    pub or_cost: Option<super::CostMicros>,
+    pub upstream_cost: Option<super::CostMicros>,
+    pub is_byok: Option<bool>,
+    pub upstream_provider: Option<String>,
     pub cache_read_tokens: Option<super::TokenCount>,
     pub cache_write_tokens: Option<super::TokenCount>,
     pub generation_id: Option<String>,
@@ -24,6 +28,10 @@ impl ParsedUsage {
         input_tokens: None,
         output_tokens: None,
         cost: None,
+        or_cost: None,
+        upstream_cost: None,
+        is_byok: None,
+        upstream_provider: None,
         cache_read_tokens: None,
         cache_write_tokens: None,
         generation_id: None,

@@ -130,6 +130,10 @@ pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> Pars
         input_tokens: head.input_tokens.or(end.input_tokens),
         output_tokens: end.output_tokens.or(head.output_tokens),
         cost: end.cost.or(head.cost),
+        or_cost: end.or_cost.or(head.or_cost),
+        upstream_cost: end.upstream_cost.or(head.upstream_cost),
+        is_byok: end.is_byok.or(head.is_byok),
+        upstream_provider: end.upstream_provider.or(head.upstream_provider),
         cache_read_tokens: end.cache_read_tokens.or(head.cache_read_tokens),
         cache_write_tokens: end.cache_write_tokens.or(head.cache_write_tokens),
         generation_id: head.generation_id.or(end.generation_id),
@@ -141,6 +145,7 @@ fn fold_usage(found: ParsedUsage, raw: &str) -> ParsedUsage {
         return found;
     };
     let found = apply_generation_id(found, &value);
+    let found = apply_provider(found, &value);
     let found = apply_usage(found, value.get("usage"));
     apply_usage(
         found,
@@ -148,6 +153,26 @@ fn fold_usage(found: ParsedUsage, raw: &str) -> ParsedUsage {
             .get("message")
             .and_then(|message| message.get("usage")),
     )
+}
+
+fn apply_provider(found: ParsedUsage, value: &Value) -> ParsedUsage {
+    if found.upstream_provider.is_some() {
+        return found;
+    }
+    let provider = value
+        .get("provider")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            value
+                .get("message")
+                .and_then(|message| message.get("provider"))
+                .and_then(Value::as_str)
+        })
+        .map(str::to_string);
+    ParsedUsage {
+        upstream_provider: provider,
+        ..found
+    }
 }
 
 fn apply_generation_id(found: ParsedUsage, value: &Value) -> ParsedUsage {
@@ -180,7 +205,16 @@ fn apply_usage(found: ParsedUsage, usage: Option<&Value>) -> ParsedUsage {
     let output_tokens = json_token_count(usage.get("completion_tokens"))
         .or_else(|| json_token_count(usage.get("output_tokens")))
         .or(found.output_tokens);
-    let cost = json_cost_micros(usage.get("cost")).or(found.cost);
+    let or_cost = json_cost_micros(usage.get("cost")).or(found.or_cost);
+    let upstream_cost = usage
+        .get("cost_details")
+        .and_then(|details| json_cost_micros(details.get("upstream_inference_cost")))
+        .or(found.upstream_cost);
+    let is_byok = usage
+        .get("is_byok")
+        .and_then(Value::as_bool)
+        .or(found.is_byok);
+    let cost = or_cost.or(found.cost);
     let cache_read_tokens = json_token_count(usage.get("cache_read_input_tokens"))
         .or_else(|| {
             usage
@@ -194,6 +228,10 @@ fn apply_usage(found: ParsedUsage, usage: Option<&Value>) -> ParsedUsage {
         input_tokens,
         output_tokens,
         cost,
+        or_cost,
+        upstream_cost,
+        is_byok,
+        upstream_provider: found.upstream_provider,
         cache_read_tokens,
         cache_write_tokens,
         generation_id: found.generation_id,

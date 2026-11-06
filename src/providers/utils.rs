@@ -11,8 +11,8 @@ use reqwest::{Client, RequestBuilder};
 use tracing::info;
 
 use crate::history::{
-    describe_input, request_payload, response_payload, token_from_headers, usage_from_parts,
-    CallObserve, FinishedCall, Millis,
+    describe_input, request_payload, resolve_cost, response_payload, token_from_headers,
+    usage_from_parts, CallObserve, FinishedCall, Millis,
 };
 use crate::proxy::error::ProxyError;
 
@@ -144,6 +144,7 @@ impl Capture {
                 tier_before: observe.tier_before.clone(),
                 tier_after: observe.tier_after.clone(),
                 trigger: observe.trigger.clone(),
+                trimmed_from_tokens: observe.trimmed_from_tokens,
                 auto: observe.auto.clone(),
                 on_response: observe.on_response.clone(),
             },
@@ -161,6 +162,11 @@ impl Capture {
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let tail_text = String::from_utf8_lossy(&tail);
         let usage = usage_from_parts(&output_text, &tail_text, response_bytes);
+        let resolved = resolve_cost(
+            &usage,
+            self.model.as_deref(),
+            self.observe.history.prices(),
+        );
         let response_payload = response_payload(
             self.observe.kind,
             self.observe.provider,
@@ -185,7 +191,14 @@ impl Capture {
             response_bytes,
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
-            cost: usage.cost,
+            cost: resolved.cost,
+            or_cost: resolved.or_cost,
+            upstream_cost: resolved.upstream_cost,
+            estimated_cost: resolved.estimated_cost,
+            cost_source: resolved.source.as_str().to_string(),
+            is_byok: resolved.is_byok,
+            upstream_provider: resolved.upstream_provider,
+            trimmed_from_tokens: self.observe.trimmed_from_tokens,
             cache_read_tokens: usage.cache_read_tokens,
             cache_write_tokens: usage.cache_write_tokens,
             generation_id: usage.generation_id.clone(),
@@ -197,7 +210,7 @@ impl Capture {
             trigger: self.observe.trigger.clone(),
         });
         if let (Some(auto), Some(session_id), Some(cost)) =
-            (&self.observe.auto, &self.observe.session_id, usage.cost)
+            (&self.observe.auto, &self.observe.session_id, resolved.cost)
         {
             auto.add_session_cost(session_id, cost.0);
         }
