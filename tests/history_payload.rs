@@ -165,7 +165,11 @@ fn byok_sse_prefers_upstream_inference_cost() {
     assert_eq!(usage.upstream_cost, Some(CostMicros(7_500)));
     assert_eq!(usage.is_byok, Some(true));
     assert_eq!(usage.upstream_provider.as_deref(), Some("Mistral"));
-    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &PriceTable::default());
+    let resolved = resolve_cost(
+        &usage,
+        Some("mistralai/devstral-2512"),
+        &PriceTable::default(),
+    );
     assert_eq!(resolved.source, CostSource::Upstream);
     assert_eq!(resolved.cost, Some(CostMicros(7_500)));
 }

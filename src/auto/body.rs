@@ -36,8 +36,7 @@ pub fn is_housekeeping(text: &str) -> bool {
 }
 
 pub fn is_permission_check(text: &str) -> bool {
-    text.contains("Err on the side of blocking")
-        || text.trim_start().starts_with("<transcript>")
+    text.contains("Err on the side of blocking") || text.trim_start().starts_with("<transcript>")
 }
 
 pub fn last_user_text(body: &Value) -> String {
@@ -478,7 +477,10 @@ fn merge_provider_pin(body: &mut Value, provider_order: &[String], allow_fallbac
         Some(_) => return,
         None => {
             object.insert("provider".to_string(), json!({}));
-            object.get_mut("provider").and_then(Value::as_object_mut).unwrap()
+            object
+                .get_mut("provider")
+                .and_then(Value::as_object_mut)
+                .unwrap()
         }
     };
     provider

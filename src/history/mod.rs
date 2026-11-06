@@ -480,7 +480,7 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let upstream_cost_micros = call.upstream_cost.map(cost_micros_to_sql);
     let estimated_cost_micros = call.estimated_cost.map(cost_micros_to_sql);
     let cost_source = call.cost_source.as_str();
-    let is_byok = call.is_byok.map(|v| i64::from(v));
+    let is_byok = call.is_byok.map(i64::from);
     let upstream_provider = call.upstream_provider.as_deref();
     let trimmed_from_tokens = call
         .trimmed_from_tokens

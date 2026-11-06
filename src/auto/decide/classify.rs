@@ -101,11 +101,8 @@ struct RecordPlan<'a> {
 fn record(plan: RecordPlan<'_>) {
     let parsed = plan.asked.parsed.as_ref();
     let usage = crate::history::usage_from_output(&plan.asked.response_body);
-    let resolved = crate::history::resolve_cost(
-        &usage,
-        Some("typesafe/jev-1.13"),
-        plan.history.prices(),
-    );
+    let resolved =
+        crate::history::resolve_cost(&usage, Some("typesafe/jev-1.13"), plan.history.prices());
     let cost = resolved.cost.or(plan.asked.cost);
     if let (Some(session_id), Some(cost)) = (&plan.session_id, cost) {
         plan.auto.add_session_cost(session_id, cost.0);

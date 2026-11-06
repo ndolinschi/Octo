@@ -74,7 +74,7 @@ async fn streamed_response_is_forwarded_then_stored() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
-        auto: None,
+            auto: None,
             on_response: None,
         }),
     )
@@ -144,7 +144,7 @@ async fn missing_token_is_not_a_shared_identity() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
-        auto: None,
+            auto: None,
             on_response: None,
         }),
     )
@@ -190,7 +190,7 @@ async fn decisions_response_is_stored_with_its_kind() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
-        auto: None,
+            auto: None,
             on_response: None,
         }),
     )
@@ -258,7 +258,7 @@ async fn usage_past_the_stored_prefix_is_kept() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
-        auto: None,
+            auto: None,
             on_response: None,
         }),
     )
@@ -335,7 +335,7 @@ async fn upstream_chunk_error_is_stored_as_failure() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
-        auto: None,
+            auto: None,
             on_response: None,
         }),
     )
@@ -377,10 +377,10 @@ async fn decision_row_is_inserted_into_decisions() {
         request_payload: "{}".to_string(),
         response_payload: "{}".to_string(),
         cost: None,
-    or_cost: None,
-    upstream_cost: None,
-    estimated_cost: None,
-    cost_source: "none".into(),
+        or_cost: None,
+        upstream_cost: None,
+        estimated_cost: None,
+        cost_source: "none".into(),
     });
     history.drain().await;
     let row = poll_call(&history, || async {

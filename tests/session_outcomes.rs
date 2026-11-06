@@ -48,10 +48,7 @@ fn parses_unittest_summary() {
         })
     );
     let ok = "Ran 2 tests in 0.001s\n\nOK\n";
-    assert_eq!(
-        parse_test_summary(ok).unwrap().last_status,
-        "pass"
-    );
+    assert_eq!(parse_test_summary(ok).unwrap().last_status, "pass");
 }
 
 #[test]

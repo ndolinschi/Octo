@@ -65,11 +65,7 @@ pub struct ResolvedCost {
     pub upstream_provider: Option<String>,
 }
 
-pub fn resolve_cost(
-    usage: &ParsedUsage,
-    model: Option<&str>,
-    prices: &PriceTable,
-) -> ResolvedCost {
+pub fn resolve_cost(usage: &ParsedUsage, model: Option<&str>, prices: &PriceTable) -> ResolvedCost {
     let or_cost = usage.or_cost.or(usage.cost);
     let upstream_cost = usage.upstream_cost;
     let estimated_cost = model

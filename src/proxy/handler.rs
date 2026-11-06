@@ -169,7 +169,7 @@ pub async fn decisions(
                 tier_after: None,
                 trigger: "none".to_string(),
                 trimmed_from_tokens: None,
-        auto: None,
+                auto: None,
                 on_response: None,
             }),
         )

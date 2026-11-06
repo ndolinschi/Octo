@@ -999,7 +999,12 @@ fn trim_housekeeping_keeps_system_tools_and_valid_slice() {
     }));
     let system = body["system"].clone();
     let tools = body["tools"].clone();
-    let last = body["messages"].as_array().unwrap().last().cloned().unwrap();
+    let last = body["messages"]
+        .as_array()
+        .unwrap()
+        .last()
+        .cloned()
+        .unwrap();
     let before = body["messages"].as_array().unwrap().len();
     let trimmed = trim_housekeeping(&body, 6, 12_000);
     assert!(trimmed.shortened);
@@ -1010,22 +1015,14 @@ fn trim_housekeeping_keeps_system_tools_and_valid_slice() {
     assert!(after.len() < before);
     assert!(after.len() <= 6 + 2);
     assert_eq!(after.last().unwrap(), &last);
-    assert_eq!(
-        after.first().unwrap()["role"].as_str(),
-        Some("user")
-    );
-    assert_ne!(
-        after
-            .first()
-            .unwrap()
-            .get("content")
-            .and_then(|c| c.as_array())
-            .map(|parts| parts
-                .iter()
-                .all(|p| p["type"] == "tool_result"))
-            .unwrap_or(false),
-        true
-    );
+    assert_eq!(after.first().unwrap()["role"].as_str(), Some("user"));
+    assert!(!after
+        .first()
+        .unwrap()
+        .get("content")
+        .and_then(|c| c.as_array())
+        .map(|parts| parts.iter().all(|p| p["type"] == "tool_result"))
+        .unwrap_or(false));
 }
 
 #[test]

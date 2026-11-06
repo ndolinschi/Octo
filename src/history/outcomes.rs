@@ -76,7 +76,10 @@ pub fn parse_test_summary(text: &str) -> Option<SessionOutcome> {
 }
 
 fn parse_cargo(text: &str) -> Option<SessionOutcome> {
-    let line = text.lines().rev().find(|line| line.contains("test result:"))?;
+    let line = text
+        .lines()
+        .rev()
+        .find(|line| line.contains("test result:"))?;
     let passed = number_before(line, "passed").unwrap_or(0);
     let failed = number_before(line, "failed").unwrap_or(0);
     let errors = number_before(line, "error").unwrap_or(0);

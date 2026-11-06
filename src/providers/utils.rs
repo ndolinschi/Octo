@@ -162,11 +162,7 @@ impl Capture {
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let tail_text = String::from_utf8_lossy(&tail);
         let usage = usage_from_parts(&output_text, &tail_text, response_bytes);
-        let resolved = resolve_cost(
-            &usage,
-            self.model.as_deref(),
-            self.observe.history.prices(),
-        );
+        let resolved = resolve_cost(&usage, self.model.as_deref(), self.observe.history.prices());
         let response_payload = response_payload(
             self.observe.kind,
             self.observe.provider,
