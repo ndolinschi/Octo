@@ -35,6 +35,11 @@ pub fn is_housekeeping(text: &str) -> bool {
         || text.contains("2-4 word lowercase label for this job")
 }
 
+pub fn is_permission_check(text: &str) -> bool {
+    text.contains("Err on the side of blocking")
+        || text.trim_start().starts_with("<transcript>")
+}
+
 pub fn last_user_text(body: &Value) -> String {
     let Some(messages) = body.get("messages").and_then(Value::as_array) else {
         return String::new();

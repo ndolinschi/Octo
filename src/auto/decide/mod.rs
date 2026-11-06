@@ -208,6 +208,40 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .map(|row| row.sticky_band.clone())
         .unwrap_or_else(|| "unset".to_string());
 
+    if body::is_permission_check(&raw_text) {
+        let row = choice.as_ref();
+        let model = row
+            .map(|row| row.model.clone())
+            .or_else(|| preferred.clone())
+            .unwrap_or_else(|| req.auto.tiers.mid.clone());
+        return route::run(RouteCtx {
+            auto: req.auto,
+            body: req.body,
+            models: loaded.as_ref(),
+            previous_model: row.map(|row| row.model.clone()),
+            plan: RoutePlan {
+                model,
+                tools: row
+                    .map(|row| row.tools.clone())
+                    .unwrap_or_else(|| all_tools.clone()),
+                reason: Some("permission_check".to_string()),
+                tier_before,
+                reserve,
+                allow_compact: req.allow_compact,
+                persist: false,
+                sticky_band: row
+                    .map(|row| row.sticky_band.clone())
+                    .unwrap_or_else(|| "unset".to_string()),
+                escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
+                escalate_band: row.and_then(|row| row.escalate_band.clone()),
+                last_stall: row.and_then(|row| row.last_stall.clone()),
+                pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
+                down_count: row.map(|row| row.down_count).unwrap_or(0),
+                trimmed_from_tokens: None,
+            },
+        });
+    }
+
     if body::is_housekeeping(&raw_text) {
         let model = req.auto.tiers.pick(Complexity::Low, preferred.as_deref());
         let row = choice.as_ref();

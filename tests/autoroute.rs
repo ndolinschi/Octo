@@ -6,10 +6,11 @@ use octo::auto::context_length;
 use octo::auto::{
     apply_sticky, cap_decision_text, cap_for_budget, choice, choice_from_scores, classified,
     compaction_body, context_estimate, decide, detect_stall, dropped, filter_tools, inspect,
-    is_housekeeping, larger_fit, looks_like_text_tool_call, max_completion_tokens, needed_tools,
-    needs_compact, output_reserve, payload, question_text, session_id, session_key, shape,
-    trim_housekeeping, with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan,
-    RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
+    is_housekeeping, is_permission_check, larger_fit, looks_like_text_tool_call,
+    max_completion_tokens, needed_tools, needs_compact, output_reserve, payload, question_text,
+    session_id, session_key, shape, trim_housekeeping, with_model, Auto, Complexity, DecideRequest,
+    LargerFit, PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan,
+    Thresholds, Tiers, Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -53,6 +54,71 @@ fn session_id_comes_from_metadata_user_id() {
 fn housekeeping_fixture_title_session() {
     let text = "<session>\nHello world\n</session>\n\nWrite the title in the predominant language of the codebase.";
     assert!(is_housekeeping(text));
+}
+
+#[test]
+fn permission_check_detector() {
+    assert!(is_permission_check(
+        "Claude Code is asking permission.\nErr on the side of blocking when unsure."
+    ));
+    assert!(is_permission_check(
+        "  <transcript>\nuser asked for bash\n</transcript>"
+    ));
+    assert!(!is_permission_check("please implement the feature"));
+}
+
+#[tokio::test]
+async fn permission_check_keeps_current_model_without_sticky() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    let mut seeded = SessionChoice::fresh("high-m".into(), vec!["Bash".into()], "high".into());
+    seeded.escalate_remaining = 2;
+    seeded.escalate_band = Some("mid".into());
+    auto.seed_session("perm-sess-1", seeded);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/permission_check.json")).unwrap();
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "high-m");
+    assert_eq!(forward.meta.trigger, "permission_check");
+    assert_eq!(forward.meta.tier_before, "high");
+    assert_eq!(forward.meta.tier_after, "high");
+
+    let follow = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"perm-sess-1\"}"},
+            "tools": [{"name": "Bash"}],
+            "messages": [{"role": "user", "content": ""}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(held) = follow else {
+        panic!("expected forward hold");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&held.body).unwrap()["model"],
+        "high-m"
+    );
 }
 
 #[test]
