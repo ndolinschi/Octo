@@ -170,9 +170,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
 fn skips_fill_upgrade(reason: Option<&str>) -> bool {
     matches!(
         reason,
-        Some(
-            "housekeeping" | "housekeeping_trimmed" | "permission_check" | "background_model"
-        )
+        Some("housekeeping" | "housekeeping_trimmed" | "permission_check" | "background_model")
     )
 }
 

@@ -1,8 +1,6 @@
 use serde_json::json;
 
-use octo::auto::{
-    decide, shape, Auto, DecideRequest, SessionChoice, ShapePlan, Tiers, Turn,
-};
+use octo::auto::{decide, shape, Auto, DecideRequest, SessionChoice, ShapePlan, Tiers, Turn};
 use octo::history::History;
 
 #[tokio::test]
@@ -100,9 +98,8 @@ async fn default_flags_preserve_fixture_triggers_and_bodies() {
             );
         }
         if name == "server_tool_passthrough" {
-            assert_eq!(
-                payload["model"].as_str().unwrap().contains(":online"),
-                false,
+            assert!(
+                !payload["model"].as_str().unwrap().contains(":online"),
                 "{name}: online_suffix must not apply in passthrough"
             );
             assert_eq!(

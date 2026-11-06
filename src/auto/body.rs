@@ -365,9 +365,7 @@ pub fn client_tool_labels(body: &Value) -> Vec<String> {
             if let Some(name) = tool_name(tool) {
                 return Some(name.to_string());
             }
-            tool.get("type")
-                .and_then(Value::as_str)
-                .map(str::to_string)
+            tool.get("type").and_then(Value::as_str).map(str::to_string)
         })
         .collect();
     labels.sort();
@@ -441,7 +439,11 @@ pub fn server_tool_types(body: &Value) -> Vec<String> {
 
 pub fn with_online_suffix(body: &Value) -> Value {
     let mut copy = body.clone();
-    let Some(model) = copy.get("model").and_then(Value::as_str).map(str::to_string) else {
+    let Some(model) = copy
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
         return copy;
     };
     if model.contains(":online") {

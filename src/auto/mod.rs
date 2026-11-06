@@ -12,9 +12,10 @@ mod text_tool_call;
 pub use action::{Compact, Forward, ModelAction, Turn};
 pub use body::{
     bg_signal, cap_decision_text, client_has_thinking, client_tool_names_csv, compaction_body,
-    filter_tools, is_housekeeping, is_permission_check, last_user_text, last_user_tool_results_only,
-    preferred_model, question_text, server_tool_types, session_id, session_key, shape,
-    trim_housekeeping, with_model, with_online_suffix, HousekeepingTrim, ShapePlan,
+    filter_tools, is_housekeeping, is_permission_check, last_user_text,
+    last_user_tool_results_only, preferred_model, question_text, server_tool_types, session_id,
+    session_key, shape, trim_housekeeping, with_model, with_online_suffix, HousekeepingTrim,
+    ShapePlan,
 };
 pub use catalog::Tiers;
 pub use catalog::{

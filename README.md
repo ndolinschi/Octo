@@ -166,7 +166,19 @@ On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/l
 - **Provider pin (opt-in):** `provider_order = []` / `allow_fallbacks = true` by default. A commented Mistral example is in the same file. Pinning does **not** choose BYOK vs OpenRouter-paid (account setting).
 - **Housekeeping trim:** long Claude Code housekeeping turns keep system/tools plus the last `housekeeping_keep_messages` (default 6); trigger becomes `housekeeping_trimmed` when shortened.
 - **Permission checks:** Claude Code prompts with `Err on the side of blocking` or `<transcript>` use trigger `permission_check`, keep the session model, and skip JEV/sticky.
-- **Prices:** fill `config/prices.toml` from the provider console so estimates can win over `usage.cost` when set.
+- **Prices:** fill `config/prices.toml` from the provider console; estimate wins only when **all four** rates (`input` / `cache_read` / `cache_write` / `output`) are present (explicit `0.0` counts).
+- **Observe columns (no routing change):** `client_model`, `client_has_thinking`, `client_tool_names`, `bg_signal`, `hk_text_signal` on `calls`.
+- **Opt-in background routing:** `background_by_client_model = false` by default; when true, haiku-like client models use trigger `background_model` (like housekeeping).
+- **Server tools:** `server_tool_mode = "passthrough"` (default) | `"online_suffix"` | `"reject"`.
+- **Status:** `GET /autoroute/status?session=<id>` (or latest) for statusline JSON; see `scripts/statusline.sh`.
+- **Payload storage:** `history.store_payloads = true` by default; set `false` to omit text payload columns while keeping metrics/observe/outcomes.
+- **Remote bind:** non-loopback `bind_addr` requires `server.allow_remote = true` and a non-empty `server.client_auth_key`.
+
+Claude Code `settings.json` status line:
+
+```json
+"statusLine": {"type": "command", "command": "/absolute/path/to/Octo/scripts/statusline.sh"}
+```
 
 ### Claude Code + Octo autoroute (Mistral tiers)
 

@@ -75,7 +75,11 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
                     "server tool `{tool}` is not supported by the autoroute ladder; set autoroute.server_tool_mode or remove the tool"
                 ),
             );
-            return Err(if chat { err } else { err.as_anthropic_messages() });
+            return Err(if chat {
+                err
+            } else {
+                err.as_anthropic_messages()
+            });
         }
     }
     let turn = crate::auto::decide(DecideRequest {

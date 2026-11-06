@@ -14,19 +14,13 @@ pub struct StatusQuery {
     session: Option<String>,
 }
 
-pub async fn status(
-    State(state): State<AppState>,
-    Query(query): Query<StatusQuery>,
-) -> Response {
+pub async fn status(State(state): State<AppState>, Query(query): Query<StatusQuery>) -> Response {
     let session_id = match query.session {
         Some(id) if !id.is_empty() => id,
         _ => match state.auto.latest_session_id() {
             Some(id) => id,
             None => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({"error":"no session"})),
-                )
+                return (StatusCode::NOT_FOUND, Json(json!({"error":"no session"})))
                     .into_response();
             }
         },
