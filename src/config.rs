@@ -57,6 +57,7 @@ pub struct Config {
     pub autoroute_provider_order: Vec<String>,
     pub autoroute_allow_fallbacks: bool,
     pub autoroute_background_model_patterns: Vec<String>,
+    pub autoroute_background_by_client_model: bool,
     pub prices: crate::history::PriceTable,
 }
 
@@ -356,6 +357,8 @@ struct AutorouteSection {
     allow_fallbacks: bool,
     #[serde(default = "default_autoroute_background_model_patterns")]
     background_model_patterns: Vec<String>,
+    #[serde(default)]
+    background_by_client_model: bool,
 }
 
 impl Default for AutorouteSection {
@@ -375,6 +378,7 @@ impl Default for AutorouteSection {
             provider_order: Vec::new(),
             allow_fallbacks: default_autoroute_allow_fallbacks(),
             background_model_patterns: default_autoroute_background_model_patterns(),
+            background_by_client_model: false,
         }
     }
 }
@@ -595,6 +599,7 @@ fn config_from_file(file: ConfigFile) -> Config {
         autoroute_provider_order: file.autoroute.provider_order,
         autoroute_allow_fallbacks: file.autoroute.allow_fallbacks,
         autoroute_background_model_patterns: file.autoroute.background_model_patterns,
+        autoroute_background_by_client_model: file.autoroute.background_by_client_model,
         prices: {
             use crate::history::{ModelPrice, PriceTable};
             let rows = file

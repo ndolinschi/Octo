@@ -71,6 +71,9 @@ impl AppState {
                 tiers.housekeeping_keep_messages = config.autoroute_housekeeping_keep_messages;
                 tiers.provider_order = config.autoroute_provider_order.clone();
                 tiers.allow_fallbacks = config.autoroute_allow_fallbacks;
+                tiers.background_by_client_model = config.autoroute_background_by_client_model;
+                tiers.background_model_patterns =
+                    config.autoroute_background_model_patterns.clone();
                 tiers
             }),
             config,

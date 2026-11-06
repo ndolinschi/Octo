@@ -46,6 +46,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_provider_order: Vec::new(),
         autoroute_allow_fallbacks: true,
         autoroute_background_model_patterns: vec!["haiku".to_string()],
+        autoroute_background_by_client_model: false,
         prices: octo::history::PriceTable::default(),
     }
 }

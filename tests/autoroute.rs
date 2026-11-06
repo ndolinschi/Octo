@@ -97,6 +97,135 @@ fn permission_check_detector() {
 }
 
 #[tokio::test]
+async fn background_by_client_model_off_matches_normal_path() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "bg-off",
+        SessionChoice::fresh("mid-m".into(), vec!["Read".into()], "mid".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body = json!({
+        "model": "claude-haiku-4-5",
+        "metadata": {"user_id": "{\"session_id\":\"bg-off\"}"},
+        "tools": [{"name": "Read"}],
+        "messages": [{"role": "user", "content": "what is the port?"}]
+    });
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert_ne!(forward.meta.trigger, "background_model");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "mid-m"
+    );
+}
+
+#[tokio::test]
+async fn background_by_client_model_on_forces_low_without_sticky() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.background_by_client_model = true;
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "bg-on",
+        SessionChoice::fresh("high-m".into(), vec!["Read".into()], "high".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body = json!({
+        "model": "claude-haiku-4-5",
+        "metadata": {"user_id": "{\"session_id\":\"bg-on\"}"},
+        "tools": [{"name": "Read"}],
+        "messages": [{"role": "user", "content": "summarize this quietly"}]
+    });
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert_eq!(forward.meta.trigger, "background_model");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "low-m"
+    );
+    let hold = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"bg-on\"}"},
+            "tools": [{"name": "Read"}],
+            "messages": [{"role": "user", "content": ""}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(held) = hold else {
+        panic!("expected hold");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&held.body).unwrap()["model"],
+        "high-m"
+    );
+}
+
+#[tokio::test]
+async fn permission_check_wins_over_background_model() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.background_by_client_model = true;
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "perm-bg",
+        SessionChoice::fresh("high-m".into(), vec!["Bash".into()], "high".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let mut body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/permission_check.json")).unwrap();
+    body["model"] = json!("claude-haiku-4-5");
+    body["metadata"] = json!({"user_id": "{\"session_id\":\"perm-bg\"}"});
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert_eq!(forward.meta.trigger, "permission_check");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "high-m"
+    );
+}
+
+#[tokio::test]
 async fn permission_check_keeps_current_model_without_sticky() {
     let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
     let auto = Auto::new(tiers);

@@ -20,6 +20,8 @@ pub struct Tiers {
     pub housekeeping_keep_messages: u32,
     pub provider_order: Vec<String>,
     pub allow_fallbacks: bool,
+    pub background_by_client_model: bool,
+    pub background_model_patterns: Vec<String>,
 }
 
 impl Tiers {
@@ -38,6 +40,8 @@ impl Tiers {
             housekeeping_keep_messages: 6,
             provider_order: Vec::new(),
             allow_fallbacks: true,
+            background_by_client_model: false,
+            background_model_patterns: vec!["haiku".to_string()],
         }
     }
 
