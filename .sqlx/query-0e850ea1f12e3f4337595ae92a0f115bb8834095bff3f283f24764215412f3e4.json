@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO decisions (\n            created_at, session_id, purpose, model, status, latency_ms, user_text,\n            is_hard, is_easy, is_hard_score, is_easy_score, tools_enough, complexity, choice_rule, missing_tools,\n            request_payload, response_payload, cost_micros,\n            or_cost_micros, upstream_cost_micros, estimated_cost_micros, cost_source\n        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 22
+    },
+    "nullable": []
+  },
+  "hash": "0e850ea1f12e3f4337595ae92a0f115bb8834095bff3f283f24764215412f3e4"
+}

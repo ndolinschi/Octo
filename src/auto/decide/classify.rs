@@ -100,7 +100,11 @@ struct RecordPlan<'a> {
 
 fn record(plan: RecordPlan<'_>) {
     let parsed = plan.asked.parsed.as_ref();
-    if let (Some(session_id), Some(cost)) = (&plan.session_id, plan.asked.cost) {
+    let usage = crate::history::usage_from_output(&plan.asked.response_body);
+    let resolved =
+        crate::history::resolve_cost(&usage, Some("typesafe/jev-1.13"), plan.history.prices());
+    let cost = resolved.cost.or(plan.asked.cost);
+    if let (Some(session_id), Some(cost)) = (&plan.session_id, cost) {
         plan.auto.add_session_cost(session_id, cost.0);
     }
     plan.history.record_decision(DecisionRow {
@@ -124,7 +128,11 @@ fn record(plan: RecordPlan<'_>) {
         missing_tools: parsed.map(|row| row.missing_tools.join(",")),
         request_payload: plan.asked.request_body.clone(),
         response_payload: plan.asked.response_body.clone(),
-        cost: plan.asked.cost,
+        cost,
+        or_cost: resolved.or_cost,
+        upstream_cost: resolved.upstream_cost,
+        estimated_cost: resolved.estimated_cost,
+        cost_source: resolved.source.as_str().to_string(),
     });
 }
 

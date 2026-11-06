@@ -6,10 +6,11 @@ use octo::auto::context_length;
 use octo::auto::{
     apply_sticky, cap_decision_text, cap_for_budget, choice, choice_from_scores, classified,
     compaction_body, context_estimate, decide, detect_stall, dropped, filter_tools, inspect,
-    is_housekeeping, larger_fit, looks_like_text_tool_call, max_completion_tokens, needed_tools,
-    needs_compact, output_reserve, payload, question_text, session_id, session_key, shape,
-    with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan, RouteMeta, SessionChoice,
-    ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
+    is_housekeeping, is_permission_check, larger_fit, looks_like_text_tool_call,
+    max_completion_tokens, needed_tools, needs_compact, output_reserve, payload, question_text,
+    session_id, session_key, shape, trim_housekeeping, with_model, Auto, Complexity, DecideRequest,
+    LargerFit, PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan,
+    Thresholds, Tiers, Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -53,6 +54,71 @@ fn session_id_comes_from_metadata_user_id() {
 fn housekeeping_fixture_title_session() {
     let text = "<session>\nHello world\n</session>\n\nWrite the title in the predominant language of the codebase.";
     assert!(is_housekeeping(text));
+}
+
+#[test]
+fn permission_check_detector() {
+    assert!(is_permission_check(
+        "Claude Code is asking permission.\nErr on the side of blocking when unsure."
+    ));
+    assert!(is_permission_check(
+        "  <transcript>\nuser asked for bash\n</transcript>"
+    ));
+    assert!(!is_permission_check("please implement the feature"));
+}
+
+#[tokio::test]
+async fn permission_check_keeps_current_model_without_sticky() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    let mut seeded = SessionChoice::fresh("high-m".into(), vec!["Bash".into()], "high".into());
+    seeded.escalate_remaining = 2;
+    seeded.escalate_band = Some("mid".into());
+    auto.seed_session("perm-sess-1", seeded);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/permission_check.json")).unwrap();
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "high-m");
+    assert_eq!(forward.meta.trigger, "permission_check");
+    assert_eq!(forward.meta.tier_before, "high");
+    assert_eq!(forward.meta.tier_after, "high");
+
+    let follow = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"perm-sess-1\"}"},
+            "tools": [{"name": "Bash"}],
+            "messages": [{"role": "user", "content": ""}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(held) = follow else {
+        panic!("expected forward hold");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&held.body).unwrap()["model"],
+        "high-m"
+    );
 }
 
 #[test]
@@ -796,24 +862,24 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
             supported_parameters: vec!["max_tokens".into()],
         }],
     };
-    let same = shape(ShapePlan {
-        body: &body,
-        model: "old-model",
-        previous_model: Some("old-model"),
-        models: Some(&models),
-    });
+    let same = shape(ShapePlan::new(
+        &body,
+        "old-model",
+        Some("old-model"),
+        Some(&models),
+    ));
     assert!(same["messages"][0]["content"]
         .as_array()
         .unwrap()
         .iter()
         .any(|part| part["type"] == "thinking"));
 
-    let changed = shape(ShapePlan {
-        body: &body,
-        model: "new-model",
-        previous_model: Some("old-model"),
-        models: Some(&models),
-    });
+    let changed = shape(ShapePlan::new(
+        &body,
+        "new-model",
+        Some("old-model"),
+        Some(&models),
+    ));
     let parts = changed["messages"][0]["content"].as_array().unwrap();
     assert!(parts.iter().all(|part| part["type"] != "thinking"));
     assert!(parts.iter().all(|part| part["type"] != "redacted_thinking"));
@@ -842,27 +908,212 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         "max_tokens": 100,
         "messages": [{"role": "user", "content": "hi"}]
     });
-    let plain = shape(ShapePlan {
-        body: &no_tools,
-        model: "old-model",
-        previous_model: None,
-        models: None,
-    });
+    let plain = shape(ShapePlan::new(&no_tools, "old-model", None, None));
     assert!(plain.get("provider").is_none());
 
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
-    let shaped = shape(ShapePlan {
-        body: &fixture,
-        model: "mid-model",
-        previous_model: Some("claude-sonnet-4-5"),
-        models: Some(&models),
-    });
+    let shaped = shape(ShapePlan::new(
+        &fixture,
+        "mid-model",
+        Some("claude-sonnet-4-5"),
+        Some(&models),
+    ));
     assert_eq!(
         shaped["tools"].as_array().unwrap().len(),
         fixture["tools"].as_array().unwrap().len()
     );
     assert_eq!(shaped["provider"]["require_parameters"], true);
+}
+
+#[test]
+fn shape_merges_provider_pin_without_dropping_require_parameters() {
+    let body = json!({
+        "model": "m",
+        "tools": [{"name": "Bash"}],
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let order = vec!["Mistral".to_string()];
+    let pinned = shape(ShapePlan {
+        body: &body,
+        model: "m",
+        previous_model: None,
+        models: None,
+        provider_order: &order,
+        allow_fallbacks: false,
+    });
+    assert_eq!(pinned["provider"]["require_parameters"], true);
+    assert_eq!(pinned["provider"]["order"], json!(["Mistral"]));
+    assert_eq!(pinned["provider"]["allow_fallbacks"], false);
+
+    let with_client = json!({
+        "model": "m",
+        "tools": [{"name": "Bash"}],
+        "provider": {
+            "order": ["Anthropic"],
+            "allow_fallbacks": true,
+            "require_parameters": false
+        },
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let kept = shape(ShapePlan {
+        body: &with_client,
+        model: "m",
+        previous_model: None,
+        models: None,
+        provider_order: &order,
+        allow_fallbacks: false,
+    });
+    assert_eq!(kept["provider"]["order"], json!(["Anthropic"]));
+    assert_eq!(kept["provider"]["allow_fallbacks"], true);
+    assert_eq!(kept["provider"]["require_parameters"], false);
+
+    let empty = shape(ShapePlan::new(&body, "m", None, None));
+    assert_eq!(empty["provider"], json!({"require_parameters": true}));
+}
+
+#[test]
+fn trim_housekeeping_keeps_system_tools_and_valid_slice() {
+    let mut body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
+    let messages = body["messages"].as_array_mut().unwrap();
+    for i in 0..8 {
+        messages.insert(
+            0,
+            json!({
+                "role": "user",
+                "content": format!("old turn {i}")
+            }),
+        );
+        messages.insert(
+            1,
+            json!({
+                "role": "assistant",
+                "content": [{"type": "text", "text": format!("reply {i}")}]
+            }),
+        );
+    }
+    messages.push(json!({
+        "role": "user",
+        "content": "Write the title in the predominant language of the codebase."
+    }));
+    let system = body["system"].clone();
+    let tools = body["tools"].clone();
+    let last = body["messages"]
+        .as_array()
+        .unwrap()
+        .last()
+        .cloned()
+        .unwrap();
+    let before = body["messages"].as_array().unwrap().len();
+    let trimmed = trim_housekeeping(&body, 6, 12_000);
+    assert!(trimmed.shortened);
+    assert_eq!(trimmed.trimmed_from_tokens, Some(12_000));
+    assert_eq!(trimmed.body["system"], system);
+    assert_eq!(trimmed.body["tools"], tools);
+    let after = trimmed.body["messages"].as_array().unwrap();
+    assert!(after.len() < before);
+    assert!(after.len() <= 6 + 2);
+    assert_eq!(after.last().unwrap(), &last);
+    assert_eq!(after.first().unwrap()["role"].as_str(), Some("user"));
+    assert!(!after
+        .first()
+        .unwrap()
+        .get("content")
+        .and_then(|c| c.as_array())
+        .map(|parts| parts.iter().all(|p| p["type"] == "tool_result"))
+        .unwrap_or(false));
+}
+
+#[test]
+fn trim_housekeeping_short_history_unchanged() {
+    let body = json!({
+        "system": "sys",
+        "tools": [{"name": "Bash"}],
+        "messages": [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "yo"},
+            {"role": "user", "content": "Write the title in the predominant language"}
+        ]
+    });
+    let trimmed = trim_housekeeping(&body, 6, 100);
+    assert!(!trimmed.shortened);
+    assert_eq!(trimmed.trimmed_from_tokens, None);
+    assert_eq!(trimmed.body, body);
+}
+
+#[test]
+fn trim_housekeeping_drops_orphan_tool_results() {
+    let body = json!({
+        "messages": [
+            {"role": "user", "content": "start"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "old", "name": "Read", "input": {}}
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "old", "content": "gone"}
+            ]},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "keep", "name": "Read", "input": {}}
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "keep", "content": "ok"},
+                {"type": "tool_result", "tool_use_id": "old", "content": "orphan"}
+            ]},
+            {"role": "user", "content": "Describe your most recent action in 3-5 words"}
+        ]
+    });
+    let trimmed = trim_housekeeping(&body, 3, 500);
+    assert!(trimmed.shortened);
+    let msgs = trimmed.body["messages"].as_array().unwrap();
+    let tool_results: Vec<&str> = msgs
+        .iter()
+        .filter(|m| m["role"] == "user")
+        .flat_map(|m| m["content"].as_array().into_iter().flatten())
+        .filter(|p| p["type"] == "tool_result")
+        .filter_map(|p| p["tool_use_id"].as_str())
+        .collect();
+    assert!(tool_results.iter().all(|id| *id == "keep"));
+    assert_eq!(
+        msgs.last().unwrap()["content"],
+        "Describe your most recent action in 3-5 words"
+    );
+}
+
+#[tokio::test]
+async fn housekeeping_trimmed_trigger_when_history_long() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let mut body: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
+    let messages = body["messages"].as_array_mut().unwrap();
+    for i in 0..10 {
+        messages.push(json!({"role": "user", "content": format!("turn {i}")}));
+        messages.push(json!({"role": "assistant", "content": format!("ok {i}")}));
+    }
+    messages.push(json!({
+        "role": "user",
+        "content": "Write the title in the predominant language of the codebase."
+    }));
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: false,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert_eq!(forward.meta.trigger, "housekeeping_trimmed");
+    assert!(forward.trimmed_from_tokens.is_some());
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert!(payload["messages"].as_array().unwrap().len() < 25);
 }
 
 #[tokio::test]
@@ -928,7 +1179,11 @@ async fn housekeeping_forces_low_even_when_stall_present() {
         serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
         "low-m"
     );
-    assert_eq!(forward.meta.trigger, "housekeeping");
+    assert!(
+        forward.meta.trigger.starts_with("housekeeping"),
+        "trigger={:?}",
+        forward.meta.trigger
+    );
     assert_eq!(forward.meta.tier_after, "low");
 }
 
@@ -1072,6 +1327,110 @@ async fn housekeeping_skips_fill_upgrade_keeps_low() {
         "low-m"
     );
     assert_eq!(forward.meta.trigger, "housekeeping");
+    assert_eq!(forward.meta.tier_after, "low");
+}
+
+#[tokio::test]
+async fn housekeeping_trimmed_skips_fill_upgrade_keeps_low() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    auto.seed_catalog(OpenRouterModels {
+        free: Vec::new(),
+        paid: vec![
+            paid("low-m", 4_000),
+            paid("mid-m", 200_000),
+            paid("high-m", 200_000),
+        ],
+    })
+    .await;
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let bulky = "x".repeat(12_000);
+    let mut messages = Vec::new();
+    for i in 0..10 {
+        messages.push(json!({"role": "user", "content": format!("turn {i}")}));
+        messages.push(json!({"role": "assistant", "content": format!("ok {i}")}));
+    }
+    messages.push(json!({
+        "role": "user",
+        "content": format!("[SUGGESTION MODE: Suggest next]\n{bulky}")
+    }));
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"hk-fill-trim\"}"},
+            "max_tokens": 4096,
+            "tools": [{"name": "Read"}],
+            "messages": messages
+        }),
+        allow_compact: false,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward without compact");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "low-m"
+    );
+    assert_eq!(forward.meta.trigger, "housekeeping_trimmed");
+    assert_eq!(forward.meta.tier_after, "low");
+    assert!(forward.trimmed_from_tokens.is_some());
+}
+
+#[tokio::test]
+async fn permission_check_skips_fill_upgrade_keeps_model() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    auto.seed_catalog(OpenRouterModels {
+        free: Vec::new(),
+        paid: vec![
+            paid("low-m", 4_000),
+            paid("mid-m", 200_000),
+            paid("high-m", 200_000),
+        ],
+    })
+    .await;
+    auto.seed_session(
+        "perm-fill",
+        SessionChoice::fresh("low-m".into(), vec!["Bash".into()], "low".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let bulky = "x".repeat(12_000);
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"perm-fill\"}"},
+            "max_tokens": 4096,
+            "tools": [{"name": "Bash"}],
+            "messages": [{
+                "role": "user",
+                "content": format!(
+                    "<transcript>\nuser: run bash\nassistant: needs permission\n</transcript>\n\
+                     Err on the side of blocking when unsure.\n{bulky}"
+                )
+            }]
+        }),
+        allow_compact: false,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward without compact");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "low-m"
+    );
+    assert_eq!(forward.meta.trigger, "permission_check");
     assert_eq!(forward.meta.tier_after, "low");
 }
 

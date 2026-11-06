@@ -36,6 +36,7 @@ async fn forward_chat(
         tier_before: None,
         tier_after: None,
         trigger: "none".to_string(),
+        trimmed_from_tokens: None,
         auto: None,
         on_response: None,
     });
@@ -98,6 +99,7 @@ async fn forward_messages(
         tier_before: None,
         tier_after: None,
         trigger: "none".to_string(),
+        trimmed_from_tokens: None,
         auto: None,
         on_response: None,
     });
@@ -166,6 +168,7 @@ pub async fn decisions(
                 tier_before: None,
                 tier_after: None,
                 trigger: "none".to_string(),
+                trimmed_from_tokens: None,
                 auto: None,
                 on_response: None,
             }),

@@ -42,6 +42,10 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_down_confirm: 2,
         autoroute_high_allow: Vec::new(),
         autoroute_session_budget_usd: 0.0,
+        autoroute_housekeeping_keep_messages: 6,
+        autoroute_provider_order: Vec::new(),
+        autoroute_allow_fallbacks: true,
+        prices: octo::history::PriceTable::default(),
     }
 }
 

@@ -149,3 +149,100 @@ fn whole_dollar_cost_scales_to_micros() {
         usage_from_output(r#"{"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":1}}"#);
     assert_eq!(usage.cost, Some(CostMicros(1_000_000)));
 }
+
+#[test]
+fn byok_sse_prefers_upstream_inference_cost() {
+    use octo::history::{resolve_cost, CostSource, PriceTable};
+
+    let output = concat!(
+        r#"data: {"type":"message_start","message":{"id":"msg_x","provider":"Mistral","usage":{"input_tokens":10}}}"#,
+        "\n\n",
+        r#"data: {"type":"message_delta","usage":{"input_tokens":100,"output_tokens":5,"cost":0,"is_byok":true,"cost_details":{"upstream_inference_cost":0.0075}}}"#,
+        "\n\n"
+    );
+    let usage = usage_from_output(output);
+    assert_eq!(usage.or_cost, Some(CostMicros(0)));
+    assert_eq!(usage.upstream_cost, Some(CostMicros(7_500)));
+    assert_eq!(usage.is_byok, Some(true));
+    assert_eq!(usage.upstream_provider.as_deref(), Some("Mistral"));
+    let resolved = resolve_cost(
+        &usage,
+        Some("mistralai/devstral-2512"),
+        &PriceTable::default(),
+    );
+    assert_eq!(resolved.source, CostSource::Upstream);
+    assert_eq!(resolved.cost, Some(CostMicros(7_500)));
+}
+
+#[test]
+fn estimate_beats_upstream_when_prices_set() {
+    use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
+
+    let usage = usage_from_output(concat!(
+        r#"{"usage":{"input_tokens":1000000,"output_tokens":0,"cache_read_input_tokens":0,"#,
+        r#""cost":0,"is_byok":true,"cost_details":{"upstream_inference_cost":0.01}}}"#
+    ));
+    let prices = PriceTable::new(vec![(
+        "mistralai/devstral-2512".into(),
+        ModelPrice {
+            input: 1.0,
+            cache_read: 0.1,
+            cache_write: 0.0,
+            output: 2.0,
+            billed_as: Some("mistral-medium-3-5".into()),
+        },
+    )]);
+    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
+    assert_eq!(resolved.source, CostSource::Estimate);
+    assert_eq!(resolved.estimated_cost, Some(CostMicros(1_000_000)));
+    assert_eq!(resolved.cost, Some(CostMicros(1_000_000)));
+}
+
+#[test]
+fn non_byok_openrouter_cost_used_when_no_estimate() {
+    use octo::history::{resolve_cost, CostSource, PriceTable};
+
+    let usage = usage_from_output(
+        r#"{"usage":{"prompt_tokens":10,"completion_tokens":2,"cost":0.5,"is_byok":false}}"#,
+    );
+    let resolved = resolve_cost(&usage, Some("other"), &PriceTable::default());
+    assert_eq!(resolved.source, CostSource::OpenRouter);
+    assert_eq!(resolved.cost, Some(CostMicros(500_000)));
+}
+
+#[test]
+fn no_usage_resolves_to_none() {
+    use octo::history::{resolve_cost, CostSource, PriceTable};
+
+    let usage = usage_from_output(r#"{"error":{"message":"User not found","code":401}}"#);
+    let resolved = resolve_cost(&usage, None, &PriceTable::default());
+    assert_eq!(resolved.source, CostSource::None);
+    assert_eq!(resolved.cost, None);
+}
+
+#[test]
+fn cache_read_priced_separately_from_uncached_input() {
+    use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
+
+    let usage = usage_from_output(concat!(
+        r#"{"usage":{"input_tokens":1000000,"output_tokens":0,"#,
+        r#""cache_read_input_tokens":400000,"cache_creation_input_tokens":0,"cost":0}}"#
+    ));
+    let prices = PriceTable::new(vec![(
+        "mistralai/devstral-2512".into(),
+        ModelPrice {
+            input: 1.0,
+            cache_read: 0.25,
+            cache_write: 0.0,
+            output: 0.0,
+            billed_as: None,
+        },
+    )]);
+    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
+    assert_eq!(resolved.source, CostSource::Estimate);
+    assert_eq!(
+        resolved.cost,
+        Some(CostMicros(700_000)),
+        "uncached 600k*$1 + cache_read 400k*$0.25 = $0.7"
+    );
+}

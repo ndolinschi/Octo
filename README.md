@@ -17,13 +17,21 @@ cargo run
 Octo writes a **side copy** of proxied calls to SQLite (`config/history.toml` → `database_path`, default `data/history.sqlite`). Live responses still stream to the client; inserts run in the background.
 
 - **Stored:** kind, provider, model, capped input/output, JSON `request_payload` / `response_payload`, tokens, cost (micro-dollars), latency — not raw API keys (HMAC of `Authorization` / `x-api-key`).
+- **Cost:** `cost_micros` prefers estimate (`config/prices.toml`) → upstream BYOK (`cost_details`) → OpenRouter `usage.cost` → `none` (failed/no-usage rows stay honest zeros).
 - **Token key:** `OCTO_HISTORY_TOKEN_KEY` env, `history.token_key` in config, or auto-generated `.key` beside the DB (Unix file permissions).
 - **If the DB fails to open:** the proxy keeps serving with history disabled (see logs).
+- **Outcomes:** `session_outcomes` upserts pass/fail counts from cargo/pytest/unittest tool_results (async).
 
 Inspect the latest row:
 
 ```bash
 sqlite3 data/history.sqlite "SELECT id, kind, provider, model, status FROM calls ORDER BY id DESC LIMIT 5;"
+```
+
+Reconcile daily/model costs vs a provider CSV (`date,model,requests,cost`):
+
+```bash
+python3 scripts/reconcile_costs.py data/history.sqlite --provider-csv invoice.csv
 ```
 
 Manual smoke (chat + decisions + sample query): [`scripts/smoke-openrouter.sh`](scripts/smoke-openrouter.sh) (requires `OPENROUTER_API_KEY` and a running `cargo run`).
@@ -154,6 +162,11 @@ On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/l
 ### Autoroute model ladder (Mistral)
 
 `config/autoroute.toml` low/mid/high defaults are now **Mistral** (`ministral-8b-2512` → `mistral-small-3.1-24b-instruct` → `devstral-2512`), replacing the previous Gemma / DeepSeek / Haiku-latest ladder. This applies to **all** `/autoroute` traffic, not only Claude Code experiments.
+
+- **Provider pin (opt-in):** `provider_order = []` / `allow_fallbacks = true` by default. A commented Mistral example is in the same file. Pinning does **not** choose BYOK vs OpenRouter-paid (account setting).
+- **Housekeeping trim:** long Claude Code housekeeping turns keep system/tools plus the last `housekeeping_keep_messages` (default 6); trigger becomes `housekeeping_trimmed` when shortened.
+- **Permission checks:** Claude Code prompts with `Err on the side of blocking` or `<transcript>` use trigger `permission_check`, keep the session model, and skip JEV/sticky.
+- **Prices:** fill `config/prices.toml` from the provider console so estimates can win over `usage.cost` when set.
 
 ### Claude Code + Octo autoroute (Mistral tiers)
 

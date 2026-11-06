@@ -17,6 +17,7 @@ pub struct CallObserve {
     pub tier_before: Option<String>,
     pub tier_after: Option<String>,
     pub trigger: String,
+    pub trimmed_from_tokens: Option<u64>,
     pub auto: Option<crate::auto::Auto>,
     pub on_response: Option<ResponseHook>,
 }
@@ -39,6 +40,10 @@ pub struct DecisionRow {
     pub request_payload: String,
     pub response_payload: String,
     pub cost: Option<CostMicros>,
+    pub or_cost: Option<CostMicros>,
+    pub upstream_cost: Option<CostMicros>,
+    pub estimated_cost: Option<CostMicros>,
+    pub cost_source: String,
 }
 
 pub struct FinishedCall {
@@ -58,6 +63,13 @@ pub struct FinishedCall {
     pub input_tokens: Option<TokenCount>,
     pub output_tokens: Option<TokenCount>,
     pub cost: Option<CostMicros>,
+    pub or_cost: Option<CostMicros>,
+    pub upstream_cost: Option<CostMicros>,
+    pub estimated_cost: Option<CostMicros>,
+    pub cost_source: String,
+    pub is_byok: Option<bool>,
+    pub upstream_provider: Option<String>,
+    pub trimmed_from_tokens: Option<u64>,
     pub cache_read_tokens: Option<TokenCount>,
     pub cache_write_tokens: Option<TokenCount>,
     pub generation_id: Option<String>,

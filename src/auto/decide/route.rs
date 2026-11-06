@@ -27,6 +27,7 @@ pub(super) struct RoutePlan {
     pub last_stall: Option<String>,
     pub pending_down_band: Option<String>,
     pub down_count: u32,
+    pub trimmed_from_tokens: Option<u64>,
 }
 
 pub(super) struct RouteCtx<'a> {
@@ -77,6 +78,8 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         model: &plan.model,
         previous_model: previous,
         models: ctx.models,
+        provider_order: &ctx.auto.tiers.provider_order,
+        allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
     });
     let estimate = context_estimate(
         counted_bytes(&outgoing),
@@ -100,7 +103,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         });
     }
     if estimate.fill >= metrics::FILL_THRESHOLD {
-        if plan.reason.as_deref() == Some("housekeeping") {
+        if skips_fill_upgrade(plan.reason.as_deref()) {
             return finish_overflow(OverflowCtx {
                 auto: ctx.auto,
                 body: &ctx.body,
@@ -126,6 +129,8 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 model: &plan.model,
                 previous_model: previous,
                 models: ctx.models,
+                provider_order: &ctx.auto.tiers.provider_order,
+                allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
             });
             plan.reason = Some("upgrade".to_string());
         } else {
@@ -159,7 +164,14 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
     }
     let tier_after = ctx.auto.tiers().band(&plan.model).to_string();
     let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
-    encode_forward(&outgoing, meta)
+    encode_forward(&outgoing, meta, plan.trimmed_from_tokens)
+}
+
+fn skips_fill_upgrade(reason: Option<&str>) -> bool {
+    matches!(
+        reason,
+        Some("housekeeping" | "housekeeping_trimmed" | "permission_check")
+    )
 }
 
 fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
@@ -189,6 +201,7 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
             reason: plan.reason,
             tier_before: plan.tier_before.clone(),
             auto: ctx.auto,
+            trimmed_from_tokens: plan.trimmed_from_tokens,
         });
     }
     if plan.persist {
@@ -223,6 +236,7 @@ pub(super) struct ShapedForward<'a> {
     pub reason: Option<String>,
     pub tier_before: String,
     pub auto: &'a Auto,
+    pub trimmed_from_tokens: Option<u64>,
 }
 
 pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
@@ -234,14 +248,17 @@ pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
             model: plan.model,
             previous_model: plan.previous_model,
             models: plan.models,
+            provider_order: &plan.auto.tiers.provider_order,
+            allow_fallbacks: plan.auto.tiers.allow_fallbacks,
         }),
         meta,
+        plan.trimmed_from_tokens,
     )
 }
 
 pub(super) fn passthrough(body: &Value) -> Turn {
     let meta = RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None);
-    encode_forward(body, meta)
+    encode_forward(body, meta, None)
 }
 
 pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
@@ -278,6 +295,8 @@ struct ShapeArgs<'a> {
     model: &'a str,
     previous_model: Option<&'a str>,
     models: Option<&'a OpenRouterModels>,
+    provider_order: &'a [String],
+    allow_fallbacks: bool,
 }
 
 fn shaped(plan: ShapeArgs<'_>) -> Value {
@@ -286,6 +305,8 @@ fn shaped(plan: ShapeArgs<'_>) -> Value {
         model: plan.model,
         previous_model: plan.previous_model,
         models: plan.models,
+        provider_order: plan.provider_order,
+        allow_fallbacks: plan.allow_fallbacks,
     })
 }
 
@@ -316,14 +337,19 @@ fn remember(plan: RememberPlan<'_>) {
     );
 }
 
-fn encode_forward(body: &Value, meta: RouteMeta) -> Turn {
+fn encode_forward(body: &Value, meta: RouteMeta, trimmed_from_tokens: Option<u64>) -> Turn {
     match serde_json::to_vec(body) {
-        Ok(bytes) => Turn::Forward(Forward { body: bytes, meta }),
+        Ok(bytes) => Turn::Forward(Forward {
+            body: bytes,
+            meta,
+            trimmed_from_tokens,
+        }),
         Err(err) => {
             tracing::error!(%err, "autoroute encode failed");
             Turn::Forward(Forward {
                 body: Vec::new(),
                 meta: RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None),
+                trimmed_from_tokens: None,
             })
         }
     }

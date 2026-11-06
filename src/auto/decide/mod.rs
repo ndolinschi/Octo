@@ -208,9 +208,12 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .map(|row| row.sticky_band.clone())
         .unwrap_or_else(|| "unset".to_string());
 
-    if body::is_housekeeping(&raw_text) {
-        let model = req.auto.tiers.pick(Complexity::Low, preferred.as_deref());
+    if body::is_permission_check(&raw_text) {
         let row = choice.as_ref();
+        let model = row
+            .map(|row| row.model.clone())
+            .or_else(|| preferred.clone())
+            .unwrap_or_else(|| req.auto.tiers.mid.clone());
         return route::run(RouteCtx {
             auto: req.auto,
             body: req.body,
@@ -221,7 +224,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 tools: row
                     .map(|row| row.tools.clone())
                     .unwrap_or_else(|| all_tools.clone()),
-                reason: Some("housekeeping".to_string()),
+                reason: Some("permission_check".to_string()),
                 tier_before,
                 reserve,
                 allow_compact: req.allow_compact,
@@ -234,6 +237,49 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 last_stall: row.and_then(|row| row.last_stall.clone()),
                 pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
                 down_count: row.map(|row| row.down_count).unwrap_or(0),
+                trimmed_from_tokens: None,
+            },
+        });
+    }
+
+    if body::is_housekeeping(&raw_text) {
+        let model = req.auto.tiers.pick(Complexity::Low, preferred.as_deref());
+        let row = choice.as_ref();
+        let pre_tokens = metrics::estimate_tokens(models::counted_bytes(&req.body));
+        let trimmed = body::trim_housekeeping(
+            &req.body,
+            req.auto.tiers.housekeeping_keep_messages,
+            pre_tokens,
+        );
+        let reason = if trimmed.shortened {
+            "housekeeping_trimmed"
+        } else {
+            "housekeeping"
+        };
+        return route::run(RouteCtx {
+            auto: req.auto,
+            body: trimmed.body,
+            models: loaded.as_ref(),
+            previous_model: row.map(|row| row.model.clone()),
+            plan: RoutePlan {
+                model,
+                tools: row
+                    .map(|row| row.tools.clone())
+                    .unwrap_or_else(|| all_tools.clone()),
+                reason: Some(reason.to_string()),
+                tier_before,
+                reserve,
+                allow_compact: req.allow_compact,
+                persist: false,
+                sticky_band: row
+                    .map(|row| row.sticky_band.clone())
+                    .unwrap_or_else(|| "unset".to_string()),
+                escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
+                escalate_band: row.and_then(|row| row.escalate_band.clone()),
+                last_stall: row.and_then(|row| row.last_stall.clone()),
+                pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
+                down_count: row.map(|row| row.down_count).unwrap_or(0),
+                trimmed_from_tokens: trimmed.trimmed_from_tokens,
             },
         });
     }
@@ -250,6 +296,8 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                     model: &row.model,
                     previous_model: Some(row.model.as_str()),
                     models: loaded.as_ref(),
+                    provider_order: &req.auto.tiers.provider_order,
+                    allow_fallbacks: req.auto.tiers.allow_fallbacks,
                 });
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
                 return route::repeat_compact(RepeatCompact {
@@ -407,6 +455,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             last_stall: sticky.last_stall,
             pending_down_band: sticky.pending_down_band,
             down_count: sticky.down_count,
+            trimmed_from_tokens: None,
         },
     })
 }
@@ -455,6 +504,7 @@ fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
         last_stall: plan.row.last_stall.clone(),
         pending_down_band: plan.row.pending_down_band.clone(),
         down_count: plan.row.down_count,
+        trimmed_from_tokens: None,
     }
 }
 

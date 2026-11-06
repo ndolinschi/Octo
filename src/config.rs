@@ -16,6 +16,7 @@ const CONFIG_DIR_FILES: &[&str] = &[
     "decision.toml",
     "history.toml",
     "autoroute.toml",
+    "prices.toml",
 ];
 
 #[derive(Clone, Debug)]
@@ -52,6 +53,10 @@ pub struct Config {
     pub autoroute_down_confirm: u32,
     pub autoroute_high_allow: Vec<String>,
     pub autoroute_session_budget_usd: f64,
+    pub autoroute_housekeeping_keep_messages: u32,
+    pub autoroute_provider_order: Vec<String>,
+    pub autoroute_allow_fallbacks: bool,
+    pub prices: crate::history::PriceTable,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -74,6 +79,8 @@ struct ConfigFile {
     history: HistorySection,
     #[serde(default)]
     autoroute: AutorouteSection,
+    #[serde(default)]
+    prices: std::collections::HashMap<String, PriceRow>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -340,6 +347,12 @@ struct AutorouteSection {
     high_allow: Vec<String>,
     #[serde(default = "default_autoroute_session_budget_usd")]
     session_budget_usd: f64,
+    #[serde(default = "default_autoroute_housekeeping_keep_messages")]
+    housekeeping_keep_messages: u32,
+    #[serde(default)]
+    provider_order: Vec<String>,
+    #[serde(default = "default_autoroute_allow_fallbacks")]
+    allow_fallbacks: bool,
 }
 
 impl Default for AutorouteSection {
@@ -355,12 +368,37 @@ impl Default for AutorouteSection {
             down_confirm: default_autoroute_down_confirm(),
             high_allow: Vec::new(),
             session_budget_usd: default_autoroute_session_budget_usd(),
+            housekeeping_keep_messages: default_autoroute_housekeeping_keep_messages(),
+            provider_order: Vec::new(),
+            allow_fallbacks: default_autoroute_allow_fallbacks(),
         }
     }
 }
 
 fn default_autoroute_session_budget_usd() -> f64 {
     0.0
+}
+
+fn default_autoroute_housekeeping_keep_messages() -> u32 {
+    6
+}
+
+fn default_autoroute_allow_fallbacks() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+struct PriceRow {
+    #[serde(default)]
+    input: f64,
+    #[serde(default)]
+    cache_read: f64,
+    #[serde(default)]
+    cache_write: f64,
+    #[serde(default)]
+    output: f64,
+    #[serde(default)]
+    billed_as: Option<String>,
 }
 
 fn default_autoroute_low_model() -> String {
@@ -549,6 +587,29 @@ fn config_from_file(file: ConfigFile) -> Config {
         autoroute_down_confirm: file.autoroute.down_confirm,
         autoroute_high_allow: file.autoroute.high_allow,
         autoroute_session_budget_usd: file.autoroute.session_budget_usd,
+        autoroute_housekeeping_keep_messages: file.autoroute.housekeeping_keep_messages,
+        autoroute_provider_order: file.autoroute.provider_order,
+        autoroute_allow_fallbacks: file.autoroute.allow_fallbacks,
+        prices: {
+            use crate::history::{ModelPrice, PriceTable};
+            let rows = file
+                .prices
+                .into_iter()
+                .map(|(slug, row)| {
+                    (
+                        slug,
+                        ModelPrice {
+                            input: row.input,
+                            cache_read: row.cache_read,
+                            cache_write: row.cache_write,
+                            output: row.output,
+                            billed_as: row.billed_as,
+                        },
+                    )
+                })
+                .collect();
+            PriceTable::new(rows)
+        },
     }
 }
 

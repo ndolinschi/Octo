@@ -78,6 +78,8 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 | `config/llm.toml` | `[llm.chat]` / `[llm.messages]` backend defaults |
 | `config/decision.toml` | `[decision]` backend |
 | `config/history.toml` | `[history]` — SQLite path, optional token HMAC key |
+| `config/autoroute.toml` | `[autoroute]` — ladder, stall/sticky, budget, housekeeping trim, optional `provider_order` |
+| `config/prices.toml` | `[prices."<slug>"]` — USD/1M token rates + optional `billed_as` for reconcile |
 
 - **Default load:** merge present files in `./config/` (known fragment names; missing files are skipped). Run from repo root.
 - **`OCTO_CONFIG`:** path to another **`config/`** directory or a single legacy **`config.toml`** file (monolithic override).
@@ -108,13 +110,19 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 | Stream errors | If the upstream body stream fails after headers were sent, the client may see upstream status (e.g. 200) while history records **502** for that call. |
 | Shutdown | Graceful drain waits for in-flight inserts (bounded queue) |
 
-**Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output raw capture, **`request_payload` / `response_payload`** (JSON with `provider` + nested `payload` per vendor shape), status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`). Prompts are not logged verbatim in tracing.
+**Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output raw capture, **`request_payload` / `response_payload`** (JSON with `provider` + nested `payload` per vendor shape), status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`), plus `or_cost_micros` / `upstream_cost_micros` / `estimated_cost_micros` / `cost_source` / `is_byok` / `upstream_provider` / `trimmed_from_tokens`. Prompts are not logged verbatim in tracing.
+
+**Cost precedence:** first non-zero of estimate (tokens × `prices.toml` when any rate &gt; 0), upstream BYOK (`usage.cost_details.upstream_inference_cost`), OpenRouter `usage.cost`; else `cost_source = "none"` (including error/no-usage rows).
+
+**session_outcomes:** async upsert from last-user `tool_result` blocks (cargo / pytest / unittest summaries), keyed by observe `session_id` (includes `#subagent` when applicable).
 
 **Payload modules:** `src/history/payload/` dispatches on `CallKind` + `CallProvider` (`openai_chat`, `claude`, `decision`, shared `common` for usage/SSE). OpenAI and OpenRouter **chat** share the OpenAI chat shape; **messages** calls (`CallKind::Messages`, direct Anthropic or OpenRouter) use the Anthropic messages shape; decisions use `decision.rs`.
 
 **OpenRouter model catalog (routing):** `octo::providers::openrouter::fetch_models` GETs the public models API (`DEFAULT_MODELS_URL`), optionally with a Bearer key, and returns `OpenRouterModels { free, paid }` (`models_from_json` for tests). Free = `:free` suffix or zero prompt/completion pricing.
 
-Integration tests: `tests/history_store.rs`, `tests/history_payload.rs`, `tests/select_provider.rs`. Do not add `#[cfg(test)]` modules in `src/` (see `.cursor/rules/tests-live-outside-source.mdc`).
+**Reconcile:** `python3 scripts/reconcile_costs.py data/history.sqlite [--provider-csv invoice.csv]` groups calls by day/model, maps `billed_as` from `prices.toml`, and flags `|diff| > 5%` vs the CSV.
+
+Integration tests: `tests/history_store.rs`, `tests/history_payload.rs`, `tests/session_outcomes.rs`, `tests/select_provider.rs`. Do not add `#[cfg(test)]` modules in `src/` (see `.cursor/rules/tests-live-outside-source.mdc`).
 
 After changing SQL or `query!` macros:
 
