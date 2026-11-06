@@ -355,6 +355,90 @@ pub fn tool_names(body: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+pub fn client_tool_labels(body: &Value) -> Vec<String> {
+    let Some(tools) = body.get("tools").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut labels: Vec<String> = tools
+        .iter()
+        .filter_map(|tool| {
+            if let Some(name) = tool_name(tool) {
+                return Some(name.to_string());
+            }
+            tool.get("type")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect();
+    labels.sort();
+    labels.dedup();
+    labels
+}
+
+pub fn client_tool_names_csv(body: &Value) -> String {
+    let joined = client_tool_labels(body).join(",");
+    if joined.len() <= 2000 {
+        joined
+    } else {
+        joined.chars().take(2000).collect()
+    }
+}
+
+pub fn client_has_thinking(body: &Value) -> bool {
+    if body.get("thinking").is_some() {
+        return true;
+    }
+    let Some(messages) = body.get("messages").and_then(Value::as_array) else {
+        return false;
+    };
+    messages.iter().any(|message| {
+        message
+            .get("content")
+            .and_then(Value::as_array)
+            .is_some_and(|parts| {
+                parts.iter().any(|part| {
+                    matches!(
+                        part.get("type").and_then(Value::as_str),
+                        Some("thinking" | "redacted_thinking")
+                    )
+                })
+            })
+    })
+}
+
+pub fn bg_signal(model: Option<&str>, patterns: &[String]) -> bool {
+    let Some(model) = model else {
+        return false;
+    };
+    let lower = model.to_ascii_lowercase();
+    patterns
+        .iter()
+        .any(|pattern| lower.contains(&pattern.to_ascii_lowercase()))
+}
+
+pub fn server_tool_types(body: &Value) -> Vec<String> {
+    let Some(tools) = body.get("tools").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    tools
+        .iter()
+        .filter_map(|tool| {
+            let ty = tool.get("type").and_then(Value::as_str)?;
+            if tool.get("input_schema").is_some() {
+                return None;
+            }
+            if ty.starts_with("web_search")
+                || ty.starts_with("web_fetch")
+                || ty.starts_with("code_execution")
+            {
+                Some(ty.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 pub fn max_tokens(body: &Value) -> u64 {
     body.get("max_tokens")
         .and_then(Value::as_u64)

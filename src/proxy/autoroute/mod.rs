@@ -10,10 +10,34 @@ use axum::{
 };
 use serde_json::Value;
 
-use crate::auto::{session_key, Compact, DecideRequest, RouteMeta, Turn};
+use crate::auto::{
+    bg_signal, client_has_thinking, client_tool_names_csv, is_housekeeping, last_user_text,
+    preferred_model, session_key, Compact, DecideRequest, RouteMeta, Turn,
+};
 use crate::history::{token_from_headers, CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
+
+#[derive(Clone, Debug, Default)]
+struct ClientSignals {
+    client_model: Option<String>,
+    client_has_thinking: bool,
+    client_tool_names: String,
+    bg_signal: bool,
+    hk_text_signal: bool,
+}
+
+fn client_signals(body: &Value, patterns: &[String]) -> ClientSignals {
+    let client_model = preferred_model(body);
+    let hk_text_signal = is_housekeeping(&last_user_text(body));
+    ClientSignals {
+        bg_signal: bg_signal(client_model.as_deref(), patterns),
+        client_has_thinking: client_has_thinking(body),
+        client_tool_names: client_tool_names_csv(body),
+        hk_text_signal,
+        client_model,
+    }
+}
 
 pub async fn messages(
     State(state): State<AppState>,
@@ -37,6 +61,7 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
     let api_key = token_from_headers(&parts.headers);
     let value: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
     let session = session_key(&value);
+    let signals = client_signals(&value, &state.config.autoroute_background_model_patterns);
     let turn = crate::auto::decide(DecideRequest {
         auto: &state.auto,
         history: &state.history,
@@ -55,6 +80,7 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
                 forward,
                 session,
                 chat,
+                signals,
             })
             .await
         }
@@ -69,6 +95,7 @@ struct ForwardTurn<'a> {
     forward: crate::auto::Forward,
     session: Option<String>,
     chat: bool,
+    signals: ClientSignals,
 }
 
 async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
@@ -78,6 +105,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
         forward,
         session,
         chat,
+        signals,
     } = plan;
     let retry_parts = clone_parts(&parts);
     let retry_forward = forward.clone();
@@ -87,6 +115,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
         forward,
         session: session.clone(),
         chat,
+        signals: signals.clone(),
     })
     .await;
     match first {
@@ -97,6 +126,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
                 forward: retry_forward,
                 session,
                 chat,
+                signals: signals.clone(),
             })
             .await
             {
@@ -111,6 +141,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
                 forward: retry_forward,
                 session,
                 chat,
+                signals,
             })
             .await
             {
@@ -128,6 +159,7 @@ struct RetryNext<'a> {
     forward: crate::auto::Forward,
     session: Option<String>,
     chat: bool,
+    signals: ClientSignals,
 }
 
 async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyError>> {
@@ -162,6 +194,7 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
             forward,
             session: plan.session,
             chat: plan.chat,
+            signals: plan.signals,
         })
         .await,
     )
@@ -173,6 +206,7 @@ struct DispatchForward<'a> {
     forward: crate::auto::Forward,
     session: Option<String>,
     chat: bool,
+    signals: ClientSignals,
 }
 
 async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyError> {
@@ -208,6 +242,11 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         tier_after: Some(meta.tier_after.clone()),
         trigger: meta.trigger.clone(),
         trimmed_from_tokens: plan.forward.trimmed_from_tokens,
+        client_model: plan.signals.client_model.clone(),
+        client_has_thinking: Some(plan.signals.client_has_thinking),
+        client_tool_names: Some(plan.signals.client_tool_names.clone()),
+        bg_signal: Some(plan.signals.bg_signal),
+        hk_text_signal: Some(plan.signals.hk_text_signal),
         auto: Some(plan.state.auto.clone()),
         on_response: hook,
     });
@@ -277,6 +316,11 @@ async fn chat_compact(
                 tier_after: None,
                 trigger: "none".to_string(),
                 trimmed_from_tokens: None,
+                client_model: None,
+                client_has_thinking: None,
+                client_tool_names: None,
+                bg_signal: None,
+                hk_text_signal: None,
                 auto: None,
                 on_response: None,
             }),

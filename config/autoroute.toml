@@ -27,3 +27,6 @@ allow_fallbacks = true
 # Example Mistral pin (hard-fails if Mistral is unavailable):
 # provider_order = ["Mistral"]
 # allow_fallbacks = false
+# Observe-only: client model substring match → calls.bg_signal (case-insensitive).
+background_model_patterns = ["haiku"]
+

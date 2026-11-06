@@ -18,6 +18,11 @@ pub struct CallObserve {
     pub tier_after: Option<String>,
     pub trigger: String,
     pub trimmed_from_tokens: Option<u64>,
+    pub client_model: Option<String>,
+    pub client_has_thinking: Option<bool>,
+    pub client_tool_names: Option<String>,
+    pub bg_signal: Option<bool>,
+    pub hk_text_signal: Option<bool>,
     pub auto: Option<crate::auto::Auto>,
     pub on_response: Option<ResponseHook>,
 }
@@ -79,4 +84,9 @@ pub struct FinishedCall {
     pub tier_before: Option<String>,
     pub tier_after: Option<String>,
     pub trigger: String,
+    pub client_model: Option<String>,
+    pub client_has_thinking: Option<bool>,
+    pub client_tool_names: Option<String>,
+    pub bg_signal: Option<bool>,
+    pub hk_text_signal: Option<bool>,
 }

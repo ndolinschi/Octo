@@ -494,6 +494,11 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let tier_before = call.tier_before.as_deref();
     let tier_after = call.tier_after.as_deref();
     let trigger = call.trigger.as_str();
+    let client_model = call.client_model.as_deref();
+    let client_has_thinking = call.client_has_thinking.map(i64::from);
+    let client_tool_names = call.client_tool_names.as_deref();
+    let bg_signal = call.bg_signal.map(i64::from);
+    let hk_text_signal = call.hk_text_signal.map(i64::from);
     sqlx::query!(
         r#"
         INSERT INTO calls (
@@ -503,8 +508,9 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
             cache_read_tokens, cache_write_tokens, generation_id,
             rerouting, rerouting_reason, session_id, tier_before, tier_after, trigger,
             or_cost_micros, upstream_cost_micros, estimated_cost_micros, cost_source,
-            is_byok, upstream_provider, trimmed_from_tokens
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_byok, upstream_provider, trimmed_from_tokens,
+            client_model, client_has_thinking, client_tool_names, bg_signal, hk_text_signal
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -538,7 +544,12 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         cost_source,
         is_byok,
         upstream_provider,
-        trimmed_from_tokens
+        trimmed_from_tokens,
+        client_model,
+        client_has_thinking,
+        client_tool_names,
+        bg_signal,
+        hk_text_signal
     )
     .execute(pool)
     .await?;

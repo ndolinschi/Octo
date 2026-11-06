@@ -11,8 +11,9 @@ mod text_tool_call;
 
 pub use action::{Compact, Forward, ModelAction, Turn};
 pub use body::{
-    cap_decision_text, compaction_body, filter_tools, is_housekeeping, is_permission_check,
-    last_user_text, last_user_tool_results_only, question_text, session_id, session_key, shape,
+    bg_signal, cap_decision_text, client_has_thinking, client_tool_names_csv, compaction_body,
+    filter_tools, is_housekeeping, is_permission_check, last_user_text, last_user_tool_results_only,
+    preferred_model, question_text, server_tool_types, session_id, session_key, shape,
     trim_housekeeping, with_model, HousekeepingTrim, ShapePlan,
 };
 pub use catalog::Tiers;

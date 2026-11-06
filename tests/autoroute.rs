@@ -4,13 +4,13 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use octo::auto::context_length;
 use octo::auto::{
-    apply_sticky, cap_decision_text, cap_for_budget, choice, choice_from_scores, classified,
-    compaction_body, context_estimate, decide, detect_stall, dropped, filter_tools, inspect,
-    is_housekeeping, is_permission_check, larger_fit, looks_like_text_tool_call,
-    max_completion_tokens, needed_tools, needs_compact, output_reserve, payload, question_text,
-    session_id, session_key, shape, trim_housekeeping, with_model, Auto, Complexity, DecideRequest,
-    LargerFit, PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan,
-    Thresholds, Tiers, Turn,
+    apply_sticky, bg_signal, cap_decision_text, cap_for_budget, choice, choice_from_scores,
+    classified, client_has_thinking, client_tool_names_csv, compaction_body, context_estimate,
+    decide, detect_stall, dropped, filter_tools, inspect, is_housekeeping, is_permission_check,
+    larger_fit, looks_like_text_tool_call, max_completion_tokens, needed_tools, needs_compact,
+    output_reserve, payload, question_text, session_id, session_key, shape, trim_housekeeping,
+    with_model, Auto, Complexity, DecideRequest, LargerFit, PayloadPlan, RouteMeta, SessionChoice,
+    ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -54,6 +54,35 @@ fn session_id_comes_from_metadata_user_id() {
 fn housekeeping_fixture_title_session() {
     let text = "<session>\nHello world\n</session>\n\nWrite the title in the predominant language of the codebase.";
     assert!(is_housekeeping(text));
+}
+
+#[test]
+fn bg_signal_matches_haiku_patterns() {
+    let patterns = vec!["haiku".to_string()];
+    assert!(bg_signal(Some("claude-haiku-4-5-20251001"), &patterns));
+    assert!(bg_signal(Some("anthropic/claude-3-haiku"), &patterns));
+    assert!(!bg_signal(Some("claude-sonnet-4-5"), &patterns));
+    assert!(!bg_signal(Some("claude-opus-4"), &patterns));
+    assert!(!bg_signal(None, &patterns));
+}
+
+#[test]
+fn client_observe_helpers_read_incoming_body() {
+    let body = json!({
+        "model": "claude-haiku-4-5",
+        "thinking": {"type": "enabled"},
+        "tools": [
+            {"name": "Bash"},
+            {"name": "Read"},
+            {"type": "web_search_20250305", "name": "web_search"}
+        ],
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    assert!(client_has_thinking(&body));
+    let names = client_tool_names_csv(&body);
+    assert!(names.contains("Bash"));
+    assert!(names.contains("Read"));
+    assert!(names.contains("web_search") || names.contains("web_search_20250305"));
 }
 
 #[test]
