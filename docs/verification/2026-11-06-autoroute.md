@@ -2,7 +2,8 @@
 
 Branch: `main` @ `bf8808c`  
 Zone for wall times: **Europe/Chisinau (UTC+2)**.  
-No production code/config changed. Live smoke appended rows to `data/history.sqlite` only.
+No production code/config changed. Live smoke appended rows to `data/history.sqlite` only.  
+Checklist A–F cross-checked against [Feature checklist evidence A-F](bc-eed6c010-fb7a-5f8a-9df1-e6745c07dbc7) (E4/E3/F3 tightened).
 
 ---
 
@@ -22,7 +23,7 @@ No production code/config changed. Live smoke appended rows to `data/history.sql
 | B1 housekeeping patterns | PASS | `is_housekeeping` in `src/auto/body.rs:27-36`; asserts in `session_id_comes_*` / `housekeeping_fixture_*` |
 | B2 housekeeping route | PASS | `housekeeping_forces_*`, `housekeeping_writes_no_decisions_row` (count=0) |
 | C1 thresholds from config | PASS | `config/autoroute.toml` → `state.rs:63-64`; `threshold_parsing_picks_bands_from_noul_scores` |
-| C2 hysteresis | PASS | `stall_escalates_then_releases_and_down_needs_confirm` (hold then down after 2) |
+| C2 hysteresis | PASS | `stall_escalates_then_releases_and_down_needs_confirm` (hold then down after 2); unset→hold edge untested (`band_rank("unset")`→1) |
 | C3 tool_result-only hold | PARTIAL | code `sticky.rs:89-101` + `hold_without_classify`; **no test sets `tool_results_only: true`** |
 | C4 stall escalate/release | PASS | `stall_detects_*`, `stall_escalates_then_releases_*`, `decide_stall_escalates_*` |
 | C5 high_allow | PASS | `high_pick_honours_preferred_only_when_allowlisted` |
@@ -31,13 +32,13 @@ No production code/config changed. Live smoke appended rows to `data/history.sql
 | D3 max_tokens clamp | PASS | same test → `max_tokens == 4096` |
 | D4 drop thinking param | PASS | same test → `changed.get("thinking").is_none()` |
 | D5 Anthropic error shape | PASS | `anthropic_proxy_error_body_shape`, `messages_proxy_error_is_anthropic_shaped` |
-| E1 retry before client bytes | PASS | `autoroute_retries_once_on_429_before_client_bytes` (2 upstream bodies) |
+| E1 retry before client bytes | PASS | `autoroute_retries_once_on_429_before_client_bytes` (2 upstream bodies); 5xx/connect retry **code only** |
 | E2 unknown window | PARTIAL | missing catalog → `context_length` defaults **8192** (`catalog.rs:150-154`); can still compact; no dedicated “no upgrade every turn” test |
-| E3 empty model never sent | PARTIAL | `Tiers::pick` always returns configured slugs (**code only**; no empty-string guard/test) |
-| E4 budget + compaction cost | PASS | `session_budget_cap_clamps_high_to_mid`; costs added in `providers/utils.rs:199-202` |
+| E3 empty model never sent | PARTIAL | `Tiers::pick` returns config slugs; cost-seed can create `SessionChoice::fresh("")` (`decide/mod.rs:104-106`) — **code only** |
+| E4 budget + compaction cost | PARTIAL | decide-path `cap_for_budget` tested; fill-upgrade / retry skip budget; compact `record` never `add_session_cost` (`compact.rs:123-166`) |
 | F1 calls cache/gen columns | PARTIAL | schema+parser+tests; live P1 fills `generation_id`/`cache_read=0`; `cache_write` NULL when upstream omits; stores `msg_*` not OpenRouter `gen-*` |
 | F2 decisions scores/cost | PASS | live id=74 `is_hard_score=0.07` `is_easy_score=0.86` `cost_micros=35`; `threshold_parsing_*` |
-| F3 history burst drop | PARTIAL | slots=32, wait=5s, drop+warn; **warn lacks `session_id`** (`history/mod.rs:139-142`, `200-204`) |
+| F3 history burst drop | PARTIAL | slots=32, wait=5s, **drop** (no spill); **warn lacks `session_id`** (`history/mod.rs:139-142`, `200-204`) |
 | STEP3 data today | PARTIAL | see §3; pre-fix leakage rows 72–73; post-fix P1 clean |
 | STEP4 live P1 | PASS | session `c436d4f2-…`, low, end_turn, $0.003451 |
 | STEP4 live P2–P4 | NOT IMPLEMENTED | skipped: DB `calls+decisions` already **$0.483880** after P1; headroom **$0.01612** < safe P2–P4 estimate |
@@ -59,7 +60,16 @@ No production code/config changed. Live smoke appended rows to `data/history.sql
 
 ### E3 PARTIAL — empty model string
 **Where:** `src/auto/catalog.rs:71-86` `pick` returns config strings with no `is_empty` check.  
-**Fix suggestion:** refuse empty tier slugs at config load and/or assert non-empty before `with_model`; add a unit test that empty high/mid/low cannot be selected.
+**Also:** `add_session_cost` / `sync_session_cost_floor` seed `SessionChoice::fresh(String::new(), …, "unset")` (`src/auto/decide/mod.rs:104-106`, `119-121`); a later hold could forward `""`.  
+**Fix suggestion:** refuse empty tier slugs at config load; never seed empty model; assert non-empty before `with_model`.
+
+### E4 PARTIAL — budget on upgrade/retry; compaction session cost
+**Where:**
+- Decide applies `cap_for_budget` before route (`sticky.rs:158-173`; tests `session_budget_cap_clamps_high_to_mid`).
+- Fill upgrade inside `route::run` changes model without re-checking budget (`src/auto/decide/route.rs:114-130`).
+- Upstream retry `next_up` has no budget check (`src/proxy/autoroute/mod.rs:133-161`).
+- Compaction history `record` sets `session_id: None` and never calls `auto.add_session_cost` (`src/proxy/autoroute/compact.rs:123-166`); normal stream path does add cost (`providers/utils.rs:199-203`).  
+**Fix suggestion:** re-run `cap_for_budget` after fill-upgrade and before retry; pass session into compact observe and `add_session_cost` from compact usage; add tests for each.
 
 ### F1 PARTIAL — cache/generation fill
 **Where:** parser `src/history/payload/common.rs:153-200`; insert `src/history/mod.rs:445-483`.  
@@ -67,10 +77,10 @@ No production code/config changed. Live smoke appended rows to `data/history.sql
 **Historical today (pre-restart binary):** calls 216–217 all cache/gen NULL.  
 **Fix suggestion:** prefer OpenRouter `gen-…` id when present in the stream/headers; keep Anthropic `msg_` as fallback; backfill tests with a fixture that includes both.
 
-### F3 PARTIAL — dropped insert logging
-**Where:** `src/history/mod.rs:32` (`INSERT_SLOTS=32`), timeout 5s, drop on wait timeout.  
-**Gap:** warn fields are `choice_rule` (decisions) or `kind`/`provider` (calls) — **no `session_id`**.  
-**Fix suggestion:** include `session_id` (and model/trigger) in both skip warn sites.
+### F3 PARTIAL — dropped insert logging; no spill
+**Where:** `src/history/mod.rs:32` (`INSERT_SLOTS=32`), timeout 5s, drop on wait timeout. Spill-to-disk **not implemented**.  
+**Gap:** warn fields are `choice_rule` (decisions) or `kind`/`provider` (calls) — **no `session_id`**. No burst/timeout test.  
+**Fix suggestion:** include `session_id` (and model/trigger) in both skip warn sites; optionally spill instead of drop if FinOps completeness matters.
 
 ### STEP3 data PARTIAL — housekeeping / reminder leakage (historical)
 **Rows:** decisions `id=72` starts with `<system-reminder>` (len 15504); `id=73` matches B1 “2-4 word lowercase label…”.  
@@ -177,10 +187,10 @@ Covered by `shape_strips_thinking_only_on_model_change_and_clamps_tokens`, tool 
 ### E. Reliability
 | ID | Notes |
 | --- | --- |
-| E1 | `proxy/autoroute/mod.rs:92-122` retries on status before returning response to client; test asserts two upstream posts |
+| E1 | `proxy/autoroute/mod.rs:92-122` retries on status before returning response to client; 429 tested; 5xx/connect same gates, untested |
 | E2 | PARTIAL — default 8192 |
-| E3 | PARTIAL — code only |
-| E4 | budget unit test; session cost incremented for every finished call with cost (`utils.rs:199-202`), including compact when observed |
+| E3 | PARTIAL — empty seed via cost floor possible |
+| E4 | PARTIAL — decide budget OK; fill-upgrade/retry uncapped; compact omits session cost |
 
 ### F. Accounting
 | ID | Notes |
