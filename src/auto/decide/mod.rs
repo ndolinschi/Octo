@@ -250,6 +250,8 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                     model: &row.model,
                     previous_model: Some(row.model.as_str()),
                     models: loaded.as_ref(),
+                    provider_order: &req.auto.tiers.provider_order,
+                    allow_fallbacks: req.auto.tiers.allow_fallbacks,
                 });
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
                 return route::repeat_compact(RepeatCompact {

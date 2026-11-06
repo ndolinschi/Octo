@@ -77,6 +77,8 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         model: &plan.model,
         previous_model: previous,
         models: ctx.models,
+        provider_order: &ctx.auto.tiers.provider_order,
+        allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
     });
     let estimate = context_estimate(
         counted_bytes(&outgoing),
@@ -126,6 +128,8 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 model: &plan.model,
                 previous_model: previous,
                 models: ctx.models,
+                provider_order: &ctx.auto.tiers.provider_order,
+                allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
             });
             plan.reason = Some("upgrade".to_string());
         } else {
@@ -234,6 +238,8 @@ pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
             model: plan.model,
             previous_model: plan.previous_model,
             models: plan.models,
+            provider_order: &plan.auto.tiers.provider_order,
+            allow_fallbacks: plan.auto.tiers.allow_fallbacks,
         }),
         meta,
     )
@@ -278,6 +284,8 @@ struct ShapeArgs<'a> {
     model: &'a str,
     previous_model: Option<&'a str>,
     models: Option<&'a OpenRouterModels>,
+    provider_order: &'a [String],
+    allow_fallbacks: bool,
 }
 
 fn shaped(plan: ShapeArgs<'_>) -> Value {
@@ -286,6 +294,8 @@ fn shaped(plan: ShapeArgs<'_>) -> Value {
         model: plan.model,
         previous_model: plan.previous_model,
         models: plan.models,
+        provider_order: plan.provider_order,
+        allow_fallbacks: plan.allow_fallbacks,
     })
 }
 

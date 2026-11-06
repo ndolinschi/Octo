@@ -68,6 +68,9 @@ impl AppState {
                 tiers.high_allow = config.autoroute_high_allow.clone();
                 tiers.session_budget_micros =
                     session_budget_micros(config.autoroute_session_budget_usd);
+                tiers.housekeeping_keep_messages = config.autoroute_housekeeping_keep_messages;
+                tiers.provider_order = config.autoroute_provider_order.clone();
+                tiers.allow_fallbacks = config.autoroute_allow_fallbacks;
                 tiers
             }),
             config,

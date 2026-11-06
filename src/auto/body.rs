@@ -283,6 +283,26 @@ pub struct ShapePlan<'a> {
     pub model: &'a str,
     pub previous_model: Option<&'a str>,
     pub models: Option<&'a OpenRouterModels>,
+    pub provider_order: &'a [String],
+    pub allow_fallbacks: bool,
+}
+
+impl<'a> ShapePlan<'a> {
+    pub fn new(
+        body: &'a Value,
+        model: &'a str,
+        previous_model: Option<&'a str>,
+        models: Option<&'a OpenRouterModels>,
+    ) -> Self {
+        Self {
+            body,
+            model,
+            previous_model,
+            models,
+            provider_order: &[],
+            allow_fallbacks: true,
+        }
+    }
 }
 
 pub fn shape(plan: ShapePlan<'_>) -> Value {
@@ -296,6 +316,7 @@ pub fn shape(plan: ShapePlan<'_>) -> Value {
     clamp_max_tokens(&mut copy, plan.models, plan.model);
     drop_unsupported_thinking(&mut copy, plan.models, plan.model);
     require_tool_parameters(&mut copy);
+    merge_provider_pin(&mut copy, plan.provider_order, plan.allow_fallbacks);
     copy
 }
 
@@ -321,6 +342,29 @@ fn require_tool_parameters(body: &mut Value) {
             object.insert("provider".to_string(), json!({"require_parameters": true}));
         }
     }
+}
+
+fn merge_provider_pin(body: &mut Value, provider_order: &[String], allow_fallbacks: bool) {
+    if provider_order.is_empty() {
+        return;
+    }
+    let Some(object) = body.as_object_mut() else {
+        return;
+    };
+    let provider = match object.get_mut("provider") {
+        Some(Value::Object(provider)) => provider,
+        Some(_) => return,
+        None => {
+            object.insert("provider".to_string(), json!({}));
+            object.get_mut("provider").and_then(Value::as_object_mut).unwrap()
+        }
+    };
+    provider
+        .entry("order")
+        .or_insert_with(|| json!(provider_order));
+    provider
+        .entry("allow_fallbacks")
+        .or_insert_with(|| json!(allow_fallbacks));
 }
 
 fn strip_thinking_blocks(body: &mut Value) {

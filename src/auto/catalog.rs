@@ -17,6 +17,9 @@ pub struct Tiers {
     pub down_confirm: u32,
     pub high_allow: Vec<String>,
     pub session_budget_micros: u64,
+    pub housekeeping_keep_messages: u32,
+    pub provider_order: Vec<String>,
+    pub allow_fallbacks: bool,
 }
 
 impl Tiers {
@@ -32,6 +35,9 @@ impl Tiers {
             down_confirm: 2,
             high_allow: Vec::new(),
             session_budget_micros: 0,
+            housekeeping_keep_messages: 6,
+            provider_order: Vec::new(),
+            allow_fallbacks: true,
         }
     }
 

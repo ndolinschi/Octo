@@ -796,24 +796,24 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
             supported_parameters: vec!["max_tokens".into()],
         }],
     };
-    let same = shape(ShapePlan {
-        body: &body,
-        model: "old-model",
-        previous_model: Some("old-model"),
-        models: Some(&models),
-    });
+    let same = shape(ShapePlan::new(
+        &body,
+        "old-model",
+        Some("old-model"),
+        Some(&models),
+    ));
     assert!(same["messages"][0]["content"]
         .as_array()
         .unwrap()
         .iter()
         .any(|part| part["type"] == "thinking"));
 
-    let changed = shape(ShapePlan {
-        body: &body,
-        model: "new-model",
-        previous_model: Some("old-model"),
-        models: Some(&models),
-    });
+    let changed = shape(ShapePlan::new(
+        &body,
+        "new-model",
+        Some("old-model"),
+        Some(&models),
+    ));
     let parts = changed["messages"][0]["content"].as_array().unwrap();
     assert!(parts.iter().all(|part| part["type"] != "thinking"));
     assert!(parts.iter().all(|part| part["type"] != "redacted_thinking"));
@@ -842,27 +842,68 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         "max_tokens": 100,
         "messages": [{"role": "user", "content": "hi"}]
     });
-    let plain = shape(ShapePlan {
-        body: &no_tools,
-        model: "old-model",
-        previous_model: None,
-        models: None,
-    });
+    let plain = shape(ShapePlan::new(&no_tools, "old-model", None, None));
     assert!(plain.get("provider").is_none());
 
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
-    let shaped = shape(ShapePlan {
-        body: &fixture,
-        model: "mid-model",
-        previous_model: Some("claude-sonnet-4-5"),
-        models: Some(&models),
-    });
+    let shaped = shape(ShapePlan::new(
+        &fixture,
+        "mid-model",
+        Some("claude-sonnet-4-5"),
+        Some(&models),
+    ));
     assert_eq!(
         shaped["tools"].as_array().unwrap().len(),
         fixture["tools"].as_array().unwrap().len()
     );
     assert_eq!(shaped["provider"]["require_parameters"], true);
+}
+
+#[test]
+fn shape_merges_provider_pin_without_dropping_require_parameters() {
+    let body = json!({
+        "model": "m",
+        "tools": [{"name": "Bash"}],
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let order = vec!["Mistral".to_string()];
+    let pinned = shape(ShapePlan {
+        body: &body,
+        model: "m",
+        previous_model: None,
+        models: None,
+        provider_order: &order,
+        allow_fallbacks: false,
+    });
+    assert_eq!(pinned["provider"]["require_parameters"], true);
+    assert_eq!(pinned["provider"]["order"], json!(["Mistral"]));
+    assert_eq!(pinned["provider"]["allow_fallbacks"], false);
+
+    let with_client = json!({
+        "model": "m",
+        "tools": [{"name": "Bash"}],
+        "provider": {
+            "order": ["Anthropic"],
+            "allow_fallbacks": true,
+            "require_parameters": false
+        },
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let kept = shape(ShapePlan {
+        body: &with_client,
+        model: "m",
+        previous_model: None,
+        models: None,
+        provider_order: &order,
+        allow_fallbacks: false,
+    });
+    assert_eq!(kept["provider"]["order"], json!(["Anthropic"]));
+    assert_eq!(kept["provider"]["allow_fallbacks"], true);
+    assert_eq!(kept["provider"]["require_parameters"], false);
+
+    let empty = shape(ShapePlan::new(&body, "m", None, None));
+    assert_eq!(empty["provider"], json!({"require_parameters": true}));
 }
 
 #[tokio::test]

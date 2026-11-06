@@ -140,6 +140,8 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
         model: &next,
         previous_model: Some(current.as_str()),
         models: models.as_ref(),
+        provider_order: &plan.state.auto.tiers().provider_order,
+        allow_fallbacks: plan.state.auto.tiers().allow_fallbacks,
     });
     let body = serde_json::to_vec(&shaped).ok()?;
     let tier_after = plan.state.auto.tiers().band(&next).to_string();
