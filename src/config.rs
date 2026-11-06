@@ -23,6 +23,7 @@ const CONFIG_DIR_FILES: &[&str] = &[
 pub struct Config {
     pub bind_addr: String,
     pub allow_remote: bool,
+    pub client_auth_key: String,
     pub upstream_connect_timeout_secs: u64,
     pub upstream_request_timeout_secs: u64,
     pub openai_chat_completions_url: String,
@@ -92,6 +93,8 @@ struct ServerSection {
     bind_addr: String,
     #[serde(default)]
     allow_remote: bool,
+    #[serde(default)]
+    client_auth_key: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -531,6 +534,11 @@ impl Config {
                 addr: self.bind_addr.clone(),
             });
         }
+        if !addr.ip().is_loopback() && self.client_auth_key.trim().is_empty() {
+            return Err(ConfigError::RemoteBindNeedsAuthKey {
+                addr: self.bind_addr.clone(),
+            });
+        }
         Ok(addr)
     }
 }
@@ -581,6 +589,7 @@ fn config_from_file(file: ConfigFile) -> Config {
     Config {
         bind_addr: file.server.bind_addr,
         allow_remote: file.server.allow_remote,
+        client_auth_key: file.server.client_auth_key,
         upstream_connect_timeout_secs: file.upstream.connect_timeout_secs,
         upstream_request_timeout_secs: file.upstream.request_timeout_secs,
         openai_chat_completions_url: file.openai.chat_completions_url,
@@ -672,4 +681,8 @@ pub enum ConfigError {
     },
     #[error("bind_addr {addr} is not loopback; set allow_remote = true in config/server.toml")]
     RemoteBindNotAllowed { addr: String },
+    #[error(
+        "bind_addr {addr} is not loopback and no client_auth_key is set; refuse to start without a key"
+    )]
+    RemoteBindNeedsAuthKey { addr: String },
 }

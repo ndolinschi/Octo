@@ -12,6 +12,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
     Config {
         bind_addr: "127.0.0.1:8080".to_string(),
         allow_remote: false,
+        client_auth_key: String::new(),
         upstream_connect_timeout_secs: 30,
         upstream_request_timeout_secs: 600,
         openai_chat_completions_url: "https://api.openai.com/v1/chat/completions".to_string(),

@@ -167,5 +167,20 @@ fn non_loopback_bind_requires_allow_remote() {
     config.bind_addr = "0.0.0.0:8080".to_string();
     assert!(config.ensure_bind_allowed().is_err());
     config.allow_remote = true;
+    config.client_auth_key = "secret".to_string();
+    assert!(config.ensure_bind_allowed().is_ok());
+}
+
+#[test]
+fn non_loopback_bind_requires_client_auth_key() {
+    let mut config = sample_config(1024);
+    config.bind_addr = "0.0.0.0:8080".to_string();
+    config.allow_remote = true;
+    config.client_auth_key = String::new();
+    assert!(config.ensure_bind_allowed().is_err());
+    config.client_auth_key = "proxy-key".to_string();
+    assert!(config.ensure_bind_allowed().is_ok());
+    config.bind_addr = "127.0.0.1:8080".to_string();
+    config.client_auth_key = String::new();
     assert!(config.ensure_bind_allowed().is_ok());
 }
