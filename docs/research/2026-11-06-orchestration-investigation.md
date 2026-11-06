@@ -16,7 +16,7 @@ Live probe budget: rows with `created_at > START_TS_MS` only; hard stop **$0.30*
 | Mechanism | Location | Behaviour |
 | --- | --- | --- |
 | `is_subagent` | [`src/history/payload/claude.rs:5-14`](../../src/history/payload/claude.rs) | Scans `system` text lines for `x-anthropic-billing-header:` then `;`-split token `cc_is_subagent=true` |
-| Re-export | [`src/providers/llm/claude.rs:20-22`](../../src/providers/llm/claude.rs), [`src/providers/llm/mod.rs`](../../src/providers/llm/mod.rs) | Same predicate used by autoroute body helpers |
+| Wrapper / re-export | [`src/providers/llm/claude.rs:20-22`](../../src/providers/llm/claude.rs) wraps history predicate; [`src/providers/llm/mod.rs`](../../src/providers/llm/mod.rs) `pub use` | Same predicate used by autoroute body helpers |
 | `session_id` | [`src/auto/body.rs:8-16`](../../src/auto/body.rs) | `metadata.user_id` JSON → `session_id` string |
 | `session_key` | [`src/auto/body.rs:18-25`](../../src/auto/body.rs) | Subagent → `{session_id}#subagent`; else bare id |
 

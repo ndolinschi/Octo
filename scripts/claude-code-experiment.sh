@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run Claude Code inside gitignored experiments/ with Octo autoroute + Mistral tiers.
-# Keys come from repo .env (sourced via claude-code-env.sh) — no manual export needed.
+# Run Claude Code with Octo autoroute + Mistral tiers.
+# Keys from repo .env (via claude-code-env.sh). Session/artifacts under experiments/;
+# repo root is added with --add-dir so reads of src/ still work.
 #
 # Usage:
 #   cp .env.example .env   # once
@@ -16,6 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
 CLAUDE_CODE_ENV_QUIET=1 source "${ROOT}/scripts/claude-code-env.sh"
 
+mkdir -p "${OCTO_EXPERIMENTS_DIR}"
 cd "${OCTO_EXPERIMENTS_DIR}"
 
 if ! curl -sf -m 2 "http://${OCTO_BIND}/health" >/dev/null; then
@@ -54,16 +56,31 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Repo access from experiments/ cwd; skip if caller already passed --add-dir.
+ADD_DIR=()
+has_add_dir=0
+for arg in "${EXTRA[@]+"${EXTRA[@]}"}"; do
+  if [[ "$arg" == "--add-dir" || "$arg" == --add-dir=* ]]; then
+    has_add_dir=1
+    break
+  fi
+done
+if [[ "$has_add_dir" -eq 0 ]]; then
+  ADD_DIR=(--add-dir "${OCTO_ROOT}")
+fi
+
 if [[ "${PROMPT_MODE}" -eq 1 ]]; then
   if [[ -n "${PROMPT}" ]]; then
     printf '%s' "${PROMPT}" | exec "${CLAUDE_BIN}" -p \
       --dangerously-skip-permissions \
+      "${ADD_DIR[@]}" \
       "${EXTRA[@]}"
   else
     exec "${CLAUDE_BIN}" -p \
       --dangerously-skip-permissions \
+      "${ADD_DIR[@]}" \
       "${EXTRA[@]}"
   fi
 else
-  exec "${CLAUDE_BIN}" --dangerously-skip-permissions "${EXTRA[@]}"
+  exec "${CLAUDE_BIN}" --dangerously-skip-permissions "${ADD_DIR[@]}" "${EXTRA[@]}"
 fi

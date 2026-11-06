@@ -122,7 +122,8 @@
 1. Shadow-only P1–P2 before any default-on? (**recommend yes**)
 2. Who owns H1–H5 / hidden-test corpus?
 3. Is ~$0.02/session upper bound enough vs FinOps (`gen-*` headers, E4 budget)?
-4. Confirm Mistral ladder for shipping autoroute (see below) vs keeping Gemma/DeepSeek/Haiku.
+
+**Resolved:** Mistral ladder selected and shipped in `config/autoroute.toml` / serde defaults / Claude Code env (2026-11-06). Revisit only if P4 quality smoke fails.
 
 ---
 

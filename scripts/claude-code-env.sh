@@ -13,13 +13,23 @@
 #
 # Requires Octo on OCTO_BIND (default 127.0.0.1:8080) with
 # [llm.messages] backend = openrouter.
+#
+# Safe to `source`: does not leave `set -euo` or helper vars in your shell.
 
-set -euo pipefail
+_OCTO_ENV_SOURCED=0
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  _OCTO_ENV_SOURCED=1
+fi
+
+_octo_env_restore=
+if [[ -n "${-:-}" ]]; then
+  _octo_env_restore="${-}"
+fi
+set -eu
 
 _OCTO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export OCTO_BIND="${OCTO_BIND:-127.0.0.1:8080}"
 
-# Preserve values the caller already exported before sourcing .env files.
 _PRESERVE_OPENROUTER_API_KEY="${OPENROUTER_API_KEY-}"
 _PRESERVE_ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL-}"
 _PRESERVE_ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN-}"
@@ -41,15 +51,31 @@ _load_dotenv() {
 _load_dotenv "${_OCTO_ROOT}/experiments/.env"
 _load_dotenv "${_OCTO_ROOT}/.env"
 
-# Restore pre-existing exports so interactive overrides still win.
 [[ -n "${_PRESERVE_OPENROUTER_API_KEY}" ]] && OPENROUTER_API_KEY="${_PRESERVE_OPENROUTER_API_KEY}"
 [[ -n "${_PRESERVE_ANTHROPIC_BASE_URL}" ]] && ANTHROPIC_BASE_URL="${_PRESERVE_ANTHROPIC_BASE_URL}"
 [[ -n "${_PRESERVE_ANTHROPIC_AUTH_TOKEN}" ]] && ANTHROPIC_AUTH_TOKEN="${_PRESERVE_ANTHROPIC_AUTH_TOKEN}"
 [[ -n "${_PRESERVE_ANTHROPIC_API_KEY}" ]] && ANTHROPIC_API_KEY="${_PRESERVE_ANTHROPIC_API_KEY}"
 
-if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+_octo_env_fail() {
   echo "OPENROUTER_API_KEY missing. Add it to ${_OCTO_ROOT}/.env (see .env.example) and re-source." >&2
-  return 1 2>/dev/null || exit 1
+  if [[ -n "${_octo_env_restore}" ]]; then
+    set +eu
+    set "-${_octo_env_restore}" 2>/dev/null || true
+  fi
+  unset -f _load_dotenv _octo_env_fail 2>/dev/null || true
+  unset _OCTO_ROOT _PRESERVE_OPENROUTER_API_KEY _PRESERVE_ANTHROPIC_BASE_URL \
+    _PRESERVE_ANTHROPIC_AUTH_TOKEN _PRESERVE_ANTHROPIC_API_KEY \
+    _octo_env_restore _OCTO_ENV_SOURCED 2>/dev/null || true
+  return 1
+}
+
+if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+  if [[ "${_OCTO_ENV_SOURCED}" -eq 1 ]]; then
+    _octo_env_fail || return 1
+  else
+    echo "OPENROUTER_API_KEY missing. Add it to ${_OCTO_ROOT}/.env (see .env.example)." >&2
+    exit 1
+  fi
 fi
 
 mkdir -p "${_OCTO_ROOT}/experiments"
@@ -74,5 +100,15 @@ if [[ "${CLAUDE_CODE_ENV_QUIET:-}" != "1" ]]; then
   echo "OPUS/high=$ANTHROPIC_DEFAULT_OPUS_MODEL"
   echo "SUBAGENT=$CLAUDE_CODE_SUBAGENT_MODEL"
   echo "OPENROUTER_API_KEY=set (${#OPENROUTER_API_KEY} chars)"
-  echo "cwd experiments → $OCTO_EXPERIMENTS_DIR"
+  echo "OCTO_EXPERIMENTS_DIR=$OCTO_EXPERIMENTS_DIR (artifacts; repo stays accessible via --add-dir)"
 fi
+
+# Restore caller's shell options and drop helpers when sourced.
+if [[ -n "${_octo_env_restore}" ]]; then
+  set +eu
+  set "-${_octo_env_restore}" 2>/dev/null || true
+fi
+unset -f _load_dotenv _octo_env_fail 2>/dev/null || true
+unset _OCTO_ROOT _PRESERVE_OPENROUTER_API_KEY _PRESERVE_ANTHROPIC_BASE_URL \
+  _PRESERVE_ANTHROPIC_AUTH_TOKEN _PRESERVE_ANTHROPIC_API_KEY \
+  _octo_env_restore _OCTO_ENV_SOURCED 2>/dev/null || true

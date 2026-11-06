@@ -151,6 +151,16 @@ curl http://127.0.0.1:8080/openrouter/v1/messages \
 
 On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/llm.toml`, or send `"type": "OPENROUTER"` in the JSON body (stripped before upstream).
 
-### Claude Code + cheap OpenRouter models
+### Claude Code + Octo autoroute (Mistral tiers)
 
-Claude Code reads **`ANTHROPIC_DEFAULT_*_MODEL`** and **`CLAUDE_CODE_SUBAGENT_MODEL`** (not Octo). Point it at Octo or OpenRouter, then map Haiku/Sonnet/Opus slots to cheap slugs. Example (Gemma for Haiku, DeepSeek Flash for Sonnet, Haiku-latest for Opus, Gemma for subagents): copy [`config/claude-code.env.example`](config/claude-code.env.example) and `source` it before `claude`.
+Claude Code reads **`ANTHROPIC_DEFAULT_*_MODEL`** and **`CLAUDE_CODE_SUBAGENT_MODEL`** (not Octo). For local experiments through **`/autoroute`**:
+
+```bash
+cp .env.example .env          # set OPENROUTER_API_KEY
+cargo run                     # Octo on 127.0.0.1:8080
+source scripts/claude-code-env.sh
+./scripts/claude-code-experiment.sh              # interactive
+./scripts/claude-code-experiment.sh -p "…"       # non-interactive
+```
+
+`scripts/claude-code-env.sh` sources `.env` (and optional `experiments/.env`), sets `ANTHROPIC_BASE_URL=http://127.0.0.1:8080/autoroute`, and maps Haiku/Sonnet/Opus → autoroute low/mid/high (`ministral-8b` → `mistral-small-3.1` → `devstral`). The experiment helper runs with cwd under gitignored `experiments/` and `--add-dir` on the repo root. Manual / non-autoroute recipes: [`config/claude-code.env.example`](config/claude-code.env.example).
