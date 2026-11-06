@@ -1,8 +1,9 @@
 [autoroute]
 # Model slugs used by /autoroute when JEV picks a complexity band.
-low = "google/gemma-4-26b-a4b-it"
-mid = "deepseek/deepseek-v4-flash"
-high = "~anthropic/claude-haiku-latest"
+# Mistral ladder (smaller → smarter): ministral-8b → small-3.1 → devstral.
+low = "mistralai/ministral-8b-2512"
+mid = "mistralai/mistral-small-3.1-24b-instruct"
+high = "mistralai/devstral-2512"
 hard_threshold = 0.5
 easy_threshold = 0.5
 

@@ -73,6 +73,31 @@ impl Auto {
         }
     }
 
+    pub fn mark_text_tool_call_escalate(&self, session_id: &str) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        let mut choice = sessions.get(session_id).unwrap_or_else(|| {
+            SessionChoice::fresh(String::new(), Vec::new(), "unset".to_string())
+        });
+        let base = choice
+            .escalate_band
+            .as_deref()
+            .filter(|_| choice.escalate_remaining > 0)
+            .unwrap_or(choice.sticky_band.as_str());
+        let next = catalog::bump_band(base).to_string();
+        choice.escalate_band = Some(next.clone());
+        choice.escalate_remaining = self.tiers.escalate_turns.max(1);
+        choice.last_stall = Some("text_tool_call".to_string());
+        if choice.model.is_empty()
+            || catalog::band_rank(&choice.sticky_band) < catalog::band_rank(&next)
+        {
+            choice.model = self.tiers.slug(&next);
+        }
+        choice.seen = Instant::now();
+        sessions.insert(session_id.to_string(), choice);
+    }
+
     pub fn clear_awaiting_compact(&self, session_id: &str) {
         let Ok(mut sessions) = self.sessions.lock() else {
             return;

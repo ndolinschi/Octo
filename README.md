@@ -151,6 +151,21 @@ curl http://127.0.0.1:8080/openrouter/v1/messages \
 
 On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/llm.toml`, or send `"type": "OPENROUTER"` in the JSON body (stripped before upstream).
 
-### Claude Code + cheap OpenRouter models
+### Autoroute model ladder (Mistral)
 
-Claude Code reads **`ANTHROPIC_DEFAULT_*_MODEL`** and **`CLAUDE_CODE_SUBAGENT_MODEL`** (not Octo). Point it at Octo or OpenRouter, then map Haiku/Sonnet/Opus slots to cheap slugs. Example (Gemma for Haiku, DeepSeek Flash for Sonnet, Haiku-latest for Opus, Gemma for subagents): copy [`config/claude-code.env.example`](config/claude-code.env.example) and `source` it before `claude`.
+`config/autoroute.toml` low/mid/high defaults are now **Mistral** (`ministral-8b-2512` → `mistral-small-3.1-24b-instruct` → `devstral-2512`), replacing the previous Gemma / DeepSeek / Haiku-latest ladder. This applies to **all** `/autoroute` traffic, not only Claude Code experiments.
+
+### Claude Code + Octo autoroute (Mistral tiers)
+
+Claude Code reads **`ANTHROPIC_DEFAULT_*_MODEL`** and **`CLAUDE_CODE_SUBAGENT_MODEL`** (not Octo). For local experiments through **`/autoroute`**:
+
+```bash
+cp .env.example .env          # set OPENROUTER_API_KEY + Mistral ladder
+cargo run                     # Octo on 127.0.0.1:8080
+source scripts/claude-code-env.sh
+./scripts/claude-code-experiment.sh              # interactive (permission prompts)
+./scripts/claude-code-experiment.sh -p "…"       # non-interactive (skips permissions)
+OCTO_CC_SKIP_PERMISSIONS=1 ./scripts/claude-code-experiment.sh  # force skip
+```
+
+`.env.example` documents the Claude Code vars (`ANTHROPIC_BASE_URL`, `ANTHROPIC_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`) with the Mistral ladder. Put a **real** `OPENROUTER_API_KEY` in `.env` (not the `sk-or-v1-...` stub). `scripts/claude-code-env.sh` sources `.env`, sets **`ANTHROPIC_AUTH_TOKEN=$OPENROUTER_API_KEY`**, and **unsets `ANTHROPIC_API_KEY`**. After changing the key, always re-source the script (exporting only `OPENROUTER_API_KEY` leaves a stale auth token and causes OpenRouter 401). Defaults Haiku/Sonnet/Opus → autoroute low/mid/high (`ministral-8b` → `mistral-small-3.1` → `devstral`). An “unrecognized model” warning for OpenRouter slugs is expected. The experiment helper runs under gitignored `experiments/` with `--add-dir` on the repo root. Non-interactive (`-p`) defaults to `--dangerously-skip-permissions`; interactive does not unless `OCTO_CC_SKIP_PERMISSIONS=1`. Manual recipes: [`config/claude-code.env.example`](config/claude-code.env.example).

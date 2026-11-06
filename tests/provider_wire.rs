@@ -17,12 +17,12 @@ fn loads_split_config_directory() {
         config.openrouter_messages_url,
         "https://openrouter.ai/api/v1/messages"
     );
-    assert_eq!(config.autoroute_low_model, "google/gemma-4-26b-a4b-it");
-    assert_eq!(config.autoroute_mid_model, "deepseek/deepseek-v4-flash");
+    assert_eq!(config.autoroute_low_model, "mistralai/ministral-8b-2512");
     assert_eq!(
-        config.autoroute_high_model,
-        "~anthropic/claude-haiku-latest"
+        config.autoroute_mid_model,
+        "mistralai/mistral-small-3.1-24b-instruct"
     );
+    assert_eq!(config.autoroute_high_model, "mistralai/devstral-2512");
     assert_eq!(config.autoroute_hard_threshold, 0.5);
     assert_eq!(config.autoroute_easy_threshold, 0.5);
     assert_eq!(config.autoroute_stall_window, 6);

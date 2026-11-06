@@ -364,15 +364,15 @@ fn default_autoroute_session_budget_usd() -> f64 {
 }
 
 fn default_autoroute_low_model() -> String {
-    "google/gemma-4-26b-a4b-it".to_string()
+    "mistralai/ministral-8b-2512".to_string()
 }
 
 fn default_autoroute_mid_model() -> String {
-    "deepseek/deepseek-v4-flash".to_string()
+    "mistralai/mistral-small-3.1-24b-instruct".to_string()
 }
 
 fn default_autoroute_high_model() -> String {
-    "~anthropic/claude-haiku-latest".to_string()
+    "mistralai/devstral-2512".to_string()
 }
 
 fn default_autoroute_hard_threshold() -> f64 {

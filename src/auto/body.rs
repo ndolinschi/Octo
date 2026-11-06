@@ -66,7 +66,9 @@ fn strip_question_noise(text: &str) -> String {
 }
 
 fn is_wrapper_tag(name: &str) -> bool {
-    name.eq_ignore_ascii_case("session") || name.eq_ignore_ascii_case("conversation")
+    name.eq_ignore_ascii_case("session")
+        || name.eq_ignore_ascii_case("conversation")
+        || name.eq_ignore_ascii_case("command-args")
 }
 
 fn remove_tagged_blocks(text: &str) -> String {
@@ -293,7 +295,32 @@ pub fn shape(plan: ShapePlan<'_>) -> Value {
     }
     clamp_max_tokens(&mut copy, plan.models, plan.model);
     drop_unsupported_thinking(&mut copy, plan.models, plan.model);
+    require_tool_parameters(&mut copy);
     copy
+}
+
+fn require_tool_parameters(body: &mut Value) {
+    let has_tools = body
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| !tools.is_empty());
+    if !has_tools {
+        return;
+    }
+    let Some(object) = body.as_object_mut() else {
+        return;
+    };
+    match object.get_mut("provider") {
+        Some(Value::Object(provider)) => {
+            provider
+                .entry("require_parameters")
+                .or_insert_with(|| json!(true));
+        }
+        Some(_) => {}
+        None => {
+            object.insert("provider".to_string(), json!({"require_parameters": true}));
+        }
+    }
 }
 
 fn strip_thinking_blocks(body: &mut Value) {
