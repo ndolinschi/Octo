@@ -298,7 +298,10 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                     models: loaded.as_ref(),
                     provider_order: &req.auto.tiers.provider_order,
                     allow_fallbacks: req.auto.tiers.allow_fallbacks,
-                });
+                    strip_fields: &req.auto.tiers.strip_fields,
+                    require_parameters: req.auto.tiers.require_parameters,
+                })
+                .body;
                 tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
                 return route::repeat_compact(RepeatCompact {
                     auto: req.auto,

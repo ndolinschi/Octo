@@ -166,7 +166,7 @@ On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/l
 - **Provider pin (opt-in):** `provider_order = []` / `allow_fallbacks = true` by default. A commented Mistral example is in the same file. Pinning does **not** choose BYOK vs OpenRouter-paid (account setting).
 - **Housekeeping trim:** long Claude Code housekeeping turns keep system/tools plus the last `housekeeping_keep_messages` (default 6); trigger becomes `housekeeping_trimmed` when shortened.
 - **Permission checks:** Claude Code prompts with `Err on the side of blocking` or `<transcript>` use trigger `permission_check`, keep the session model, and skip JEV/sticky.
-- **Claude Code body hygiene:** autoroute `shape` drops Anthropic-only `output_config` / `safeguards` before OpenRouter. Those fields plus `provider.require_parameters` otherwise 404 Mistral (`Filter by Parameters`).
+- **Claude Code body hygiene:** `config/autoroute.toml` → `strip_fields` (default `output_config`, `safeguards`, `context_management`) removes Anthropic-only keys before OpenRouter; removed keys are recorded on the call as `rerouting_reason` `stripped:…` without changing `trigger`. `require_parameters` is `always` (default) | `tools_only` | `never` and controls `provider.require_parameters`. Without the strip, those fields plus `require_parameters` 404 Mistral (`Filter by Parameters`).
 - **Prices:** fill `config/prices.toml` from the provider console so estimates can win over `usage.cost` when set.
 
 ### Claude Code + Octo autoroute (Mistral tiers)

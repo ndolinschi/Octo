@@ -56,6 +56,8 @@ pub struct Config {
     pub autoroute_housekeeping_keep_messages: u32,
     pub autoroute_provider_order: Vec<String>,
     pub autoroute_allow_fallbacks: bool,
+    pub autoroute_strip_fields: Vec<String>,
+    pub autoroute_require_parameters: String,
     pub prices: crate::history::PriceTable,
 }
 
@@ -353,6 +355,10 @@ struct AutorouteSection {
     provider_order: Vec<String>,
     #[serde(default = "default_autoroute_allow_fallbacks")]
     allow_fallbacks: bool,
+    #[serde(default = "default_autoroute_strip_fields")]
+    strip_fields: Vec<String>,
+    #[serde(default = "default_autoroute_require_parameters")]
+    require_parameters: String,
 }
 
 impl Default for AutorouteSection {
@@ -371,6 +377,8 @@ impl Default for AutorouteSection {
             housekeeping_keep_messages: default_autoroute_housekeeping_keep_messages(),
             provider_order: Vec::new(),
             allow_fallbacks: default_autoroute_allow_fallbacks(),
+            strip_fields: default_autoroute_strip_fields(),
+            require_parameters: default_autoroute_require_parameters(),
         }
     }
 }
@@ -385,6 +393,14 @@ fn default_autoroute_housekeeping_keep_messages() -> u32 {
 
 fn default_autoroute_allow_fallbacks() -> bool {
     true
+}
+
+fn default_autoroute_strip_fields() -> Vec<String> {
+    crate::auto::default_strip_fields()
+}
+
+fn default_autoroute_require_parameters() -> String {
+    "always".to_string()
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -590,6 +606,8 @@ fn config_from_file(file: ConfigFile) -> Config {
         autoroute_housekeeping_keep_messages: file.autoroute.housekeeping_keep_messages,
         autoroute_provider_order: file.autoroute.provider_order,
         autoroute_allow_fallbacks: file.autoroute.allow_fallbacks,
+        autoroute_strip_fields: file.autoroute.strip_fields,
+        autoroute_require_parameters: file.autoroute.require_parameters,
         prices: {
             use crate::history::{ModelPrice, PriceTable};
             let rows = file

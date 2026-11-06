@@ -78,7 +78,7 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 | `config/llm.toml` | `[llm.chat]` / `[llm.messages]` backend defaults |
 | `config/decision.toml` | `[decision]` backend |
 | `config/history.toml` | `[history]` — SQLite path, optional token HMAC key |
-| `config/autoroute.toml` | `[autoroute]` — ladder, stall/sticky, budget, housekeeping trim, optional `provider_order` (shape also drops Claude Code `output_config` / `safeguards` for OpenRouter) |
+| `config/autoroute.toml` | `[autoroute]` — ladder, stall/sticky, budget, housekeeping trim, optional `provider_order`, `strip_fields`, `require_parameters` (`always` / `tools_only` / `never`) |
 | `config/prices.toml` | `[prices."<slug>"]` — USD/1M token rates + optional `billed_as` for reconcile |
 
 - **Default load:** merge present files in `./config/` (known fragment names; missing files are skipped). Run from repo root.

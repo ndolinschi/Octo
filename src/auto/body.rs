@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use crate::providers::llm::is_subagent;
 use crate::providers::openrouter::OpenRouterModels;
 
-use super::catalog::{self, ids_match};
+use super::catalog::{self, ids_match, RequireParameters};
 
 pub fn session_id(body: &Value) -> Option<String> {
     let raw = body.get("metadata")?.get("user_id")?;
@@ -399,6 +399,16 @@ pub fn compaction_body(body: &Value, model: &str) -> Value {
     copy
 }
 
+pub const PROTECTED_STRIP_FIELDS: &[&str] = &[
+    "tools",
+    "tool_choice",
+    "system",
+    "messages",
+    "max_tokens",
+    "stop_sequences",
+    "metadata",
+];
+
 pub struct ShapePlan<'a> {
     pub body: &'a Value,
     pub model: &'a str,
@@ -406,6 +416,13 @@ pub struct ShapePlan<'a> {
     pub models: Option<&'a OpenRouterModels>,
     pub provider_order: &'a [String],
     pub allow_fallbacks: bool,
+    pub strip_fields: &'a [String],
+    pub require_parameters: RequireParameters,
+}
+
+pub struct ShapeResult {
+    pub body: Value,
+    pub stripped: Vec<String>,
 }
 
 impl<'a> ShapePlan<'a> {
@@ -422,11 +439,13 @@ impl<'a> ShapePlan<'a> {
             models,
             provider_order: &[],
             allow_fallbacks: true,
+            strip_fields: &[],
+            require_parameters: RequireParameters::Always,
         }
     }
 }
 
-pub fn shape(plan: ShapePlan<'_>) -> Value {
+pub fn shape(plan: ShapePlan<'_>) -> ShapeResult {
     let mut copy = with_model(plan.body, plan.model);
     let model_changed = plan
         .previous_model
@@ -436,19 +455,55 @@ pub fn shape(plan: ShapePlan<'_>) -> Value {
     }
     clamp_max_tokens(&mut copy, plan.models, plan.model);
     drop_unsupported_thinking(&mut copy, plan.models, plan.model);
-    drop_anthropic_only_fields(&mut copy);
-    require_tool_parameters(&mut copy);
+    let default_fields = catalog::default_strip_fields();
+    let strip_list = if plan.strip_fields.is_empty() {
+        default_fields.as_slice()
+    } else {
+        plan.strip_fields
+    };
+    let stripped = strip_configured_fields(&mut copy, strip_list);
+    apply_require_parameters(&mut copy, plan.require_parameters);
     merge_provider_pin(&mut copy, plan.provider_order, plan.allow_fallbacks);
-    copy
+    ShapeResult {
+        body: copy,
+        stripped,
+    }
 }
 
-fn require_tool_parameters(body: &mut Value) {
-    let has_tools = body
-        .get("tools")
-        .and_then(Value::as_array)
-        .is_some_and(|tools| !tools.is_empty());
-    if !has_tools {
-        return;
+fn strip_configured_fields(body: &mut Value, fields: &[String]) -> Vec<String> {
+    let Some(object) = body.as_object_mut() else {
+        return Vec::new();
+    };
+    let mut removed = Vec::new();
+    for key in fields {
+        if PROTECTED_STRIP_FIELDS
+            .iter()
+            .any(|protected| protected.eq_ignore_ascii_case(key))
+        {
+            continue;
+        }
+        if object.remove(key).is_some() {
+            removed.push(key.clone());
+        }
+    }
+    removed.sort();
+    removed.dedup();
+    removed
+}
+
+fn apply_require_parameters(body: &mut Value, mode: RequireParameters) {
+    match mode {
+        RequireParameters::Never => return,
+        RequireParameters::ToolsOnly => {
+            let has_tools = body
+                .get("tools")
+                .and_then(Value::as_array)
+                .is_some_and(|tools| !tools.is_empty());
+            if !has_tools {
+                return;
+            }
+        }
+        RequireParameters::Always => {}
     }
     let Some(object) = body.as_object_mut() else {
         return;
@@ -533,12 +588,4 @@ fn drop_unsupported_thinking(body: &mut Value, models: Option<&OpenRouterModels>
     if let Some(object) = body.as_object_mut() {
         object.remove("thinking");
     }
-}
-
-fn drop_anthropic_only_fields(body: &mut Value) {
-    let Some(object) = body.as_object_mut() else {
-        return;
-    };
-    object.remove("output_config");
-    object.remove("safeguards");
 }

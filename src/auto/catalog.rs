@@ -5,6 +5,40 @@ use crate::providers::openrouter::OpenRouterModels;
 use super::jev::Complexity;
 use super::metrics;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequireParameters {
+    Always,
+    ToolsOnly,
+    Never,
+}
+
+impl RequireParameters {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "always" => Some(Self::Always),
+            "tools_only" => Some(Self::ToolsOnly),
+            "never" => Some(Self::Never),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Always => "always",
+            Self::ToolsOnly => "tools_only",
+            Self::Never => "never",
+        }
+    }
+}
+
+pub fn default_strip_fields() -> Vec<String> {
+    vec![
+        "output_config".to_string(),
+        "safeguards".to_string(),
+        "context_management".to_string(),
+    ]
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tiers {
     pub low: String,
@@ -20,6 +54,8 @@ pub struct Tiers {
     pub housekeeping_keep_messages: u32,
     pub provider_order: Vec<String>,
     pub allow_fallbacks: bool,
+    pub strip_fields: Vec<String>,
+    pub require_parameters: RequireParameters,
 }
 
 impl Tiers {
@@ -38,6 +74,8 @@ impl Tiers {
             housekeeping_keep_messages: 6,
             provider_order: Vec::new(),
             allow_fallbacks: true,
+            strip_fields: default_strip_fields(),
+            require_parameters: RequireParameters::Always,
         }
     }
 

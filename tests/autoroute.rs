@@ -9,8 +9,8 @@ use octo::auto::{
     is_housekeeping, is_permission_check, larger_fit, looks_like_text_tool_call,
     max_completion_tokens, needed_tools, needs_compact, output_reserve, payload, question_text,
     session_id, session_key, shape, trim_housekeeping, with_model, Auto, Complexity, DecideRequest,
-    LargerFit, PayloadPlan, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan,
-    Thresholds, Tiers, Turn,
+    LargerFit, PayloadPlan, RequireParameters, RouteMeta, SessionChoice, ShapePlan, StallTrigger,
+    StickyPlan, Thresholds, Tiers, Turn,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -867,7 +867,8 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         "old-model",
         Some("old-model"),
         Some(&models),
-    ));
+    ))
+    .body;
     assert!(same["messages"][0]["content"]
         .as_array()
         .unwrap()
@@ -879,7 +880,8 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         "new-model",
         Some("old-model"),
         Some(&models),
-    ));
+    ))
+    .body;
     let parts = changed["messages"][0]["content"].as_array().unwrap();
     assert!(parts.iter().all(|part| part["type"] != "thinking"));
     assert!(parts.iter().all(|part| part["type"] != "redacted_thinking"));
@@ -908,8 +910,39 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         "max_tokens": 100,
         "messages": [{"role": "user", "content": "hi"}]
     });
-    let plain = shape(ShapePlan::new(&no_tools, "old-model", None, None));
-    assert!(plain.get("provider").is_none());
+    let plain = shape(ShapePlan::new(&no_tools, "old-model", None, None)).body;
+    assert_eq!(
+        plain["provider"]["require_parameters"], true,
+        "default require_parameters=always sets the flag even without tools"
+    );
+    let tools_only = shape(ShapePlan {
+        body: &no_tools,
+        model: "old-model",
+        previous_model: None,
+        models: None,
+        provider_order: &[],
+        allow_fallbacks: true,
+        strip_fields: &[],
+        require_parameters: RequireParameters::ToolsOnly,
+    })
+    .body;
+    assert!(tools_only.get("provider").is_none());
+    let never = shape(ShapePlan {
+        body: &json!({
+            "model": "old-model",
+            "tools": [{"name": "Bash"}],
+            "messages": [{"role": "user", "content": "hi"}]
+        }),
+        model: "old-model",
+        previous_model: None,
+        models: None,
+        provider_order: &[],
+        allow_fallbacks: true,
+        strip_fields: &[],
+        require_parameters: RequireParameters::Never,
+    })
+    .body;
+    assert!(never.get("provider").is_none());
 
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();
@@ -918,7 +951,8 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         "mid-model",
         Some("claude-sonnet-4-5"),
         Some(&models),
-    ));
+    ))
+    .body;
     assert_eq!(
         shaped["tools"].as_array().unwrap().len(),
         fixture["tools"].as_array().unwrap().len()
@@ -939,23 +973,159 @@ fn shape_strips_anthropic_only_fields_that_break_openrouter() {
         "tools": [{"name": "Bash", "input_schema": {"type": "object"}}],
         "messages": [{"role": "user", "content": "hi"}]
     });
-    let shaped = shape(ShapePlan::new(
+    let result = shape(ShapePlan::new(
         &body,
         "mistralai/devstral-2512",
         Some("claude-sonnet-4-5"),
         None,
     ));
+    let shaped = result.body;
     assert!(
         shaped.get("output_config").is_none(),
         "output_config + require_parameters 404s OpenRouter Mistral"
     );
     assert!(shaped.get("safeguards").is_none());
     assert!(
-        shaped.get("context_management").is_some(),
-        "context_management is left alone"
+        shaped.get("context_management").is_none(),
+        "context_management is unsupported on devstral and present only on 404 call 528"
+    );
+    assert_eq!(
+        result.stripped,
+        vec![
+            "context_management".to_string(),
+            "output_config".to_string(),
+            "safeguards".to_string(),
+        ]
     );
     assert_eq!(shaped["provider"]["require_parameters"], true);
     assert_eq!(shaped["model"], "mistralai/devstral-2512");
+    let meta = RouteMeta::from_plan("unset".into(), "high".into(), Some("classify"))
+        .with_stripped(&result.stripped);
+    assert_eq!(meta.trigger, "classify");
+    assert_eq!(
+        meta.legacy_reason().as_deref(),
+        Some("classify;stripped:context_management,output_config,safeguards")
+    );
+}
+
+#[test]
+fn shape_call_528_fixture_strips_proven_keys_keeps_rest() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/call_528_devstral_404.json")).unwrap();
+    let before = fixture.clone();
+    let result = shape(ShapePlan::new(
+        &fixture,
+        "mistralai/devstral-2512",
+        Some("mistralai/devstral-2512"),
+        None,
+    ));
+    let shaped = result.body;
+    for key in ["output_config", "safeguards", "context_management"] {
+        assert!(shaped.get(key).is_none(), "{key} must be stripped");
+        assert!(before.get(key).is_some(), "{key} present in fixture");
+    }
+    assert_eq!(
+        result.stripped,
+        vec![
+            "context_management".to_string(),
+            "output_config".to_string(),
+            "safeguards".to_string(),
+        ]
+    );
+    assert_eq!(shaped["provider"]["require_parameters"], true);
+    for key in before.as_object().unwrap().keys() {
+        if matches!(
+            key.as_str(),
+            "output_config" | "safeguards" | "context_management" | "model" | "provider"
+        ) {
+            continue;
+        }
+        assert_eq!(
+            shaped.get(key),
+            before.get(key),
+            "non-stripped key {key} must stay byte-identical"
+        );
+    }
+    assert_eq!(shaped["model"], "mistralai/devstral-2512");
+}
+
+#[test]
+fn shape_call_530_fixture_only_strips_output_config() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/call_530_housekeeping_ok.json")).unwrap();
+    let before = fixture.clone();
+    let result = shape(ShapePlan {
+        body: &fixture,
+        model: "mistralai/ministral-8b-2512",
+        previous_model: None,
+        models: None,
+        provider_order: &[],
+        allow_fallbacks: true,
+        strip_fields: &[],
+        require_parameters: RequireParameters::ToolsOnly,
+    });
+    let shaped = result.body;
+    assert!(shaped.get("output_config").is_none());
+    assert_eq!(result.stripped, vec!["output_config".to_string()]);
+    for key in before.as_object().unwrap().keys() {
+        if key == "output_config" || key == "model" {
+            continue;
+        }
+        assert_eq!(
+            shaped.get(key),
+            before.get(key),
+            "call 530 key {key} must stay unchanged under tools_only"
+        );
+    }
+    assert!(shaped.get("provider").is_none());
+}
+
+#[test]
+fn shape_default_config_preserves_existing_fixtures_except_strip_keys() {
+    let fixtures: [(&str, serde_json::Value); 4] = [
+        (
+            "claude_code_messages",
+            serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap(),
+        ),
+        (
+            "permission_check",
+            serde_json::from_str(include_str!("fixtures/permission_check.json")).unwrap(),
+        ),
+        (
+            "session_with_thinking",
+            serde_json::from_str(include_str!("fixtures/session_with_thinking.json")).unwrap(),
+        ),
+        (
+            "stall_repeated_edit",
+            serde_json::from_str(include_str!("fixtures/stall_repeated_edit.json")).unwrap(),
+        ),
+    ];
+    let strip = ["output_config", "safeguards", "context_management"];
+    for (name, fixture) in fixtures {
+        let model = fixture
+            .get("model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("mistralai/ministral-8b-2512");
+        let result = shape(ShapePlan::new(&fixture, model, None, None));
+        let shaped = result.body;
+        for key in strip {
+            assert!(
+                shaped.get(key).is_none(),
+                "{name}: {key} must be absent after shape"
+            );
+        }
+        for key in fixture.as_object().unwrap().keys() {
+            if strip.contains(&key.as_str()) || key == "model" || key == "provider" {
+                continue;
+            }
+            assert_eq!(
+                shaped.get(key),
+                fixture.get(key),
+                "{name}: key {key} must remain identical aside from strip/model/provider"
+            );
+        }
+        assert_eq!(shaped["provider"]["require_parameters"], true);
+    }
 }
 
 #[test]
@@ -973,7 +1143,10 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
         models: None,
         provider_order: &order,
         allow_fallbacks: false,
-    });
+        strip_fields: &[],
+        require_parameters: RequireParameters::Always,
+    })
+    .body;
     assert_eq!(pinned["provider"]["require_parameters"], true);
     assert_eq!(pinned["provider"]["order"], json!(["Mistral"]));
     assert_eq!(pinned["provider"]["allow_fallbacks"], false);
@@ -995,12 +1168,15 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
         models: None,
         provider_order: &order,
         allow_fallbacks: false,
-    });
+        strip_fields: &[],
+        require_parameters: RequireParameters::Always,
+    })
+    .body;
     assert_eq!(kept["provider"]["order"], json!(["Anthropic"]));
     assert_eq!(kept["provider"]["allow_fallbacks"], true);
     assert_eq!(kept["provider"]["require_parameters"], false);
 
-    let empty = shape(ShapePlan::new(&body, "m", None, None));
+    let empty = shape(ShapePlan::new(&body, "m", None, None)).body;
     assert_eq!(empty["provider"], json!({"require_parameters": true}));
 }
 

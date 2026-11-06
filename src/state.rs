@@ -71,6 +71,10 @@ impl AppState {
                 tiers.housekeeping_keep_messages = config.autoroute_housekeeping_keep_messages;
                 tiers.provider_order = config.autoroute_provider_order.clone();
                 tiers.allow_fallbacks = config.autoroute_allow_fallbacks;
+                tiers.strip_fields = config.autoroute_strip_fields.clone();
+                tiers.require_parameters =
+                    crate::auto::RequireParameters::parse(&config.autoroute_require_parameters)
+                        .unwrap_or(crate::auto::RequireParameters::Always);
                 tiers
             }),
             config,

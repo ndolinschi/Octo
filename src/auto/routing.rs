@@ -31,6 +31,7 @@ pub struct RouteMeta {
     pub tier_before: String,
     pub tier_after: String,
     pub trigger: String,
+    pub stripped: Option<String>,
 }
 
 impl RouteMeta {
@@ -39,6 +40,7 @@ impl RouteMeta {
             tier_before: tier_before.to_string(),
             tier_after: "low".to_string(),
             trigger: "housekeeping".to_string(),
+            stripped: None,
         }
     }
 
@@ -47,7 +49,17 @@ impl RouteMeta {
             tier_before,
             tier_after,
             trigger: normalize_trigger(reason),
+            stripped: None,
         }
+    }
+
+    pub fn with_stripped(mut self, stripped: &[String]) -> Self {
+        if stripped.is_empty() {
+            self.stripped = None;
+        } else {
+            self.stripped = Some(stripped.join(","));
+        }
+        self
     }
 
     pub fn rerouting(&self) -> i64 {
@@ -55,10 +67,15 @@ impl RouteMeta {
     }
 
     pub fn legacy_reason(&self) -> Option<String> {
-        if self.trigger == "none" {
-            None
-        } else {
-            Some(self.trigger.clone())
+        let stripped = self
+            .stripped
+            .as_ref()
+            .map(|keys| format!("stripped:{keys}"));
+        match (self.trigger.as_str(), stripped) {
+            ("none", None) => None,
+            ("none", Some(label)) => Some(label),
+            (trigger, None) => Some(trigger.to_string()),
+            (trigger, Some(label)) => Some(format!("{trigger};{label}")),
         }
     }
 }

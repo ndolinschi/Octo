@@ -13,13 +13,14 @@ pub use action::{Compact, Forward, ModelAction, Turn};
 pub use body::{
     cap_decision_text, compaction_body, filter_tools, is_housekeeping, is_permission_check,
     last_user_text, last_user_tool_results_only, question_text, session_id, session_key, shape,
-    trim_housekeeping, with_model, HousekeepingTrim, ShapePlan,
+    trim_housekeeping, with_model, HousekeepingTrim, ShapePlan, ShapeResult,
+    PROTECTED_STRIP_FIELDS,
 };
-pub use catalog::Tiers;
 pub use catalog::{
     band_rank, bump_band, complexity_band, context_length, larger_fit, max_completion_tokens,
     supports_reasoning, LargerFit,
 };
+pub use catalog::{default_strip_fields, RequireParameters, Tiers};
 pub use decide::sticky::{apply as apply_sticky, cap_for_budget, StickyOutcome, StickyPlan};
 pub use decide::{decide, Auto, DecideRequest};
 pub use jev::{

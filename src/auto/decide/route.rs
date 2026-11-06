@@ -73,14 +73,17 @@ pub(super) struct RepeatCompact<'a> {
 pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
     let mut plan = ctx.plan;
     let previous = ctx.previous_model.as_deref();
-    let mut outgoing = shaped(ShapeArgs {
+    let mut shaped_out = shaped(ShapeArgs {
         body: &ctx.body,
         model: &plan.model,
         previous_model: previous,
         models: ctx.models,
         provider_order: &ctx.auto.tiers.provider_order,
         allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
+        strip_fields: &ctx.auto.tiers.strip_fields,
+        require_parameters: ctx.auto.tiers.require_parameters,
     });
+    let mut outgoing = shaped_out.body;
     let estimate = context_estimate(
         counted_bytes(&outgoing),
         catalog::context_length(ctx.models, &plan.model),
@@ -124,14 +127,17 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             current: &plan.model,
         }) {
             plan.model = slug;
-            outgoing = shaped(ShapeArgs {
+            shaped_out = shaped(ShapeArgs {
                 body: &ctx.body,
                 model: &plan.model,
                 previous_model: previous,
                 models: ctx.models,
                 provider_order: &ctx.auto.tiers.provider_order,
                 allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
+                strip_fields: &ctx.auto.tiers.strip_fields,
+                require_parameters: ctx.auto.tiers.require_parameters,
             });
+            outgoing = shaped_out.body.clone();
             plan.reason = Some("upgrade".to_string());
         } else {
             return finish_overflow(OverflowCtx {
@@ -163,7 +169,8 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         });
     }
     let tier_after = ctx.auto.tiers().band(&plan.model).to_string();
-    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
+    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref())
+        .with_stripped(&shaped_out.stripped);
     encode_forward(&outgoing, meta, plan.trimmed_from_tokens)
 }
 
@@ -241,19 +248,19 @@ pub(super) struct ShapedForward<'a> {
 
 pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
     let tier_after = plan.auto.tiers().band(plan.model).to_string();
-    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
-    encode_forward(
-        &shaped(ShapeArgs {
-            body: plan.body,
-            model: plan.model,
-            previous_model: plan.previous_model,
-            models: plan.models,
-            provider_order: &plan.auto.tiers.provider_order,
-            allow_fallbacks: plan.auto.tiers.allow_fallbacks,
-        }),
-        meta,
-        plan.trimmed_from_tokens,
-    )
+    let shaped_out = shaped(ShapeArgs {
+        body: plan.body,
+        model: plan.model,
+        previous_model: plan.previous_model,
+        models: plan.models,
+        provider_order: &plan.auto.tiers.provider_order,
+        allow_fallbacks: plan.auto.tiers.allow_fallbacks,
+        strip_fields: &plan.auto.tiers.strip_fields,
+        require_parameters: plan.auto.tiers.require_parameters,
+    });
+    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref())
+        .with_stripped(&shaped_out.stripped);
+    encode_forward(&shaped_out.body, meta, plan.trimmed_from_tokens)
 }
 
 pub(super) fn passthrough(body: &Value) -> Turn {
@@ -297,9 +304,11 @@ struct ShapeArgs<'a> {
     models: Option<&'a OpenRouterModels>,
     provider_order: &'a [String],
     allow_fallbacks: bool,
+    strip_fields: &'a [String],
+    require_parameters: catalog::RequireParameters,
 }
 
-fn shaped(plan: ShapeArgs<'_>) -> Value {
+fn shaped(plan: ShapeArgs<'_>) -> body::ShapeResult {
     body::shape(ShapePlan {
         body: plan.body,
         model: plan.model,
@@ -307,6 +316,8 @@ fn shaped(plan: ShapeArgs<'_>) -> Value {
         models: plan.models,
         provider_order: plan.provider_order,
         allow_fallbacks: plan.allow_fallbacks,
+        strip_fields: plan.strip_fields,
+        require_parameters: plan.require_parameters,
     })
 }
 

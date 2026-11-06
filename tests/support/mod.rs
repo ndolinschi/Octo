@@ -45,6 +45,8 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_housekeeping_keep_messages: 6,
         autoroute_provider_order: Vec::new(),
         autoroute_allow_fallbacks: true,
+        autoroute_strip_fields: octo::auto::default_strip_fields(),
+        autoroute_require_parameters: "always".to_string(),
         prices: octo::history::PriceTable::default(),
     }
 }

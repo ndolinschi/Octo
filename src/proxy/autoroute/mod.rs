@@ -142,14 +142,18 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
         models: models.as_ref(),
         provider_order: &plan.state.auto.tiers().provider_order,
         allow_fallbacks: plan.state.auto.tiers().allow_fallbacks,
+        strip_fields: &plan.state.auto.tiers().strip_fields,
+        require_parameters: plan.state.auto.tiers().require_parameters,
     });
-    let body = serde_json::to_vec(&shaped).ok()?;
+    let body = serde_json::to_vec(&shaped.body).ok()?;
     let tier_after = plan.state.auto.tiers().band(&next).to_string();
     let meta = RouteMeta {
         tier_before: plan.forward.meta.tier_after.clone(),
         tier_after,
         trigger: "retry".to_string(),
-    };
+        stripped: None,
+    }
+    .with_stripped(&shaped.stripped);
     let forward = crate::auto::Forward {
         body,
         meta,
