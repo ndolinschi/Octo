@@ -135,3 +135,50 @@ async fn health_route_returns_ok() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn autoroute_status_returns_seeded_session() {
+    use http_body_util::BodyExt;
+    use octo::auto::SessionChoice;
+    use serde_json::Value;
+
+    let config = sample_config(1024);
+    let state = AppState::new(config).unwrap();
+    state.auto.seed_session(
+        "status-sess",
+        SessionChoice::fresh("mid-m".into(), vec!["Read".into()], "mid".into()),
+    );
+    state.auto.add_session_cost("status-sess", 250_000);
+    let app = routes::router(state);
+    let request = Request::builder()
+        .uri("/autoroute/status?session=status-sess")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["session_id"], "status-sess");
+    assert_eq!(body["tier"], "mid");
+    assert_eq!(body["model"], "mid-m");
+    assert!((body["cost_usd"].as_f64().unwrap() - 0.25).abs() < 1e-9);
+}
+
+#[tokio::test]
+async fn autoroute_status_unknown_session_is_404() {
+    use http_body_util::BodyExt;
+    use serde_json::Value;
+
+    let config = sample_config(1024);
+    let state = AppState::new(config).unwrap();
+    let app = routes::router(state);
+    let request = Request::builder()
+        .uri("/autoroute/status?session=missing")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["error"], "unknown session");
+}

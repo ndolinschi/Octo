@@ -158,6 +158,20 @@ impl Auto {
         sessions.insert(session_key.to_string(), choice);
     }
 
+    pub fn session_snapshot(&self, session_key: &str) -> Option<SessionChoice> {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return None;
+        };
+        sessions.peek(session_key)
+    }
+
+    pub fn latest_session_id(&self) -> Option<String> {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return None;
+        };
+        sessions.latest_id()
+    }
+
     pub async fn seed_catalog(&self, models: crate::providers::openrouter::OpenRouterModels) {
         self.catalog.lock().await.store(models);
     }

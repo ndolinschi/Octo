@@ -1,4 +1,7 @@
 mod compact;
+mod status;
+
+pub use status::status;
 
 use std::sync::Arc;
 

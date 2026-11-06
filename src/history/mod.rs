@@ -35,6 +35,16 @@ type HmacSha256 = Hmac<Sha256>;
 
 const INSERT_SLOTS: usize = 32;
 
+#[derive(Debug, Clone)]
+pub struct SessionCallStats {
+    pub calls: i64,
+    pub cost_micros: u64,
+    pub updated_at: i64,
+    pub last_trigger: Option<String>,
+    pub last_model: Option<String>,
+    pub cost_source_breakdown: serde_json::Value,
+}
+
 #[derive(Clone)]
 pub struct History {
     pool: Option<SqlitePool>,
@@ -181,6 +191,75 @@ impl History {
         .fetch_one(pool)
         .await?;
         Ok(u64::try_from(row.total).unwrap_or(u64::MAX))
+    }
+
+    pub async fn session_call_stats(&self, session_id: &str) -> Option<SessionCallStats> {
+        let pool = self.pool.as_ref()?;
+        let summary = sqlx::query(
+            r#"
+            SELECT
+              COUNT(*) AS calls,
+              COALESCE(SUM(cost_micros), 0) AS cost_micros,
+              COALESCE(MAX(created_at), 0) AS updated_at
+            FROM calls
+            WHERE session_id = ?
+            "#,
+        )
+        .bind(session_id)
+        .fetch_one(pool)
+        .await
+        .ok()?;
+        use sqlx::Row;
+        let calls = summary.get::<i64, _>("calls");
+        let cost_micros = u64::try_from(summary.get::<i64, _>("cost_micros")).unwrap_or(0);
+        let updated_at = summary.get::<i64, _>("updated_at");
+        let last = sqlx::query(
+            r#"
+            SELECT trigger, model FROM calls
+            WHERE session_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+        let (last_trigger, last_model) = match last {
+            Some(row) => (
+                row.get::<Option<String>, _>("trigger"),
+                row.get::<Option<String>, _>("model"),
+            ),
+            None => (None, None),
+        };
+        let sources = sqlx::query(
+            r#"
+            SELECT COALESCE(cost_source, 'none') AS cost_source,
+                   COALESCE(SUM(cost_micros), 0) AS micros
+            FROM calls
+            WHERE session_id = ?
+            GROUP BY COALESCE(cost_source, 'none')
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        let mut breakdown = serde_json::Map::new();
+        for row in sources {
+            let source: String = row.get("cost_source");
+            let micros = row.get::<i64, _>("micros") as f64 / 1_000_000.0;
+            breakdown.insert(source, serde_json::json!(micros));
+        }
+        Some(SessionCallStats {
+            calls,
+            cost_micros,
+            updated_at,
+            last_trigger,
+            last_model,
+            cost_source_breakdown: serde_json::Value::Object(breakdown),
+        })
     }
 
     pub fn record(&self, call: FinishedCall) {
