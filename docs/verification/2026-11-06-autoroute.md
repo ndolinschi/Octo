@@ -358,7 +358,7 @@ For OpenAI-shaped chat.completions, `gen-*` is in JSON body field **`id`** (and 
 | Spend after START_TS only (`calls`+`decisions`) | **0.105002** |
 | Hard stop | 0.40 |
 | Headroom remaining | ~0.295 |
-| P1 session (before START_TS; prior task) | 0.003451 |
+| P1 session (at/before START_TS; prior task; excluded by `>`) | 0.003451 |
 | P2 primary session | 0.005080 |
 | P3 primary session | 0.080872 |
 | P4 primary session | 0.001673 |
