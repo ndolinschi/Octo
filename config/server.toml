@@ -2,4 +2,5 @@
 bind_addr = "127.0.0.1:8080"
 allow_remote = false
 # Required when bind_addr is not loopback (127.0.0.0/8 or ::1).
+# When non-empty, every request except GET /health must send header x-octo-key.
 client_auth_key = ""

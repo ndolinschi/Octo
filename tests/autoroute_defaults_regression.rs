@@ -96,6 +96,15 @@ async fn default_flags_preserve_fixture_triggers_and_bodies() {
                 "{name}: unexpected trigger {}",
                 forward.meta.trigger
             );
+        } else {
+            assert_eq!(
+                payload["messages"], body["messages"],
+                "{name}: default flags must not reshape messages"
+            );
+            assert_eq!(
+                payload["tools"], body["tools"],
+                "{name}: default flags must not reshape tools"
+            );
         }
         if name == "server_tool_passthrough" {
             assert!(
@@ -123,6 +132,24 @@ async fn default_flags_preserve_fixture_triggers_and_bodies() {
             assert!(
                 !provider.contains_key("allow_fallbacks"),
                 "{name}: empty provider_order must not inject allow_fallbacks"
+            );
+        }
+        let reshaped = shape(ShapePlan {
+            body: &body,
+            model: expected_model,
+            previous_model: body["model"].as_str(),
+            models: None,
+            provider_order: &[],
+            allow_fallbacks: true,
+        });
+        if !expect_special_trigger {
+            assert_eq!(
+                payload["model"], reshaped["model"],
+                "{name}: outgoing model must match shape(fixture)"
+            );
+            assert_eq!(
+                payload["tools"], reshaped["tools"],
+                "{name}: outgoing tools must match shape(fixture)"
             );
         }
     }

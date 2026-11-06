@@ -155,8 +155,13 @@ pub fn bare_id(slug: &str) -> &str {
     slug.trim_start_matches('~')
 }
 
+pub fn routing_id(slug: &str) -> &str {
+    let bare = bare_id(slug);
+    bare.strip_suffix(":online").unwrap_or(bare)
+}
+
 pub fn ids_match(left: &str, right: &str) -> bool {
-    left == right || bare_id(left) == bare_id(right)
+    left == right || bare_id(left) == bare_id(right) || routing_id(left) == routing_id(right)
 }
 
 pub fn context_length(models: Option<&OpenRouterModels>, slug: &str) -> u64 {

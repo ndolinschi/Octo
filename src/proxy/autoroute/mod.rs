@@ -214,7 +214,7 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
     let current = payload.get("model").and_then(Value::as_str)?.to_string();
     let next = plan.state.auto.tiers().next_up(&current)?;
     let models = plan.state.auto.cached_models().await;
-    let shaped = crate::auto::shape(crate::auto::ShapePlan {
+    let mut shaped = crate::auto::shape(crate::auto::ShapePlan {
         body: &payload,
         model: &next,
         previous_model: Some(current.as_str()),
@@ -222,6 +222,10 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
         provider_order: &plan.state.auto.tiers().provider_order,
         allow_fallbacks: plan.state.auto.tiers().allow_fallbacks,
     });
+    if plan.server_tool.is_some() && plan.state.config.autoroute_server_tool_mode == "online_suffix"
+    {
+        shaped = crate::auto::with_online_suffix(&shaped);
+    }
     let body = serde_json::to_vec(&shaped).ok()?;
     let tier_after = plan.state.auto.tiers().band(&next).to_string();
     let meta = RouteMeta {

@@ -91,7 +91,7 @@ To use OpenRouter for chat, POST with `"type": "OPENROUTER"` or use `/openrouter
 
 Do not commit API keys; clients send credentials per request (`Authorization` for OpenRouter/OpenAI-style chat and OpenRouter Messages, `x-api-key` for direct Anthropic Messages).
 
-**Threat model:** Octo has no request-path authentication by default. Default `server.allow_remote = false` binds loopback only. Non-loopback binds require `allow_remote = true` **and** a non-empty `server.client_auth_key` (startup refuse otherwise). Do not point upstream URLs at internal services you would not expose to clients holding API keys. `GET /health` returns 200 for liveness checks only.
+**Threat model:** Default `server.allow_remote = false` binds loopback only. Non-loopback binds require `allow_remote = true` **and** a non-empty `server.client_auth_key` (startup refuse otherwise). When `client_auth_key` is set, every request except `GET /health` must send matching `x-octo-key` (401 otherwise). Do not point upstream URLs at internal services you would not expose to clients holding API keys.
 
 **Upstream timeouts:** `[upstream].request_timeout_secs` (default 600) applies to the full reqwest call including streaming response bodies; very long SSE may need a higher limit.
 

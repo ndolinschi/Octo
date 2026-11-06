@@ -273,3 +273,53 @@ fn partial_prices_fall_through_to_upstream() {
     assert_eq!(resolved.cost, Some(CostMicros(10_000)));
     assert!(resolved.estimated_cost.is_none());
 }
+
+#[test]
+fn partial_prices_toml_loader_marks_rates_incomplete() {
+    use octo::config::Config;
+    use octo::history::{resolve_cost, CostSource};
+
+    let dir = std::env::temp_dir().join(format!(
+        "octo-prices-partial-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    for name in [
+        "server.toml",
+        "upstream.toml",
+        "limits.toml",
+        "openai.toml",
+        "openrouter.toml",
+        "anthropic.toml",
+        "llm.toml",
+        "decision.toml",
+        "history.toml",
+        "autoroute.toml",
+    ] {
+        std::fs::copy(format!("config/{name}"), dir.join(name)).unwrap();
+    }
+    std::fs::write(
+        dir.join("prices.toml"),
+        r#"
+[prices."mistralai/devstral-2512"]
+input = 1.0
+"#,
+    )
+    .unwrap();
+    let config = Config::load_from_directory(&dir).unwrap();
+    let price = config.prices.get("mistralai/devstral-2512").unwrap();
+    assert!(!price.rates_complete);
+    assert_eq!(price.input, 1.0);
+    let usage = usage_from_output(concat!(
+        r#"{"usage":{"input_tokens":1000000,"output_tokens":0,"cache_read_input_tokens":0,"#,
+        r#""cost":0,"is_byok":true,"cost_details":{"upstream_inference_cost":0.01}}}"#
+    ));
+    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &config.prices);
+    assert_eq!(resolved.source, CostSource::Upstream);
+    assert_eq!(resolved.cost, Some(CostMicros(10_000)));
+    assert!(resolved.estimated_cost.is_none());
+    let _ = std::fs::remove_dir_all(&dir);
+}

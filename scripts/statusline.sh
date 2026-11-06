@@ -5,6 +5,10 @@ set -euo pipefail
 
 OCTO_URL="${OCTO_URL:-http://127.0.0.1:8080}"
 SESSION="${OCTO_SESSION:-}"
+AUTH_HDR=()
+if [[ -n "${OCTO_CLIENT_AUTH_KEY:-}" ]]; then
+  AUTH_HDR=(-H "x-octo-key: ${OCTO_CLIENT_AUTH_KEY}")
+fi
 
 if [[ -n "$SESSION" ]]; then
   url="${OCTO_URL%/}/autoroute/status?session=${SESSION}"
@@ -12,7 +16,7 @@ else
   url="${OCTO_URL%/}/autoroute/status"
 fi
 
-json="$(curl -fsS "$url" 2>/dev/null || true)"
+json="$(curl -fsS "${AUTH_HDR[@]}" "$url" 2>/dev/null || true)"
 if [[ -z "$json" ]]; then
   echo "octo offline"
   exit 0

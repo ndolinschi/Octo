@@ -184,3 +184,41 @@ fn non_loopback_bind_requires_client_auth_key() {
     config.client_auth_key = String::new();
     assert!(config.ensure_bind_allowed().is_ok());
 }
+
+#[tokio::test]
+async fn client_auth_key_rejects_missing_header() {
+    let mut config = sample_config(1024);
+    config.client_auth_key = "proxy-key".to_string();
+    let state = AppState::new(config).unwrap();
+    let app = routes::router(state);
+    let request = Request::builder()
+        .method("GET")
+        .uri("/autoroute/status")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn client_auth_key_allows_matching_header_and_health() {
+    let mut config = sample_config(1024);
+    config.client_auth_key = "proxy-key".to_string();
+    let state = AppState::new(config).unwrap();
+    let app = routes::router(state.clone());
+    let health = Request::builder()
+        .method("GET")
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(health).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let status = Request::builder()
+        .method("GET")
+        .uri("/autoroute/status")
+        .header("x-octo-key", "proxy-key")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(status).await.unwrap();
+    assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
+}

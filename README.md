@@ -172,7 +172,7 @@ On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/l
 - **Server tools:** `server_tool_mode = "passthrough"` (default) | `"online_suffix"` | `"reject"`.
 - **Status:** `GET /autoroute/status?session=<id>` (or latest) for statusline JSON; see `scripts/statusline.sh`.
 - **Payload storage:** `history.store_payloads = true` by default; set `false` to omit text payload columns while keeping metrics/observe/outcomes.
-- **Remote bind:** non-loopback `bind_addr` requires `server.allow_remote = true` and a non-empty `server.client_auth_key`.
+- **Remote bind / client auth:** non-loopback `bind_addr` requires `server.allow_remote = true` and a non-empty `server.client_auth_key`. When the key is set, clients (and `scripts/statusline.sh` via `OCTO_CLIENT_AUTH_KEY`) must send `x-octo-key`; `GET /health` stays open.
 
 Claude Code `settings.json` status line:
 

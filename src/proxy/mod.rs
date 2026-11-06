@@ -1,10 +1,11 @@
+pub mod auth;
 pub mod autoroute;
 pub mod error;
 pub mod handler;
 pub mod routes;
 pub mod select;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::config::Config;
 use crate::history::History;
@@ -16,9 +17,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = Config::load()?;
     let addr = config.ensure_bind_allowed()?;
     if config.allow_remote && !addr.ip().is_loopback() {
-        warn!(
+        info!(
             %addr,
-            "listening on non-loopback address; Octo has no client authentication"
+            "listening on non-loopback address; requests require x-octo-key"
         );
     }
     let mut state = AppState::new(config.clone()).map_err(|err| {
