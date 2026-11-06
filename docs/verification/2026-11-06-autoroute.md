@@ -5,6 +5,10 @@ Zone for wall times: **Europe/Chisinau (UTC+2)**.
 No production code/config changed. Live smoke appended rows to `data/history.sqlite` only.  
 Checklist A–F cross-checked against [Feature checklist evidence A-F](bc-eed6c010-fb7a-5f8a-9df1-e6745c07dbc7) (E4/E3/F3 tightened).
 
+**Budget rule (this continuation):** ignore whole-DB history.  
+`START_TS_MS=1793948576690` (= 2026-11-06 07:02:56 UTC / 09:02:56 Europe/Chisinau) = `max(calls.created_at)` before this continuation.  
+Count only `calls`+`decisions` with `created_at > START_TS_MS`. Hard stop **$0.40**.
+
 ---
 
 ## 1. Summary table
@@ -25,7 +29,7 @@ Checklist A–F cross-checked against [Feature checklist evidence A-F](bc-eed6c0
 | C1 thresholds from config | PASS | `config/autoroute.toml` → `state.rs:63-64`; `threshold_parsing_picks_bands_from_noul_scores` |
 | C2 hysteresis | PASS | `stall_escalates_then_releases_and_down_needs_confirm` (hold then down after 2); unset→hold edge untested (`band_rank("unset")`→1) |
 | C3 tool_result-only hold | PARTIAL | code `sticky.rs:89-101` + `hold_without_classify`; **no test sets `tool_results_only: true`** |
-| C4 stall escalate/release | PASS | `stall_detects_*`, `stall_escalates_then_releases_*`, `decide_stall_escalates_*` |
+| C4 stall escalate/release | PASS | `stall_detects_*`, `stall_escalates_then_releases_*`, `decide_stall_escalates_*`; live P4 `stall:error_streak` mid→high |
 | C5 high_allow | PASS | `high_pick_honours_preferred_only_when_allowlisted` |
 | D1 tools never filtered | PASS | `first_turn_forwards_all_tools_*`, `later_turn_forwards_all_tools`, shape keeps tools |
 | D2 thinking strip on change | PASS | `shape_strips_thinking_only_on_model_change_and_clamps_tokens` |
@@ -36,13 +40,15 @@ Checklist A–F cross-checked against [Feature checklist evidence A-F](bc-eed6c0
 | E2 unknown window | PARTIAL | missing catalog → `context_length` defaults **8192** (`catalog.rs:150-154`); can still compact; no dedicated “no upgrade every turn” test |
 | E3 empty model never sent | PARTIAL | `Tiers::pick` returns config slugs; cost-seed can create `SessionChoice::fresh("")` (`decide/mod.rs:104-106`) — **code only** |
 | E4 budget + compaction cost | PARTIAL | decide-path `cap_for_budget` tested; fill-upgrade / retry skip budget; compact `record` never `add_session_cost` (`compact.rs:123-166`) |
-| F1 calls cache/gen columns | PARTIAL | schema+parser+tests; live P1 fills `generation_id`/`cache_read=0`; `cache_write` NULL when upstream omits; stores `msg_*` not OpenRouter `gen-*` |
-| F2 decisions scores/cost | PASS | live id=74 `is_hard_score=0.07` `is_easy_score=0.86` `cost_micros=35`; `threshold_parsing_*` |
+| F1 calls cache/gen columns | PARTIAL | P3 fills `cache_read`+`cache_write` (integers); `generation_id` still `msg_*` (OpenRouter `gen-*` only in upstream **headers**, not body — see §7) |
+| F2 decisions scores/cost | PASS | live id=74/93/94/100 scores+cost filled |
 | F3 history burst drop | PARTIAL | slots=32, wait=5s, **drop** (no spill); **warn lacks `session_id`** (`history/mod.rs:139-142`, `200-204`) |
-| STEP3 data today | PARTIAL | see §3; pre-fix leakage rows 72–73; post-fix P1 clean |
+| STEP3 data today | PARTIAL | see §3; pre-restart leakage rows 72–73 (historical, before binary); post-restart P1–P4 clean |
 | STEP4 live P1 | PASS | session `c436d4f2-…`, low, end_turn, $0.003451 |
-| STEP4 live P2–P4 | NOT IMPLEMENTED | skipped: DB `calls+decisions` already **$0.483880** after P1; headroom **$0.01612** < safe P2–P4 estimate |
-| STEP5 OpenRouter recon | PARTIAL | historical `gen-*` match within $0.001; P1 `msg_*` → API 400 Invalid generation ID |
+| STEP4 live P2 | PASS | session `4907ca3c-…`, mid, end_turn, $0.005080 (client model must match mid or DeepSeek 400s on effort) |
+| STEP4 live P3 | PASS | session `84f9c310-…`, high, end_turn, $0.080872; `cache_write` integers |
+| STEP4 live P4 | PASS | session `140e671c-…`, `stall:error_streak` mid→high, $0.001673 |
+| STEP5 OpenRouter recon | PARTIAL | `/v1/messages` returns `gen-*` in `x-generation-id` / `request-id` headers; body `id` is `msg_*`; Octo stores body id only |
 
 ---
 
@@ -73,27 +79,30 @@ Checklist A–F cross-checked against [Feature checklist evidence A-F](bc-eed6c0
 
 ### F1 PARTIAL — cache/generation fill
 **Where:** parser `src/history/payload/common.rs:153-200`; insert `src/history/mod.rs:445-483`.  
-**Live:** P1 calls 218–220 have `generation_id=msg_…`, `cache_read_tokens=0`, `cache_write_tokens=NULL`. OpenRouter generation API rejects `msg_*` (HTTP 400).  
-**Historical today (pre-restart binary):** calls 216–217 all cache/gen NULL.  
-**Fix suggestion:** prefer OpenRouter `gen-…` id when present in the stream/headers; keep Anthropic `msg_` as fallback; backfill tests with a fixture that includes both.
+**Live:**
+- P1: `generation_id=msg_…`, `cache_read=0`, `cache_write=NULL`.
+- P3 (Haiku): `cache_read` and `cache_write` are **integers** (not NULL) on every call; `generation_id` still `msg_*`.
+- Direct OpenRouter `POST /api/v1/messages`: response header **`x-generation-id: gen-…`** (also **`request-id: gen-…`**); JSON/SSE body `id` remains Anthropic `msg_*`. Octo does not forward/store those headers.  
+**Fix suggestion:** read `x-generation-id` (or `request-id`) from upstream response headers and prefer `gen-…` for `calls.generation_id`; keep `msg_` as fallback; add fixture test.
 
 ### F3 PARTIAL — dropped insert logging; no spill
 **Where:** `src/history/mod.rs:32` (`INSERT_SLOTS=32`), timeout 5s, drop on wait timeout. Spill-to-disk **not implemented**.  
 **Gap:** warn fields are `choice_rule` (decisions) or `kind`/`provider` (calls) — **no `session_id`**. No burst/timeout test.  
 **Fix suggestion:** include `session_id` (and model/trigger) in both skip warn sites; optionally spill instead of drop if FinOps completeness matters.
 
-### STEP3 data PARTIAL — housekeeping / reminder leakage (historical)
-**Rows:** decisions `id=72` starts with `<system-reminder>` (len 15504); `id=73` matches B1 “2-4 word lowercase label…”.  
-**Times:** 2026-11-06 08:52 Europe/Chisinau — **before** running binary restart 08:55 Europe/Chisinau (`target/debug/octo` mtime).  
-**Fix suggestion:** none for code if only old binary; re-check after more live traffic. If recurrence on current binary, ensure title/label prompts hit `is_housekeeping(&raw_text)` before classify.
+### STEP3 data PARTIAL — housekeeping / reminder leakage (historical only)
+**Rows:** decisions `id=72` starts with `<system-reminder>` (len 15504); `id=73` text begins `2-4 word lowercase label for this job.` (matches B1 pattern in `body.rs:42`).  
+**Timing (Task 2):** id=73 `created_at=1793947969333` = **2026-11-06 06:52:49 UTC / 08:52:49 Europe/Chisinau** — **BEFORE** binary start **06:55:47 UTC / 08:55:47 Europe/Chisinau**.  
+**Verdict:** keep as historical note; **do not mark B FAIL** (pre-restart binary). Live P1–P4 sessions: no housekeeping `decisions` rows; `user_text` equals the question (no system-reminder).  
+**Fix suggestion:** none for code if only old binary; re-check if recurrence appears after current binary.
 
-### STEP4 P2–P4 NOT IMPLEMENTED — budget stop
-Combined `calls.cost_micros + decisions.cost_micros` was **$0.480429** before live, **$0.483880** after P1. Rule: stop if table total exceeds **$0.50**. Remaining headroom **$0.01612**; P2–P4 estimated well above that.  
-**Fix suggestion for future verification:** use an isolated temp history DB for smoke, or raise the verification budget / clear non-essential historical costs offline.
+### Live compat note — mid tier + Claude Code effort (observed during P2)
+Default Claude Code client (`claude-haiku-5-5`) remapped to `deepseek/deepseek-v4-flash` returns **HTTP 400** `Mid-conversation reasoning effort (configuration_update) is not supported…` when `output_config.effort` / adaptive thinking is present. Workarounds used for smoke only (not code changes): `--model deepseek/deepseek-v4-flash` and/or `CLAUDE_CODE_DISABLE_*THINKING`.  
+**Fix suggestion (product):** strip or drop `output_config` / unsupported Anthropic effort fields when shaping onto non-Anthropic mid models (related to D2/D4).
 
 ### STEP5 PARTIAL — reconciliation id mismatch
-Stored `generation_id` for messages is Anthropic-shaped `msg_*`, which OpenRouter `GET /api/v1/generation?id=` rejects. Historical payloads embedding `gen-…` reconcile (see §5).  
-**Fix suggestion:** same as F1 — persist OpenRouter generation id when available.
+Stored `generation_id` for messages is Anthropic-shaped `msg_*`, which OpenRouter `GET /api/v1/generation?id=` rejects. OpenRouter `gen-*` for `/v1/messages` lives in response headers (see §7). Historical chat.completions payloads embed `gen-*` in body `id` and reconcile (see §7).  
+**Fix suggestion:** same as F1 — persist OpenRouter generation id from headers when available.
 
 ---
 
@@ -178,11 +187,12 @@ e1bc43b Enrich Jev classify state and pick tiers from noul scores.
 | C1 | `config/autoroute.toml` hard/easy=0.5 → `state.rs:63-64` → `classify.rs:66-67` | `threshold_parsing_picks_bands_from_noul_scores` (incl. raised hard 0.7) |
 | C2 | `sticky.rs:38-55`; unset starts as classified band | `stall_escalates_then_releases_and_down_needs_confirm` |
 | C3 | see PARTIAL above | missing true-case test |
-| C4 | `stall.rs` + `sticky.rs:65-138`; trigger normalized to `stall:*` | detect + sticky + `decide_stall_escalates_without_catalog_or_jev` |
+| C4 | `stall.rs` + `sticky.rs:65-138`; trigger normalized to `stall:*` | detect + sticky + `decide_stall_escalates_without_catalog_or_jev`; **live P4** |
 | C5 | `catalog.rs:75-92` | `high_pick_honours_preferred_only_when_allowlisted` |
 
 ### D. Compatibility shaping
-Covered by `shape_strips_thinking_only_on_model_change_and_clamps_tokens`, tool forward tests, `anthropic_proxy_error_body_shape`, `messages_proxy_error_is_anthropic_shaped`.
+Covered by `shape_strips_thinking_only_on_model_change_and_clamps_tokens`, tool forward tests, `anthropic_proxy_error_body_shape`, `messages_proxy_error_is_anthropic_shaped`.  
+Live gap: mid DeepSeek still receives Claude Code `output_config.effort` → 400 (see §2 live compat note).
 
 ### E. Reliability
 | ID | Notes |
@@ -195,8 +205,8 @@ Covered by `shape_strips_thinking_only_on_model_change_and_clamps_tokens`, tool 
 ### F. Accounting
 | ID | Notes |
 | --- | --- |
-| F1 | columns in migration + insert; tests `usage_reads_anthropic_cache_and_generation_id`, `usage_reads_openai_cached_tokens_and_id`; live PARTIAL fill |
-| F2 | `DecisionRow` scores/cost; live id=74 filled |
+| F1 | columns in migration + insert; P3 proves `cache_write` can be a number; `generation_id` still body `msg_*` |
+| F2 | `DecisionRow` scores/cost; live P1–P4 filled |
 | F3 | 32 slots / 5s / drop; session_id not logged on drop |
 
 ---
@@ -205,56 +215,25 @@ Covered by `shape_strips_thinking_only_on_model_change_and_clamps_tokens`, tool 
 
 `created_at` is **unix ms**. “Today” = calendar **2026-11-06** UTC (= same date in Europe/Chisinau for these rows).
 
-### 1) Today's calls by model
-| model | n | cost_usd | input_tok | cache_read | cache_write | output_tok |
-| --- | --- | --- | --- | --- | --- | --- |
-| google/gemma-4-26b-a4b-it | 5 | 0.005410 | 72925 | 0 | 0 | 287 |
+### Decision id=73 vs binary start (Task 2)
+| Field | Value |
+| --- | --- |
+| id=73 created_at | 1793947969333 → 2026-11-06 **06:52:49 UTC / 08:52:49 Europe/Chisinau** |
+| Binary start | 2026-11-06 **06:55:47 UTC / 08:55:47 Europe/Chisinau** (`target/debug/octo` process) |
+| Order | **BEFORE** start → historical only; B remains PASS on current binary |
+| user_text start | `2-4 word lowercase label for this job.` — substring matches `is_housekeeping` (`body.rs:42`) |
 
-### 2) Share of today's `kind=messages` with NULLs
-| messages_today | null_session | null_tier_after | null_cache_read | null_cache_write | null_generation_id |
-| --- | --- | --- | --- | --- | --- |
-| 5 | 0 | 0 | 2 | 5 | 2 |
-
-(NULLs are the two pre-restart calls 216–217; P1 calls 218–220 have `cache_read=0`, `generation_id` set, `cache_write` still NULL.)
-
-### 3) Today's `decisions.user_text` length
-| n | min | median | max | starts_with `<system-reminder>` |
-| --- | --- | --- | --- | --- |
-| 3 | 95 | 393 | 15504 | 1 (id=72, historical) |
-
-Live P1 id=74 len=95, no reminder.
-
-### 4) Housekeeping leakage in decisions (B1 patterns)
-| id | session_id | preview |
-| --- | --- | --- |
-| 73 | 3bc70582-aad4-4149-89c9-1ec0cbf19762 | `2-4 word lowercase label for this job.` … |
-
-No leakage for P1 session.
-
-### 5) Sessions whose last main-agent call `stop_reason != end_turn`
-| session_id | last_call (Europe/Chisinau) | model | trigger | stop_reason |
-| --- | --- | --- | --- | --- |
-| 6f7b3497-f2b4-4db1-aead-f07012dfd290 | 2026-11-05 13:51:23 | ~anthropic/claude-haiku-latest | none | (missing in capture) |
-| f2019979-1e00-4f60-b8de-7458844b2438 | 2026-11-05 13:45:31 | google/gemma-4-26b-a4b-it | reclassify | (missing in capture) |
-
-P1 session last call **end_turn**.
-
-### 6) Today's trigger distribution
-| trigger | n | cost_usd |
-| --- | --- | --- |
-| none | 2 | 0.002297 |
-| classify | 2 | 0.003101 |
-| reclassify | 1 | 0.000012 |
-
-No `housekeeping` / `stall:*` / `budget_cap` / `upgrade` / `retry` / `hysteresis_hold` in today's calls.
+### Live P2–P4 housekeeping / reminder check
+No housekeeping pattern rows in decisions for primary sessions `4907ca3c…`, `84f9c310…`, `140e671c…`.  
+Primary classify `user_text` equals the smoke question only (no `<system-reminder>`).
 
 ---
 
 ## 6. Live smoke (STEP 4)
 
-**Proxy:** already running `target/debug/octo` (started 2026-11-06 08:55:47 Europe/Chisinau), `GET /health` → 200.  
-**Client:** Claude Code 2.1.319, `ANTHROPIC_BASE_URL=http://127.0.0.1:8080/autoroute`, allowed tools `Read,Glob,Grep`.  
-**Budget gate:** table total before P1 **$0.480429**; estimate P1 **~$0.005**; after P1 **$0.483880**; **stopped** (headroom $0.01612).
+**Proxy:** `target/debug/octo` (started 2026-11-06 08:55:47 Europe/Chisinau), `GET /health` → 200.  
+**Client:** Claude Code 2.1.319, `ANTHROPIC_BASE_URL=http://127.0.0.1:8080/autoroute`.  
+**Budget gate (new):** `START_TS_MS=1793948576690`; hard stop **$0.40** on rows after that timestamp only.
 
 ### P1 — expect low — PASS
 Prompt: liveness endpoint question (RU).
@@ -268,18 +247,85 @@ Prompt: liveness endpoint question (RU).
 | session cost | **$0.003451** |
 | housekeeping in decisions | none |
 
-### P2 mid — NOT RUN
-### P3 high — NOT RUN
-### P4 stall — NOT RUN
+### P2 mid — PASS
+Prompt: chat/completions provider-selector question (RU). Read-only tools.
 
-Reason: would risk exceeding **$0.50** combined table spend required by the verification rules.
+| Field | Value |
+| --- | --- |
+| session_id | `4907ca3c-105c-49de-bb0e-805b50c6660d` |
+| decisions | id=93 purpose=classify complexity=**mid** hard=0.39 easy=0.20 cost_micros=37; user_text first 80 = question only (equals full question, len 175) |
+| calls | 239 classify unset→mid deepseek cost=1547 cache_read=0 cache_write=NULL stop=tool_use; 240–242 none mid→mid …; 243 none mid→mid cost=1288 cache_read=22084 cache_write=NULL stop=**end_turn** |
+| final answer | yes (explains `select` / unknown selector path from code) |
+| session cost | **$0.005080** (calls $0.005043 + decision $0.000037) |
+| housekeeping in decisions | none |
+
+**Setup note:** first attempts with default Haiku client remapped to DeepSeek failed HTTP 400 (effort/`configuration_update`). Successful smoke used `--model deepseek/deepseek-v4-flash` + thinking disabled env vars (client-only).
+
+### P3 high — PASS (+ cache fields)
+Prompt: find bad autoroute upgrade scenarios (RU). Read-only tools.
+
+| Field | Value |
+| --- | --- |
+| session_id | `84f9c310-cc1a-4317-a323-bdaa627a2b14` |
+| decisions | id=94 purpose=classify complexity=**high** hard=0.81 easy=0.07 cost_micros=37; user_text equals question (len 193), no reminder |
+| calls | 244 classify unset→high `~anthropic/claude-haiku-latest` … stop=tool_use; 245–251 none high→high …; 252 none high→high stop=**end_turn** |
+| final answer | yes (scenarios + tradeoffs) |
+| session cost | **$0.080872** |
+| housekeeping in decisions | none |
+
+#### P3 cache_read / cache_write per call (Task 3)
+
+| call_id | cache_read_tokens | cache_write_tokens | cache_write NULL? |
+| --- | ---: | ---: | --- |
+| 244 | 0 | 24967 | **no** (integer) |
+| 245 | 24967 | 2036 | no |
+| 246 | 27003 | 12447 | no |
+| 247 | 39450 | 11651 | no |
+| 248 | 51101 | 19196 | no |
+| 249 | 70297 | 6870 | no |
+| 250 | 77167 | 14820 | no |
+| 251 | 91987 | 7160 | no |
+| 252 | 99147 | 13420 | no |
+
+`generation_id` on all P3 calls: Anthropic-shaped `msg_*` (not OpenRouter `gen-*`).
+
+### P4 stall — PASS
+Prompt: loop on `python -c "import notexisting_module"` without installing / changing command. Stopped after ~10 tool turns on earlier attempts; successful session completed after 3 identical failing Bash runs + escalate.
+
+| Field | Value |
+| --- | --- |
+| session_id | `140e671c-5b28-4867-854d-3664ac910983` |
+| decisions | id=100 purpose=classify complexity=**mid** hard=0.34 easy=0.25 cost_micros=33; user_text equals question (len 135) |
+| calls | 272 classify unset→mid deepseek stop=tool_use; 273–274 none mid→mid stop=tool_use; **275** `~anthropic/claude-haiku-latest` mid→high trigger=**`stall:error_streak`** cost=635 cache_read=0 cache_write=1994 stop=**end_turn** |
+| final answer | yes (agent stopped: cannot fix under constraints) |
+| session cost | **$0.001673** |
+| housekeeping in decisions | none |
+
+Earlier P4 attempts without stall (agent created files / wandered / gave up early) left extra mid sessions; ignored for pass criteria. Primary evidence is `140e671c…`.
 
 ---
 
-## 7. Reconciliation (STEP 5)
+## 7. Reconciliation / OpenRouter `gen-*` location (STEP 5 + Task 4)
 
 ### P1 stored `generation_id` (`msg_*`)
-`GET https://openrouter.ai/api/v1/generation?id=msg_…` → **HTTP 400** `Invalid generation ID` for all three P1 ids. Cannot compare session cost to OpenRouter for P1 via stored column.
+`GET https://openrouter.ai/api/v1/generation?id=msg_…` → **HTTP 400** `Invalid generation ID`. Cannot compare session cost to OpenRouter for P1 via stored column.
+
+### Where OpenRouter returns `gen-*` for `/v1/messages` (do not implement)
+Live direct `curl -D` to `https://openrouter.ai/api/v1/messages` (same key path as proxy):
+
+| Location | Present? | Example / path |
+| --- | --- | --- |
+| Response header **`x-generation-id`** | **YES** | `x-generation-id: gen-1793949044-QBM9tgUyCLXvxY75L5u4` |
+| Response header **`request-id`** | **YES** (same value) | `request-id: gen-1793949044-…` |
+| Exposed via CORS | listed in `access-control-expose-headers: X-Generation-Id,…` | |
+| JSON body `id` / SSE `message_start.message.id` | Anthropic **`msg_*` only** — no `gen-*` in body | |
+| Octo→client headers for `/autoroute/v1/messages` | **does not forward** `x-generation-id` | client sees `content-type` / `date` only |
+| Stored `calls.generation_id` | parser takes body/SSE `id` → `msg_*` | |
+
+Claude Code client error objects also surface `request_id: gen-…` (observed on P2 400 failures), confirming the upstream id is header/`request_id`-shaped.
+
+### Chat completions / decisions body `id` (historical)
+For OpenAI-shaped chat.completions, `gen-*` is in JSON body field **`id`** (and mirrored in stored `response_payload.payload.events[].id`). Decisions API uses body **`id`** like `gen-dec-…`.
 
 ### Historical payloads containing OpenRouter `gen-*` (embedded in output, not in `generation_id` column)
 
@@ -297,8 +343,24 @@ Reason: would risk exceeding **$0.50** combined table spend required by the veri
 
 | Scope | USD |
 | --- | --- |
-| Live smoke this task (P1 session only) | **0.003451** |
-| OpenRouter generation metadata GETs | 0 (no billable generation) |
-| `calls`+`decisions` table total after verification | **0.483880** |
-| Verification live budget used vs $0.30 cap | 0.003451 / 0.30 |
-| Table total vs $0.50 hard stop | 0.483880 / 0.50 (P2–P4 aborted) |
+| `START_TS_MS` | **1793948576690** |
+| Spend after START_TS only (`calls`+`decisions`) | **0.105002** |
+| Hard stop | 0.40 |
+| Headroom remaining | ~0.295 |
+| P1 session (before START_TS; prior task) | 0.003451 |
+| P2 primary session | 0.005080 |
+| P3 primary session | 0.080872 |
+| P4 primary session | 0.001673 |
+| Includes failed mid-compat probes / extra P4 attempts / tiny curl probes after START_TS | yes (in 0.105002) |
+
+---
+
+## 9. Remaining work (by impact)
+
+1. **Persist OpenRouter `gen-*` from `x-generation-id` / `request-id` on `/v1/messages`** — unblocks STEP5 cost reconciliation and FinOps; largest accounting gap (F1/STEP5).
+2. **Shape away Claude Code `output_config.effort` / unsupported thinking when routing to DeepSeek mid** — otherwise default Claude Code clients hard-fail on mid tier (live P2 400s).
+3. **E4: apply session budget on fill-upgrade + retry; attribute compaction cost to session** — spend caps can be bypassed; FinOps undercounts compact.
+4. **E2: unknown catalog window sentinel** — avoid repeated compact/fill on default 8192.
+5. **C3 test for `tool_results_only: true`** — sticky hold currently untested in the true case.
+6. **F3: log `session_id` on history drop; consider spill** — silent loss under burst.
+7. **E3: refuse empty model seeds** — avoid forwarding `""`.
