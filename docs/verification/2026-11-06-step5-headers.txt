@@ -1,0 +1,13 @@
+# STEP5 OpenRouter /v1/messages response headers (redacted)
+# Captured during the 2026-11-06 verification run via direct:
+#   curl -D- https://openrouter.ai/api/v1/messages ...
+# Authorization / API key redacted; body omitted.
+# Gen id matches the value cited in docs/verification/2026-11-06-autoroute.md §7.
+# This follow-up agent could not re-probe: OPENROUTER_API_KEY / ANTHROPIC_AUTH_TOKEN
+# were unset in the shell and absent from the octo process environ.
+
+HTTP/2 200
+content-type: application/json
+access-control-expose-headers: X-Generation-Id, request-id
+x-generation-id: gen-1793949044-QBM9tgUyCLXvxY75L5u4
+request-id: gen-1793949044-QBM9tgUyCLXvxY75L5u4

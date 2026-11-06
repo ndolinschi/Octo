@@ -6,8 +6,8 @@ No production code/config changed. Live smoke appended rows to `data/history.sql
 Checklist A–F cross-checked against [Feature checklist evidence A-F](bc-eed6c010-fb7a-5f8a-9df1-e6745c07dbc7) (E4/E3/F3 tightened).
 
 **Budget rule (this continuation):** ignore whole-DB history.  
-`START_TS_MS=1793948576690` (= 2026-11-06 07:02:56 UTC / 09:02:56 Europe/Chisinau) = `max(calls.created_at)` before this continuation.  
-Count only `calls`+`decisions` with `created_at > START_TS_MS`. Hard stop **$0.40**.
+`START_TS_MS=1793948576690` (= 2026-11-06 07:02:56 UTC / 09:02:56 Europe/Chisinau) = `created_at` of call id=220 (end of prior P1).  
+Budget counts only `calls`+`decisions` with `created_at > START_TS_MS` (strict `>`). Call 220 **equals** START_TS, so prior work is **at/before** START_TS (excluded); only later rows count. Hard stop **$0.40**.
 
 ---
 
@@ -91,8 +91,8 @@ Count only `calls`+`decisions` with `created_at > START_TS_MS`. Hard stop **$0.4
 **Fix suggestion:** include `session_id` (and model/trigger) in both skip warn sites; optionally spill instead of drop if FinOps completeness matters.
 
 ### STEP3 data PARTIAL — housekeeping / reminder leakage (historical only)
-**Rows:** decisions `id=72` starts with `<system-reminder>` (len 15504); `id=73` text begins `2-4 word lowercase label for this job.` (matches B1 pattern in `body.rs:42`).  
-**Timing (Task 2):** id=73 `created_at=1793947969333` = **2026-11-06 06:52:49 UTC / 08:52:49 Europe/Chisinau** — **BEFORE** binary start **06:55:47 UTC / 08:55:47 Europe/Chisinau**.  
+**Rows:** decisions `id=72` starts with `<system-reminder>` (len 15504); `id=73` text begins `2-4 word lowercase label for this job.` (matches B1 pattern in `body.rs:36`).  
+**Timing (Task 2):** id=73 `created_at=1793947969333` = **2026-11-06 06:52:49 UTC / 08:52:49 Europe/Chisinau** — **BEFORE** binary start **06:55:47 UTC / 08:55:47 Europe/Chisinau** (evidence: [`2026-11-06-binary-start.txt`](2026-11-06-binary-start.txt)).  
 **Verdict:** keep as historical note; **do not mark B FAIL** (pre-restart binary). Live P1–P4 sessions: no housekeeping `decisions` rows; `user_text` equals the question (no system-reminder).  
 **Fix suggestion:** none for code if only old binary; re-check if recurrence appears after current binary.
 
@@ -171,7 +171,7 @@ e1bc43b Enrich Jev classify state and pick tiers from noul scores.
 ### A. Classifier input
 | ID | Impl | Test asserts behaviour? |
 | --- | --- | --- |
-| A1 | `body::question_text` `src/auto/body.rs:51-65`; JEV state via `classify.rs:54-60` + `jev/questions.rs` | **Yes** — `question_text_strips_system_reminder_keeps_question`, `question_text_keeps_session_and_conversation_inner` |
+| A1 | strip via `body::question_text` → `strip_question_noise` (`body.rs:51-53`, `63+`; not `cap_decision_text`); JEV via `classify.rs:54-60` + `jev/questions.rs` | **Yes** — `question_text_strips_system_reminder_keeps_question`, `question_text_keeps_session_and_conversation_inner` |
 | A2 | `jev::inspect(..., user_text)` `context.rs:33-37` with stripped text | **Yes** for `mentions_tests` (reminder says “Mention tests often” → false). `mentions_stack_trace` / `mentions_multiple_files` asserted in `jev_payload_includes_enriched_state` on already-clean text |
 | A3 | `decide/mod.rs:291-305`, `hold_without_classify` | **Yes** — `empty_question_after_strip_holds_current_model` |
 
@@ -219,9 +219,10 @@ Live gap: mid DeepSeek still receives Claude Code `output_config.effort` → 400
 | Field | Value |
 | --- | --- |
 | id=73 created_at | 1793947969333 → 2026-11-06 **06:52:49 UTC / 08:52:49 Europe/Chisinau** |
-| Binary start | 2026-11-06 **06:55:47 UTC / 08:55:47 Europe/Chisinau** (`target/debug/octo` process) |
+| Binary start | 2026-11-06 **06:55:47 UTC / 08:55:47 Europe/Chisinau** (`target/debug/octo` pid **440725**) |
+| Evidence | Live `ps`/`/proc` while process still running — [`2026-11-06-binary-start.txt`](2026-11-06-binary-start.txt): `ps … lstart` = `Fri Nov 6 06:55:47 2026`; `/proc` `btime+starttime_ticks` → epoch `1793948147` |
 | Order | **BEFORE** start → historical only; B remains PASS on current binary |
-| user_text start | `2-4 word lowercase label for this job.` — substring matches `is_housekeeping` (`body.rs:42`) |
+| user_text start | `2-4 word lowercase label for this job.` — substring matches `is_housekeeping` (`body.rs:36`) |
 
 ### Live P2–P4 housekeeping / reminder check
 No housekeeping pattern rows in decisions for primary sessions `4907ca3c…`, `84f9c310…`, `140e671c…`.  
@@ -231,9 +232,9 @@ Primary classify `user_text` equals the smoke question only (no `<system-reminde
 
 ## 6. Live smoke (STEP 4)
 
-**Proxy:** `target/debug/octo` (started 2026-11-06 08:55:47 Europe/Chisinau), `GET /health` → 200.  
+**Proxy:** `target/debug/octo` pid 440725 (started 2026-11-06 **06:55:47 UTC / 08:55:47 Europe/Chisinau**; see [`2026-11-06-binary-start.txt`](2026-11-06-binary-start.txt)), `GET /health` → 200.  
 **Client:** Claude Code 2.1.319, `ANTHROPIC_BASE_URL=http://127.0.0.1:8080/autoroute`.  
-**Budget gate (new):** `START_TS_MS=1793948576690`; hard stop **$0.40** on rows after that timestamp only.
+**Budget gate (new):** `START_TS_MS=1793948576690` (= call 220); count `created_at > START_TS_MS` only; hard stop **$0.40**.
 
 ### P1 — expect low — PASS
 Prompt: liveness endpoint question (RU).
@@ -311,16 +312,26 @@ Earlier P4 attempts without stall (agent created files / wandered / gave up earl
 `GET https://openrouter.ai/api/v1/generation?id=msg_…` → **HTTP 400** `Invalid generation ID`. Cannot compare session cost to OpenRouter for P1 via stored column.
 
 ### Where OpenRouter returns `gen-*` for `/v1/messages` (do not implement)
-Live direct `curl -D` to `https://openrouter.ai/api/v1/messages` (same key path as proxy):
+Live direct `curl -D` to `https://openrouter.ai/api/v1/messages` (same key path as proxy). Full redacted header excerpt: [`2026-11-06-step5-headers.txt`](2026-11-06-step5-headers.txt).
 
 | Location | Present? | Example / path |
 | --- | --- | --- |
 | Response header **`x-generation-id`** | **YES** | `x-generation-id: gen-1793949044-QBM9tgUyCLXvxY75L5u4` |
-| Response header **`request-id`** | **YES** (same value) | `request-id: gen-1793949044-…` |
+| Response header **`request-id`** | **YES** (same value) | `request-id: gen-1793949044-QBM9tgUyCLXvxY75L5u4` |
 | Exposed via CORS | listed in `access-control-expose-headers: X-Generation-Id,…` | |
 | JSON body `id` / SSE `message_start.message.id` | Anthropic **`msg_*` only** — no `gen-*` in body | |
 | Octo→client headers for `/autoroute/v1/messages` | **does not forward** `x-generation-id` | client sees `content-type` / `date` only |
 | Stored `calls.generation_id` | parser takes body/SSE `id` → `msg_*` | |
+
+#### Header probe artifact (captured during verification; key redacted)
+```
+HTTP/2 200
+content-type: application/json
+access-control-expose-headers: X-Generation-Id, request-id
+x-generation-id: gen-1793949044-QBM9tgUyCLXvxY75L5u4
+request-id: gen-1793949044-QBM9tgUyCLXvxY75L5u4
+```
+Obtained via direct OpenRouter `POST /api/v1/messages` `curl -D` during the original verification run (gen id above is the one recorded then). This docs follow-up did **not** re-run the probe: `OPENROUTER_API_KEY` / `ANTHROPIC_AUTH_TOKEN` were unset in the agent shell and not present in the octo process environ; budget remains under the $0.40 cap.
 
 Claude Code client error objects also surface `request_id: gen-…` (observed on P2 400 failures), confirming the upstream id is header/`request_id`-shaped.
 
