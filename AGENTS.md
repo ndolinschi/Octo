@@ -2,9 +2,11 @@
 
 Instructions for AI coding agents working in this repository.
 
+System design, request flow, and module boundaries: **[ARCHITECTURE.md](./ARCHITECTURE.md)**. Keep this file operational (how to run, configure, test, and what not to break). Put structural explanations in `ARCHITECTURE.md`.
+
 ## Project
 
-**Octo** is a Rust **HTTP proxy** (Axum 0.8, Tokio 1) in a single application crate (`octo`), edition **2021**. It exposes provider-shaped routes on a local bind address and forwards requests upstream with streaming responses.
+**Octo** is a Rust **HTTP proxy** (Axum 0.8, Tokio 1) in a single application crate (`octo`), edition **2021**. It exposes provider-shaped routes on a local bind address and forwards requests upstream with streaming responses. **`/autoroute/*`** adds session-aware model ladder routing (JEV, sticky, stall, budget) and body hygiene (`strip_fields`, `require_parameters`) before OpenRouter.
 
 | Local route | Upstream (defaults in `config/`) |
 | --- | --- |
@@ -138,26 +140,27 @@ Commit updated **`.sqlx/`** with the code change.
 
 ## Code layout
 
+Full map: [ARCHITECTURE.md](./ARCHITECTURE.md). Quick index:
+
 | Area | Role |
 | --- | --- |
 | `src/main.rs` | Tracing init; calls `proxy::run()` |
-| `src/config.rs` | Load TOML → `Config` |
-| `src/state.rs` | `AppState`: client, config, default chat provider, `llm::Wired`, `decision::Providers`, `history::History` |
+| `src/config.rs` | Load TOML fragments → `Config` |
+| `src/state.rs` | `AppState`: client, config, providers, `history::History`, `auto::Auto` |
 | `src/routes.rs` | App router: `TraceLayer`, state |
 | `src/proxy/mod.rs` | Bind, history connect, serve, graceful shutdown + history drain |
-| `src/proxy/routes.rs` | Proxy route paths from config; `GET /health` |
+| `src/proxy/routes.rs` | Proxy + autoroute paths; `GET /health` |
 | `src/proxy/handler.rs` | Thin Axum handlers; builds `CallObserve` for history |
-| `src/proxy/error.rs` | `ProxyError` → JSON `{"error":"..."}` (400/413/502) |
-| `src/proxy/select.rs` | Chat `type` / path provider resolution; `From` → `CallProvider` |
-| `src/history/` | SQLite pool, HMAC token hash, async inserts, payload parsing (`usage_from_output`) |
-| `src/providers/llm/wire.rs` | Config wiring + `Wired` (OpenAI, OpenRouter, Claude) |
-| `src/providers/llm/openai.rs` | Direct OpenAI chat |
-| `src/providers/llm/openrouter.rs` | OpenRouter OpenAI-compatible chat |
-| `src/providers/llm/claude.rs` | Claude Messages forward |
-| `src/providers/decision/wire.rs` | Config wiring + `Providers` |
-| `src/providers/decision/openrouter.rs` | OpenRouter Decisions forward |
-| `src/providers/openrouter/` | Shared attribution + forward helpers |
-| `src/providers/utils.rs` | Buffered POST proxy, stream tee + history capture, allowlisted response headers |
+| `src/proxy/auth.rs` | Optional `x-octo-key` gate (skip `/health`) |
+| `src/proxy/autoroute/` | Autoroute handlers, status JSON, compaction glue |
+| `src/proxy/error.rs` | `ProxyError` → JSON (400/413/502); Anthropic-shaped remap |
+| `src/proxy/select.rs` | Chat/messages `type` / path provider resolution → `CallProvider` |
+| `src/auto/` | Decide pipeline: JEV, sticky, stall, catalog, `shape()`, routing meta |
+| `src/history/` | SQLite pool, HMAC token hash, async inserts, cost, session outcomes, payloads |
+| `src/providers/llm/` | Wired OpenAI / OpenRouter chat / Claude messages |
+| `src/providers/decision/` | OpenRouter Decisions forward |
+| `src/providers/openrouter/` | Attribution + shared forward helpers |
+| `src/providers/utils.rs` | Buffered POST, stream tee + history capture, allowlisted headers |
 
 Conventions for edits: `.cursor/rules/octo-rust.mdc` (module boundaries, no Rust comments unless asked). Quality gates and SQLx rules below.
 
