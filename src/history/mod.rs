@@ -15,6 +15,7 @@ mod connect;
 mod cost;
 mod error;
 mod metrics;
+mod outcomes;
 mod payload;
 
 pub use call::{CallObserve, DecisionRow, FinishedCall};
@@ -23,6 +24,7 @@ pub use call_provider::CallProvider;
 pub use cost::{resolve_cost, CostSource, ModelPrice, PriceTable, ResolvedCost};
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
+pub use outcomes::{parse_test_summary, parse_tool_results_outcome, SessionOutcome};
 pub use payload::cost_micros_from_json;
 pub use payload::{
     describe_input, is_subagent, request_payload, response_payload, token_from_headers,
@@ -237,6 +239,15 @@ impl History {
                         cost_micros = ?call.cost.map(|c| c.0),
                         "call stored"
                     );
+                    if let Some(session_id) = call.session_id.as_deref() {
+                        if let Some(outcome) = outcomes::parse_tool_results_outcome(&call.input) {
+                            if let Err(err) =
+                                outcomes::upsert_session_outcome(&pool, session_id, &outcome).await
+                            {
+                                tracing::warn!(%err, session_id, "session_outcomes upsert failed");
+                            }
+                        }
+                    }
                 }
                 Err(err) => {
                     tracing::warn!(
