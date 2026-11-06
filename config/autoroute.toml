@@ -30,7 +30,9 @@ allow_fallbacks = true
 
 # Top-level Anthropic-only keys removed before OpenRouter (Filter by Parameters).
 # Proven against mistralai/devstral-2512 supported_parameters for session 047c99af calls 528/530.
-# Never strips tools, tool_choice, system, messages, max_tokens, stop_sequences, metadata.
+# Empty list disables stripping. Protected keys (tools, tool_choice, system, messages,
+# max_tokens, stop_sequences, metadata) are ignored if listed.
+# With require_parameters=always, narrowing this list can reintroduce OpenRouter 404s.
 strip_fields = ["output_config", "safeguards", "context_management"]
-# OpenRouter provider.require_parameters: always | tools_only | never
+# OpenRouter provider.require_parameters: always | tools_only | never (invalid values fail config load)
 require_parameters = "always"

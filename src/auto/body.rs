@@ -425,6 +425,11 @@ pub struct ShapeResult {
     pub stripped: Vec<String>,
 }
 
+fn default_strip_fields_ref() -> &'static [String] {
+    static FIELDS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    FIELDS.get_or_init(catalog::default_strip_fields).as_slice()
+}
+
 impl<'a> ShapePlan<'a> {
     pub fn new(
         body: &'a Value,
@@ -439,7 +444,7 @@ impl<'a> ShapePlan<'a> {
             models,
             provider_order: &[],
             allow_fallbacks: true,
-            strip_fields: &[],
+            strip_fields: default_strip_fields_ref(),
             require_parameters: RequireParameters::Always,
         }
     }
@@ -455,13 +460,7 @@ pub fn shape(plan: ShapePlan<'_>) -> ShapeResult {
     }
     clamp_max_tokens(&mut copy, plan.models, plan.model);
     drop_unsupported_thinking(&mut copy, plan.models, plan.model);
-    let default_fields = catalog::default_strip_fields();
-    let strip_list = if plan.strip_fields.is_empty() {
-        default_fields.as_slice()
-    } else {
-        plan.strip_fields
-    };
-    let stripped = strip_configured_fields(&mut copy, strip_list);
+    let stripped = strip_configured_fields(&mut copy, plan.strip_fields);
     apply_require_parameters(&mut copy, plan.require_parameters);
     merge_provider_pin(&mut copy, plan.provider_order, plan.allow_fallbacks);
     ShapeResult {

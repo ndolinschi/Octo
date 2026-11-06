@@ -263,9 +263,27 @@ pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
     encode_forward(&shaped_out.body, meta, plan.trimmed_from_tokens)
 }
 
-pub(super) fn passthrough(body: &Value) -> Turn {
-    let meta = RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None);
-    encode_forward(body, meta, None)
+pub(super) struct Passthrough<'a> {
+    pub auto: &'a Auto,
+    pub body: &'a Value,
+    pub models: Option<&'a OpenRouterModels>,
+}
+
+pub(super) fn passthrough(plan: Passthrough<'_>) -> Turn {
+    let model = plan.body.get("model").and_then(Value::as_str).unwrap_or("");
+    let shaped_out = shaped(ShapeArgs {
+        body: plan.body,
+        model,
+        previous_model: Some(model),
+        models: plan.models,
+        provider_order: &plan.auto.tiers.provider_order,
+        allow_fallbacks: plan.auto.tiers.allow_fallbacks,
+        strip_fields: &plan.auto.tiers.strip_fields,
+        require_parameters: plan.auto.tiers.require_parameters,
+    });
+    let meta = RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None)
+        .with_stripped(&shaped_out.stripped);
+    encode_forward(&shaped_out.body, meta, None)
 }
 
 pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
@@ -292,7 +310,11 @@ pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
         }),
         Err(err) => {
             tracing::error!(%err, "autoroute compact encode failed");
-            passthrough(plan.body)
+            passthrough(Passthrough {
+                auto: plan.auto,
+                body: plan.body,
+                models: plan.models,
+            })
         }
     }
 }

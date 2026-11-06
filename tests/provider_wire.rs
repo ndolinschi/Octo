@@ -30,6 +30,57 @@ fn loads_split_config_directory() {
     assert_eq!(config.autoroute_down_confirm, 2);
     assert!(config.autoroute_high_allow.is_empty());
     assert_eq!(config.autoroute_session_budget_usd, 0.0);
+    assert_eq!(
+        config.autoroute_strip_fields,
+        vec![
+            "output_config".to_string(),
+            "safeguards".to_string(),
+            "context_management".to_string(),
+        ]
+    );
+    assert_eq!(config.autoroute_require_parameters, "always");
+}
+
+#[test]
+fn invalid_autoroute_require_parameters_fails_config_load() {
+    let dir = std::env::temp_dir().join(format!(
+        "octo-bad-require-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("server.toml"),
+        r#"
+[server]
+bind_addr = "127.0.0.1:8080"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("limits.toml"),
+        r#"
+[limits]
+max_body_bytes = 1000
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("autoroute.toml"),
+        r#"
+[autoroute]
+require_parameters = "allways"
+"#,
+    )
+    .unwrap();
+    let err = Config::load_from_directory(&dir).unwrap_err();
+    assert!(matches!(
+        err,
+        ConfigError::InvalidAutorouteRequireParameters { value } if value == "allways"
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

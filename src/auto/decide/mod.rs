@@ -380,7 +380,11 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         }
     } else if question.trim().is_empty() {
         if stall.is_none() {
-            return route::passthrough(&req.body);
+            return route::passthrough(route::Passthrough {
+                auto: req.auto,
+                body: &req.body,
+                models: loaded.as_ref(),
+            });
         }
         None
     } else {
@@ -393,7 +397,11 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                     }
                 }
                 if stall.is_none() {
-                    return route::passthrough(&req.body);
+                    return route::passthrough(route::Passthrough {
+                        auto: req.auto,
+                        body: &req.body,
+                        models: loaded.as_ref(),
+                    });
                 }
                 None
             }

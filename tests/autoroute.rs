@@ -5,12 +5,12 @@ use axum::response::IntoResponse;
 use octo::auto::context_length;
 use octo::auto::{
     apply_sticky, cap_decision_text, cap_for_budget, choice, choice_from_scores, classified,
-    compaction_body, context_estimate, decide, detect_stall, dropped, filter_tools, inspect,
-    is_housekeeping, is_permission_check, larger_fit, looks_like_text_tool_call,
-    max_completion_tokens, needed_tools, needs_compact, output_reserve, payload, question_text,
-    session_id, session_key, shape, trim_housekeeping, with_model, Auto, Complexity, DecideRequest,
-    LargerFit, PayloadPlan, RequireParameters, RouteMeta, SessionChoice, ShapePlan, StallTrigger,
-    StickyPlan, Thresholds, Tiers, Turn,
+    compaction_body, context_estimate, decide, default_strip_fields, detect_stall, dropped,
+    filter_tools, inspect, is_housekeeping, is_permission_check, larger_fit,
+    looks_like_text_tool_call, max_completion_tokens, needed_tools, needs_compact, output_reserve,
+    payload, question_text, session_id, session_key, shape, trim_housekeeping, with_model, Auto,
+    Complexity, DecideRequest, LargerFit, PayloadPlan, RequireParameters, RouteMeta, SessionChoice,
+    ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn, PROTECTED_STRIP_FIELDS,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -1054,6 +1054,7 @@ fn shape_call_530_fixture_only_strips_output_config() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/call_530_housekeeping_ok.json")).unwrap();
     let before = fixture.clone();
+    let strip = default_strip_fields();
     let result = shape(ShapePlan {
         body: &fixture,
         model: "mistralai/ministral-8b-2512",
@@ -1061,7 +1062,7 @@ fn shape_call_530_fixture_only_strips_output_config() {
         models: None,
         provider_order: &[],
         allow_fallbacks: true,
-        strip_fields: &[],
+        strip_fields: &strip,
         require_parameters: RequireParameters::ToolsOnly,
     });
     let shaped = result.body;
@@ -1078,6 +1079,64 @@ fn shape_call_530_fixture_only_strips_output_config() {
         );
     }
     assert!(shaped.get("provider").is_none());
+}
+
+#[test]
+fn shape_empty_strip_fields_disables_stripping() {
+    let body = json!({
+        "model": "m",
+        "output_config": {"effort": "high"},
+        "safeguards": {"x": true},
+        "context_management": {"edits": []},
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let shaped = shape(ShapePlan {
+        body: &body,
+        model: "m",
+        previous_model: None,
+        models: None,
+        provider_order: &[],
+        allow_fallbacks: true,
+        strip_fields: &[],
+        require_parameters: RequireParameters::Never,
+    });
+    assert!(shaped.stripped.is_empty());
+    assert_eq!(shaped.body["output_config"], json!({"effort": "high"}));
+    assert_eq!(shaped.body["safeguards"], json!({"x": true}));
+    assert_eq!(shaped.body["context_management"], json!({"edits": []}));
+}
+
+#[test]
+fn shape_ignores_protected_strip_fields() {
+    let body = json!({
+        "model": "m",
+        "output_config": {"effort": "high"},
+        "tools": [{"name": "Bash"}],
+        "messages": [{"role": "user", "content": "hi"}],
+        "system": [{"type": "text", "text": "sys"}],
+        "max_tokens": 32,
+        "metadata": {"user_id": "{}"}
+    });
+    let mut fields = default_strip_fields();
+    for protected in PROTECTED_STRIP_FIELDS {
+        fields.push((*protected).to_string());
+    }
+    let shaped = shape(ShapePlan {
+        body: &body,
+        model: "m",
+        previous_model: None,
+        models: None,
+        provider_order: &[],
+        allow_fallbacks: true,
+        strip_fields: &fields,
+        require_parameters: RequireParameters::ToolsOnly,
+    });
+    assert_eq!(shaped.stripped, vec!["output_config".to_string()]);
+    assert_eq!(shaped.body["tools"], body["tools"]);
+    assert_eq!(shaped.body["messages"], body["messages"]);
+    assert_eq!(shaped.body["system"], body["system"]);
+    assert_eq!(shaped.body["max_tokens"], body["max_tokens"]);
+    assert_eq!(shaped.body["metadata"], body["metadata"]);
 }
 
 #[test]
@@ -1454,6 +1513,45 @@ async fn housekeeping_forces_low_without_touching_sticky() {
         "mid-m"
     );
     assert_eq!(held.meta.trigger, "budget_cap");
+}
+
+#[tokio::test]
+async fn passthrough_empty_question_still_strips_anthropic_only_fields() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "sk-unused",
+        body: json!({
+            "model": "client-model",
+            "output_config": {"effort": "high"},
+            "safeguards": {"x": true},
+            "context_management": {"edits": []},
+            "tools": [{"name": "Bash"}],
+            "messages": [{"role": "user", "content": "   "}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected passthrough forward");
+    };
+    assert_eq!(forward.meta.trigger, "none");
+    assert_eq!(
+        forward.meta.legacy_reason().as_deref(),
+        Some("stripped:context_management,output_config,safeguards")
+    );
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert!(payload.get("output_config").is_none());
+    assert!(payload.get("safeguards").is_none());
+    assert!(payload.get("context_management").is_none());
+    assert_eq!(payload["provider"]["require_parameters"], true);
+    assert_eq!(payload["model"], "client-model");
 }
 
 #[tokio::test]

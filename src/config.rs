@@ -489,7 +489,7 @@ impl Config {
                     path: dir.to_path_buf(),
                     source,
                 })?;
-        Ok(config_from_file(file))
+        config_from_file(file)
     }
 
     pub fn load_from_path(path: &Path) -> Result<Self, ConfigError> {
@@ -504,7 +504,7 @@ impl Config {
             path: path.to_path_buf(),
             source,
         })?;
-        Ok(config_from_file(file))
+        config_from_file(file)
     }
 
     pub fn parse_bind_addr(&self) -> Result<SocketAddr, ConfigError> {
@@ -569,8 +569,24 @@ fn merge_tables(into: &mut Map<String, Value>, from: Map<String, Value>) {
     }
 }
 
-fn config_from_file(file: ConfigFile) -> Config {
-    Config {
+fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
+    if crate::auto::RequireParameters::parse(&file.autoroute.require_parameters).is_none() {
+        return Err(ConfigError::InvalidAutorouteRequireParameters {
+            value: file.autoroute.require_parameters,
+        });
+    }
+    for key in &file.autoroute.strip_fields {
+        if crate::auto::PROTECTED_STRIP_FIELDS
+            .iter()
+            .any(|protected| protected.eq_ignore_ascii_case(key))
+        {
+            tracing::warn!(
+                key,
+                "autoroute.strip_fields ignores protected key (tools/tool_choice/system/messages/max_tokens/stop_sequences/metadata)"
+            );
+        }
+    }
+    Ok(Config {
         bind_addr: file.server.bind_addr,
         allow_remote: file.server.allow_remote,
         upstream_connect_timeout_secs: file.upstream.connect_timeout_secs,
@@ -628,7 +644,7 @@ fn config_from_file(file: ConfigFile) -> Config {
                 .collect();
             PriceTable::new(rows)
         },
-    }
+    })
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -649,6 +665,10 @@ pub enum ConfigError {
     InvalidFragment { path: PathBuf },
     #[error("unknown {kind} backend {name}")]
     UnknownBackend { kind: &'static str, name: String },
+    #[error(
+        "invalid autoroute.require_parameters {value:?}; expected always, tools_only, or never"
+    )]
+    InvalidAutorouteRequireParameters { value: String },
     #[error("invalid bind_addr {addr}")]
     InvalidBindAddr {
         addr: String,

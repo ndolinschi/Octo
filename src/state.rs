@@ -74,7 +74,7 @@ impl AppState {
                 tiers.strip_fields = config.autoroute_strip_fields.clone();
                 tiers.require_parameters =
                     crate::auto::RequireParameters::parse(&config.autoroute_require_parameters)
-                        .unwrap_or(crate::auto::RequireParameters::Always);
+                        .expect("config load validates require_parameters");
                 tiers
             }),
             config,
