@@ -1,0 +1,18 @@
+# Binary start evidence for target/debug/octo
+# Captured 2026-11-06 07:38:58 UTC while pid 440725 was still running.
+# Used by docs/verification/2026-11-06-autoroute.md (Task 2 / §5).
+
+$ ps -p 440725 -o pid,lstart,etime,cmd
+    PID                  STARTED     ELAPSED CMD
+ 440725 Fri Nov  6 06:55:47 2026       43:10 target/debug/octo
+
+$ # /proc derivation (btime + starttime_ticks / CLK_TCK)
+pid=440725
+exe=/workspace/target/debug/octo
+cmdline=target/debug/octo
+btime=1793827278
+starttime_ticks=12086986
+CLK_TCK=100
+start_epoch=1793948147
+UTC=2026-11-06 06:55:47 UTC
+Europe/Chisinau=2026-11-06 08:55:47 EET
