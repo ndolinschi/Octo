@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Run Claude Code inside gitignored experiments/ with Octo autoroute + Mistral tiers.
+# Keys come from repo .env (sourced via claude-code-env.sh) — no manual export needed.
 #
 # Usage:
-#   export OPENROUTER_API_KEY=sk-or-v1-...
-#   # interactive
+#   cp .env.example .env   # once
 #   ./scripts/claude-code-experiment.sh
-#   # non-interactive print mode
 #   ./scripts/claude-code-experiment.sh -p "Только чтение. …"
-#   # pass-through extra claude flags after --
 #   ./scripts/claude-code-experiment.sh -- --allowedTools Read,Glob,Grep,Agent
 #
 # Octo must already be running (cargo run) with autoroute on :8080.
@@ -20,8 +18,8 @@ CLAUDE_CODE_ENV_QUIET=1 source "${ROOT}/scripts/claude-code-env.sh"
 
 cd "${OCTO_EXPERIMENTS_DIR}"
 
-if ! curl -sf -m 2 "http://${OCTO_BIND:-127.0.0.1:8080}/health" >/dev/null; then
-  echo "Octo health check failed at http://${OCTO_BIND:-127.0.0.1:8080}/health — start with: cargo run" >&2
+if ! curl -sf -m 2 "http://${OCTO_BIND}/health" >/dev/null; then
+  echo "Octo health check failed at http://${OCTO_BIND}/health — start with: cargo run" >&2
   exit 1
 fi
 

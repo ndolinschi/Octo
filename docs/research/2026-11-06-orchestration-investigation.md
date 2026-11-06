@@ -234,7 +234,7 @@ Housekeeping triggers appeared on main (gemma low) — not in decisions rows.
 
 Local Claude Code + autoroute helpers (Mistral ladder):
 
-- `source scripts/claude-code-env.sh` → `ANTHROPIC_BASE_URL=…/autoroute`, Mistral Haiku/Sonnet/Opus slots
+- Put `OPENROUTER_API_KEY` in repo-root `.env` (`cp .env.example .env`)
+- `source scripts/claude-code-env.sh` sources `.env` (and optional `experiments/.env`) then sets `/autoroute` + Mistral slots
 - `./scripts/claude-code-experiment.sh` [-p prompt] runs inside gitignored `experiments/`
-- Key file: `experiments/.env` from `config/experiments.env.example`
 - Autoroute tiers in `config/autoroute.toml`: `ministral-8b-2512` → `mistral-small-3.1-24b-instruct` → `devstral-2512`
