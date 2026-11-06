@@ -240,6 +240,9 @@ fn cache_read_priced_separately_from_uncached_input() {
     )]);
     let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
     assert_eq!(resolved.source, CostSource::Estimate);
-    // uncached 600k * $1 + cache_read 400k * $0.25 = $0.6 + $0.1 = $0.7
-    assert_eq!(resolved.cost, Some(CostMicros(700_000)));
+    assert_eq!(
+        resolved.cost,
+        Some(CostMicros(700_000)),
+        "uncached 600k*$1 + cache_read 400k*$0.25 = $0.7"
+    );
 }

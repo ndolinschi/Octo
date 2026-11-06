@@ -1331,6 +1331,110 @@ async fn housekeeping_skips_fill_upgrade_keeps_low() {
 }
 
 #[tokio::test]
+async fn housekeeping_trimmed_skips_fill_upgrade_keeps_low() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    auto.seed_catalog(OpenRouterModels {
+        free: Vec::new(),
+        paid: vec![
+            paid("low-m", 4_000),
+            paid("mid-m", 200_000),
+            paid("high-m", 200_000),
+        ],
+    })
+    .await;
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let bulky = "x".repeat(12_000);
+    let mut messages = Vec::new();
+    for i in 0..10 {
+        messages.push(json!({"role": "user", "content": format!("turn {i}")}));
+        messages.push(json!({"role": "assistant", "content": format!("ok {i}")}));
+    }
+    messages.push(json!({
+        "role": "user",
+        "content": format!("[SUGGESTION MODE: Suggest next]\n{bulky}")
+    }));
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"hk-fill-trim\"}"},
+            "max_tokens": 4096,
+            "tools": [{"name": "Read"}],
+            "messages": messages
+        }),
+        allow_compact: false,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward without compact");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "low-m"
+    );
+    assert_eq!(forward.meta.trigger, "housekeeping_trimmed");
+    assert_eq!(forward.meta.tier_after, "low");
+    assert!(forward.trimmed_from_tokens.is_some());
+}
+
+#[tokio::test]
+async fn permission_check_skips_fill_upgrade_keeps_model() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    auto.seed_catalog(OpenRouterModels {
+        free: Vec::new(),
+        paid: vec![
+            paid("low-m", 4_000),
+            paid("mid-m", 200_000),
+            paid("high-m", 200_000),
+        ],
+    })
+    .await;
+    auto.seed_session(
+        "perm-fill",
+        SessionChoice::fresh("low-m".into(), vec!["Bash".into()], "low".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let bulky = "x".repeat(12_000);
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"perm-fill\"}"},
+            "max_tokens": 4096,
+            "tools": [{"name": "Bash"}],
+            "messages": [{
+                "role": "user",
+                "content": format!(
+                    "<transcript>\nuser: run bash\nassistant: needs permission\n</transcript>\n\
+                     Err on the side of blocking when unsure.\n{bulky}"
+                )
+            }]
+        }),
+        allow_compact: false,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward without compact");
+    };
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&forward.body).unwrap()["model"],
+        "low-m"
+    );
+    assert_eq!(forward.meta.trigger, "permission_check");
+    assert_eq!(forward.meta.tier_after, "low");
+}
+
+#[tokio::test]
 async fn housekeeping_bypasses_awaiting_compact() {
     let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
     let auto = Auto::new(tiers);

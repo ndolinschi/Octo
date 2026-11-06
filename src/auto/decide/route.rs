@@ -103,7 +103,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         });
     }
     if estimate.fill >= metrics::FILL_THRESHOLD {
-        if plan.reason.as_deref() == Some("housekeeping") {
+        if skips_fill_upgrade(plan.reason.as_deref()) {
             return finish_overflow(OverflowCtx {
                 auto: ctx.auto,
                 body: &ctx.body,
@@ -165,6 +165,13 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
     let tier_after = ctx.auto.tiers().band(&plan.model).to_string();
     let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref());
     encode_forward(&outgoing, meta, plan.trimmed_from_tokens)
+}
+
+fn skips_fill_upgrade(reason: Option<&str>) -> bool {
+    matches!(
+        reason,
+        Some("housekeeping" | "housekeeping_trimmed" | "permission_check")
+    )
 }
 
 fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
