@@ -10,7 +10,10 @@
 #   1) experiments/.env
 #   2) repo-root .env   ← preferred place for OPENROUTER_API_KEY
 # Already-exported auth-related vars (OPENROUTER_API_KEY, ANTHROPIC_BASE_URL,
-# ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY) are kept when non-empty.
+# ANTHROPIC_AUTH_TOKEN) are kept when non-empty.
+#
+# For OpenRouter/Octo, Claude Code must see ANTHROPIC_AUTH_TOKEN only.
+# ANTHROPIC_API_KEY is always unset here (even an empty value counts as "set").
 #
 # Requires Octo on OCTO_BIND (default 127.0.0.1:8080) with
 # [llm.messages] backend = openrouter.
@@ -42,7 +45,6 @@ export OCTO_BIND="${OCTO_BIND:-127.0.0.1:8080}"
 _PRESERVE_OPENROUTER_API_KEY="${OPENROUTER_API_KEY-}"
 _PRESERVE_ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL-}"
 _PRESERVE_ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN-}"
-_PRESERVE_ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY-}"
 
 _load_dotenv() {
   local file="$1"
@@ -63,14 +65,13 @@ _load_dotenv "${_OCTO_ROOT}/.env"
 [[ -n "${_PRESERVE_OPENROUTER_API_KEY}" ]] && OPENROUTER_API_KEY="${_PRESERVE_OPENROUTER_API_KEY}"
 [[ -n "${_PRESERVE_ANTHROPIC_BASE_URL}" ]] && ANTHROPIC_BASE_URL="${_PRESERVE_ANTHROPIC_BASE_URL}"
 [[ -n "${_PRESERVE_ANTHROPIC_AUTH_TOKEN}" ]] && ANTHROPIC_AUTH_TOKEN="${_PRESERVE_ANTHROPIC_AUTH_TOKEN}"
-[[ -n "${_PRESERVE_ANTHROPIC_API_KEY}" ]] && ANTHROPIC_API_KEY="${_PRESERVE_ANTHROPIC_API_KEY}"
 
 _octo_env_fail() {
   echo "OPENROUTER_API_KEY missing. Add it to ${_OCTO_ROOT}/.env (see .env.example) and re-source." >&2
   _octo_restore_shell_opts
   unset -f _load_dotenv _octo_env_fail _octo_restore_shell_opts 2>/dev/null || true
   unset _OCTO_ROOT _PRESERVE_OPENROUTER_API_KEY _PRESERVE_ANTHROPIC_BASE_URL \
-    _PRESERVE_ANTHROPIC_AUTH_TOKEN _PRESERVE_ANTHROPIC_API_KEY \
+    _PRESERVE_ANTHROPIC_AUTH_TOKEN \
     _octo_had_e _octo_had_u _OCTO_ENV_SOURCED 2>/dev/null || true
   return 1
 }
@@ -89,7 +90,8 @@ mkdir -p "${_OCTO_ROOT}/experiments"
 export OPENROUTER_API_KEY
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://${OCTO_BIND}/autoroute}"
 export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-$OPENROUTER_API_KEY}"
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+# Claude Code warns if both auth vars exist; empty still counts as set.
+unset ANTHROPIC_API_KEY
 
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-mistralai/ministral-8b-2512}"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-mistralai/mistral-small-3.1-24b-instruct}"
@@ -101,6 +103,7 @@ export OCTO_EXPERIMENTS_DIR="${_OCTO_ROOT}/experiments"
 
 if [[ "${CLAUDE_CODE_ENV_QUIET:-}" != "1" ]]; then
   echo "ANTHROPIC_BASE_URL=$ANTHROPIC_BASE_URL"
+  echo "ANTHROPIC_AUTH_TOKEN=set (${#ANTHROPIC_AUTH_TOKEN} chars); ANTHROPIC_API_KEY=unset"
   echo "HAIKU/low=$ANTHROPIC_DEFAULT_HAIKU_MODEL"
   echo "SONNET/mid=$ANTHROPIC_DEFAULT_SONNET_MODEL"
   echo "OPUS/high=$ANTHROPIC_DEFAULT_OPUS_MODEL"
@@ -113,5 +116,5 @@ fi
 _octo_restore_shell_opts
 unset -f _load_dotenv _octo_env_fail _octo_restore_shell_opts 2>/dev/null || true
 unset _OCTO_ROOT _PRESERVE_OPENROUTER_API_KEY _PRESERVE_ANTHROPIC_BASE_URL \
-  _PRESERVE_ANTHROPIC_AUTH_TOKEN _PRESERVE_ANTHROPIC_API_KEY \
+  _PRESERVE_ANTHROPIC_AUTH_TOKEN \
   _octo_had_e _octo_had_u _OCTO_ENV_SOURCED 2>/dev/null || true
