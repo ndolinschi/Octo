@@ -35,12 +35,23 @@ type HmacSha256 = Hmac<Sha256>;
 
 const INSERT_SLOTS: usize = 32;
 
+#[derive(Debug, Clone)]
+pub struct SessionCallStats {
+    pub calls: i64,
+    pub cost_micros: u64,
+    pub updated_at: i64,
+    pub last_trigger: Option<String>,
+    pub last_model: Option<String>,
+    pub cost_source_breakdown: serde_json::Value,
+}
+
 #[derive(Clone)]
 pub struct History {
     pool: Option<SqlitePool>,
     token_key: Vec<u8>,
     capture_limit: usize,
     prices: Arc<PriceTable>,
+    store_payloads: bool,
     inserts: Arc<Semaphore>,
     inflight: Arc<AtomicUsize>,
     idle: Arc<Notify>,
@@ -53,6 +64,7 @@ impl History {
             token_key: Vec::new(),
             capture_limit: 0,
             prices: Arc::new(PriceTable::default()),
+            store_payloads: true,
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
@@ -72,6 +84,11 @@ impl History {
         self
     }
 
+    pub fn with_store_payloads(mut self, store_payloads: bool) -> Self {
+        self.store_payloads = store_payloads;
+        self
+    }
+
     pub async fn connect(
         database_path: &str,
         token_key: &str,
@@ -87,6 +104,7 @@ impl History {
             token_key: key,
             capture_limit,
             prices: Arc::new(PriceTable::default()),
+            store_payloads: true,
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
@@ -183,6 +201,75 @@ impl History {
         Ok(u64::try_from(row.total).unwrap_or(u64::MAX))
     }
 
+    pub async fn session_call_stats(&self, session_id: &str) -> Option<SessionCallStats> {
+        let pool = self.pool.as_ref()?;
+        let summary = sqlx::query(
+            r#"
+            SELECT
+              COUNT(*) AS calls,
+              COALESCE(SUM(cost_micros), 0) AS cost_micros,
+              COALESCE(MAX(created_at), 0) AS updated_at
+            FROM calls
+            WHERE session_id = ?
+            "#,
+        )
+        .bind(session_id)
+        .fetch_one(pool)
+        .await
+        .ok()?;
+        use sqlx::Row;
+        let calls = summary.get::<i64, _>("calls");
+        let cost_micros = u64::try_from(summary.get::<i64, _>("cost_micros")).unwrap_or(0);
+        let updated_at = summary.get::<i64, _>("updated_at");
+        let last = sqlx::query(
+            r#"
+            SELECT trigger, model FROM calls
+            WHERE session_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+        let (last_trigger, last_model) = match last {
+            Some(row) => (
+                row.get::<Option<String>, _>("trigger"),
+                row.get::<Option<String>, _>("model"),
+            ),
+            None => (None, None),
+        };
+        let sources = sqlx::query(
+            r#"
+            SELECT COALESCE(cost_source, 'none') AS cost_source,
+                   COALESCE(SUM(cost_micros), 0) AS micros
+            FROM calls
+            WHERE session_id = ?
+            GROUP BY COALESCE(cost_source, 'none')
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        let mut breakdown = serde_json::Map::new();
+        for row in sources {
+            let source: String = row.get("cost_source");
+            let micros = row.get::<i64, _>("micros") as f64 / 1_000_000.0;
+            breakdown.insert(source, serde_json::json!(micros));
+        }
+        Some(SessionCallStats {
+            calls,
+            cost_micros,
+            updated_at,
+            last_trigger,
+            last_model,
+            cost_source_breakdown: serde_json::Value::Object(breakdown),
+        })
+    }
+
     pub fn record(&self, call: FinishedCall) {
         let Some(pool) = self.pool.clone() else {
             return;
@@ -190,6 +277,7 @@ impl History {
         let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
+        let store_payloads = self.store_payloads;
         inflight.fetch_add(1, Ordering::AcqRel);
         tokio::spawn(async move {
             struct Done(Arc<AtomicUsize>, Arc<Notify>);
@@ -223,7 +311,7 @@ impl History {
                 };
             let _permit = permit;
             let captured_bytes = call.request_bytes.saturating_add(call.response_bytes);
-            match insert_call(&pool, &call).await {
+            match insert_call(&pool, &call, store_payloads).await {
                 Ok(()) => {
                     tracing::info!(
                         kind = %call.kind,
@@ -453,7 +541,11 @@ async fn insert_decision(
     Ok(())
 }
 
-async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx::Error> {
+async fn insert_call(
+    pool: &SqlitePool,
+    call: &FinishedCall,
+    store_payloads: bool,
+) -> Result<(), sqlx::Error> {
     use metrics::{byte_len_to_sql, cost_micros_to_sql, millis_to_sql, token_count_to_sql};
 
     let created_at = std::time::SystemTime::now()
@@ -464,11 +556,32 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let provider = call.provider.as_str();
     let model = call.model.as_deref();
     let token_hash = call.token_hash.as_deref();
-    let message = call.message.as_deref();
-    let input = call.input.as_str();
-    let output = call.output.as_str();
-    let request_payload = call.request_payload.as_str();
-    let response_payload = call.response_payload.as_str();
+    let message = if store_payloads {
+        call.message.as_deref()
+    } else {
+        None
+    };
+    let blank = "";
+    let input = if store_payloads {
+        call.input.as_str()
+    } else {
+        blank
+    };
+    let output = if store_payloads {
+        call.output.as_str()
+    } else {
+        blank
+    };
+    let request_payload = if store_payloads {
+        Some(call.request_payload.as_str())
+    } else {
+        None
+    };
+    let response_payload = if store_payloads {
+        Some(call.response_payload.as_str())
+    } else {
+        None
+    };
     let status = i64::from(call.status);
     let latency_ms = millis_to_sql(call.latency_ms);
     let request_bytes = byte_len_to_sql(call.request_bytes);
@@ -494,6 +607,11 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
     let tier_before = call.tier_before.as_deref();
     let tier_after = call.tier_after.as_deref();
     let trigger = call.trigger.as_str();
+    let client_model = call.client_model.as_deref();
+    let client_has_thinking = call.client_has_thinking.map(i64::from);
+    let client_tool_names = call.client_tool_names.as_deref();
+    let bg_signal = call.bg_signal.map(i64::from);
+    let hk_text_signal = call.hk_text_signal.map(i64::from);
     sqlx::query!(
         r#"
         INSERT INTO calls (
@@ -503,8 +621,9 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
             cache_read_tokens, cache_write_tokens, generation_id,
             rerouting, rerouting_reason, session_id, tier_before, tier_after, trigger,
             or_cost_micros, upstream_cost_micros, estimated_cost_micros, cost_source,
-            is_byok, upstream_provider, trimmed_from_tokens
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_byok, upstream_provider, trimmed_from_tokens,
+            client_model, client_has_thinking, client_tool_names, bg_signal, hk_text_signal
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -538,7 +657,12 @@ async fn insert_call(pool: &SqlitePool, call: &FinishedCall) -> Result<(), sqlx:
         cost_source,
         is_byok,
         upstream_provider,
-        trimmed_from_tokens
+        trimmed_from_tokens,
+        client_model,
+        client_has_thinking,
+        client_tool_names,
+        bg_signal,
+        hk_text_signal
     )
     .execute(pool)
     .await?;

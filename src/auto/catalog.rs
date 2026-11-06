@@ -56,6 +56,9 @@ pub struct Tiers {
     pub allow_fallbacks: bool,
     pub strip_fields: Vec<String>,
     pub require_parameters: RequireParameters,
+    pub background_by_client_model: bool,
+    pub background_model_patterns: Vec<String>,
+    pub server_tool_mode: String,
 }
 
 impl Tiers {
@@ -76,6 +79,9 @@ impl Tiers {
             allow_fallbacks: true,
             strip_fields: default_strip_fields(),
             require_parameters: RequireParameters::Always,
+            background_by_client_model: false,
+            background_model_patterns: vec!["haiku".to_string()],
+            server_tool_mode: "passthrough".to_string(),
         }
     }
 
@@ -187,8 +193,13 @@ pub fn bare_id(slug: &str) -> &str {
     slug.trim_start_matches('~')
 }
 
+pub fn routing_id(slug: &str) -> &str {
+    let bare = bare_id(slug);
+    bare.strip_suffix(":online").unwrap_or(bare)
+}
+
 pub fn ids_match(left: &str, right: &str) -> bool {
-    left == right || bare_id(left) == bare_id(right)
+    left == right || bare_id(left) == bare_id(right) || routing_id(left) == routing_id(right)
 }
 
 pub fn context_length(models: Option<&OpenRouterModels>, slug: &str) -> u64 {

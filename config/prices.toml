@@ -1,5 +1,6 @@
 # Fill USD-per-1M-token rates from the provider console (e.g. Mistral / OpenRouter).
-# estimated_cost_micros uses these when any rate for the model is non-zero.
+# Estimate is used only when ALL four rates (input, cache_read, cache_write, output)
+# are present for the slug; an explicit 0.0 counts as present. Partial rows fall through.
 # billed_as maps Octo/OpenRouter slug -> provider invoice name for reconcile_costs.py.
 
 [prices."mistralai/ministral-8b-2512"]

@@ -158,6 +158,20 @@ impl Auto {
         sessions.insert(session_key.to_string(), choice);
     }
 
+    pub fn session_snapshot(&self, session_key: &str) -> Option<SessionChoice> {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return None;
+        };
+        sessions.peek(session_key)
+    }
+
+    pub fn latest_session_id(&self) -> Option<String> {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return None;
+        };
+        sessions.latest_id()
+    }
+
     pub async fn seed_catalog(&self, models: crate::providers::openrouter::OpenRouterModels) {
         self.catalog.lock().await.store(models);
     }
@@ -243,44 +257,39 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
     }
 
     if body::is_housekeeping(&raw_text) {
-        let model = req.auto.tiers.pick(Complexity::Low, preferred.as_deref());
-        let row = choice.as_ref();
-        let pre_tokens = metrics::estimate_tokens(models::counted_bytes(&req.body));
-        let trimmed = body::trim_housekeeping(
-            &req.body,
-            req.auto.tiers.housekeeping_keep_messages,
-            pre_tokens,
-        );
-        let reason = if trimmed.shortened {
-            "housekeeping_trimmed"
-        } else {
-            "housekeeping"
-        };
-        return route::run(RouteCtx {
+        return low_no_sticky(LowNoSticky {
             auto: req.auto,
-            body: trimmed.body,
+            body: req.body,
             models: loaded.as_ref(),
-            previous_model: row.map(|row| row.model.clone()),
-            plan: RoutePlan {
-                model,
-                tools: row
-                    .map(|row| row.tools.clone())
-                    .unwrap_or_else(|| all_tools.clone()),
-                reason: Some(reason.to_string()),
-                tier_before,
-                reserve,
-                allow_compact: req.allow_compact,
-                persist: false,
-                sticky_band: row
-                    .map(|row| row.sticky_band.clone())
-                    .unwrap_or_else(|| "unset".to_string()),
-                escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
-                escalate_band: row.and_then(|row| row.escalate_band.clone()),
-                last_stall: row.and_then(|row| row.last_stall.clone()),
-                pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
-                down_count: row.map(|row| row.down_count).unwrap_or(0),
-                trimmed_from_tokens: trimmed.trimmed_from_tokens,
-            },
+            choice: choice.as_ref(),
+            preferred: preferred.as_deref(),
+            all_tools: &all_tools,
+            tier_before,
+            reserve,
+            allow_compact: req.allow_compact,
+            reason_base: "housekeeping",
+            trim: true,
+        });
+    }
+
+    if req.auto.tiers.background_by_client_model
+        && body::bg_signal(
+            preferred.as_deref(),
+            &req.auto.tiers.background_model_patterns,
+        )
+    {
+        return low_no_sticky(LowNoSticky {
+            auto: req.auto,
+            body: req.body,
+            models: loaded.as_ref(),
+            choice: choice.as_ref(),
+            preferred: preferred.as_deref(),
+            all_tools: &all_tools,
+            tier_before,
+            reserve,
+            allow_compact: req.allow_compact,
+            reason_base: "background_model",
+            trim: true,
         });
     }
 
@@ -487,6 +496,67 @@ fn hold_without_classify(plan: HoldWithoutClassify<'_>) -> Option<super::session
         return Some(row.clone());
     }
     None
+}
+
+struct LowNoSticky<'a> {
+    auto: &'a Auto,
+    body: Value,
+    models: Option<&'a crate::providers::openrouter::OpenRouterModels>,
+    choice: Option<&'a super::session::SessionChoice>,
+    preferred: Option<&'a str>,
+    all_tools: &'a [String],
+    tier_before: String,
+    reserve: u64,
+    allow_compact: bool,
+    reason_base: &'static str,
+    trim: bool,
+}
+
+fn low_no_sticky(plan: LowNoSticky<'_>) -> Turn {
+    let model = plan.auto.tiers.pick(Complexity::Low, plan.preferred);
+    let row = plan.choice;
+    let (body, trimmed_from_tokens, reason) = if plan.trim {
+        let pre_tokens = metrics::estimate_tokens(models::counted_bytes(&plan.body));
+        let trimmed = body::trim_housekeeping(
+            &plan.body,
+            plan.auto.tiers.housekeeping_keep_messages,
+            pre_tokens,
+        );
+        let reason = if plan.reason_base == "housekeeping" && trimmed.shortened {
+            "housekeeping_trimmed"
+        } else {
+            plan.reason_base
+        };
+        (trimmed.body, trimmed.trimmed_from_tokens, reason)
+    } else {
+        (plan.body, None, plan.reason_base)
+    };
+    route::run(RouteCtx {
+        auto: plan.auto,
+        body,
+        models: plan.models,
+        previous_model: row.map(|row| row.model.clone()),
+        plan: RoutePlan {
+            model,
+            tools: row
+                .map(|row| row.tools.clone())
+                .unwrap_or_else(|| plan.all_tools.to_vec()),
+            reason: Some(reason.to_string()),
+            tier_before: plan.tier_before,
+            reserve: plan.reserve,
+            allow_compact: plan.allow_compact,
+            persist: false,
+            sticky_band: row
+                .map(|row| row.sticky_band.clone())
+                .unwrap_or_else(|| "unset".to_string()),
+            escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
+            escalate_band: row.and_then(|row| row.escalate_band.clone()),
+            last_stall: row.and_then(|row| row.last_stall.clone()),
+            pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
+            down_count: row.map(|row| row.down_count).unwrap_or(0),
+            trimmed_from_tokens,
+        },
+    })
 }
 
 fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {

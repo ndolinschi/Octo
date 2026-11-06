@@ -12,6 +12,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
     Config {
         bind_addr: "127.0.0.1:8080".to_string(),
         allow_remote: false,
+        client_auth_key: String::new(),
         upstream_connect_timeout_secs: 30,
         upstream_request_timeout_secs: 600,
         openai_chat_completions_url: "https://api.openai.com/v1/chat/completions".to_string(),
@@ -32,6 +33,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         decision_backend: "openrouter".to_string(),
         history_database_path: "sqlite::memory:".to_string(),
         history_token_key: "test-token-key".to_string(),
+        history_store_payloads: true,
         autoroute_low_model: "google/gemma-4-26b-a4b-it".to_string(),
         autoroute_mid_model: "deepseek/deepseek-v4-flash".to_string(),
         autoroute_high_model: "~anthropic/claude-haiku-latest".to_string(),
@@ -47,6 +49,9 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_allow_fallbacks: true,
         autoroute_strip_fields: octo::auto::default_strip_fields(),
         autoroute_require_parameters: "always".to_string(),
+        autoroute_background_model_patterns: vec!["haiku".to_string()],
+        autoroute_background_by_client_model: false,
+        autoroute_server_tool_mode: "passthrough".to_string(),
         prices: octo::history::PriceTable::default(),
     }
 }

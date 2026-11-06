@@ -62,6 +62,19 @@ impl Sessions {
         self.rows.insert(id, choice);
     }
 
+    pub fn latest_id(&mut self) -> Option<String> {
+        self.expire();
+        self.rows
+            .iter()
+            .max_by_key(|(_, row)| row.seen)
+            .map(|(id, _)| id.clone())
+    }
+
+    pub fn peek(&mut self, id: &str) -> Option<SessionChoice> {
+        self.expire();
+        self.rows.get(id).cloned()
+    }
+
     fn expire(&mut self) {
         let ttl = self.ttl;
         self.rows.retain(|_, row| row.seen.elapsed() < ttl);

@@ -75,6 +75,10 @@ impl AppState {
                 tiers.require_parameters =
                     crate::auto::RequireParameters::parse(&config.autoroute_require_parameters)
                         .expect("config load validates require_parameters");
+                tiers.background_by_client_model = config.autoroute_background_by_client_model;
+                tiers.background_model_patterns =
+                    config.autoroute_background_model_patterns.clone();
+                tiers.server_tool_mode = config.autoroute_server_tool_mode.clone();
                 tiers
             }),
             config,

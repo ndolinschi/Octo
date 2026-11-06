@@ -145,6 +145,11 @@ impl Capture {
                 tier_after: observe.tier_after.clone(),
                 trigger: observe.trigger.clone(),
                 trimmed_from_tokens: observe.trimmed_from_tokens,
+                client_model: observe.client_model.clone(),
+                client_has_thinking: observe.client_has_thinking,
+                client_tool_names: observe.client_tool_names.clone(),
+                bg_signal: observe.bg_signal,
+                hk_text_signal: observe.hk_text_signal,
                 auto: observe.auto.clone(),
                 on_response: observe.on_response.clone(),
             },
@@ -204,6 +209,11 @@ impl Capture {
             tier_before: self.observe.tier_before.clone(),
             tier_after: self.observe.tier_after.clone(),
             trigger: self.observe.trigger.clone(),
+            client_model: self.observe.client_model.clone(),
+            client_has_thinking: self.observe.client_has_thinking,
+            client_tool_names: self.observe.client_tool_names.clone(),
+            bg_signal: self.observe.bg_signal,
+            hk_text_signal: self.observe.hk_text_signal,
         });
         if let (Some(auto), Some(session_id), Some(cost)) =
             (&self.observe.auto, &self.observe.session_id, resolved.cost)

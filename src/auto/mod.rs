@@ -11,10 +11,11 @@ mod text_tool_call;
 
 pub use action::{Compact, Forward, ModelAction, Turn};
 pub use body::{
-    cap_decision_text, compaction_body, filter_tools, is_housekeeping, is_permission_check,
-    last_user_text, last_user_tool_results_only, question_text, session_id, session_key, shape,
-    trim_housekeeping, with_model, HousekeepingTrim, ShapePlan, ShapeResult,
-    PROTECTED_STRIP_FIELDS,
+    bg_signal, cap_decision_text, client_has_thinking, client_tool_names_csv, compaction_body,
+    filter_tools, is_housekeeping, is_permission_check, last_user_text,
+    last_user_tool_results_only, preferred_model, question_text, server_tool_types, session_id,
+    session_key, shape, trim_housekeeping, with_model, with_online_suffix, HousekeepingTrim,
+    ShapePlan, ShapeResult, PROTECTED_STRIP_FIELDS,
 };
 pub use catalog::{
     band_rank, bump_band, complexity_band, context_length, larger_fit, max_completion_tokens,

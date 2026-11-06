@@ -23,6 +23,7 @@ const CONFIG_DIR_FILES: &[&str] = &[
 pub struct Config {
     pub bind_addr: String,
     pub allow_remote: bool,
+    pub client_auth_key: String,
     pub upstream_connect_timeout_secs: u64,
     pub upstream_request_timeout_secs: u64,
     pub openai_chat_completions_url: String,
@@ -43,6 +44,7 @@ pub struct Config {
     pub decision_backend: String,
     pub history_database_path: String,
     pub history_token_key: String,
+    pub history_store_payloads: bool,
     pub autoroute_low_model: String,
     pub autoroute_mid_model: String,
     pub autoroute_high_model: String,
@@ -58,6 +60,9 @@ pub struct Config {
     pub autoroute_allow_fallbacks: bool,
     pub autoroute_strip_fields: Vec<String>,
     pub autoroute_require_parameters: String,
+    pub autoroute_background_model_patterns: Vec<String>,
+    pub autoroute_background_by_client_model: bool,
+    pub autoroute_server_tool_mode: String,
     pub prices: crate::history::PriceTable,
 }
 
@@ -90,6 +95,8 @@ struct ServerSection {
     bind_addr: String,
     #[serde(default)]
     allow_remote: bool,
+    #[serde(default)]
+    client_auth_key: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -312,6 +319,8 @@ struct HistorySection {
     database_path: String,
     #[serde(default)]
     token_key: String,
+    #[serde(default = "default_history_store_payloads")]
+    store_payloads: bool,
 }
 
 impl Default for HistorySection {
@@ -319,8 +328,13 @@ impl Default for HistorySection {
         Self {
             database_path: default_history_database_path(),
             token_key: String::new(),
+            store_payloads: default_history_store_payloads(),
         }
     }
+}
+
+fn default_history_store_payloads() -> bool {
+    true
 }
 
 fn default_history_database_path() -> String {
@@ -359,6 +373,12 @@ struct AutorouteSection {
     strip_fields: Vec<String>,
     #[serde(default = "default_autoroute_require_parameters")]
     require_parameters: String,
+    #[serde(default = "default_autoroute_background_model_patterns")]
+    background_model_patterns: Vec<String>,
+    #[serde(default)]
+    background_by_client_model: bool,
+    #[serde(default = "default_autoroute_server_tool_mode")]
+    server_tool_mode: String,
 }
 
 impl Default for AutorouteSection {
@@ -379,6 +399,9 @@ impl Default for AutorouteSection {
             allow_fallbacks: default_autoroute_allow_fallbacks(),
             strip_fields: default_autoroute_strip_fields(),
             require_parameters: default_autoroute_require_parameters(),
+            background_model_patterns: default_autoroute_background_model_patterns(),
+            background_by_client_model: false,
+            server_tool_mode: default_autoroute_server_tool_mode(),
         }
     }
 }
@@ -403,16 +426,20 @@ fn default_autoroute_require_parameters() -> String {
     "always".to_string()
 }
 
+fn default_autoroute_background_model_patterns() -> Vec<String> {
+    vec!["haiku".to_string()]
+}
+
+fn default_autoroute_server_tool_mode() -> String {
+    "passthrough".to_string()
+}
+
 #[derive(Clone, Debug, Deserialize, Default)]
 struct PriceRow {
-    #[serde(default)]
-    input: f64,
-    #[serde(default)]
-    cache_read: f64,
-    #[serde(default)]
-    cache_write: f64,
-    #[serde(default)]
-    output: f64,
+    input: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+    output: Option<f64>,
     #[serde(default)]
     billed_as: Option<String>,
 }
@@ -523,6 +550,11 @@ impl Config {
                 addr: self.bind_addr.clone(),
             });
         }
+        if !addr.ip().is_loopback() && self.client_auth_key.trim().is_empty() {
+            return Err(ConfigError::RemoteBindNeedsAuthKey {
+                addr: self.bind_addr.clone(),
+            });
+        }
         Ok(addr)
     }
 }
@@ -589,6 +621,7 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
     Ok(Config {
         bind_addr: file.server.bind_addr,
         allow_remote: file.server.allow_remote,
+        client_auth_key: file.server.client_auth_key,
         upstream_connect_timeout_secs: file.upstream.connect_timeout_secs,
         upstream_request_timeout_secs: file.upstream.request_timeout_secs,
         openai_chat_completions_url: file.openai.chat_completions_url,
@@ -609,6 +642,7 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         decision_backend: file.decision.backend,
         history_database_path: file.history.database_path,
         history_token_key: file.history.token_key,
+        history_store_payloads: file.history.store_payloads,
         autoroute_low_model: file.autoroute.low,
         autoroute_mid_model: file.autoroute.mid,
         autoroute_high_model: file.autoroute.high,
@@ -624,20 +658,28 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         autoroute_allow_fallbacks: file.autoroute.allow_fallbacks,
         autoroute_strip_fields: file.autoroute.strip_fields,
         autoroute_require_parameters: file.autoroute.require_parameters,
+        autoroute_background_model_patterns: file.autoroute.background_model_patterns,
+        autoroute_background_by_client_model: file.autoroute.background_by_client_model,
+        autoroute_server_tool_mode: file.autoroute.server_tool_mode,
         prices: {
             use crate::history::{ModelPrice, PriceTable};
             let rows = file
                 .prices
                 .into_iter()
                 .map(|(slug, row)| {
+                    let rates_complete = row.input.is_some()
+                        && row.cache_read.is_some()
+                        && row.cache_write.is_some()
+                        && row.output.is_some();
                     (
                         slug,
                         ModelPrice {
-                            input: row.input,
-                            cache_read: row.cache_read,
-                            cache_write: row.cache_write,
-                            output: row.output,
+                            input: row.input.unwrap_or(0.0),
+                            cache_read: row.cache_read.unwrap_or(0.0),
+                            cache_write: row.cache_write.unwrap_or(0.0),
+                            output: row.output.unwrap_or(0.0),
                             billed_as: row.billed_as,
+                            rates_complete,
                         },
                     )
                 })
@@ -677,4 +719,8 @@ pub enum ConfigError {
     },
     #[error("bind_addr {addr} is not loopback; set allow_remote = true in config/server.toml")]
     RemoteBindNotAllowed { addr: String },
+    #[error(
+        "bind_addr {addr} is not loopback and no client_auth_key is set; refuse to start without a key"
+    )]
+    RemoteBindNeedsAuthKey { addr: String },
 }

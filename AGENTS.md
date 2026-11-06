@@ -69,7 +69,7 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 
 | File | Contents |
 | --- | --- |
-| `config/server.toml` | `[server]` — `bind_addr`, `allow_remote` |
+| `config/server.toml` | `[server]` — `bind_addr`, `allow_remote`, `client_auth_key` |
 | `config/upstream.toml` | `[upstream]` — connect and request timeouts |
 | `config/limits.toml` | `[limits]` — `max_body_bytes` |
 | `config/openai.toml` | `[openai]` — direct OpenAI chat URL |
@@ -77,9 +77,9 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 | `config/anthropic.toml` | `[anthropic]` — messages URL, path, API version |
 | `config/llm.toml` | `[llm.chat]` / `[llm.messages]` backend defaults |
 | `config/decision.toml` | `[decision]` backend |
-| `config/history.toml` | `[history]` — SQLite path, optional token HMAC key |
-| `config/autoroute.toml` | `[autoroute]` — ladder, stall/sticky, budget, housekeeping trim, optional `provider_order`, `strip_fields`, `require_parameters` (`always` / `tools_only` / `never`) |
-| `config/prices.toml` | `[prices."<slug>"]` — USD/1M token rates + optional `billed_as` for reconcile |
+| `config/history.toml` | `[history]` — SQLite path, optional token HMAC key, `store_payloads` (default true) |
+| `config/autoroute.toml` | `[autoroute]` — ladder, stall/sticky, budget, housekeeping trim, optional `provider_order`, `strip_fields`, `require_parameters`, `background_*`, `server_tool_mode` |
+| `config/prices.toml` | `[prices."<slug>"]` — USD/1M token rates (all four required for estimate) + optional `billed_as` |
 
 - **Default load:** merge present files in `./config/` (known fragment names; missing files are skipped). Run from repo root.
 - **`OCTO_CONFIG`:** path to another **`config/`** directory or a single legacy **`config.toml`** file (monolithic override).
@@ -91,7 +91,7 @@ To use OpenRouter for chat, POST with `"type": "OPENROUTER"` or use `/openrouter
 
 Do not commit API keys; clients send credentials per request (`Authorization` for OpenRouter/OpenAI-style chat and OpenRouter Messages, `x-api-key` for direct Anthropic Messages).
 
-**Threat model:** Octo has no proxy-side authentication. Default `server.allow_remote = false` binds loopback only. If you set `allow_remote = true`, treat the bind address like an open HTTP forwarder on your network (firewall/VPN only). Do not point upstream URLs at internal services you would not expose to clients holding API keys. `GET /health` returns 200 for liveness checks only.
+**Threat model:** Default `server.allow_remote = false` binds loopback only. Non-loopback binds require `allow_remote = true` **and** a non-empty `server.client_auth_key` (startup refuse otherwise). When `client_auth_key` is set, every request except `GET /health` must send matching `x-octo-key` (401 otherwise). Do not point upstream URLs at internal services you would not expose to clients holding API keys.
 
 **Upstream timeouts:** `[upstream].request_timeout_secs` (default 600) applies to the full reqwest call including streaming response bodies; very long SSE may need a higher limit.
 
@@ -110,11 +110,13 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 | Stream errors | If the upstream body stream fails after headers were sent, the client may see upstream status (e.g. 200) while history records **502** for that call. |
 | Shutdown | Graceful drain waits for in-flight inserts (bounded queue) |
 
-**Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output raw capture, **`request_payload` / `response_payload`** (JSON with `provider` + nested `payload` per vendor shape), status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`), plus `or_cost_micros` / `upstream_cost_micros` / `estimated_cost_micros` / `cost_source` / `is_byok` / `upstream_provider` / `trimmed_from_tokens`. Prompts are not logged verbatim in tracing.
+**Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output raw capture, **`request_payload` / `response_payload`** (JSON with `provider` + nested `payload` per vendor shape), status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`), plus `or_cost_micros` / `upstream_cost_micros` / `estimated_cost_micros` / `cost_source` / `is_byok` / `upstream_provider` / `trimmed_from_tokens`, plus observe-only `client_model` / `client_has_thinking` / `client_tool_names` / `bg_signal` / `hk_text_signal`. With `history.store_payloads = false`, text payload columns are omitted (NULL/blank) while metrics and observe columns remain. Prompts are not logged verbatim in tracing.
 
-**Cost precedence:** first non-zero of estimate (tokens × `prices.toml` when any rate &gt; 0), upstream BYOK (`usage.cost_details.upstream_inference_cost`), OpenRouter `usage.cost`; else `cost_source = "none"` (including error/no-usage rows).
+**Cost precedence:** estimate only when all four `prices.toml` rates are present for the slug (explicit `0.0` counts); then first non-zero of estimate → upstream BYOK → OpenRouter `usage.cost`; else `cost_source = "none"`.
 
-**session_outcomes:** async upsert from last-user `tool_result` blocks (cargo / pytest / unittest summaries), keyed by observe `session_id` (includes `#subagent` when applicable).
+**session_outcomes:** async upsert from last-user `tool_result` blocks (cargo / pytest / unittest summaries), keyed by observe `session_id` (includes `#subagent` when applicable). Parses the live request even when `store_payloads = false`.
+
+**Autoroute status:** `GET /autoroute/status` / `?session=` returns JSON for Claude Code statusline (`scripts/statusline.sh`).
 
 **Payload modules:** `src/history/payload/` dispatches on `CallKind` + `CallProvider` (`openai_chat`, `claude`, `decision`, shared `common` for usage/SSE). OpenAI and OpenRouter **chat** share the OpenAI chat shape; **messages** calls (`CallKind::Messages`, direct Anthropic or OpenRouter) use the Anthropic messages shape; decisions use `decision.rs`.
 

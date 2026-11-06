@@ -27,6 +27,7 @@ pub struct ModelPrice {
     pub cache_write: f64,
     pub output: f64,
     pub billed_as: Option<String>,
+    pub rates_complete: bool,
 }
 
 impl ModelPrice {
@@ -94,7 +95,7 @@ pub fn resolve_cost(usage: &ParsedUsage, model: Option<&str>, prices: &PriceTabl
 }
 
 fn estimate_cost(usage: &ParsedUsage, price: &ModelPrice) -> Option<CostMicros> {
-    if !price.any_nonzero() {
+    if !price.rates_complete || !price.any_nonzero() {
         return None;
     }
     let input = usage.input_tokens.map(|t| t.0).unwrap_or(0);

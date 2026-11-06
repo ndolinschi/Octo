@@ -36,3 +36,10 @@ allow_fallbacks = true
 strip_fields = ["output_config", "safeguards", "context_management"]
 # OpenRouter provider.require_parameters: always | tools_only | never (invalid values fail config load)
 require_parameters = "always"
+# Observe-only: client model substring match → calls.bg_signal (case-insensitive).
+background_model_patterns = ["haiku"]
+# When true, bg_signal requests (except permission_check) route like housekeeping with
+# trigger background_model. Default false = no routing change.
+background_by_client_model = false
+# Server tools (web_search / web_fetch / code_execution): passthrough | online_suffix | reject.
+server_tool_mode = "passthrough"

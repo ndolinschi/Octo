@@ -14,7 +14,8 @@ pub fn normalize_trigger(reason: Option<&str>) -> String {
         | "budget_cap"
         | "housekeeping"
         | "housekeeping_trimmed"
-        | "permission_check" => reason.to_string(),
+        | "permission_check"
+        | "background_model" => reason.to_string(),
         "tool_update" => "reclassify".to_string(),
         "upstream_retry" => "retry".to_string(),
         "stall_release" => "none".to_string(),

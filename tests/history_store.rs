@@ -74,6 +74,11 @@ async fn streamed_response_is_forwarded_then_stored() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
+            client_model: None,
+            client_has_thinking: None,
+            client_tool_names: None,
+            bg_signal: None,
+            hk_text_signal: None,
             auto: None,
             on_response: None,
         }),
@@ -144,6 +149,11 @@ async fn missing_token_is_not_a_shared_identity() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
+            client_model: None,
+            client_has_thinking: None,
+            client_tool_names: None,
+            bg_signal: None,
+            hk_text_signal: None,
             auto: None,
             on_response: None,
         }),
@@ -190,6 +200,11 @@ async fn decisions_response_is_stored_with_its_kind() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
+            client_model: None,
+            client_has_thinking: None,
+            client_tool_names: None,
+            bg_signal: None,
+            hk_text_signal: None,
             auto: None,
             on_response: None,
         }),
@@ -258,6 +273,11 @@ async fn usage_past_the_stored_prefix_is_kept() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
+            client_model: None,
+            client_has_thinking: None,
+            client_tool_names: None,
+            bg_signal: None,
+            hk_text_signal: None,
             auto: None,
             on_response: None,
         }),
@@ -335,6 +355,11 @@ async fn upstream_chunk_error_is_stored_as_failure() {
             tier_after: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
+            client_model: None,
+            client_has_thinking: None,
+            client_tool_names: None,
+            bg_signal: None,
+            hk_text_signal: None,
             auto: None,
             on_response: None,
         }),
@@ -410,6 +435,179 @@ async fn decision_row_is_inserted_into_decisions() {
     assert_eq!(row.6, Some(0.88));
     assert_eq!(row.3, "is_easy");
     assert_eq!(row.4, "hello");
+}
+
+#[tokio::test]
+async fn store_payloads_false_omits_text_keeps_costs() {
+    use octo::history::{CostMicros, FinishedCall, Millis};
+
+    let history = History::connect("sqlite::memory:", "test-token-key", 1024)
+        .await
+        .unwrap()
+        .with_store_payloads(false);
+    let tool_body = serde_json::json!({
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": "t1",
+                "content": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
+            }]
+        }]
+    })
+    .to_string();
+    history.record(FinishedCall {
+        kind: CallKind::Messages,
+        provider: CallProvider::OpenRouter,
+        model: Some("m".into()),
+        token_hash: None,
+        message: Some("secret".into()),
+        input: tool_body,
+        output: "out".into(),
+        request_payload: "{\"secret\":true}".into(),
+        response_payload: "{\"secret\":false}".into(),
+        status: 200,
+        latency_ms: Millis::new(1),
+        request_bytes: 10,
+        response_bytes: 3,
+        input_tokens: None,
+        output_tokens: None,
+        cost: Some(CostMicros(42)),
+        or_cost: None,
+        upstream_cost: None,
+        estimated_cost: None,
+        cost_source: "upstream".into(),
+        is_byok: Some(true),
+        upstream_provider: Some("Mistral".into()),
+        trimmed_from_tokens: None,
+        client_model: Some("claude-haiku".into()),
+        client_has_thinking: Some(false),
+        client_tool_names: Some("Bash".into()),
+        bg_signal: Some(true),
+        hk_text_signal: Some(false),
+        cache_read_tokens: None,
+        cache_write_tokens: None,
+        generation_id: None,
+        rerouting: 0,
+        rerouting_reason: None,
+        session_id: Some("payload-off".into()),
+        tier_before: Some("low".into()),
+        tier_after: Some("low".into()),
+        trigger: "classify".into(),
+    });
+    history.drain().await;
+    let row = poll_call(&history, || async {
+        let row = sqlx::query(
+            "SELECT message, input, output, request_payload, response_payload, cost_micros, cost_source, client_model, bg_signal FROM calls",
+        )
+        .fetch_optional(history.pool().unwrap())
+        .await?;
+        Ok(row.map(|row| {
+            use sqlx::Row;
+            (
+                row.get::<Option<String>, _>("message"),
+                row.get::<String, _>("input"),
+                row.get::<String, _>("output"),
+                row.get::<Option<String>, _>("request_payload"),
+                row.get::<Option<String>, _>("response_payload"),
+                row.get::<Option<i64>, _>("cost_micros"),
+                row.get::<Option<String>, _>("cost_source"),
+                row.get::<Option<String>, _>("client_model"),
+                row.get::<Option<i64>, _>("bg_signal"),
+            )
+        }))
+    })
+    .await;
+    assert!(row.0.is_none());
+    assert_eq!(row.1, "");
+    assert_eq!(row.2, "");
+    assert!(row.3.is_none());
+    assert!(row.4.is_none());
+    assert_eq!(row.5, Some(42));
+    assert_eq!(row.6.as_deref(), Some("upstream"));
+    assert_eq!(row.7.as_deref(), Some("claude-haiku"));
+    assert_eq!(row.8, Some(1));
+    let outcome = sqlx::query("SELECT last_status FROM session_outcomes WHERE session_id = ?")
+        .bind("payload-off")
+        .fetch_one(history.pool().unwrap())
+        .await
+        .unwrap();
+    use sqlx::Row;
+    assert_eq!(outcome.get::<String, _>("last_status"), "pass");
+}
+
+#[tokio::test]
+async fn client_observe_columns_persist_before_model_rewrite() {
+    use octo::history::{CostMicros, FinishedCall, Millis};
+
+    let history = History::connect("sqlite::memory:", "test-token-key", 1024)
+        .await
+        .unwrap();
+    history.record(FinishedCall {
+        kind: CallKind::Messages,
+        provider: CallProvider::OpenRouter,
+        model: Some("mistralai/ministral-8b-2512".into()),
+        token_hash: None,
+        message: None,
+        input: "{}".into(),
+        output: "{}".into(),
+        request_payload: "{}".into(),
+        response_payload: "{}".into(),
+        status: 200,
+        latency_ms: Millis::new(1),
+        request_bytes: 2,
+        response_bytes: 2,
+        input_tokens: None,
+        output_tokens: None,
+        cost: Some(CostMicros(1)),
+        or_cost: None,
+        upstream_cost: None,
+        estimated_cost: None,
+        cost_source: "none".into(),
+        is_byok: None,
+        upstream_provider: None,
+        trimmed_from_tokens: None,
+        client_model: Some("claude-haiku-4-5-20251001".into()),
+        client_has_thinking: Some(true),
+        client_tool_names: Some("Bash,Read".into()),
+        bg_signal: Some(true),
+        hk_text_signal: Some(false),
+        cache_read_tokens: None,
+        cache_write_tokens: None,
+        generation_id: None,
+        rerouting: 0,
+        rerouting_reason: None,
+        session_id: Some("observe-1".into()),
+        tier_before: Some("low".into()),
+        tier_after: Some("low".into()),
+        trigger: "classify".into(),
+    });
+    history.drain().await;
+    let row = poll_call(&history, || async {
+        let row = sqlx::query(
+            "SELECT client_model, client_has_thinking, client_tool_names, bg_signal, hk_text_signal, model FROM calls",
+        )
+        .fetch_optional(history.pool().unwrap())
+        .await?;
+        Ok(row.map(|row| {
+            use sqlx::Row;
+            (
+                row.get::<Option<String>, _>("client_model"),
+                row.get::<Option<i64>, _>("client_has_thinking"),
+                row.get::<Option<String>, _>("client_tool_names"),
+                row.get::<Option<i64>, _>("bg_signal"),
+                row.get::<Option<i64>, _>("hk_text_signal"),
+                row.get::<Option<String>, _>("model"),
+            )
+        }))
+    })
+    .await;
+    assert_eq!(row.0.as_deref(), Some("claude-haiku-4-5-20251001"));
+    assert_eq!(row.1, Some(1));
+    assert_eq!(row.2.as_deref(), Some("Bash,Read"));
+    assert_eq!(row.3, Some(1));
+    assert_eq!(row.4, Some(0));
+    assert_eq!(row.5.as_deref(), Some("mistralai/ministral-8b-2512"));
 }
 
 async fn poll_call<T, F, Fut>(_: &History, mut load: F) -> T
