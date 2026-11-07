@@ -81,6 +81,7 @@ pub struct FinishedCall {
     pub rerouting: i64,
     pub rerouting_reason: Option<String>,
     pub session_id: Option<String>,
+    pub parent_session_id: Option<String>,
     pub tier_before: Option<String>,
     pub tier_after: Option<String>,
     pub trigger: String,

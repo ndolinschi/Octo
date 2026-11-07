@@ -78,7 +78,7 @@ impl Auto {
             return;
         };
         let mut choice = sessions.get(session_id).unwrap_or_else(|| {
-            SessionChoice::fresh(String::new(), Vec::new(), "unset".to_string())
+            SessionChoice::fresh(self.tiers.mid.clone(), Vec::new(), "unset".to_string())
         });
         let base = choice
             .escalate_band
@@ -127,8 +127,11 @@ impl Auto {
             return;
         };
         let mut row = sessions.get(session_key).unwrap_or_else(|| {
-            SessionChoice::fresh(String::new(), Vec::new(), "unset".to_string())
+            SessionChoice::fresh(self.tiers.mid.clone(), Vec::new(), "unset".to_string())
         });
+        if row.model.is_empty() {
+            row.model = self.tiers.mid.clone();
+        }
         row.cost_micros = row.cost_micros.saturating_add(micros);
         row.seen = Instant::now();
         sessions.insert(session_key.to_string(), row);
@@ -142,10 +145,18 @@ impl Auto {
             return;
         };
         let mut row = sessions.get(session_key).unwrap_or_else(|| {
-            SessionChoice::fresh(String::new(), Vec::new(), "unset".to_string())
+            SessionChoice::fresh(self.tiers.mid.clone(), Vec::new(), "unset".to_string())
         });
+        let mut dirty = false;
+        if row.model.is_empty() {
+            row.model = self.tiers.mid.clone();
+            dirty = true;
+        }
         if floor_micros > row.cost_micros {
             row.cost_micros = floor_micros;
+            dirty = true;
+        }
+        if dirty {
             row.seen = Instant::now();
             sessions.insert(session_key.to_string(), row);
         }
@@ -222,10 +233,16 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .map(|row| row.sticky_band.clone())
         .unwrap_or_else(|| "unset".to_string());
 
+    let spent = actor
+        .as_ref()
+        .map(|id| req.auto.session_cost_micros(id))
+        .unwrap_or(0);
+
     if body::is_permission_check(&raw_text) {
         let row = choice.as_ref();
         let model = row
             .map(|row| row.model.clone())
+            .filter(|model| !model.is_empty())
             .or_else(|| preferred.clone())
             .unwrap_or_else(|| req.auto.tiers.mid.clone());
         return route::run(RouteCtx {
@@ -252,6 +269,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
                 down_count: row.map(|row| row.down_count).unwrap_or(0),
                 trimmed_from_tokens: None,
+                spent_micros: spent,
             },
         });
     }
@@ -269,6 +287,8 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             allow_compact: req.allow_compact,
             reason_base: "housekeeping",
             trim: true,
+            persist: false,
+            spent_micros: spent,
         });
     }
 
@@ -290,6 +310,8 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             allow_compact: req.allow_compact,
             reason_base: "background_model",
             trim: true,
+            persist: false,
+            spent_micros: spent,
         });
     }
 
@@ -343,11 +365,6 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         current_tier,
     };
 
-    let spent = actor
-        .as_ref()
-        .map(|id| req.auto.session_cost_micros(id))
-        .unwrap_or(0);
-
     if let Some(row) = hold_without_classify(HoldWithoutClassify {
         choice: choice.as_ref(),
         stall,
@@ -369,6 +386,31 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 spent,
                 tiers: &req.auto.tiers,
             }),
+        });
+    }
+
+    let subagent_unset = choice
+        .as_ref()
+        .is_none_or(|row| row.sticky_band == "unset" || row.model.is_empty());
+    if subagent_unset
+        && actor.as_deref().is_some_and(body::is_subagent_key)
+        && !question.trim().is_empty()
+        && stall.is_none()
+    {
+        return low_no_sticky(LowNoSticky {
+            auto: req.auto,
+            body: req.body,
+            models: loaded.as_ref(),
+            choice: choice.as_ref(),
+            preferred: preferred.as_deref(),
+            all_tools: &all_tools,
+            tier_before,
+            reserve,
+            allow_compact: req.allow_compact,
+            reason_base: "subagent_default",
+            trim: false,
+            persist,
+            spent_micros: spent,
         });
     }
 
@@ -476,6 +518,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             pending_down_band: sticky.pending_down_band,
             down_count: sticky.down_count,
             trimmed_from_tokens: None,
+            spent_micros: spent,
         },
     })
 }
@@ -510,6 +553,8 @@ struct LowNoSticky<'a> {
     allow_compact: bool,
     reason_base: &'static str,
     trim: bool,
+    persist: bool,
+    spent_micros: u64,
 }
 
 fn low_no_sticky(plan: LowNoSticky<'_>) -> Turn {
@@ -545,23 +590,32 @@ fn low_no_sticky(plan: LowNoSticky<'_>) -> Turn {
             tier_before: plan.tier_before,
             reserve: plan.reserve,
             allow_compact: plan.allow_compact,
-            persist: false,
-            sticky_band: row
-                .map(|row| row.sticky_band.clone())
-                .unwrap_or_else(|| "unset".to_string()),
+            persist: plan.persist,
+            sticky_band: if plan.persist {
+                "low".to_string()
+            } else {
+                row.map(|row| row.sticky_band.clone())
+                    .unwrap_or_else(|| "unset".to_string())
+            },
             escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
             escalate_band: row.and_then(|row| row.escalate_band.clone()),
             last_stall: row.and_then(|row| row.last_stall.clone()),
             pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
             down_count: row.map(|row| row.down_count).unwrap_or(0),
             trimmed_from_tokens,
+            spent_micros: plan.spent_micros,
         },
     })
 }
 
 fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
+    let model = if plan.row.model.is_empty() {
+        plan.tiers.mid.clone()
+    } else {
+        plan.row.model.clone()
+    };
     let mut sticky = StickyOutcome {
-        model: plan.row.model.clone(),
+        model,
         sticky_band: plan.row.sticky_band.clone(),
         escalate_remaining: plan.row.escalate_remaining,
         escalate_band: plan.row.escalate_band.clone(),
@@ -586,6 +640,7 @@ fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
         pending_down_band: plan.row.pending_down_band.clone(),
         down_count: plan.row.down_count,
         trimmed_from_tokens: None,
+        spent_micros: plan.spent,
     }
 }
 

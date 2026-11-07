@@ -6,12 +6,13 @@ use octo::auto::context_length;
 use octo::auto::{
     apply_sticky, bg_signal, cap_decision_text, cap_for_budget, choice, choice_from_scores,
     classified, client_has_thinking, client_tool_names_csv, compaction_body, context_estimate,
-    decide, default_strip_fields, detect_stall, dropped, filter_tools, inspect, is_housekeeping,
-    is_permission_check, larger_fit, looks_like_text_tool_call, max_completion_tokens,
-    needed_tools, needs_compact, output_reserve, payload, question_text, server_tool_types,
-    session_id, session_key, shape, trim_housekeeping, with_model, with_online_suffix, Auto,
-    Complexity, DecideRequest, LargerFit, PayloadPlan, RequireParameters, RouteMeta, SessionChoice,
-    ShapePlan, StallTrigger, StickyPlan, Thresholds, Tiers, Turn, PROTECTED_STRIP_FIELDS,
+    decide, default_strip_fields, detect_stall, dropped, inspect, is_housekeeping,
+    is_permission_check, is_subagent_key, larger_fit, looks_like_text_tool_call,
+    max_completion_tokens, needed_tools, needs_compact, output_reserve, parent_session_id, payload,
+    question_text, server_tool_types, session_id, session_key, shape, subagent_task_hash,
+    trim_housekeeping, with_model, with_online_suffix, Auto, Complexity, DecideRequest, LargerFit,
+    PayloadPlan, RequireParameters, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan,
+    Thresholds, Tiers, Turn, PROTECTED_STRIP_FIELDS,
 };
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
@@ -28,9 +29,13 @@ fn session_id_comes_from_metadata_user_id() {
     assert_eq!(session_key(&body).as_deref(), Some("abc"));
     let sub = json!({
         "metadata": {"user_id": "{\"session_id\":\"abc\"}"},
-        "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;"
+        "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;",
+        "messages": [{"role": "user", "content": "explore the router"}]
     });
-    assert_eq!(session_key(&sub).as_deref(), Some("abc#subagent"));
+    let sub_key = session_key(&sub).unwrap();
+    assert!(sub_key.starts_with("abc#sub:"), "{sub_key}");
+    assert_eq!(parent_session_id(&sub_key), Some("abc"));
+    assert!(is_subagent_key(&sub_key));
     let quoted = json!({
         "metadata": {"user_id": "{\"session_id\":\"abc\"}"},
         "system": "skill text mentions cc_is_subagent=true outside the billing header"
@@ -369,6 +374,48 @@ fn route_meta_rerouting_matches_tier_change() {
     assert_eq!(same.trigger, "housekeeping");
 }
 
+#[tokio::test]
+async fn tool_results_only_hold_keeps_sticky_model_without_jev() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "hold-sess",
+        SessionChoice::fresh("mid-m".into(), vec!["Bash".into()], "mid".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body = json!({
+        "metadata": {"user_id": "{\"session_id\":\"hold-sess\"}"},
+        "model": "client",
+        "max_tokens": 256,
+        "tools": [{"name": "Bash"}],
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": "1",
+                "content": "ok"
+            }]
+        }]
+    });
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "sk-would-call-jev",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "mid-m");
+    assert_eq!(forward.meta.trigger, "none");
+}
+
 #[test]
 fn session_budget_cap_clamps_high_to_mid() {
     let tiers = Tiers::new("low-model".into(), "mid-model".into(), "high-model".into());
@@ -405,12 +452,7 @@ fn fill_and_drop_follow_the_window() {
 }
 
 #[test]
-fn filter_keeps_named_tools_and_pick_respects_preference() {
-    let mut body = json!({
-        "tools": [{"name": "Bash"}, {"name": "Read"}]
-    });
-    filter_tools(&mut body, &["Read".to_string()]);
-    assert_eq!(body["tools"].as_array().unwrap().len(), 1);
+fn pick_respects_preference() {
     let tiers = Tiers::new("low-model".into(), "mid-model".into(), "high-model".into());
     assert_eq!(tiers.pick(Complexity::Low, Some("custom")), "low-model");
     assert_eq!(
@@ -425,9 +467,39 @@ fn filter_keeps_named_tools_and_pick_respects_preference() {
         tiers.pick(Complexity::High, Some("custom/high")),
         "high-model"
     );
-    let mut chat = json!({"tools": [{"type": "function", "function": {"name": "Bash"}}]});
-    filter_tools(&mut chat, &["Bash".to_string()]);
-    assert_eq!(chat["tools"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn subagent_keys_hash_first_user_prompt() {
+    let left = json!({
+        "metadata": {"user_id": "{\"session_id\":\"uuid\"}"},
+        "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;",
+        "messages": [
+            {"role": "user", "content": "task alpha"},
+            {"role": "assistant", "content": "ok"},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": "x"}]}
+        ]
+    });
+    let right = json!({
+        "metadata": {"user_id": "{\"session_id\":\"uuid\"}"},
+        "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;",
+        "messages": [{"role": "user", "content": "task beta"}]
+    });
+    let same = json!({
+        "metadata": {"user_id": "{\"session_id\":\"uuid\"}"},
+        "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;",
+        "messages": [
+            {"role": "user", "content": "task alpha"},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": "y"}]}
+        ]
+    });
+    let left_key = session_key(&left).unwrap();
+    let right_key = session_key(&right).unwrap();
+    let same_key = session_key(&same).unwrap();
+    assert_ne!(left_key, right_key);
+    assert_eq!(left_key, same_key);
+    assert_eq!(subagent_task_hash(&left), subagent_task_hash(&same));
+    assert_eq!(parent_session_id(&left_key), Some("uuid"));
 }
 
 #[test]
@@ -514,8 +586,9 @@ fn tilde_high_slug_reads_catalog_window_and_does_not_upgrade_to_low() {
     };
     assert_eq!(
         context_length(Some(&models), "~anthropic/claude-haiku-latest"),
-        200_000
+        Some(200_000)
     );
+    assert_eq!(context_length(None, "missing/model"), None);
     let candidates = [
         "google/gemma",
         "deepseek/flash",
@@ -2011,4 +2084,186 @@ async fn anthropic_proxy_error_body_shape() {
         .unwrap();
     let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(value["error"]["type"], "invalid_request_error");
+}
+
+#[tokio::test]
+async fn subagent_first_turn_defaults_low_without_jev() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body = json!({
+        "metadata": {"user_id": "{\"session_id\":\"parent-uuid\"}"},
+        "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;",
+        "model": "client",
+        "max_tokens": 256,
+        "tools": [{"name": "Bash"}, {"name": "Read"}],
+        "messages": [{"role": "user", "content": "explore the router module"}]
+    });
+    let key = session_key(&body).unwrap();
+    assert!(key.starts_with("parent-uuid#sub:"));
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "sk-would-call-jev",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "low-m");
+    assert_eq!(forward.meta.trigger, "subagent_default");
+    assert_eq!(forward.meta.tier_after, "low");
+    let snap = auto.session_snapshot(&key).unwrap();
+    assert_eq!(snap.sticky_band, "low");
+    assert_eq!(snap.model, "low-m");
+}
+
+#[tokio::test]
+async fn subagent_stall_does_not_mutate_parent_sticky() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.escalate_turns = 2;
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "parent-uuid",
+        SessionChoice::fresh("high-m".into(), vec!["Bash".into()], "high".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body = json!({
+        "metadata": {"user_id": "{\"session_id\":\"parent-uuid\"}"},
+        "system": "x-anthropic-billing-header: cc_version=1; cc_is_subagent=true;",
+        "model": "client",
+        "max_tokens": 256,
+        "tools": [
+            {"name": "Agent", "input_schema": {"type": "object"}},
+            {"name": "Bash", "input_schema": {"type": "object"}}
+        ],
+        "messages": [
+            {"role": "user", "content": "review the plan"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "[{\"name\": \"Agent\", \"arguments\": {\"description\": \"x\", \"prompt\": \"y\"}}]"}
+            ]},
+            {"role": "user", "content": "continue"}
+        ]
+    });
+    let sub_key = session_key(&body).unwrap();
+    auto.seed_session(
+        &sub_key,
+        SessionChoice::fresh(
+            "low-m".into(),
+            vec!["Agent".into(), "Bash".into()],
+            "low".into(),
+        ),
+    );
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body,
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("expected forward");
+    };
+    assert!(forward.meta.trigger.contains("stall") || forward.meta.tier_after != "low");
+    let parent = auto.session_snapshot("parent-uuid").unwrap();
+    assert_eq!(parent.sticky_band, "high");
+    assert_eq!(parent.model, "high-m");
+    assert_eq!(parent.escalate_remaining, 0);
+    let sub = auto.session_snapshot(&sub_key).unwrap();
+    assert_ne!(
+        (sub.model.as_str(), sub.sticky_band.as_str()),
+        ("high-m", "high")
+    );
+}
+
+#[tokio::test]
+async fn budget_blocks_fill_upgrade_and_compacts_instead() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.session_budget_micros = 100;
+    let auto = Auto::new(tiers);
+    auto.seed_catalog(OpenRouterModels {
+        free: Vec::new(),
+        paid: vec![
+            paid("low-m", 4_000),
+            paid("mid-m", 4_000),
+            paid("high-m", 200_000),
+        ],
+    })
+    .await;
+    auto.seed_session(
+        "budget-fill",
+        SessionChoice::fresh("mid-m".into(), vec!["Read".into()], "mid".into()),
+    );
+    auto.add_session_cost("budget-fill", 100);
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let bulky = "x".repeat(12_000);
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"budget-fill\"}"},
+            "max_tokens": 4096,
+            "tools": [{"name": "Read"}],
+            "messages": [{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": bulky}]}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    match turn {
+        Turn::Compact(row) => {
+            assert_eq!(row.model, "mid-m");
+        }
+        Turn::Forward(forward) => {
+            let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+            assert_ne!(payload["model"], "high-m");
+            assert_eq!(payload["model"], "mid-m");
+        }
+    }
+}
+
+#[tokio::test]
+async fn catalog_miss_skips_compact_on_large_body() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "miss-sess",
+        SessionChoice::fresh("mid-m".into(), vec!["Read".into()], "mid".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let bulky = "x".repeat(80_000);
+    let turn = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "",
+        body: json!({
+            "metadata": {"user_id": "{\"session_id\":\"miss-sess\"}"},
+            "max_tokens": 4096,
+            "tools": [{"name": "Read"}],
+            "messages": [{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": bulky}]}]
+        }),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = turn else {
+        panic!("catalog miss must forward, not compact");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "mid-m");
 }

@@ -491,6 +491,7 @@ async fn store_payloads_false_omits_text_keeps_costs() {
         rerouting: 0,
         rerouting_reason: None,
         session_id: Some("payload-off".into()),
+        parent_session_id: None,
         tier_before: Some("low".into()),
         tier_after: Some("low".into()),
         trigger: "classify".into(),
@@ -578,6 +579,7 @@ async fn client_observe_columns_persist_before_model_rewrite() {
         rerouting: 0,
         rerouting_reason: None,
         session_id: Some("observe-1".into()),
+        parent_session_id: None,
         tier_before: Some("low".into()),
         tier_after: Some("low".into()),
         trigger: "classify".into(),
@@ -608,6 +610,157 @@ async fn client_observe_columns_persist_before_model_rewrite() {
     assert_eq!(row.3, Some(1));
     assert_eq!(row.4, Some(0));
     assert_eq!(row.5.as_deref(), Some("mistralai/ministral-8b-2512"));
+}
+
+#[tokio::test]
+async fn generation_id_prefers_openrouter_header_over_body_msg() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let app = Router::new().route(
+            "/echo",
+            post(|| async {
+                axum::response::Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-generation-id", "gen-from-header")
+                    .body(Body::from(
+                        r#"{"id":"msg_from_body","type":"message","usage":{"input_tokens":1,"output_tokens":1}}"#,
+                    ))
+                    .unwrap()
+            }),
+        );
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let history = History::connect("sqlite::memory:", "test-token-key", 1024)
+        .await
+        .unwrap();
+    let client = Client::builder().build().unwrap();
+    let input =
+        r#"{"model":"mistralai/devstral-2512","messages":[{"role":"user","content":"hi"}]}"#;
+    let request = Request::builder()
+        .method("POST")
+        .uri("http://127.0.0.1:8080/v1/messages")
+        .header(header::AUTHORIZATION, "Bearer sk-secret")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(input))
+        .unwrap();
+    let response = proxy_post(
+        &client,
+        &format!("http://{addr}/echo"),
+        4096,
+        request,
+        |mut upstream, parts| {
+            if let Some(value) = parts.headers.get(header::AUTHORIZATION) {
+                upstream = upstream.header(header::AUTHORIZATION, value);
+            }
+            forward_content_type(upstream, parts)
+        },
+        Some(CallObserve {
+            history: history.clone(),
+            kind: CallKind::Messages,
+            provider: CallProvider::OpenRouter,
+            rerouting: 0,
+            rerouting_reason: None,
+            session_id: Some("gen-sess".into()),
+            tier_before: None,
+            tier_after: None,
+            trigger: "none".to_string(),
+            trimmed_from_tokens: None,
+            client_model: None,
+            client_has_thinking: None,
+            client_tool_names: None,
+            bg_signal: None,
+            hk_text_signal: None,
+            auto: None,
+            on_response: None,
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let _ = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    history.drain().await;
+    let row = poll_call(&history, || async {
+        let row = sqlx::query("SELECT generation_id FROM calls WHERE session_id = ?")
+            .bind("gen-sess")
+            .fetch_optional(history.pool().unwrap())
+            .await?;
+        Ok(row.map(|row| {
+            use sqlx::Row;
+            row.get::<Option<String>, _>("generation_id")
+        }))
+    })
+    .await;
+    assert_eq!(row.as_deref(), Some("gen-from-header"));
+}
+
+#[tokio::test]
+async fn parent_session_id_is_derived_from_sub_key() {
+    use octo::history::{CostMicros, FinishedCall, Millis};
+
+    let history = History::connect("sqlite::memory:", "test-token-key", 1024)
+        .await
+        .unwrap();
+    history.record(FinishedCall {
+        kind: CallKind::Messages,
+        provider: CallProvider::OpenRouter,
+        model: Some("low".into()),
+        token_hash: None,
+        message: None,
+        input: "{}".into(),
+        output: "{}".into(),
+        request_payload: "{}".into(),
+        response_payload: "{}".into(),
+        status: 200,
+        latency_ms: Millis::new(1),
+        request_bytes: 2,
+        response_bytes: 2,
+        input_tokens: None,
+        output_tokens: None,
+        cost: Some(CostMicros(1)),
+        or_cost: None,
+        upstream_cost: None,
+        estimated_cost: None,
+        cost_source: "none".into(),
+        is_byok: None,
+        upstream_provider: None,
+        trimmed_from_tokens: None,
+        client_model: None,
+        client_has_thinking: None,
+        client_tool_names: None,
+        bg_signal: None,
+        hk_text_signal: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
+        generation_id: None,
+        rerouting: 0,
+        rerouting_reason: None,
+        session_id: Some("parent-uuid#sub:abcdef012345".into()),
+        parent_session_id: None,
+        tier_before: Some("low".into()),
+        tier_after: Some("low".into()),
+        trigger: "subagent_default".into(),
+    });
+    history.drain().await;
+    let row = poll_call(&history, || async {
+        let row = sqlx::query("SELECT session_id, parent_session_id FROM calls")
+            .fetch_optional(history.pool().unwrap())
+            .await?;
+        Ok(row.map(|row| {
+            use sqlx::Row;
+            (
+                row.get::<Option<String>, _>("session_id"),
+                row.get::<Option<String>, _>("parent_session_id"),
+            )
+        }))
+    })
+    .await;
+    assert_eq!(row.0.as_deref(), Some("parent-uuid#sub:abcdef012345"));
+    assert_eq!(row.1.as_deref(), Some("parent-uuid"));
 }
 
 async fn poll_call<T, F, Fut>(_: &History, mut load: F) -> T

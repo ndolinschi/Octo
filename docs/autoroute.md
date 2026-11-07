@@ -94,7 +94,7 @@ Protected keys (`tools`, `tool_choice`, `system`, `messages`, `max_tokens`, `sto
 | Session budget | When `session_budget_usd > 0`, `cap_for_budget` clamps tier by spend; **default is 0 (off)** |
 | high_allow | Client preferred model on High only if allowlisted (empty = always use configured high slug) |
 
-Caveats (budget holes, shared `#subagent` key): [status.md](./status.md).
+Caveats: [status.md](./status.md).
 
 ## Compaction and retry (messages)
 
@@ -118,7 +118,7 @@ flowchart TD
 
 ## Session identity
 
-`session_key` comes from the request metadata / Anthropic session headers. Claude Code **subagents** currently share `{uuid}#subagent` — one sticky/stall/budget for all concurrent Agents. Per-subagent keys (`#sub:{hash}`) are planned, not shipped ([plans/](./plans/2026-11-06-orchestration-plan.md)).
+`session_key` is derived only from the request body: `metadata.user_id` (JSON string) → `session_id`, then optional `#sub:{hash}` for Claude Code Agents. The hash is SHA-256 of the **first** user message text (stable across tool_result turns). `calls.parent_session_id` stores the parent UUID. New subagent sessions default to the **low** tier on first turn.
 
 ## Observe signals (history only unless flags on)
 

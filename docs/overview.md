@@ -50,8 +50,9 @@ Claude Code speaks Anthropic Messages and often sends Anthropic-only fields (`ou
 | Strip fields + `require_parameters` | Working (tuned) | [autoroute.md](./autoroute.md) |
 | SQLite history + cost micros | Working (soft-fail) | [history.md](./history.md) |
 | Session outcomes (cargo/pytest/unittest) | Working | [history.md](./history.md) |
-| Session spend budget | Partial (off by default; holes) | [status.md](./status.md) |
-| Per-subagent sticky / orchestration | Not shipped | [status.md](./status.md) |
+| Session spend budget | Working (off by default; re-caps upgrade/retry/compact) | [status.md](./status.md) |
+| Per-subagent sticky (`#sub:{hash}`) | Working | [status.md](./status.md) |
+| Orchestration nudge / eval harness | Not shipped | [status.md](./status.md) |
 | Rewrite text-as-tool-call same turn | Not shipped | [status.md](./status.md) |
 
 ## How to run

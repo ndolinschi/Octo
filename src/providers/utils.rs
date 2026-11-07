@@ -4,12 +4,13 @@ use std::time::Instant;
 
 use axum::{
     body::{to_bytes, Body, Bytes},
-    http::{header, request::Parts, HeaderName, Request, Response},
+    http::{header, request::Parts, HeaderMap, HeaderName, Request, Response},
 };
 use futures_util::{Stream, StreamExt};
 use reqwest::{Client, RequestBuilder};
 use tracing::info;
 
+use crate::auto::parent_session_id;
 use crate::history::{
     describe_input, request_payload, resolve_cost, response_payload, token_from_headers,
     usage_from_parts, CallObserve, FinishedCall, Millis,
@@ -22,10 +23,21 @@ fn should_forward_response_header(name: &HeaderName) -> bool {
     }
     let name = name.as_str();
     name == "x-request-id"
+        || name == "x-generation-id"
         || name == "retry-after"
         || name.starts_with("openai-")
         || name.starts_with("x-ratelimit-")
         || name.starts_with("anthropic-ratelimit-")
+}
+
+fn generation_id_from_headers(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("x-generation-id")
+        .or_else(|| headers.get("request-id"))
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| value.starts_with("gen-"))
+        .map(str::to_string)
 }
 
 async fn upstream_to_response(
@@ -40,6 +52,7 @@ async fn upstream_to_response(
     );
 
     let mut response_builder = Response::builder().status(status);
+    let header_generation_id = generation_id_from_headers(upstream.headers());
 
     for (name, value) in upstream.headers() {
         if should_forward_response_header(name) {
@@ -51,7 +64,11 @@ async fn upstream_to_response(
         .bytes_stream()
         .map(|chunk| chunk.map_err(std::io::Error::other));
     let body = match capture {
-        Some(capture) => Body::from_stream(Tee::new(stream, status.as_u16(), capture)),
+        Some(mut capture) => {
+            capture.header_generation_id = header_generation_id;
+            capture.initial_status = status.as_u16();
+            Body::from_stream(Tee::new(stream, status.as_u16(), capture))
+        }
         None => Body::from_stream(stream),
     };
 
@@ -113,6 +130,8 @@ struct Capture {
     request_bytes: usize,
     capture_limit: usize,
     started: Instant,
+    header_generation_id: Option<String>,
+    initial_status: u16,
 }
 
 impl Capture {
@@ -160,10 +179,19 @@ impl Capture {
             capture_limit: observe.history.capture_limit(),
             input,
             started: Instant::now(),
+            header_generation_id: None,
+            initial_status: 0,
         }
     }
 
     fn finish(self, status: u16, output: Vec<u8>, tail: Vec<u8>, response_bytes: usize) {
+        if self.initial_status >= 200 && self.initial_status < 300 && status == 502 {
+            tracing::warn!(
+                session_id = self.observe.session_id.as_deref().unwrap_or(""),
+                initial_status = self.initial_status,
+                "upstream stream failed after client saw success headers"
+            );
+        }
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let tail_text = String::from_utf8_lossy(&tail);
         let usage = usage_from_parts(&output_text, &tail_text, response_bytes);
@@ -176,6 +204,13 @@ impl Capture {
             response_bytes,
         );
         let latency_ms = Millis::new(self.started.elapsed().as_millis() as u64);
+        let generation_id = self.header_generation_id.or(usage.generation_id.clone());
+        let parent = self
+            .observe
+            .session_id
+            .as_deref()
+            .and_then(parent_session_id)
+            .map(str::to_string);
         self.observe.history.record(FinishedCall {
             kind: self.observe.kind,
             provider: self.observe.provider,
@@ -202,10 +237,11 @@ impl Capture {
             trimmed_from_tokens: self.observe.trimmed_from_tokens,
             cache_read_tokens: usage.cache_read_tokens,
             cache_write_tokens: usage.cache_write_tokens,
-            generation_id: usage.generation_id.clone(),
+            generation_id,
             rerouting: self.observe.rerouting,
             rerouting_reason: self.observe.rerouting_reason.clone(),
             session_id: self.observe.session_id.clone(),
+            parent_session_id: parent,
             tier_before: self.observe.tier_before.clone(),
             tier_after: self.observe.tier_after.clone(),
             trigger: self.observe.trigger.clone(),

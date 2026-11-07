@@ -149,6 +149,7 @@ fn finished(session_id: &str, input: &str) -> FinishedCall {
         rerouting: 0,
         rerouting_reason: None,
         session_id: Some(session_id.into()),
+        parent_session_id: None,
         tier_before: Some("mid".into()),
         tier_after: Some("mid".into()),
         trigger: "classify".into(),

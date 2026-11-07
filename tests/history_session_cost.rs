@@ -65,6 +65,7 @@ async fn session_cost_sums_calls_and_decisions() {
         rerouting: 0,
         rerouting_reason: None,
         session_id: Some("sess-a".into()),
+        parent_session_id: None,
         tier_before: Some("low".into()),
         tier_after: Some("low".into()),
         trigger: "none".into(),
