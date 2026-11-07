@@ -1,10 +1,20 @@
 # Octo
 
-Rust application crate managed with Cargo.
+Rust HTTP proxy (Axum) for OpenAI / Anthropic / OpenRouter, plus an **autoroute** model ladder for Claude Code.
+
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [docs/README.md](./docs/README.md) | Documentation index |
+| [docs/overview.md](./docs/overview.md) | What Octo is |
+| [docs/architecture.md](./docs/architecture.md) | Architecture + diagrams |
+| [docs/status.md](./docs/status.md) | What works vs what does not |
+| [AGENTS.md](./AGENTS.md) | Agent / contributor operational notes |
 
 ## Development
 
-See [AGENTS.md](./AGENTS.md) for agent and contributor setup (Superpowers skills, Cursor Rust rules, and common commands).
+See [AGENTS.md](./AGENTS.md) for setup (Superpowers skills, Cursor Rust rules, and common commands).
 
 ```bash
 git submodule update --init --recursive
