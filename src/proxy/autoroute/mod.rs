@@ -213,6 +213,20 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
     let payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
     let current = payload.get("model").and_then(Value::as_str)?.to_string();
     let next = plan.state.auto.tiers().next_up(&current)?;
+    let budget = plan.state.auto.tiers().session_budget_micros;
+    if budget > 0 {
+        let spent = plan
+            .session
+            .as_deref()
+            .map(|id| plan.state.auto.session_cost_micros(id))
+            .unwrap_or(0);
+        if spent >= budget
+            && crate::auto::band_rank(plan.state.auto.tiers().band(&next))
+                > crate::auto::band_rank("mid")
+        {
+            return None;
+        }
+    }
     let models = plan.state.auto.cached_models().await;
     let mut shaped = crate::auto::shape(crate::auto::ShapePlan {
         body: &payload,

@@ -36,9 +36,9 @@ Raw tokens are never written to the database or tracing.
 
 Core metrics: kind, provider, model, status, latency, bytes, tokens, `cost_micros`.
 
-Routing: `session_id`, `tier_before` / `tier_after`, `trigger`, `rerouting` / `rerouting_reason`.
+Routing: `session_id`, `parent_session_id` (set for `#sub:{hash}` keys), `tier_before` / `tier_after`, `trigger`, `rerouting` / `rerouting_reason`.
 
-Cost detail: `or_cost_micros`, `upstream_cost_micros`, `estimated_cost_micros`, `cost_source`, `is_byok`, `upstream_provider`, cache tokens, `generation_id`, `trimmed_from_tokens`.
+Cost detail: `or_cost_micros`, `upstream_cost_micros`, `estimated_cost_micros`, `cost_source`, `is_byok`, `upstream_provider`, cache tokens, `generation_id` (prefers OpenRouter `x-generation-id` `gen-*`), `trimmed_from_tokens`.
 
 Observe: `client_model`, `client_has_thinking`, `client_tool_names`, `bg_signal`, `hk_text_signal`.
 
@@ -50,31 +50,31 @@ JEV / Decisions rows: scores (`is_hard`, `is_easy`, `tools_enough`), complexity,
 
 ### `session_outcomes`
 
-Upserted from last-user `tool_result` blocks that look like cargo / pytest / unittest summaries, keyed by observe `session_id` (including `#subagent` when present).
+Upserted from last-user `tool_result` blocks that look like cargo / pytest / unittest summaries, keyed by observe `session_id` (including `#sub:{hash}` when present).
 
 ## Cost precedence
 
 ```mermaid
 flowchart TD
-  rates{All four prices.toml rates present?}
+  rates{rates_complete AND any rate > 0?}
   est[estimated_cost_micros]
-  byok{upstream BYOK cost > 0?}
+  upq{upstream cost > 0?}
   up[upstream_cost_micros]
   orc{OpenRouter usage.cost > 0?}
   orv[or_cost_micros]
   none[cost_source = none]
 
-  rates -->|yes| est --> pick[cost_micros = estimate]
-  rates -->|no| byok
-  byok -->|yes| up --> pick2[cost_micros = upstream]
-  byok -->|no| orc
+  rates -->|yes and estimate > 0| est --> pick[cost_micros = estimate]
+  rates -->|no / zero estimate| upq
+  upq -->|yes| up --> pick2[cost_micros = upstream]
+  upq -->|no| orc
   orc -->|yes| orv --> pick3[cost_micros = openrouter]
   orc -->|no| none
 ```
 
 Money is stored as **integer micro-dollars** (`CostMicros`). Failed / no-usage rows stay honest zeros with `cost_source = "none"`.
 
-Ladder slugs in shipped `prices.toml` may use `0.0` placeholders — estimates are then zero until you fill console rates.
+Ladder slugs in shipped `prices.toml` may use `0.0` placeholders — estimate is skipped (`!any_nonzero()`), so FinOps falls through to upstream / OpenRouter / `none` until you fill console rates.
 
 ## Caveats
 

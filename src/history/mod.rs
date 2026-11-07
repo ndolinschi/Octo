@@ -172,6 +172,7 @@ impl History {
             else {
                 tracing::warn!(
                     choice_rule = %row.choice_rule,
+                    session_id = row.session_id.as_deref().unwrap_or(""),
                     "decision insert skipped; queue wait timed out"
                 );
                 return;
@@ -296,6 +297,7 @@ impl History {
                         tracing::warn!(
                             kind = %call.kind,
                             provider = %call.provider,
+                            session_id = call.session_id.as_deref().unwrap_or(""),
                             "history insert skipped; insert pool closed"
                         );
                         return;
@@ -304,6 +306,9 @@ impl History {
                         tracing::warn!(
                             kind = %call.kind,
                             provider = %call.provider,
+                            session_id = call.session_id.as_deref().unwrap_or(""),
+                            model = call.model.as_deref().unwrap_or(""),
+                            trigger = %call.trigger,
                             "history insert skipped; queue wait timed out"
                         );
                         return;
@@ -325,6 +330,7 @@ impl History {
                         input_tokens = ?call.input_tokens,
                         output_tokens = ?call.output_tokens,
                         cost_micros = ?call.cost.map(|c| c.0),
+                        session_id = call.session_id.as_deref().unwrap_or(""),
                         "call stored"
                     );
                     if let Some(session_id) = call.session_id.as_deref() {
@@ -343,6 +349,7 @@ impl History {
                         kind = %call.kind,
                         provider = %call.provider,
                         status = call.status,
+                        session_id = call.session_id.as_deref().unwrap_or(""),
                         "history insert failed"
                     );
                 }
@@ -604,6 +611,13 @@ async fn insert_call(
     let rerouting = i64::from(call.tier_before.as_deref() != call.tier_after.as_deref());
     let rerouting_reason = call.rerouting_reason.as_deref();
     let session_id = call.session_id.as_deref();
+    let parent_session_id = call.parent_session_id.as_deref().or_else(|| {
+        call.session_id.as_deref().and_then(|key| {
+            key.split_once("#sub:")
+                .map(|(parent, _)| parent)
+                .filter(|parent| !parent.is_empty())
+        })
+    });
     let tier_before = call.tier_before.as_deref();
     let tier_after = call.tier_after.as_deref();
     let trigger = call.trigger.as_str();
@@ -619,11 +633,11 @@ async fn insert_call(
             request_payload, response_payload,
             status, latency_ms, request_bytes, response_bytes, input_tokens, output_tokens, cost_micros,
             cache_read_tokens, cache_write_tokens, generation_id,
-            rerouting, rerouting_reason, session_id, tier_before, tier_after, trigger,
+            rerouting, rerouting_reason, session_id, parent_session_id, tier_before, tier_after, trigger,
             or_cost_micros, upstream_cost_micros, estimated_cost_micros, cost_source,
             is_byok, upstream_provider, trimmed_from_tokens,
             client_model, client_has_thinking, client_tool_names, bg_signal, hk_text_signal
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -648,6 +662,7 @@ async fn insert_call(
         rerouting,
         rerouting_reason,
         session_id,
+        parent_session_id,
         tier_before,
         tier_after,
         trigger,

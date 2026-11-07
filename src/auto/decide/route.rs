@@ -11,6 +11,7 @@ use super::super::metrics::{self, context_estimate};
 use super::super::routing::RouteMeta;
 use super::super::session::SessionChoice;
 use super::models::counted_bytes;
+use super::sticky::{cap_for_budget, StickyOutcome};
 use super::Auto;
 
 pub(super) struct RoutePlan {
@@ -28,6 +29,7 @@ pub(super) struct RoutePlan {
     pub pending_down_band: Option<String>,
     pub down_count: u32,
     pub trimmed_from_tokens: Option<u64>,
+    pub spent_micros: u64,
 }
 
 pub(super) struct RouteCtx<'a> {
@@ -72,6 +74,9 @@ pub(super) struct RepeatCompact<'a> {
 
 pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
     let mut plan = ctx.plan;
+    if plan.model.is_empty() {
+        plan.model = ctx.auto.tiers.mid.clone();
+    }
     let previous = ctx.previous_model.as_deref();
     let mut shaped_out = shaped(ShapeArgs {
         body: &ctx.body,
@@ -84,29 +89,14 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         require_parameters: ctx.auto.tiers.require_parameters,
     });
     let mut outgoing = shaped_out.body;
-    let estimate = context_estimate(
-        counted_bytes(&outgoing),
-        catalog::context_length(ctx.models, &plan.model),
-        plan.reserve,
-    );
-    tracing::debug!(
-        input_tokens_est = estimate.input_tokens_est,
-        fill = estimate.fill,
-        "autoroute"
-    );
-    if estimate.usable < 1024 {
-        return finish_overflow(OverflowCtx {
-            auto: ctx.auto,
-            body: &ctx.body,
-            outgoing: &outgoing,
-            models: ctx.models,
-            previous_model: previous,
-            input_tokens_est: estimate.input_tokens_est,
-            plan,
-        });
-    }
-    if estimate.fill >= metrics::FILL_THRESHOLD {
-        if skips_fill_upgrade(plan.reason.as_deref()) {
+    if let Some(window) = catalog::context_length(ctx.models, &plan.model) {
+        let estimate = context_estimate(counted_bytes(&outgoing), window, plan.reserve);
+        tracing::debug!(
+            input_tokens_est = estimate.input_tokens_est,
+            fill = estimate.fill,
+            "autoroute"
+        );
+        if estimate.usable < 1024 {
             return finish_overflow(OverflowCtx {
                 auto: ctx.auto,
                 body: &ctx.body,
@@ -117,39 +107,67 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 plan,
             });
         }
-        let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
-        let tiers = ctx.auto.tiers.candidates();
-        if let Some(slug) = catalog::larger_fit(LargerFit {
-            candidates: &tiers,
-            models: ctx.models,
-            input_tokens: need,
-            max_tokens: plan.reserve,
-            current: &plan.model,
-        }) {
-            plan.model = slug;
-            shaped_out = shaped(ShapeArgs {
-                body: &ctx.body,
-                model: &plan.model,
-                previous_model: previous,
+        if estimate.fill >= metrics::FILL_THRESHOLD {
+            if skips_fill_upgrade(plan.reason.as_deref()) {
+                return finish_overflow(OverflowCtx {
+                    auto: ctx.auto,
+                    body: &ctx.body,
+                    outgoing: &outgoing,
+                    models: ctx.models,
+                    previous_model: previous,
+                    input_tokens_est: estimate.input_tokens_est,
+                    plan,
+                });
+            }
+            let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
+            let tiers = ctx.auto.tiers.candidates();
+            if let Some(slug) = catalog::larger_fit(LargerFit {
+                candidates: &tiers,
                 models: ctx.models,
-                provider_order: &ctx.auto.tiers.provider_order,
-                allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
-                strip_fields: &ctx.auto.tiers.strip_fields,
-                require_parameters: ctx.auto.tiers.require_parameters,
-            });
-            outgoing = shaped_out.body.clone();
-            plan.reason = Some("upgrade".to_string());
-        } else {
-            return finish_overflow(OverflowCtx {
-                auto: ctx.auto,
-                body: &ctx.body,
-                outgoing: &outgoing,
-                models: ctx.models,
-                previous_model: previous,
-                input_tokens_est: estimate.input_tokens_est,
-                plan,
-            });
+                input_tokens: need,
+                max_tokens: plan.reserve,
+                current: &plan.model,
+            }) {
+                plan.model = slug;
+                let mut upgraded = StickyOutcome {
+                    model: plan.model.clone(),
+                    sticky_band: plan.sticky_band.clone(),
+                    escalate_remaining: plan.escalate_remaining,
+                    escalate_band: plan.escalate_band.clone(),
+                    last_stall: plan.last_stall.clone(),
+                    pending_down_band: plan.pending_down_band.clone(),
+                    down_count: plan.down_count,
+                    reason: Some("upgrade".to_string()),
+                };
+                cap_for_budget(&mut upgraded, &ctx.auto.tiers, plan.spent_micros);
+                plan.model = upgraded.model;
+                plan.sticky_band = upgraded.sticky_band;
+                plan.reason = upgraded.reason;
+                shaped_out = shaped(ShapeArgs {
+                    body: &ctx.body,
+                    model: &plan.model,
+                    previous_model: previous,
+                    models: ctx.models,
+                    provider_order: &ctx.auto.tiers.provider_order,
+                    allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
+                    strip_fields: &ctx.auto.tiers.strip_fields,
+                    require_parameters: ctx.auto.tiers.require_parameters,
+                });
+                outgoing = shaped_out.body.clone();
+            } else {
+                return finish_overflow(OverflowCtx {
+                    auto: ctx.auto,
+                    body: &ctx.body,
+                    outgoing: &outgoing,
+                    models: ctx.models,
+                    previous_model: previous,
+                    input_tokens_est: estimate.input_tokens_est,
+                    plan,
+                });
+            }
         }
+    } else {
+        tracing::debug!(model = %plan.model, "autoroute catalog miss; skip fill/compact");
     }
     let input_tokens_est = metrics::estimate_tokens(counted_bytes(&outgoing));
     if plan.persist {
@@ -287,21 +305,21 @@ pub(super) fn passthrough(plan: Passthrough<'_>) -> Turn {
 }
 
 pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
-    let current_window = catalog::context_length(plan.models, plan.model);
-    let fallback = plan
-        .auto
-        .tiers
-        .candidates()
-        .into_iter()
-        .filter_map(|slug| {
-            if catalog::ids_match(slug, plan.model) {
-                return None;
-            }
-            let window = catalog::context_length(plan.models, slug);
-            (window > current_window).then_some((window, slug))
-        })
-        .min_by_key(|(window, _)| *window)
-        .map(|(_, slug)| slug);
+    let fallback = catalog::context_length(plan.models, plan.model).and_then(|current_window| {
+        plan.auto
+            .tiers
+            .candidates()
+            .into_iter()
+            .filter_map(|slug| {
+                if catalog::ids_match(slug, plan.model) {
+                    return None;
+                }
+                let window = catalog::context_length(plan.models, slug)?;
+                (window > current_window).then_some((window, slug))
+            })
+            .min_by_key(|(window, _)| *window)
+            .map(|(_, slug)| slug)
+    });
     match serde_json::to_vec(&compaction_body(plan.body, plan.model)) {
         Ok(body) => Turn::Compact(Compact {
             body,

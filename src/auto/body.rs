@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::providers::llm::is_subagent;
 use crate::providers::openrouter::OpenRouterModels;
@@ -18,10 +19,40 @@ pub fn session_id(body: &Value) -> Option<String> {
 pub fn session_key(body: &Value) -> Option<String> {
     let id = session_id(body)?;
     if is_subagent(body) {
-        Some(format!("{id}#subagent"))
+        let hash = subagent_task_hash(body);
+        Some(format!("{id}#sub:{hash}"))
     } else {
         Some(id)
     }
+}
+
+pub fn is_subagent_key(session_key: &str) -> bool {
+    session_key.contains("#sub:")
+}
+
+pub fn parent_session_id(session_key: &str) -> Option<&str> {
+    session_key
+        .split_once("#sub:")
+        .map(|(parent, _)| parent)
+        .filter(|parent| !parent.is_empty())
+}
+
+pub fn subagent_task_hash(body: &Value) -> String {
+    let digest = Sha256::digest(first_user_text(body).as_bytes());
+    hex::encode(&digest[..6])
+}
+
+pub fn first_user_text(body: &Value) -> String {
+    let Some(messages) = body.get("messages").and_then(Value::as_array) else {
+        return String::new();
+    };
+    for message in messages {
+        if message.get("role").and_then(Value::as_str) != Some("user") {
+            continue;
+        }
+        return content_text(message.get("content"));
+    }
+    String::new()
 }
 
 pub fn is_housekeeping(text: &str) -> bool {
@@ -465,13 +496,6 @@ pub fn preferred_model(body: &Value) -> Option<String> {
     body.get("model")
         .and_then(Value::as_str)
         .map(str::to_string)
-}
-
-pub fn filter_tools(body: &mut Value, keep: &[String]) {
-    let Some(tools) = body.get_mut("tools").and_then(Value::as_array_mut) else {
-        return;
-    };
-    tools.retain(|tool| tool_name(tool).is_some_and(|name| keep.iter().any(|kept| kept == name)));
 }
 
 fn tool_name(tool: &Value) -> Option<&str> {

@@ -6,17 +6,17 @@ Honest capability matrix for the codebase on `main` as of the architecture-docs 
 
 ```mermaid
 pie showData
-  title Capability mix (docs judgment)
-  "Working" : 18
-  "Partial / fragile" : 12
-  "Not shipped / known gap" : 8
+  title Capability mix (row counts below)
+  "Working" : 22
+  "Partial / fragile" : 11
+  "Not shipped / known gap" : 5
 ```
 
-| Bucket | Count (approx.) | Meaning |
+| Bucket | Count | Meaning |
 | --- | --- | --- |
-| Working | Majority of shipped surface | Test-backed; safe for default Claude Code → OpenRouter use |
-| Partial | Several | Works with caveats, off-by-default flags, or accounting holes |
-| Missing | Orchestration + a few live edges | Planned or documented; not in code |
+| Working | 22 | Test-backed; safe for default Claude Code → OpenRouter use |
+| Partial | 11 | Works with caveats, off-by-default flags, or accounting holes |
+| Missing | 5 | Planned or documented; not in code |
 
 ---
 
@@ -36,11 +36,16 @@ pie showData
 | Body hygiene | `strip_fields` + `require_parameters`; thinking strip; max_tokens clamp | shape fixtures `call_528` / `call_530` |
 | Tools kept | Client `tools[]` not filtered by JEV | forwards_all_tools tests |
 | Messages compact | OpenRouter compact API when overflow | `compact.rs` + decide route |
-| Messages retry | One tier-up on 429 before client bytes | `autoroute_retry` |
+| Messages retry | One tier-up on 429 / 5xx / connect-timeout before client bytes | `autoroute_retry` |
 | History core | Async insert, HMAC tokens, cost micros, payloads | `history_*` tests |
 | Observe columns | client_model / thinking / tools / bg / hk | `autoroute_observe` |
 | Session outcomes | cargo / pytest / unittest tool_result parse | `session_outcomes` |
 | Statusline | `/autoroute/status` + script | `status.rs`, `scripts/statusline.sh` |
+| Per-subagent keys | `{uuid}#sub:{hash}` + `parent_session_id`; first turn defaults low | `session_key` tests |
+| tool_results_only hold | Keeps sticky model; no JEV | `tool_results_only_hold_*` |
+| Budget recap | Cap after fill-upgrade / before retry; compact adds session cost | route + compact |
+| Catalog miss | Unknown window skips fill/compact (no fake 8192) | `context_length` → `None` |
+| `generation_id` | Prefers OpenRouter `x-generation-id` / `gen-*` | tee capture |
 
 ---
 
@@ -49,22 +54,16 @@ pie showData
 | Item | Default / behavior | Risk | Tracking |
 | --- | --- | --- | --- |
 | Soft-fail history | DB fail → proxy continues without DB | Silent loss of FinOps | `proxy/mod.rs` |
-| Insert backpressure | 32 slots, 5s, then **drop** | Missing rows under burst; warn often lacks `session_id` | verification F3 |
-| Stream vs history status | Client 200 possible while history 502 | Confusing recon | AGENTS.md |
+| Insert backpressure | 32 slots, 5s, then **drop** | Missing rows under burst (warn includes `session_id`) | verification F3 |
+| Stream vs history status | Client 200 possible while history 502 | Confusing recon; warn logs session | AGENTS.md |
 | `session_budget_usd` | **0 (disabled)** | Cap unused until configured | `autoroute.toml` |
-| Budget holes | Fill-upgrade / retry skip re-cap; compact skips session cost | Overspend vs intended cap | verification E4 |
 | `background_by_client_model` | **false** | `bg_signal` observe-only | defaults regression |
 | `server_tool_mode` | **passthrough** | Server tools hit models that may not support them | `autoroute_server_tools` |
 | Chat autoroute compact | No Messages compact API | Chat overflow ≠ messages compact | `allow_compact: !chat` |
-| Shared `#subagent` key | All Agents share sticky/budget | Concurrent subagents corrupt state | research A1/A5 |
 | Text-as-tool-call | Detect + **next-turn** escalate | Mid-tier can emit Agent JSON as text this turn | [debug/text-tool-call](./debug/2026-11-06-text-tool-call.md) |
-| Catalog miss window | Defaults to **8192** | Extra compact / fill pressure | verification E2 |
-| Empty model seed | Cost sync can seed `""` | Theoretical empty upstream model | verification E3 |
-| `generation_id` | Stores body `msg_*` | Missing OpenRouter `gen-*` header | verification F1 |
-| `prices.toml` zeros | Ladder rates may be `0.0` | Estimate cost stays zero | `prices.toml` |
+| `prices.toml` zeros | Ladder rates may be `0.0` | Estimate skipped until nonzero rates | `prices.toml` |
 | `provider_order` empty | OpenRouter chooses endpoint | Mid via Cloudflare vs Mistral variance | ratelim / text-tool docs |
 | Filter-by-Parameters | Strip list tuned for known keys | New Anthropic-only fields → 404 again | [experiments/ratelim](./experiments/2026-11-06-ratelim.md) |
-| tool_results_only hold | Implemented | Dedicated true-case test still thin | verification C3 |
 
 ```mermaid
 flowchart LR
@@ -76,14 +75,10 @@ flowchart LR
   end
   subgraph risk [Known live risks]
     mid[mid tier text-as-tool-call]
-    sub["#subagent shared sticky"]
-    budget[budget holes if enabled]
     newkeys[new Anthropic-only JSON keys]
   end
   cc --> ar --> strip --> or
   or -.-> mid
-  ar -.-> sub
-  ar -.-> budget
   strip -.-> newkeys
 ```
 
@@ -93,14 +88,11 @@ flowchart LR
 
 | Gap | Intent | Status |
 | --- | --- | --- |
-| `#sub:{hash}` session keys + `parent_session_id` | Isolate subagent sticky/budget | Plan P0 only |
 | `needs_orchestration` JEV score | Shadow multi-part task detection | Plan P1 only |
 | `orchestrate` config + Agent nudge | Encourage delegation on high | Plan P2 only |
-| Per-subagent default-low routing | Cheap explore Agents | Plan P3 only |
 | Eval harness H1–H5 | Quality vs always-high | Plan P4 only |
 | Same-turn rewrite of text → `tool_use` | Fix mid-tier Agent text emissions | Explicitly not implemented |
 | History spill-to-disk | Survive insert bursts | Not implemented (drop only) |
-| Persist `x-generation-id` | FinOps join to OpenRouter console | Not implemented |
 
 Full plan: [plans/2026-11-06-orchestration-plan.md](./plans/2026-11-06-orchestration-plan.md).
 
@@ -111,11 +103,11 @@ Full plan: [plans/2026-11-06-orchestration-plan.md](./plans/2026-11-06-orchestra
 1. Bind loopback; set `client_auth_key` if exposing beyond localhost.
 2. Point Claude Code at **`/autoroute`** (not raw `/v1/messages`) when using the Mistral ladder.
 3. Keep shipped `strip_fields` + `require_parameters = "always"` unless you have a proven narrower set.
-4. Leave `session_budget_usd = 0` unless you accept fill/retry/compact accounting holes.
+4. Leave `session_budget_usd = 0` unless you want the mid-cap budget path (upgrade/retry/compact now recap).
 5. Leave `background_by_client_model = false` until you want Haiku-pattern routing.
-6. Expect concurrent Claude Code Agents to share sticky state (`#subagent`).
+6. Concurrent Claude Code Agents use distinct `{uuid}#sub:{hash}` sticky keys (first-prompt hash).
 7. Treat mid-tier text-as-tool-call as a known failure mode; escalate helps the *next* turn only.
-8. Do not depend on orchestration nudge / per-subagent routing — not in the binary.
+8. Do not depend on orchestration nudge — not in the binary.
 
 ---
 

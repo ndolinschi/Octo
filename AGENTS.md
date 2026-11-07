@@ -116,7 +116,7 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 
 **Cost precedence:** estimate only when all four `prices.toml` rates are present for the slug (explicit `0.0` counts); then first non-zero of estimate → upstream BYOK → OpenRouter `usage.cost`; else `cost_source = "none"`.
 
-**session_outcomes:** async upsert from last-user `tool_result` blocks (cargo / pytest / unittest summaries), keyed by observe `session_id` (includes `#subagent` when applicable). Parses the live request even when `store_payloads = false`.
+**session_outcomes:** async upsert from last-user `tool_result` blocks (cargo / pytest / unittest summaries), keyed by observe `session_id` (includes `#sub:{hash}` when applicable). Parses the live request even when `store_payloads = false`.
 
 **Autoroute status:** `GET /autoroute/status` / `?session=` returns JSON for Claude Code statusline (`scripts/statusline.sh`).
 

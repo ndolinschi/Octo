@@ -202,10 +202,8 @@ pub fn ids_match(left: &str, right: &str) -> bool {
     left == right || bare_id(left) == bare_id(right) || routing_id(left) == routing_id(right)
 }
 
-pub fn context_length(models: Option<&OpenRouterModels>, slug: &str) -> u64 {
-    lookup(models, slug)
-        .and_then(|model| model.context_length)
-        .unwrap_or(8192)
+pub fn context_length(models: Option<&OpenRouterModels>, slug: &str) -> Option<u64> {
+    lookup(models, slug).and_then(|model| model.context_length)
 }
 
 pub fn max_completion_tokens(models: Option<&OpenRouterModels>, slug: &str) -> Option<u64> {
@@ -244,7 +242,7 @@ pub struct LargerFit<'a> {
 }
 
 pub fn larger_fit(plan: LargerFit<'_>) -> Option<String> {
-    let current_window = context_length(plan.models, plan.current);
+    let current_window = context_length(plan.models, plan.current)?;
     plan.candidates
         .iter()
         .copied()
@@ -252,7 +250,7 @@ pub fn larger_fit(plan: LargerFit<'_>) -> Option<String> {
             if ids_match(slug, plan.current) {
                 return None;
             }
-            let window = context_length(plan.models, slug);
+            let window = context_length(plan.models, slug)?;
             let usable = window.saturating_sub(metrics::output_reserve(window, plan.max_tokens));
             (window > current_window && usable >= plan.input_tokens)
                 .then(|| (window, slug.to_string()))

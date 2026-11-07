@@ -7,7 +7,7 @@ use axum::{
 };
 use serde_json::Value;
 
-use crate::auto::{session_key, Compact};
+use crate::auto::{parent_session_id, session_key, Compact};
 use crate::history::{
     describe_input, request_payload, resolve_cost, response_payload, token_from_headers,
     usage_from_output, CallKind, CallProvider, FinishedCall, Millis,
@@ -132,6 +132,14 @@ fn record(plan: RecordPlan<'_>) {
     };
     let usage = usage_from_output(&output_text);
     let resolved = resolve_cost(&usage, model.as_deref(), plan.state.history.prices());
+    let session = session_of_bytes(plan.request_body);
+    let parent = session
+        .as_deref()
+        .and_then(parent_session_id)
+        .map(str::to_string);
+    if let (Some(session_id), Some(cost)) = (session.as_deref(), resolved.cost) {
+        plan.state.auto.add_session_cost(session_id, cost.0);
+    }
     plan.state.history.record(FinishedCall {
         kind: CallKind::Messages,
         provider: CallProvider::OpenRouter,
@@ -171,10 +179,11 @@ fn record(plan: RecordPlan<'_>) {
         cache_write_tokens: usage.cache_write_tokens,
         generation_id: usage.generation_id.clone(),
         rerouting: 0,
-        rerouting_reason: None,
-        session_id: None,
+        rerouting_reason: Some("compact".to_string()),
+        session_id: session,
+        parent_session_id: parent,
         tier_before: None,
         tier_after: None,
-        trigger: "none".to_string(),
+        trigger: "compact".to_string(),
     });
 }
