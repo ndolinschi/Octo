@@ -25,21 +25,21 @@ pub(super) async fn upstream(
     compact: &Compact,
 ) -> Result<Response, ProxyError> {
     let started = Instant::now();
-    let (status, bytes) = post(state, parts, &compact.body).await?;
-    let (status, bytes, sent) = if failed(status, &bytes) {
+    let (status, bytes, generation_id) = post(state, parts, &compact.body).await?;
+    let (status, bytes, sent, generation_id) = if failed(status, &bytes) {
         if let Some(fallback) = &compact.fallback_model {
             let mut payload: Value = serde_json::from_slice(&compact.body).unwrap_or(Value::Null);
             if let Some(object) = payload.as_object_mut() {
                 object.insert("model".to_string(), Value::String(fallback.clone()));
             }
             let next = serde_json::to_vec(&payload).unwrap_or_else(|_| compact.body.clone());
-            let (status, bytes) = post(state, parts, &next).await?;
-            (status, bytes, next)
+            let (status, bytes, generation_id) = post(state, parts, &next).await?;
+            (status, bytes, next, generation_id)
         } else {
-            (status, bytes, compact.body.clone())
+            (status, bytes, compact.body.clone(), generation_id)
         }
     } else {
-        (status, bytes, compact.body.clone())
+        (status, bytes, compact.body.clone(), generation_id)
     };
     if let Some(id) = session_of_bytes(&sent) {
         let text = String::from_utf8_lossy(&bytes);
@@ -56,6 +56,7 @@ pub(super) async fn upstream(
         status,
         output: &bytes,
         started,
+        header_generation_id: generation_id,
     });
     let mut response = Response::new(Body::from(bytes.to_vec()));
     *response.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
@@ -70,7 +71,7 @@ async fn post(
     state: &AppState,
     parts: &axum::http::request::Parts,
     body: &[u8],
-) -> Result<(u16, Vec<u8>), ProxyError> {
+) -> Result<(u16, Vec<u8>, Option<String>), ProxyError> {
     let openrouter = AttributionDefaults::new(
         state.config.openrouter_http_referer.clone(),
         state.config.openrouter_title.clone(),
@@ -92,8 +93,16 @@ async fn post(
         .send()
         .await?;
     let status = response.status().as_u16();
+    let generation_id = response
+        .headers()
+        .get("x-generation-id")
+        .or_else(|| response.headers().get("request-id"))
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| value.starts_with("gen-"))
+        .map(str::to_string);
     let bytes = response.bytes().await?.to_vec();
-    Ok((status, bytes))
+    Ok((status, bytes, generation_id))
 }
 
 fn failed(status: u16, body: &[u8]) -> bool {
@@ -118,6 +127,7 @@ struct RecordPlan<'a> {
     status: u16,
     output: &'a [u8],
     started: Instant,
+    header_generation_id: Option<String>,
 }
 
 fn record(plan: RecordPlan<'_>) {
@@ -140,6 +150,7 @@ fn record(plan: RecordPlan<'_>) {
     if let (Some(session_id), Some(cost)) = (session.as_deref(), resolved.cost) {
         plan.state.auto.add_session_cost(session_id, cost.0);
     }
+    let generation_id = plan.header_generation_id.or(usage.generation_id.clone());
     plan.state.history.record(FinishedCall {
         kind: CallKind::Messages,
         provider: CallProvider::OpenRouter,
@@ -177,7 +188,7 @@ fn record(plan: RecordPlan<'_>) {
         hk_text_signal: None,
         cache_read_tokens: usage.cache_read_tokens,
         cache_write_tokens: usage.cache_write_tokens,
-        generation_id: usage.generation_id.clone(),
+        generation_id,
         rerouting: 0,
         rerouting_reason: Some("compact".to_string()),
         session_id: session,
