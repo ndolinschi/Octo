@@ -6,17 +6,17 @@ Honest capability matrix for the codebase on `main` as of the architecture-docs 
 
 ```mermaid
 pie showData
-  title Capability mix (docs judgment)
-  "Working" : 18
-  "Partial / fragile" : 12
+  title Capability mix (row counts below)
+  "Working" : 17
+  "Partial / fragile" : 17
   "Not shipped / known gap" : 8
 ```
 
-| Bucket | Count (approx.) | Meaning |
+| Bucket | Count | Meaning |
 | --- | --- | --- |
-| Working | Majority of shipped surface | Test-backed; safe for default Claude Code → OpenRouter use |
-| Partial | Several | Works with caveats, off-by-default flags, or accounting holes |
-| Missing | Orchestration + a few live edges | Planned or documented; not in code |
+| Working | 17 | Test-backed; safe for default Claude Code → OpenRouter use |
+| Partial | 17 | Works with caveats, off-by-default flags, or accounting holes |
+| Missing | 8 | Planned or documented; not in code |
 
 ---
 
@@ -36,7 +36,7 @@ pie showData
 | Body hygiene | `strip_fields` + `require_parameters`; thinking strip; max_tokens clamp | shape fixtures `call_528` / `call_530` |
 | Tools kept | Client `tools[]` not filtered by JEV | forwards_all_tools tests |
 | Messages compact | OpenRouter compact API when overflow | `compact.rs` + decide route |
-| Messages retry | One tier-up on 429 before client bytes | `autoroute_retry` |
+| Messages retry | One tier-up on 429 / 5xx / connect-timeout before client bytes | `autoroute_retry` |
 | History core | Async insert, HMAC tokens, cost micros, payloads | `history_*` tests |
 | Observe columns | client_model / thinking / tools / bg / hk | `autoroute_observe` |
 | Session outcomes | cargo / pytest / unittest tool_result parse | `session_outcomes` |

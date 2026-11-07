@@ -56,25 +56,25 @@ Upserted from last-user `tool_result` blocks that look like cargo / pytest / uni
 
 ```mermaid
 flowchart TD
-  rates{All four prices.toml rates present?}
+  rates{rates_complete AND any rate > 0?}
   est[estimated_cost_micros]
-  byok{upstream BYOK cost > 0?}
+  upq{upstream cost > 0?}
   up[upstream_cost_micros]
   orc{OpenRouter usage.cost > 0?}
   orv[or_cost_micros]
   none[cost_source = none]
 
-  rates -->|yes| est --> pick[cost_micros = estimate]
-  rates -->|no| byok
-  byok -->|yes| up --> pick2[cost_micros = upstream]
-  byok -->|no| orc
+  rates -->|yes and estimate > 0| est --> pick[cost_micros = estimate]
+  rates -->|no / zero estimate| upq
+  upq -->|yes| up --> pick2[cost_micros = upstream]
+  upq -->|no| orc
   orc -->|yes| orv --> pick3[cost_micros = openrouter]
   orc -->|no| none
 ```
 
 Money is stored as **integer micro-dollars** (`CostMicros`). Failed / no-usage rows stay honest zeros with `cost_source = "none"`.
 
-Ladder slugs in shipped `prices.toml` may use `0.0` placeholders — estimates are then zero until you fill console rates.
+Ladder slugs in shipped `prices.toml` may use `0.0` placeholders — `estimate_cost` then returns `None` (`!any_nonzero()`), so FinOps falls through to upstream / OpenRouter / `none` until you fill console rates.
 
 ## Caveats
 

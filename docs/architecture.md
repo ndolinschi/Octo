@@ -56,7 +56,7 @@ src/
 │   ├── select.rs           OpenAI/OpenRouter/Claude pin
 │   ├── error.rs            ProxyError → JSON
 │   └── autoroute/          messages/chat/status/compact
-├── auto/
+├── auto/                   (selected; also action.rs, metrics.rs, session.rs)
 │   ├── decide/             sticky, classify, gate, route
 │   ├── jev/                Decisions questions + parse
 │   ├── body.rs             shape, housekeeping, session_key

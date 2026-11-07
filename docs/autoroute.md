@@ -10,7 +10,7 @@ Autoroute is the session-aware model ladder for Claude Code → OpenRouter. It l
 | `POST` | `/autoroute/v1/chat/completions` | Same decide/shape; **no** Messages compact API; no text-tool-call hook |
 | `GET` | `/autoroute/status` | JSON for statusline (`?session=` optional) |
 
-Ladder slugs and policy: `config/autoroute.toml` (default Mistral: ministral-8b → mistral-small-3.1 → destinstral).
+Ladder slugs and policy: `config/autoroute.toml` (default Mistral: ministral-8b → mistral-small-3.1 → `mistralai/devstral-2512`).
 
 ## Decide pipeline
 
@@ -27,6 +27,7 @@ flowchart TD
   hold{hold / tool_results_only?}
   jev[JEV classify<br/>is_hard / is_easy / tools_enough]
   sticky[Sticky + budget cap]
+  cap[Budget cap on held choice]
   route[route::run]
   shape[body::shape]
   fwd[Forward / Compact]
@@ -40,8 +41,9 @@ flowchart TD
   bg -->|no| await
   await -->|repeat compact| fwd
   await -->|else| stall --> hold
-  hold -->|yes| sticky
+  hold -->|yes| cap
   hold -->|no| jev --> sticky
+  cap --> route
   sticky --> route --> shape --> fwd
 ```
 
@@ -67,15 +69,16 @@ flowchart LR
   model[Rewrite model slug]
   think[Strip thinking on model change]
   clamp[Clamp max_tokens]
+  drop[drop_unsupported_thinking]
   strip[Remove strip_fields keys]
   req[Inject provider.require_parameters]
   pin[Optional provider_order]
   out[Upstream body]
 
-  body --> model --> think --> clamp --> strip --> req --> pin --> out
+  body --> model --> think --> clamp --> drop --> strip --> req --> pin --> out
 ```
 
-Shipped strip list (Anthropic-only; proven against destinstral `supported_parameters`):
+Shipped strip list (Anthropic-only; proven against `mistralai/devstral-2512` `supported_parameters`):
 
 - `output_config`
 - `safeguards`
@@ -118,7 +121,7 @@ flowchart TD
 
 ## Session identity
 
-`session_key` comes from the request metadata / Anthropic session headers. Claude Code **subagents** currently share `{uuid}#subagent` — one sticky/stall/budget for all concurrent Agents. Per-subagent keys (`#sub:{hash}`) are planned, not shipped ([plans/](./plans/2026-11-06-orchestration-plan.md)).
+`session_key` is derived only from the request body: `metadata.user_id` (JSON string) → `session_id`, then optional `#subagent` when the body looks like a Claude Code Agent (`body::session_key`). No Anthropic session headers are read. Concurrent **subagents** currently share `{uuid}#subagent` — one sticky/stall/budget for all Agents. Per-subagent keys (`#sub:{hash}`) are planned, not shipped ([plans/](./plans/2026-11-06-orchestration-plan.md)).
 
 ## Observe signals (history only unless flags on)
 

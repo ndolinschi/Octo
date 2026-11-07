@@ -23,5 +23,6 @@ Dated investigations kept for provenance; prefer the guides above for day-to-day
 | [debug/](./debug/) | Incident notes (text-as-tool-call, long sessions) |
 | [research/](./research/) | Orchestration investigation |
 | [plans/](./plans/) | Unshipped orchestration plan (P0–P4) |
+| [superpowers/](./superpowers/) | Design notes / skill plans archived under docs |
 
-Root shortcut: [`ARCHITECTURE.md`](../ARCHITECTURE.md) redirects here.
+Root shortcut: [`ARCHITECTURE.md`](../ARCHITECTURE.md) points at [architecture.md](./architecture.md) and this index.
