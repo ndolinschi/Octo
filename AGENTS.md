@@ -2,7 +2,7 @@
 
 Instructions for AI coding agents working in this repository.
 
-System design, request flow, and module boundaries: **[ARCHITECTURE.md](./ARCHITECTURE.md)**. Keep this file operational (how to run, configure, test, and what not to break). Put structural explanations in `ARCHITECTURE.md`.
+Product docs (architecture, routes, autoroute, history, config, **works / gaps**): **[docs/README.md](./docs/README.md)**. Shortcut: [ARCHITECTURE.md](./ARCHITECTURE.md) → `docs/architecture.md`. Keep this file operational (how to run, configure, test, and what not to break).
 
 ## Project
 
@@ -140,7 +140,7 @@ Commit updated **`.sqlx/`** with the code change.
 
 ## Code layout
 
-Full map: [ARCHITECTURE.md](./ARCHITECTURE.md). Quick index:
+Full map: [docs/architecture.md](./docs/architecture.md). Quick index:
 
 | Area | Role |
 | --- | --- |
