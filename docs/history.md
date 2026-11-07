@@ -81,10 +81,10 @@ Ladder slugs in shipped `prices.toml` may use `0.0` placeholders — estimate is
 | Issue | Effect |
 | --- | --- |
 | Soft-fail open | Proxy up, no history |
-| Burst drop | Missing rows under load; warn may omit `session_id` |
-| Stream fail after headers | Client may see 200; history may record 502 |
-| `generation_id` | Body `msg_*` stored; OpenRouter `gen-*` response headers not persisted |
-| Compact accounting | Compaction rows often lack `session_id` and may skip session spend add |
+| Burst drop | Missing rows under load; warn includes `session_id` |
+| Stream fail after headers | Client may see 200; history may record 502 (warn logs session) |
+| `generation_id` | Prefers OpenRouter `x-generation-id` `gen-*`; body `msg_*` is fallback |
+| Compact accounting | Compact rows store `session_id` and add session spend when cost is present |
 
 Inspect latest rows:
 

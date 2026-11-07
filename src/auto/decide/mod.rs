@@ -389,7 +389,10 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         });
     }
 
-    if choice.is_none()
+    let subagent_unset = choice
+        .as_ref()
+        .is_none_or(|row| row.sticky_band == "unset" || row.model.is_empty());
+    if subagent_unset
         && actor.as_deref().is_some_and(body::is_subagent_key)
         && !question.trim().is_empty()
         && stall.is_none()
@@ -398,7 +401,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             auto: req.auto,
             body: req.body,
             models: loaded.as_ref(),
-            choice: None,
+            choice: choice.as_ref(),
             preferred: preferred.as_deref(),
             all_tools: &all_tools,
             tier_before,
@@ -406,7 +409,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             allow_compact: req.allow_compact,
             reason_base: "subagent_default",
             trim: false,
-            persist: true,
+            persist,
             spent_micros: spent,
         });
     }

@@ -41,11 +41,11 @@ pie showData
 | Observe columns | client_model / thinking / tools / bg / hk | `autoroute_observe` |
 | Session outcomes | cargo / pytest / unittest tool_result parse | `session_outcomes` |
 | Statusline | `/autoroute/status` + script | `status.rs`, `scripts/statusline.sh` |
-| Per-subagent keys | `{uuid}#sub:{hash}` + `parent_session_id`; first turn defaults low | `session_key` tests |
+| Per-subagent keys | `{uuid}#sub:{hash}` + `parent_session_id`; first turn defaults low | `subagent_first_turn_*`, `subagent_keys_*`, parent stall test |
 | tool_results_only hold | Keeps sticky model; no JEV | `tool_results_only_hold_*` |
-| Budget recap | Cap after fill-upgrade / before retry; compact adds session cost | route + compact |
-| Catalog miss | Unknown window skips fill/compact (no fake 8192) | `context_length` → `None` |
-| `generation_id` | Prefers OpenRouter `x-generation-id` / `gen-*` | tee capture |
+| Budget recap | Cap after fill-upgrade / before retry; compact adds session cost | `budget_blocks_fill_*`, `autoroute_skips_retry_*` |
+| Catalog miss | Unknown window skips fill/compact (no fake 8192) | `catalog_miss_skips_compact_*` |
+| `generation_id` | Prefers OpenRouter `x-generation-id` / `gen-*` | `generation_id_prefers_openrouter_header_*` |
 
 ---
 

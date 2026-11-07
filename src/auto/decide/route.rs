@@ -143,6 +143,19 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 plan.model = upgraded.model;
                 plan.sticky_band = upgraded.sticky_band;
                 plan.reason = upgraded.reason;
+                let grew = catalog::context_length(ctx.models, &plan.model)
+                    .is_some_and(|next| next > window);
+                if !grew {
+                    return finish_overflow(OverflowCtx {
+                        auto: ctx.auto,
+                        body: &ctx.body,
+                        outgoing: &outgoing,
+                        models: ctx.models,
+                        previous_model: previous,
+                        input_tokens_est: estimate.input_tokens_est,
+                        plan,
+                    });
+                }
                 shaped_out = shaped(ShapeArgs {
                     body: &ctx.body,
                     model: &plan.model,
@@ -154,6 +167,21 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                     require_parameters: ctx.auto.tiers.require_parameters,
                 });
                 outgoing = shaped_out.body.clone();
+                if let Some(next_window) = catalog::context_length(ctx.models, &plan.model) {
+                    let again =
+                        context_estimate(counted_bytes(&outgoing), next_window, plan.reserve);
+                    if again.usable < 1024 || again.fill >= metrics::FILL_THRESHOLD {
+                        return finish_overflow(OverflowCtx {
+                            auto: ctx.auto,
+                            body: &ctx.body,
+                            outgoing: &outgoing,
+                            models: ctx.models,
+                            previous_model: previous,
+                            input_tokens_est: again.input_tokens_est,
+                            plan,
+                        });
+                    }
+                }
             } else {
                 return finish_overflow(OverflowCtx {
                     auto: ctx.auto,
