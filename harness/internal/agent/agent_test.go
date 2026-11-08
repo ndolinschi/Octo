@@ -92,3 +92,70 @@ func TestRunner_ToolRoundTrip(t *testing.T) {
 		t.Fatalf("API calls = %d, want 2", calls.Load())
 	}
 }
+
+func TestRunner_MaxTurnsExceeded(t *testing.T) {
+	var toolCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" {
+			http.Error(w, "unexpected request", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{
+			"id":"msg_1","type":"message","role":"assistant",
+			"content":[{"type":"tool_use","id":"toolu_echo","name":"echo","input":{"text":"ping"}}],
+			"model":"claude-test","stop_reason":"tool_use",
+			"usage":{"input_tokens":1,"output_tokens":1}
+		}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	reg := tools.NewRegistry()
+	if err := reg.Register(tools.Def{
+		Name: "echo",
+		Handle: func(ctx context.Context, input json.RawMessage) (string, bool, error) {
+			toolCalls.Add(1)
+			return "pong", false, nil
+		},
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	client := anthropicclient.New("test-key", srv.URL)
+	r := &Runner{
+		Client:   client,
+		Registry: reg,
+		Store:    st,
+		Model:    "claude-test",
+		MaxTurns: 1,
+	}
+
+	sessionID, _, err := r.Run(ctx, "start")
+	if err == nil {
+		t.Fatal("Run: expected error")
+	}
+	if !strings.Contains(err.Error(), "exceeded max turns") {
+		t.Fatalf("Run err = %v, want exceeded max turns", err)
+	}
+	if sessionID == "" {
+		t.Fatal("expected non-empty sessionID")
+	}
+
+	n, err := st.MessageCount(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("MessageCount: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("MessageCount = %d, want 2 (user + assistant)", n)
+	}
+	if toolCalls.Load() != 0 {
+		t.Fatalf("echo invoked %d times, want 0", toolCalls.Load())
+	}
+}

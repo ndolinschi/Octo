@@ -12,6 +12,8 @@ import (
 	"github.com/ndolinschi/Octo/harness/internal/tools"
 )
 
+const defaultMaxTurns = 25
+
 type Runner struct {
 	Client   anthropic.Client
 	Registry *tools.Registry
@@ -44,7 +46,12 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 	messages := []anthropic.MessageParam{userMsg}
 	toolDefs := r.Registry.AnthropicTools()
 
-	for turn := 1; r.MaxTurns == 0 || turn <= r.MaxTurns; turn++ {
+	maxTurns := r.MaxTurns
+	if maxTurns < 1 {
+		maxTurns = defaultMaxTurns
+	}
+
+	for turn := 1; turn <= maxTurns; turn++ {
 		resp, err := r.Client.Messages.New(ctx, anthropic.MessageNewParams{
 			Model:     anthropic.Model(r.Model),
 			MaxTokens: 4096,
@@ -68,8 +75,8 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 			return sessionID, strings.Join(textParts, ""), nil
 		}
 
-		if r.MaxTurns > 0 && turn >= r.MaxTurns {
-			return sessionID, strings.Join(textParts, ""), nil
+		if turn >= maxTurns {
+			return sessionID, "", fmt.Errorf("agent: exceeded max turns")
 		}
 
 		resultBlocks := make([]anthropic.ContentBlockParamUnion, 0, len(toolUses))
