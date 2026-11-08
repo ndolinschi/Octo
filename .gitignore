@@ -1,6 +1,7 @@
 /target
 .cursor/hooks.json
 /data
+harness/data/
 apps/router/data/
 prepare.db
 apps/router/prepare.db

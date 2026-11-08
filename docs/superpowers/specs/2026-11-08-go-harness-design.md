@@ -1,7 +1,7 @@
 # Go Harness (agent client) — design
 
 **Date:** 2026-11-08  
-**Status:** approved — implementing via plan `docs/superpowers/plans/2026-11-08-go-harness.md`  
+**Status:** implemented — plan `docs/superpowers/plans/2026-11-08-go-harness.md`  
 **Scope:** thin MVP in monorepo `harness/` (Go); Octo Rust router unchanged
 
 ## Intent and why
