@@ -109,12 +109,53 @@ func TestRemoteInvokeNon2xx(t *testing.T) {
 	if !ok {
 		t.Fatal("fail not registered")
 	}
-	_, isError, err := def.Handle(context.Background(), json.RawMessage(`{}`))
+	out, isError, err := def.Handle(context.Background(), json.RawMessage(`{}`))
 	if err != nil {
 		t.Fatalf("Handle err: %v", err)
 	}
 	if !isError {
 		t.Fatal("expected isError for non-2xx")
+	}
+	if !strings.Contains(out, "nope") {
+		t.Fatalf("output %q want error body", out)
+	}
+}
+
+func TestRemoteRegisterBadDiscoverNotCached(t *testing.T) {
+	var gets int
+	good := `[{"name":"ok","description":"ok","input_schema":{"type":"object"}}]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/tools" {
+			gets++
+			if gets == 1 {
+				_, _ = io.WriteString(w, `{not valid json`)
+				return
+			}
+			_, _ = io.WriteString(w, good)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cacheDir := t.TempDir()
+	reg := tools.NewRegistry()
+	if err := Register(context.Background(), reg, []string{srv.URL}, cacheDir); err == nil {
+		t.Fatal("expected error on bad discover JSON")
+	}
+	if gets != 1 {
+		t.Fatalf("gets after failed register = %d want 1", gets)
+	}
+
+	reg = tools.NewRegistry()
+	if err := Register(context.Background(), reg, []string{srv.URL}, cacheDir); err != nil {
+		t.Fatalf("second Register: %v", err)
+	}
+	if gets != 2 {
+		t.Fatalf("gets after success = %d want 2 (cache must not serve bad body)", gets)
+	}
+	if _, ok := reg.Get("ok"); !ok {
+		t.Fatal("ok tool not registered")
 	}
 }
 

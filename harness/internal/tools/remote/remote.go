@@ -29,13 +29,18 @@ func Register(ctx context.Context, reg *tools.Registry, bases []string, cacheDir
 			continue
 		}
 		toolsURL := base + "/tools"
-		body, err := fetchTools(ctx, client, c, toolsURL)
+		body, fromCache, err := fetchTools(ctx, client, c, toolsURL)
 		if err != nil {
 			return fmt.Errorf("%s: %w", toolsURL, err)
 		}
 		var defs []remoteTool
 		if err := json.Unmarshal(body, &defs); err != nil {
 			return fmt.Errorf("%s: decode tools: %w", toolsURL, err)
+		}
+		if !fromCache {
+			if err := c.Put(toolsURL, body); err != nil {
+				return err
+			}
 		}
 		for _, rt := range defs {
 			if rt.Name == "" {
@@ -61,30 +66,27 @@ func Register(ctx context.Context, reg *tools.Registry, bases []string, cacheDir
 	return nil
 }
 
-func fetchTools(ctx context.Context, client *http.Client, c *cache.Store, url string) ([]byte, error) {
+func fetchTools(ctx context.Context, client *http.Client, c *cache.Store, url string) ([]byte, bool, error) {
 	if data, ok := c.Get(url); ok {
-		return data, nil
+		return data, true, nil
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("GET tools: status %d", resp.StatusCode)
+		return nil, false, fmt.Errorf("GET tools: status %d", resp.StatusCode)
 	}
-	if err := c.Put(url, body); err != nil {
-		return nil, err
-	}
-	return body, nil
+	return body, false, nil
 }
 
 func invokeHandler(client *http.Client, base, name string) tools.Handler {
