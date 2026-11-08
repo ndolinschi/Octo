@@ -146,7 +146,9 @@ func listDirHandler(workspace string) tools.Handler {
 		var in struct {
 			Path string `json:"path"`
 		}
-		_ = json.Unmarshal(input, &in)
+		if err := json.Unmarshal(input, &in); err != nil {
+			return err.Error(), true, nil
+		}
 		rel := in.Path
 		if rel == "" {
 			rel = "."
@@ -197,5 +199,42 @@ func resolveUnderWorkspace(workspace, rel string) (string, error) {
 	if absTarget != absWorkspace && !strings.HasPrefix(absTarget, absWorkspace+string(filepath.Separator)) {
 		return "", fmt.Errorf("path escapes workspace")
 	}
+	realWorkspace, err := filepath.EvalSymlinks(absWorkspace)
+	if err != nil {
+		return "", err
+	}
+	realTarget, err := resolveRealPath(absTarget)
+	if err != nil {
+		return "", err
+	}
+	if !pathWithinRoot(realTarget, realWorkspace) {
+		return "", fmt.Errorf("path escapes workspace")
+	}
 	return absTarget, nil
+}
+
+func resolveRealPath(absPath string) (string, error) {
+	if _, err := os.Lstat(absPath); err == nil {
+		return filepath.EvalSymlinks(absPath)
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	parent := filepath.Dir(absPath)
+	base := filepath.Base(absPath)
+	if parent == absPath {
+		return "", fmt.Errorf("path not found")
+	}
+	realParent, err := resolveRealPath(parent)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(realParent, base), nil
+}
+
+func pathWithinRoot(path, root string) bool {
+	if path == root {
+		return true
+	}
+	sep := string(filepath.Separator)
+	return strings.HasPrefix(path, root+sep)
 }
