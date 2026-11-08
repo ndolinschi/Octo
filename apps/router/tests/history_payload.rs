@@ -193,9 +193,34 @@ fn estimate_cost_rounds_tiny_usage_to_zero_micros_not_none() {
         },
     )]);
     let resolved = resolve_cost(&usage, Some("tiny-model"), &prices);
-    assert_eq!(resolved.source, CostSource::Estimate);
     assert_eq!(resolved.estimated_cost, Some(CostMicros(0)));
-    assert_eq!(resolved.cost, Some(CostMicros(0)));
+    assert_eq!(resolved.source, CostSource::None);
+    assert_eq!(resolved.cost, None);
+}
+
+#[test]
+fn zero_estimate_defers_to_nonzero_upstream() {
+    use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
+
+    let usage = usage_from_output(concat!(
+        r#"{"usage":{"input_tokens":1,"output_tokens":0,"cache_read_input_tokens":0,"#,
+        r#""cost":0,"is_byok":true,"cost_details":{"upstream_inference_cost":0.0075}}}"#
+    ));
+    let prices = PriceTable::new(vec![(
+        "tiny-model".into(),
+        ModelPrice {
+            input: 0.000_001,
+            cache_read: 0.0,
+            cache_write: 0.0,
+            output: 0.0,
+            billed_as: None,
+            rates_complete: true,
+        },
+    )]);
+    let resolved = resolve_cost(&usage, Some("tiny-model"), &prices);
+    assert_eq!(resolved.estimated_cost, Some(CostMicros(0)));
+    assert_eq!(resolved.source, CostSource::Upstream);
+    assert_eq!(resolved.cost, Some(CostMicros(7_500)));
 }
 
 #[test]

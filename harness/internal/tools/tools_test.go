@@ -24,3 +24,17 @@ func TestRegisterDuplicate(t *testing.T) {
 		t.Fatal("expected error registering duplicate name")
 	}
 }
+
+func TestRegisterInvalidSchema(t *testing.T) {
+	r := NewRegistry()
+	err := r.Register(Def{
+		Name:        "bad",
+		InputSchema: json.RawMessage(`{`),
+		Handle: func(ctx context.Context, input json.RawMessage) (string, bool, error) {
+			return "", false, nil
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid input schema")
+	}
+}

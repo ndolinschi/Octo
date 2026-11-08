@@ -94,14 +94,14 @@ Messages store SDK-shaped JSON from `json.Marshal(anthropic.MessageParam)`. **`h
 | Direct Messages | `http://127.0.0.1:8080` | Uses `[llm.messages]` routing in Octo config |
 | Autoroute | `http://127.0.0.1:8080/autoroute` | Octo applies ladder / sticky / budget before upstream |
 
-Set `ANTHROPIC_API_KEY` to the key the upstream expects (OpenRouter bearer or Anthropic key, depending on Octo config). The harness sends it via the SDK; Octo may also require `x-octo-key` when `server.client_auth_key` is set — point `ANTHROPIC_BASE_URL` at Octo and use headers only if you extend the client (not shipped today).
+Set `ANTHROPIC_API_KEY` to the key the upstream expects (OpenRouter bearer or Anthropic key, depending on Octo config). When Octo has `server.client_auth_key`, set `HARNESS_OCTO_KEY` or `--octo-key` so the SDK sends `x-octo-key`.
 
 ## CLI surface
 
 | Command | Purpose |
 | --- | --- |
-| `harness run --prompt "…"` | New session, tool loop, print final text on stdout |
+| `harness run --prompt "…"` | New session, tool loop; session id on stderr, final text on stdout |
 | `harness sessions` | JSON list of sessions |
 | `harness show <session-id>` | JSON message rows for one session |
 
-Common flags: `--workspace`, `--base-url`, `--model`, `--data-dir`, `--remote` (repeatable), `--max-turns`.
+Common flags: `--workspace`, `--base-url`, `--model`, `--data-dir`, `--remote` (repeatable), `--max-turns`, `--octo-key`.

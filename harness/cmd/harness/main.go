@@ -125,6 +125,7 @@ func cmdRun(args []string) error {
 	model := fs.String("model", "claude-sonnet-4-5", "Model id")
 	dataDir := fs.String("data-dir", "", "Harness data directory")
 	maxTurns := fs.Int("max-turns", 0, "Max agent turns (0 = config default)")
+	octoKey := fs.String("octo-key", "", "Octo x-octo-key (or HARNESS_OCTO_KEY)")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -139,6 +140,9 @@ func cmdRun(args []string) error {
 	}
 	if *baseURL != "" {
 		cfg.BaseURL = *baseURL
+	}
+	if *octoKey != "" {
+		cfg.OctoKey = *octoKey
 	}
 	if *maxTurns > 0 {
 		cfg.MaxTurns = *maxTurns
@@ -173,7 +177,7 @@ func cmdRun(args []string) error {
 		return err
 	}
 
-	client := anthropicclient.New(cfg.APIKey, cfg.BaseURL)
+	client := anthropicclient.New(cfg.APIKey, cfg.BaseURL, cfg.OctoKey)
 	runner := agent.Runner{
 		Client:   client,
 		Registry: reg,
@@ -182,10 +186,11 @@ func cmdRun(args []string) error {
 		MaxTurns: cfg.MaxTurns,
 		Stream:   true,
 	}
-	_, finalText, err := runner.Run(ctx, *prompt)
+	sessionID, finalText, err := runner.Run(ctx, *prompt)
 	if err != nil {
 		return err
 	}
+	fmt.Fprintf(os.Stderr, "session: %s\n", sessionID)
 	fmt.Print(finalText)
 	return nil
 }

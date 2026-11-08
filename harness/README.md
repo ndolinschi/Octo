@@ -63,8 +63,9 @@ export ANTHROPIC_API_KEY="your-key"
 | `--data-dir` | `./data/harness` or `HARNESS_DATA_DIR` | SQLite + remote tool cache |
 | `--remote` | (repeatable) | `GET {base}/tools` discovery + invoke |
 | `--max-turns` | `HARNESS_MAX_TURNS` or 25 | Cap tool-loop turns |
+| `--octo-key` | `HARNESS_OCTO_KEY` | Sent as `x-octo-key` when Octo `client_auth_key` is set |
 
-Streaming assistant text is written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.
+Streaming assistant text and `session: <id>` are written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.
 
 ## Session inspection
 

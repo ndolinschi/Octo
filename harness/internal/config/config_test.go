@@ -39,3 +39,14 @@ func TestLoad_MaxTurnsFromEnv(t *testing.T) {
 		t.Errorf("MaxTurns = %d, want 7", cfg.MaxTurns)
 	}
 }
+
+func TestLoad_OctoKeyFromEnv(t *testing.T) {
+	t.Setenv("HARNESS_OCTO_KEY", "octo-secret")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.OctoKey != "octo-secret" {
+		t.Errorf("OctoKey = %q, want octo-secret", cfg.OctoKey)
+	}
+}

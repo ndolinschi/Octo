@@ -17,12 +17,12 @@ import (
 const defaultMaxTurns = 25
 
 type Runner struct {
-	Client   anthropic.Client
-	Registry *tools.Registry
-	Store    *store.Store
-	Model    string
-	MaxTurns int
-	Stream   bool
+	Client    anthropic.Client
+	Registry  *tools.Registry
+	Store     *store.Store
+	Model     string
+	MaxTurns  int
+	Stream    bool
 	StreamOut io.Writer
 }
 
@@ -58,11 +58,11 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(r.Model),
 		MaxTokens: 4096,
-		Messages:  messages,
 		Tools:     toolDefs,
 	}
 
 	for turn := 1; turn <= maxTurns; turn++ {
+		params.Messages = messages
 		var resp anthropic.Message
 		var err error
 		if r.Stream {
@@ -78,14 +78,12 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 			return sessionID, "", err
 		}
 
-		assistantBlocks, toolUses, textParts, err := parseAssistantContent(resp.Content)
-		if err != nil {
+		toolUses, textParts := collectAssistant(resp.Content)
+		assistantMsg := resp.ToParam()
+		if err := persistMessage(ctx, r.Store, sessionID, "assistant", assistantMsg); err != nil {
 			return sessionID, "", err
 		}
-		if err := persistMessage(ctx, r.Store, sessionID, "assistant", anthropic.NewAssistantMessage(assistantBlocks...)); err != nil {
-			return sessionID, "", err
-		}
-		messages = append(messages, anthropic.NewAssistantMessage(assistantBlocks...))
+		messages = append(messages, assistantMsg)
 
 		if len(toolUses) == 0 {
 			return sessionID, strings.Join(textParts, ""), nil
@@ -141,34 +139,16 @@ func streamMessage(ctx context.Context, r *Runner, params anthropic.MessageNewPa
 	return message, nil
 }
 
-func parseAssistantContent(content []anthropic.ContentBlockUnion) (
-	blocks []anthropic.ContentBlockParamUnion,
-	toolUses []anthropic.ToolUseBlock,
-	textParts []string,
-	err error,
-) {
+func collectAssistant(content []anthropic.ContentBlockUnion) (toolUses []anthropic.ToolUseBlock, textParts []string) {
 	for _, c := range content {
 		switch v := c.AsAny().(type) {
 		case anthropic.TextBlock:
-			blocks = append(blocks, anthropic.NewTextBlock(v.Text))
 			textParts = append(textParts, v.Text)
 		case anthropic.ToolUseBlock:
-			var input any
-			if len(v.Input) > 0 {
-				if err := json.Unmarshal(v.Input, &input); err != nil {
-					return nil, nil, nil, fmt.Errorf("tool input %q: %w", v.Name, err)
-				}
-			}
-			blocks = append(blocks, anthropic.NewToolUseBlock(v.ID, input, v.Name))
 			toolUses = append(toolUses, v)
-		default:
-			if c.Type == "text" && c.Text != "" {
-				blocks = append(blocks, anthropic.NewTextBlock(c.Text))
-				textParts = append(textParts, c.Text)
-			}
 		}
 	}
-	return blocks, toolUses, textParts, nil
+	return toolUses, textParts
 }
 
 func dispatchTool(ctx context.Context, reg *tools.Registry, tu anthropic.ToolUseBlock) (anthropic.ContentBlockParamUnion, error) {

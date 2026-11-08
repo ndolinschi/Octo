@@ -17,12 +17,29 @@ import (
 
 func TestRunner_ToolRoundTrip(t *testing.T) {
 	var calls atomic.Int32
+	var secondMsgCount atomic.Int32
+	var secondHasToolResult atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" {
 			http.Error(w, "unexpected request", http.StatusNotFound)
 			return
 		}
+		var body struct {
+			Messages []json.RawMessage `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		n := calls.Add(1)
+		if n == 2 {
+			secondMsgCount.Store(int32(len(body.Messages)))
+			for _, raw := range body.Messages {
+				if strings.Contains(string(raw), `"type":"tool_result"`) || strings.Contains(string(raw), `"type": "tool_result"`) {
+					secondHasToolResult.Store(true)
+				}
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		switch n {
 		case 1:
@@ -64,7 +81,7 @@ func TestRunner_ToolRoundTrip(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	client := anthropicclient.New("test-key", srv.URL)
+	client := anthropicclient.New("test-key", srv.URL, "")
 	r := &Runner{
 		Client:   client,
 		Registry: reg,
@@ -91,6 +108,12 @@ func TestRunner_ToolRoundTrip(t *testing.T) {
 	}
 	if calls.Load() != 2 {
 		t.Fatalf("API calls = %d, want 2", calls.Load())
+	}
+	if secondMsgCount.Load() < 3 {
+		t.Fatalf("second request messages = %d, want >= 3 (user + assistant tool_use + tool_result)", secondMsgCount.Load())
+	}
+	if !secondHasToolResult.Load() {
+		t.Fatal("second request missing tool_result block")
 	}
 }
 
@@ -129,7 +152,7 @@ func TestRunner_MaxTurnsExceeded(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	client := anthropicclient.New("test-key", srv.URL)
+	client := anthropicclient.New("test-key", srv.URL, "")
 	r := &Runner{
 		Client:   client,
 		Registry: reg,

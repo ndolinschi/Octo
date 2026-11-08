@@ -73,7 +73,8 @@ pub fn resolve_cost(usage: &ParsedUsage, model: Option<&str>, prices: &PriceTabl
         .and_then(|slug| prices.get(slug))
         .and_then(|price| estimate_cost(usage, price));
 
-    let (cost, source) = if let Some(est) = estimated_cost {
+    // first non-zero: estimate → upstream → openrouter; zero estimate still recorded in estimated_cost
+    let (cost, source) = if let Some(est) = estimated_cost.filter(|c| c.0 > 0) {
         (Some(est), CostSource::Estimate)
     } else if let Some(up) = upstream_cost.filter(|c| c.0 > 0) {
         (Some(up), CostSource::Upstream)

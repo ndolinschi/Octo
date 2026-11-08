@@ -34,6 +34,12 @@ func (r *Registry) Register(d Def) error {
 	if d.Handle == nil {
 		return fmt.Errorf("tool %q: handler required", d.Name)
 	}
+	if len(d.InputSchema) > 0 {
+		var schema anthropic.ToolInputSchemaParam
+		if err := json.Unmarshal(d.InputSchema, &schema); err != nil {
+			return fmt.Errorf("tool %q: input schema: %w", d.Name, err)
+		}
+	}
 	if _, ok := r.byName[d.Name]; ok {
 		return fmt.Errorf("tool %q already registered", d.Name)
 	}
