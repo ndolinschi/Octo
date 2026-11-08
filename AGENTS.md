@@ -4,9 +4,10 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
 
 | App | Path | Stack | Notes |
 | --- | --- | --- | --- |
-| **router** (Octo) | [`apps/router/`](./apps/router/) | Rust (crate `octo`) | HTTP proxy + autoroute; only app today |
+| **router** (Octo) | [`apps/router/`](./apps/router/) | Rust (crate `octo`) | HTTP proxy + autoroute |
+| **harness** | [`harness/`](./harness/) | Go 1.26+ | Anthropic Messages agent client (tools, sessions) |
 
-Future apps (including a non-Rust frontend) go under `apps/<name>/` with their own toolchain. Do not invent shared crates until something is actually shared.
+Future apps go under `apps/<name>/` (or a top-level module like `harness/` when intentionally separate). Do not invent shared libraries until something is actually shared.
 
 ## Layout
 
@@ -17,6 +18,8 @@ Future apps (including a non-Rust frontend) go under `apps/<name>/` with their o
   .cargo/config.toml      # SQLX_OFFLINE for the workspace
   AGENTS.md               # this file
   apps/router/            # Octo proxy application
+  harness/                # Go agent harness (own go.mod)
+  scripts/                # host tooling (e.g. Go toolchain install)
   .cursor/                # skills + rules (repo-wide)
   .github/workflows/      # CI
 ```
@@ -63,9 +66,25 @@ SQLX_OFFLINE=false cargo sqlx prepare -- --tests
 
 Commit updated `apps/router/.sqlx/` with SQL / `query!` changes.
 
+## Harness (Go)
+
+Product docs: [`harness/docs/README.md`](./harness/docs/README.md). Cursor rules: `.cursor/rules/octo-go.mdc`, `go-pr-checklist.mdc`, `verify-go.mdc`.
+
+From the monorepo root:
+
+```bash
+bash scripts/install-go-toolchain.sh   # idempotent; pins Go 1.26.x into /usr/local
+cd harness
+go test ./...
+go vet ./...
+go build -o /tmp/octo-harness ./cmd/harness
+```
+
+Do not share SQLite/config with the router. Point `ANTHROPIC_BASE_URL` at Octo when using the proxy.
+
 ## Editor
 
-Open the **monorepo root** (folder with the workspace `Cargo.toml`) so rust-analyzer sees the workspace. Extension hint: `.vscode/extensions.json` → `rust-lang.rust-analyzer`.
+Open the **monorepo root** (folder with the workspace `Cargo.toml`) so rust-analyzer sees the workspace. For harness, open or multi-root `harness/` so gopls sees `go.mod`. Extensions: `.vscode/extensions.json` → `rust-lang.rust-analyzer`, `golang.go`.
 
 ## Skills
 
@@ -90,6 +109,7 @@ Bootstrap rules: `.cursor/rules/superpowers-bootstrap.mdc`, `.cursor/rules/ponyt
 
 ## What not to do
 
-- Do not put application source back at the repo root; new code for the proxy goes in `apps/router/`
+- Do not put router source back at the repo root; proxy code stays in `apps/router/`
+- Do not mix harness and router persistence or config loaders
 - Do not add empty `packages/` or shared crates “for later”
-- Do not commit `target/`, local secrets, or skip verification when skills require it
+- Do not commit `target/`, `harness/data/`, local secrets, or skip verification when skills require it

@@ -1,0 +1,15 @@
+{
+  "go.useLanguageServer": true,
+  "gopls": {
+    "ui.semanticTokens": true
+  },
+  "[go]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "go.lintTool": "golangci-lint",
+  "go.lintFlags": ["--fast"],
+  "go.testFlags": ["-count=1"]
+}

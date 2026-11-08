@@ -29,7 +29,7 @@ flowchart TB
 
 | Path | Role |
 | --- | --- |
-| `cmd/harness` | CLI: `run`, `sessions`, `show` |
+| `cmd/harness` | CLI: `run`, `sessions`, `show` (wiring only) |
 | `internal/config` | Env defaults (`ANTHROPIC_*`, `HARNESS_*`) |
 | `internal/anthropicclient` | SDK client + optional `ANTHROPIC_BASE_URL` |
 | `internal/agent` | Turn loop, streaming assistant text, tool dispatch |
@@ -39,6 +39,13 @@ flowchart TB
 | `internal/tools/remote` | `GET {base}/tools` discovery, `POST {base}/tools/{name}` invoke |
 | `internal/cache` | On-disk cache for remote manifests (fallback when GET fails) |
 | `examples/remotetool` | Minimal remote tool server |
+
+## Conventions
+
+- Cursor rules: `.cursor/rules/octo-go.mdc`, `go-pr-checklist.mdc`, `verify-go.mdc`.
+- Soft cap **~250 lines** per `.go` file; split by responsibility.
+- All I/O takes `context.Context`; shared state must be race-free.
+- Planned project roots for Anthropic-compatible **skills/hooks**: `.agency/` and `.code/` (same shapes as Claude Code: `skills/*/SKILL.md`, hooks in `settings.json`). Loaders stay out of the agent core.
 
 ## Agent loop
 

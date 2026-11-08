@@ -10,21 +10,18 @@ The **`bash`** tool runs real shell commands as the user running the harness. It
 
 ## Prerequisites
 
-- Go 1.26+
+- Go 1.26+ (`bash scripts/install-go-toolchain.sh` from the monorepo root)
 - `ANTHROPIC_API_KEY` (sent upstream; for Octo, use the same key your client would send to Messages)
+
+Coding standards (agents/editors): `.cursor/rules/octo-go.mdc`, `go-pr-checklist.mdc`, `verify-go.mdc`.
 
 ## Build
 
 ```bash
 cd harness
-go build -o octo-harness ./cmd/harness
-```
-
-## Test
-
-```bash
-cd harness
+go vet ./...
 go test ./...
+go build -o octo-harness ./cmd/harness
 ```
 
 ## Run (direct Messages through Octo)
