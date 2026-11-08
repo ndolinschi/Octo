@@ -55,7 +55,7 @@ pie showData
 | --- | --- | --- | --- |
 | Soft-fail history | DB fail → proxy continues without DB | Silent loss of FinOps | `proxy/mod.rs` |
 | Insert backpressure | 32 slots, 5s, then **drop** | Missing rows under burst (warn includes `session_id`) | verification F3 |
-| Stream vs history status | Client 200 possible while history 502 | Confusing recon; warn logs session | AGENTS.md |
+| Stream fail after headers | Client may see truncated body; history keeps header status | Warn logs session; recon by status alone can miss truncation | AGENTS.md |
 | `session_budget_usd` | **0 (disabled)** | Cap unused until configured | `autoroute.toml` |
 | `background_by_client_model` | **false** | `bg_signal` observe-only | defaults regression |
 | `server_tool_mode` | **passthrough** | Server tools hit models that may not support them | `autoroute_server_tools` |
