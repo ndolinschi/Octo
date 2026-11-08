@@ -1,6 +1,6 @@
 # Octo documentation
 
-Canonical product docs for the Octo proxy. Operational agent notes stay in [`AGENTS.md`](../AGENTS.md); this tree explains **how the system works**, **what is reliable today**, and **what is not**.
+Canonical product docs for the Octo proxy (`apps/router`). Operational agent notes stay in [`AGENTS.md`](../AGENTS.md); monorepo map in [`../../../AGENTS.md`](../../../AGENTS.md). This tree explains **how the system works**, **what is reliable today**, and **what is not**.
 
 | Doc | Contents |
 | --- | --- |

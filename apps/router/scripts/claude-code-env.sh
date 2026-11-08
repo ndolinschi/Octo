@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Sourceable Claude Code → local Octo /autoroute env (Mistral tiers).
 #
-# Usage (from repo root):
+# Usage (from apps/router):
 #   cp .env.example .env    # once; put real OPENROUTER_API_KEY there
 #   source scripts/claude-code-env.sh
 #   claude
 #
 # Loads (if present), in order — later wins for the same var:
 #   1) experiments/.env
-#   2) repo-root .env
+#   2) apps/router .env
 # Non-placeholder already-exported OPENROUTER_API_KEY / ANTHROPIC_BASE_URL
 # win over .env. Claude Code auth is always ANTHROPIC_AUTH_TOKEN =
 # OPENROUTER_API_KEY (ANTHROPIC_API_KEY is unset).
