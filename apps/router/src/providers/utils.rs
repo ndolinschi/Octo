@@ -185,10 +185,7 @@ impl Capture {
     }
 
     fn finish(self, status: u16, output: Vec<u8>, tail: Vec<u8>, response_bytes: usize) {
-        let status = if self.initial_status >= 200
-            && self.initial_status < 300
-            && status == 502
-        {
+        let status = if self.initial_status >= 200 && self.initial_status < 300 && status == 502 {
             tracing::warn!(
                 session_id = self.observe.session_id.as_deref().unwrap_or(""),
                 initial_status = self.initial_status,

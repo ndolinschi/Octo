@@ -312,32 +312,32 @@ impl History {
                 }
             }
             let _done = Done(inflight, idle);
-            let permit =
-                match tokio::time::timeout(acquire_timeout, inserts.acquire_owned()).await {
-                    Ok(Ok(permit)) => permit,
-                    Ok(Err(_)) => {
-                        dropped.fetch_add(1, Ordering::Relaxed);
-                        tracing::warn!(
-                            kind = %call.kind,
-                            provider = %call.provider,
-                            session_id = call.session_id.as_deref().unwrap_or(""),
-                            "history insert skipped; insert pool closed"
-                        );
-                        return;
-                    }
-                    Err(_) => {
-                        dropped.fetch_add(1, Ordering::Relaxed);
-                        tracing::warn!(
-                            kind = %call.kind,
-                            provider = %call.provider,
-                            session_id = call.session_id.as_deref().unwrap_or(""),
-                            model = call.model.as_deref().unwrap_or(""),
-                            trigger = %call.trigger,
-                            "history insert skipped; queue wait timed out"
-                        );
-                        return;
-                    }
-                };
+            let permit = match tokio::time::timeout(acquire_timeout, inserts.acquire_owned()).await
+            {
+                Ok(Ok(permit)) => permit,
+                Ok(Err(_)) => {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        kind = %call.kind,
+                        provider = %call.provider,
+                        session_id = call.session_id.as_deref().unwrap_or(""),
+                        "history insert skipped; insert pool closed"
+                    );
+                    return;
+                }
+                Err(_) => {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        kind = %call.kind,
+                        provider = %call.provider,
+                        session_id = call.session_id.as_deref().unwrap_or(""),
+                        model = call.model.as_deref().unwrap_or(""),
+                        trigger = %call.trigger,
+                        "history insert skipped; queue wait timed out"
+                    );
+                    return;
+                }
+            };
             let _permit = permit;
             let captured_bytes = call.request_bytes.saturating_add(call.response_bytes);
             match insert_call(&pool, &call, store_payloads).await {

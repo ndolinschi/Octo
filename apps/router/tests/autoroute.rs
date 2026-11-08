@@ -1507,10 +1507,7 @@ fn require_parameters_replaces_string_provider_with_object() {
         require_parameters: RequireParameters::Always,
     })
     .body;
-    assert_eq!(
-        shaped["provider"],
-        json!({"require_parameters": true})
-    );
+    assert_eq!(shaped["provider"], json!({"require_parameters": true}));
 }
 
 #[test]
