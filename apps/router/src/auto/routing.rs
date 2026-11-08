@@ -6,22 +6,9 @@ pub fn normalize_trigger(reason: Option<&str>) -> String {
         return format!("stall:{kind}");
     }
     match reason {
-        "classify"
-        | "reclassify"
-        | "upgrade"
-        | "retry"
-        | "hysteresis_hold"
-        | "budget_cap"
-        | "housekeeping"
-        | "housekeeping_trimmed"
-        | "permission_check"
-        | "background_model"
-        | "subagent_default"
-        | "compact" => reason.to_string(),
         "tool_update" => "reclassify".to_string(),
         "upstream_retry" => "retry".to_string(),
-        "stall_release" => "none".to_string(),
-        _ => "none".to_string(),
+        other => other.to_string(),
     }
 }
 

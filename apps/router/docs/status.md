@@ -62,7 +62,7 @@ pie showData
 | Chat autoroute compact | No Messages compact API | Chat overflow ≠ messages compact | `allow_compact: !chat` |
 | Text-as-tool-call | Detect + **next-turn** escalate | Mid-tier can emit Agent JSON as text this turn | [debug/text-tool-call](./debug/2026-11-06-text-tool-call.md) |
 | `prices.toml` zeros | Ladder rates may be `0.0` | Estimate skipped until nonzero rates | `prices.toml` |
-| `provider_order` empty | OpenRouter chooses endpoint | Mid via Cloudflare vs Mistral variance | ratelim / text-tool docs |
+| `provider_order` Mistral | Prefers Mistral endpoint | Hard-fail if Mistral down and fallbacks false | ratelim / text-tool docs |
 | Filter-by-Parameters | Strip list tuned for known keys | New Anthropic-only fields → 404 again | [experiments/ratelim](./experiments/2026-11-06-ratelim.md) |
 
 ```mermaid

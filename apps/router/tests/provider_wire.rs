@@ -20,7 +20,7 @@ fn loads_split_config_directory() {
     assert_eq!(config.autoroute_low_model, "mistralai/ministral-8b-2512");
     assert_eq!(
         config.autoroute_mid_model,
-        "mistralai/mistral-small-3.1-24b-instruct"
+        "mistralai/mistral-small-3.2-24b-instruct"
     );
     assert_eq!(config.autoroute_high_model, "mistralai/devstral-2512");
     assert_eq!(config.autoroute_hard_threshold, 0.5);
@@ -29,6 +29,7 @@ fn loads_split_config_directory() {
     assert_eq!(config.autoroute_escalate_turns, 3);
     assert_eq!(config.autoroute_down_confirm, 2);
     assert!(config.autoroute_high_allow.is_empty());
+    assert_eq!(config.autoroute_provider_order, vec!["Mistral".to_string()]);
     assert_eq!(config.autoroute_session_budget_usd, 0.0);
     assert_eq!(
         config.autoroute_strip_fields,

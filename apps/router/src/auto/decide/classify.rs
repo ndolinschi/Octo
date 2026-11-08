@@ -76,7 +76,9 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
         asked: &asked,
     });
     let classified = asked.parsed?;
-    let model = plan.ctx.tiers.pick(classified.complexity, plan.preferred);
+    let complexity =
+        bump_tool_inspection_off_easy(classified.complexity, plan.ctx.all_tools, &user_text);
+    let model = plan.ctx.tiers.pick(complexity, plan.preferred);
     let tools = jev::needed_tools(jev::ToolNeed {
         all: plan.ctx.all_tools,
         current: plan.current,
@@ -84,10 +86,25 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
         missing: &classified.missing_tools,
     });
     Some(ClassifiedPick {
-        complexity: classified.complexity,
+        complexity,
         model,
         tools,
     })
+}
+
+fn bump_tool_inspection_off_easy(
+    complexity: jev::Complexity,
+    tools: &[String],
+    user_text: &str,
+) -> jev::Complexity {
+    if !matches!(complexity, jev::Complexity::Low) || tools.is_empty() {
+        return complexity;
+    }
+    if jev::asks_file_or_repo_inspection(user_text) {
+        jev::Complexity::Mid
+    } else {
+        complexity
+    }
 }
 
 struct RecordPlan<'a> {

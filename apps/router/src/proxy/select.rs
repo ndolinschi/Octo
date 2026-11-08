@@ -175,7 +175,18 @@ pub fn resolve_messages_provider(
 
     let type_removed = map.remove("type");
     let octo_removed = map.remove("octo_provider");
-    let out = serde_json::to_vec(&Value::Object(map)).unwrap_or_else(|_| body.to_vec());
+    let mut normalized = Value::Object(map);
+    crate::auto::fold_in_message_system(&mut normalized);
+    if let Some(model) = normalized
+        .get("model")
+        .and_then(Value::as_str)
+        .map(|slug| crate::auto::bare_id(slug).to_string())
+    {
+        if let Some(object) = normalized.as_object_mut() {
+            object.insert("model".to_string(), Value::String(model));
+        }
+    }
+    let out = serde_json::to_vec(&normalized).unwrap_or_else(|_| body.to_vec());
 
     let body_hint = body_hint_from_selectors_messages(&type_removed, &octo_removed);
     validate_messages_selectors(path_hint, &type_removed, &octo_removed, body_hint)?;

@@ -20,6 +20,7 @@ func TestRunner_ToolRoundTrip(t *testing.T) {
 	var calls atomic.Int32
 	var secondMsgCount atomic.Int32
 	var secondHasToolResult atomic.Bool
+	var sawSessionMeta atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" {
 			http.Error(w, "unexpected request", http.StatusNotFound)
@@ -27,10 +28,16 @@ func TestRunner_ToolRoundTrip(t *testing.T) {
 		}
 		var body struct {
 			Messages []json.RawMessage `json:"messages"`
+			Metadata struct {
+				UserID string `json:"user_id"`
+			} `json:"metadata"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+		if strings.Contains(body.Metadata.UserID, `"session_id"`) {
+			sawSessionMeta.Store(true)
 		}
 		n := calls.Add(1)
 		if n == 2 {
@@ -115,6 +122,55 @@ func TestRunner_ToolRoundTrip(t *testing.T) {
 	}
 	if !secondHasToolResult.Load() {
 		t.Fatal("second request missing tool_result block")
+	}
+	if !sawSessionMeta.Load() {
+		t.Fatal("request missing metadata.user_id session_id JSON")
+	}
+}
+
+func TestRunner_SendsSessionMetadata(t *testing.T) {
+	var gotUserID atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Metadata struct {
+				UserID string `json:"user_id"`
+			} `json:"metadata"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotUserID.Store(body.Metadata.UserID)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{
+			"id":"msg_1","type":"message","role":"assistant",
+			"content":[{"type":"text","text":"ok"}],
+			"model":"claude-test","stop_reason":"end_turn",
+			"usage":{"input_tokens":1,"output_tokens":1}
+		}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	r := &Runner{
+		Client:   anthropicclient.New("test-key", srv.URL, ""),
+		Registry: tools.NewRegistry(),
+		Store:    st,
+		Model:    "claude-test",
+		MaxTurns: 2,
+		Stream:   false,
+	}
+	sessionID, _, err := r.Run(ctx, "hi")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	raw, _ := gotUserID.Load().(string)
+	want := fmt.Sprintf(`{"session_id":%q}`, sessionID)
+	if raw != want {
+		t.Fatalf("metadata.user_id = %q, want %q", raw, want)
 	}
 }
 

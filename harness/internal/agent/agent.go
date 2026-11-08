@@ -59,6 +59,10 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 		Model:     anthropic.Model(r.Model),
 		MaxTokens: 4096,
 		Tools:     toolDefs,
+		Metadata: anthropic.MetadataParam{
+			// Octo reads metadata.user_id as JSON {"session_id":"..."} for sticky/budget.
+			UserID: anthropic.String(fmt.Sprintf(`{"session_id":%q}`, sessionID)),
+		},
 	}
 
 	for turn := 1; turn <= maxTurns; turn++ {

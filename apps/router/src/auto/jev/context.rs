@@ -224,6 +224,33 @@ fn mentions_multiple_files(text: &str) -> bool {
         || lower.contains("both files")
 }
 
+pub fn asks_file_or_repo_inspection(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let intent = lower.contains("list file")
+        || lower.contains("list files")
+        || lower.contains("files in")
+        || lower.contains("list dir")
+        || lower.contains("list directory")
+        || lower.contains("read file")
+        || lower.contains("show file")
+        || lower.contains("open file")
+        || lower.contains("inspect")
+        || lower.contains("look at")
+        || lower.contains("look in")
+        || has_word(&lower, "ls")
+        || has_word(&lower, "tree");
+    if !intent {
+        return false;
+    }
+    path_mentions(text) > 0
+        || lower.contains("repo")
+        || lower.contains("codebase")
+        || lower.contains("project")
+        || lower.contains("directory")
+        || lower.contains("folder")
+        || lower.contains("workspace")
+}
+
 fn path_mentions(text: &str) -> usize {
     text.split_whitespace()
         .filter(|token| looks_like_path(token.trim_matches(|c: char| ".,;:()[]{}\"'".contains(c))))

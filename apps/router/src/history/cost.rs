@@ -47,11 +47,19 @@ impl PriceTable {
     }
 
     pub fn get(&self, model: &str) -> Option<&ModelPrice> {
-        let needle = model.trim_start_matches('~');
+        let needle = strip_price_model_id(model);
         self.rows
             .iter()
-            .find(|(slug, _)| slug == needle || slug.trim_start_matches('~') == needle)
+            .find(|(slug, _)| strip_price_model_id(slug) == needle)
             .map(|(_, price)| price)
+    }
+}
+
+fn strip_price_model_id(model: &str) -> &str {
+    let bare = model.trim_start_matches('~');
+    match bare.rsplit_once('[') {
+        Some((prefix, rest)) if rest.ends_with(']') && !prefix.is_empty() => prefix,
+        _ => bare,
     }
 }
 

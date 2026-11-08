@@ -495,7 +495,7 @@ pub fn max_tokens(body: &Value) -> u64 {
 pub fn preferred_model(body: &Value) -> Option<String> {
     body.get("model")
         .and_then(Value::as_str)
-        .map(str::to_string)
+        .map(|model| catalog::bare_id(model).to_string())
 }
 
 fn tool_name(tool: &Value) -> Option<&str> {
@@ -509,7 +509,7 @@ fn tool_name(tool: &Value) -> Option<&str> {
 pub fn with_model(body: &Value, model: &str) -> Value {
     let mut copy = body.clone();
     if let Some(object) = copy.as_object_mut() {
-        object.insert("model".to_string(), json!(model));
+        object.insert("model".to_string(), json!(catalog::bare_id(model)));
     }
     copy
 }
@@ -576,6 +576,7 @@ impl<'a> ShapePlan<'a> {
 
 pub fn shape(plan: ShapePlan<'_>) -> ShapeResult {
     let mut copy = with_model(plan.body, plan.model);
+    fold_in_message_system(&mut copy);
     let model_changed = plan
         .previous_model
         .is_some_and(|previous| !ids_match(previous, plan.model));
@@ -590,6 +591,48 @@ pub fn shape(plan: ShapePlan<'_>) -> ShapeResult {
     ShapeResult {
         body: copy,
         stripped,
+    }
+}
+
+/// Claude Code may put `role: system` inside `messages[]` (even after tool_result).
+/// OpenRouter/Mistral reject that; fold those entries into top-level `system`.
+pub fn fold_in_message_system(body: &mut Value) {
+    let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let mut extras = Vec::new();
+    messages.retain(|message| {
+        if message.get("role").and_then(Value::as_str) != Some("system") {
+            return true;
+        }
+        let text = content_text(message.get("content"));
+        if !text.is_empty() {
+            extras.push(text);
+        }
+        false
+    });
+    if extras.is_empty() {
+        return;
+    }
+    let joined = extras.join("\n\n");
+    let Some(object) = body.as_object_mut() else {
+        return;
+    };
+    match object.get_mut("system") {
+        Some(Value::String(existing)) => {
+            if existing.is_empty() {
+                *existing = joined;
+            } else {
+                existing.push_str("\n\n");
+                existing.push_str(&joined);
+            }
+        }
+        Some(Value::Array(parts)) => {
+            parts.push(json!({"type": "text", "text": joined}));
+        }
+        _ => {
+            object.insert("system".to_string(), json!(joined));
+        }
     }
 }
 
