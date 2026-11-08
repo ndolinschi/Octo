@@ -1490,6 +1490,30 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
 }
 
 #[test]
+fn require_parameters_replaces_string_provider_with_object() {
+    let body = json!({
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "provider": "mistral"
+    });
+    let shaped = shape(ShapePlan {
+        body: &body,
+        model: "m",
+        previous_model: None,
+        models: None,
+        provider_order: &[],
+        allow_fallbacks: true,
+        strip_fields: &[],
+        require_parameters: RequireParameters::Always,
+    })
+    .body;
+    assert_eq!(
+        shaped["provider"],
+        json!({"require_parameters": true})
+    );
+}
+
+#[test]
 fn trim_housekeeping_keeps_system_tools_and_valid_slice() {
     let mut body: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/claude_code_messages.json")).unwrap();

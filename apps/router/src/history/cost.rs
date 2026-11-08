@@ -73,7 +73,7 @@ pub fn resolve_cost(usage: &ParsedUsage, model: Option<&str>, prices: &PriceTabl
         .and_then(|slug| prices.get(slug))
         .and_then(|price| estimate_cost(usage, price));
 
-    let (cost, source) = if let Some(est) = estimated_cost.filter(|c| c.0 > 0) {
+    let (cost, source) = if let Some(est) = estimated_cost {
         (Some(est), CostSource::Estimate)
     } else if let Some(up) = upstream_cost.filter(|c| c.0 > 0) {
         (Some(up), CostSource::Upstream)
@@ -94,6 +94,17 @@ pub fn resolve_cost(usage: &ParsedUsage, model: Option<&str>, prices: &PriceTabl
     }
 }
 
+fn token_micros(tokens: u64, rate_usd_per_mtok: f64) -> u128 {
+    if !rate_usd_per_mtok.is_finite() || tokens == 0 {
+        return 0;
+    }
+    let per_mtok_micros = (rate_usd_per_mtok * 1_000_000.0).round() as i128;
+    if per_mtok_micros <= 0 {
+        return 0;
+    }
+    (tokens as i128 * per_mtok_micros / 1_000_000) as u128
+}
+
 fn estimate_cost(usage: &ParsedUsage, price: &ModelPrice) -> Option<CostMicros> {
     if !price.rates_complete || !price.any_nonzero() {
         return None;
@@ -103,15 +114,11 @@ fn estimate_cost(usage: &ParsedUsage, price: &ModelPrice) -> Option<CostMicros> 
     let cache_write = usage.cache_write_tokens.map(|t| t.0).unwrap_or(0);
     let output = usage.output_tokens.map(|t| t.0).unwrap_or(0);
     let uncached = input.saturating_sub(cache_read);
-    let usd = (uncached as f64) * price.input / 1_000_000.0
-        + (cache_read as f64) * price.cache_read / 1_000_000.0
-        + (cache_write as f64) * price.cache_write / 1_000_000.0
-        + (output as f64) * price.output / 1_000_000.0;
-    if !usd.is_finite() || usd <= 0.0 {
-        return None;
-    }
-    let micros = (usd * 1_000_000.0).round();
-    if micros > u64::MAX as f64 {
+    let micros = token_micros(uncached, price.input)
+        + token_micros(cache_read, price.cache_read)
+        + token_micros(cache_write, price.cache_write)
+        + token_micros(output, price.output);
+    if micros > u64::MAX as u128 {
         return None;
     }
     Some(CostMicros(micros as u64))

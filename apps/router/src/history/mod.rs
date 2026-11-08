@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -55,6 +55,7 @@ pub struct History {
     inserts: Arc<Semaphore>,
     inflight: Arc<AtomicUsize>,
     idle: Arc<Notify>,
+    dropped_inserts: Arc<AtomicU64>,
 }
 
 impl History {
@@ -68,7 +69,12 @@ impl History {
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
+            dropped_inserts: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    pub fn dropped_inserts(&self) -> u64 {
+        self.dropped_inserts.load(Ordering::Relaxed)
     }
 
     pub fn capture_limit(&self) -> usize {
@@ -108,6 +114,7 @@ impl History {
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
+            dropped_inserts: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -278,6 +285,7 @@ impl History {
         let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
+        let dropped = self.dropped_inserts.clone();
         let store_payloads = self.store_payloads;
         inflight.fetch_add(1, Ordering::AcqRel);
         tokio::spawn(async move {
@@ -294,6 +302,7 @@ impl History {
                 match tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await {
                     Ok(Ok(permit)) => permit,
                     Ok(Err(_)) => {
+                        dropped.fetch_add(1, Ordering::Relaxed);
                         tracing::warn!(
                             kind = %call.kind,
                             provider = %call.provider,
@@ -303,6 +312,7 @@ impl History {
                         return;
                     }
                     Err(_) => {
+                        dropped.fetch_add(1, Ordering::Relaxed);
                         tracing::warn!(
                             kind = %call.kind,
                             provider = %call.provider,

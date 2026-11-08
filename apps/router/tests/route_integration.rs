@@ -162,6 +162,7 @@ async fn autoroute_status_returns_seeded_session() {
     assert_eq!(body["tier"], "mid");
     assert_eq!(body["model"], "mid-m");
     assert!((body["cost_usd"].as_f64().unwrap() - 0.25).abs() < 1e-9);
+    assert_eq!(body["history_dropped_inserts"], 0);
 }
 
 #[tokio::test]

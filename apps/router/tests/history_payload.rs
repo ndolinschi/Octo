@@ -175,6 +175,30 @@ fn byok_sse_prefers_upstream_inference_cost() {
 }
 
 #[test]
+fn estimate_cost_rounds_tiny_usage_to_zero_micros_not_none() {
+    use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
+
+    let usage = usage_from_output(
+        r#"{"usage":{"input_tokens":1,"output_tokens":0,"cache_read_input_tokens":0,"cost":0}}"#,
+    );
+    let prices = PriceTable::new(vec![(
+        "tiny-model".into(),
+        ModelPrice {
+            input: 0.000_001,
+            cache_read: 0.0,
+            cache_write: 0.0,
+            output: 0.0,
+            billed_as: None,
+            rates_complete: true,
+        },
+    )]);
+    let resolved = resolve_cost(&usage, Some("tiny-model"), &prices);
+    assert_eq!(resolved.source, CostSource::Estimate);
+    assert_eq!(resolved.estimated_cost, Some(CostMicros(0)));
+    assert_eq!(resolved.cost, Some(CostMicros(0)));
+}
+
+#[test]
 fn estimate_beats_upstream_when_prices_set() {
     use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
 

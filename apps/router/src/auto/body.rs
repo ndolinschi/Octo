@@ -637,7 +637,9 @@ fn apply_require_parameters(body: &mut Value, mode: RequireParameters) {
                 .entry("require_parameters")
                 .or_insert_with(|| json!(true));
         }
-        Some(_) => {}
+        Some(_) => {
+            object.insert("provider".to_string(), json!({"require_parameters": true}));
+        }
         None => {
             object.insert("provider".to_string(), json!({"require_parameters": true}));
         }

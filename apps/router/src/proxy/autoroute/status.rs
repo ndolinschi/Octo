@@ -74,5 +74,6 @@ async fn build_status(state: &AppState, session_id: &str) -> Option<Value> {
         "cost_source_breakdown": breakdown,
         "budget_usd": state.config.autoroute_session_budget_usd,
         "updated_at": updated_at,
+        "history_dropped_inserts": state.history.dropped_inserts(),
     }))
 }

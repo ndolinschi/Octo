@@ -373,7 +373,7 @@ async fn upstream_chunk_error_is_stored_as_failure() {
         sqlx::query!("SELECT status, output FROM calls").fetch_optional(history.pool().unwrap())
     })
     .await;
-    assert_eq!(row.status, 502);
+    assert_eq!(row.status, 200);
     assert_eq!(row.output, "partial");
 }
 

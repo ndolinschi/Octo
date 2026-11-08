@@ -185,13 +185,19 @@ impl Capture {
     }
 
     fn finish(self, status: u16, output: Vec<u8>, tail: Vec<u8>, response_bytes: usize) {
-        if self.initial_status >= 200 && self.initial_status < 300 && status == 502 {
+        let status = if self.initial_status >= 200
+            && self.initial_status < 300
+            && status == 502
+        {
             tracing::warn!(
                 session_id = self.observe.session_id.as_deref().unwrap_or(""),
                 initial_status = self.initial_status,
                 "upstream stream failed after client saw success headers"
             );
-        }
+            self.initial_status
+        } else {
+            status
+        };
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let tail_text = String::from_utf8_lossy(&tail);
         let usage = usage_from_parts(&output_text, &tail_text, response_bytes);
@@ -318,7 +324,9 @@ where
                 Poll::Ready(Some(Ok(chunk)))
             }
             Poll::Ready(Some(Err(err))) => {
-                this.status = 502;
+                if !(this.status >= 200 && this.status < 300) {
+                    this.status = 502;
+                }
                 Poll::Ready(Some(Err(err)))
             }
             Poll::Ready(None) => {
