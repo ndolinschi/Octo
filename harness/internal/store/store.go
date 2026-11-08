@@ -32,6 +32,20 @@ type Store struct {
 	path string
 }
 
+type SessionInfo struct {
+	ID        string `json:"id"`
+	Model     string `json:"model"`
+	CreatedAt string `json:"created_at"`
+}
+
+type StoredMessage struct {
+	ID          int64  `json:"id"`
+	SessionID   string `json:"session_id"`
+	Role        string `json:"role"`
+	ContentJSON string `json:"content_json"`
+	CreatedAt   string `json:"created_at"`
+}
+
 func Open(dataDir string) (*Store, error) {
 	dbPath := filepath.Join(dataDir, "harness.sqlite")
 	db, err := sql.Open("sqlite", dbPath)
@@ -68,6 +82,44 @@ func (s *Store) AppendMessage(ctx context.Context, sessionID, role string, conte
 		sessionID, role, string(contentJSON), now,
 	)
 	return err
+}
+
+func (s *Store) ListSessions(ctx context.Context) ([]SessionInfo, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, model, created_at FROM sessions ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SessionInfo
+	for rows.Next() {
+		var si SessionInfo
+		if err := rows.Scan(&si.ID, &si.Model, &si.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, si)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetMessages(ctx context.Context, sessionID string) ([]StoredMessage, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, session_id, role, content_json, created_at FROM messages WHERE session_id = ? ORDER BY id`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []StoredMessage
+	for rows.Next() {
+		var m StoredMessage
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.ContentJSON, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) MessageCount(ctx context.Context, sessionID string) (int, error) {

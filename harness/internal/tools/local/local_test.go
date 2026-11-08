@@ -118,6 +118,32 @@ func TestWriteReadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestReadFile_TruncatesLargeFile(t *testing.T) {
+	workspace := t.TempDir()
+	big := strings.Repeat("a", tools.MaxOutputBytes+100)
+	if err := os.WriteFile(filepath.Join(workspace, "big.txt"), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := tools.NewRegistry()
+	if err := Register(reg, workspace); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	def, ok := reg.Get("read_file")
+	if !ok {
+		t.Fatal("read_file not registered")
+	}
+	out, isError, err := def.Handle(context.Background(), json.RawMessage(`{"path":"big.txt"}`))
+	if err != nil || isError {
+		t.Fatalf("Handle: err=%v isError=%v out=%s", err, isError, out)
+	}
+	if !strings.HasSuffix(out, "...truncated") {
+		t.Fatal("expected truncation suffix")
+	}
+	if len(out) > tools.MaxOutputBytes+20 {
+		t.Fatalf("output too long: %d", len(out))
+	}
+}
+
 func TestBashEcho(t *testing.T) {
 	workspace := t.TempDir()
 	reg := tools.NewRegistry()

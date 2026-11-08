@@ -5,16 +5,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ndolinschi/Octo/harness/internal/tools"
 )
 
 const bashTimeout = 30 * time.Second
+
+var bashTrustWarn sync.Once
 
 var schemaBash = json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to run"}},"required":["command"]}`)
 var schemaReadFile = json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Relative path under workspace"}},"required":["path"]}`)
@@ -64,6 +68,9 @@ func Register(reg *tools.Registry, workspace string) error {
 
 func bashHandler(workspace string) tools.Handler {
 	return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
+		bashTrustWarn.Do(func() {
+			slog.Warn("bash runs real shell commands with the harness process privileges; not sandboxed")
+		})
 		var in struct {
 			Command string `json:"command"`
 		}
@@ -92,9 +99,9 @@ func bashHandler(workspace string) tools.Handler {
 			if out == "" {
 				out = err.Error()
 			}
-			return out, true, nil
+			return tools.CapString(out), true, nil
 		}
-		return out, false, nil
+		return tools.CapString(out), false, nil
 	}
 }
 
@@ -114,7 +121,7 @@ func readFileHandler(workspace string) tools.Handler {
 		if err != nil {
 			return err.Error(), true, nil
 		}
-		return string(data), false, nil
+		return string(tools.CapBytes(data)), false, nil
 	}
 }
 

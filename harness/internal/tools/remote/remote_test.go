@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/ndolinschi/Octo/harness/internal/cache"
 	"github.com/ndolinschi/Octo/harness/internal/tools"
 )
 
@@ -156,6 +158,67 @@ func TestRemoteRegisterBadDiscoverNotCached(t *testing.T) {
 	}
 	if _, ok := reg.Get("ok"); !ok {
 		t.Fatal("ok tool not registered")
+	}
+}
+
+func TestRemoteInvokePathEscape(t *testing.T) {
+	var escapedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/tools" {
+			_, _ = io.WriteString(w, `[{"name":"a/b","description":"slash name","input_schema":{"type":"object"}}]`)
+			return
+		}
+		escapedPath = r.URL.EscapedPath()
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+
+	reg := tools.NewRegistry()
+	if err := Register(context.Background(), reg, []string{srv.URL}, t.TempDir()); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	def, ok := reg.Get("a/b")
+	if !ok {
+		t.Fatal("a/b not registered")
+	}
+	_, isError, err := def.Handle(context.Background(), json.RawMessage(`{}`))
+	if err != nil || isError {
+		t.Fatalf("Handle: err=%v isError=%v", err, isError)
+	}
+	want := "/tools/" + url.PathEscape("a/b")
+	if escapedPath != want {
+		t.Fatalf("invoke EscapedPath %q want %q", escapedPath, want)
+	}
+}
+
+func TestFetchToolsPrefersLiveOverCache(t *testing.T) {
+	live := `[{"name":"live","description":"live","input_schema":{"type":"object"}}]`
+	stale := `[{"name":"stale","description":"stale","input_schema":{"type":"object"}}]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/tools" {
+			_, _ = io.WriteString(w, live)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cacheDir := t.TempDir()
+	c := cache.New(cacheDir)
+	toolsURL := strings.TrimRight(srv.URL, "/") + "/tools"
+	if err := c.Put(toolsURL, []byte(stale)); err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{}
+	body, fromCache, err := fetchTools(context.Background(), client, c, toolsURL)
+	if err != nil {
+		t.Fatalf("fetchTools: %v", err)
+	}
+	if fromCache {
+		t.Fatal("expected live fetch")
+	}
+	if string(body) != live {
+		t.Fatalf("body %q", body)
 	}
 }
 

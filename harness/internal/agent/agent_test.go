@@ -71,6 +71,7 @@ func TestRunner_ToolRoundTrip(t *testing.T) {
 		Store:    st,
 		Model:    "claude-test",
 		MaxTurns: 10,
+		Stream:   false,
 	}
 
 	sessionID, finalText, err := r.Run(ctx, "start")
@@ -135,6 +136,7 @@ func TestRunner_MaxTurnsExceeded(t *testing.T) {
 		Store:    st,
 		Model:    "claude-test",
 		MaxTurns: 1,
+		Stream:   false,
 	}
 
 	sessionID, _, err := r.Run(ctx, "start")

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,11 +19,23 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintf(os.Stderr, "usage: harness run --prompt \"...\" [flags]\n")
+	if len(os.Args) < 2 {
+		usage()
 		os.Exit(2)
 	}
-	if err := run(os.Args[2:]); err != nil {
+	var err error
+	switch os.Args[1] {
+	case "run":
+		err = cmdRun(os.Args[2:])
+	case "sessions":
+		err = cmdSessions(os.Args[2:])
+	case "show":
+		err = cmdShow(os.Args[2:])
+	default:
+		usage()
+		os.Exit(2)
+	}
+	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			os.Exit(0)
 		}
@@ -31,7 +44,74 @@ func main() {
 	}
 }
 
-func run(args []string) error {
+func usage() {
+	fmt.Fprintf(os.Stderr, "usage:\n")
+	fmt.Fprintf(os.Stderr, "  harness run --prompt \"...\" [flags]\n")
+	fmt.Fprintf(os.Stderr, "  harness sessions [--data-dir PATH]\n")
+	fmt.Fprintf(os.Stderr, "  harness show <session-id> [--data-dir PATH]\n")
+}
+
+func openStore(dataDir string) (*store.Store, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	if dataDir != "" {
+		cfg.DataDir = dataDir
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		return nil, err
+	}
+	return store.Open(cfg.DataDir)
+}
+
+func cmdSessions(args []string) error {
+	fs := flag.NewFlagSet("sessions", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	dataDir := fs.String("data-dir", "", "Harness data directory")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	st, err := openStore(*dataDir)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	list, err := st.ListSessions(context.Background())
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(list)
+}
+
+func cmdShow(args []string) error {
+	fs := flag.NewFlagSet("show", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	dataDir := fs.String("data-dir", "", "Harness data directory")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("session id required")
+	}
+	sessionID := fs.Arg(0)
+	st, err := openStore(*dataDir)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	msgs, err := st.GetMessages(context.Background(), sessionID)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(msgs)
+}
+
+func cmdRun(args []string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -44,6 +124,7 @@ func run(args []string) error {
 	baseURL := fs.String("base-url", "", "Anthropic Messages API base URL")
 	model := fs.String("model", "claude-sonnet-4-5", "Model id")
 	dataDir := fs.String("data-dir", "", "Harness data directory")
+	maxTurns := fs.Int("max-turns", 0, "Max agent turns (0 = config default)")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -58,6 +139,9 @@ func run(args []string) error {
 	}
 	if *baseURL != "" {
 		cfg.BaseURL = *baseURL
+	}
+	if *maxTurns > 0 {
+		cfg.MaxTurns = *maxTurns
 	}
 	cfg.Model = *model
 	cfg.Workspace = *workspace
@@ -96,6 +180,7 @@ func run(args []string) error {
 		Store:    st,
 		Model:    cfg.Model,
 		MaxTurns: cfg.MaxTurns,
+		Stream:   true,
 	}
 	_, finalText, err := runner.Run(ctx, *prompt)
 	if err != nil {

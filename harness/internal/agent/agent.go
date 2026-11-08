@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
@@ -20,6 +22,8 @@ type Runner struct {
 	Store    *store.Store
 	Model    string
 	MaxTurns int
+	Stream   bool
+	StreamOut io.Writer
 }
 
 func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, finalText string, err error) {
@@ -51,13 +55,25 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 		maxTurns = defaultMaxTurns
 	}
 
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(r.Model),
+		MaxTokens: 4096,
+		Messages:  messages,
+		Tools:     toolDefs,
+	}
+
 	for turn := 1; turn <= maxTurns; turn++ {
-		resp, err := r.Client.Messages.New(ctx, anthropic.MessageNewParams{
-			Model:     anthropic.Model(r.Model),
-			MaxTokens: 4096,
-			Messages:  messages,
-			Tools:     toolDefs,
-		})
+		var resp anthropic.Message
+		var err error
+		if r.Stream {
+			resp, err = streamMessage(ctx, r, params)
+		} else {
+			var full *anthropic.Message
+			full, err = r.Client.Messages.New(ctx, params)
+			if full != nil {
+				resp = *full
+			}
+		}
 		if err != nil {
 			return sessionID, "", err
 		}
@@ -95,6 +111,34 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 		messages = append(messages, toolUser)
 	}
 	return
+}
+
+func streamMessage(ctx context.Context, r *Runner, params anthropic.MessageNewParams) (anthropic.Message, error) {
+	stream := r.Client.Messages.NewStreaming(ctx, params)
+	var message anthropic.Message
+	out := r.StreamOut
+	if out == nil {
+		out = os.Stderr
+	}
+	defer stream.Close()
+	for stream.Next() {
+		event := stream.Current()
+		if e, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
+			switch delta := e.Delta.AsAny().(type) {
+			case anthropic.TextDelta:
+				if delta.Text != "" {
+					_, _ = io.WriteString(out, delta.Text)
+				}
+			}
+		}
+		if err := message.Accumulate(event); err != nil {
+			return message, err
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return message, err
+	}
+	return message, nil
 }
 
 func parseAssistantContent(content []anthropic.ContentBlockUnion) (

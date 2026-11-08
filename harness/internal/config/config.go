@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"fmt"
+	"os"
+	"strconv"
+)
 
 const (
 	defaultDataDir  = "./data/harness"
@@ -26,6 +30,13 @@ func Load() (Config, error) {
 	}
 	if v := os.Getenv("HARNESS_DATA_DIR"); v != "" {
 		cfg.DataDir = v
+	}
+	if v := os.Getenv("HARNESS_MAX_TURNS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return Config{}, fmt.Errorf("HARNESS_MAX_TURNS: want positive integer, got %q", v)
+		}
+		cfg.MaxTurns = n
 	}
 	return cfg, nil
 }

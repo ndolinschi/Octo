@@ -2,6 +2,12 @@
 
 Go agent harness (`github.com/ndolinschi/Octo/harness`): Anthropic Messages tool loop with local workspace tools, optional remote HTTP tools, and its own SQLite session store. Talks to any Anthropic-compatible Messages endpoint — typically [Octo](../README.md) on loopback.
 
+Product architecture: [docs/architecture.md](./docs/architecture.md).
+
+## Security: `bash` is not sandboxed
+
+The **`bash`** tool runs real shell commands as the user running the harness. It can access any path, network, and secret that user can — workspace path checks apply only to `read_file`, `write_file`, and `list_dir`, not to arbitrary commands. Do not run the harness on secrets you would not give to an interactive shell.
+
 ## Prerequisites
 
 - Go 1.26+
@@ -59,8 +65,18 @@ export ANTHROPIC_API_KEY="your-key"
 | `--model` | `claude-sonnet-4-5` | Upstream model id; autoroute may rewrite |
 | `--data-dir` | `./data/harness` or `HARNESS_DATA_DIR` | SQLite + remote tool cache |
 | `--remote` | (repeatable) | `GET {base}/tools` discovery + invoke |
+| `--max-turns` | `HARNESS_MAX_TURNS` or 25 | Cap tool-loop turns |
 
-Final assistant text is printed to stdout; errors go to stderr with exit code 1.
+Streaming assistant text is written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.
+
+## Session inspection
+
+```bash
+./octo-harness sessions
+./octo-harness show <session-id>
+```
+
+Both accept `--data-dir` (same default as `run`).
 
 ## Remote tools
 
@@ -82,4 +98,4 @@ Harness data is separate from Octo Rust `data/history.sqlite`.
 
 ## Local tools and workspace
 
-`read_file`, `write_file`, and `list_dir` resolve paths under `--workspace` only. `bash` runs a normal shell with cwd set to that workspace (not an OS-level sandbox), so it can reach anything the process user can. Path checks happen at resolve time, not again at open/read/write, so a race could swap the target after validation (TOCTOU).
+`read_file`, `write_file`, and `list_dir` resolve paths under `--workspace` only (symlink escape rejected). `bash` is documented above: full host shell, not a sandbox. Path checks for file tools happen at resolve time, not again at open/read/write (TOCTOU). Tool stdout and file reads are capped at 1 MiB (`\n...truncated` when clipped).

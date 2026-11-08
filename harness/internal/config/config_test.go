@@ -28,3 +28,14 @@ func TestLoad_DefaultDataDir(t *testing.T) {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "./data/harness")
 	}
 }
+
+func TestLoad_MaxTurnsFromEnv(t *testing.T) {
+	t.Setenv("HARNESS_MAX_TURNS", "7")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MaxTurns != 7 {
+		t.Errorf("MaxTurns = %d, want 7", cfg.MaxTurns)
+	}
+}
