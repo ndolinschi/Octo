@@ -94,8 +94,7 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 		}
 		messages = append(messages, toolUser)
 	}
-
-	return sessionID, "", fmt.Errorf("agent: exceeded max turns")
+	return
 }
 
 func parseAssistantContent(content []anthropic.ContentBlockUnion) (

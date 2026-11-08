@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -22,6 +23,9 @@ func main() {
 		os.Exit(2)
 	}
 	if err := run(os.Args[2:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			os.Exit(0)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

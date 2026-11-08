@@ -79,3 +79,7 @@ Under `--data-dir` (default `./data/harness`):
 - `cache/` — cached remote tool manifests
 
 Harness data is separate from Octo Rust `data/history.sqlite`.
+
+## Local tools and workspace
+
+`read_file`, `write_file`, and `list_dir` resolve paths under `--workspace` only. `bash` runs a normal shell with cwd set to that workspace (not an OS-level sandbox), so it can reach anything the process user can. Path checks happen at resolve time, not again at open/read/write, so a race could swap the target after validation (TOCTOU).
