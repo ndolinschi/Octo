@@ -50,3 +50,25 @@ func TestLoad_OctoKeyFromEnv(t *testing.T) {
 		t.Errorf("OctoKey = %q, want octo-secret", cfg.OctoKey)
 	}
 }
+
+func TestLoad_StreamFromEnv(t *testing.T) {
+	t.Setenv("HARNESS_STREAM", "false")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Stream {
+		t.Fatal("Stream = true, want false")
+	}
+}
+
+func TestLoad_StreamDefaultTrue(t *testing.T) {
+	os.Unsetenv("HARNESS_STREAM")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Stream {
+		t.Fatal("Stream = false, want true")
+	}
+}

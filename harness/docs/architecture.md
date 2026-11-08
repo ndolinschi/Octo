@@ -50,8 +50,8 @@ flowchart TB
 ## Agent loop
 
 1. Create session row; persist user message.
-2. Call Messages API (streaming when `Runner.Stream` is true — CLI default).
-3. Stream text deltas to **stderr**; accumulate full assistant message for persistence and final stdout.
+2. Call Messages API (streaming when `Runner.Stream` is true — CLI `--stream` / `HARNESS_STREAM`, default true).
+3. When streaming, write text deltas to **stderr**; accumulate full assistant message for persistence and final stdout.
 4. If the model emitted `tool_use` blocks, run handlers, persist tool results, append to context, repeat.
 5. Stop on end-turn text or `MaxTurns` (config, env, or `--max-turns`).
 

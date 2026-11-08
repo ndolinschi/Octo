@@ -93,7 +93,7 @@ pub async fn proxy_post_bytes(
         Err(err) => {
             if let Some(mut capture) = capture {
                 capture.started = started;
-                capture.finish(502, Vec::new(), Vec::new(), 0);
+                capture.finish(502, Vec::new(), Vec::new(), 0, false);
             }
             return Err(err.into());
         }
@@ -184,17 +184,21 @@ impl Capture {
         }
     }
 
-    fn finish(self, status: u16, output: Vec<u8>, tail: Vec<u8>, response_bytes: usize) {
-        let status = if self.initial_status >= 200 && self.initial_status < 300 && status == 502 {
+    fn finish(
+        self,
+        status: u16,
+        output: Vec<u8>,
+        tail: Vec<u8>,
+        response_bytes: usize,
+        stream_failed: bool,
+    ) {
+        if stream_failed {
             tracing::warn!(
                 session_id = self.observe.session_id.as_deref().unwrap_or(""),
                 initial_status = self.initial_status,
                 "upstream stream failed after client saw success headers"
             );
-            self.initial_status
-        } else {
-            status
-        };
+        }
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let tail_text = String::from_utf8_lossy(&tail);
         let usage = usage_from_parts(&output_text, &tail_text, response_bytes);
@@ -280,6 +284,7 @@ struct Tee<S> {
     response_bytes: usize,
     capture_limit: usize,
     capture: Option<Capture>,
+    stream_failed: bool,
 }
 
 impl<S> Tee<S> {
@@ -293,6 +298,7 @@ impl<S> Tee<S> {
             response_bytes: 0,
             capture_limit,
             capture: Some(capture),
+            stream_failed: false,
         }
     }
 }
@@ -321,7 +327,9 @@ where
                 Poll::Ready(Some(Ok(chunk)))
             }
             Poll::Ready(Some(Err(err))) => {
-                if !(this.status >= 200 && this.status < 300) {
+                if this.status >= 200 && this.status < 300 {
+                    this.stream_failed = true;
+                } else {
                     this.status = 502;
                 }
                 Poll::Ready(Some(Err(err)))
@@ -333,6 +341,7 @@ where
                         std::mem::take(&mut this.buf),
                         std::mem::take(&mut this.tail),
                         this.response_bytes,
+                        this.stream_failed,
                     );
                 }
                 Poll::Ready(None)
@@ -350,6 +359,7 @@ impl<S> Drop for Tee<S> {
                 std::mem::take(&mut self.buf),
                 std::mem::take(&mut self.tail),
                 self.response_bytes,
+                self.stream_failed,
             );
         }
     }

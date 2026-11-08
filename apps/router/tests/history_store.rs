@@ -306,7 +306,7 @@ async fn usage_past_the_stored_prefix_is_kept() {
 }
 
 #[tokio::test]
-async fn upstream_chunk_error_is_stored_as_failure() {
+async fn upstream_chunk_error_keeps_header_status() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

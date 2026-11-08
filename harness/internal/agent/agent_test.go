@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -182,5 +183,69 @@ func TestRunner_MaxTurnsExceeded(t *testing.T) {
 	}
 	if toolCalls.Load() != 0 {
 		t.Fatalf("echo invoked %d times, want 0", toolCalls.Load())
+	}
+}
+
+func TestRunner_StreamingText(t *testing.T) {
+	const sse = "event: message_start\n" +
+		`data: {"type":"message_start","message":{"id":"msg_s","type":"message","role":"assistant","model":"claude-test","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}` + "\n\n" +
+		"event: content_block_start\n" +
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n" +
+		"event: content_block_delta\n" +
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hel"}}` + "\n\n" +
+		"event: content_block_delta\n" +
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}` + "\n\n" +
+		"event: content_block_stop\n" +
+		`data: {"type":"content_block_stop","index":0}` + "\n\n" +
+		"event: message_delta\n" +
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}` + "\n\n" +
+		"event: message_stop\n" +
+		`data: {"type":"message_stop"}` + "\n\n"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" {
+			http.Error(w, "unexpected request", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, sse)
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	var streamBuf strings.Builder
+	client := anthropicclient.New("test-key", srv.URL, "")
+	r := &Runner{
+		Client:    client,
+		Registry:  tools.NewRegistry(),
+		Store:     st,
+		Model:     "claude-test",
+		MaxTurns:  3,
+		Stream:    true,
+		StreamOut: &streamBuf,
+	}
+
+	sessionID, finalText, err := r.Run(ctx, "hi")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if finalText != "hello" {
+		t.Fatalf("finalText = %q, want hello", finalText)
+	}
+	if streamBuf.String() != "hello" {
+		t.Fatalf("streamed = %q, want hello", streamBuf.String())
+	}
+	n, err := st.MessageCount(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("MessageCount: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("MessageCount = %d, want 2 (user + assistant)", n)
 	}
 }

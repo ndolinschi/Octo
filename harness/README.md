@@ -64,8 +64,9 @@ export ANTHROPIC_API_KEY="your-key"
 | `--remote` | (repeatable) | `GET {base}/tools` discovery + invoke |
 | `--max-turns` | `HARNESS_MAX_TURNS` or 25 | Cap tool-loop turns |
 | `--octo-key` | `HARNESS_OCTO_KEY` | Sent as `x-octo-key` when Octo `client_auth_key` is set |
+| `--stream` | `HARNESS_STREAM` or true | Stream assistant text deltas to stderr |
 
-Streaming assistant text and `session: <id>` are written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.
+When `--stream` is on, assistant text and `session: <id>` are written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.
 
 ## Session inspection
 

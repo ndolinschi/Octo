@@ -126,6 +126,7 @@ func cmdRun(args []string) error {
 	dataDir := fs.String("data-dir", "", "Harness data directory")
 	maxTurns := fs.Int("max-turns", 0, "Max agent turns (0 = config default)")
 	octoKey := fs.String("octo-key", "", "Octo x-octo-key (or HARNESS_OCTO_KEY)")
+	stream := fs.Bool("stream", cfg.Stream, "Stream assistant text to stderr (or HARNESS_STREAM)")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -147,6 +148,7 @@ func cmdRun(args []string) error {
 	if *maxTurns > 0 {
 		cfg.MaxTurns = *maxTurns
 	}
+	cfg.Stream = *stream
 	cfg.Model = *model
 	cfg.Workspace = *workspace
 	if len(remoteBases) > 0 {
@@ -184,7 +186,7 @@ func cmdRun(args []string) error {
 		Store:    st,
 		Model:    cfg.Model,
 		MaxTurns: cfg.MaxTurns,
-		Stream:   true,
+		Stream:   cfg.Stream,
 	}
 	sessionID, finalText, err := runner.Run(ctx, *prompt)
 	if err != nil {

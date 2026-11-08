@@ -20,6 +20,7 @@ type Config struct {
 	Workspace   string
 	RemoteBases []string
 	MaxTurns    int
+	Stream      bool
 }
 
 func Load() (Config, error) {
@@ -29,6 +30,7 @@ func Load() (Config, error) {
 		OctoKey:  os.Getenv("HARNESS_OCTO_KEY"),
 		DataDir:  defaultDataDir,
 		MaxTurns: defaultMaxTurns,
+		Stream:   true,
 	}
 	if v := os.Getenv("HARNESS_DATA_DIR"); v != "" {
 		cfg.DataDir = v
@@ -39,6 +41,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("HARNESS_MAX_TURNS: want positive integer, got %q", v)
 		}
 		cfg.MaxTurns = n
+	}
+	if v := os.Getenv("HARNESS_STREAM"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("HARNESS_STREAM: want bool, got %q", v)
+		}
+		cfg.Stream = b
 	}
 	return cfg, nil
 }
