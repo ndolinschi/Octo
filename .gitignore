@@ -15,3 +15,4 @@ apps/router/experiments/**
 !/apps/router/.env.example
 !/config/*.env.example
 !/apps/router/config/*.env.example
+harness/octo-harness
