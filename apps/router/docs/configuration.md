@@ -1,6 +1,6 @@
 # Configuration
 
-Operational defaults live under **`config/`** (one focused TOML file per area). Run from the repo root, or set **`OCTO_CONFIG`** to another directory or a legacy monolithic TOML file.
+Operational defaults live under **`config/`** (one focused TOML file per area). Run from `apps/router`, or set **`OCTO_CONFIG`** to another directory or a legacy monolithic TOML file.
 
 Loader: `src/config.rs` merges known fragment names; missing files are skipped.
 

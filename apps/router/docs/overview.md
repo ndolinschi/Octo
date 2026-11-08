@@ -58,11 +58,11 @@ Claude Code speaks Anthropic Messages and often sends Anthropic-only fields (`ou
 ## How to run
 
 ```bash
-git submodule update --init --recursive
-cargo run   # from repo root; loads ./config/
+git submodule update --init --recursive   # from monorepo root
+cd apps/router && cargo run               # loads ./config/
 ```
 
-Default bind: `127.0.0.1:8080`. Clients supply upstream API keys per request. See [configuration.md](./configuration.md) and the root [README.md](../README.md) for curl samples.
+Default bind: `127.0.0.1:8080`. Clients supply upstream API keys per request. See [configuration.md](./configuration.md) and [README.md](../README.md) for curl samples.
 
 ## Mental model
 

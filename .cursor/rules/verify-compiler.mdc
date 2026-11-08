@@ -5,9 +5,9 @@ alwaysApply: true
 
 # Compiler and Clippy before you finish
 
-After changing Rust code, run both before you commit or open a pull request:
+After changing Rust code, run both before you commit or open a pull request (from the monorepo root):
 
-- `cargo check` so compiler warnings and errors are visible
-- `cargo clippy --all-targets -- -D warnings`
+- `cargo check -p octo` so compiler warnings and errors are visible
+- `cargo clippy -p octo --all-targets -- -D warnings`
 
-Fix every warning and error they report. Do not leave the change with a failing check or a denied Clippy lint. `cargo test` still runs as well when behavior changed.
+Fix every warning and error they report. Do not leave the change with a failing check or a denied Clippy lint. `cargo test -p octo` still runs as well when behavior changed.

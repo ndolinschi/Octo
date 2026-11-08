@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Run Claude Code with Octo autoroute + Mistral tiers.
-# Keys from repo .env (via claude-code-env.sh). Session/artifacts under experiments/;
-# repo root is added with --add-dir so reads of src/ still work.
+# Keys from apps/router .env (via claude-code-env.sh). Session/artifacts under experiments/;
+# apps/router is added with --add-dir so reads of src/ still work.
 #
-# Usage:
+# Usage (from apps/router):
 #   cp .env.example .env   # once
 #   ./scripts/claude-code-experiment.sh
 #   ./scripts/claude-code-experiment.sh -p "Только чтение. …"
@@ -37,7 +37,7 @@ case "${ANTHROPIC_BASE_URL}" in
 esac
 if [[ "${_octo_needs_local_health}" -eq 1 ]]; then
   if ! curl -sf -m 2 "http://${OCTO_BIND}/health" >/dev/null; then
-    echo "Octo health check failed at http://${OCTO_BIND}/health — start with: cargo run" >&2
+    echo "Octo health check failed at http://${OCTO_BIND}/health — start with: cd apps/router && cargo run" >&2
     exit 1
   fi
 fi
@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Repo access from experiments/ cwd; skip if caller already passed --add-dir.
+# App + monorepo access from experiments/ cwd; skip if caller already passed --add-dir.
 ADD_DIR=()
 has_add_dir=0
 for arg in "${EXTRA[@]+"${EXTRA[@]}"}"; do
@@ -84,7 +84,8 @@ for arg in "${EXTRA[@]+"${EXTRA[@]}"}"; do
   fi
 done
 if [[ "$has_add_dir" -eq 0 ]]; then
-  ADD_DIR=(--add-dir "${OCTO_ROOT}")
+  MONOREPO_ROOT="$(cd "${ROOT}/.." && pwd)"
+  ADD_DIR=(--add-dir "${OCTO_ROOT}" --add-dir "${MONOREPO_ROOT}")
 fi
 
 SKIP_PERMS=()
