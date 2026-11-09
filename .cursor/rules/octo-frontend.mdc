@@ -1,0 +1,23 @@
+---
+description: Shared UI and desktop/web frontend quality bar
+globs: "packages/**/*.{ts,tsx,css},apps/desktop/**/*.{ts,tsx,css,json},apps/web/**"
+alwaysApply: false
+---
+
+# Octo — frontend development
+
+- **Packages:** `packages/ui` (`@octo/ui`) — shell-agnostic React; `packages/agent-client` — bridge types and client.
+- **Apps:** `apps/desktop` — Tauri 2 host; `apps/web` — future static host.
+- **Isolation:** `packages/ui` must not import `@tauri-apps/*` or call platform APIs. Shell-specific code stays in `apps/desktop`.
+- **Agent boundary:** UI talks only to **Harness Bridge** HTTP (Phase 2), not directly to filesystem or shell.
+- **Before finishing frontend changes** (repo root):
+
+```bash
+pnpm install
+pnpm --filter @octo/agent-client test
+pnpm --filter @octo/ui lint
+pnpm --filter @octo/desktop build
+cd apps/desktop/src-tauri && cargo check
+```
+
+- **Bridge URL:** `VITE_HARNESS_BRIDGE_URL` / `HARNESS_BRIDGE_URL`; default `http://127.0.0.1:8790`.
