@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -53,8 +53,10 @@ pub struct History {
     prices: Arc<PriceTable>,
     store_payloads: bool,
     inserts: Arc<Semaphore>,
+    insert_acquire_timeout: Duration,
     inflight: Arc<AtomicUsize>,
     idle: Arc<Notify>,
+    dropped_inserts: Arc<AtomicU64>,
 }
 
 impl History {
@@ -66,9 +68,15 @@ impl History {
             prices: Arc::new(PriceTable::default()),
             store_payloads: true,
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
+            insert_acquire_timeout: Duration::from_secs(5),
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
+            dropped_inserts: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    pub fn dropped_inserts(&self) -> u64 {
+        self.dropped_inserts.load(Ordering::Relaxed)
     }
 
     pub fn capture_limit(&self) -> usize {
@@ -89,6 +97,16 @@ impl History {
         self
     }
 
+    pub fn with_insert_slots(mut self, slots: usize) -> Self {
+        self.inserts = Arc::new(Semaphore::new(slots));
+        self
+    }
+
+    pub fn with_insert_acquire_timeout(mut self, timeout: Duration) -> Self {
+        self.insert_acquire_timeout = timeout;
+        self
+    }
+
     pub async fn connect(
         database_path: &str,
         token_key: &str,
@@ -106,8 +124,10 @@ impl History {
             prices: Arc::new(PriceTable::default()),
             store_payloads: true,
             inserts: Arc::new(Semaphore::new(INSERT_SLOTS)),
+            insert_acquire_timeout: Duration::from_secs(5),
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
+            dropped_inserts: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -278,7 +298,9 @@ impl History {
         let inserts = self.inserts.clone();
         let inflight = self.inflight.clone();
         let idle = self.idle.clone();
+        let dropped = self.dropped_inserts.clone();
         let store_payloads = self.store_payloads;
+        let acquire_timeout = self.insert_acquire_timeout;
         inflight.fetch_add(1, Ordering::AcqRel);
         tokio::spawn(async move {
             struct Done(Arc<AtomicUsize>, Arc<Notify>);
@@ -290,30 +312,32 @@ impl History {
                 }
             }
             let _done = Done(inflight, idle);
-            let permit =
-                match tokio::time::timeout(Duration::from_secs(5), inserts.acquire_owned()).await {
-                    Ok(Ok(permit)) => permit,
-                    Ok(Err(_)) => {
-                        tracing::warn!(
-                            kind = %call.kind,
-                            provider = %call.provider,
-                            session_id = call.session_id.as_deref().unwrap_or(""),
-                            "history insert skipped; insert pool closed"
-                        );
-                        return;
-                    }
-                    Err(_) => {
-                        tracing::warn!(
-                            kind = %call.kind,
-                            provider = %call.provider,
-                            session_id = call.session_id.as_deref().unwrap_or(""),
-                            model = call.model.as_deref().unwrap_or(""),
-                            trigger = %call.trigger,
-                            "history insert skipped; queue wait timed out"
-                        );
-                        return;
-                    }
-                };
+            let permit = match tokio::time::timeout(acquire_timeout, inserts.acquire_owned()).await
+            {
+                Ok(Ok(permit)) => permit,
+                Ok(Err(_)) => {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        kind = %call.kind,
+                        provider = %call.provider,
+                        session_id = call.session_id.as_deref().unwrap_or(""),
+                        "history insert skipped; insert pool closed"
+                    );
+                    return;
+                }
+                Err(_) => {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        kind = %call.kind,
+                        provider = %call.provider,
+                        session_id = call.session_id.as_deref().unwrap_or(""),
+                        model = call.model.as_deref().unwrap_or(""),
+                        trigger = %call.trigger,
+                        "history insert skipped; queue wait timed out"
+                    );
+                    return;
+                }
+            };
             let _permit = permit;
             let captured_bytes = call.request_bytes.saturating_add(call.response_bytes);
             match insert_call(&pool, &call, store_payloads).await {

@@ -190,12 +190,20 @@ impl CatalogCache {
 }
 
 pub fn bare_id(slug: &str) -> &str {
-    slug.trim_start_matches('~')
+    strip_model_marker(slug.trim_start_matches('~'))
 }
 
 pub fn routing_id(slug: &str) -> &str {
     let bare = bare_id(slug);
     bare.strip_suffix(":online").unwrap_or(bare)
+}
+
+/// Claude Code appends markers like `[1m]` to model ids; strip before lookup/forward.
+pub fn strip_model_marker(slug: &str) -> &str {
+    match slug.rsplit_once('[') {
+        Some((prefix, rest)) if rest.ends_with(']') && !prefix.is_empty() => prefix,
+        _ => slug,
+    }
 }
 
 pub fn ids_match(left: &str, right: &str) -> bool {

@@ -39,6 +39,7 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
         sticky_band = classified_band.clone();
         pending_down_band = None;
         down_count = 0;
+        reason = Some("reclassify".to_string());
     } else if classified_rank < sticky_rank {
         if pending_down_band.as_deref() == Some(classified_band.as_str()) {
             down_count = down_count.saturating_add(1);

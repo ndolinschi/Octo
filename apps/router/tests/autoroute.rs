@@ -4,12 +4,13 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use octo::auto::context_length;
 use octo::auto::{
-    apply_sticky, bg_signal, cap_decision_text, cap_for_budget, choice, choice_from_scores,
-    classified, client_has_thinking, client_tool_names_csv, compaction_body, context_estimate,
-    decide, default_strip_fields, detect_stall, dropped, inspect, is_housekeeping,
-    is_permission_check, is_subagent_key, larger_fit, looks_like_text_tool_call,
-    max_completion_tokens, needed_tools, needs_compact, output_reserve, parent_session_id, payload,
-    question_text, server_tool_types, session_id, session_key, shape, subagent_task_hash,
+    apply_sticky, asks_file_or_repo_inspection, bare_id, bg_signal, cap_decision_text,
+    cap_for_budget, choice, choice_from_scores, classified, client_has_thinking,
+    client_tool_names_csv, compaction_body, context_estimate, decide, default_strip_fields,
+    detect_stall, dropped, fold_in_message_system, inspect, is_housekeeping, is_permission_check,
+    is_subagent_key, larger_fit, looks_like_text_tool_call, max_completion_tokens, needed_tools,
+    needs_compact, output_reserve, parent_session_id, payload, preferred_model, question_text,
+    server_tool_types, session_id, session_key, shape, strip_model_marker, subagent_task_hash,
     trim_housekeeping, with_model, with_online_suffix, Auto, Complexity, DecideRequest, LargerFit,
     PayloadPlan, RequireParameters, RouteMeta, SessionChoice, ShapePlan, StallTrigger, StickyPlan,
     Thresholds, Tiers, Turn, PROTECTED_STRIP_FIELDS,
@@ -17,6 +18,77 @@ use octo::auto::{
 use octo::history::History;
 use octo::providers::openrouter::{OpenRouterModel, OpenRouterModels};
 use octo::proxy::error::ProxyError;
+
+#[test]
+fn fold_in_message_system_after_tool_result() {
+    let mut body = json!({
+        "system": "base",
+        "messages": [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
+            {"role": "system", "content": "Claude Code reminder"}
+        ]
+    });
+    fold_in_message_system(&mut body);
+    let messages = body["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 3);
+    assert!(messages.iter().all(|m| m["role"] != "system"));
+    assert_eq!(body["system"], "base\n\nClaude Code reminder");
+
+    let shaped = shape(ShapePlan::new(
+        &json!({
+            "model": "m",
+            "messages": [
+                {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "x"}]},
+                {"role": "system", "content": [{"type": "text", "text": "after tool"}]}
+            ]
+        }),
+        "m",
+        None,
+        None,
+    ))
+    .body;
+    assert!(shaped["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|m| m["role"] != "system"));
+    assert_eq!(shaped["system"], "after tool");
+}
+
+#[test]
+fn strip_claude_code_model_marker_before_lookup() {
+    assert_eq!(
+        strip_model_marker("mistralai/devstral-2512[1m]"),
+        "mistralai/devstral-2512"
+    );
+    assert_eq!(
+        bare_id("~mistralai/devstral-2512[1m]"),
+        "mistralai/devstral-2512"
+    );
+    let body = json!({"model": "mistralai/devstral-2512[1m]"});
+    assert_eq!(
+        preferred_model(&body).as_deref(),
+        Some("mistralai/devstral-2512")
+    );
+    assert_eq!(
+        with_model(&body, "mistralai/devstral-2512[1m]")["model"],
+        "mistralai/devstral-2512"
+    );
+}
+
+#[test]
+fn tool_file_inspection_is_not_easy() {
+    assert!(asks_file_or_repo_inspection("List files in apps/router"));
+    assert!(!asks_file_or_repo_inspection("say hello"));
+    let bumped = RouteMeta::from_plan("low".into(), "mid".into(), Some("reclassify"));
+    assert_eq!(bumped.trigger, "reclassify");
+    let stall_release = RouteMeta::from_plan("mid".into(), "low".into(), Some("stall_release"));
+    assert_eq!(stall_release.trigger, "stall_release");
+    let unknown = RouteMeta::from_plan("low".into(), "mid".into(), Some("band_up"));
+    assert_eq!(unknown.trigger, "band_up");
+}
 
 #[test]
 fn session_id_comes_from_metadata_user_id() {
@@ -1286,7 +1358,13 @@ fn shape_call_528_fixture_strips_proven_keys_keeps_rest() {
     for key in before.as_object().unwrap().keys() {
         if matches!(
             key.as_str(),
-            "output_config" | "safeguards" | "context_management" | "model" | "provider"
+            "output_config"
+                | "safeguards"
+                | "context_management"
+                | "model"
+                | "provider"
+                | "messages"
+                | "system"
         ) {
             continue;
         }
@@ -1296,6 +1374,12 @@ fn shape_call_528_fixture_strips_proven_keys_keeps_rest() {
             "non-stripped key {key} must stay byte-identical"
         );
     }
+    assert!(shaped["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|m| m["role"] != "system"));
+    assert!(shaped.get("system").is_some());
     assert_eq!(shaped["model"], "mistralai/devstral-2512");
 }
 
@@ -1487,6 +1571,27 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
 
     let empty = shape(ShapePlan::new(&body, "m", None, None)).body;
     assert_eq!(empty["provider"], json!({"require_parameters": true}));
+}
+
+#[test]
+fn require_parameters_replaces_string_provider_with_object() {
+    let body = json!({
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "provider": "mistral"
+    });
+    let shaped = shape(ShapePlan {
+        body: &body,
+        model: "m",
+        previous_model: None,
+        models: None,
+        provider_order: &[],
+        allow_fallbacks: true,
+        strip_fields: &[],
+        require_parameters: RequireParameters::Always,
+    })
+    .body;
+    assert_eq!(shaped["provider"], json!({"require_parameters": true}));
 }
 
 #[test]

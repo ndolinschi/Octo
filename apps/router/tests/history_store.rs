@@ -306,7 +306,7 @@ async fn usage_past_the_stored_prefix_is_kept() {
 }
 
 #[tokio::test]
-async fn upstream_chunk_error_is_stored_as_failure() {
+async fn upstream_chunk_error_keeps_header_status() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -373,7 +373,7 @@ async fn upstream_chunk_error_is_stored_as_failure() {
         sqlx::query!("SELECT status, output FROM calls").fetch_optional(history.pool().unwrap())
     })
     .await;
-    assert_eq!(row.status, 502);
+    assert_eq!(row.status, 200);
     assert_eq!(row.output, "partial");
 }
 
@@ -761,6 +761,64 @@ async fn parent_session_id_is_derived_from_sub_key() {
     .await;
     assert_eq!(row.0.as_deref(), Some("parent-uuid#sub:abcdef012345"));
     assert_eq!(row.1.as_deref(), Some("parent-uuid"));
+}
+
+#[tokio::test]
+async fn history_dropped_inserts_increments_when_queue_full() {
+    use octo::history::{FinishedCall, Millis};
+
+    let history = History::connect("sqlite::memory:", "test-token-key", 1024)
+        .await
+        .unwrap()
+        .with_insert_slots(0)
+        .with_insert_acquire_timeout(Duration::from_millis(20));
+    history.record(FinishedCall {
+        kind: CallKind::Messages,
+        provider: CallProvider::OpenRouter,
+        model: Some("m".into()),
+        token_hash: None,
+        message: None,
+        input: "{}".into(),
+        output: "{}".into(),
+        request_payload: "{}".into(),
+        response_payload: "{}".into(),
+        status: 200,
+        latency_ms: Millis::new(1),
+        request_bytes: 2,
+        response_bytes: 2,
+        input_tokens: None,
+        output_tokens: None,
+        cost: None,
+        or_cost: None,
+        upstream_cost: None,
+        estimated_cost: None,
+        cost_source: "none".into(),
+        is_byok: None,
+        upstream_provider: None,
+        trimmed_from_tokens: None,
+        client_model: None,
+        client_has_thinking: None,
+        client_tool_names: None,
+        bg_signal: None,
+        hk_text_signal: None,
+        cache_read_tokens: None,
+        cache_write_tokens: None,
+        generation_id: None,
+        rerouting: 0,
+        rerouting_reason: None,
+        session_id: Some("drop-me".into()),
+        parent_session_id: None,
+        tier_before: None,
+        tier_after: None,
+        trigger: "test".into(),
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    history.drain().await;
+    assert!(
+        history.dropped_inserts() >= 1,
+        "dropped_inserts = {}",
+        history.dropped_inserts()
+    );
 }
 
 async fn poll_call<T, F, Fut>(_: &History, mut load: F) -> T

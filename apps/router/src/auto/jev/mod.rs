@@ -6,7 +6,7 @@ mod tools;
 mod types;
 
 pub use ask::classify;
-pub use context::{inspect, ContextFacts};
+pub use context::{asks_file_or_repo_inspection, inspect, ContextFacts};
 pub use parse::{choice, choice_from_scores, classified};
 pub use questions::{payload, PayloadPlan};
 pub use tools::needed as needed_tools;

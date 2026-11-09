@@ -5,6 +5,7 @@ Apps-directory monorepo. Today it contains one application:
 | App | Path | Description |
 | --- | --- | --- |
 | **router** (Octo) | [`apps/router/`](./apps/router/) | Rust HTTP proxy for OpenAI / Anthropic / OpenRouter, plus an autoroute model ladder |
+| **harness** | [`harness/`](./harness/) | Go Anthropic Messages agent loop (local + remote tools, SQLite sessions) |
 
 There are no shared libraries yet. A future frontend (any language) should live under `apps/<name>/`.
 
@@ -15,6 +16,7 @@ There are no shared libraries yet. A future frontend (any language) should live 
 | [AGENTS.md](./AGENTS.md) | Monorepo map + how agents should work here |
 | [apps/router/README.md](./apps/router/README.md) | Octo user guide (curl, Claude Code, history) |
 | [apps/router/docs/README.md](./apps/router/docs/README.md) | Product docs index |
+| [harness/docs/README.md](./harness/docs/README.md) | Harness product docs index |
 | [apps/router/AGENTS.md](./apps/router/AGENTS.md) | Router operational notes for contributors / agents |
 
 ## Quick start (router)

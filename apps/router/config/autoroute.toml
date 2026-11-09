@@ -1,8 +1,8 @@
 [autoroute]
 # Model slugs used by /autoroute when JEV picks a complexity band.
-# Mistral ladder (smaller → smarter): ministral-8b → small-3.1 → devstral.
+# Mistral ladder (smaller → smarter): ministral-8b → small-3.2 → devstral.
 low = "mistralai/ministral-8b-2512"
-mid = "mistralai/mistral-small-3.1-24b-instruct"
+mid = "mistralai/mistral-small-3.2-24b-instruct"
 high = "mistralai/devstral-2512"
 hard_threshold = 0.5
 easy_threshold = 0.5
@@ -20,13 +20,9 @@ high_allow = []
 session_budget_usd = 0
 # Keep this many recent messages when trimming housekeeping turns (system + tools always kept).
 housekeeping_keep_messages = 6
-# Optional OpenRouter provider pin. Empty order leaves the body unchanged (aside from require_parameters).
-# Client-supplied provider fields win when already set. Does not choose BYOK vs OpenRouter-paid.
-provider_order = []
+# Prefer Mistral's own endpoint over Cloudflare (3.1 mid was Cloudflare-only and flaky with tools).
+provider_order = ["Mistral"]
 allow_fallbacks = true
-# Example Mistral pin (hard-fails if Mistral is unavailable):
-# provider_order = ["Mistral"]
-# allow_fallbacks = false
 
 # Top-level Anthropic-only keys removed before OpenRouter (Filter by Parameters).
 # Proven against mistralai/devstral-2512 supported_parameters for session 047c99af calls 528/530.

@@ -112,7 +112,7 @@ Octo records a **side copy** of proxied chat, decisions, and messages calls. Liv
 | Token key | `OCTO_HISTORY_TOKEN_KEY` env, `history.token_key` in config, or auto-generated `.key` beside the DB (restrictive file permissions on Unix) |
 | Failure mode | If DB open/migrate fails, proxy keeps serving with history disabled |
 | Insert backpressure | Up to 32 concurrent inserts; waits up to **5s** for a slot, then **drops** the row (warn log). Bursts can lose history while the proxy still succeeds. |
-| Stream errors | If the upstream body stream fails after headers were sent, the client may see upstream status (e.g. 200) while history records **502** for that call. |
+| Stream errors | If the upstream body stream fails after headers were sent, the client may see a truncated body; history keeps the **header status** (e.g. 200) and logs a warn with `session_id`. |
 | Shutdown | Graceful drain waits for in-flight inserts (bounded queue) |
 
 **Stored fields (metrics-focused):** kind, provider, model, optional last user message snippet, capped input/output raw capture, **`request_payload` / `response_payload`** (JSON with `provider` + nested `payload` per vendor shape), status, latency, byte sizes, token counts, **cost in micro-dollars** (`cost_micros`), plus `or_cost_micros` / `upstream_cost_micros` / `estimated_cost_micros` / `cost_source` / `is_byok` / `upstream_provider` / `trimmed_from_tokens`, plus observe-only `client_model` / `client_has_thinking` / `client_tool_names` / `bg_signal` / `hk_text_signal`. With `history.store_payloads = false`, text payload columns are omitted (NULL/blank) while metrics and observe columns remain. Prompts are not logged verbatim in tracing.

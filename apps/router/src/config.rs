@@ -449,7 +449,7 @@ fn default_autoroute_low_model() -> String {
 }
 
 fn default_autoroute_mid_model() -> String {
-    "mistralai/mistral-small-3.1-24b-instruct".to_string()
+    "mistralai/mistral-small-3.2-24b-instruct".to_string()
 }
 
 fn default_autoroute_high_model() -> String {

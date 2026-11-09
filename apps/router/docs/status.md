@@ -55,14 +55,14 @@ pie showData
 | --- | --- | --- | --- |
 | Soft-fail history | DB fail → proxy continues without DB | Silent loss of FinOps | `proxy/mod.rs` |
 | Insert backpressure | 32 slots, 5s, then **drop** | Missing rows under burst (warn includes `session_id`) | verification F3 |
-| Stream vs history status | Client 200 possible while history 502 | Confusing recon; warn logs session | AGENTS.md |
+| Stream fail after headers | Client may see truncated body; history keeps header status | Warn logs session; recon by status alone can miss truncation | AGENTS.md |
 | `session_budget_usd` | **0 (disabled)** | Cap unused until configured | `autoroute.toml` |
 | `background_by_client_model` | **false** | `bg_signal` observe-only | defaults regression |
 | `server_tool_mode` | **passthrough** | Server tools hit models that may not support them | `autoroute_server_tools` |
 | Chat autoroute compact | No Messages compact API | Chat overflow ≠ messages compact | `allow_compact: !chat` |
 | Text-as-tool-call | Detect + **next-turn** escalate | Mid-tier can emit Agent JSON as text this turn | [debug/text-tool-call](./debug/2026-11-06-text-tool-call.md) |
 | `prices.toml` zeros | Ladder rates may be `0.0` | Estimate skipped until nonzero rates | `prices.toml` |
-| `provider_order` empty | OpenRouter chooses endpoint | Mid via Cloudflare vs Mistral variance | ratelim / text-tool docs |
+| `provider_order` Mistral | Prefers Mistral endpoint | Hard-fail if Mistral down and fallbacks false | ratelim / text-tool docs |
 | Filter-by-Parameters | Strip list tuned for known keys | New Anthropic-only fields → 404 again | [experiments/ratelim](./experiments/2026-11-06-ratelim.md) |
 
 ```mermaid

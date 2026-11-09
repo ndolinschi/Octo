@@ -174,9 +174,9 @@ On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/l
 
 ### Autoroute model ladder (Mistral)
 
-`config/autoroute.toml` low/mid/high defaults are now **Mistral** (`ministral-8b-2512` → `mistral-small-3.1-24b-instruct` → `devstral-2512`), replacing the previous Gemma / DeepSeek / Haiku-latest ladder. This applies to **all** `/autoroute` traffic, not only Claude Code experiments.
+`config/autoroute.toml` low/mid/high defaults are **Mistral** (`ministral-8b-2512` → `mistral-small-3.2-24b-instruct` → `devstral-2512`). This applies to **all** `/autoroute` traffic, not only Claude Code experiments.
 
-- **Provider pin (opt-in):** `provider_order = []` / `allow_fallbacks = true` by default. A commented Mistral example is in the same file. Pinning does **not** choose BYOK vs OpenRouter-paid (account setting).
+- **Provider pin:** `provider_order = ["Mistral"]` / `allow_fallbacks = true` by default so mid avoids Cloudflare-only endpoints. Pinning does **not** choose BYOK vs OpenRouter-paid (account setting).
 - **Housekeeping trim:** long Claude Code housekeeping turns keep system/tools plus the last `housekeeping_keep_messages` (default 6); trigger becomes `housekeeping_trimmed` when shortened.
 - **Permission checks:** Claude Code prompts with `Err on the side of blocking` or `<transcript>` use trigger `permission_check`, keep the session model, and skip JEV/sticky.
 - **Claude Code body hygiene:** `config/autoroute.toml` → `strip_fields` (default `output_config`, `safeguards`, `context_management`; empty list = strip nothing) removes Anthropic-only keys before OpenRouter on every Forward (including passthrough); removed keys are recorded on the call as `rerouting_reason` `stripped:…` without changing `trigger`. `require_parameters` is `always` (default) | `tools_only` | `never` (invalid values fail config load). With `always`, dropping strip keys can reintroduce OpenRouter 404s (`Filter by Parameters`).
