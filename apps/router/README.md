@@ -176,7 +176,7 @@ On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/l
 
 `config/autoroute.toml` low/mid/high defaults (`mistral-nemo` → `mistral-small-3.2-24b-instruct` → `deepseek-v4-flash`). This applies to **all** `/autoroute` traffic, not only Claude Code experiments.
 
-- **Provider pin:** `provider_order` is empty by default (a global Mistral pin would mis-route DeepSeek on high). `allow_fallbacks = true`.
+- **Provider pin:** `provider_order = ["Mistral"]` / `allow_fallbacks = true` so mid avoids Cloudflare-only endpoints; DeepSeek high falls back when Mistral has no match.
 - **Housekeeping trim:** long Claude Code housekeeping turns keep system/tools plus the last `housekeeping_keep_messages` (default 6); trigger becomes `housekeeping_trimmed` when shortened.
 - **Permission checks:** Claude Code prompts with `Err on the side of blocking` or `<transcript>` use trigger `permission_check`, keep the session model, and skip JEV/sticky.
 - **Claude Code body hygiene:** `config/autoroute.toml` → `strip_fields` (default `output_config`, `safeguards`, `context_management`; empty list = strip nothing) removes Anthropic-only keys before OpenRouter on every Forward (including passthrough); removed keys are recorded on the call as `rerouting_reason` `stripped:…` without changing `trigger`. `require_parameters` is `always` (default) | `tools_only` | `never` (invalid values fail config load). With `always`, dropping strip keys can reintroduce OpenRouter 404s (`Filter by Parameters`).
