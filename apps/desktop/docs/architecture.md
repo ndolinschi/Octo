@@ -9,7 +9,7 @@ Tauri 2 **shell** for shared UI. Product screens live in [`packages/ui`](../../.
 | UI | `packages/ui` | React screens — **no** Tauri APIs |
 | Client | `packages/agent-client` | Bridge URL + future HTTP/SSE client |
 | Shell | `apps/desktop` | Webview host, OS integration |
-| Agent | `harness/` (Phase 2 `serve`) | Tool loop, SQLite sessions |
+| Agent | `apps/harness/` (Phase 2 `serve`) | Tool loop, SQLite sessions |
 
 ## Data flow (Phase 2)
 
@@ -31,7 +31,7 @@ Desktop loads `OctoApp` with `resolveBridgeUrl()` (default `http://127.0.0.1:879
 
 ## Security
 
-When local tools are enabled via harness on desktop, **`bash`** has full user privileges — same as [`harness/README.md`](../../../harness/README.md). The UI must not bypass harness to run shell commands.
+When local tools are enabled via harness on desktop, **`bash`** has full user privileges — same as [`apps/harness/README.md`](../../harness/README.md). The UI must not bypass harness to run shell commands.
 
 ## Build
 
