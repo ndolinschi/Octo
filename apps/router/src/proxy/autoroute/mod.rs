@@ -325,6 +325,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         hk_text_signal: Some(plan.signals.hk_text_signal),
         auto: Some(plan.state.auto.clone()),
         on_response: hook,
+        strip_stream_model_markers: true,
     });
     if plan.chat {
         plan.state
@@ -399,6 +400,7 @@ async fn chat_compact(
                 hk_text_signal: None,
                 auto: None,
                 on_response: None,
+                strip_stream_model_markers: true,
             }),
         )
         .await

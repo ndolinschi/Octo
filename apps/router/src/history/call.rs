@@ -25,6 +25,7 @@ pub struct CallObserve {
     pub hk_text_signal: Option<bool>,
     pub auto: Option<crate::auto::Auto>,
     pub on_response: Option<ResponseHook>,
+    pub strip_stream_model_markers: bool,
 }
 
 pub struct DecisionRow {

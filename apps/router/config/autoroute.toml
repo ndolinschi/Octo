@@ -17,9 +17,9 @@ down_confirm = 2
 # sticky de-escalation on tool continuations without calling JEV.
 hold_tool_results = false
 # Assumed JEV band for tool-result-only turns when hold_tool_results is false.
-tool_result_band = "low"
+tool_result_band = "mid"
 # Consecutive tool-result-only turns at a lower band before sticky steps down (0 = down_confirm).
-tool_result_down_confirm = 0
+tool_result_down_confirm = 3
 # Client model is honoured on High only when its slug (tilde-insensitive) is listed here.
 # Empty means always use the configured high slug.
 high_allow = []

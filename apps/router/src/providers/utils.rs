@@ -171,6 +171,7 @@ impl Capture {
                 hk_text_signal: observe.hk_text_signal,
                 auto: observe.auto.clone(),
                 on_response: observe.on_response.clone(),
+                strip_stream_model_markers: observe.strip_stream_model_markers,
             },
             model,
             message,
@@ -285,11 +286,14 @@ struct Tee<S> {
     capture_limit: usize,
     capture: Option<Capture>,
     stream_failed: bool,
+    marker_strip: bool,
+    marker_pending: Vec<u8>,
 }
 
 impl<S> Tee<S> {
     fn new(inner: S, status: u16, capture: Capture) -> Self {
         let capture_limit = capture.capture_limit;
+        let marker_strip = capture.observe.strip_stream_model_markers;
         Self {
             inner,
             status,
@@ -299,8 +303,44 @@ impl<S> Tee<S> {
             capture_limit,
             capture: Some(capture),
             stream_failed: false,
+            marker_strip,
+            marker_pending: Vec::new(),
         }
     }
+}
+
+const MODEL_MARKER: &[u8] = b"[1m]";
+
+fn marker_suffix_keep(buf: &[u8]) -> usize {
+    for keep in (1..MODEL_MARKER.len()).rev() {
+        let start = buf.len().saturating_sub(keep);
+        if MODEL_MARKER.starts_with(&buf[start..]) {
+            return keep;
+        }
+    }
+    0
+}
+
+pub fn strip_stream_model_marker_bytes(buf: &[u8]) -> Vec<u8> {
+    let text = String::from_utf8_lossy(buf);
+    if !text.contains("[1m]") {
+        return buf.to_vec();
+    }
+    text.replace("[1m]", "").into_bytes()
+}
+
+fn emit_marker_stripped(pending: &mut Vec<u8>) -> Vec<u8> {
+    if pending.is_empty() {
+        return Vec::new();
+    }
+    let keep = marker_suffix_keep(pending);
+    let emit_len = pending.len().saturating_sub(keep);
+    if emit_len == 0 {
+        return Vec::new();
+    }
+    let slice = pending[..emit_len].to_vec();
+    pending.drain(..emit_len);
+    strip_stream_model_marker_bytes(&slice)
 }
 
 impl<S> Stream for Tee<S>
@@ -314,17 +354,24 @@ where
         match Pin::new(&mut this.inner).poll_next(cx) {
             Poll::Ready(Some(Ok(chunk))) => {
                 this.response_bytes = this.response_bytes.saturating_add(chunk.len());
+                let forward = if this.marker_strip {
+                    this.marker_pending.extend_from_slice(&chunk);
+                    let out = emit_marker_stripped(&mut this.marker_pending);
+                    Bytes::from(out)
+                } else {
+                    chunk
+                };
                 if this.buf.len() < this.capture_limit {
                     let room = this.capture_limit - this.buf.len();
-                    let take = room.min(chunk.len());
-                    this.buf.extend_from_slice(&chunk[..take]);
+                    let take = room.min(forward.len());
+                    this.buf.extend_from_slice(&forward[..take]);
                 }
-                this.tail.extend_from_slice(&chunk);
+                this.tail.extend_from_slice(&forward);
                 if this.tail.len() > USAGE_TAIL {
                     let drop_n = this.tail.len() - USAGE_TAIL;
                     this.tail.drain(..drop_n);
                 }
-                Poll::Ready(Some(Ok(chunk)))
+                Poll::Ready(Some(Ok(forward)))
             }
             Poll::Ready(Some(Err(err))) => {
                 if this.status >= 200 && this.status < 300 {
@@ -335,6 +382,13 @@ where
                 Poll::Ready(Some(Err(err)))
             }
             Poll::Ready(None) => {
+                if this.marker_strip {
+                    let tail = strip_stream_model_marker_bytes(&this.marker_pending);
+                    this.marker_pending.clear();
+                    if !tail.is_empty() {
+                        return Poll::Ready(Some(Ok(Bytes::from(tail))));
+                    }
+                }
                 if let Some(capture) = this.capture.take() {
                     capture.finish(
                         this.status,

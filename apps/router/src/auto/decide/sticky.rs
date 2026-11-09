@@ -31,6 +31,9 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
         .unwrap_or_else(|| classified_band.clone());
     let mut pending_down_band = plan.choice.and_then(|row| row.pending_down_band.clone());
     let mut down_count = plan.choice.map(|row| row.down_count).unwrap_or(0);
+    let mut escalate_remaining = plan.choice.map(|row| row.escalate_remaining).unwrap_or(0);
+    let mut escalate_band = plan.choice.and_then(|row| row.escalate_band.clone());
+    let mut last_stall = plan.choice.and_then(|row| row.last_stall.clone());
     let mut reason = None;
 
     let classified_rank = catalog::band_rank(&classified_band);
@@ -51,6 +54,8 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
             sticky_band = classified_band.clone();
             pending_down_band = None;
             down_count = 0;
+            escalate_remaining = 0;
+            escalate_band = None;
         } else {
             reason = Some("hysteresis_hold".to_string());
         }
@@ -58,10 +63,6 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
         pending_down_band = None;
         down_count = 0;
     }
-
-    let mut escalate_remaining = plan.choice.map(|row| row.escalate_remaining).unwrap_or(0);
-    let mut escalate_band = plan.choice.and_then(|row| row.escalate_band.clone());
-    let mut last_stall = plan.choice.and_then(|row| row.last_stall.clone());
 
     if let Some(trigger) = plan.stall {
         let base = if escalate_band.is_some() && escalate_remaining > 0 {
@@ -107,39 +108,42 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
         if escalate_remaining == 0 {
             escalate_band = None;
             reason = Some("stall_release".to_string());
+            if !plan.tool_results_only {
+                return StickyOutcome {
+                    model: plan.tiers.pick(plan.classified, plan.preferred),
+                    sticky_band,
+                    escalate_remaining,
+                    escalate_band,
+                    last_stall,
+                    pending_down_band,
+                    down_count,
+                    reason,
+                };
+            }
+        } else if !plan.tool_results_only {
+            let escalate = escalate_band
+                .clone()
+                .unwrap_or_else(|| catalog::bump_band(&sticky_band).to_string());
+            let live = higher_band(&escalate, &sticky_band).to_string();
+            if reason.as_deref() == Some("hysteresis_hold")
+                || catalog::band_rank(&sticky_band) > catalog::band_rank(&escalate)
+            {
+                reason = None;
+            }
             return StickyOutcome {
-                model: plan.tiers.pick(plan.classified, plan.preferred),
+                model: plan.tiers.slug(&live),
                 sticky_band,
                 escalate_remaining,
-                escalate_band,
+                escalate_band: Some(escalate),
                 last_stall,
                 pending_down_band,
                 down_count,
                 reason,
             };
         }
-        let escalate = escalate_band
-            .clone()
-            .unwrap_or_else(|| catalog::bump_band(&sticky_band).to_string());
-        let live = higher_band(&escalate, &sticky_band).to_string();
-        if reason.as_deref() == Some("hysteresis_hold")
-            || catalog::band_rank(&sticky_band) > catalog::band_rank(&escalate)
-        {
-            reason = None;
-        }
-        return StickyOutcome {
-            model: plan.tiers.slug(&live),
-            sticky_band,
-            escalate_remaining,
-            escalate_band: Some(escalate),
-            last_stall,
-            pending_down_band,
-            down_count,
-            reason,
-        };
     }
 
-    let model = if reason.as_deref() == Some("hysteresis_hold") {
+    let model = if plan.tool_results_only || reason.as_deref() == Some("hysteresis_hold") {
         plan.tiers.slug(&sticky_band)
     } else {
         plan.tiers.pick(plan.classified, plan.preferred)
@@ -147,8 +151,8 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
     StickyOutcome {
         model,
         sticky_band,
-        escalate_remaining: 0,
-        escalate_band: None,
+        escalate_remaining,
+        escalate_band,
         last_stall,
         pending_down_band,
         down_count,

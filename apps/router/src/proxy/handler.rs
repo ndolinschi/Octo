@@ -44,6 +44,7 @@ async fn forward_chat(
         hk_text_signal: None,
         auto: None,
         on_response: None,
+        strip_stream_model_markers: false,
     });
     if forward {
         state
@@ -112,6 +113,7 @@ async fn forward_messages(
         hk_text_signal: None,
         auto: None,
         on_response: None,
+        strip_stream_model_markers: false,
     });
     match provider {
         MessagesProvider::Claude => {
@@ -186,6 +188,7 @@ pub async fn decisions(
                 hk_text_signal: None,
                 auto: None,
                 on_response: None,
+                strip_stream_model_markers: false,
             }),
         )
         .await

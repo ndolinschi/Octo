@@ -392,7 +392,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
 
     if tool_results_only && !req.auto.tiers().hold_tool_results && stall.is_none() {
         if let Some(row) = choice.as_ref() {
-            let classified = band_complexity(&req.auto.tiers().tool_result_band);
+            let classified = catalog::tool_continue_complexity(&req.auto.tiers, &row.sticky_band);
             let mut sticky = apply_sticky(StickyPlan {
                 tiers: &req.auto.tiers,
                 choice: Some(row),

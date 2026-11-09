@@ -505,9 +505,9 @@ async fn tool_results_only_deescalates_without_jev() {
         panic!("expected forward");
     };
     let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
-    assert_eq!(payload["model"], "low-m");
+    assert_eq!(payload["model"], "mid-m");
     assert_eq!(forward.meta.trigger, "tool_continue");
-    assert_eq!(forward.meta.tier_after, "low");
+    assert_eq!(forward.meta.tier_after, "mid");
 }
 
 #[tokio::test]
@@ -1254,6 +1254,83 @@ fn tool_result_only_sticky_deescalates_after_confirm() {
     assert_eq!(dropped.sticky_band, "low");
     assert_eq!(dropped.model, "low-m");
     assert_eq!(dropped.down_count, 0);
+}
+
+#[test]
+fn tool_continue_decays_escalate_without_high_model() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.down_confirm = 2;
+    let mut choice = SessionChoice::fresh("mid-m".into(), vec!["Bash".into()], "mid".into());
+    choice.escalate_remaining = 2;
+    choice.escalate_band = Some("high".into());
+    let next = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&choice),
+        classified: Complexity::Mid,
+        preferred: None,
+        stall: None,
+        tool_results_only: true,
+    });
+    assert_eq!(next.model, "mid-m");
+    assert_eq!(next.escalate_remaining, 1);
+    assert_eq!(next.sticky_band, "mid");
+    assert_ne!(tiers.band(&next.model), "high");
+}
+
+#[test]
+fn tool_continue_after_down_stays_mid_not_high() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.down_confirm = 1;
+    tiers.tool_result_down_confirm = 1;
+    let mut choice = SessionChoice::fresh("high-m".into(), vec!["Bash".into()], "high".into());
+    choice.escalate_remaining = 0;
+    let first = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&choice),
+        classified: Complexity::Mid,
+        preferred: None,
+        stall: None,
+        tool_results_only: true,
+    });
+    assert_eq!(first.sticky_band, "mid");
+    assert_eq!(first.model, "mid-m");
+    choice.sticky_band = first.sticky_band.clone();
+    choice.model = first.model.clone();
+    choice.down_count = first.down_count;
+    choice.pending_down_band = first.pending_down_band.clone();
+    choice.escalate_remaining = 3;
+    choice.escalate_band = Some("high".into());
+    let second = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&choice),
+        classified: Complexity::Mid,
+        preferred: None,
+        stall: None,
+        tool_results_only: true,
+    });
+    assert_eq!(second.model, "mid-m");
+    assert_eq!(second.sticky_band, "mid");
+    assert_eq!(tiers.band(&second.model), "mid");
+}
+
+#[test]
+fn tool_continue_target_band_floors_high_sessions_to_mid() {
+    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    assert_eq!(octo::auto::tool_continue_target_band(&tiers, "high"), "mid");
+    assert_eq!(octo::auto::tool_continue_target_band(&tiers, "mid"), "mid");
+    assert_eq!(octo::auto::tool_continue_target_band(&tiers, "low"), "mid");
+}
+
+#[test]
+fn strip_stream_model_marker_bytes_removes_one_m() {
+    use octo::providers::utils::strip_stream_model_marker_bytes;
+    let raw = br#"event: message_start
+data: {"model":"deepseek/deepseek-v4-flash[1m]"}
+"#;
+    let out = strip_stream_model_marker_bytes(raw);
+    let text = String::from_utf8(out).unwrap();
+    assert!(!text.contains("[1m]"));
+    assert!(text.contains("deepseek/deepseek-v4-flash"));
 }
 
 #[test]

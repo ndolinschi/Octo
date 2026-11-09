@@ -76,7 +76,7 @@ impl Tiers {
             escalate_turns: 3,
             down_confirm: 2,
             hold_tool_results: false,
-            tool_result_band: "low".to_string(),
+            tool_result_band: "mid".to_string(),
             tool_result_down_confirm: 0,
             high_allow: Vec::new(),
             session_budget_micros: 0,
@@ -145,6 +145,28 @@ impl Tiers {
         self.high_allow
             .iter()
             .any(|allowed| ids_match(preferred, allowed))
+    }
+}
+
+pub fn tool_continue_target_band(tiers: &Tiers, sticky_band: &str) -> &'static str {
+    if band_rank(sticky_band) >= band_rank("high") {
+        return "mid";
+    }
+    if band_rank(sticky_band) >= band_rank("mid") {
+        return "mid";
+    }
+    match tiers.tool_result_band.as_str() {
+        "high" => "high",
+        "low" => "low",
+        _ => "mid",
+    }
+}
+
+pub fn tool_continue_complexity(tiers: &Tiers, sticky_band: &str) -> Complexity {
+    match tool_continue_target_band(tiers, sticky_band) {
+        "low" => Complexity::Low,
+        "high" => Complexity::High,
+        _ => Complexity::Mid,
     }
 }
 

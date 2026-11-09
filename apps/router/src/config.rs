@@ -489,7 +489,7 @@ fn default_autoroute_down_confirm() -> u32 {
 }
 
 fn default_autoroute_tool_result_band() -> String {
-    "low".to_string()
+    "mid".to_string()
 }
 
 impl Config {
