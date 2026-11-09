@@ -1,4 +1,4 @@
-module github.com/ndolinschi/Octo/harness
+module github.com/ndolinschi/Octo/apps/harness
 
 go 1.26.0
 

@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ndolinschi/Octo/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 )
 
 func TestLoad_DataDirFromEnv(t *testing.T) {

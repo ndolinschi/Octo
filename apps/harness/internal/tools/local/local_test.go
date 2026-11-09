@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ndolinschi/Octo/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
 func TestReadFile_RejectsEscape(t *testing.T) {

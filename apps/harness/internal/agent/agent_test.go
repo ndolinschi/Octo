@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/ndolinschi/Octo/harness/internal/anthropicclient"
-	"github.com/ndolinschi/Octo/harness/internal/store"
-	"github.com/ndolinschi/Octo/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
+	"github.com/ndolinschi/Octo/apps/harness/internal/store"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
 func TestRunner_ToolRoundTrip(t *testing.T) {
