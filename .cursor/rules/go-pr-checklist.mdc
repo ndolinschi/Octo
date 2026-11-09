@@ -1,12 +1,12 @@
 ---
 description: Per-PR / per-file checklist for Go harness changes
-globs: "harness/**/*.go,harness/go.mod"
+globs: "apps/harness/**/*.go,apps/harness/go.mod"
 alwaysApply: false
 ---
 
 # Go PR / file checklist
 
-Apply to every Go change under `harness/` before commit or review.
+Apply to every Go change under `apps/harness/` before commit or review.
 
 ## Types and data
 

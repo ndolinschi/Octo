@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ndolinschi/Octo/harness/internal/cache"
-	"github.com/ndolinschi/Octo/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/cache"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
 type remoteTool struct {

@@ -1,6 +1,6 @@
 # Harness documentation
 
-Product docs for the Go agent harness (`harness/`). Operational notes and build commands stay in [`../README.md`](../README.md); monorepo map in [`../../README.md`](../../README.md).
+Product docs for the Go agent harness (`apps/harness/`). Operational notes and build commands stay in [`../README.md`](../README.md); monorepo map in [`../../README.md`](../../README.md).
 
 | Doc | Contents |
 | --- | --- |

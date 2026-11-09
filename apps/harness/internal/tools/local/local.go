@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ndolinschi/Octo/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
 const bashTimeout = 30 * time.Second

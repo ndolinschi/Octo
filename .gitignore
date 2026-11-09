@@ -1,7 +1,7 @@
 /target
 .cursor/hooks.json
 /data
-harness/data/
+apps/harness/data/
 apps/router/data/
 prepare.db
 apps/router/prepare.db
@@ -15,4 +15,4 @@ apps/router/experiments/**
 !/apps/router/.env.example
 !/config/*.env.example
 !/apps/router/config/*.env.example
-harness/octo-harness
+apps/harness/octo-harness

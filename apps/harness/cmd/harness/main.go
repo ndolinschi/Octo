@@ -9,13 +9,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ndolinschi/Octo/harness/internal/agent"
-	"github.com/ndolinschi/Octo/harness/internal/anthropicclient"
-	"github.com/ndolinschi/Octo/harness/internal/config"
-	"github.com/ndolinschi/Octo/harness/internal/store"
-	"github.com/ndolinschi/Octo/harness/internal/tools"
-	"github.com/ndolinschi/Octo/harness/internal/tools/local"
-	"github.com/ndolinschi/Octo/harness/internal/tools/remote"
+	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
+	"github.com/ndolinschi/Octo/apps/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/store"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools/remote"
 )
 
 func main() {

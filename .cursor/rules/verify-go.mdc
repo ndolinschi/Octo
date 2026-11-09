@@ -1,12 +1,12 @@
 ---
 description: After harness Go changes, run go test and go vet
-globs: "harness/**"
+globs: "apps/harness/**"
 alwaysApply: false
 ---
 
 # Go verify before you finish
 
-After changing code under `harness/`, from that directory run:
+After changing code under `apps/harness/`, from that directory run:
 
 ```bash
 go test ./...

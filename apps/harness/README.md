@@ -1,6 +1,6 @@
 # harness
 
-Go agent harness (`github.com/ndolinschi/Octo/harness`): Anthropic Messages tool loop with local workspace tools, optional remote HTTP tools, and its own SQLite session store. Talks to any Anthropic-compatible Messages endpoint — typically [Octo](../README.md) on loopback.
+Go agent harness (`github.com/ndolinschi/Octo/apps/harness`): Anthropic Messages tool loop with local workspace tools, optional remote HTTP tools, and its own SQLite session store. Talks to any Anthropic-compatible Messages endpoint — typically [Octo](../router/README.md) on loopback.
 
 Product architecture: [docs/architecture.md](./docs/architecture.md).
 
@@ -18,7 +18,7 @@ Coding standards (agents/editors): `.cursor/rules/octo-go.mdc`, `go-pr-checklist
 ## Build
 
 ```bash
-cd harness
+cd apps/harness
 go vet ./...
 go test ./...
 go build -o octo-harness ./cmd/harness

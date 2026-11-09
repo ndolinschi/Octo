@@ -1,6 +1,6 @@
 # Harness architecture
 
-Go module: `github.com/ndolinschi/Octo/harness`. A thin **Anthropic Messages tool loop** with workspace file/shell tools, optional HTTP-discovered tools, and a dedicated SQLite session store. It is a client of any Anthropic-compatible Messages endpoint — usually [Octo router](../../apps/router/) on loopback.
+Go module: `github.com/ndolinschi/Octo/apps/harness`. A thin **Anthropic Messages tool loop** with workspace file/shell tools, optional HTTP-discovered tools, and a dedicated SQLite session store. It is a client of any Anthropic-compatible Messages endpoint — usually [Octo router](../router/) on loopback.
 
 ## Runtime shape
 

@@ -10,8 +10,8 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
-	"github.com/ndolinschi/Octo/harness/internal/store"
-	"github.com/ndolinschi/Octo/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/store"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
 const defaultMaxTurns = 25
