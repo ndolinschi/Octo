@@ -445,7 +445,7 @@ struct PriceRow {
 }
 
 fn default_autoroute_low_model() -> String {
-    "mistralai/ministral-8b-2512".to_string()
+    "mistralai/mistral-nemo".to_string()
 }
 
 fn default_autoroute_mid_model() -> String {
@@ -453,7 +453,7 @@ fn default_autoroute_mid_model() -> String {
 }
 
 fn default_autoroute_high_model() -> String {
-    "mistralai/devstral-2512".to_string()
+    "deepseek/deepseek-v4-flash".to_string()
 }
 
 fn default_autoroute_hard_threshold() -> f64 {

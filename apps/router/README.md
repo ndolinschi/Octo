@@ -172,11 +172,11 @@ curl http://127.0.0.1:8080/openrouter/v1/messages \
 
 On `POST /v1/messages`, set `[llm.messages].backend = "openrouter"` in `config/llm.toml`, or send `"type": "OPENROUTER"` in the JSON body (stripped before upstream).
 
-### Autoroute model ladder (Mistral)
+### Autoroute model ladder (OpenRouter)
 
-`config/autoroute.toml` low/mid/high defaults are **Mistral** (`ministral-8b-2512` → `mistral-small-3.2-24b-instruct` → `devstral-2512`). This applies to **all** `/autoroute` traffic, not only Claude Code experiments.
+`config/autoroute.toml` low/mid/high defaults (`mistral-nemo` → `mistral-small-3.2-24b-instruct` → `deepseek-v4-flash`). This applies to **all** `/autoroute` traffic, not only Claude Code experiments.
 
-- **Provider pin:** `provider_order = ["Mistral"]` / `allow_fallbacks = true` by default so mid avoids Cloudflare-only endpoints. Pinning does **not** choose BYOK vs OpenRouter-paid (account setting).
+- **Provider pin:** `provider_order` is empty by default (a global Mistral pin would mis-route DeepSeek on high). `allow_fallbacks = true`.
 - **Housekeeping trim:** long Claude Code housekeeping turns keep system/tools plus the last `housekeeping_keep_messages` (default 6); trigger becomes `housekeeping_trimmed` when shortened.
 - **Permission checks:** Claude Code prompts with `Err on the side of blocking` or `<transcript>` use trigger `permission_check`, keep the session model, and skip JEV/sticky.
 - **Claude Code body hygiene:** `config/autoroute.toml` → `strip_fields` (default `output_config`, `safeguards`, `context_management`; empty list = strip nothing) removes Anthropic-only keys before OpenRouter on every Forward (including passthrough); removed keys are recorded on the call as `rerouting_reason` `stripped:…` without changing `trigger`. `require_parameters` is `always` (default) | `tools_only` | `never` (invalid values fail config load). With `always`, dropping strip keys can reintroduce OpenRouter 404s (`Filter by Parameters`).
@@ -194,12 +194,12 @@ Claude Code `settings.json` status line:
 "statusLine": {"type": "command", "command": "/absolute/path/to/Octo/scripts/statusline.sh"}
 ```
 
-### Claude Code + Octo autoroute (Mistral tiers)
+### Claude Code + Octo autoroute
 
 Claude Code reads **`ANTHROPIC_DEFAULT_*_MODEL`** and **`CLAUDE_CODE_SUBAGENT_MODEL`** (not Octo). For local experiments through **`/autoroute`**:
 
 ```bash
-cp .env.example .env          # set OPENROUTER_API_KEY + Mistral ladder
+cp .env.example .env          # set OPENROUTER_API_KEY + ladder slugs
 cargo run                     # Octo on 127.0.0.1:8080
 source scripts/claude-code-env.sh
 ./scripts/claude-code-experiment.sh              # interactive (permission prompts)
@@ -207,4 +207,4 @@ source scripts/claude-code-env.sh
 OCTO_CC_SKIP_PERMISSIONS=1 ./scripts/claude-code-experiment.sh  # force skip
 ```
 
-`.env.example` documents the Claude Code vars (`ANTHROPIC_BASE_URL`, `ANTHROPIC_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`) with the Mistral ladder. Put a **real** `OPENROUTER_API_KEY` in `.env` (not the `sk-or-v1-...` stub). `scripts/claude-code-env.sh` sources `.env`, sets **`ANTHROPIC_AUTH_TOKEN=$OPENROUTER_API_KEY`**, and **unsets `ANTHROPIC_API_KEY`**. After changing the key, always re-source the script (exporting only `OPENROUTER_API_KEY` leaves a stale auth token and causes OpenRouter 401). Defaults Haiku/Sonnet/Opus → autoroute low/mid/high (`ministral-8b` → `mistral-small-3.1` → `devstral`). An “unrecognized model” warning for OpenRouter slugs is expected. The experiment helper runs under gitignored `experiments/` with `--add-dir` on the app root (`apps/router`) and the monorepo root. Non-interactive (`-p`) defaults to `--dangerously-skip-permissions`; interactive does not unless `OCTO_CC_SKIP_PERMISSIONS=1`. Manual recipes: [`config/claude-code.env.example`](config/claude-code.env.example).
+`.env.example` documents the Claude Code vars (`ANTHROPIC_BASE_URL`, `ANTHROPIC_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`) aligned with the autoroute ladder. Put a **real** `OPENROUTER_API_KEY` in `.env` (not the `sk-or-v1-...` stub). `scripts/claude-code-env.sh` sources `.env`, sets **`ANTHROPIC_AUTH_TOKEN=$OPENROUTER_API_KEY`**, and **unsets `ANTHROPIC_API_KEY`**. After changing the key, always re-source the script (exporting only `OPENROUTER_API_KEY` leaves a stale auth token and causes OpenRouter 401). Defaults Haiku/Sonnet/Opus → autoroute low/mid/high (`mistral-nemo` → `mistral-small-3.2` → `deepseek-v4-flash`). An “unrecognized model” warning for OpenRouter slugs is expected. The experiment helper runs under gitignored `experiments/` with `--add-dir` on the app root (`apps/router`) and the monorepo root. Non-interactive (`-p`) defaults to `--dangerously-skip-permissions`; interactive does not unless `OCTO_CC_SKIP_PERMISSIONS=1`. Manual recipes: [`config/claude-code.env.example`](config/claude-code.env.example).

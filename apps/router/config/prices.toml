@@ -4,6 +4,13 @@
 # to upstream / OpenRouter / none. Partial rows also fall through.
 # billed_as maps Octo/OpenRouter slug -> provider invoice name for reconcile_costs.py.
 
+[prices."mistralai/mistral-nemo"]
+input = 0.0
+cache_read = 0.0
+cache_write = 0.0
+output = 0.0
+# billed_as = "mistral-nemo"
+
 [prices."mistralai/ministral-8b-2512"]
 input = 0.0
 cache_read = 0.0
@@ -24,6 +31,13 @@ cache_read = 0.0
 cache_write = 0.0
 output = 0.0
 # billed_as = "mistral-small-3.2-24b-instruct"
+
+[prices."deepseek/deepseek-v4-flash"]
+input = 0.0
+cache_read = 0.0
+cache_write = 0.0
+output = 0.0
+# billed_as = "deepseek-v4-flash"
 
 [prices."mistralai/devstral-2512"]
 input = 0.0

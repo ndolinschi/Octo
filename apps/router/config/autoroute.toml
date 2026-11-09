@@ -1,9 +1,9 @@
 [autoroute]
 # Model slugs used by /autoroute when JEV picks a complexity band.
-# Mistral ladder (smaller → smarter): ministral-8b → small-3.2 → devstral.
-low = "mistralai/ministral-8b-2512"
+# OpenRouter ladder (cheaper sweep): nemo → small-3.2 → deepseek-v4-flash.
+low = "mistralai/mistral-nemo"
 mid = "mistralai/mistral-small-3.2-24b-instruct"
-high = "mistralai/devstral-2512"
+high = "deepseek/deepseek-v4-flash"
 hard_threshold = 0.5
 easy_threshold = 0.5
 
@@ -20,12 +20,12 @@ high_allow = []
 session_budget_usd = 0
 # Keep this many recent messages when trimming housekeeping turns (system + tools always kept).
 housekeeping_keep_messages = 6
-# Prefer Mistral's own endpoint over Cloudflare (3.1 mid was Cloudflare-only and flaky with tools).
-provider_order = ["Mistral"]
+# Empty: global provider_order would mis-route non-Mistral high tier (DeepSeek).
+provider_order = []
 allow_fallbacks = true
 
 # Top-level Anthropic-only keys removed before OpenRouter (Filter by Parameters).
-# Proven against mistralai/devstral-2512 supported_parameters for session 047c99af calls 528/530.
+# Proven against supported_parameters for high-tier models (see experiments in docs/).
 # Empty list disables stripping. Protected keys (tools, tool_choice, system, messages,
 # max_tokens, stop_sequences, metadata) are ignored if listed.
 # With require_parameters=always, narrowing this list can reintroduce OpenRouter 404s.
