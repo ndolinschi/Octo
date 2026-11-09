@@ -1,13 +1,14 @@
 # Octo monorepo
 
-Apps-directory monorepo. Today it contains one application:
+Apps-directory monorepo with shared frontend packages.
 
-| App | Path | Description |
+| App / package | Path | Description |
 | --- | --- | --- |
 | **router** (Octo) | [`apps/router/`](./apps/router/) | Rust HTTP proxy for OpenAI / Anthropic / OpenRouter, plus an autoroute model ladder |
 | **harness** | [`apps/harness/`](./apps/harness/) | Go Anthropic Messages agent loop (local + remote tools, SQLite sessions) |
-
-There are no shared libraries yet. A future frontend (any language) should live under `apps/<name>/`.
+| **desktop** | [`apps/desktop/`](./apps/desktop/) | Tauri shell for the shared UI (local tools via future harness bridge) |
+| **ui** | [`packages/ui/`](./packages/ui/) | Shared React UI (`@octo/ui`) for desktop and future web |
+| **web** (planned) | [`apps/web/`](./apps/web/) | Future static host — remote tools on Claude infra |
 
 ## Documentation
 
@@ -17,6 +18,8 @@ There are no shared libraries yet. A future frontend (any language) should live 
 | [apps/router/README.md](./apps/router/README.md) | Octo user guide (curl, Claude Code, history) |
 | [apps/router/docs/README.md](./apps/router/docs/README.md) | Product docs index |
 | [apps/harness/docs/README.md](./apps/harness/docs/README.md) | Harness product docs index |
+| [apps/desktop/docs/architecture.md](./apps/desktop/docs/architecture.md) | Desktop shell + UI boundaries |
+| [docs/superpowers/specs/2026-11-09-desktop-ui-design.md](./docs/superpowers/specs/2026-11-09-desktop-ui-design.md) | Shared UI / desktop / web design |
 | [apps/router/AGENTS.md](./apps/router/AGENTS.md) | Router operational notes for contributors / agents |
 
 ## Quick start (router)

@@ -16,3 +16,6 @@ apps/router/experiments/**
 !/config/*.env.example
 !/apps/router/config/*.env.example
 apps/harness/octo-harness
+node_modules/
+apps/desktop/dist/
+.pnpm-store/
