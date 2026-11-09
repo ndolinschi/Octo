@@ -369,6 +369,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         choice: choice.as_ref(),
         stall,
         tool_results_only,
+        hold_tool_results: req.auto.tiers().hold_tool_results,
         question_text: &question,
     }) {
         return route::run(RouteCtx {
@@ -387,6 +388,44 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 tiers: &req.auto.tiers,
             }),
         });
+    }
+
+    if tool_results_only && !req.auto.tiers().hold_tool_results && stall.is_none() {
+        if let Some(row) = choice.as_ref() {
+            let classified = band_complexity(&req.auto.tiers().tool_result_band);
+            let mut sticky = apply_sticky(StickyPlan {
+                tiers: &req.auto.tiers,
+                choice: Some(row),
+                classified,
+                preferred: preferred.as_deref(),
+                stall: None,
+                tool_results_only: true,
+            });
+            cap_for_budget(&mut sticky, &req.auto.tiers, spent);
+            return route::run(RouteCtx {
+                auto: req.auto,
+                body: req.body,
+                models: loaded.as_ref(),
+                previous_model: Some(row.model.clone()),
+                plan: RoutePlan {
+                    model: sticky.model,
+                    tools: row.tools.clone(),
+                    reason: sticky.reason.or_else(|| Some("tool_continue".to_string())),
+                    tier_before,
+                    reserve,
+                    allow_compact: req.allow_compact,
+                    persist,
+                    sticky_band: sticky.sticky_band,
+                    escalate_remaining: sticky.escalate_remaining,
+                    escalate_band: sticky.escalate_band,
+                    last_stall: sticky.last_stall,
+                    pending_down_band: sticky.pending_down_band,
+                    down_count: sticky.down_count,
+                    trimmed_from_tokens: None,
+                    spent_micros: spent,
+                },
+            });
+        }
     }
 
     let subagent_unset = choice
@@ -527,6 +566,7 @@ struct HoldWithoutClassify<'a> {
     choice: Option<&'a super::session::SessionChoice>,
     stall: Option<stall::StallTrigger>,
     tool_results_only: bool,
+    hold_tool_results: bool,
     question_text: &'a str,
 }
 
@@ -535,7 +575,13 @@ fn hold_without_classify(plan: HoldWithoutClassify<'_>) -> Option<super::session
     if plan.stall.is_some() {
         return None;
     }
-    if plan.tool_results_only || plan.question_text.trim().is_empty() {
+    if plan.hold_tool_results && plan.tool_results_only {
+        return Some(row.clone());
+    }
+    if plan.question_text.trim().is_empty() {
+        if plan.tool_results_only && !plan.hold_tool_results {
+            return None;
+        }
         return Some(row.clone());
     }
     None

@@ -13,6 +13,13 @@ stall_window = 6
 escalate_turns = 3
 # Consecutive lower classifications required before stepping the sticky tier down.
 down_confirm = 2
+# When true, tool-result-only turns keep the session tier (legacy). Default false: apply
+# sticky de-escalation on tool continuations without calling JEV.
+hold_tool_results = false
+# Assumed JEV band for tool-result-only turns when hold_tool_results is false.
+tool_result_band = "low"
+# Consecutive tool-result-only turns at a lower band before sticky steps down (0 = down_confirm).
+tool_result_down_confirm = 0
 # Client model is honoured on High only when its slug (tilde-insensitive) is listed here.
 # Empty means always use the configured high slug.
 high_allow = []

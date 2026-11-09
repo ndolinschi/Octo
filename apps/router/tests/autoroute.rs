@@ -447,8 +447,73 @@ fn route_meta_rerouting_matches_tier_change() {
 }
 
 #[tokio::test]
-async fn tool_results_only_hold_keeps_sticky_model_without_jev() {
-    let tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+async fn tool_results_only_deescalates_without_jev() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.down_confirm = 2;
+    let auto = Auto::new(tiers);
+    auto.seed_session(
+        "deesc-sess",
+        SessionChoice::fresh("high-m".into(), vec!["Bash".into()], "high".into()),
+    );
+    let history = History::disabled();
+    let client = reqwest::Client::new();
+    let body = |session: &str| {
+        json!({
+            "metadata": {"user_id": format!("{{\"session_id\":\"{session}\"}}")},
+            "model": "client",
+            "max_tokens": 256,
+            "tools": [{"name": "Bash"}],
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "1",
+                    "content": "ok"
+                }]
+            }]
+        })
+    };
+    let first = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "sk-would-call-jev",
+        body: body("deesc-sess"),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = first else {
+        panic!("expected forward");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "high-m");
+    assert_eq!(forward.meta.trigger, "hysteresis_hold");
+    assert_eq!(forward.meta.tier_after, "high");
+
+    let second = decide(DecideRequest {
+        auto: &auto,
+        history: &history,
+        client: &client,
+        decisions_url: "http://127.0.0.1:9/decisions",
+        api_key: "sk-would-call-jev",
+        body: body("deesc-sess"),
+        allow_compact: true,
+    })
+    .await;
+    let Turn::Forward(forward) = second else {
+        panic!("expected forward");
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
+    assert_eq!(payload["model"], "low-m");
+    assert_eq!(forward.meta.trigger, "tool_continue");
+    assert_eq!(forward.meta.tier_after, "low");
+}
+
+#[tokio::test]
+async fn hold_tool_results_keeps_sticky_model_without_jev() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.hold_tool_results = true;
     let auto = Auto::new(tiers);
     auto.seed_session(
         "hold-sess",
@@ -1156,6 +1221,59 @@ fn stall_escalates_then_releases_and_down_needs_confirm() {
     assert_eq!(up_wins.sticky_band, "high");
     assert_eq!(up_wins.model, "high-m");
     assert_eq!(up_wins.escalate_remaining, 1);
+}
+
+#[test]
+fn tool_result_only_sticky_deescalates_after_confirm() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.down_confirm = 2;
+    let sticky_high = SessionChoice::fresh("high-m".into(), vec!["Bash".into()], "high".into());
+    let hold = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&sticky_high),
+        classified: Complexity::Low,
+        preferred: None,
+        stall: None,
+        tool_results_only: true,
+    });
+    assert_eq!(hold.model, "high-m");
+    assert_eq!(hold.reason.as_deref(), Some("hysteresis_hold"));
+    assert_eq!(hold.down_count, 1);
+
+    let mut pending = sticky_high.clone();
+    pending.pending_down_band = hold.pending_down_band.clone();
+    pending.down_count = hold.down_count;
+    let dropped = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&pending),
+        classified: Complexity::Low,
+        preferred: None,
+        stall: None,
+        tool_results_only: true,
+    });
+    assert_eq!(dropped.sticky_band, "low");
+    assert_eq!(dropped.model, "low-m");
+    assert_eq!(dropped.down_count, 0);
+}
+
+#[test]
+fn tool_result_only_stall_still_escalates() {
+    let mut tiers = Tiers::new("low-m".into(), "mid-m".into(), "high-m".into());
+    tiers.escalate_turns = 2;
+    let choice = SessionChoice::fresh("low-m".into(), vec!["Bash".into()], "low".into());
+    let escalated = apply_sticky(StickyPlan {
+        tiers: &tiers,
+        choice: Some(&choice),
+        classified: Complexity::Low,
+        preferred: None,
+        stall: Some(StallTrigger::ErrorStreak),
+        tool_results_only: true,
+    });
+    assert_eq!(escalated.model, "mid-m");
+    assert_eq!(
+        escalated.reason.as_deref(),
+        Some("stall_escalate:error_streak")
+    );
 }
 
 #[test]

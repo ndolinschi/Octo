@@ -31,6 +31,9 @@ Helpers (not loaded as Config fragments): `claude-code.env.example`, `experiment
 | `stall_window` | `6` | Recent turns for stall detect |
 | `escalate_turns` | `3` | Hold higher after stall |
 | `down_confirm` | `2` | Consecutive downs before sticky drop |
+| `hold_tool_results` | `false` | Legacy: keep tier on tool-result-only turns |
+| `tool_result_band` | `low` | Assumed band for tool continuations when not holding |
+| `tool_result_down_confirm` | `0` | Tool-turn down confirm; `0` uses `down_confirm` |
 | `high_allow` | `[]` | Empty = ignore client high preference |
 | `session_budget_usd` | `0` | `0` disables spend cap |
 | `housekeeping_keep_messages` | `6` | Trim retention |

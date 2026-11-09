@@ -397,10 +397,11 @@ fn remember(plan: RememberPlan<'_>) {
         return;
     };
     let cost_micros = sessions.get(&id).map(|row| row.cost_micros).unwrap_or(0);
+    let model = catalog::bare_id(plan.model).to_string();
     sessions.insert(
         id,
         SessionChoice {
-            model: plan.model.to_string(),
+            model,
             tools: plan.tools.to_vec(),
             prev_input_tokens_est: plan.prev_input_tokens_est,
             awaiting_compact: plan.awaiting_compact,

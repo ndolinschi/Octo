@@ -47,7 +47,7 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
             pending_down_band = Some(classified_band.clone());
             down_count = 1;
         }
-        if down_count >= plan.tiers.down_confirm {
+        if down_count >= down_confirm_for(&plan) {
             sticky_band = classified_band.clone();
             pending_down_band = None;
             down_count = 0;
@@ -87,7 +87,7 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
         };
     }
 
-    if plan.tool_results_only {
+    if plan.tool_results_only && plan.tiers.hold_tool_results {
         if let Some(row) = plan.choice {
             return StickyOutcome {
                 model: row.model.clone(),
@@ -179,4 +179,14 @@ fn higher_band<'a>(left: &'a str, right: &'a str) -> &'a str {
     } else {
         right
     }
+}
+
+fn down_confirm_for(plan: &StickyPlan<'_>) -> u32 {
+    if plan.tool_results_only {
+        if plan.tiers.tool_result_down_confirm > 0 {
+            return plan.tiers.tool_result_down_confirm.max(1);
+        }
+        return plan.tiers.down_confirm.max(1);
+    }
+    plan.tiers.down_confirm.max(1)
 }

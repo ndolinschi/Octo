@@ -53,6 +53,9 @@ pub struct Config {
     pub autoroute_stall_window: u32,
     pub autoroute_escalate_turns: u32,
     pub autoroute_down_confirm: u32,
+    pub autoroute_hold_tool_results: bool,
+    pub autoroute_tool_result_band: String,
+    pub autoroute_tool_result_down_confirm: u32,
     pub autoroute_high_allow: Vec<String>,
     pub autoroute_session_budget_usd: f64,
     pub autoroute_housekeeping_keep_messages: u32,
@@ -360,6 +363,12 @@ struct AutorouteSection {
     #[serde(default = "default_autoroute_down_confirm")]
     down_confirm: u32,
     #[serde(default)]
+    hold_tool_results: bool,
+    #[serde(default = "default_autoroute_tool_result_band")]
+    tool_result_band: String,
+    #[serde(default)]
+    tool_result_down_confirm: u32,
+    #[serde(default)]
     high_allow: Vec<String>,
     #[serde(default = "default_autoroute_session_budget_usd")]
     session_budget_usd: f64,
@@ -392,6 +401,9 @@ impl Default for AutorouteSection {
             stall_window: default_autoroute_stall_window(),
             escalate_turns: default_autoroute_escalate_turns(),
             down_confirm: default_autoroute_down_confirm(),
+            hold_tool_results: false,
+            tool_result_band: default_autoroute_tool_result_band(),
+            tool_result_down_confirm: 0,
             high_allow: Vec::new(),
             session_budget_usd: default_autoroute_session_budget_usd(),
             housekeeping_keep_messages: default_autoroute_housekeeping_keep_messages(),
@@ -474,6 +486,10 @@ fn default_autoroute_escalate_turns() -> u32 {
 
 fn default_autoroute_down_confirm() -> u32 {
     2
+}
+
+fn default_autoroute_tool_result_band() -> String {
+    "low".to_string()
 }
 
 impl Config {
@@ -601,6 +617,16 @@ fn merge_tables(into: &mut Map<String, Value>, from: Map<String, Value>) {
     }
 }
 
+fn normalize_tool_result_band(raw: &str) -> Result<String, ConfigError> {
+    let band = raw.trim().to_ascii_lowercase();
+    match band.as_str() {
+        "low" | "mid" | "high" => Ok(band),
+        _ => Err(ConfigError::InvalidAutorouteToolResultBand {
+            value: raw.to_string(),
+        }),
+    }
+}
+
 fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
     if crate::auto::RequireParameters::parse(&file.autoroute.require_parameters).is_none() {
         return Err(ConfigError::InvalidAutorouteRequireParameters {
@@ -651,6 +677,9 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         autoroute_stall_window: file.autoroute.stall_window,
         autoroute_escalate_turns: file.autoroute.escalate_turns,
         autoroute_down_confirm: file.autoroute.down_confirm,
+        autoroute_hold_tool_results: file.autoroute.hold_tool_results,
+        autoroute_tool_result_band: normalize_tool_result_band(&file.autoroute.tool_result_band)?,
+        autoroute_tool_result_down_confirm: file.autoroute.tool_result_down_confirm,
         autoroute_high_allow: file.autoroute.high_allow,
         autoroute_session_budget_usd: file.autoroute.session_budget_usd,
         autoroute_housekeeping_keep_messages: file.autoroute.housekeeping_keep_messages,
@@ -711,6 +740,8 @@ pub enum ConfigError {
         "invalid autoroute.require_parameters {value:?}; expected always, tools_only, or never"
     )]
     InvalidAutorouteRequireParameters { value: String },
+    #[error("invalid autoroute.tool_result_band {value:?}; expected low, mid, or high")]
+    InvalidAutorouteToolResultBand { value: String },
     #[error("invalid bind_addr {addr}")]
     InvalidBindAddr {
         addr: String,

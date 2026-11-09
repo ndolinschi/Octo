@@ -42,7 +42,7 @@ pie showData
 | Session outcomes | cargo / pytest / unittest tool_result parse | `session_outcomes` |
 | Statusline | `/autoroute/status` + script | `status.rs`, `scripts/statusline.sh` |
 | Per-subagent keys | `{uuid}#sub:{hash}` + `parent_session_id`; first turn defaults low | `subagent_first_turn_*`, `subagent_keys_*`, parent stall test |
-| tool_results_only hold | Keeps sticky model; no JEV | `tool_results_only_hold_*` |
+| tool_results_only | De-escalates via `tool_continue` unless `hold_tool_results` | `tool_results_only_deescalates_*` |
 | Budget recap | Cap after fill-upgrade / before retry; compact adds session cost | `budget_blocks_fill_*`, `autoroute_skips_retry_*` |
 | Catalog miss | Unknown window skips fill/compact (no fake 8192) | `catalog_miss_skips_compact_*` |
 | `generation_id` | Prefers OpenRouter `x-generation-id` / `gen-*` | `generation_id_prefers_openrouter_header_*` |

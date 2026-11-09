@@ -65,6 +65,9 @@ impl AppState {
                 tiers.stall_window = config.autoroute_stall_window;
                 tiers.escalate_turns = config.autoroute_escalate_turns;
                 tiers.down_confirm = config.autoroute_down_confirm;
+                tiers.hold_tool_results = config.autoroute_hold_tool_results;
+                tiers.tool_result_band = config.autoroute_tool_result_band.clone();
+                tiers.tool_result_down_confirm = config.autoroute_tool_result_down_confirm;
                 tiers.high_allow = config.autoroute_high_allow.clone();
                 tiers.session_budget_micros =
                     session_budget_micros(config.autoroute_session_budget_usd);

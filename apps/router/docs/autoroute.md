@@ -24,7 +24,7 @@ flowchart TD
   bg{background_by_client_model<br/>+ bg_signal?}
   await{awaiting_compact?}
   stall{stall detect}
-  hold{hold / tool_results_only?}
+  hold{empty question<br/>or legacy hold_tool_results?}
   jev[JEV classify<br/>is_hard / is_easy / tools_enough]
   sticky[Sticky + budget cap]
   route[route::run]
@@ -54,6 +54,7 @@ flowchart TD
 | `background_model` | Same as housekeeping when opt-in flag on |
 | `stall:error_streak` / `stall:tool_*` | Escalate one band for `escalate_turns` |
 | `text_tool_call` | Next-turn escalate after detector fires |
+| `tool_continue` | Tool-result-only turn; sticky de-escalation without JEV |
 | `none` | Empty question passthrough (still shaped) |
 | JEV band names | Complexity from Decisions scores |
 
@@ -90,7 +91,8 @@ Protected keys (`tools`, `tool_choice`, `system`, `messages`, `max_tokens`, `sto
 | Mechanism | Behavior |
 | --- | --- |
 | Sticky band | Session remembers low/mid/high; down-tier needs `down_confirm` consecutive lower classifications |
-| Stall | Looks at last `stall_window` non-HK assistant turns; escalates and holds `escalate_turns` |
+| Tool continuations | When `hold_tool_results = false` (default), user turns that are only `tool_result` blocks re-run sticky using `tool_result_band` (default `low`) and skip JEV; `tool_result_down_confirm` overrides `down_confirm` when &gt; 0 |
+| Stall | Looks at last `stall_window` non-HK assistant turns; escalates and holds `escalate_turns` (including on tool-result-only turns when stall fires) |
 | Session budget | When `session_budget_usd > 0`, `cap_for_budget` clamps tier by spend; **default is 0 (off)** |
 | high_allow | Client preferred model on High only if allowlisted (empty = always use configured high slug) |
 
