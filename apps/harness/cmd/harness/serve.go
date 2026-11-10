@@ -18,6 +18,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/lsp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -101,6 +102,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		return fmt.Errorf("restart recovery: %w", err)
 	}
 
+	lspMgr := lsp.NewManager(lsp.Options{})
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -108,7 +110,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	baseCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
 	srv := &http.Server{
-		Handler:           bridge.New(svc, notes, project.NewFiles(store, hub), bridge.WithPlugins(pluginReg)),
+		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
+			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr)),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
@@ -128,6 +131,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	defer cancel()
 	if err := orch.Shutdown(shutdownCtx); err != nil {
 		slog.Error("orchestrator shutdown", "err", err)
+	}
+	if err := lspMgr.Shutdown(shutdownCtx); err != nil {
+		slog.Error("language server shutdown", "err", err)
 	}
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err

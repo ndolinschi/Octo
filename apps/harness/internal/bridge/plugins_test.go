@@ -11,6 +11,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/fakeacp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/fakelsp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -18,6 +19,9 @@ import (
 func TestMain(m *testing.M) {
 	if fakeacp.ChildMode() {
 		os.Exit(fakeacp.Main())
+	}
+	if fakelsp.ChildMode() {
+		os.Exit(fakelsp.Main())
 	}
 	os.Exit(m.Run())
 }

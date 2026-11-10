@@ -33,7 +33,7 @@ type env struct {
 func newEnv(t *testing.T, gate chan struct{}) *env { return newEnvWith(t, gate, nil) }
 
 // newEnvWith is newEnv with a plugin registry (nil = none).
-func newEnvWith(t *testing.T, gate chan struct{}, reg *plugins.Registry) *env {
+func newEnvWith(t *testing.T, gate chan struct{}, reg *plugins.Registry, opts ...bridge.Option) *env {
 	t.Helper()
 	llm := mockllm.New(0)
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +64,7 @@ func newEnvWith(t *testing.T, gate chan struct{}, reg *plugins.Registry) *env {
 		_ = orch.Shutdown(ctx)
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: config.DefaultMaxDepth})
-	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub), bridge.WithPlugins(reg)))
+	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub), append([]bridge.Option{bridge.WithPlugins(reg)}, opts...)...))
 	t.Cleanup(srv.Close)
 	return &env{url: srv.URL, gate: gate}
 }

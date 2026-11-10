@@ -42,6 +42,8 @@ flowchart TB
 | `internal/bridge` | `net/http` handlers (Go 1.22 `ServeMux` patterns), SSE, CORS, JSON errors |
 | `internal/plugins` | Loads `plugin.json` manifests (language servers, ACP agents, tool servers) into an immutable `Registry`; resolves commands and `available`; never executes anything |
 | `internal/acp` | Agent Client Protocol client: process lifecycle, ndjson JSON-RPC connection, typed protocol structs, `Client.Run` with a `Handler` the orchestrator implements; no project/orchestrator imports |
+| `internal/lsp` | Language-server relay, HTTP-agnostic: `Manager` of `Session`s (process + LSP `Content-Length` framing, bounded event buffer, idle reaping, process-group kill). Frames and validates JSON only; never interprets LSP |
+| `internal/fakelsp` | Scripted language server for tests (re-exec of the test binary) |
 | `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`) |
 | `internal/mockllm` | Scripted Anthropic-compatible Messages server (used by tests and `examples/mockllm`) |
 | `internal/tools` | Registry → Anthropic tool defs; `ToolUseID(ctx)` for handlers |
@@ -89,7 +91,7 @@ flowchart LR
 
 Specs: [`2026-11-10-workspace-plugins-acp-design.md`](../../../docs/superpowers/specs/2026-11-10-workspace-plugins-acp-design.md) §1-2. Examples and the manifest reference: [`plugins-examples/README.md`](../plugins-examples/README.md).
 
-Manifests are read once at startup from `{data-dir}/plugins/*/plugin.json` and every `--plugins-dir` / `HARNESS_PLUGINS_DIR` entry (a plugin directory, or a directory of them). `plugins.Load` validates names, required fields and ids (first plugin wins; later duplicates are listed in that plugin's `errors`), resolves commands (absolute as is, path separator = relative to the plugin dir, else `PATH`) and sets `available`. A broken manifest becomes an entry with `errors` and no capabilities. `toolServers` are registered on the shared remote registry (sub-agents only); a failure is logged and recorded in `errors`. `GET /v1/plugins` returns `{"plugins": [...]}` (commands, args and env are never exposed); there is no write endpoint. `languageServers` are parsed and exposed (`Registry.LanguageServers`, `LanguageServer(id)`); nothing starts them yet.
+Manifests are read once at startup from `{data-dir}/plugins/*/plugin.json` and every `--plugins-dir` / `HARNESS_PLUGINS_DIR` entry (a plugin directory, or a directory of them). `plugins.Load` validates names, required fields and ids (first plugin wins; later duplicates are listed in that plugin's `errors`), resolves commands (absolute as is, path separator = relative to the plugin dir, else `PATH`) and sets `available`. A broken manifest becomes an entry with `errors` and no capabilities. `toolServers` are registered on the shared remote registry (sub-agents only); a failure is logged and recorded in `errors`. `GET /v1/plugins` returns `{"plugins": [...]}` (commands, args and env are never exposed); there is no write endpoint. `languageServers` are parsed and exposed (`Registry.LanguageServers`, `LanguageServer(id)`); they are started by the language-server relay below.
 
 `spawn_agent` gains an optional `agent` (enum of available ACP agent ids; omitted from the schema when there are none). The sub-agent row is created as usual with `model = "acp:<id>"`, then `acp.Start` runs the command in the project's first folder (`initialize` with protocol version 1, fs capabilities on, terminal off), `session/new` (`mcpServers: []`) and one `session/prompt` carrying the task. The orchestrator system prompt names the available agents.
 
@@ -203,3 +205,21 @@ Set `ANTHROPIC_API_KEY` to the key the upstream expects (OpenRouter bearer or An
 | `harness show <session-id>` | JSON message rows for one session |
 
 Common flags: `--workspace` (`run`), `--base-url`, `--model` (`run`), `--data-dir`, `--remote` (repeatable), `--max-turns`, `--octo-key`. `serve` also takes `--addr`.
+
+### Language servers
+
+Spec: [`2026-11-10-workspace-plugins-acp-design.md`](../../../docs/superpowers/specs/2026-11-10-workspace-plugins-acp-design.md) §3. Requests go by POST, server messages come by SSE; no WebSocket.
+
+| Method | Path | Result |
+| --- | --- | --- |
+| GET | `/v1/projects/{pid}/lsp` | `{"servers":[{id,label,languages,available}]}` |
+| POST | `/v1/projects/{pid}/lsp/{server}/sessions` | `201 {session_id, root_uri, workspace_folders:[{uri,name}]}`; 404 unknown/unavailable server, 400 project without folders, 429 `too_many_sessions` |
+| POST | `/v1/projects/{pid}/lsp/sessions/{sid}/messages` | one JSON object in, `202`; 400 not a JSON object, 404 unknown session (also another project's), 413 `message_too_large` |
+| GET | `/v1/projects/{pid}/lsp/sessions/{sid}/events` | SSE: `event: message` (`data` = one compact JSON-RPC message), `: ping` every 15 s, finally `event: exit` `{"code":n}` and the stream ends; 409 `already_subscribed` for a second concurrent stream |
+| DELETE | `/v1/projects/{pid}/lsp/sessions/{sid}` | `204`, kills the server |
+
+`lsp.Manager.Start` runs the plugin's command/args/env (plus the inherited environment) with the project's first folder as cwd. `root_uri` is that folder as a percent-encoded `file://` URI; `workspace_folders` lists every folder (`name` = folder label). The harness frames stdio (`Content-Length`, a `Content-Type` header is tolerated) and checks JSON validity; it does not interpret LSP. Client writes are serialised by a mutex with a 10 s write deadline.
+
+Lifecycle: a session ends on `DELETE`, when the server process exits (the subscriber gets `exit` with the exit code; `-1` when killed), when no stream has been attached for 30 s after creation or after the stream disconnected (the stream may be re-attached within that window; buffered messages are kept), on a framing error or oversize message from the server, when the subscriber is too slow, and on harness shutdown. Ending kills the process group (unix) and unregisters the session. An `exit` that the harness itself caused carries an extra `reason` string in its data.
+
+Limits: 8 live sessions per project (finished processes do not count), 4 MiB per message in both directions. Backpressure: server messages wait in a buffered channel of 256 messages (`lsp.DefaultBuffer`); the relay never blocks on the subscriber, and when the buffer is full the session is dropped (`reason: "event subscriber too slow..."`) rather than growing without bound. Server stderr goes to `slog` at debug (2000 chars per line, 1 MiB per session).

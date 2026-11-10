@@ -21,6 +21,8 @@ type Server struct {
 	notes   *project.Notes
 	files   *project.Files
 	plugins PluginSource
+	langs   LanguageServers
+	lsp     LSPSessions
 	ping    time.Duration
 }
 
@@ -34,6 +36,9 @@ type Option func(*Server)
 
 // WithPlugins serves the registry at GET /v1/plugins (empty list otherwise).
 func WithPlugins(src PluginSource) Option { return func(s *Server) { s.plugins = src } }
+
+// WithPingInterval overrides the SSE keep-alive period.
+func WithPingInterval(d time.Duration) Option { return func(s *Server) { s.ping = d } }
 
 func New(svc *project.Service, notes *project.Notes, files *project.Files, opts ...Option) http.Handler {
 	s := &Server{svc: svc, notes: notes, files: files, ping: pingInterval}
@@ -66,6 +71,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/projects/{pid}/files/content", s.readFile)
 	mux.HandleFunc("PUT /v1/projects/{pid}/files/content", s.writeFile)
 	mux.HandleFunc("GET /v1/projects/{pid}/events", s.events)
+	mux.HandleFunc("GET /v1/projects/{pid}/lsp", s.listLSP)
+	mux.HandleFunc("POST /v1/projects/{pid}/lsp/{server}/sessions", s.createLSPSession)
+	mux.HandleFunc("POST /v1/projects/{pid}/lsp/sessions/{sid}/messages", s.postLSPMessage)
+	mux.HandleFunc("GET /v1/projects/{pid}/lsp/sessions/{sid}/events", s.lspEvents)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/lsp/sessions/{sid}", s.deleteLSPSession)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such route")
 	})
