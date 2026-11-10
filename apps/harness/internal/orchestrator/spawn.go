@@ -10,7 +10,6 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
-	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
@@ -26,6 +25,7 @@ type spawnInput struct {
 	Task  string `json:"task"`
 	Tier  string `json:"tier"`
 	Agent string `json:"agent"`
+	Model string `json:"model"`
 }
 
 func (rt *runtime) spawnDef(parent projectstore.Agent) (tools.Def, error) {
@@ -55,14 +55,17 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	if in.Role == "" || in.Title == "" || in.Task == "" || !tier.Valid() {
 		return "spawn_agent requires role, title, task and tier (fast|balanced|deep)", true, nil
 	}
-	var ext *plugins.Agent
+	var ext *acpTarget
 	model := rt.models.ForTier(in.Tier)
+	if in.Agent == "" && strings.TrimSpace(in.Model) != "" {
+		return "spawn_agent: model only applies together with agent; built-in sub-agents use tier", true, nil
+	}
 	if in.Agent != "" {
-		ag, msg := rt.pickACPAgent(in.Agent)
+		target, msg := rt.pickACPAgent(in.Agent, strings.TrimSpace(in.Model))
 		if msg != "" {
 			return msg, true, nil
 		}
-		ext, model = &ag, ACPModelPrefix+ag.ID
+		ext, model = &target, target.recorded()
 	}
 	toolUseID := tools.ToolUseID(ctx)
 	c, cancel := dbCtx(ctx)
@@ -101,7 +104,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 }
 
 // runChild runs the child through the built-in loop, or through ext when set.
-func (rt *runtime) runChild(ctx context.Context, child projectstore.Agent, task anthropic.MessageParam, ext *plugins.Agent) (string, error) {
+func (rt *runtime) runChild(ctx context.Context, child projectstore.Agent, task anthropic.MessageParam, ext *acpTarget) (string, error) {
 	if ext != nil {
 		return rt.runACP(ctx, child, *ext)
 	}

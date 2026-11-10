@@ -91,6 +91,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	pluginReg := loadPlugins(ctx, cfg, remoteReg)
+	pluginReg.StartProbes(ctx)
 
 	priceTable, err := prices.Load(filepath.Join(cfg.DataDir, prices.File))
 	if err != nil {

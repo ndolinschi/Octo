@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // Connector registers a plugin's tool server (the --remote contract). A
@@ -19,7 +20,7 @@ type Connector func(ctx context.Context, baseURL string) error
 func Load(ctx context.Context, dataDir string, extraDirs []string, connect Connector) *Registry {
 	b := &builder{
 		ctx: ctx, connect: connect,
-		reg:   &Registry{plugins: []Plugin{}, agents: map[string]Agent{}, servers: map[string]LanguageServer{}},
+		reg:   &Registry{plugins: []Plugin{}, agents: map[string]Agent{}, servers: map[string]LanguageServer{}, probes: newProber()},
 		names: map[string]string{}, tools: map[string]bool{}, loaded: map[string]bool{},
 	}
 	b.scan(filepath.Join(dataDir, "plugins"), false)
@@ -127,7 +128,17 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			continue
 		}
 		l, ok := launch(a.manifestCommand, p.Dir)
-		ag := Agent{ID: a.ID, Label: labelOr(a.Label, a.ID), Available: ok, Launch: l}
+		ag := Agent{
+			ID: a.ID, Label: labelOr(a.Label, a.ID), Available: ok, Launch: l,
+			Models: append([]string{}, a.Models...), DefaultModel: a.DefaultModel, ModelArg: slices.Clone(a.ModelArg),
+		}
+		if a.Auth != nil {
+			ag.Hint = strings.TrimSpace(a.Auth.Hint)
+			if len(a.Auth.Probe) > 0 {
+				ag.ProbeCommand, _ = resolveCommand(a.Auth.Probe[0], p.Dir)
+				ag.ProbeArgs = slices.Clone(a.Auth.Probe[1:])
+			}
+		}
 		b.reg.agents[ag.ID] = ag
 		p.Agents = append(p.Agents, ag)
 	}

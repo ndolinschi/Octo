@@ -91,6 +91,11 @@ func (c collected) of(typ string) []map[string]any {
 
 func (r *rig) runCollect(t *testing.T, pid, text string, during func(<-chan events.Event)) collected {
 	t.Helper()
+	return r.runCollectFor(t, 30*time.Second, pid, text, during)
+}
+
+func (r *rig) runCollectFor(t *testing.T, limit time.Duration, pid, text string, during func(<-chan events.Event)) collected {
+	t.Helper()
 	ch, cancel := r.hub.Subscribe(pid)
 	defer cancel()
 	if _, err := r.orch.Start(context.Background(), pid, text); err != nil {
@@ -100,7 +105,7 @@ func (r *rig) runCollect(t *testing.T, pid, text string, during func(<-chan even
 	if during != nil {
 		during(ch)
 	}
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(limit)
 	for {
 		select {
 		case ev, ok := <-ch:

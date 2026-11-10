@@ -1,21 +1,23 @@
 {
   "name": "acp-agents",
-  "version": "0.1.0",
-  "description": "External coding agents over ACP (check each command against the tool's own docs)",
+  "version": "0.2.0",
+  "description": "More external coding agents over ACP (check each command against the tool's own docs; for Copilot, Grok and Codex see subscription-agents)",
   "agents": [
     {
       "id": "claude-code",
       "label": "Claude Code",
       "command": "npx",
-      "args": ["-y", "@zed-industries/claude-code-acp"],
-      "env": {}
+      "args": ["-y", "@agentclientprotocol/claude-agent-acp"],
+      "env": {},
+      "auth": { "hint": "Log in with the Claude Code CLI first, or set ANTHROPIC_API_KEY (billed per token)." }
     },
     {
       "id": "gemini",
       "label": "Gemini CLI",
       "command": "gemini",
       "args": ["--acp"],
-      "env": {}
+      "env": {},
+      "auth": { "hint": "Start gemini once in a terminal and sign in (see its docs)." }
     }
   ]
 }

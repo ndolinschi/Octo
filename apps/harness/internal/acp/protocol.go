@@ -17,6 +17,9 @@ const (
 	methodSessionNew  = "session/new"
 	methodPrompt      = "session/prompt"
 	methodCancel      = "session/cancel"
+	methodAuth        = "authenticate"
+	methodSetModel    = "session/set_model"
+	methodSetConfig   = "session/set_config_option"
 	methodUpdate      = "session/update"
 	methodPermission  = "session/request_permission"
 	methodReadFile    = "fs/read_text_file"
@@ -94,6 +97,7 @@ type initializeParams struct {
 type initializeResult struct {
 	ProtocolVersion int             `json:"protocolVersion"`
 	AgentInfo       *implementation `json:"agentInfo"`
+	AuthMethods     []AuthMethod    `json:"authMethods"`
 }
 
 type newSessionParams struct {
@@ -103,6 +107,10 @@ type newSessionParams struct {
 
 type newSessionResult struct {
 	SessionID string `json:"sessionId"`
+	// Models and ConfigOptions stay raw: agents differ in shape, and an
+	// unreadable one must not fail the session.
+	Models        json.RawMessage   `json:"models"`
+	ConfigOptions []json.RawMessage `json:"configOptions"`
 }
 
 type contentBlock struct {

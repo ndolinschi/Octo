@@ -70,7 +70,35 @@ ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:87
 
 Manifest format and more examples (gopls, TypeScript, Claude Code, Gemini CLI): [`plugins-examples/README.md`](plugins-examples/README.md).
 
+For GitHub Copilot, Grok and Codex on a subscription, see [Running on subscriptions](#running-on-subscriptions).
+
 **Trust:** an ACP agent is a separate program that runs with your user's privileges. The harness **auto-approves** its permission requests and serves its file requests only inside the project's folders; the agent process itself is not sandboxed, and a plugin manifest is a list of commands the harness will run. Only install plugins you trust.
+
+## Running on subscriptions
+
+The supported way to use a Copilot, Grok or ChatGPT/Codex subscription is to run the vendor's own agent CLI, which the harness drives over ACP as a sub-agent (design: [`docs/superpowers/specs/2026-11-10-subscription-agents-design.md`](../../docs/superpowers/specs/2026-11-10-subscription-agents-design.md)). Nothing is proxied and the harness never reads a vendor's credential files: the CLI finds its own login, and the harness only runs the commands in the manifest.
+
+1. Install and log in to each CLI you want, following the vendor's documentation (commands change between versions, so they are not copied here):
+   - GitHub Copilot CLI: [GitHub Copilot docs](https://docs.github.com/en/copilot) (search for the Copilot CLI). Its ACP mode (`copilot --acp --stdio`) is in public preview. Headless login: a fine-grained personal access token with the **Copilot Requests** permission in `COPILOT_GITHUB_TOKEN` (the CLI's documentation describes creating it). Start the harness with that variable set and the manifest forwards it (`"COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}"`).
+   - Grok CLI (`grok agent stdio`): [xAI docs](https://docs.x.ai). Log in with the CLI. `XAI_API_KEY` is the documented headless path but is billed per token, not on the subscription, and the harness does not copy the CLI's own login file.
+   - Codex: [OpenAI docs](https://developers.openai.com/codex). The example runs the adapter `@agentclientprotocol/codex-acp` through `npx`, which needs Node.js; log in with the Codex CLI (`codex login`, or its device-code option on a headless machine).
+2. Load the example plugin: `go run ./cmd/harness serve --plugins-dir plugins-examples/subscription-agents`. Copy and edit the manifest to change commands, add `models`, or add an `auth.probe`; nothing in `plugins-examples` loads by itself.
+3. `GET /v1/plugins` shows each agent with `available` (command found), `logged_in` (`true`/`false`, or `null` when the manifest has no probe or it has not run yet) and the manifest `hint`. In a project, ask the orchestrator to delegate to the agent, optionally naming a model; a CLI that is logged out fails that sub-agent with the hint in its error and the orchestrator carries on.
+
+**`CODEX_HOME` isolation.** Codex keeps its login and state in `$CODEX_HOME` (default `~/.codex`). The example manifest sets `CODEX_HOME` from `OCTO_CODEX_HOME`, so starting the harness with `OCTO_CODEX_HOME=/path/to/dir` gives the harness its own Codex home; log in once with `CODEX_HOME=/path/to/dir codex login` and the sub-agent and the probe both use that folder. Without `OCTO_CODEX_HOME` the entry is left unset and Codex uses its default.
+
+**What a run costs.** Sub-agent runs are charged to the plan, not to an API key: a Copilot run consumes premium requests (model multipliers apply, see GitHub's billing page), Grok and Codex runs count against the subscription's usage limits, and all three can be rate-limited or refused when a limit is hit (the error shows in the sub-agent). The harness records the agent as `acp:<id>[/<model>]` and shows token and cost figures only when the agent reports them in `usage_update`; plan usage is not readable from here. The orchestrator itself still calls the Messages API configured with `--base-url`, which is billed as before.
+
+**Live tests.** They are off by default, need the real CLIs and use a little quota. One sub-agent per CLI reads a marker file in a temporary project and answers; the test checks for an assistant message, the marker (or a tool call on that file) and a clean completion. A missing CLI or a logged-out probe skips the test and prints why.
+
+```bash
+scripts/test-subscriptions.sh                 # copilot, grok, codex
+scripts/test-subscriptions.sh codex           # only Codex
+# or directly
+OCTO_TEST_COPILOT=1 go test -tags subscription ./internal/orchestrator -run TestSubscriptionAgents -v
+```
+
+Without the `subscription` build tag, or without the `OCTO_TEST_*=1` switches, `go test ./...` never starts any of these CLIs.
 
 ## Run (direct Messages through Octo)
 

@@ -30,11 +30,23 @@ type LanguageServer struct {
 	Launch
 }
 
+// Agent is one ACP agent. ModelArg, ProbeCommand and ProbeArgs stay
+// server-side; LoggedIn is filled from the background probe when the registry
+// serves the agent and is nil when there is no probe or no result yet.
 type Agent struct {
-	ID        string `json:"id"`
-	Label     string `json:"label"`
-	Available bool   `json:"available"`
+	ID           string   `json:"id"`
+	Label        string   `json:"label"`
+	Available    bool     `json:"available"`
+	LoggedIn     *bool    `json:"logged_in"`
+	Models       []string `json:"models"`
+	DefaultModel string   `json:"default_model,omitempty"`
+	Hint         string   `json:"hint,omitempty"`
 	Launch
+
+	// ModelArg is the start-up argument template; "{model}" is replaced.
+	ModelArg     []string `json:"-"`
+	ProbeCommand string   `json:"-"` // resolved path; empty when there is no probe
+	ProbeArgs    []string `json:"-"`
 }
 
 type ToolServer struct {

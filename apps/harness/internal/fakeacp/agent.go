@@ -28,7 +28,9 @@ func ChildMode() bool { return os.Getenv(EnvChild) == "1" }
 func Main() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	a := &agent{in: os.Stdin, out: os.Stdout, log: os.Stderr, exit: os.Exit, pending: map[int64]chan reply{}}
+	opts := optionsFromEnv(os.Args[1:])
+	a := &agent{in: os.Stdin, out: os.Stdout, log: os.Stderr, exit: os.Exit, pending: map[int64]chan reply{},
+		opts: opts, model: opts.initialModel()}
 	if err := a.serve(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "fakeacp:", err)
 		return 1
@@ -68,6 +70,9 @@ type agent struct {
 	cwd      string
 	cancel   context.CancelFunc
 	deafMode bool
+	opts     options
+	authed   bool
+	model    string
 }
 
 func (a *agent) serve(ctx context.Context) error {
@@ -104,12 +109,23 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		if v, err := strconv.Atoi(os.Getenv(EnvProtocolVersion)); err == nil {
 			version = v
 		}
+		caps := map[string]any{}
+		if a.opts.any() {
+			caps["futureCapability"] = map[string]any{"enabled": true}
+			if err := a.notify("x/hello", map[string]string{"from": "fake-acp"}); err != nil {
+				fmt.Fprintln(a.log, "hello:", err)
+			}
+		}
 		a.respond(m.ID, map[string]any{
 			"protocolVersion":   version,
-			"agentCapabilities": map[string]any{},
+			"agentCapabilities": caps,
 			"agentInfo":         map[string]string{"name": "fake-acp", "version": "0.1.0"},
-			"authMethods":       []any{},
+			"authMethods":       a.opts.authMethods(),
 		})
+	case "authenticate":
+		a.handleAuthenticate(m)
+	case "session/set_model", "session/set_config_option":
+		a.handleSetModel(m)
 	case "session/new":
 		var p struct{ Cwd string }
 		if err := json.Unmarshal(m.Params, &p); err != nil || p.Cwd == "" {
@@ -118,8 +134,13 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		}
 		a.mu.Lock()
 		a.cwd = p.Cwd
+		authed := a.authed
 		a.mu.Unlock()
-		a.respond(m.ID, map[string]string{"sessionId": "fake-session-1"})
+		if a.opts.auth != "" && !authed {
+			a.respondError(m.ID, -32000, "Authentication required")
+			return
+		}
+		a.respond(m.ID, a.sessionResult())
 	case "session/prompt":
 		var p struct {
 			Prompt []struct{ Text string }

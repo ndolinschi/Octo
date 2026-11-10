@@ -1,0 +1,38 @@
+{
+  "name": "subscription-agents",
+  "version": "0.1.0",
+  "description": "GitHub Copilot, Grok and Codex as sub-agents, on the subscriptions their own CLIs are logged in to",
+  "agents": [
+    {
+      "id": "copilot",
+      "label": "GitHub Copilot",
+      "command": "copilot",
+      "args": ["--acp", "--stdio"],
+      "env": { "COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}" },
+      "auth": {
+        "hint": "Sign in with the Copilot CLI (see its docs), or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission."
+      }
+    },
+    {
+      "id": "grok",
+      "label": "Grok",
+      "command": "grok",
+      "args": ["agent", "stdio"],
+      "env": {},
+      "auth": {
+        "hint": "Sign in with the Grok CLI (see its docs). XAI_API_KEY also works but is billed per token, not on the subscription."
+      }
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "command": "npx",
+      "args": ["-y", "@agentclientprotocol/codex-acp"],
+      "env": { "CODEX_HOME": "${OCTO_CODEX_HOME}" },
+      "auth": {
+        "probe": ["codex", "login", "status"],
+        "hint": "Log in with the Codex CLI (codex login, or codex login --device-auth on a headless machine); with OCTO_CODEX_HOME set, log in with CODEX_HOME pointing at the same folder."
+      }
+    }
+  ]
+}

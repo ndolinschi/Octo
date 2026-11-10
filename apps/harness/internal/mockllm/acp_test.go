@@ -48,3 +48,31 @@ func TestACPMarkerIgnoredWithoutEnum(t *testing.T) {
 		t.Fatalf("without an agent enum the scripted three-way split must remain, got %v", got)
 	}
 }
+
+func TestACPModelMarker(t *testing.T) {
+	tests := []struct {
+		name, ask, want string
+	}{
+		{"chosen", "[acp] [model:gpt-5.1] review", "gpt-5.1"},
+		{"none", "[acp] review", ""},
+		{"slash", "[acp] [model:vendor/m-2] x", "vendor/m-2"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := post(t, `{"model":"m",`+acpTools+`,"messages":[{"role":"user","content":"`+tc.ask+`"}]}`)
+			var in map[string]any
+			for _, c := range msg["content"].([]any) {
+				if b := c.(map[string]any); b["type"] == "tool_use" {
+					in = b["input"].(map[string]any)
+				}
+			}
+			got, _ := in["model"].(string)
+			if got != tc.want {
+				t.Fatalf("model = %q, want %q (input %v)", got, tc.want, in)
+			}
+			if task := in["task"].(string); strings.Contains(task, "model:") {
+				t.Fatalf("marker leaked into task: %q", task)
+			}
+		})
+	}
+}

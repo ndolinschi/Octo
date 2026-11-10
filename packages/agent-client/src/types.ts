@@ -155,7 +155,18 @@ export type PluginLanguageServer = {
   languages: string[];
   available: boolean;
 };
-export type PluginAgent = { id: string; label: string; available: boolean };
+export type PluginAgent = {
+  id: string;
+  label: string;
+  available: boolean;
+  /** Result of the manifest's login probe; null (or absent) when there is no probe or no result yet. */
+  logged_in?: boolean | null;
+  /** Models the manifest lists for spawn_agent's `model`; empty or absent when it lists none. */
+  models?: string[];
+  default_model?: string;
+  /** One-line login instruction from the manifest. */
+  hint?: string;
+};
 export type PluginToolServer = { url: string };
 
 export type Plugin = {

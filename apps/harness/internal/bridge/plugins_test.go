@@ -104,8 +104,8 @@ func TestPluginsEndpoint(t *testing.T) {
 			t.Fatalf("response leaks %s: %s", leak, raw)
 		}
 	}
-	// arrays are never null
-	if strings.Contains(string(raw), "null") {
+	// arrays are never null; logged_in is null when an agent has no probe
+	if strings.Contains(strings.ReplaceAll(string(raw), `"logged_in":null`, ""), "null") {
 		t.Fatalf("null in response: %s", raw)
 	}
 }

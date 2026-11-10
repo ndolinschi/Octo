@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
-	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -16,10 +15,11 @@ var errAgentCancelled = errors.New("ACP agent cancelled")
 
 // runACP runs the child's task on an external ACP agent in the project's
 // first folder and returns the agent's final text.
-func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, ag plugins.Agent) (string, error) {
+func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTarget) (string, error) {
+	ag := t.agent
 	cwd := rt.folders[0].Path
 	client, err := acp.Start(ctx, acp.Spec{
-		Command: ag.Command, Args: ag.Args, Env: ag.Env, Dir: cwd, Name: ag.ID,
+		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID,
 	})
 	if err != nil {
 		return "", fmt.Errorf("start ACP agent %q: %w", ag.ID, err)
@@ -27,7 +27,9 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, ag plug
 	defer client.Close()
 
 	h := newACPSession(rt, child.ID, ag.ID, child.Model)
-	stop, err := client.Run(ctx, cwd, child.Task, h)
+	stop, err := client.RunWith(ctx, cwd, child.Task, h, acp.RunOptions{
+		Model: t.model, ModelRequired: t.requested, ModelApplied: t.model != "" && len(ag.ModelArg) > 0, AuthHint: ag.Hint,
+	})
 	h.finish(ctx, err != nil)
 	if err != nil {
 		return "", fmt.Errorf("ACP agent %q: %w", ag.ID, err)

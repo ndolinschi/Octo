@@ -2,7 +2,6 @@ package acp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -31,6 +30,8 @@ type Client struct {
 	proc *process
 	conn *conn
 	name string
+
+	authMethods []AuthMethod
 
 	mu         sync.Mutex
 	active     *run
@@ -81,6 +82,7 @@ func (c *Client) initialize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("acp initialize: %w", err)
 	}
+	c.authMethods = res.AuthMethods
 	if res.ProtocolVersion != ProtocolVersion {
 		return fmt.Errorf("acp initialize: agent speaks protocol version %d, this client supports %d",
 			res.ProtocolVersion, ProtocolVersion)
@@ -103,9 +105,19 @@ func (c *Client) Close() {
 // for the agent to answer; otherwise it kills the process and returns
 // ctx.Err(). A Client runs one prompt at a time.
 func (c *Client) Run(ctx context.Context, cwd, prompt string, h Handler) (StopReason, error) {
-	var sess newSessionResult
-	if err := c.conn.call(ctx, methodSessionNew, newSessionParams{Cwd: cwd, MCPServers: []json.RawMessage{}}, &sess); err != nil {
-		return "", fmt.Errorf("acp session/new: %w", err)
+	return c.RunWith(ctx, cwd, prompt, h, RunOptions{})
+}
+
+// RunWith is Run with a model choice and a login hint; see RunOptions. When
+// the agent refuses the session and advertised auth methods, it logs in with
+// the first one that needs no interaction.
+func (c *Client) RunWith(ctx context.Context, cwd, prompt string, h Handler, opts RunOptions) (StopReason, error) {
+	sess, err := c.newSession(ctx, cwd, opts.AuthHint)
+	if err != nil {
+		return "", err
+	}
+	if err := c.selectModel(ctx, sess, opts); err != nil {
+		return "", err
 	}
 	runCtx, endRun := context.WithCancel(context.WithoutCancel(ctx))
 	defer endRun()

@@ -9,11 +9,16 @@ import (
 // acpMarker makes the orchestrator delegate one sub-agent to an ACP agent.
 const acpMarker = "[acp]"
 
+// modelMarker, "[model:NAME]", passes NAME as spawn_agent's `model`.
+var modelMarker = regexp.MustCompile(`\[model:([A-Za-z0-9._:/@+-]+)\]`)
+
 var bracketMarker = regexp.MustCompile(`\[[a-z-]+\]`)
 
 // acpReply delegates to the first offered ACP agent, then summarizes its report.
 func acpReply(r *request, anchor int, ask, agent string) reply {
 	if r.assistantCountFrom(anchor) == 0 {
+		model := modelMarker.FindStringSubmatch(ask)
+		ask = strings.Join(strings.Fields(modelMarker.ReplaceAllString(ask, "")), " ")
 		task := "The user asked: \"" + clip(ask, 160) + "\". Work on it in the project folder and report back with " +
 			"what you read, what you changed, and anything left open."
 		for _, m := range bracketMarker.FindAllString(ask, -1) {
@@ -21,11 +26,15 @@ func acpReply(r *request, anchor int, ask, agent string) reply {
 				task += " " + m
 			}
 		}
+		input := map[string]any{
+			"role": "External agent", "tier": "balanced", "title": "Delegate to " + agent, "agent": agent, "task": task,
+		}
+		if model != nil {
+			input["model"] = model[1]
+		}
 		return reply{
-			Text: "This fits an external agent, so I will delegate it to " + agent + ".",
-			Calls: []call{{Name: "spawn_agent", Input: map[string]any{
-				"role": "External agent", "tier": "balanced", "title": "Delegate to " + agent, "agent": agent, "task": task,
-			}}},
+			Text:  "This fits an external agent, so I will delegate it to " + agent + ".",
+			Calls: []call{{Name: "spawn_agent", Input: input}},
 		}
 	}
 	return reply{Text: acpSummary(r, anchor, ask, agent)}

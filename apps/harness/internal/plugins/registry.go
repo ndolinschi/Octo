@@ -1,12 +1,44 @@
 package plugins
 
-import "slices"
+import (
+	"context"
+	"slices"
+)
 
 // Registry is the immutable result of Load; safe for concurrent reads.
 type Registry struct {
 	plugins []Plugin
 	agents  map[string]Agent
 	servers map[string]LanguageServer
+	probes  *prober
+}
+
+// StartProbes turns on background login probing until ctx ends: every agent
+// with a probe is checked now and again, at most once a minute, whenever
+// Plugins is called. Without it logged_in stays nil.
+func (r *Registry) StartProbes(ctx context.Context) {
+	if r == nil || r.probes == nil {
+		return
+	}
+	r.probes.mu.Lock()
+	r.probes.ctx = ctx
+	r.probes.mu.Unlock()
+	r.probes.refresh(r.allAgents())
+}
+
+func (r *Registry) allAgents() []Agent {
+	var out []Agent
+	for _, p := range r.plugins {
+		out = append(out, p.Agents...)
+	}
+	return out
+}
+
+func (r *Registry) withState(a Agent) Agent {
+	if r.probes != nil && a.probeable() {
+		a.LoggedIn = r.probes.result(a.ID)
+	}
+	return a
 }
 
 // Plugins returns every loaded plugin in load order, including broken ones.
@@ -14,7 +46,22 @@ func (r *Registry) Plugins() []Plugin {
 	if r == nil {
 		return []Plugin{}
 	}
-	return slices.Clone(r.plugins)
+	if r.probes != nil {
+		r.probes.refresh(r.allAgents())
+	}
+	out := slices.Clone(r.plugins)
+	for i := range out {
+		out[i].Agents = r.agentsWithState(out[i].Agents)
+	}
+	return out
+}
+
+func (r *Registry) agentsWithState(in []Agent) []Agent {
+	out := make([]Agent, len(in))
+	for i, a := range in {
+		out[i] = r.withState(a)
+	}
+	return out
 }
 
 // Agents lists every ACP agent in load order, available or not.
@@ -24,7 +71,7 @@ func (r *Registry) Agents() []Agent {
 		return out
 	}
 	for _, p := range r.plugins {
-		out = append(out, p.Agents...)
+		out = append(out, r.agentsWithState(p.Agents)...)
 	}
 	return out
 }
@@ -35,7 +82,7 @@ func (r *Registry) Agent(id string) (Agent, bool) {
 		return Agent{}, false
 	}
 	a, ok := r.agents[id]
-	return a, ok
+	return r.withState(a), ok
 }
 
 // LanguageServers lists every language server in load order.

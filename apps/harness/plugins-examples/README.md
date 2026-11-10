@@ -20,12 +20,17 @@ curl localhost:8790/v1/plugins
   "version": "1.0.0",          // required
   "description": "...",
   "languageServers": [{ "id": "gopls", "label": "gopls", "languages": ["go"], "command": "gopls", "args": [], "env": {} }],
-  "agents":          [{ "id": "claude-code", "label": "Claude Code", "command": "npx", "args": ["-y", "..."], "env": {} }],
+  "agents":          [{ "id": "claude-code", "label": "Claude Code", "command": "npx", "args": ["-y", "..."], "env": {} }],  // + optional model and auth fields below
   "toolServers":     [{ "url": "http://127.0.0.1:9000" }]   // same contract as --remote, sub-agents only
 }
 ```
 
 - `command`: absolute path as is; a value containing a path separator is relative to the plugin directory; anything else is looked up on `PATH`. `available` in the API means the command resolves to an executable.
+- Agent extras (all optional; manifests without them load unchanged):
+  - `models` (list of model ids) and `defaultModel` (must be in `models` when both are given): `spawn_agent` offers `model`, validated against the list, and the harness records the agent as `acp:<id>/<model>` (`acp:<id>` when none applies). The model is selected through what the agent advertises over ACP (a model config option, else `session/set_model`). A model the orchestrator asked for that cannot be selected fails the sub-agent; the manifest default is best effort. Model ids must match `[A-Za-z0-9][A-Za-z0-9._:/@+-]*` (they end up in process arguments).
+  - `modelArg`: argument template for CLIs that take the model at start-up, e.g. `["-m", "{model}"]`; it is appended to `args` when a model applies.
+  - `auth`: `{ "probe": ["cmd", "arg"], "hint": "one line" }`. The probe must exit 0 when the CLI is logged in and must never log in or start a session; it runs in the background (when `GET /v1/plugins` is called, at most once a minute per agent, 5 s timeout, never on the request path) and its output is discarded. `GET /v1/plugins` then reports `logged_in` (`true`, `false`, or `null` without a probe or result), `models`, `default_model` and `hint`. Without a probe the hint is still shown, and a sub-agent whose agent refuses the session and offers only interactive login fails with the hint in its error.
+  - `env` values may use `${NAME}`, resolved from the harness's own environment when the agent (or probe) starts. If any referenced variable is unset or empty, that entry is left out; it is never passed as an empty string.
 - Ids must be unique across plugins (per kind). The first plugin loaded wins; later duplicates are listed in that plugin's `errors`. A malformed manifest yields an entry with `errors` and no capabilities; startup never fails because of a plugin.
 - `languages` are Monaco language ids.
 
@@ -36,7 +41,8 @@ curl localhost:8790/v1/plugins
 | `fake-acp` | The scripted agent, built once: `go build -o plugins-examples/fake-acp/bin/fakeacp ./examples/fakeacp` (from `apps/harness`). No model, no network. |
 | `go-tools` | `gopls` on `PATH` (`go install golang.org/x/tools/gopls@latest`). |
 | `typescript-tools` | `typescript-language-server` on `PATH` (`npm i -g typescript typescript-language-server`). |
-| `acp-agents` | Claude Code via `npx -y @zed-industries/claude-code-acp` and Gemini CLI via `gemini --acp`. **These two are examples:** the exact package names, flags and login steps change; check each tool's own documentation before relying on them. |
+| `acp-agents` | Claude Code via `npx -y @agentclientprotocol/claude-agent-acp` and Gemini CLI via `gemini --acp`. **These two are examples:** the exact package names, flags and login steps change; check each tool's own documentation (and the [ACP registry](https://agentclientprotocol.com)) before relying on them. |
+| `subscription-agents` | GitHub Copilot (`copilot --acp --stdio`), Grok (`grok agent stdio`) and Codex (`npx -y @agentclientprotocol/codex-acp`), each running on the subscription its own CLI is logged in to. Needs the CLIs installed and logged in; see the harness README, "Running on subscriptions". None of the manifests lists models: each agent advertises its own over ACP; add `models`/`defaultModel` if you want `spawn_agent` to offer a fixed list. Only Codex has a probe (`codex login status`, check it against your Codex version); Copilot and Grok publish no documented non-interactive status command, so their `logged_in` stays `null`. |
 
 ## Try the whole path without a model
 
