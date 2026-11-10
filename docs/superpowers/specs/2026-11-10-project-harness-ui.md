@@ -169,6 +169,17 @@ Fourth batch (E: a messenger-style bot app — "interesting ways to interact wit
     and never blocking render) becomes a link (file glyph + the same mono text, `link` colour on hover only) that
     opens the file; `path:12` or `path:12-20` selects those lines. Unresolved code stays plain.
 
+20. **Integrations view** (replaces the Plugins section's plain list; reference E's "connect apps" dialog — taken:
+    search on top, kind chips, two-column rows, a "N available" summary; not taken: Connect buttons, a catalogue,
+    third-party logos — plugins are local manifests by design). Settings → Integrations: a search field
+    ("Search integrations"), 24px filter chips All / Language servers / Agents / Tool servers (with counts,
+    `aria-pressed`), a summary on the right ("5 available" + "1 not found" in `fg-3`), then two columns (one below
+    560px) of 40px rows: a 28px neutral tile with the kind glyph, name, one muted line (languages for a server,
+    command label for an agent, URL for a tool server, plugin name on the right), and the state (ok dot
+    "Available" / "Not found on this machine"); manifest errors listed under their plugin in `err`. Footer line:
+    how to add one (`plugin.json`, `{data-dir}/plugins/`, `--plugins-dir`). The dialog is 640px wide for this view.
+    The palette gets "Open integrations".
+
 ### Acceptance criteria (v6)
 
 1. `spacing-audit.mjs` exits 0 on every listed state and width; its before/after counts are recorded below.
