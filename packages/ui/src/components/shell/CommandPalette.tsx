@@ -5,7 +5,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { formatRelative } from "../../lib/format";
-import { matchScore } from "../../lib/match";
+import { matchScore, rankGroups } from "../../lib/match";
 import { navigate } from "../../lib/route";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
@@ -148,7 +148,12 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
         ),
       },
     ];
-    return all.filter((g) => g.items.length);
+    // Groups follow the quality of their best match (lib/match.ts: word-start before mid-word before loose).
+    return rankGroups(
+      query,
+      all.filter((g) => g.items.length),
+      (g) => g.items.map((i) => i.label),
+    );
   }, [query, projects, requests, agents, props.actions, openId, nav, onClose, workspace]);
 
   const flat = groups.flatMap((g) => g.items);

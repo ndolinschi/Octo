@@ -13,14 +13,17 @@ in `.claude/rules/typescript.md`). This file describes structure: what lives whe
 
 ```text
 app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host), AppShell, ProjectWorkspace
-components/<feature>/   chat · files · agents · notes · details · home · project · shell   (screens and their parts)
+components/<feature>/   chat · files · agents · notes · details · usage · home · project · shell   (screens and their parts)
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point
-components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs, InfoList rows,
-                        FloatRoom, Streak (lazy canvas) + StreakLayer
+components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs (OrchestratorGlyph), InfoList
+                        rows, FloatRoom, Segmented, DayBars (day chart), backdrop (group-level streak request),
+                        Streak (lazy canvas) + StreakLayer
 state/                  one provider per concern (see the tree below); state/workspace/layout.ts is pure
 lsp/                    language-server client (hub in the main chunk, the rest loads with Monaco)
-lib/                    pure helpers and small hooks: files, format, match, comments, transcript, tools, route, storage,
-                        fileLinks, codePalette, highlight (lazy), streak, focus, constants, context — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
+lib/                    pure helpers and small hooks: files, format, match (+ group ranking), comments, transcript, tools, route,
+                        storage, fileLinks, codePalette, highlight (lazy), streak, focus, constants, context, orchestrator
+                        (a project's orchestrator state), usage (report arithmetic, chart scale, limits), crumbs
+                        (breadcrumb fit), frontMatter, languages — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
 demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks)
 styles.css              design tokens (@theme), base rules, Monaco widget overrides
 scripts/                spacing-audit.mjs (Playwright; fails on off-scale spacing)
@@ -44,8 +47,9 @@ Allowed imports (a row may import the columns marked ✓):
 HostProvider              embedding capabilities (openFile, pickFolder, theme) — all optional
 └ AppProvider             bridge, health polling, project list, config, theme preference
   └ NavProvider           request jumps, request in view, leave guard, palette hooks (actions / state split)
-    └ RequestsProvider    cached request lists (external store, 4 loads in flight)
-      └ ActivityProvider  session cache of agent lists and transcripts for Home / Details (4 in flight)
+    └ RequestsProvider    cached request lists + the orchestrator's latest reply, for the palette and Home (4 in flight)
+      └ ActivityProvider  cache of agent lists, transcripts and plugins for the sidebar / Home / Details (4 in flight);
+                          the open project publishes its live agents into it (`useOrchestrators`, state/orchestrators.ts)
       └ ProjectProvider   one project: SSE subscription → reducer (agent-client applyEvent), notes
         └ WorkspaceProvider   dock layout (pure layout.ts), persistence, routing, shortcuts, tab memory
           └ FileViewProvider  tree column width / open state
@@ -72,12 +76,18 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
 - The language-server client (`lsp/manager`, `session`, `rpc`, `convert`, `uri`) loads with that chunk;
   `lsp/hub.ts` is the small seam that stays in the main chunk.
 - Demo fixtures (`demo/seedFiles.ts`, `demo/lsp.ts`) and other heavy, optional code load with `import()`.
+- Home, Details, Usage and Integrations are lazy chunks (`React.lazy` in `app/AppShell` and `dock/TabView`), as are the
+  streak canvas (`primitives/Streak`) and the highlighter (`lib/highlight`).
 
 `node scripts/check-bundle-size.mjs` (CI runs it after the desktop build) sums the gzip size of the entry chunk and its
 `modulepreload` chunks and fails above the budget recorded in the script (measured size + 3 kB); lazy chunks are not counted.
 
 ## Routing, persistence, side effects
 
+- The sidebar lists projects only (decision 23): each row's orchestrator state comes from `useOrchestrators`
+  (live agents of the open project, else `listAgents` cached per `updated_at`). The per-project request lists the
+  sidebar used to expand are gone (with their expand state and retry path); requests are reached through the turn rail
+  and the palette.
 - Hash routes (`lib/route.ts`): `#/p/{projectId}`, `#/p/{projectId}/a/{agentId}`; a guarded route can hold a
   navigation while files are unsaved.
 - `localStorage` only through `lib/storage.ts` (prefix `octo.`, guarded). Every key is declared once in its `PREFS`
@@ -92,7 +102,8 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
   error) forbids it anywhere else.
 - Shared hooks and helpers: `useLatest` (`lib/hooks.ts`, the "latest props in a ref" pattern), `errorMessage`
   (`lib/format.ts`), `createRequiredContext` (`lib/context.ts`: provider plus a hook that throws outside it), per-tab view
-  memory as typed slots (`state/workspace/tabMemory.ts`, `useTabMemory`), named breakpoints, timings and layout sizes in
+  memory as typed slots (`state/workspace/tabMemory.ts`, `useTabMemory`; `USAGE_VIEW` holds the Usage tab's controls), tab
+  DOM ids (`state/workspace/ids.ts`, moved from `dock/` so the workspace can focus a newly opened file's panel), named breakpoints, timings and layout sizes in
   `lib/constants.ts` (the drawer breakpoint is also the `--breakpoint-drawer` token in `styles.css`; a test keeps them equal).
 - Network: only through the `Bridge`. Polling (health, project list) is in `state/app.tsx`; SSE in `state/project.tsx`.
 - Global keyboard shortcuts are registered in `AppShell` (palette) and `WorkspaceProvider` (tabs), in the capture

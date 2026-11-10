@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SPAWN_TOOL, acpCall, locateInProject, spawnInput, toolMeta, toolPath, writtenFiles } from "./tools";
+import { SPAWN_TOOL, acpCall, locateInProject, looksLikeDiff, spawnInput, toolMeta, toolPath, writtenFiles } from "./tools";
 
 const folders = [
   { label: "infra", path: "/Users/maya/code/infra" },
@@ -123,4 +123,11 @@ test("toolPath and spawnInput tolerate odd input", () => {
   assert.deepEqual(spawnInput({ role: "coder", title: "T", task: "do", tier: "fast", extra: 1 }), { role: "coder", title: "T", task: "do", tier: "fast" });
   assert.deepEqual(spawnInput("junk"), { role: "", title: "", task: "", tier: "" });
   assert.equal(SPAWN_TOOL, "spawn_agent");
+});
+
+test("diff detection: hunks or headers plus change lines", () => {
+  assert.equal(looksLikeDiff("--- a/x.ts\n+++ b/x.ts\n@@ -1,2 +1,2 @@\n-old\n+new"), true);
+  assert.equal(looksLikeDiff("@@ -1 +1 @@\n+added"), true);
+  assert.equal(looksLikeDiff("- a list item\n- another"), false, "a Markdown list is not a diff");
+  assert.equal(looksLikeDiff('{ "path": "x" }'), false);
 });

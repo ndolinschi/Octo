@@ -14,25 +14,45 @@ function turnsIn(root: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Reports the request whose turn sits at the top of the conversation (IntersectionObserver on
- * a thin band under the top edge), so the sidebar can mark it. `key` changes when turns are added.
+ * Reports the request in view (the rail marks it): the newest request whose prompt box is fully visible, else the
+ * turn that reaches the band under the top edge. So after sending, the new request is the one in view as soon as its
+ * prompt shows, even while the previous turn still fills the top (v6.1 review). `key` changes when turns are added.
  */
 export function useViewTurn(root: RefObject<HTMLElement | null>, projectId: string, enabled: boolean, key: unknown) {
   const nav = useNav();
   useEffect(() => {
     const el = root.current;
     if (!enabled || !el) return;
-    const visible = new Map<Element, boolean>();
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) visible.set(e.target, e.isIntersecting);
-        const top = turnsIn(el).find((s) => visible.get(s));
-        if (top) nav.setViewTurn({ projectId, messageId: Number(top.dataset.turnId) });
-      },
-      { root: el, rootMargin: `-${STICK_TOP}px 0px -70% 0px` },
-    );
-    for (const s of turnsIn(el)) io.observe(s);
-    return () => io.disconnect();
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const box = el.getBoundingClientRect();
+      if (box.height === 0) return;
+      const turns = turnsIn(el);
+      let chosen: HTMLElement | undefined;
+      for (let i = turns.length - 1; i >= 0; i--) {
+        const prompt = turns[i]?.querySelector(PROMPT)?.getBoundingClientRect();
+        if (prompt && prompt.top >= box.top && prompt.bottom <= box.bottom) {
+          chosen = turns[i];
+          break;
+        }
+      }
+      chosen ??= turns.find((s) => s.getBoundingClientRect().bottom > box.top + STICK_TOP);
+      if (chosen) nav.setViewTurn({ projectId, messageId: Number(chosen.dataset.turnId) });
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    schedule();
+    el.addEventListener("scroll", schedule, { passive: true });
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+    for (const t of turnsIn(el)) ro.observe(t);
+    return () => {
+      cancelAnimationFrame(frame);
+      el.removeEventListener("scroll", schedule);
+      ro.disconnect();
+    };
   }, [root, projectId, enabled, key, nav]);
 
   useEffect(() => () => nav.setViewTurn(null), [nav]);

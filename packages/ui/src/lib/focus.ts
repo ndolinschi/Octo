@@ -31,3 +31,26 @@ export function visibleComposer(): HTMLTextAreaElement | null {
   }
   return null;
 }
+
+/** The index a list key moves to among `count` rows from `at` (↑/↓ clamp, Home/End); null for any other key. */
+export function listKeyTarget(key: string, at: number, count: number): number | null {
+  if (count === 0) return null;
+  const to: Record<string, number> = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: count - 1 };
+  const next = to[key];
+  return next === undefined ? null : Math.max(0, Math.min(count - 1, next));
+}
+
+/**
+ * ↑/↓/Home/End between the focusable rows (`[data-row]`) of a list container: a keydown handler for lists whose
+ * rows are plain buttons or links (Home, Details).
+ */
+export function moveInList(e: { key: string; currentTarget: EventTarget | null; preventDefault(): void }): void {
+  if (!(e.currentTarget instanceof HTMLElement)) return;
+  const rows = [...e.currentTarget.querySelectorAll<HTMLElement>("[data-row]")];
+  const active = document.activeElement;
+  const at = rows.findIndex((r) => r === active);
+  const to = listKeyTarget(e.key, at < 0 ? 0 : at, rows.length);
+  if (to === null || at < 0) return;
+  e.preventDefault();
+  rows[to]?.focus();
+}

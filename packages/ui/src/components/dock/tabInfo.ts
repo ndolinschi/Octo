@@ -26,6 +26,7 @@ const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> 
   notes: { label: "Notes", icon: GLYPH.notes, title: "Project notes" },
   files: { label: "Files", icon: GLYPH.files, title: "Project files: select a file to open it here" },
   details: { label: "Details", icon: GLYPH.details, title: "Project details: folders, models, tokens, activity, files written" },
+  usage: { label: "Usage", icon: GLYPH.usage, title: "Usage: tokens, cost and rate limits" },
 };
 
 export function tabInfo(
@@ -36,7 +37,13 @@ export function tabInfo(
   if (!ref) return { label: tab, title: tab, icon: File, status: null, comments: 0 };
   if (ref.kind === "chat") {
     const running = ctx.orchestratorId ? ctx.state.agents[ctx.orchestratorId]?.status === "running" : false;
-    return { label: "Chat", title: "Chat with the orchestrator", icon: GLYPH.chat, status: running ? "running" : null, comments: 0 };
+    return {
+      label: "Orchestrator",
+      title: "The project's orchestrator: give it work, follow its agents",
+      icon: GLYPH.chat,
+      status: running ? "running" : null,
+      comments: 0,
+    };
   }
   if (ref.kind === "tool") {
     const tool = TOOLS[ref.tool];

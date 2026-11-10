@@ -1,11 +1,12 @@
 import { ArrowLeft, ArrowRight, House, PanelLeft, Plus, Search, Settings, type LucideIcon } from "lucide-react";
 import { navigate } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useHistoryAvailability } from "../../lib/history";
 import { useNow, useScrollFade } from "../../lib/hooks";
 import { useApp } from "../../state/app";
+import { useOrchestrators } from "../../state/orchestrators";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
 import { Spinner } from "../primitives/Status";
@@ -14,7 +15,7 @@ import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 
 /**
  * Row anatomy shared by every sidebar row: [16px leading slot] 8 [label] flex [trailing], 8px padding,
- * radius 4. Top-level rows (nav, projects) are 32px; nested request rows 28px.
+ * radius 6. Nav rows are 32px; project rows 40px with two lines (name, the orchestrator's state).
  */
 export const NAV_ROW = "press-row flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-sm text-fg hover:bg-hover";
 
@@ -56,7 +57,6 @@ export function Sidebar(props: {
   activeProjectId: string | null;
   /** Home is showing (no project open). */
   home: boolean;
-  activeAgentId: string | null;
   /** Projects with activity the user has not seen (see `useUnseen`). */
   unseen: Set<string>;
   onNewProject(): void;
@@ -70,8 +70,6 @@ export function Sidebar(props: {
   const history = useHistoryAvailability();
   const list = useRef<HTMLUListElement>(null);
   useScrollFade(list, "y");
-  // The open project starts expanded; any row can be toggled.
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const canCreate = health === "online";
   // Stable order (newest project first by creation), so rows never jump under the pointer as
   // activity changes `updated_at`; activity shows as the dot instead.
@@ -79,6 +77,7 @@ export function Sidebar(props: {
     () => (projects ? [...projects].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id)) : null),
     [projects],
   );
+  const orchestrators = useOrchestrators(projects);
 
   return (
     <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window py-gutter pl-gutter max-sm:py-0">
@@ -107,26 +106,21 @@ export function Sidebar(props: {
           {projects === null &&
             health !== "offline" &&
             [0, 1, 2].map((i) => (
-              <li key={i} className="flex h-row-nav items-center gap-2 px-2" aria-hidden>
+              <li key={i} className="flex h-bar items-center gap-2 px-2" aria-hidden>
                 <span className="size-4 shrink-0" />
                 <span className="h-2 rounded-full bg-hover" style={{ width: `${62 - i * 14}%` }} />
               </li>
             ))}
-          {ordered?.map((p) => {
-            const active = p.id === props.activeProjectId;
-            return (
-              <ProjectItem
-                key={p.id}
-                project={p}
-                active={active}
-                activeAgentId={active ? props.activeAgentId : null}
-                unseen={props.unseen.has(p.id)}
-                expanded={expanded[p.id] ?? active}
-                onExpanded={(value) => setExpanded((x) => ({ ...x, [p.id]: value }))}
-                now={now}
-              />
-            );
-          })}
+          {ordered?.map((p) => (
+            <ProjectItem
+              key={p.id}
+              project={p}
+              active={p.id === props.activeProjectId}
+              unseen={props.unseen.has(p.id)}
+              state={orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }}
+              now={now}
+            />
+          ))}
         </ul>
 
         <div className="relative mt-2 shrink-0">

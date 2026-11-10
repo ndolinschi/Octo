@@ -1,3 +1,59 @@
+# Handover — status when work was paused (2026-11-10, later session)
+
+**Branch:** `claude/harness-ui-v6-completion-8ynrkq` (continues `claude/project-harness-ui-redesign-qdnem2`; no pull request opened).
+The section below this one is the earlier handover and is still accurate for how to run things and how the work is orchestrated.
+
+## Done and committed in this session
+
+| Area | State | Verified by the orchestrator |
+| --- | --- | --- |
+| UI v6 and v6.1 (spec: `specs/2026-11-10-project-harness-ui.md`, decisions 1–22) | Built | Gates, spacing audit at 0, live run on the mock stack (gopls, code comments, ACP turn, tabs) |
+| Frontend code quality Q1–Q3 (`plans/2026-11-10-frontend-code-quality.md`) | Strict tsconfig, ESLint with boundaries, Prettier, CI job, 203 unit tests, shared helpers, seven defects fixed | Gates; pixel comparison reported by the sub-agent |
+| Harness usage Phase A (`specs/2026-11-10-usage-design.md`) | `/v1/usage`, `/v1/limits`, prices.toml, ACP usage | Go gates; live on an existing data dir |
+| Harness cost fixes (`research/2026-11-10-cost-audit.md`) | Prompt caching, context caps, balanced default orchestrator | Go gates only; caching benefit not measured on long loops |
+| Router cost fixes | Compaction once, classifier fallback, max_tokens default, same-tier retry, budget by price, reported cost first; prices corrected against the OpenRouter catalogue | cargo fmt / clippy / 199 tests |
+| Subscription agents S1 (`specs/2026-11-10-subscription-agents-design.md`) | Manifests for Copilot, Grok, Codex; ACP authenticate and model selection; login probes; live tests behind `-tags subscription` | Go gates; **never run against the real CLIs** |
+| Rules and docs | `.cursor/rules/octo-typescript.mdc` = `.claude/rules/typescript.md`; `packages/ui/ARCHITECTURE.md`; `AGENTS.md` for ui, agent-client, desktop | — |
+
+## Stopped midway: UI pass v6.2 (last commit, marked wip)
+
+The sub-agent was stopped on the owner's request. The commit builds, lints with 0 errors and its 242 unit tests
+pass, but it is **unreviewed and incomplete**: no acceptance scripts, spacing audit, screenshots or live run were
+done on it, and its "As built (v6.2)" section is not written. Its brief (what it was building):
+
+- Decision 23 — the UI reads as "a project's orchestrator at work" (sidebar = projects with orchestrator state,
+  orchestrator header, team strip, Home about orchestrators, no "session/chat" wording).
+- Decision 21b — the bolder dithered streak (hot core, 3px grain, translucent cards), compared side by side with
+  the owner's references (`refs` 18–20; the reference images lived in the session scratchpad and are gone).
+- A Usage tab (Tokens / Cost / Limits) on `getUsage` / `getLimits`.
+- The findings of `research/2026-11-10-ui-review-v6.1.md` (seven P1, about fifteen P2) and one confirmed app race
+  (the composer is rendered in two trees in `ConversationView` and loses focus after a project is created).
+
+To resume: read the diff of the wip commit against its parent, decide what is finished, then re-run the brief's
+verification (gates, `spacing-audit.mjs`, acceptance scripts, screenshots dark/light, live run) before trusting it.
+
+## Open decisions for the owner
+
+1. **Router ladder.** By the catalogue prices the `high` model is the cheapest and `low` costs about 22× more
+   (`apps/router/docs/ladder-cost-check.md`). Either point all tiers at the `high` model or rebuild the ladder. The
+   order was left unchanged; the router logs a warning at start-up.
+2. **Subscriptions in the router.** Recommended: routing decisions in the harness (S3a). Proxying vendors' private
+   endpoints (S3b) was not built and needs an explicit decision.
+3. **Real-CLI check for S1.** Run `apps/harness/scripts/test-subscriptions.sh` on a machine with the subscriptions.
+
+## Next, in the agreed order
+
+1. Finish and verify v6.2, then an independent review of it.
+2. Code quality Q4 (module boundaries) and Q5 (split providers and large components).
+3. v7 (`specs/2026-11-10-v7-changes-queue-approvals.md`): changes per turn with diffs, message queue, approvals.
+4. Subscription agents S2 (orchestrator on a subscription) after S1 is proven on real CLIs.
+5. Cost follow-ups not built: orchestrator history compaction, a per-project budget (the harness does not send
+   `x-octo-budget-key` yet).
+
+Not verified anywhere: a real model or API key, real ACP agents, the Tauri shell, WebKit.
+
+---
+
 # Handover — project harness, UI and workspace
 
 **Date:** 2026-11-10

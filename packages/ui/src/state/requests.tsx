@@ -1,7 +1,7 @@
 import type { Bridge, ProjectSummary } from "@octo/agent-client";
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { requestTitle } from "../lib/comments";
-import { promptText } from "../lib/transcript";
+import { latestReply, promptText } from "../lib/transcript";
 import { Limiter } from "./activity";
 import { useApp } from "./app";
 import { errorMessage } from "../lib/format";
@@ -10,11 +10,14 @@ import { createRequiredContext } from "../lib/context";
 /** One user message of a project's orchestrator thread. */
 export type Request = { id: number; text: string; created_at: string };
 
-type Entry = { updatedAt: string; requests: Request[] | null; error: string | null; loading: boolean };
+/** The first line of the orchestrator's latest reply (Home, decision 23). */
+export type Reply = { text: string; at: string };
+
+type Entry = { updatedAt: string; requests: Request[] | null; reply: Reply | null; error: string | null; loading: boolean };
 
 /**
- * Lazily loaded, cached request lists per project (newest first). An entry is refetched only
- * when the project's `updated_at` moves on, so expanded sidebar rows follow live activity.
+ * Lazily loaded, cached request lists per project (newest first) and the orchestrator's latest reply, for the
+ * palette and Home. An entry is refetched only when the project's `updated_at` moves on.
  */
 class RequestStore {
   private entries = new Map<string, Entry>();
@@ -40,18 +43,10 @@ class RequestStore {
     for (const l of this.listeners) l();
   }
 
-  /** Loads again now (after "Couldn't load"), whatever the cached `updated_at` says. */
-  retry(project: ProjectSummary) {
-    const current = this.entries.get(project.id);
-    if (current?.loading) return;
-    this.set(project.id, { updatedAt: project.updated_at, requests: current?.requests ?? null, error: null, loading: true });
-    void this.load(project);
-  }
-
   ensure(project: ProjectSummary) {
     const current = this.entries.get(project.id);
     if (current && (current.updatedAt === project.updated_at || current.loading)) return;
-    this.set(project.id, { updatedAt: project.updated_at, requests: current?.requests ?? null, error: null, loading: true });
+    this.set(project.id, { updatedAt: project.updated_at, requests: current?.requests ?? null, reply: current?.reply ?? null, error: null, loading: true });
     void this.load(project);
   }
 
@@ -72,12 +67,13 @@ class RequestStore {
         .map((m) => ({ id: m.id, text: requestTitle(promptText(m)).trim(), created_at: m.created_at }))
         .filter((r) => r.text)
         .reverse();
-      this.set(project.id, { updatedAt: project.updated_at, requests, error: null, loading: false });
+      this.set(project.id, { updatedAt: project.updated_at, requests, reply: latestReply(messages), error: null, loading: false });
     } catch (e) {
       const prev = this.entries.get(project.id);
       this.set(project.id, {
         updatedAt: "",
         requests: prev?.requests ?? null,
+        reply: prev?.reply ?? null,
         error: errorMessage(e),
         loading: false,
       });
@@ -93,8 +89,8 @@ export function RequestsProvider({ children }: { children: ReactNode }) {
   return <RequestsContextProvider value={store}>{children}</RequestsContextProvider>;
 }
 
-/** Several projects' requests at once (Home), loading every one of them; entries are null until loaded. */
-export function useAllRequests(projects: ProjectSummary[] | null): Map<string, Request[] | null> {
+/** Several projects' requests and latest replies at once (Home), loading every one of them; entries are null until loaded. */
+export function useAllRequests(projects: ProjectSummary[] | null): Map<string, { requests: Request[]; reply: Reply | null } | null> {
   const store = useRequestStore();
   const version = useSyncExternalStore(store.subscribe, store.version);
   useEffect(() => {
@@ -102,7 +98,12 @@ export function useAllRequests(projects: ProjectSummary[] | null): Map<string, R
   }, [projects, store]);
   return useMemo(() => {
     void version;
-    return new Map((projects ?? []).map((p) => [p.id, store.get(p.id)?.requests ?? null]));
+    return new Map(
+      (projects ?? []).map((p) => {
+        const e = store.get(p.id);
+        return [p.id, e?.requests ? { requests: e.requests, reply: e.reply } : null];
+      }),
+    );
   }, [projects, store, version]);
 }
 
@@ -113,11 +114,5 @@ export function useRequests(project: ProjectSummary | undefined, enabled: boolea
   useEffect(() => {
     if (enabled && project) store.ensure(project);
   }, [enabled, project, store]);
-  return {
-    requests: entry?.requests ?? null,
-    error: entry?.error ?? null,
-    retry: () => {
-      if (project) store.retry(project);
-    },
-  };
+  return { requests: entry?.requests ?? null };
 }

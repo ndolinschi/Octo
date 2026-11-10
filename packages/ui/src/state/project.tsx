@@ -1,6 +1,7 @@
 import { emptyProjectState, type BridgeEvent, type Project, type ProjectInput, type ProjectState } from "@octo/agent-client";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./app";
+import { useActivity } from "./activity";
 import { projectReducer } from "./projectReducer";
 import { errorMessage } from "../lib/format";
 import { createRequiredContext } from "../lib/context";
@@ -82,6 +83,20 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
     void syncAll();
     return unsubscribe;
   }, [bridge, projectId, syncAll, refreshProjects]);
+
+  // The sidebar and Home read the open project's orchestrator state from its live agents (decision 23).
+  const activity = useActivity();
+  useEffect(() => {
+    if (!state.agentOrder.length) return;
+    activity.setLiveAgents(
+      projectId,
+      state.agentOrder.flatMap((id) => {
+        const a = state.agents[id];
+        return a ? [a] : [];
+      }),
+    );
+  }, [activity, projectId, state.agents, state.agentOrder]);
+  useEffect(() => () => activity.setLiveAgents(projectId, null), [activity, projectId]);
 
   const orchestrator = project ? state.agents[project.orchestrator_agent_id] : undefined;
   const running = orchestrator?.status === "running" || (project?.status === "running" && !orchestrator);

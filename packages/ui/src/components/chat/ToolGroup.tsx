@@ -5,7 +5,8 @@ import { cn } from "../../lib/cn";
 import { resolveFolder } from "../../lib/files";
 import { useOptionalCode } from "../../state/code";
 import { useHost } from "../../state/host";
-import { acpCall, locateInProject, toolMeta, toolPath } from "../../lib/tools";
+import { acpCall, locateInProject, looksLikeDiff, toolMeta, toolPath } from "../../lib/tools";
+import { HighlightedCode } from "./Markdown";
 import type { ToolUse } from "../../lib/transcript";
 import { RunningDot } from "../primitives/Status";
 import { toolState, useTranscript, type ToolState } from "./transcriptContext";
@@ -220,7 +221,10 @@ function ToolSection({ label, body, error, action }: { label: string; body: stri
         {label}
         {action}
       </div>
-      <pre className="max-h-64 overflow-auto px-3 pt-1 pb-3 font-mono text-xs leading-5 whitespace-pre-wrap text-fg-2">{body || "(empty)"}</pre>
+      <pre className="max-h-64 overflow-auto px-3 pt-1 pb-3 font-mono text-xs leading-5 whitespace-pre-wrap text-fg-2">
+        {/* A diff (an ACP edit's result, a patch) gets the chat's diff colours. */}
+        {body ? <HighlightedCode code={body} lang={looksLikeDiff(body) ? "diff" : undefined} /> : "(empty)"}
+      </pre>
     </div>
   );
 }

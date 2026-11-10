@@ -1,5 +1,5 @@
 import type { AgentStatus, Tier } from "@octo/agent-client";
-import { Check, CircleX } from "lucide-react";
+import { Check, CircleAlert, CircleX } from "lucide-react";
 import { Glyph } from "./Glyph";
 import { cn } from "../../lib/cn";
 
@@ -46,6 +46,20 @@ export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: 
   return (
     <span aria-hidden className="grid shrink-0 place-items-center" style={{ width: size, height: size }}>
       <span className="size-[5px] rounded-full bg-fg-3" />
+    </span>
+  );
+}
+
+/**
+ * The orchestrator's state in a 16px slot (sidebar rows, Home): working = the accent dot, needs you = the alert
+ * glyph in `err`, idle / new = a quiet ring.
+ */
+export function OrchestratorGlyph({ state }: { state: "working" | "needs" | "idle" | "new" }) {
+  if (state === "working") return <RunningDot box={16} />;
+  if (state === "needs") return <Glyph icon={CircleAlert} size={14} className="mx-px shrink-0 text-err" />;
+  return (
+    <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+      <span className="size-1.5 rounded-full border border-fg-3" />
     </span>
   );
 }

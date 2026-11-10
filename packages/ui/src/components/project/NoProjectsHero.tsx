@@ -13,7 +13,7 @@ export function NoProjectsHero({ onCreate }: { onCreate(): void }) {
       <StreakLayer anchor={HERO_STREAK} theme={theme} />
       <div className="relative w-full max-w-[440px] text-center">
         <div aria-hidden className="octo-streak-scrim" />
-        <h1 id="hero-title" className="relative text-title text-fg">
+        <h1 id="hero-title" className="relative text-display text-fg">
           No projects yet
         </h1>
         <p className="relative mt-2 text-sm text-fg-2">A project has its own orchestrator, folders and notes.</p>

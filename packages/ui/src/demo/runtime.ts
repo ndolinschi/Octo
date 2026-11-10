@@ -66,12 +66,18 @@ function updateAgent(ctx: Ctx, agentId: string, patch: Partial<Agent>): Agent {
   return agent;
 }
 
+/** The demo ACP agent's context window, as its `usage_update` would report it. */
+const ACP_CONTEXT = 200_000;
+
 function charge(ctx: Ctx, agentId: string, outputChars: number) {
   const agent = agentById(ctx.rec, agentId);
   const history = ctx.rec.messages.filter((m) => m.agent_id === agentId).length;
+  const input = agent.input_tokens + 1400 + history * 420;
   updateAgent(ctx, agentId, {
-    input_tokens: agent.input_tokens + 1400 + history * 420,
+    input_tokens: input,
     output_tokens: agent.output_tokens + Math.ceil(outputChars / 3.6) + 24,
+    // An ACP agent reports its context occupancy (`usage_update`): the demo's grows with its transcript.
+    ...(agent.model.startsWith("acp:") ? { context_used: Math.min(ACP_CONTEXT, 1800 + history * 640), context_size: ACP_CONTEXT } : {}),
   });
 }
 

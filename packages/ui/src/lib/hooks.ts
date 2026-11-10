@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { CLOCK_IDLE_MS, COPY_FEEDBACK_MS, LOADING_MIN_SHOWN_MS, LOADING_SHOW_AFTER_MS, NOW_ACTIVE_MS } from "./constants";
+import { moveInList } from "./focus";
 
 /**
  * A ref that always holds the latest `value`, updated in a layout effect (after the commit, before any event or effect can
@@ -221,4 +222,14 @@ export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, a
     };
   }, [ref, update]);
   return update;
+}
+
+/** ↑/↓/Home/End between the `[data-row]` rows inside `ref` (lists of plain buttons: Home, Details). */
+export function useRowKeys<T extends HTMLElement>(ref: RefObject<T | null>): void {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.addEventListener("keydown", moveInList);
+    return () => el.removeEventListener("keydown", moveInList);
+  }, [ref]);
 }

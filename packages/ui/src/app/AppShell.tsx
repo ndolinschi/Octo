@@ -13,7 +13,7 @@ import { Dialog } from "../components/primitives/Dialog";
 import { Presence, usePresence } from "../components/primitives/Presence";
 import { NoProjectsHero } from "../components/project/NoProjectsHero";
 import { ProjectDialog } from "../components/project/ProjectDialog";
-import { CommandPalette, type PaletteAction } from "../components/shell/CommandPalette";
+import type { PaletteAction } from "../components/shell/CommandPalette";
 import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
 import { SettingsDialog, type SettingsView } from "../components/shell/SettingsDialog";
@@ -24,6 +24,9 @@ import { ActivityProvider } from "../state/activity";
 import { DRAWER_QUERY } from "../lib/constants";
 
 /** Home loads on first visit (its own chunk); the app usually opens a project. */
+/** The palette loads after the first paint (idle) or on first use, whichever comes first (its own chunk). */
+const loadPalette = () => import("../components/shell/CommandPalette");
+const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
 
 /** Below this width the sidebar becomes an overlay drawer, closed by default. */
@@ -75,6 +78,13 @@ function Shell() {
   useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, drawerMode]);
   useEscape(drawerMode && drawerOpen && !palette && settings === null, () => setDrawerOpen(false));
 
+  // Warm the palette's chunk once the app is idle, so Ctrl/Cmd+K opens it without a wait.
+  useEffect(() => {
+    // A failed warm-up is retried by the first Ctrl/Cmd+K (which shows the error if it fails again).
+    const id = window.setTimeout(() => void loadPalette().catch(() => undefined), 1500);
+    return () => window.clearTimeout(id);
+  }, []);
+
   // Ctrl/Cmd+K toggles the palette from anywhere, the editor included (capture phase).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -123,7 +133,14 @@ function Shell() {
   else if (route.projectId === null && projects)
     main = (
       <Suspense fallback={null}>
-        <Home onNewProject={newProject} />
+        <Home
+          onNewProject={newProject}
+          onSearch={openPalette}
+          onUsage={(projectId) => {
+            nav.requestTool({ projectId, tool: "usage", scope: "all" });
+            navigate(projectId);
+          }}
+        />
       </Suspense>
     );
 
@@ -131,7 +148,6 @@ function Shell() {
   const sidebarProps = {
     activeProjectId: route.projectId,
     home: route.projectId === null && (projects?.length ?? 0) > 0,
-    activeAgentId: route.agentId,
     unseen,
     onNewProject: newProject,
     onSearch: openPalette,
@@ -185,7 +201,9 @@ function Shell() {
           <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
         </Presence>
         <Presence show={palette}>
-          <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
+          <Suspense fallback={null}>
+            <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
+          </Suspense>
         </Presence>
         <Presence show={pending}>
           <LeaveDialog

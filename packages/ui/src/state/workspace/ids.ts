@@ -1,4 +1,4 @@
-import type { TabId } from "../../state/workspace/layout";
+import type { TabId } from "./layout";
 
 const ids = new Map<TabId, string>();
 

@@ -1,6 +1,6 @@
 import { ArrowDown } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
@@ -18,7 +18,8 @@ import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { useApp } from "../../state/app";
 import { ObserverBar } from "./ObserverBar";
-import { StarterPrompts } from "./StarterPrompts";
+import { TeamStrip } from "./TeamStrip";
+import { useBackdrop } from "../primitives/backdrop";
 import { StickyPrompt } from "./StickyPrompt";
 import { Transcript } from "./Transcript";
 import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
@@ -33,6 +34,10 @@ const SCROLL_MEMORY = slot(
 
 /** A row outside the scroll area with the scroll area's gutters and side padding (see the doc comment). */
 export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
+
+/** The empty project's title and facts load when an empty project shows (their own chunk; the composer is not in it). */
+const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyTitle })));
+const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyFacts })));
 
 /** The empty project's streak passes behind the title block (upper middle of the view). */
 const EMPTY_STREAK = { x: 0.5, y: 0.3 } as const;
@@ -111,6 +116,15 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   const { onScroll: measureStuck } = stuck;
   useEffect(measureStuck, [messages, streaming, measureStuck]);
 
+  // The empty project's streak runs behind the whole group (strip and header too), not only this view.
+  const backdrop = useBackdrop();
+  const emptyNow = isOrchestrator && messages !== undefined && messages.length === 0 && !running;
+  useEffect(() => {
+    if (!backdrop) return;
+    backdrop.set(tab, emptyNow);
+    return () => backdrop.set(tab, false);
+  }, [backdrop, tab, emptyNow]);
+
   useEffect(() => {
     ensureMessages(agentId);
   }, [agentId, ensureMessages]);
@@ -153,128 +167,109 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   const stuckPrompt = stuck.stuckId !== null ? messages?.find((m) => m.id === stuck.stuckId) : undefined;
   const watched = ws ? ws.watched === tab : true;
 
-  if (showStarters) {
-    // Empty project (contract v6 decision 13): one centred block over the glow — title, one line, the
-    // composer, starter rows. The first message switches to the normal layout (no transition).
-    return (
-      <div className="@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]">
-        <ChatHeader requests={requests} />
-        <div data-empty-project className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-(--pad)">
-          <StreakLayer anchor={EMPTY_STREAK} theme={theme} />
-          <div className="relative m-auto w-full max-w-float py-8">
-            {/* The streak shows around the block, never at full strength behind its text (decision 21). */}
-            <div aria-hidden className="octo-streak-scrim" />
-            <div className="relative">
-              {/* The project's name is already in the sidebar and the header: the title says what to do. */}
-              <div className="relative">
-                <h1 className="relative text-center text-title text-fg">What should the orchestrator do first?</h1>
-                <p className="relative mt-2 text-center text-sm text-fg-2">It plans, delegates to sub-agents and keeps notes.</p>
+  const empty = showStarters;
+  const commentsSlot = composerProps.commentCount
+    ? { count: composerProps.commentCount, render: (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} /> }
+    : undefined;
+
+  // One tree for both layouts (contract v6 decision 13, v6.2 race fix): the header, the middle (the empty
+  // project's title or the transcript), the composer row and the empty project's facts keep their positions, so
+  // the composer is ONE element that never remounts — a new project's composer keeps focus and draft when its
+  // messages arrive. The empty project centres title + composer + facts between two flexible halves.
+  return (
+    <div
+      className={cn(
+        "@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]",
+        empty && "overflow-x-hidden overflow-y-auto",
+      )}
+    >
+      {isOrchestrator && <ChatHeader transparent={empty} />}
+      {empty ? (
+        <div data-empty-project className="flex flex-[1_0_auto] flex-col justify-end px-(--pad) pt-8 pb-6">
+          {!backdrop && <StreakLayer anchor={EMPTY_STREAK} theme={theme} />}
+          <Suspense fallback={null}>
+            <EmptyTitle project={project} />
+          </Suspense>
+        </div>
+      ) : (
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {stuckPrompt && (
+            <StickyPrompt
+              key={stuckPrompt.id}
+              text={requestTitle(promptText(stuckPrompt))}
+              author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
+              onHeight={stuck.setPinnedHeight}
+            />
+          )}
+          {requests.length >= RAIL_MIN_REQUESTS && (
+            // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16. The
+            // layer covers the whole scroll area (it clips like the transcript) but takes no pointer events.
+            <div className={cn(EDGES, "pointer-events-none absolute inset-x-0 top-0 z-20 @max-[560px]/conv:hidden")} style={{ height: scrollHeight }}>
+              <div className="relative mx-auto max-w-measure">
+                <div className="pointer-events-auto absolute top-2 right-full mr-3">
+                  <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
+                </div>
               </div>
-              <div className="relative mt-6">
-                <Composer
-                  ref={composer}
-                  {...composerProps}
-                  comments={
-                    composerProps.commentCount
-                      ? { count: composerProps.commentCount, render: (open, setOpen) => <CommentsControl open={open} onOpenChange={setOpen} /> }
-                      : undefined
-                  }
+            </div>
+          )}
+          <div
+            ref={scroll.ref}
+            onScroll={() => {
+              scroll.onScroll();
+              stuck.onScroll();
+            }}
+            className="min-h-0 flex-1 overflow-y-auto scroll-quiet"
+          >
+            <div className="px-(--pad)">
+              <div data-column className="mx-auto w-full max-w-measure pt-2 pb-8">
+                {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
+                <Transcript
+                  agent={agent}
+                  messages={messages ?? []}
+                  now={now}
+                  watched={watched}
+                  speaker={roleName(agent)}
+                  promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
+                  hideFirstPrompt={!isOrchestrator}
                 />
               </div>
             </div>
-            <div className="relative mt-4">
-              <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
-            </div>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]">
-      {isOrchestrator && <ChatHeader requests={requests} />}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {stuckPrompt && (
-          <StickyPrompt
-            key={stuckPrompt.id}
-            text={requestTitle(promptText(stuckPrompt))}
-            author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
-            onHeight={stuck.setPinnedHeight}
-          />
-        )}
-        {requests.length >= RAIL_MIN_REQUESTS && (
-          // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16. The
-          // layer covers the whole scroll area (it clips like the transcript) but takes no pointer events.
-          <div className={cn(EDGES, "pointer-events-none absolute inset-x-0 top-0 z-20 @max-[560px]/conv:hidden")} style={{ height: scrollHeight }}>
-            <div className="relative mx-auto max-w-measure">
-              <div className="pointer-events-auto absolute top-2 right-full mr-3">
-                <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
+          {!scroll.atBottom && (
+            // Scrolled up, the view ends 40px higher: the button gets its own room below the transcript
+            // (4 + 32 + 4), so it never sits on text, and the last 12px of text fade out above that room.
+            // The content does not move (the scroll position is kept); at the bottom the room goes again.
+            <div data-jump-room className="relative flex h-10 shrink-0 items-center justify-center">
+              <div aria-hidden className="octo-fade pointer-events-none absolute inset-x-0 -top-3 h-3 overflow-hidden scroll-quiet">
+                <div className="h-full bg-linear-to-t from-panel to-transparent" />
               </div>
+              <button
+                type="button"
+                onClick={() => scroll.scrollToBottom(true)}
+                aria-label="Jump to latest"
+                title="Jump to latest"
+                className="octo-fade octo-ring-pop grid size-8 press place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
+              >
+                <Glyph icon={ArrowDown} size={14} />
+              </button>
             </div>
-          </div>
-        )}
-        <div
-          ref={scroll.ref}
-          onScroll={() => {
-            scroll.onScroll();
-            stuck.onScroll();
-          }}
-          className="min-h-0 flex-1 overflow-y-auto scroll-quiet"
-        >
-          <div className="px-(--pad)">
-            <div data-column className="mx-auto w-full max-w-measure pt-2 pb-8">
-              {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
-              <Transcript
-                agent={agent}
-                messages={messages ?? []}
-                now={now}
-                watched={watched}
-                speaker={roleName(agent)}
-                promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
-                hideFirstPrompt={!isOrchestrator}
-              />
-            </div>
-          </div>
-        </div>
-        {!scroll.atBottom && (
-          // Scrolled up, the view ends 40px higher: the button gets its own room below the transcript
-          // (4 + 32 + 4), so it never sits on text, and the last 12px of text fade out above that room.
-          // The content does not move (the scroll position is kept); at the bottom the room goes again.
-          <div data-jump-room className="relative flex h-10 shrink-0 items-center justify-center">
-            <div aria-hidden className="octo-fade pointer-events-none absolute inset-x-0 -top-3 h-3 overflow-hidden scroll-quiet">
-              <div className="h-full bg-linear-to-t from-panel to-transparent" />
-            </div>
-            <button
-              type="button"
-              onClick={() => scroll.scrollToBottom(true)}
-              aria-label="Jump to latest"
-              title="Jump to latest"
-              className="octo-fade octo-ring-pop grid size-8 press place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
-            >
-              <Glyph icon={ArrowDown} size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className={cn(EDGES, "shrink-0 pb-3")}>
-        <div data-column-edge className="mx-auto w-full max-w-measure">
-          {isOrchestrator ? (
-            <Composer
-              ref={composer}
-              {...composerProps}
-              comments={
-                composerProps.commentCount
-                  ? { count: composerProps.commentCount, render: (open, setOpen) => <CommentsControl open={open} onOpenChange={setOpen} /> }
-                  : undefined
-              }
-            />
-          ) : (
-            <ObserverBar />
           )}
         </div>
+      )}
+
+      <div className={cn(EDGES, "relative shrink-0", !empty && "pb-3")}>
+        <div data-column-edge className={cn("mx-auto w-full", empty ? "max-w-float" : "max-w-measure")}>
+          {isOrchestrator && !empty && <TeamStrip />}
+          {isOrchestrator ? <Composer ref={composer} {...composerProps} comments={commentsSlot} /> : <ObserverBar />}
+        </div>
       </div>
+      {empty && (
+        <div className="relative flex-[1_0_auto] px-(--pad) pt-4 pb-8">
+          <Suspense fallback={null}>
+            <EmptyFacts project={project} onPick={(text) => composer.current?.fill(text)} />
+          </Suspense>
+        </div>
+      )}
 
       <p aria-live="polite" className="sr-only">
         {agent.status === "running" ? `${roleName(agent)} is working` : ""}

@@ -179,6 +179,7 @@
   --spacing-measure: 720px;
   --spacing-sidebar: 260px;
   --spacing-float: 640px; /* floating composer, max width */
+  --spacing-details: 480px; /* Details and Usage content column: a measure for label ↔ value rows in a wide group */
   --spacing-home: 880px; /* Home's content column (two cards side by side) */
   --spacing-dialog-wide: 640px; /* dialogs with a two-column body (Settings → Integrations) */
   --ease-out-quint: cubic-bezier(0.2, 0, 0, 1);
@@ -735,18 +736,10 @@
   font-family: var(--font-sans);
 }
 
-/* Streak (contract v6 decision 21, supersedes the glow of decision 12): a dithered band of light on the
-   start screens only — Home, the empty project, the no-projects hero. The canvas is drawn at 2px cells and
-   scaled with `pixelated`; it overhangs by 12px for the optional 20s drift (no drift under reduced motion
-   or while the page is hidden). It fades in once. `--octo-streak-indigo` is its only colour token; the
-   band never sits behind body text without a local scrim (`.octo-streak-scrim`). */
-:root,
-:root[data-theme="dark"] {
-  --octo-streak-indigo: #6f6cf2;
-}
-:root[data-theme="light"] {
-  --octo-streak-indigo: #5b54e8;
-}
+/* Streak (decision 21b, supersedes 21 and the glow of decision 12): a bold dithered band of light on the start
+   screens only — Home, the empty project (behind its whole group), the no-projects hero. The canvas is drawn at
+   3px cells (4 from 1920 wide) and scaled with `pixelated`; it overhangs by 12px for the optional 20s drift (no
+   drift under reduced motion or while the page is hidden). Its colours are the ramp in `lib/streak.ts`. */
 .octo-streak-layer {
   animation: octo-fade-in 240ms ease-out both;
 }
@@ -779,17 +772,39 @@
     translate: 12px -6px;
   }
 }
-/* Home cards over the streak: the panel at 88% with a 12px blur (opaque panel where blur is unsupported);
-   radius 10, the panel edge. The heat map's five tones run from `hover` to `accent`. */
+/* Surfaces over the streak (Home cards, the project list): the panel at 72% (dark) / 80% (light) with a 16px blur
+   and a little saturation, so the band tints them; a 1px `line-strong` edge and a 1px inner top highlight. Opaque
+   panel where backdrop filters are unsupported and under forced colours. */
 .octo-card {
   background: var(--octo-panel);
-  border: 1px solid var(--octo-panel-edge);
-  box-shadow: var(--octo-shadow-panel);
+  border: 1px solid var(--octo-line-strong);
+  box-shadow: inset 0 1px 0 var(--octo-card-highlight);
 }
-@supports (backdrop-filter: blur(12px)) {
+:root,
+:root[data-theme="dark"] {
+  --octo-card-alpha: 72%;
+  --octo-card-highlight: rgb(255 255 255 / 0.06);
+}
+:root[data-theme="light"] {
+  --octo-card-alpha: 80%;
+  --octo-card-highlight: rgb(255 255 255 / 0.7);
+}
+@supports (backdrop-filter: blur(16px)) {
   .octo-card {
-    background: color-mix(in srgb, var(--octo-panel) 88%, transparent);
-    backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--octo-panel) var(--octo-card-alpha), transparent);
+    backdrop-filter: blur(16px) saturate(1.2);
+  }
+}
+@media (forced-colors: active) {
+  .octo-card {
+    background: Canvas;
+    backdrop-filter: none;
+  }
+  /* The heat map, token bars and day charts keep their tones (they are data, not decoration). */
+  [class*="octo-heat-"],
+  [data-day] > span,
+  .bg-fg-3 {
+    forced-color-adjust: none;
   }
 }
 .octo-heat-1 {

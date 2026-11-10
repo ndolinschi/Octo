@@ -1,5 +1,6 @@
 import type { ContentBlock, Message } from "@octo/agent-client";
 import { SPAWN_TOOL } from "./tools";
+import { excerpt } from "./format";
 
 export type ToolUse = Extract<ContentBlock, { type: "tool_use" }>;
 
@@ -87,4 +88,19 @@ export function requestSummaries(turns: Turn[], running: boolean, lastTurn: "com
     });
   });
   return out;
+}
+
+/** The first line of the orchestrator's latest reply, as plain text (Home's project list, decision 23); null when it has not replied. */
+export function latestReply(messages: readonly Message[]): { text: string; at: string } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role !== "assistant") continue;
+    const text = m.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
+    const line = text
+      .split("\n")
+      .map((l) => excerpt(l, 160))
+      .find((l) => l.length > 0);
+    if (line) return { text: line, at: m.created_at };
+  }
+  return null;
 }

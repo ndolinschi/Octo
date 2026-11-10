@@ -18,7 +18,9 @@ import {
   PERSIST_LAYOUT_MS,
 } from "../../lib/constants";
 import { createRequiredContext } from "../../lib/context";
-import { TabMemory } from "./tabMemory";
+import { TabMemory, USAGE_VIEW } from "./tabMemory";
+import { domId } from "./ids";
+import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
 import { type FileKey, keyFolder } from "../../lib/files";
 
 /** Modifier as shown in shortcut hints. */
@@ -95,6 +97,21 @@ export const {
 function focusedTab(): TabId | null {
   const el = document.activeElement;
   return el instanceof HTMLElement && el.getAttribute("role") === "tab" ? L.parseTabId(el.dataset.tabId) : null;
+}
+
+/**
+ * After a file tab opens from somewhere that may vanish (a tree row of a view the new tab hides, a row in Details),
+ * the file's editor or preview takes focus — only if focus fell to nothing (v6.1 review: never `<body>`).
+ */
+function focusFileSoon(key: FileKey) {
+  const panel = `${domId(L.fileTab(key))}-panel`;
+  focusSoon(
+    () => {
+      const el = document.getElementById(panel);
+      return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
+    },
+    { onlyIfLost: true, timeout: 1500 },
+  );
 }
 
 function conversationOf(tab: TabId): string | null | undefined {
@@ -245,6 +262,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
       // A file needs room: a side group sized for a tool widens to half the row.
       openFileTab: (key, where) => {
+        focusFileSoon(key);
         if (where) {
           const current = layoutRef.current;
           if (where.replace && L.groupOf(current, where.replace)) return commit(L.replace(current, where.replace, L.fileTab(key)));
@@ -295,11 +313,12 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= (n + 1) * MIN_GROUP + n * GROUP_GAP)
         );
       },
+      // A dropped tab keeps focus on its own button (the drag moved it: its old button is gone).
       drop: (tab, target) => {
         const current = layoutRef.current;
-        if (target.kind === "strip") commit(L.move(current, tab, target.group, target.index));
-        else if (target.kind === "into") commit(L.move(current, tab, target.group));
-        else commit(L.split(current, tab, target.group, target.side));
+        if (target.kind === "strip") commit(L.move(current, tab, target.group, target.index), { focusTab: tab });
+        else if (target.kind === "into") commit(L.move(current, tab, target.group), { focusTab: tab });
+        else commit(L.split(current, tab, target.group, target.side), { focusTab: tab });
       },
       resize: (index, px) => {
         const inner = widthRef.current - (layoutRef.current.groups.length - 1) * GROUP_GAP;
@@ -343,7 +362,9 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   /* ---------- routing ---------- */
 
   const agentsLoaded = project !== null && state.agentOrder.length > 0;
-  const handled = useRef<string | null>(null);
+  // On mount without an agent route the stored layout's active tabs stand (a reload keeps what was showing);
+  // a later navigation to the project's bare route shows the orchestrator.
+  const handled = useRef<string | null>(routeAgentId === null ? "" : null);
   useEffect(() => {
     const key = routeAgentId ?? "";
     if (handled.current === key) return;
@@ -362,6 +383,18 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     if (state.agents[routeAgentId]) openAgent(routeAgentId, { route: false });
     else window.location.replace(hrefFor(projectId));
   }, [routeAgentId, agentsLoaded, state.agents, projectId, commit, openAgent]);
+
+  /* ---------- a tool asked for before this workspace mounted (Home → Usage) ---------- */
+
+  const toolAsked = useRef(false);
+  useEffect(() => {
+    if (toolAsked.current) return;
+    toolAsked.current = true;
+    const asked = nav.takePendingTool(projectId);
+    if (!asked) return;
+    memory.set(L.toolTab(asked.tool), USAGE_VIEW, { ...DEFAULT_USAGE_VIEW, scope: asked.scope });
+    value.openTool(asked.tool);
+  }, [nav, projectId, memory, value]);
 
   /* ---------- stale tabs ---------- */
 
@@ -418,6 +451,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           { id: "tool-notes", label: "Show notes", run: () => ws.openTool("notes") },
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
           { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
+          { id: "tool-usage", label: "Show usage", detail: "tokens, cost, limits", run: () => ws.openTool("usage") },
         ];
         if (ws.canMoveToOtherSide(active))
           out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD}\\`, run: () => ws.moveToOtherSide(active) });

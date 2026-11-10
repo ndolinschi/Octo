@@ -1,4 +1,4 @@
-import type { Agent, Bridge, Message, ProjectSummary } from "@octo/agent-client";
+import type { Agent, Bridge, Message, Plugin, ProjectSummary } from "@octo/agent-client";
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useApp } from "./app";
 import { createRequiredContext } from "../lib/context";
@@ -40,6 +40,8 @@ export class ActivityStore {
   private transcripts = new Map<string, Cached<Message[]>>();
   private agents = new Map<string, Cached<Agent[]>>();
   private live = new Map<string, number>();
+  /** The open project's agents as its live subscription sees them (newer than any cached list). */
+  private open = new Map<string, Agent[]>();
   private listeners = new Set<() => void>();
   private version = 0;
   constructor(private bridge: Bridge) {}
@@ -66,7 +68,7 @@ export class ActivityStore {
     const key = `${projectId}/${agent.id}`;
     const stamp = agent.finished_at ?? `live:${this.live.get(projectId) ?? 0}:${agent.status}`;
     const hit = this.transcripts.get(key);
-    if (hit && hit.stamp === stamp) return hit.promise;
+    if (hit?.stamp === stamp) return hit.promise;
     const entry: Cached<Message[]> = { stamp, promise: this.limiter.run(() => this.bridge.listMessages(projectId, agent.id)) };
     entry.promise.then(
       (v) => {
@@ -82,21 +84,48 @@ export class ActivityStore {
   peekTranscript(projectId: string, agent: Agent): Message[] | undefined {
     const hit = this.transcripts.get(`${projectId}/${agent.id}`);
     const stamp = agent.finished_at ?? `live:${this.live.get(projectId) ?? 0}:${agent.status}`;
-    return hit && hit.stamp === stamp ? hit.value : undefined;
+    return hit?.stamp === stamp ? hit.value : undefined;
   }
 
   agentsOf(project: ProjectSummary): Promise<Agent[]> {
     const hit = this.agents.get(project.id);
-    if (hit && hit.stamp === project.updated_at) return hit.promise;
+    if (hit?.stamp === project.updated_at) return hit.promise;
     const entry: Cached<Agent[]> = { stamp: project.updated_at, promise: this.limiter.run(() => this.bridge.listAgents(project.id)) };
     entry.promise.then(
       (v) => {
         entry.value = v;
+        this.changed();
       },
       () => this.agents.delete(project.id),
     );
     this.agents.set(project.id, entry);
     return entry.promise;
+  }
+
+  /** The open project publishes its live agents (null when it closes), so the sidebar and Home read them first. */
+  setLiveAgents(projectId: string, agents: Agent[] | null) {
+    if (agents) this.open.set(projectId, agents);
+    else this.open.delete(projectId);
+    this.changed();
+  }
+  liveAgents(projectId: string): Agent[] | undefined {
+    return this.open.get(projectId);
+  }
+
+  /** Synchronous peek at a project's cached agent list for its current `updated_at`. */
+  peekAgents(project: ProjectSummary): Agent[] | undefined {
+    const hit = this.agents.get(project.id);
+    return hit?.stamp === project.updated_at ? hit.value : undefined;
+  }
+
+  private pluginList: Promise<Plugin[]> | null = null;
+  /** The plugin manifests, read once per session (they change only when the harness restarts). */
+  plugins(): Promise<Plugin[]> {
+    this.pluginList ??= this.bridge.listPlugins().catch((e: unknown) => {
+      this.pluginList = null;
+      throw e;
+    });
+    return this.pluginList;
   }
 
   /** Runs any other bridge read under the same limit. */

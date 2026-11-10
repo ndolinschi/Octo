@@ -1,12 +1,12 @@
-import { Bot, ChartNoAxesColumn, Folder, ListTree, MessagesSquare, Notebook, Settings, type LucideIcon } from "lucide-react";
+import { Bot, ChartNoAxesColumn, Folder, Gauge, ListTree, Notebook, Settings, Workflow, type LucideIcon } from "lucide-react";
 
 /**
  * Glyphs with a meaning used in more than one place (contract v6 decision 14): one glyph per meaning,
  * never one glyph for two meanings. File types live in `files/fileIcons.ts`.
  */
 export const GLYPH = {
-  /** The orchestrator conversation (Chat tab). */
-  chat: MessagesSquare,
+  /** The project's orchestrator (its tab, decision 23): plans and delegates, so a flow glyph, not a chat bubble. */
+  chat: Workflow,
   /** One sub-agent's transcript (Agent tab), and an ACP agent in the "+" menu. */
   agent: Bot,
   /** The delegation tree of every agent (Agents tool): a plain indented list, not a diagram. */
@@ -17,6 +17,8 @@ export const GLYPH = {
   files: Folder,
   /** Facts about the project: folders, models, tokens, activity, files written (Details tool). */
   details: ChartNoAxesColumn,
+  /** Tokens, cost and limits (Usage tool, Home's Tokens card). */
+  usage: Gauge,
   /** Settings, app-wide and per project: one gear (the tooltip says which). */
   settings: Settings,
 } satisfies Record<string, LucideIcon>;

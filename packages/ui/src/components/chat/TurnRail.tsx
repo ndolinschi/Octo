@@ -75,7 +75,7 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
 
   return (
     <div className="relative">
-      <ul ref={list} aria-label="Requests in this conversation" className="flex flex-col overflow-hidden" style={{ height }}>
+      <ul ref={list} aria-label="Requests to the orchestrator" className="flex flex-col overflow-hidden" style={{ height }}>
         {requests.map((req, i) => {
           const active = req.id === current;
           return (

@@ -1,4 +1,5 @@
-import { agentBySpawnToolUse, childrenOf, descendantCount, type Agent, type ProjectState } from "@octo/agent-client";
+import { agentBySpawnToolUse, descendantCount, type Agent } from "@octo/agent-client";
+import { agentActivity } from "../../lib/orchestrator";
 import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
@@ -70,7 +71,7 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
 
   const right = running ? (
     <>
-      <span className="min-w-0 truncate">{activity(state, agent.id)}</span>
+      <span className="min-w-0 truncate">{agentActivity(state, agent.id)}</span>
       {duration !== null && <span className="shrink-0 text-fg-2 tabular-nums">{formatDuration(duration)}</span>}
     </>
   ) : (
@@ -129,20 +130,4 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
       {errorLine}
     </>
   );
-}
-
-const ACTIVITY: Record<string, string> = {
-  bash: "Running a command…",
-  read_file: "Reading files…",
-  list_dir: "Listing folders…",
-  write_file: "Writing files…",
-};
-
-function activity(state: ProjectState, agentId: string): string {
-  const working = childrenOf(state, agentId).filter((c) => c.status === "running");
-  if (working.length) return `Waiting on ${working.map((c) => c.role).join(", ")}…`;
-  const tools = Object.values(state.activeTools[agentId] ?? {});
-  const tool = tools[0];
-  if (tool) return ACTIVITY[tool.name] ?? `Using ${tool.name}…`;
-  return state.streaming[agentId] ? "Writing…" : "Thinking…";
 }

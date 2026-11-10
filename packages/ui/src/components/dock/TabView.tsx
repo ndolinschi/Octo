@@ -10,6 +10,8 @@ import { NotesPanel } from "../notes/NotesPanel";
 
 /** The Details tab loads when it is first opened (its own chunk). */
 const DetailsPanel = lazy(() => import("../details/DetailsPanel").then((m) => ({ default: m.DetailsPanel })));
+/** The Usage tab too (v6.2). */
+const UsagePanel = lazy(() => import("../usage/UsagePanel").then((m) => ({ default: m.UsagePanel })));
 
 /** The view behind a tab. The Files tab is the file view with no file open yet. */
 export function TabView({ tab }: { tab: TabId }) {
@@ -32,9 +34,7 @@ export function TabView({ tab }: { tab: TabId }) {
           ) : ref.tool === "notes" ? (
             <NotesPanel />
           ) : (
-            <Suspense fallback={null}>
-              <DetailsPanel />
-            </Suspense>
+            <Suspense fallback={null}>{ref.tool === "usage" ? <UsagePanel /> : <DetailsPanel />}</Suspense>
           )}
         </ToolView>
       );
@@ -42,7 +42,7 @@ export function TabView({ tab }: { tab: TabId }) {
 }
 
 /**
- * Agents, Notes and Details: the floating composer sits over them too when no Chat tab is visible, and
+ * Agents, Notes, Details and Usage: the floating composer sits over them too when no Chat tab is visible, and
  * their lists reserve its height + 16 at the end (`FloatRoom`, the editor's rule), so the last row can
  * always be scrolled above it.
  */

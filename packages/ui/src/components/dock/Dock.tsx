@@ -1,4 +1,7 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useApp } from "../../state/app";
+import { BackdropProvider, type Backdrop } from "../primitives/backdrop";
+import { StreakLayer } from "../primitives/StreakLayer";
 import { cn } from "../../lib/cn";
 import { allTabs, focusedGroup, type Group } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
@@ -6,10 +9,13 @@ import { panelClass } from "../shell/Panel";
 import { Divider } from "./Divider";
 import { DragLayer } from "./DragLayer";
 import { GroupProvider } from "./group";
-import { domId } from "./ids";
+import { domId } from "../../state/workspace/ids";
 import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";
 import { MIN_GROUP } from "../../lib/constants";
+
+/** The empty project's streak: corner to corner across the group, its core behind the title block. */
+const GROUP_STREAK = { x: 0.5, y: 0.4 } as const;
 
 const SIDES: readonly [string, string, string] = ["Left", "Middle", "Right"];
 
@@ -71,6 +77,21 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
   const narrow = ws.narrow;
   const hidden = narrow && !focused;
   const strip = narrow ? { tabs: allTabs(ws.layout), active: focusedGroup(ws.layout).active } : { tabs: group.tabs, active: group.active };
+  const { theme } = useApp();
+  const [backdrops, setBackdrops] = useState<ReadonlySet<string>>(() => new Set());
+  const backdrop = useMemo<Backdrop>(
+    () => ({
+      set: (tab, on) =>
+        setBackdrops((cur) => {
+          if (cur.has(tab) === on) return cur;
+          const next = new Set(cur);
+          if (on) next.add(tab);
+          else next.delete(tab);
+          return next;
+        }),
+    }),
+    [],
+  );
 
   return (
     <section
@@ -80,8 +101,9 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
       style={narrow ? undefined : { flex: `${group.size} 1 0px`, minWidth: MIN_GROUP }}
       onPointerDownCapture={() => ws.focusGroup(group.id)}
       onFocusCapture={() => ws.focusGroup(group.id)}
-      className={cn(panelClass, narrow && "flex-1")}
+      className={cn(panelClass, "relative", narrow && "flex-1")}
     >
+      {backdrops.has(strip.active) && <StreakLayer anchor={GROUP_STREAK} theme={theme} />}
       <GroupProvider group={group}>
         <TabStrip
           label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`}
@@ -91,22 +113,24 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
           first={first}
           last={last}
         />
-        <div data-dock-body className="relative min-h-0 flex-1">
-          {group.tabs
-            .filter((t) => visited.has(t))
-            .map((t) => (
-              <div
-                key={t}
-                id={`${domId(t)}-panel`}
-                role="tabpanel"
-                aria-labelledby={`${domId(t)}-tab`}
-                hidden={t !== group.active}
-                className="absolute inset-0 flex flex-col"
-              >
-                <TabView tab={t} />
-              </div>
-            ))}
-        </div>
+        <BackdropProvider value={backdrop}>
+          <div data-dock-body className="relative min-h-0 flex-1">
+            {group.tabs
+              .filter((t) => visited.has(t))
+              .map((t) => (
+                <div
+                  key={t}
+                  id={`${domId(t)}-panel`}
+                  role="tabpanel"
+                  aria-labelledby={`${domId(t)}-tab`}
+                  hidden={t !== group.active}
+                  className="absolute inset-0 flex flex-col"
+                >
+                  <TabView tab={t} />
+                </div>
+              ))}
+          </div>
+        </BackdropProvider>
       </GroupProvider>
     </section>
   );

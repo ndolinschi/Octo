@@ -17,6 +17,9 @@ type FileViewValue = {
   focusTree(): void;
   /** True once for a focus request made in the last second: a tree column mounted by it takes focus. */
   takeFocusRequest(): boolean;
+  /** The Filter files text, shared by the project's file views (kept when the Files tab turns into a file's tab). */
+  filter: string;
+  setFilter(text: string): void;
 };
 
 export const { Provider: FileViewContextProvider, useRequired: useFileView } = createRequiredContext<FileViewValue>("useFileView");
@@ -25,6 +28,7 @@ export const { Provider: FileViewContextProvider, useRequired: useFileView } = c
 export function FileViewProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
   const [stored, setStored] = usePersistentState(PREFS.fileTree(projectId), treePrefCodec, { debounceMs: PERSIST_TREE_MS });
   const [focusTreeTick, setTick] = useState(0);
+  const [filter, setFilter] = useState("");
   const setTreeOpen = useCallback((open: boolean) => setStored((s) => (s.open === open ? s : { ...s, open })), [setStored]);
   const setTreeWidth = useCallback((width: number) => setStored((s) => ({ ...s, width: clamp(width) })), [setStored]);
   const requested = useRef(0);
@@ -39,8 +43,8 @@ export function FileViewProvider({ projectId, children }: { projectId: string; c
     return fresh;
   }, []);
   const value = useMemo(
-    () => ({ treeOpen: stored.open, treeWidth: stored.width, setTreeOpen, setTreeWidth, focusTreeTick, focusTree, takeFocusRequest }),
-    [stored, setTreeOpen, setTreeWidth, focusTreeTick, focusTree, takeFocusRequest],
+    () => ({ treeOpen: stored.open, treeWidth: stored.width, setTreeOpen, setTreeWidth, focusTreeTick, focusTree, takeFocusRequest, filter, setFilter }),
+    [stored, setTreeOpen, setTreeWidth, focusTreeTick, focusTree, takeFocusRequest, filter],
   );
   return <FileViewContextProvider value={value}>{children}</FileViewContextProvider>;
 }

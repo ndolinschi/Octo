@@ -62,7 +62,7 @@ export function locateInProject(folders: { label: string; path: string }[], raw:
     if ((p === root || p.startsWith(`${root}/`)) && (!best || root.length > best.len))
       best = { folder: f.label, path: p.slice(root.length + 1), len: root.length };
   }
-  return best && best.path ? { folder: best.folder, path: best.path } : null;
+  return best?.path ? { folder: best.folder, path: best.path } : null;
 }
 
 export type WrittenFile = { folder: string; path: string; at: string; agentId: string };
@@ -112,4 +112,12 @@ export type SpawnInput = { role: string; title: string; task: string; tier: stri
 export function spawnInput(input: unknown): SpawnInput {
   const r = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   return { role: str(r.role), title: str(r.title), task: str(r.task), tier: str(r.tier) };
+}
+
+/** Whether a tool's text is a unified diff (header or hunk lines, and +/- lines): it is then shown with diff colours. */
+export function looksLikeDiff(text: string): boolean {
+  const lines = text.split("\n", 400);
+  const hunk = lines.some((l) => l.startsWith("@@ ") || l.startsWith("--- ") || l.startsWith("+++ ") || l.startsWith("diff --git"));
+  const changes = lines.filter((l) => /^[+-](?![+-]{2} )/.test(l)).length;
+  return hunk && changes > 0;
 }

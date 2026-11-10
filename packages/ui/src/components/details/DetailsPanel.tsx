@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { fileName, parentPath } from "../../lib/files";
 import { formatRelative, formatTokens, middleTruncate } from "../../lib/format";
-import { useDelayedLoading, useNow, useScrollFade } from "../../lib/hooks";
+import { useDelayedLoading, useNow, useRowKeys, useScrollFade } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
@@ -15,7 +15,9 @@ import { GLYPH } from "../primitives/glyphs";
 import { INFO_ROW, INFO_ROW_BUTTON, InfoSection, MoreRow, SkeletonRows } from "../primitives/InfoList";
 import { modelLabel, StatusIcon } from "../primitives/Status";
 import { groupWrites, useWrittenFiles } from "./useWrittenFiles";
-import { Server } from "lucide-react";
+import { Server, type LucideIcon } from "lucide-react";
+import { languagesIn } from "../../lib/languages";
+import { contextText } from "../../lib/usageView";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 
 /** Rows shown before "Show all" / "Show more" (contract v6 decision 17). */
@@ -40,10 +42,12 @@ export function DetailsPanel() {
   const scroller = useRef<HTMLDivElement>(null);
   // Rows reaching the fold fade out instead of being cut (the list's scrollbar is hidden, like the sidebar's).
   useScrollFade(scroller, "y");
+  const rows = useRef<HTMLDivElement>(null);
+  useRowKeys(rows);
   if (!project) return null;
   return (
     <div ref={scroller} data-details className="h-full min-h-0 overflow-y-auto overscroll-contain fade-y px-pane pt-pane pb-4">
-      <div className="flex flex-col gap-2">
+      <div ref={rows} className="mx-auto flex w-full max-w-details flex-col gap-2">
         <Folders />
         <Models />
         <Tokens />
@@ -56,6 +60,15 @@ export function DetailsPanel() {
   );
 }
 
+/** The 16px leading slot of a row, holding a 14px glyph (every label in the panel starts on one edge). */
+function Slot({ icon }: { icon: LucideIcon }) {
+  return (
+    <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
+      <Glyph icon={icon} size={14} />
+    </span>
+  );
+}
+
 function Folders() {
   const { project } = useProject();
   const code = useCode();
@@ -64,8 +77,8 @@ function Folders() {
     <InfoSection title="Folders" labelId="details-folders">
       {folders.length === 0 && <p className={cn(INFO_ROW, "text-fg-3")}>No folders attached.</p>}
       {folders.map((f) => (
-        <button key={f.id} type="button" title={f.path} onClick={() => code.revealDir(f.label, "")} className={INFO_ROW_BUTTON}>
-          <Glyph icon={GLYPH.files} size={14} className="shrink-0 text-fg-3" />
+        <button key={f.id} type="button" data-row title={f.path} onClick={() => code.revealDir(f.label, "")} className={INFO_ROW_BUTTON}>
+          <Slot icon={GLYPH.files} />
           <span className="shrink-0 text-fg">{f.label}</span>
           <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">{middleTruncate(f.path, 40)}</span>
         </button>
@@ -91,14 +104,26 @@ function Models() {
   );
 }
 
-type TokenRow = { key: string; role: string; count: number; input: number; output: number; approx: boolean; title: string };
+type TokenRow = {
+  key: string;
+  role: string;
+  count: number;
+  input: number;
+  output: number;
+  approx: boolean;
+  title: string;
+  /** Context occupancy an ACP agent reported (the latest agent of this role that did); never a guessed window. */
+  context: { used: number; size: number } | null;
+};
 
 /** The orchestrator first, then one row per role (agents of the same role summed, with a count), by total. */
 function tokenRows(agents: Agent[]): TokenRow[] {
   const rows = new Map<string, TokenRow>();
   for (const a of agents) {
     const key = a.parent_id === null ? "orchestrator" : `${isAcp(a) ? "acp:" : ""}${roleOf(a)}`;
-    const row = rows.get(key) ?? { key, role: roleOf(a), count: 0, input: 0, output: 0, approx: false, title: "" };
+    const row = rows.get(key) ?? { key, role: roleOf(a), count: 0, input: 0, output: 0, approx: false, title: "", context: null };
+    if (typeof a.context_used === "number" && typeof a.context_size === "number" && a.context_size > 0)
+      row.context = { used: a.context_used, size: a.context_size };
     row.count += 1;
     row.input += a.input_tokens;
     row.output += a.output_tokens;
@@ -130,22 +155,43 @@ function Tokens() {
           {formatTokens(totalIn)} / {formatTokens(totalOut)}
         </span>
       </div>
-      {shown.map((r) => (
-        <div key={r.key} className={INFO_ROW} title={r.title}>
-          <span className="flex w-[40%] min-w-0 shrink-0 items-center gap-1.5">
-            <span className="min-w-0 truncate text-fg-2">{r.role}</span>
-            {r.count > 1 && <span className="shrink-0 text-xs text-fg-3 tabular-nums">×{r.count}</span>}
-          </span>
-          {/* A 2px bar, proportional to the largest row: who is spending. */}
-          <span aria-hidden className="h-0.5 min-w-0 flex-1 rounded-full bg-line">
-            <span className="block h-full rounded-full bg-fg-3" style={{ width: `${Math.max(2, ((r.input + r.output) / max) * 100)}%` }} />
-          </span>
-          {r.approx && <span className="shrink-0 text-xs text-fg-3">approx.</span>}
-          <span className="shrink-0 text-xs text-fg-2 tabular-nums">
-            {formatTokens(r.input)} / {formatTokens(r.output)}
-          </span>
-        </div>
-      ))}
+      {shown
+        .map((r) => (
+          <div key={r.key} className={INFO_ROW} title={r.title}>
+            <span className="flex w-[40%] min-w-0 shrink-0 items-center gap-1.5">
+              <span className="min-w-0 truncate text-fg-2">{r.role}</span>
+              {r.count > 1 && <span className="shrink-0 text-xs text-fg-3 tabular-nums">×{r.count}</span>}
+            </span>
+            {/* A 2px bar, proportional to the largest row: who is spending. */}
+            <span aria-hidden className="h-0.5 min-w-0 flex-1 rounded-full bg-line">
+              <span className="block h-full rounded-full bg-fg-3" style={{ width: `${Math.max(2, ((r.input + r.output) / max) * 100)}%` }} />
+            </span>
+            {r.approx && <span className="shrink-0 text-xs text-fg-3">approx.</span>}
+            <span className="shrink-0 text-xs text-fg-2 tabular-nums">
+              {formatTokens(r.input)} / {formatTokens(r.output)}
+            </span>
+          </div>
+        ))
+        .flatMap((row, i) => {
+          const r = shown[i];
+          if (!r?.context) return [row];
+          return [
+            row,
+            <div
+              key={`${r.key}:context`}
+              className={cn(INFO_ROW, "-mt-1 h-5")}
+              title={`${r.role}: ${r.context.used.toLocaleString()} of ${r.context.size.toLocaleString()} tokens in its context (reported by the agent)`}
+            >
+              <span className="w-[40%] shrink-0 truncate pl-2 text-xs text-fg-3">{contextText(r.context.used, r.context.size)}</span>
+              <span aria-hidden className="h-0.5 min-w-0 flex-1 rounded-full bg-line">
+                <span
+                  className="block h-full rounded-full bg-accent"
+                  style={{ width: `${Math.max(1, Math.min(100, (r.context.used / r.context.size) * 100))}%` }}
+                />
+              </span>
+            </div>,
+          ];
+        })}
       {rows.length > PAGE && <MoreRow label={all ? "Show fewer" : `Show all (${rows.length})`} expanded={all} onClick={() => setAll((x) => !x)} />}
     </InfoSection>
   );
@@ -153,9 +199,17 @@ function Tokens() {
 
 type PluginsLoad = { servers: LanguageServerInfo[]; agents: PluginAgent[] } | null;
 
+/**
+ * What this project can use: the available language servers for the languages its files have (from the Filter-files
+ * index, loaded here) and the available ACP agents.
+ */
 function PluginsInUse() {
   const { bridge } = useApp();
   const { projectId } = useProject();
+  const code = useCode();
+  const { indexFiles, fileIndex, loadedFiles } = code;
+  useEffect(() => indexFiles(), [indexFiles]);
+  const languages = useMemo(() => (fileIndex.status === "done" ? languagesIn(loadedFiles.map((f) => f.path)) : null), [fileIndex.status, loadedFiles]);
   const [load, setLoad] = useState<PluginsLoad>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -169,32 +223,34 @@ function PluginsInUse() {
       cancelled = true;
     };
   }, [bridge, projectId]);
-  const slow = useDelayedLoading(load === null && !failed);
-  const empty = load !== null && load.servers.length + load.agents.length === 0;
+  const servers = load && languages ? load.servers.filter((sv) => sv.languages.some((l) => languages.has(l))) : null;
+  const slow = useDelayedLoading((load === null || languages === null) && !failed);
+  const empty = load !== null && servers !== null && servers.length + load.agents.length === 0;
   return (
     <InfoSection title="Plugins in use" labelId="details-plugins">
       {failed && <p className={cn(INFO_ROW, "text-fg-3")}>Couldn't read the plugins. Reopen this tab to try again.</p>}
-      {load === null && !failed && (
+      {(load === null || servers === null) && !failed && (
         // The skeleton holds its room from the start and shows only once loading is slow (no jump either way).
         <div className={cn(!slow && "opacity-0")}>
           <SkeletonRows count={2} />
         </div>
       )}
       {empty && <p className={cn(INFO_ROW, "text-fg-3")}>No language servers or agents available.</p>}
-      {load?.servers.map((s) => (
+      {servers?.map((s) => (
         <div key={s.id} className={INFO_ROW}>
-          <Glyph icon={Server} size={14} className="shrink-0 text-fg-3" />
+          <Slot icon={Server} />
           <span className="min-w-0 shrink-0 truncate text-fg">{s.label}</span>
           <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">{s.languages.join(", ")}</span>
         </div>
       ))}
-      {load?.agents.map((a) => (
-        <div key={a.id} className={INFO_ROW}>
-          <Glyph icon={GLYPH.agent} size={14} className="shrink-0 text-fg-3" />
-          <span className="min-w-0 shrink-0 truncate text-fg">{a.label}</span>
-          <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">ACP agent</span>
-        </div>
-      ))}
+      {servers &&
+        load?.agents.map((a) => (
+          <div key={a.id} className={INFO_ROW}>
+            <Slot icon={GLYPH.agent} />
+            <span className="min-w-0 shrink-0 truncate text-fg">{a.label}</span>
+            <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">ACP agent</span>
+          </div>
+        ))}
     </InfoSection>
   );
 }
@@ -220,6 +276,7 @@ function Activity() {
         <button
           key={a.id}
           type="button"
+          data-row
           onClick={(e) => ws.openAgent(a.id, { otherSide: e.altKey })}
           title={a.title ? `${roleOf(a)}: ${a.title}` : roleOf(a)}
           className={INFO_ROW_BUTTON}
@@ -268,11 +325,12 @@ function FilesWritten() {
                 <button
                   key={`${f.folder}/${f.path}`}
                   type="button"
+                  data-row
                   title={`${f.folder}/${f.path}`}
                   onClick={() => code.openFile(f.folder, f.path)}
                   className={INFO_ROW_BUTTON}
                 >
-                  <Glyph icon={fileIcon(f.path)} size={14} className="shrink-0 text-fg-3" />
+                  <Slot icon={fileIcon(f.path)} />
                   <span className="min-w-0 shrink truncate text-fg">{fileName(f.path)}</span>
                   <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
                     <bdi>{dir ? `${f.folder}/${dir}` : f.folder}</bdi>

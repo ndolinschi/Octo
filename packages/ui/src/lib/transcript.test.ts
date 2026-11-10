@@ -3,7 +3,7 @@ import type { ContentBlock, Message } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SPAWN_TOOL } from "./tools";
-import { buildTurns, promptText, requestSummaries } from "./transcript";
+import { buildTurns, latestReply, promptText, requestSummaries } from "./transcript";
 
 let nextId = 1;
 const msg = (role: "user" | "assistant", content: ContentBlock[], at: string): Message => ({ id: nextId++, agent_id: "a", role, content, created_at: at });
@@ -144,4 +144,18 @@ test("a request nobody answered yet has no end time; prompt-less turns are not r
   assert.equal(out.length, 1);
   assert.equal(must(out[0]).endedAt, null);
   assert.deepEqual(requestSummaries([], false, null), []);
+});
+
+test("latest reply: the last assistant text's first non-empty line, as plain text", () => {
+  const msg = (id: number, role: "user" | "assistant", text: string | null): Message => ({
+    id,
+    agent_id: "o",
+    role,
+    content: text === null ? [{ type: "tool_use", id: `t${id}`, name: "read_file", input: {} }] : [{ type: "text", text }],
+    created_at: `2026-11-10T10:0${id}:00Z`,
+  });
+  assert.equal(latestReply([]), null);
+  assert.equal(latestReply([msg(1, "user", "hi")]), null);
+  assert.deepEqual(latestReply([msg(1, "assistant", "\n## **Plan**\nmore"), msg(2, "assistant", null)]), { text: "Plan", at: "2026-11-10T10:01:00Z" });
+  assert.equal(latestReply([msg(1, "assistant", "old"), msg(2, "assistant", "`new` reply")])?.text, "new reply");
 });

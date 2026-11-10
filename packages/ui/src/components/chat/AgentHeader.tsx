@@ -9,6 +9,7 @@ import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Markdown } from "./Markdown";
 import { modelLabel, statusLabel, tierLabel } from "../primitives/Status";
+import { contextText } from "../../lib/usageView";
 
 export function roleName(agent: Agent): string {
   return agent.parent_id === null ? "Orchestrator" : agent.role;
@@ -66,6 +67,8 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
     agent.tier ? tierLabel(agent.tier) : "",
     duration !== null ? formatDuration(duration) : "",
     nested > 0 ? `${nested} nested` : "",
+    // Reported by an ACP agent (`usage_update`); absent otherwise — never a guessed window.
+    contextText(agent.context_used, agent.context_size) ?? "",
   ].filter(Boolean);
 
   return (

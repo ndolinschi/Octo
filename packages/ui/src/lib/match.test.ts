@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { matchScore } from "./match";
+import { matchKind, matchScore, rankGroups } from "./match";
 
 test("an empty query matches everything with the same score", () => {
   assert.equal(matchScore("", "anything"), 0);
@@ -45,4 +45,31 @@ test("spaces in the query are skipped when matching fuzzily, never negative for 
 test("unicode", () => {
   assert.ok(matchScore("日本", "docs/日本語.md") > 0);
   assert.equal(matchScore("é", "cafe"), -1);
+});
+
+test("match kinds: word start, inside a word, loose", () => {
+  assert.equal(matchKind("integr", "Open integrations"), "word");
+  assert.equal(matchKind("open", "Open integrations"), "word");
+  assert.equal(matchKind("tegr", "Open integrations"), "inside");
+  assert.equal(matchKind("integr", "Infrastructure: Terraform modules for staging and production clusters"), "fuzzy");
+  assert.equal(matchKind("zzz", "Open integrations"), null);
+});
+
+test("groups: a word-start action outranks a project that matches loosely; ties keep order", () => {
+  const groups = [
+    { title: "Projects", labels: ["Infrastructure: Terraform modules for staging and production clusters", "Atlas API"] },
+    { title: "Actions", labels: ["Open settings", "Open integrations"] },
+  ];
+  assert.deepEqual(
+    rankGroups("integr", groups, (g) => g.labels).map((g) => g.title),
+    ["Actions", "Projects"],
+  );
+  assert.deepEqual(
+    rankGroups("atlas", groups, (g) => g.labels).map((g) => g.title),
+    ["Projects", "Actions"],
+  );
+  assert.deepEqual(
+    rankGroups("", groups, (g) => g.labels).map((g) => g.title),
+    ["Projects", "Actions"],
+  );
 });

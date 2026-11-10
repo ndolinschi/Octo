@@ -61,3 +61,10 @@ test("requests are counted over the same span, across projects", () => {
   );
   assert.equal(two.runs, 2);
 });
+
+test("a day's cell counts its runs and its requests (a project with requests but no runs is not an empty map)", () => {
+  const out = heat([run("2026-11-09T10:00:00Z")], [Date.parse("2026-11-09T11:00:00Z"), Date.parse("2026-11-08T11:00:00Z")]);
+  const cell = (iso: string) => must(out.days.find((d) => d.at === Date.parse(iso)));
+  assert.deepEqual([cell("2026-11-09T00:00:00Z").count, cell("2026-11-09T00:00:00Z").runs, cell("2026-11-09T00:00:00Z").requests], [2, 1, 1]);
+  assert.equal(cell("2026-11-08T00:00:00Z").count, 1);
+});

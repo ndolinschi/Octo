@@ -1,6 +1,6 @@
 import { ListFilter, X } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "../../lib/cn";
 import { useCode } from "../../state/code";
 import { TREE_DEFAULT, TREE_MAX, TREE_MIN, useFileView } from "../../state/fileView";
@@ -18,7 +18,7 @@ export function TreeColumn(props: { id: string; tab: TabId; overlay: boolean; ma
   const code = useCode();
   const fv = useFileView();
   const ws = useWorkspace();
-  const [filter, setFilter] = useState("");
+  const { filter, setFilter } = fv;
   const input = useRef<HTMLInputElement>(null);
   const tree = useRef<FileTreeHandle>(null);
   const { indexFiles, fileIndex } = code;

@@ -82,8 +82,8 @@ export type FileTreeHandle = { focusFirst(): void };
  * ARIA tree of the project's folders; directories load when expanded. With `filter`, only files whose
  * folder-relative path contains it (case-insensitive) are shown, with their ancestors expanded; the
  * caller loads the folders first (`indexFiles`). Rows: 28px, radius 6, 16px per level,
- * [24px chevron box] 4 [16px icon slot] 8 [name] … 8 — one anatomy for roots (medium weight),
- * folders and files (files keep the chevron box empty).
+ * [24px glyph box: chevron for folders, type glyph for files] 4 [name] … — one anatomy for roots (medium weight),
+ * folders and files, so siblings share one label edge.
  */
 export const FileTree = forwardRef<
   FileTreeHandle,
@@ -210,7 +210,7 @@ export const FileTree = forwardRef<
         if (row.kind === "empty") {
           return (
             <div key={row.id} role="none" className="flex h-row shrink-0 items-center text-xs text-fg-3">
-              <Indent px={indent + 24 + 4 + 16 + 8} />
+              <Indent px={indent + 24 + 4} />
               Empty folder
             </div>
           );
@@ -259,8 +259,6 @@ export const FileTree = forwardRef<
         }
         const selected = row.id === selectedKey;
         const isRoot = row.kind === "dir" && row.path === "";
-        // Folders carry only their chevron (one glyph per row); a file's type glyph sits where a folder's
-        // label starts, so siblings line up.
         const Icon = row.kind === "file" ? fileIcon(row.name) : null;
         const comments = row.kind === "file" ? (counts?.get(row.id) ?? 0) : 0;
         return (
@@ -276,15 +274,16 @@ export const FileTree = forwardRef<
             className={cn("flex h-row shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset", selected ? "bg-active" : "hover:bg-hover")}
           >
             <Indent px={indent} />
-            <span aria-hidden className={cn("grid size-6 shrink-0 place-items-center text-fg-3", row.kind !== "dir" && "invisible")}>
-              <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")} />
-            </span>
-            {Icon && (
-              <span aria-hidden className="ml-1 grid size-4 shrink-0 place-items-center text-fg-3">
+            {/* One glyph column (decided once, v6.2): a folder's chevron or a file's type glyph, so every label of a
+                level starts on one edge. */}
+            <span aria-hidden className="grid size-6 shrink-0 place-items-center text-fg-3">
+              {Icon ? (
                 <Glyph icon={Icon} size={14} />
-              </span>
-            )}
-            <span data-label className={cn("min-w-0 truncate text-fg", Icon ? "ml-2" : "ml-1", isRoot && "font-medium")}>
+              ) : (
+                <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")} />
+              )}
+            </span>
+            <span data-label className={cn("ml-1 min-w-0 truncate text-fg", isRoot && "font-medium")} title={row.name}>
               {query && row.kind === "file" ? <Highlight text={row.name} query={query} /> : row.name}
             </span>
             {comments > 0 && (

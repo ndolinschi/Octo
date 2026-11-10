@@ -1,14 +1,12 @@
 import { useEffect, useRef } from "react";
-import { parseColor, renderStreak, type StreakAnchor } from "../../lib/streak";
+import { parseColor, renderStreak, streakCell, type StreakAnchor } from "../../lib/streak";
 
-/** Cell size of the ordered dither, in CSS px (decision 21: visible but fine grain). */
-const CELL = 2;
 /** How far the optional drift moves the band (CSS px); the canvas overhangs by this much on every side. */
 const DRIFT = 12;
 
 /**
- * The dithered light streak (contract v6 decision 21), drawn by `lib/streak.ts` on a canvas at cell
- * resolution and scaled up with `pixelated` (so DPR does not change the cost), once per size / theme
+ * The dithered light streak (decision 21b), drawn by `lib/streak.ts` on a canvas at cell resolution (3 CSS px,
+ * 4 from 1920 wide) and scaled up with `pixelated` (so DPR does not change the cost), once per size / theme
  * change. The optional drift is a CSS transform (styles.css, `.octo-streak`). Loaded with `import()` on
  * the start screens only; `aria-hidden`, no pointer events. `data-draw-ms` records the last draw time.
  */
@@ -27,14 +25,15 @@ export default function Streak({ anchor, theme }: { anchor: StreakAnchor; theme:
       const h = host.clientHeight;
       if (w === 0 || h === 0) return;
       const t0 = performance.now();
-      const cols = Math.ceil((w + 2 * DRIFT) / CELL);
-      const rows = Math.ceil((h + 2 * DRIFT) / CELL);
+      const cell = streakCell(w);
+      const cols = Math.ceil((w + 2 * DRIFT) / cell);
+      const rows = Math.ceil((h + 2 * DRIFT) / cell);
       if (el.width !== cols || el.height !== rows) {
         el.width = cols;
         el.height = rows;
       }
-      el.style.width = `${cols * CELL}px`;
-      el.style.height = `${rows * CELL}px`;
+      el.style.width = `${cols * cell}px`;
+      el.style.height = `${rows * cell}px`;
       const ctx = el.getContext("2d");
       if (!ctx) return;
       const css = getComputedStyle(host);
@@ -42,15 +41,12 @@ export default function Streak({ anchor, theme }: { anchor: StreakAnchor; theme:
       const peak = renderStreak(new Uint32Array(img.data.buffer), {
         cols,
         rows,
-        cell: CELL,
+        cell,
         overhang: DRIFT,
         anchor: { x: anchorX, y: anchorY },
         panel: parseColor(css.getPropertyValue("--octo-panel")),
         accent: parseColor(css.getPropertyValue("--octo-accent")),
-        indigo: parseColor(css.getPropertyValue("--octo-streak-indigo")),
-        warm: parseColor(css.getPropertyValue("--octo-warn")),
-        peak: theme === "dark" ? 0.55 : 0.22,
-        rimPeak: theme === "dark" ? 0.3 : 0.14,
+        theme,
       });
       ctx.putImageData(img, 0, 0);
       el.dataset.drawMs = (performance.now() - t0).toFixed(2);

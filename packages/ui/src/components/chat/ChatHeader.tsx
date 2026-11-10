@@ -1,63 +1,74 @@
 import { totalTokens } from "@octo/agent-client";
 import { Ellipsis } from "lucide-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
-import { requestTitle } from "../../lib/comments";
 import { formatTokens } from "../../lib/format";
-import { useCopy } from "../../lib/hooks";
-import type { RequestSummary } from "../../lib/transcript";
-import { useNavState } from "../../state/nav";
+import { useNow } from "../../lib/hooks";
+import { agentStack, liveOrchestratorState, stateLine } from "../../lib/orchestrator";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
-import { RunningDot } from "../primitives/Status";
+import { modelLabel, OrchestratorGlyph } from "../primitives/Status";
 
 /**
- * The Chat tab's header: one opaque 40px row on the conversation column's edges, outside the scroll
- * area (the transcript starts below it and never slides under it). Left: where you are — project /
- * the request in view. Right: whether the orchestrator is working, the tokens the project has used as
- * a quiet tabular count, and a `…` menu (Copy request, Project settings). The menu button's 28px box
- * overhangs the column by 6px, so its 16px glyph ends exactly on the column edge.
+ * The orchestrator's header (decision 23): one 40px row on the conversation column's edges, outside the scroll area.
+ * Left: the project's name and its orchestrator's live state ("Working · 2 agents", "Needs you", "Idle · 2h").
+ * Right: the running agents as one compact stack ("Dependency auditor, Test runner +1") that opens the Agents tab,
+ * the orchestrator's model, the project's tokens, and a `…` menu. No request breadcrumb: the request in view is
+ * shown by the rail and the pinned prompt. `transparent` on the empty project, where the streak runs behind it.
  */
-export function ChatHeader({ requests }: { requests: RequestSummary[] }) {
-  const { project, projectId, state, running } = useProject();
+export function ChatHeader({ transparent = false }: { transparent?: boolean }) {
+  const { project, state, running } = useProject();
   const ws = useOptionalWorkspace();
-  const { viewTurn } = useNavState();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const button = useRef<HTMLButtonElement>(null);
-  const [, copy] = useCopy();
+  const now = useNow(running);
+  const orchestrator = useMemo(() => liveOrchestratorState(state, running ? "running" : "idle"), [state, running]);
   if (!project) return null;
-  const inView = viewTurn?.projectId === projectId ? requests.find((r) => r.id === viewTurn.messageId) : undefined;
-  const request = inView ?? requests[requests.length - 1];
   const tokens = totalTokens(state);
   const total = tokens.input + tokens.output;
+  const agents = orchestrator.kind === "working" ? orchestrator.agents : [];
+  const line = stateLine(orchestrator, now, project.updated_at);
   return (
-    <div data-chat-header className="shrink-0 overflow-hidden bg-panel px-(--pad) scroll-quiet">
+    <div data-chat-header className={cn("relative shrink-0 overflow-hidden px-(--pad) scroll-quiet", !transparent && "bg-panel")}>
       <div data-column-edge className="mx-auto flex h-bar w-full max-w-measure min-w-0 items-center gap-3 text-sm">
         <p className="flex min-w-0 flex-1 items-center gap-2">
-          {/* Under 420px of conversation the project crumb goes first (it is in the sidebar and the tab). */}
-          <span className={cn("max-w-[40%] shrink-0 truncate text-fg-2", request && "@max-[420px]/conv:hidden")} title={project.name}>
+          <span className="min-w-0 shrink truncate font-medium text-fg" title={project.name}>
             {project.name}
           </span>
-          {request && (
-            <>
-              <span aria-hidden className="text-fg-3 @max-[420px]/conv:hidden">
-                /
-              </span>
-              <span className="min-w-0 truncate text-fg" title={request.text}>
-                {requestTitle(request.text).split("\n", 1)[0]}
-              </span>
-            </>
-          )}
-        </p>
-        {running && (
-          <span className="flex shrink-0 items-center gap-2 text-xs text-fg-2">
-            <RunningDot />
-            Working…
+          <span
+            className={cn("flex shrink-0 items-center gap-1.5 text-xs", orchestrator.kind === "needs" ? "text-err" : running ? "text-fg-2" : "text-fg-3")}
+            title={orchestrator.kind === "needs" ? (orchestrator.error ?? "The last turn failed") : `Orchestrator: ${line}`}
+          >
+            {orchestrator.kind !== "idle" && orchestrator.kind !== "new" && <OrchestratorGlyph state={orchestrator.kind} />}
+            <span className="sr-only">Orchestrator: </span>
+            {/* The agent count is in the stack when there is room; the state word stays. */}
+            <span className={cn(agents.length > 0 && "@max-[420px]/conv:hidden")}>{agents.length ? "Working" : line}</span>
           </span>
+        </p>
+        {agents.length > 0 && (
+          <button
+            type="button"
+            onClick={() => ws?.openTool("agents")}
+            title={`Show agents: ${agents.map((a) => a.role).join(", ")}`}
+            className="flex h-chip max-w-[40%] min-w-0 shrink items-center gap-1.5 rounded-sm px-2 text-xs text-fg-2 press-row focus-inset hover:bg-hover hover:text-fg"
+          >
+            <span aria-hidden className="flex shrink-0 -space-x-1">
+              {agents.slice(0, 3).map((a) => (
+                <span key={a.id} className="grid size-3.5 place-items-center rounded-full bg-active ring-1 ring-panel">
+                  <span className="size-1.5 rounded-full bg-accent" />
+                </span>
+              ))}
+            </span>
+            <span className="min-w-0 truncate @max-[420px]/conv:hidden">{agentStack(agents.map((a) => a.role))}</span>
+            <span className="hidden shrink-0 tabular-nums @max-[420px]/conv:inline">{agents.length === 1 ? "1 agent" : `${agents.length} agents`}</span>
+          </button>
         )}
+        <span className="shrink-0 text-xs text-fg-3 @max-[560px]/conv:hidden" title={`Orchestrator model: ${project.models.orchestrator}`}>
+          {modelLabel(project.models.orchestrator)}
+        </span>
         {total > 0 && (
           <span
             className="shrink-0 text-xs text-fg-3 tabular-nums"
@@ -70,7 +81,7 @@ export function ChatHeader({ requests }: { requests: RequestSummary[] }) {
         <IconButton
           ref={button}
           icon={Ellipsis}
-          label="Conversation actions"
+          label="Orchestrator actions"
           aria-haspopup="menu"
           aria-expanded={menu !== null}
           className={cn("-mr-1.5", menu && "bg-active text-fg")}
@@ -83,13 +94,14 @@ export function ChatHeader({ requests }: { requests: RequestSummary[] }) {
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Menu
-            label="Conversation actions"
+            label="Orchestrator actions"
             x={menu.x}
             y={menu.y}
             alignEnd
             onClose={() => setMenu(null)}
             items={[
-              { id: "copy", label: "Copy request", disabled: !request, run: () => request && copy(request.text) },
+              { id: "agents", label: "Show agents", disabled: !ws, run: () => ws?.openTool("agents") },
+              { id: "usage", label: "Show usage", disabled: !ws, run: () => ws?.openTool("usage") },
               { id: "settings", label: "Project settings", disabled: !ws, run: () => ws?.openSettings() },
             ]}
           />

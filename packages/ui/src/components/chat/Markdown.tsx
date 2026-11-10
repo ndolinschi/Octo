@@ -47,13 +47,32 @@ function useTokens(code: string, lang: string | undefined) {
   return useMemo(() => (highlighter && lang ? highlighter.tokenize(code, lang) : null), [code, lang, highlighter]);
 }
 
+/** `code` with the highlighter's token colours for `lang` once it is loaded (plain until then); same metrics. */
+export function HighlightedCode({ code, lang }: { code: string; lang: string | undefined }) {
+  const tokens = useTokens(code, lang);
+  return (
+    <>
+      {tokens
+        ? tokens.map((t, i) =>
+            t.kind === "plain" ? (
+              t.text
+            ) : (
+              <span key={i} className={`octo-tok-${t.kind}`}>
+                {t.text}
+              </span>
+            ),
+          )
+        : code}
+    </>
+  );
+}
+
 function CodeBlock({ children }: { children?: ReactNode }) {
   const [copied, copy] = useCopy();
   const child: unknown = Array.isArray(children) ? children[0] : children;
   const className = child && typeof child === "object" && "props" in child ? ((child as { props: { className?: string } }).props.className ?? "") : "";
   const lang = /language-([\w+-]+)/.exec(className)?.[1];
   const code = textOf(children).replace(/\n$/, "");
-  const tokens = useTokens(code, lang);
   return (
     // Card inset 12 on all sides: a 20px caption row, 8 below it, then 20px code lines.
     <div className="my-3 overflow-hidden rounded-md bg-code-bg p-card">
@@ -71,17 +90,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
       {/* Plain first, coloured when the highlighter is in: same text, same metrics (colours only). */}
       <pre className="octo-code overflow-x-auto font-mono text-xs leading-5">
         <code>
-          {tokens
-            ? tokens.map((t, i) =>
-                t.kind === "plain" ? (
-                  t.text
-                ) : (
-                  <span key={i} className={`octo-tok-${t.kind}`}>
-                    {t.text}
-                  </span>
-                ),
-              )
-            : code}
+          <HighlightedCode code={code} lang={lang} />
         </code>
       </pre>
     </div>

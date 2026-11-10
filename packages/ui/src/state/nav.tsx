@@ -6,6 +6,9 @@ export type TurnRef = { projectId: string; messageId: number };
 
 type Listener = (turn: TurnRef) => void;
 
+/** A tool tab to open when a project's workspace mounts (Home's Tokens card opens Usage over all projects). */
+export type ToolRequest = { projectId: string; tool: "usage"; scope: "project" | "all" };
+
 /** One palette row offered by the open workspace (tabs and tab actions). */
 export type WorkspaceCommand = { id: string; label: string; detail?: string; shortcut?: string; run(): void };
 
@@ -31,6 +34,9 @@ type NavActions = {
   onTurnRequest(listener: Listener): () => void;
   clearPendingTurn(): void;
   setViewTurn(turn: TurnRef | null): void;
+  /** Ask the next workspace of this project to open a tool tab; kept until that workspace takes it. */
+  requestTool(request: ToolRequest): void;
+  takePendingTool(projectId: string): ToolRequest | null;
   /** The workspace registers how many unsaved files leaving it would discard. */
   setLeaveGuard(count: (() => number) | null): void;
   unsavedCount(): number;
@@ -50,6 +56,7 @@ const StateContext = createContext<NavState>({ viewTurn: null });
 export function NavProvider({ children }: { children: ReactNode }) {
   const [viewTurn, setViewTurnState] = useState<TurnRef | null>(null);
   const pending = useRef<TurnRef | null>(null);
+  const pendingTool = useRef<ToolRequest | null>(null);
   const listeners = useRef(new Set<Listener>());
   const guard = useRef<(() => number) | null>(null);
   const workspace = useRef<WorkspaceApi | null>(null);
@@ -76,6 +83,15 @@ export function NavProvider({ children }: { children: ReactNode }) {
         pending.current = null;
       },
       setViewTurn: (turn) => setViewTurnState((prev) => (prev?.projectId === turn?.projectId && prev?.messageId === turn?.messageId ? prev : turn)),
+      requestTool: (request) => {
+        pendingTool.current = request;
+      },
+      takePendingTool: (projectId) => {
+        const p = pendingTool.current;
+        if (p?.projectId !== projectId) return null;
+        pendingTool.current = null;
+        return p;
+      },
       setLeaveGuard: (count) => {
         guard.current = count;
       },

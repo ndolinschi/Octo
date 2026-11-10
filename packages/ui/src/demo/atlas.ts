@@ -19,7 +19,7 @@ Two tabs — or a tab and the service worker — can refresh at the same moment.
 | --- | --- | --- |
 | API | \`src/auth/refresh.ts\` | Rotation is immediate; no grace window for the previous token |
 | Web | \`src/lib/session.ts\` | No single-flight lock — every tab refreshes on its own |
-| Web | \`src/lib/http.ts\` | Any \`401\` from refresh clears the session |
+| Web | \`src/lib/http.ts\` | Any \`401\` from refresh signs the user out |
 
 The debugger reproduced it with a new failing test, \`refresh.concurrent.test.ts\`: 7 of 10 runs log the user out.
 
@@ -91,7 +91,7 @@ export async function atlasHistory(ctx: Ctx): Promise<void> {
               { name: "read_file", input: { path: "src/lib/http.ts" }, result: "if (res.status === 401) session.clear();", ms: 500 },
             ]);
             const r =
-              "Tokens are kept in memory plus an httpOnly refresh cookie. `session.ts` refreshes 60 s before access-token expiry, independently in each tab. `http.ts` clears the session on any `401`.";
+              "Tokens are kept in memory plus an httpOnly refresh cookie. `session.ts` refreshes 60 s before access-token expiry, independently in each tab. `http.ts` signs the user out on any `401`.";
             await say(cc, id, r);
             return r;
           },
@@ -120,7 +120,7 @@ export async function atlasHistory(ctx: Ctx): Promise<void> {
 
   await sleep(ctx, 26 * 3600_000);
 
-  await turn(ctx, "Session refresh sometimes logs people out. Find the cause and propose a fix — don't change any code yet.", async (c, orch) => {
+  await turn(ctx, "Token refresh sometimes logs people out. Find the cause and propose a fix — don't change any code yet.", async (c, orch) => {
     await delegate(
       c,
       orch,
@@ -212,7 +212,7 @@ export async function atlasHistory(ctx: Ctx): Promise<void> {
                     {
                       name: "bash",
                       input: { folder: "atlas-api", command: "pnpm vitest run test/auth/refresh.concurrent.test.ts" },
-                      result: " × concurrent refresh keeps the session (10 runs)\n   → 7 of 10 runs: second call returned 401 refresh_revoked",
+                      result: " × concurrent refresh keeps the user signed in (10 runs)\n   → 7 of 10 runs: second call returned 401 refresh_revoked",
                       ms: 3100,
                     },
                   ]);

@@ -4,6 +4,7 @@ import type * as Monaco from "monaco-editor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useComments } from "../../../state/comments";
+import { linesLabel } from "../../../lib/comments";
 import type { EditorBuffers, MonacoApi } from "../buffers";
 import { CommentZone, type ZoneProps } from "./CommentBox";
 import { useLatest } from "../../../lib/hooks";
@@ -294,7 +295,18 @@ export function EditorComments(props: {
         line: Math.min(c.end, lines),
         props: editing
           ? { kind: "composer", start: c.start, end: c.end, initial: c.text, editing: true, onSubmit: (t) => submit(draft, t), onCancel: cancel }
-          : { kind: "card", start: c.start, end: c.end, text: c.text, onEdit: () => open(c.start, c.end, c.id), onRemove: () => store.remove(c.id) },
+          : {
+              kind: "card",
+              start: c.start,
+              end: c.end,
+              text: c.text,
+              onEdit: () => open(c.start, c.end, c.id),
+              onRemove: () => {
+                store.remove(c.id);
+                // The card (and its focused button) goes away with the comment: the caret returns to the code.
+                editor.focus();
+              },
+            },
       });
     }
     if (draft && !draft.editing) {
@@ -329,18 +341,16 @@ export function EditorComments(props: {
 
   const covered = hover && draft && !draft.editing && hover.line >= draft.start && hover.line <= draft.end;
   if (!hover || covered) return null;
-  const onPlus = () => {
-    // With several lines selected and the pointer on one of them, the comment is on the selection.
-    const sel = selectedLines(editor);
-    if (sel && sel.end > sel.start && hover.line >= sel.start && hover.line <= sel.end) open(sel.start, sel.end);
-    else open(hover.line, hover.line);
-  };
+  // With several lines selected and the pointer on one of them, the comment is on the selection (and the label says so).
+  const sel = selectedLines(editor);
+  const range = sel && sel.end > sel.start && hover.line >= sel.start && hover.line <= sel.end ? sel : { start: hover.line, end: hover.line };
+  const onPlus = () => open(range.start, range.end);
   return (
     <button
       type="button"
       data-comment-plus
-      aria-label={`Add comment on line ${hover.line}`}
-      title="Add comment"
+      aria-label={`Add comment on ${linesLabel(range.start, range.end)}`}
+      title={`Add comment on ${linesLabel(range.start, range.end)}`}
       data-tip-side="left"
       data-shortcut={`${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘⌥" : "Ctrl+Alt+"}C`}
       style={{ left: hover.left, top: hover.top, width: PLUS, height: PLUS }}

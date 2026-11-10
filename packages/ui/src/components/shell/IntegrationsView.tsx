@@ -86,6 +86,7 @@ export function IntegrationsView() {
   const available = items.filter((i) => i.available === true).length;
   const missing = items.filter((i) => i.available === false).length;
   const problems = plugins.filter((p) => p.errors.length > 0);
+  const problemCount = problems.reduce((n, p) => n + p.errors.length, 0);
 
   if (load.status === "loading") {
     return (
@@ -120,6 +121,13 @@ export function IntegrationsView() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && query) {
+              e.preventDefault();
+              setQuery("");
+            }
+          }}
+          data-esc-clears
           placeholder="Search integrations"
           spellCheck={false}
           autoComplete="off"
@@ -194,7 +202,9 @@ export function IntegrationsView() {
         </ul>
       )}
       {problems.length > 0 && (kind !== "all" || q) && (
-        <p className="text-xs text-err">{problems.reduce((n, p) => n + p.errors.length, 0)}&nbsp;manifest problems (shown under All)</p>
+        <p className="text-xs text-err">
+          {problemCount}&nbsp;{problemCount === 1 ? "manifest problem" : "manifest problems"} (shown under All)
+        </p>
       )}
 
       <p className="border-t border-line pt-3 text-xs text-fg-3">

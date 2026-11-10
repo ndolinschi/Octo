@@ -45,7 +45,7 @@ export const ATLAS_CONCURRENT_TEST = `import { describe, expect, it } from "vite
 import { testServer } from "../helpers/server";
 
 describe("POST /auth/refresh (concurrent)", () => {
-  it("keeps the session when two tabs refresh at once", async () => {
+  it("keeps the user signed in when two tabs refresh at once", async () => {
     const app = await testServer();
     const cookies = { atlas_rt: "seed" };
     const [a, b] = await Promise.all([

@@ -1,9 +1,10 @@
 import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
+import { crumbName, fitCrumbs } from "../../lib/crumbs";
 import { useCopy, useDelayedLoading } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useCode, type OpenFile } from "../../state/code";
@@ -14,7 +15,7 @@ import { focusSoon } from "../../lib/focus";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { FloatingComposer, useFloatingHere } from "../chat/FloatingComposer";
 import { useGroup } from "../dock/group";
-import { domId } from "../dock/ids";
+import { domId } from "../../state/workspace/ids";
 import { Button, IconButton } from "../primitives/Button";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
@@ -24,7 +25,7 @@ import { EditorStatus } from "./EditorStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { TreeColumn } from "./TreeColumn";
-import { FILE_VIEW_OVERLAY_BELOW } from "../../lib/constants";
+import { EDITOR_MIN_WIDTH, FILE_VIEW_OVERLAY_BELOW } from "../../lib/constants";
 import { slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 
@@ -70,7 +71,10 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: FileKey | null
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const overlay = width > 0 && width < FILE_VIEW_OVERLAY_BELOW;
+  // A column that would leave the editor under `EDITOR_MIN_WIDTH` (a narrow file group beside the orchestrator) floats
+  // over it instead, closed by default.
+  const column = Math.max(TREE_MIN, Math.min(fv.treeWidth, Math.round(width * 0.4)));
+  const overlay = width > 0 && (width < FILE_VIEW_OVERLAY_BELOW || width - column < EDITOR_MIN_WIDTH);
   // A narrow view keeps the editor visible: there the tree floats over it, starts closed (open in the
   // empty Files view), and closes
   // once a file is picked (the shared column preference is left alone).
@@ -171,8 +175,12 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: FileKey | null
       <div data-file-bar className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]">
         <IconButton icon={ArrowLeft} label="Back" title="Back (previous file in this group)" disabled={!group?.canBack} onClick={group?.back} />
         <IconButton icon={ArrowRight} label="Forward" title="Forward (next file in this group)" disabled={!group?.canForward} onClick={group?.forward} />
-        {fileKey ? <Crumbs folder={folder} path={path} compact={overlay} /> : <p className="ml-1 min-w-0 truncate px-1 text-sm text-fg-2">{project?.name}</p>}
-        <span className="ml-auto flex min-w-0 shrink items-center gap-2 pl-2">
+        {fileKey ? (
+          <Crumbs key={`${folder}/${path}`} folder={folder} path={path} />
+        ) : (
+          <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>
+        )}
+        <span className="flex shrink-0 items-center gap-2 pl-2">
           <span className="flex shrink-0 items-center gap-2 empty:hidden" role="status">
             {saving && (
               <>
@@ -234,64 +242,87 @@ function NoFolders() {
   );
 }
 
-/**
- * `folder › dir › file`: a folder or directory crumb reveals it in the tree; the file crumb carries its
- * icon. `compact` (a narrow view) keeps only the nearest directory and the file — the full path is the
- * tooltip — so the file name never truncates first.
- */
-/** More directories than this between the folder and the file collapse into one "…" crumb. */
-const CRUMB_DIRS = 3;
+/** Canvas text measurer for the crumbs (one context, reused). */
+let measureCtx: CanvasRenderingContext2D | null = null;
+function textWidth(text: string, font: string): number {
+  measureCtx ??= document.createElement("canvas").getContext("2d");
+  if (!measureCtx) return text.length * 7;
+  measureCtx.font = font;
+  return measureCtx.measureText(text).width;
+}
 
-function Crumbs({ folder, path, compact = false }: { folder: string; path: string; compact?: boolean }) {
+/** Crumb padding (px-1 both sides), the separator glyph, the gap between items, the file crumb's icon + gap. */
+const CRUMB_PAD = 8;
+const SEP = 14;
+const GAP = 2;
+const FILE_CHROME = CRUMB_PAD + 14 + 8;
+
+/**
+ * `folder › dir › file`: a folder or directory crumb reveals it in the tree; the file crumb carries its icon. The row
+ * collapses by measured fit (`lib/crumbs.ts`): everything, then `folder › … › parent › file`, `… › parent › file`,
+ * `… › file`; the "…" crumb is a menu of what it hides. The file name is shortened once (in the middle) only when it
+ * alone does not fit. The crumbs take the room the status and the buttons leave; they never push into them.
+ */
+function Crumbs({ folder, path }: { folder: string; path: string }) {
   const code = useCode();
+  const nav = useRef<HTMLElement>(null);
+  const [room, setRoom] = useState<{ width: number; font: string } | null>(null);
+  useLayoutEffect(() => {
+    const el = nav.current;
+    if (!el) return;
+    const measure = () => setRoom({ width: el.clientWidth, font: getComputedStyle(el).font || "13px sans-serif" });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const all = path.split("/");
   const name = all.pop() ?? path;
-  // Narrow: only the nearest directory. Deep: the first and the last directory, the middle behind "…".
-  const keep = compact ? all.slice(-1) : all.length > CRUMB_DIRS ? [all[0] ?? "", all[all.length - 1] ?? ""] : all;
-  const hidden = compact ? [] : all.length > CRUMB_DIRS ? all.slice(1, -1) : [];
+  const plan = useMemo(() => {
+    if (!room) return { folder: true, dirs: all.map((_, i) => i), hidden: [], nameChars: null };
+    const t = (x: string) => Math.ceil(textWidth(x, room.font)) + CRUMB_PAD;
+    return fitCrumbs(
+      { folder: t(folder), dirs: all.map(t), file: t(name) + FILE_CHROME - CRUMB_PAD, fileChrome: FILE_CHROME, sep: SEP, ellipsis: t("…"), gap: GAP },
+      room.width,
+      textWidth("abcdefghijklmnopqrstuvwxyz", room.font) / 26,
+    );
+    // `all` is derived from `path`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, folder, path, name]);
   const Icon = fileIcon(name);
-  const crumb = "press h-6 min-w-[2ch] shrink-[8] truncate rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg";
+  const crumb = "press h-6 shrink-0 rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg";
   const dirOf = (i: number) => all.slice(0, i + 1).join("/");
-  const dirCrumb = (label: string, index: number) => (
-    <button
-      type="button"
-      className={cn(crumb, "max-w-[120px]")}
-      title={`Reveal ${folder}/${dirOf(index)} in the tree`}
-      onClick={() => code.revealDir(folder, dirOf(index))}
-    >
-      {label}
-    </button>
-  );
+  const hidden = plan.hidden.map((i) => (i < 0 ? { label: folder, path: "" } : { label: all[i] ?? "", path: dirOf(i) }));
   return (
     <nav
+      ref={nav}
       aria-label="File path"
-      className="ml-1 flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap"
+      className="ml-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden whitespace-nowrap"
       title={middleTruncate(`${folder}/${path}`, 96)}
     >
-      {!(compact && keep.length) && (
-        <button type="button" className={cn(crumb, "max-w-[160px]")} title={`Reveal ${folder} in the tree`} onClick={() => code.revealDir(folder, "")}>
+      {plan.folder && (
+        <button type="button" className={crumb} title={`Reveal ${folder} in the tree`} onClick={() => code.revealDir(folder, "")}>
           {folder}
         </button>
       )}
-      {compact
-        ? keep.map((p) => <Fragment key={p}>{dirCrumb(p, all.length - 1)}</Fragment>)
-        : keep.map((p, i) => (
-            <Fragment key={`${i}-${p}`}>
-              <Sep />
-              {dirCrumb(p, i === 0 ? 0 : all.length - 1)}
-              {i === 0 && hidden.length > 0 && (
-                <>
-                  <Sep />
-                  <HiddenCrumbs folder={folder} dirs={hidden.map((d, j) => ({ label: d, path: dirOf(j + 1) }))} />
-                </>
-              )}
-            </Fragment>
-          ))}
-      <Sep />
-      <span aria-current="page" className="flex h-6 min-w-0 shrink-[0.2] items-center gap-2 px-1 text-sm text-fg" title={name}>
+      {hidden.length > 0 && (
+        <>
+          {plan.folder && <Sep />}
+          <HiddenCrumbs folder={folder} dirs={hidden} />
+        </>
+      )}
+      {plan.dirs.map((i) => (
+        <Fragment key={i}>
+          <Sep />
+          <button type="button" className={crumb} title={`Reveal ${folder}/${dirOf(i)} in the tree`} onClick={() => code.revealDir(folder, dirOf(i))}>
+            {all[i]}
+          </button>
+        </Fragment>
+      ))}
+      {(plan.folder || hidden.length > 0) && <Sep />}
+      <span aria-current="page" className="flex h-6 min-w-0 items-center gap-2 px-1 text-sm text-fg" title={name}>
         <Glyph icon={Icon} size={14} className="shrink-0 text-fg-3" />
-        {/* Shortened once, in the middle (the extension stays); CSS truncation is only a guard. */}
-        <span className="min-w-0 truncate">{middleTruncate(name, 40)}</span>
+        <span className="min-w-0 overflow-hidden">{crumbName(name, plan)}</span>
       </span>
     </nav>
   );
@@ -309,7 +340,7 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
         type="button"
         aria-haspopup="menu"
         aria-expanded={menu !== null}
-        aria-label={`${dirs.length} more folders`}
+        aria-label={`${dirs.length} hidden ${dirs.length === 1 ? "folder" : "folders"}: ${dirs.map((d) => d.label).join("/")}`}
         title={dirs.map((d) => d.label).join("/")}
         onClick={() => {
           const r = button.current?.getBoundingClientRect();
@@ -326,7 +357,7 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
             x={menu.x}
             y={menu.y}
             onClose={() => setMenu(null)}
-            items={dirs.map((d) => ({ id: d.path, label: d.label, title: `${folder}/${d.path}`, run: () => code.revealDir(folder, d.path) }))}
+            items={dirs.map((d) => ({ id: d.path || "(root)", label: d.label, title: `${folder}/${d.path}`, run: () => code.revealDir(folder, d.path) }))}
           />
         )}
       </Presence>

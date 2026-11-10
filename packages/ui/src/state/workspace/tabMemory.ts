@@ -1,4 +1,5 @@
 import type { TabId } from "./layout";
+import { isUsageView } from "../../lib/usageView";
 
 /**
  * Per-tab view memory (scroll positions, composer draft, view modes) that survives a tab remounting when it moves between
@@ -34,3 +35,6 @@ export const isString = (v: unknown): v is string => typeof v === "string";
 export const isNumber = (v: unknown): v is number => typeof v === "number";
 export const isBooleanRecord = (v: unknown): v is Record<string, boolean> =>
   typeof v === "object" && v !== null && Object.values(v).every((x) => typeof x === "boolean");
+
+/** The Usage tab's controls; also written by the workspace when Home asks for Usage over all projects. */
+export const USAGE_VIEW = slot("usage-view", isUsageView);

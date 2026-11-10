@@ -12,11 +12,16 @@ import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu, type MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { pressTab, useDrag } from "./drag";
-import { domId } from "./ids";
+import { domId } from "../../state/workspace/ids";
 import { tabInfo } from "./tabInfo";
 import { SidebarToggle } from "../shell/SidebarToggle";
 import { WorkspaceActions } from "./WorkspaceActions";
 import { type FileKey } from "../../lib/files";
+import { STRIP_TOOLS_FOLD_BELOW } from "../../lib/constants";
+
+/** Room the unfolded project tools take at the end of the strip (5 tools, the divider, settings, insets) and a tab's minimum width. */
+const TOOLS_WIDTH = 248;
+const TAB_MIN_WIDTH = 96;
 
 /**
  * One group's tab strip (or, when narrow, every tab in one strip): 36px, the tabs 8px from the panel's
@@ -34,11 +39,24 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
   const code = useCode();
   const { state, project } = useProject();
   const list = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  // A narrow last group folds the project's tools into one `…` menu, so its tabs keep room (v6.1 review P1-5).
+  const [stripWidth, setStripWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = strip.current;
+    if (!el || !props.last) return;
+    const ro = new ResizeObserver(() => setStripWidth(el.clientWidth));
+    ro.observe(el);
+    setStripWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, [props.last]);
   const [menu, setMenu] = useState<{ tab: TabId; x: number; y: number } | null>(null);
   const drag = useDrag();
   const counts = useOptionalComments()?.counts;
   const ctx = { state, orchestratorId: project?.orchestrator_agent_id, file: code.file, comments: (key: FileKey) => counts?.get(key) ?? 0 };
 
+  // Fold under 420px once the tools would squeeze the tabs: two or more tabs, or not even one 96px tab beside them.
+  const folded = stripWidth > 0 && stripWidth < STRIP_TOOLS_FOLD_BELOW && (props.tabs.length > 1 || stripWidth - TOOLS_WIDTH < TAB_MIN_WIDTH);
   const button = (tab: TabId) => list.current?.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${CSS.escape(tab)}"]`) ?? null;
 
   /* Overflow: fade whichever end has more tabs, and keep the selected tab in view. */
@@ -48,8 +66,10 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
     const tab = button(props.active)?.parentElement;
     if (el && tab) {
       const left = tab.offsetLeft - el.offsetLeft;
-      if (left < el.scrollLeft + 8) el.scrollLeft = left - 8;
-      else if (left + tab.offsetWidth > el.scrollLeft + el.clientWidth - 8) el.scrollLeft = left + tab.offsetWidth - el.clientWidth + 8;
+      // Clear of the 20px edge fade, so the selected tab's label and close button are never under it.
+      const margin = 24;
+      if (left < el.scrollLeft + margin) el.scrollLeft = left - margin;
+      else if (left + tab.offsetWidth > el.scrollLeft + el.clientWidth - margin) el.scrollLeft = left + tab.offsetWidth - el.clientWidth + margin;
     }
     updateFade();
   }, [props.active, props.tabs, updateFade]);
@@ -109,7 +129,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
   };
 
   return (
-    <div data-strip className="flex shrink-0 items-center gap-1 px-pane pt-pane">
+    <div ref={strip} data-strip className="relative flex shrink-0 items-center gap-1 px-pane pt-pane">
       {props.first && <SidebarToggle />}
       <div
         ref={list}
@@ -218,7 +238,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
           );
         })}
       </div>
-      {props.last && <WorkspaceActions />}
+      {props.last && <WorkspaceActions folded={folded} />}
       <Presence show={menu !== null} exitMs={0}>
         {menu && <Menu label="Tab actions" x={menu.x} y={menu.y} items={menuItems(menu.tab)} onClose={() => setMenu(null)} />}
       </Presence>

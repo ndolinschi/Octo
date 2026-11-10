@@ -9,7 +9,7 @@ const STEPS = [
   "verify retries back off with jitter on 429 responses",
   "re-run the settlement job twice and diff the totals",
   "confirm cursor pagination never skips inserted rows",
-  "test the session refresh with two tabs at once",
+  "test the token refresh with two tabs at once",
   "find code that reads the clock instead of the injected one",
   "time the API container's cold start, note the slowest import",
 ];

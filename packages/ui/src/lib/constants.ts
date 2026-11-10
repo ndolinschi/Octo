@@ -27,6 +27,10 @@ export const TOOL_GROUP_MAX_FRACTION = 0.5;
 export const TOOL_GROUP_UNMEASURED_FRACTION = 0.3;
 /** A file view narrower than this floats its tree over the editor instead of giving it a column. */
 export const FILE_VIEW_OVERLAY_BELOW = 560;
+/** A tree column that would leave the editor narrower than this floats over it instead (closed by default). */
+export const EDITOR_MIN_WIDTH = 480;
+/** Below this width a group folds its header tools into one `…` menu, so its tabs stay visible. */
+export const STRIP_TOOLS_FOLD_BELOW = 420;
 
 /* ---------- timings (ms) ---------- */
 

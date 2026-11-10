@@ -1,14 +1,4 @@
-import {
-  BridgeError,
-  type Agent,
-  type Bridge,
-  type Models,
-  type Note,
-  type Project,
-  type ProjectInput,
-  type ProjectSummary,
-  type UsageBucket,
-} from "@octo/agent-client";
+import { BridgeError, type Agent, type Bridge, type Models, type Note, type Project, type ProjectInput, type ProjectSummary } from "@octo/agent-client";
 import { basename } from "../lib/format";
 import { atlasHistory } from "./atlas";
 import { backgroundTurn, docsHistory } from "./extra";
@@ -396,46 +386,17 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       return writeDemo(get(id), input);
     },
     listPlugins: async () => (await delay(), demoPlugins(pluginsOn)),
-    // Usage rows from the demo agents (an agent's tokens count on the day it started): enough for Home's
-    // Tokens card to show real arithmetic over the seeded history.
+    // Usage and limits load with the Usage tab / Home (their own chunk).
     getUsage: async (params) => {
       await delay();
-      const to = params?.to ? Date.parse(params.to) : Date.now();
-      const from = params?.from ? Date.parse(params.from) : to - 30 * 24 * HOUR;
-      const group = params?.group ?? "day";
-      const bucket = (key: string, label: string): UsageBucket => ({
-        key,
-        label,
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        requests: 0,
-        cost_usd: null,
-        cost_estimated: false,
-      });
-      const total = bucket("total", "Total");
-      const buckets = new Map<string, UsageBucket>();
-      for (const rec of records.values()) {
-        if (params?.project && rec.project.id !== params.project) continue;
-        for (const a of rec.agents) {
-          const at = Date.parse(a.started_at ?? a.created_at);
-          if (at < from || at >= to) continue;
-          const key = group === "model" ? a.model : group === "project" ? rec.project.id : group === "agent" ? a.id : new Date(at).toISOString().slice(0, 10);
-          const label = group === "project" ? rec.project.name : group === "agent" ? a.role : key;
-          const b = buckets.get(key) ?? bucket(key, label);
-          buckets.set(key, b);
-          const calls = rec.messages.filter((m) => m.agent_id === a.id && m.role === "assistant").length;
-          for (const t of [b, total]) {
-            t.input_tokens += a.input_tokens;
-            t.output_tokens += a.output_tokens;
-            t.requests += calls;
-          }
-        }
-      }
-      return { from: new Date(from).toISOString(), to: new Date(to).toISOString(), group, buckets: [...buckets.values()], total };
+      const { demoUsage } = await import("./usage");
+      return demoUsage(records.values(), params, Date.now());
     },
-    getLimits: async () => (await delay(), []),
+    getLimits: async () => {
+      await delay();
+      const { demoLimits } = await import("./usage");
+      return demoLimits(Date.now());
+    },
     listLanguageServers: async (id) => (await delay(), get(id), demoLanguageServers(pluginsOn)),
     openLanguageServer: async (id, serverId) => {
       await delay();
