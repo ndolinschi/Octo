@@ -1,6 +1,5 @@
 import type { Project } from "@octo/agent-client";
-import { ArrowUpRight } from "lucide-react";
-import { OctoMark } from "../shell/OctoMark";
+import { CornerDownRight } from "lucide-react";
 
 function prompts(project: Project): { title: string; text: string }[] {
   const where = project.folders.length ? `the attached folder${project.folders.length > 1 ? "s" : ""}` : "this project";
@@ -11,7 +10,7 @@ function prompts(project: Project): { title: string; text: string }[] {
     },
     {
       title: "Find what's risky",
-      text: `Review ${where} for the riskiest areas — fragile code, missing tests, unclear ownership — and rank them with evidence.`,
+      text: `Review ${where} for the riskiest areas (fragile code, missing tests, unclear ownership) and rank them with evidence.`,
     },
     {
       title: "Plan a change",
@@ -22,28 +21,22 @@ function prompts(project: Project): { title: string; text: string }[] {
 
 export function StarterPrompts({ project, onPick }: { project: Project; onPick(text: string): void }) {
   return (
-    <section aria-labelledby="starter-title" className="pt-[12vh]">
-      <OctoMark size={28} />
-      <h1 id="starter-title" className="mt-5 text-xl font-semibold tracking-[-0.015em]">
+    <section aria-labelledby="starter-title" className="pt-[16vh]">
+      <h1 id="starter-title" className="text-[15px] leading-5 font-semibold">
         {project.name}
       </h1>
-      <p className="mt-1.5 max-w-[560px] text-[14px] leading-6 text-fg-2">
-        You're talking to this project's orchestrator. It keeps the big picture, delegates focused work to sub-agents — in
-        parallel when it can — and records what it learns in Notes. You can watch any sub-agent from the Agents panel.
-      </p>
-      <ul className="mt-7 grid gap-2 sm:grid-cols-3">
+      <p className="mt-1 text-sm text-fg-2">Ask the orchestrator. It plans, delegates to sub-agents and keeps notes.</p>
+      <ul className="mt-4 -ml-2">
         {prompts(project).map((p) => (
           <li key={p.title}>
             <button
               type="button"
               onClick={() => onPick(p.text)}
-              className="group flex h-full w-full flex-col gap-1.5 rounded-lg border border-line bg-raised p-3.5 text-left transition-colors hover:border-line-strong hover:bg-hover"
+              title={p.text}
+              className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-fg transition-[background-color] duration-100 hover:bg-hover"
             >
-              <span className="flex w-full items-center text-sm font-medium text-fg">
-                {p.title}
-                <ArrowUpRight size={14} aria-hidden className="ml-auto text-fg-3 transition-colors group-hover:text-fg-2" />
-              </span>
-              <span className="line-clamp-3 text-xs leading-[18px] text-fg-3">{p.text}</span>
+              <CornerDownRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0 text-fg-3" />
+              {p.title}
             </button>
           </li>
         ))}

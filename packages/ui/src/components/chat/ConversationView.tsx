@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
@@ -35,8 +35,8 @@ export function ConversationView({ agentId }: { agentId: string }) {
       <div className="grid h-full place-items-center text-center">
         <div>
           <p className="text-sm text-fg-2">This agent isn't part of {project.name}.</p>
-          <a href={hrefFor(projectId)} className="mt-3 inline-flex items-center gap-1.5 text-sm text-accent">
-            <ArrowLeft size={14} aria-hidden /> Back to orchestrator
+          <a href={hrefFor(projectId)} className="mt-2 inline-block text-sm text-fg underline underline-offset-2">
+            Back to orchestrator
           </a>
         </div>
       </div>
@@ -47,12 +47,12 @@ export function ConversationView({ agentId }: { agentId: string }) {
   const loadedEmpty = messages !== undefined && messages.length === 0;
   const showStarters = isOrchestrator && loadedEmpty && !running;
   const offlineReason =
-    health === "offline" ? "Bridge offline — start harness serve to continue" : live === "reconnecting" ? "Reconnecting to the bridge…" : null;
+    health === "offline" ? "Bridge offline. Start harness serve to continue." : live === "reconnecting" ? "Reconnecting to the bridge…" : null;
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <div ref={scroll.ref} onScroll={scroll.onScroll} className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-measure px-6 pt-8 pb-10 max-[1000px]:px-5">
+        <div className="mx-auto w-full max-w-measure px-6 pt-6 pb-8 max-[1000px]:px-5">
           {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
           {showStarters ? (
             <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
@@ -69,20 +69,18 @@ export function ConversationView({ agentId }: { agentId: string }) {
         </div>
       </div>
 
-      {!scroll.atBottom && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-[132px] flex justify-center">
+      <div className="relative shrink-0 px-6 max-[1000px]:px-5">
+        {!scroll.atBottom && (
           <button
             type="button"
             onClick={() => scroll.scrollToBottom(true)}
-            className="animate-fade-in pointer-events-auto inline-flex h-7 items-center gap-1.5 rounded-full border border-line-strong bg-overlay px-3 text-xs text-fg-2 shadow-pop hover:text-fg"
+            aria-label="Jump to latest"
+            title="Jump to latest"
+            className="absolute right-4 -top-10 grid size-7 place-items-center rounded-full border border-line-strong bg-bg text-fg-2 transition-[color,background-color] duration-100 hover:bg-raised hover:text-fg"
           >
-            <ArrowDown size={13} aria-hidden />
-            Jump to latest
+            <ArrowDown size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
           </button>
-        </div>
-      )}
-
-      <div className="relative shrink-0 px-6 before:pointer-events-none before:absolute before:inset-x-0 before:-top-8 before:h-8 before:bg-linear-to-b before:from-transparent before:to-bg max-[1000px]:px-5">
+        )}
         {isOrchestrator ? (
           <Composer
             ref={composer}
@@ -94,7 +92,7 @@ export function ConversationView({ agentId }: { agentId: string }) {
             onCancel={cancel}
           />
         ) : (
-          <ObserverBar role={agent.role} />
+          <ObserverBar />
         )}
       </div>
 

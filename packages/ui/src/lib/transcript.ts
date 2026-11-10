@@ -12,6 +12,8 @@ export type Turn = {
   key: string;
   prompt: Message | null;
   items: TranscriptItem[];
+  /** created_at of the last message in the turn (assistant or tool result). */
+  lastAt: string | null;
 };
 
 function userText(message: Message): string | null {
@@ -29,15 +31,19 @@ export function buildTurns(messages: Message[]): Turn[] {
 
   for (const message of messages) {
     if (message.role === "user") {
-      if (userText(message) === null) continue;
-      current = { key: `t${message.id}`, prompt: message, items: [] };
+      if (userText(message) === null) {
+        if (current) current.lastAt = message.created_at;
+        continue;
+      }
+      current = { key: `t${message.id}`, prompt: message, items: [], lastAt: null };
       turns.push(current);
       continue;
     }
     if (!current) {
-      current = { key: `t0-${message.id}`, prompt: null, items: [] };
+      current = { key: `t0-${message.id}`, prompt: null, items: [], lastAt: null };
       turns.push(current);
     }
+    current.lastAt = message.created_at;
     const items = current.items;
     message.content.forEach((block, i) => {
       const key = `${message.id}.${i}`;

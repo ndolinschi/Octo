@@ -1,24 +1,16 @@
-import { ArrowLeft, Eye } from "lucide-react";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
 
-export function ObserverBar({ role }: { role: string }) {
+export function ObserverBar() {
   const { projectId } = useProject();
   return (
-    <div className="mx-auto w-full max-w-measure pb-6">
-      <div
-        role="note"
-        className="flex items-center gap-3 rounded-lg border border-dashed border-line-strong bg-raised/40 py-2 pr-2 pl-3.5"
-      >
-        <Eye size={15} strokeWidth={1.75} aria-hidden className="shrink-0 text-fg-3" />
-        <p className="min-w-0 flex-1 text-sm text-fg-2">
-          <span className="font-medium text-fg">Read-only</span> — you're observing {role}. Only the orchestrator can direct it.
-        </p>
+    <div className="mx-auto w-full max-w-measure pb-4">
+      <div role="note" className="flex min-h-10 items-center gap-3 rounded-lg bg-raised py-1.5 pr-1.5 pl-3.5 text-sm">
+        <p className="min-w-0 flex-1 text-fg-2">Read-only. Only the orchestrator can direct this agent.</p>
         <a
           href={hrefFor(projectId)}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-strong bg-raised px-2.5 text-sm text-fg transition-colors hover:bg-hover"
+          className="inline-flex h-7 shrink-0 items-center rounded-sm px-2 text-fg transition-[background-color] duration-100 hover:bg-hover"
         >
-          <ArrowLeft size={14} strokeWidth={1.75} aria-hidden />
           Back to orchestrator
         </a>
       </div>

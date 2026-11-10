@@ -1,12 +1,12 @@
 import { ancestorsOf, descendantCount, type Agent } from "@octo/agent-client";
-import { ChevronDown, ChevronRight, Eye } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { cn } from "../../lib/cn";
-import { agentDuration, formatDuration, formatTokens } from "../../lib/format";
+import { agentDuration, formatDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { Markdown } from "./Markdown";
-import { StatusIcon, statusLabel, TierBadge } from "../primitives/Status";
+import { shortModel, statusLabel, tierLabel } from "../primitives/Status";
 
 export function roleName(agent: Agent): string {
   return agent.parent_id === null ? "Orchestrator" : agent.role;
@@ -15,24 +15,26 @@ export function roleName(agent: Agent): string {
 export function Breadcrumb({ agent }: { agent: Agent }) {
   const { projectId, project, state } = useProject();
   const chain = ancestorsOf(state, agent.id);
+  const sep = (
+    <span aria-hidden className="text-fg-3">
+      /
+    </span>
+  );
   return (
     <nav aria-label="Breadcrumb" className="mb-4">
-      <ol className="flex min-w-0 flex-wrap items-center gap-1 text-xs text-fg-3">
+      <ol className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-fg-3">
         <li className="max-w-[180px] truncate">{project?.name}</li>
         {chain.map((a) => (
-          <li key={a.id} className="flex min-w-0 items-center gap-1">
-            <ChevronRight size={12} aria-hidden className="shrink-0 opacity-60" />
-            <a
-              href={hrefFor(projectId, a.parent_id === null ? null : a.id)}
-              className="max-w-[200px] truncate rounded-xs hover:text-fg"
-            >
+          <li key={a.id} className="flex min-w-0 items-center gap-1.5">
+            {sep}
+            <a href={hrefFor(projectId, a.parent_id === null ? null : a.id)} className="max-w-[200px] truncate hover:text-fg">
               {roleName(a)}
             </a>
           </li>
         ))}
-        <li className="flex min-w-0 items-center gap-1">
-          <ChevronRight size={12} aria-hidden className="shrink-0 opacity-60" />
-          <span aria-current="page" className="truncate font-medium text-fg-2">
+        <li className="flex min-w-0 items-center gap-1.5">
+          {sep}
+          <span aria-current="page" className="truncate text-fg-2">
             {roleName(agent)}
           </span>
         </li>
@@ -47,73 +49,41 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
   const briefId = useId();
   const duration = agentDuration(agent, now);
   const nested = descendantCount(state, agent.id);
+  const meta = [
+    shortModel(agent.model),
+    agent.tier ? tierLabel(agent.tier) : "",
+    duration !== null ? formatDuration(duration) : "",
+    nested > 0 ? `${nested} nested` : "",
+  ].filter(Boolean);
 
   return (
-    <header className="mb-8 border-b border-line pb-5">
+    <header className="mb-6">
       <Breadcrumb agent={agent} />
-      <div className="flex items-center gap-2 text-xs text-fg-3">
-        <Eye size={13} strokeWidth={1.75} aria-hidden />
-        <span>Sub-agent · depth {agent.depth}</span>
-      </div>
-      <h1 className="mt-1.5 text-xl font-semibold tracking-[-0.015em] text-fg">{agent.role}</h1>
-      <p className="mt-0.5 text-[14px] leading-6 text-fg-2">{agent.title}</p>
-      <dl className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-fg-3">
-        <div className="flex items-center gap-1.5">
-          <dt className="sr-only">Status</dt>
-          <StatusIcon status={agent.status} size={12} />
-          <dd className={cn(agent.status === "running" ? "shimmer-text font-medium" : agent.status === "failed" ? "text-err" : "text-fg-2")}>
-            {statusLabel(agent.status)}
-          </dd>
-        </div>
-        {agent.tier && (
-          <div>
-            <dt className="sr-only">Tier and model</dt>
-            <dd>
-              <TierBadge tier={agent.tier} model={agent.model} />
-            </dd>
-          </div>
-        )}
-        {duration !== null && (
-          <Meta label="Duration" value={formatDuration(duration)} />
-        )}
-        <Meta
-          label="Tokens"
-          value={`${formatTokens(agent.input_tokens)} in · ${formatTokens(agent.output_tokens)} out`}
-        />
-        {nested > 0 && <Meta label="Nested agents" value={`${nested} nested`} />}
-      </dl>
+      <h1 className="text-lg font-semibold text-fg">{agent.role}</h1>
+      {agent.title && <p className="text-base text-fg-2">{agent.title}</p>}
+      <p className="mt-1 text-xs text-fg-3">
+        {meta.join(" · ")} ·{" "}
+        <span className={cn(agent.status === "failed" && "text-err")}>{statusLabel(agent.status)}</span>
+      </p>
       {agent.task && (
-        <div className="mt-4">
+        <div className="mt-3">
           <button
             type="button"
             aria-expanded={briefOpen}
             aria-controls={briefId}
             onClick={() => setBriefOpen((o) => !o)}
-            className="-ml-1.5 inline-flex h-6 items-center gap-1 rounded-sm px-1.5 text-xs font-medium text-fg-2 hover:bg-hover hover:text-fg"
+            className="-ml-1.5 inline-flex h-6 items-center gap-1 rounded-sm px-1.5 text-sm text-fg-3 transition-[background-color,color] duration-100 hover:bg-hover hover:text-fg-2"
           >
-            <ChevronDown size={13} aria-hidden className={cn("transition-transform", !briefOpen && "-rotate-90")} />
             Task brief
+            <ChevronRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className={cn(briefOpen && "rotate-90")} />
           </button>
-          {briefOpen ? (
-            <div id={briefId} className="mt-2 rounded-md border border-line bg-inset px-3.5 py-3">
-              <Markdown text={agent.task} className="octo-prose text-[13px]! leading-[1.6]!" />
+          {briefOpen && (
+            <div id={briefId} className="mt-1 border-l border-line-strong pl-3">
+              <Markdown text={agent.task} className="octo-prose text-[13px]! text-fg-2!" />
             </div>
-          ) : (
-            <p id={briefId} className="mt-1 line-clamp-2 text-sm leading-[1.55] text-fg-3">
-              {agent.task}
-            </p>
           )}
         </div>
       )}
     </header>
-  );
-}
-
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="tabular-nums">
-      <dt className="sr-only">{label}</dt>
-      <dd>{value}</dd>
-    </div>
   );
 }

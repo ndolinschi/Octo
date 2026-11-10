@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTML
 import { cn } from "../../lib/cn";
 
 const CONTROL =
-  "w-full rounded-md border border-line-strong bg-inset px-2.5 text-sm text-fg placeholder:text-fg-3 transition-colors hover:border-[color-mix(in_oklch,var(--octo-fg-3)_45%,transparent)] focus:border-accent focus:outline-none focus-visible:outline-none focus:ring-[3px] focus:ring-accent-soft";
+  "w-full rounded-md border border-line-strong bg-raised px-2.5 text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-100 focus:border-fg-3 focus:outline-none focus-visible:outline-none aria-invalid:border-err";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...rest },
@@ -13,7 +13,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   function Textarea({ className, ...rest }, ref) {
-    return <textarea ref={ref} className={cn(CONTROL, "resize-y py-2 leading-5", className)} {...rest} />;
+    return <textarea ref={ref} className={cn(CONTROL, "resize-y py-1.5 leading-5", className)} {...rest} />;
   },
 );
 
@@ -27,9 +27,9 @@ export function Field(props: {
 }) {
   return (
     <div className={cn("flex flex-col gap-1.5", props.className)}>
-      <label htmlFor={props.htmlFor} className="flex items-baseline gap-1.5 text-sm font-medium text-fg">
+      <label htmlFor={props.htmlFor} className="flex items-baseline gap-1.5 text-sm text-fg-2">
         {props.label}
-        {props.optional && <span className="text-xs font-normal text-fg-3">Optional</span>}
+        {props.optional && <span className="text-xs text-fg-3">optional</span>}
       </label>
       {props.children}
       {props.hint && <p className="text-xs text-fg-3">{props.hint}</p>}

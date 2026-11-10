@@ -1,5 +1,5 @@
 import type { Folder } from "@octo/agent-client";
-import { ArrowUp, Folder as FolderIcon, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { shortModel } from "../primitives/Status";
@@ -63,24 +63,18 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
     }
   };
 
-  const placeholder = disabled
-    ? props.disabledReason!
-    : props.running
-      ? "The orchestrator is working — you can draft your next message"
-      : "Message the orchestrator";
+  const placeholder = disabled ? props.disabledReason! : "Message the orchestrator";
 
   return (
-    <div className="mx-auto w-full max-w-measure">
+    <div className="mx-auto w-full max-w-measure pb-4">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
         className={cn(
-          "rounded-lg border bg-raised transition-[border-color,box-shadow]",
-          disabled
-            ? "border-line"
-            : "border-line-strong focus-within:border-[color-mix(in_oklch,var(--octo-accent)_55%,transparent)] focus-within:ring-[3px] focus-within:ring-accent-soft",
+          "rounded-lg border bg-raised transition-[border-color] duration-100",
+          disabled ? "border-line" : "border-line focus-within:border-line-strong",
         )}
       >
         <label htmlFor="octo-composer" className="sr-only">
@@ -95,9 +89,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="block max-h-[40vh] min-h-[48px] w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[14px] leading-6 text-fg placeholder:text-fg-3 focus:outline-none focus-visible:outline-none disabled:cursor-not-allowed"
+          className="block max-h-[40vh] min-h-[40px] w-full resize-none bg-transparent px-3.5 pt-2.5 pb-0.5 text-base text-fg placeholder:text-fg-3 focus:outline-none focus-visible:outline-none disabled:cursor-not-allowed"
         />
-        <div className="flex items-center gap-2 py-2 pr-2 pl-3">
+        <div className="flex h-9 items-center gap-2 pr-1.5 pl-3.5">
           <ContextLine folders={props.folders} model={props.model} />
           {props.running ? (
             <button
@@ -105,56 +99,44 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
               onClick={() => void props.onCancel()}
               aria-label="Stop the current turn"
               title="Stop"
-              className="ml-auto grid size-7 shrink-0 place-items-center rounded-md bg-fg text-bg transition-opacity hover:opacity-85"
+              className="ml-auto grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-fg transition-opacity duration-100 hover:opacity-90"
             >
-              <Square size={10} fill="currentColor" strokeWidth={0} aria-hidden />
+              <Square size={9} fill="currentColor" strokeWidth={0} aria-hidden />
             </button>
           ) : (
             <button
               type="submit"
               disabled={!canSend}
               aria-label="Send message"
-              title="Send (Enter)"
-              className="ml-auto grid size-7 shrink-0 place-items-center rounded-md bg-accent text-accent-fg transition-colors hover:bg-accent-strong disabled:bg-active disabled:text-fg-3"
+              title="Send"
+              className="ml-auto grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-fg transition-[background-color,color,opacity] duration-100 hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100"
             >
-              <ArrowUp size={15} strokeWidth={2.25} aria-hidden />
+              <ArrowUp size={15} strokeWidth={2} absoluteStrokeWidth aria-hidden />
             </button>
           )}
         </div>
       </form>
-      <p role={error ? "alert" : undefined} className={cn("mt-1.5 mb-2 h-4 px-1 text-2xs", error ? "text-err" : "text-fg-3")}>
-        {error ?? (disabled ? "" : "Enter to send · Shift+Enter for a new line")}
-      </p>
+      {error && (
+        <p role="alert" className="mt-1.5 px-1 text-xs text-err">
+          {error}
+        </p>
+      )}
     </div>
   );
 });
 
 function ContextLine({ folders, model }: { folders: Folder[]; model: string | null }) {
-  const shown = folders.slice(0, 3);
+  const names = folders.map((f) => f.label).join(", ");
   return (
-    <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-2xs text-fg-3">
-      {shown.map((f) => (
-        <span
-          key={f.id}
-          title={f.path}
-          className="inline-flex h-5 max-w-[160px] min-w-0 items-center gap-1 rounded-xs border border-line px-1.5"
-        >
-          <FolderIcon size={11} strokeWidth={1.75} aria-hidden className="shrink-0" />
-          <span className="truncate">{f.label}</span>
-        </span>
-      ))}
-      {folders.length > shown.length && <span>+{folders.length - shown.length}</span>}
-      {folders.length === 0 && <span>No folders attached</span>}
+    <p className="flex min-w-0 items-center gap-3 text-xs text-fg-3">
       {model && (
-        <>
-          <span aria-hidden className="text-line-strong">
-            ·
-          </span>
-          <span className="truncate" title={model}>
-            {shortModel(model)}
-          </span>
-        </>
+        <span className="shrink-0" title={model}>
+          {shortModel(model)}
+        </span>
       )}
-    </div>
+      <span className="min-w-0 truncate" title={folders.map((f) => f.path).join("\n") || undefined}>
+        {names || "No folders"}
+      </span>
+    </p>
   );
 }

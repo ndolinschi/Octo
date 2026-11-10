@@ -1,7 +1,6 @@
 import type { Note } from "@octo/agent-client";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { cn } from "../../lib/cn";
 import { excerpt, formatRelative } from "../../lib/format";
 import { useProject } from "../../state/project";
 import { Button, IconButton } from "../primitives/Button";
@@ -19,11 +18,11 @@ export function NotesPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-2 pr-2 pl-4 text-xs text-fg-3">
-        <span>Read by the orchestrator every turn</span>
+      <div className="flex h-8 shrink-0 items-center gap-2 pr-2 pl-4 text-xs text-fg-3">
+        <span>The orchestrator reads these every turn</span>
         <IconButton icon={Plus} label="Add note" size="sm" className="ml-auto" onClick={() => setEditing("new")} disabled={editing === "new"} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
         {editing === "new" && (
           <NoteEditor
             onCancel={() => setEditing(null)}
@@ -34,12 +33,10 @@ export function NotesPanel() {
           />
         )}
         {notes.length === 0 && editing !== "new" && (
-          <div className="px-2 py-6 text-sm text-fg-3">
-            <p className="text-fg-2">No notes yet.</p>
-            <p className="mt-1 leading-5">
-              The orchestrator saves decisions and facts here as it works. Add your own to give it standing context.
-            </p>
-            <Button size="sm" icon={Plus} className="mt-3" onClick={() => setEditing("new")}>
+          <div className="px-2 py-3 text-sm">
+            <p className="text-fg">No notes yet</p>
+            <p className="mt-0.5 text-fg-2">Decisions and facts the orchestrator saves appear here.</p>
+            <Button size="sm" className="mt-3" onClick={() => setEditing("new")}>
               Add note
             </Button>
           </div>
@@ -72,36 +69,35 @@ function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): 
   const [confirming, setConfirming] = useState(false);
   const [expanded, setExpanded] = useState(false);
   return (
-    <li className="group rounded-md px-2 py-2.5 transition-colors hover:bg-hover">
-      <div className="flex items-center gap-2">
+    <li className="group rounded-sm px-2 py-2 transition-[background-color] duration-100 hover:bg-hover">
+      <div className="flex h-6 items-center gap-2">
         <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{note.title}</h3>
-        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <div className="flex items-center opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
           <IconButton icon={Pencil} label={`Edit ${note.title}`} size="sm" onClick={props.onEdit} />
           <IconButton icon={Trash2} label={`Delete ${note.title}`} size="sm" onClick={() => setConfirming(true)} />
         </div>
       </div>
-      <div className="mt-0.5 flex items-center gap-1.5 text-2xs text-fg-3">
-        <AuthorBadge author={note.author} />
-        <span aria-hidden>·</span>
-        <time dateTime={note.updated_at}>{formatRelative(note.updated_at, props.now)} ago</time>
-      </div>
+      <p className="text-xs text-fg-3">
+        {note.author === "orchestrator" ? "Orchestrator" : "You"} ·{" "}
+        <time dateTime={note.updated_at}>{formatRelative(note.updated_at, props.now)}</time>
+      </p>
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
-        className="mt-1.5 block w-full text-left"
+        className="mt-1 block w-full rounded-xs text-left"
       >
         {expanded ? (
-          <Markdown text={note.content} className="octo-prose text-[13px]! leading-[1.55]! text-fg-2!" />
+          <Markdown text={note.content} className="octo-prose text-[13px]! text-fg-2!" />
         ) : (
-          <p className="line-clamp-3 text-[13px] leading-[1.5] text-fg-2">{excerpt(note.content, 400)}</p>
+          <p className="line-clamp-2 text-sm text-fg-2">{excerpt(note.content, 400)}</p>
         )}
       </button>
       {confirming && (
-        <div role="alertdialog" aria-label="Confirm delete" className="mt-2 flex items-center gap-2 rounded-md border border-line bg-raised px-2.5 py-2 text-xs">
+        <div role="alertdialog" aria-label="Confirm delete" className="mt-2 flex items-center gap-2 text-sm">
           <span className="flex-1 text-fg-2">Delete this note?</span>
           <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-            Keep
+            Cancel
           </Button>
           <Button size="sm" variant="danger" onClick={() => void props.onDelete()} autoFocus>
             Delete
@@ -109,19 +105,6 @@ function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): 
         </div>
       )}
     </li>
-  );
-}
-
-export function AuthorBadge({ author }: { author: Note["author"] }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex h-4 items-center rounded-xs px-1 text-2xs font-medium",
-        author === "orchestrator" ? "bg-accent-soft text-accent" : "bg-hover text-fg-2",
-      )}
-    >
-      {author === "orchestrator" ? "Orchestrator" : "You"}
-    </span>
   );
 }
 
@@ -149,7 +132,7 @@ function NoteEditor(props: {
 
   return (
     <form
-      className="mb-2 flex flex-col gap-2 rounded-md border border-line-strong bg-raised p-2.5"
+      className="mb-2 flex flex-col gap-2 px-2 pt-1 pb-2"
       onSubmit={(e) => {
         e.preventDefault();
         void save();

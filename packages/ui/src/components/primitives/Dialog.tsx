@@ -56,7 +56,7 @@ export function Dialog(props: {
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-6 pt-[9vh]">
-      <div className="animate-fade-in fixed inset-0 bg-scrim" onMouseDown={onClose} aria-hidden />
+      <div className="fixed inset-0 bg-scrim" onMouseDown={onClose} aria-hidden />
       <div
         ref={panel}
         role="dialog"
@@ -64,26 +64,26 @@ export function Dialog(props: {
         aria-labelledby={titleId}
         aria-describedby={props.description ? descId : undefined}
         className={cn(
-          "animate-pop-in relative flex max-h-[82vh] w-full flex-col rounded-lg border border-line-strong bg-overlay shadow-pop",
-          props.width === "sm" ? "max-w-[420px]" : "max-w-[600px]",
+          "relative flex max-h-[82vh] w-full flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
+          props.width === "sm" ? "max-w-[400px]" : "max-w-[520px]",
         )}
       >
-        <header className="flex items-start gap-3 px-5 pt-4 pb-4">
+        <header className="flex items-center gap-3 px-5 pt-4 pb-3">
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-[15px] leading-6 font-semibold tracking-[-0.01em]">
+            <h2 id={titleId} className="text-[14px] leading-5 font-semibold">
               {props.title}
             </h2>
             {props.description && (
-              <p id={descId} className="mt-0.5 text-sm text-fg-2">
+              <p id={descId} className="mt-0.5 text-sm text-fg-3">
                 {props.description}
               </p>
             )}
           </div>
-          <IconButton icon={X} label="Close" onClick={onClose} className="-mt-0.5 -mr-1.5" />
+          <IconButton icon={X} label="Close" onClick={onClose} className="-mr-1.5" />
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">{props.children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4">{props.children}</div>
         {props.footer && (
-          <footer className="flex items-center gap-2 border-t border-line px-5 py-3">{props.footer}</footer>
+          <footer className="flex items-center gap-2 px-5 pt-1 pb-4">{props.footer}</footer>
         )}
       </div>
     </div>,

@@ -21,7 +21,7 @@ function initialPanel(): PanelTab | null {
 
 export function ProjectWorkspace(props: { agentId: string | null; sidebarOpen: boolean; onOpenSidebar(): void }) {
   const { bridge, refreshProjects, projects } = useApp();
-  const { project, state, loadError, update, projectId } = useProject();
+  const { project, loadError, update, projectId } = useProject();
   const [panel, setPanelState] = useState<PanelTab | null>(initialPanel);
   const [settings, setSettings] = useState(false);
   const docked = useMediaQuery("(min-width: 1100px)");
@@ -59,18 +59,18 @@ export function ProjectWorkspace(props: { agentId: string | null; sidebarOpen: b
             aria-label={panel === "agents" ? "Agents" : "Notes"}
             className={cn(
               "flex w-[320px] shrink-0 flex-col border-l border-line bg-bg",
-              !docked && "animate-fade-in absolute inset-y-0 right-0 z-20 bg-overlay shadow-pop",
+              !docked && "absolute inset-y-0 right-0 z-20 bg-overlay shadow-pop",
             )}
           >
-            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line pr-2 pl-3">
+            <div className="flex h-10 shrink-0 items-center gap-2 pr-2 pl-2">
               <Tabs<PanelTab>
                 label="Project panel"
                 idPrefix="panel"
                 value={panel}
                 onChange={setPanel}
                 options={[
-                  { value: "agents", label: "Agents", count: Math.max(0, state.agentOrder.length - 1) },
-                  { value: "notes", label: "Notes", count: state.notes.length },
+                  { value: "agents", label: "Agents" },
+                  { value: "notes", label: "Notes" },
                 ]}
               />
               <IconButton icon={X} label="Close panel" size="sm" className="ml-auto" onClick={() => setPanel(null)} />

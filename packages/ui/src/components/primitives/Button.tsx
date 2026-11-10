@@ -6,17 +6,15 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 const VARIANT: Record<Variant, string> = {
-  primary:
-    "bg-accent text-accent-fg hover:bg-accent-strong disabled:bg-active disabled:text-fg-3 font-medium",
-  secondary:
-    "bg-raised text-fg border border-line-strong hover:bg-hover hover:border-line-strong disabled:text-fg-3",
-  ghost: "text-fg-2 hover:text-fg hover:bg-hover disabled:text-fg-3 disabled:hover:bg-transparent",
-  danger: "bg-err text-white hover:opacity-90 font-medium dark:text-black",
+  primary: "bg-primary text-primary-fg font-medium hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100",
+  secondary: "border border-line-strong text-fg hover:bg-hover disabled:text-fg-3",
+  ghost: "text-fg-2 hover:bg-hover hover:text-fg disabled:text-fg-3",
+  danger: "border border-line-strong text-err hover:bg-hover",
 };
 
 const SIZE: Record<Size, string> = {
   sm: "h-7 px-2.5 text-sm gap-1.5 rounded-sm",
-  md: "h-8 px-3 text-sm gap-2 rounded-md",
+  md: "h-8 px-3 text-sm gap-1.5 rounded-sm",
 };
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -34,14 +32,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-colors duration-100 select-none disabled:pointer-events-none",
+        "inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-[background-color,color,opacity] duration-100 disabled:pointer-events-none",
         VARIANT[variant],
         SIZE[size],
         className,
       )}
       {...rest}
     >
-      {Icon && <Icon size={size === "sm" ? 14 : 15} strokeWidth={1.75} aria-hidden />}
+      {Icon && <Icon size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />}
       {children}
     </button>
   );
@@ -66,14 +64,14 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       title={label}
       aria-pressed={pressed}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-sm text-fg-3 transition-colors duration-100 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40",
+        "inline-flex shrink-0 items-center justify-center rounded-sm text-fg-3 transition-[background-color,color] duration-100 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40",
         size === "sm" ? "size-6" : "size-7",
         pressed && "bg-active text-fg",
         className,
       )}
       {...rest}
     >
-      <Icon size={size === "sm" ? 14 : 16} strokeWidth={1.75} aria-hidden />
+      <Icon size={size === "sm" ? 14 : 16} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
     </button>
   );
 });
