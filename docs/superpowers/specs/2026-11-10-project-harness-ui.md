@@ -142,6 +142,33 @@ Third batch of references (more of B: a details side panel, stacked tool panels,
     renders plain first and upgrades without changing its size). Unknown languages stay plain. Inline code is
     never highlighted.
 
+Fourth batch (E: a messenger-style bot app — "interesting ways to interact with the orchestrator"):
+
+| Pattern | Verdict | What we do |
+| --- | --- | --- |
+| E: side panel with Activity / Library; Library lists what the bot produced, grouped Today / This week, filter All / Media / Files, "Show more" | Good: the work product is one click away, not buried in the scroll. We can derive it from data we already store (`write_file` / ACP edit tool calls in agent transcripts) | Decision 17: Details tab gets Activity and Files sections |
+| E: time separators between bursts ("Today 10:00 AM") | Good: orients in a long-lived project conversation (ours is one conversation per project, so it grows for weeks) | Decision 18 |
+| E: entities in prose rendered as inline chips with a glyph (PR, tool, link) | Good: prose stays scannable and actionable | Decision 19: file paths in answers become links with a file glyph |
+| E: short progress lines as separate small messages before the real answer | Good idea, already ours in another form (muted tool summary line + "Working…") | Keep ours; no bubbles |
+| E: tables as their own rounded card with right-aligned numerals | Good | Markdown tables: numeric columns right-aligned with tabular numerals (detect columns whose cells are all numeric) |
+| E: chat bubbles, saturated purple user bubble, mascot avatars, message previews in the sidebar | Bad for us: messenger look fights a work tool; brand colour breaks "colour means state"; avatars are another product's identity | Not taken |
+| E: reactions, Share | No backing feature | Not built |
+
+17. **Details tab, continued** — two more sections under Tokens: **Activity** (agents newest first: status glyph,
+    role, title, relative time; click opens the Agent tab; 8 rows then "Show all") and **Files** (files written
+    by agents in this project, from `write_file` and ACP edit/write tool calls in the stored transcripts: file
+    glyph, name, folder path muted, grouped Today / This week / Earlier, newest first, deduplicated by path with a
+    "×N" count; click opens the file; 8 rows per group then "Show more"). Loaded lazily when the tab first opens
+    (one `listMessages` per agent, at most 4 in flight, cached per agent `finished_at`), refreshed on
+    `file.changed` from an agent. Empty: "No files written yet."
+18. **Time separators** in the orchestrator transcript: a centred 12px `fg-3` line before a request that starts
+    more than 30 minutes after the previous turn ended or on a different day ("Today 10:00", "Yesterday 18:42",
+    "Nov 6, 09:15"; locale time format). Not inside a turn, not in sub-agent transcripts.
+19. **File links in prose**: inline code in assistant prose that equals a project file path (`folder/path`, or a
+    path that is unique under one folder — resolved against the file index used by Filter files, loaded lazily
+    and never blocking render) becomes a link (file glyph + the same mono text, `link` colour on hover only) that
+    opens the file; `path:12` or `path:12-20` selects those lines. Unresolved code stays plain.
+
 ### Acceptance criteria (v6)
 
 1. `spacing-audit.mjs` exits 0 on every listed state and width; its before/after counts are recorded below.
