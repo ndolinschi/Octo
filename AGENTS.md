@@ -64,7 +64,9 @@ pnpm --filter @octo/desktop dev   # from repo root, then open http://localhost:1
 
 ## Desktop + UI (pnpm)
 
-Design: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](./docs/superpowers/specs/2026-11-10-project-harness-design.md) (projects, bridge API) and [`2026-11-10-project-harness-ui.md`](./docs/superpowers/specs/2026-11-10-project-harness-ui.md) (UI). Rules: `.cursor/rules/octo-frontend.mdc`.
+Design: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](./docs/superpowers/specs/2026-11-10-project-harness-design.md) (projects, bridge API) and [`2026-11-10-project-harness-ui.md`](./docs/superpowers/specs/2026-11-10-project-harness-ui.md) (UI). Rules: `.cursor/rules/octo-frontend.mdc`, `.cursor/rules/octo-typescript.mdc` (the same text for Claude: `.claude/rules/typescript.md`).
+
+Per-module instructions: [`packages/ui/AGENTS.md`](./packages/ui/AGENTS.md) (architecture: [`packages/ui/ARCHITECTURE.md`](./packages/ui/ARCHITECTURE.md)), [`packages/agent-client/AGENTS.md`](./packages/agent-client/AGENTS.md), [`apps/desktop/AGENTS.md`](./apps/desktop/AGENTS.md).
 
 ```bash
 pnpm install
