@@ -29,7 +29,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
         <button
           type="button"
           onClick={() => copy(code)}
-          className="ml-auto inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 transition-[background-color,color] duration-100 hover:bg-hover hover:text-fg"
+          className="press ml-auto inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
         >
           {copied ? <Check size={12} aria-hidden /> : <Copy size={12} aria-hidden />}
           {copied ? "Copied" : "Copy"}

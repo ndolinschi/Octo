@@ -4,37 +4,45 @@ import { agentDuration, formatDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
 import { spawnInput } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
-import { useOptionalPane } from "../../state/pane";
 import { useProject } from "../../state/project";
-import { isTier, shortModel, Spinner, StatusIcon, tierLabel } from "../primitives/Status";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { isTier, modelLabel, RunningDot, statusLabel, StatusIcon, tierLabel } from "../primitives/Status";
 import { useTranscript } from "./transcriptContext";
 
-/** Hairline-bordered card: a caption row, then one row per sub-agent. */
+const FINISHED = new Set(["completed", "failed", "cancelled"]);
+
+function progress(agents: (Agent | undefined)[]): string {
+  const total = agents.length;
+  const done = agents.filter((a) => a && FINISHED.has(a.status)).length;
+  if (done < total) return `${done}/${total} done`;
+  const failed = agents.filter((a) => a?.status === "failed").length;
+  const cancelled = agents.filter((a) => a?.status === "cancelled").length;
+  if (failed) return `${failed} failed`;
+  if (cancelled) return "Stopped";
+  return "Done";
+}
+
+/**
+ * Hairline card for one round of delegation: caption ("3 agents") and progress on one line, then a
+ * row per sub-agent. Rows share one grid (subgrid), so glyph, role, title and the right slot line up
+ * across rows whatever their lengths.
+ */
 export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
   const { state } = useProject();
-  const pane = useOptionalPane();
   const agents = uses.map((u) => agentBySpawnToolUse(state, u.id));
-  const caption = uses.length === 1 ? "1 agent" : `${uses.length} agents`;
-  const running = agents.some((a) => !a || a.status === "running");
-  const done = agents.filter((a) => a && (a.status === "completed" || a.status === "failed" || a.status === "cancelled")).length;
+  const caption = uses.length === 1 ? "1\u00a0agent" : `${uses.length}\u00a0agents`;
+  const status = progress(agents);
+  const failed = agents.some((a) => a?.status === "failed");
 
   return (
     <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container my-2 rounded-md border border-line">
-      <div className="flex h-8 items-center gap-2 pr-1.5 pl-3 text-sm text-fg-3">
-        <span className="tabular-nums">{running ? `${done}/${uses.length} done` : caption}</span>
-        {pane && pane.shown !== "agents" && (
-          <button
-            type="button"
-            onClick={() => pane.openPane("agents")}
-            className="ml-auto h-6 rounded-sm px-1.5 text-xs text-fg-3 transition-[background-color,color] duration-100 hover:bg-hover hover:text-fg"
-          >
-            Show in panel
-          </button>
-        )}
+      <div className="flex h-8 items-center gap-3 px-3 text-sm">
+        <span className="text-fg-2">{caption}</span>
+        <span className={cn("ml-auto text-xs tabular-nums", failed && status.endsWith("failed") ? "text-err" : "text-fg-3")}>{status}</span>
       </div>
-      <ul className="px-1.5 pb-1.5">
+      <ul className="grid grid-cols-[12px_fit-content(36%)_minmax(0,1fr)_auto] gap-x-2.5 px-1.5 pb-1.5 @max-[440px]:grid-cols-[12px_fit-content(44%)_minmax(0,1fr)_auto]">
         {uses.map((u, i) => (
-          <li key={u.id}>
+          <li key={u.id} className="col-span-full grid grid-cols-subgrid">
             <DelegationRow use={u} agent={agents[i]} />
           </li>
         ))}
@@ -45,6 +53,7 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
 
 function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined }) {
   const { projectId, state } = useProject();
+  const ws = useOptionalWorkspace();
   const { now } = useTranscript();
   const input = spawnInput(use.input);
   const role = agent?.role || input.role || "Agent";
@@ -53,53 +62,57 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
   const status = agent?.status ?? "pending";
   const nested = agent ? descendantCount(state, agent.id) : 0;
   const duration = agent ? agentDuration(agent, now) : null;
-  const doing = agent?.status === "running" ? activity(state, agent.id) : "";
+  const running = agent?.status === "running";
   const error = status === "failed" ? agent?.error || "No error details were reported." : null;
+  const model = agent?.model ? modelLabel(agent.model) : tier ? tierLabel(tier) : "";
 
-  const model = agent?.model ? shortModel(agent.model) : tier ? tierLabel(tier) : "";
-
-  const body = (
+  const right = running ? (
     <>
-      <span className="flex h-8 min-w-0 items-center gap-2.5">
-        <span className="grid w-3 shrink-0 place-items-center">{agent ? <StatusIcon status={agent.status} /> : <Spinner />}</span>
-        <span className="max-w-[45%] min-w-0 shrink-0 truncate text-fg">{role}</span>
-        {nested > 0 && (
-          <span className="-ml-1 shrink-0 text-xs text-fg-3" title={`${nested} nested`}>
-            +{nested}
-          </span>
-        )}
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          {title && <span className="min-w-0 truncate text-fg-2">{title}</span>}
-          {doing && <span className="max-w-[45%] shrink-0 truncate text-fg-3 @max-[480px]:hidden">{doing}</span>}
-        </span>
-        <span className="flex shrink-0 items-center gap-1.5 pl-1 text-xs text-fg-3">
-          {status === "failed" && <span className="text-err">failed</span>}
-          {status === "cancelled" && <span>cancelled</span>}
-          {status === "pending" && <span>starting</span>}
-          {model && <span className="@max-[440px]:hidden">{model}</span>}
-          {duration !== null && (
-            <>
-              <span aria-hidden className="@max-[440px]:hidden">
-                ·
-              </span>
-              <span className="tabular-nums">{formatDuration(duration)}</span>
-            </>
-          )}
-        </span>
-      </span>
-      {error && <span className="-mt-1 block truncate pb-1.5 pl-[22px] text-xs text-err">{error}</span>}
+      <span className="min-w-0 truncate">{activity(state, agent.id)}</span>
+      {duration !== null && <span className="shrink-0 text-fg-2 tabular-nums">{formatDuration(duration)}</span>}
+    </>
+  ) : (
+    <>
+      {status === "pending" && <span>starting</span>}
+      {status === "failed" && <span className="text-err">failed</span>}
+      {status === "cancelled" && <span>{statusLabel("cancelled")}</span>}
+      {model && <span className="@max-[440px]:hidden">{model}</span>}
+      {duration !== null && <span className="min-w-[4ch] text-right text-fg-2 tabular-nums">{formatDuration(duration)}</span>}
     </>
   );
 
-  const row = "block rounded-sm px-1.5 text-sm";
+  const body = (
+    <>
+      <span className="grid h-8 place-items-center">{agent ? <StatusIcon status={agent.status} /> : <RunningDot />}</span>
+      <span className="flex h-8 min-w-0 items-center gap-1 text-fg">
+        <span className="min-w-0 truncate">{role}</span>
+        {nested > 0 && (
+          <span className="shrink-0 text-xs text-fg-3" title={`${nested} nested`}>
+            +{nested}
+          </span>
+        )}
+      </span>
+      <span className="block min-w-0 truncate leading-8 text-fg-2">{title}</span>
+      <span className="flex h-8 max-w-[24ch] min-w-0 items-center justify-end gap-2.5 text-xs text-fg-3 @max-[440px]:max-w-[12ch]">{right}</span>
+      {error && <span className="col-span-3 col-start-2 -mt-1 truncate pb-1.5 text-xs text-err">{error}</span>}
+    </>
+  );
+
+  // Radius = card radius (8) − its inset (6).
+  const row = "col-span-full grid grid-cols-subgrid items-center rounded-2xs px-1.5 text-sm";
   if (!agent) return <div className={row}>{body}</div>;
   return (
     <a
       href={hrefFor(projectId, agent.id)}
       aria-label={`Open ${role}: ${title} (${status})`}
       aria-description={error ?? undefined}
-      title={error ?? (agent.task || undefined)}
-      className={cn(row, "transition-[background-color] duration-100 hover:bg-hover focus-visible:-outline-offset-2")}
+      title={error ?? (agent.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : undefined)}
+      onClick={(e) => {
+        if (!ws || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        ws.openAgent(agent.id, { otherSide: e.altKey });
+      }}
+      className={cn(row, "press-row hover:bg-hover focus-inset")}
     >
       {body}
     </a>

@@ -25,7 +25,8 @@ export type ProjectRecord = {
 let idCounter = 0;
 export function newId(prefix: string): string {
   idCounter += 1;
-  return `${prefix}_${idCounter.toString(36).padStart(4, "0")}${Math.random().toString(36).slice(2, 6)}`;
+  // Deterministic, so a reload of the demo gets the same ids (saved layouts keep working).
+  return `${prefix}_${idCounter.toString(36).padStart(4, "0")}`;
 }
 
 export function emit(rec: ProjectRecord, body: EventBody): void {

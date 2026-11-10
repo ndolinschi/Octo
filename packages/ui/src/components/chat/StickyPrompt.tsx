@@ -4,23 +4,37 @@ import { STICK_TOP } from "./turnTracking";
 
 /**
  * The prompt of the turn being read, pinned over the top of the scroll area once its own copy has
- * scrolled under. Opaque, with a soft fade below; long prompts clamp to three lines and expand on
- * click. It overlays the transcript (not in flow), so pinning never shifts the content.
+ * scrolled under. Opaque, with a soft fade below; long prompts clamp (three lines, one on short
+ * viewports) and expand on click. It overlays the transcript (not in flow), so pinning never shifts
+ * the content. It spans the scroll area minus the scrollbar and uses the conversation's `--pad` /
+ * `--sg` insets, so its edges match the transcript column.
  */
-export function StickyPrompt(props: { text: string; author: string | null; gutter: number }) {
-  const box = useRef<HTMLDivElement>(null);
+export function StickyPrompt(props: { text: string; author: string | null }) {
+  const box = useRef<HTMLSpanElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
 
   useLayoutEffect(() => {
     const el = box.current;
-    if (el && !expanded) setClamped(el.scrollHeight > el.clientHeight + 1);
+    if (!el || expanded) return;
+    const check = () => setClamped(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [props.text, expanded]);
 
   const body = (
     <>
       {props.author && <span className="mb-0.5 block text-xs text-fg-3">From {props.author}</span>}
-      <span ref={box} className={cn("block whitespace-pre-wrap", expanded ? "max-h-[40vh] overflow-y-auto" : "line-clamp-3")}>
+      <span
+        ref={box}
+        className={cn(
+          "whitespace-pre-wrap wrap-anywhere",
+          // No `block` here: line-clamp sets its own display (flow-root) and `block` would cancel it.
+          expanded ? "block max-h-[40vh] overflow-y-auto overscroll-contain" : "line-clamp-3 [@media(max-height:640px)]:line-clamp-1",
+        )}
+      >
         {props.text}
       </span>
     </>
@@ -28,16 +42,16 @@ export function StickyPrompt(props: { text: string; author: string | null; gutte
   const boxClass = "block w-full rounded-md border border-line bg-raised px-3.5 py-2.5 text-left text-base text-fg";
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-10" style={{ right: props.gutter }}>
-      <div className="bg-panel" style={{ paddingTop: STICK_TOP }}>
-        <div className="pointer-events-auto mx-auto w-full max-w-measure px-6 max-[1000px]:px-4">
+    <div className="pointer-events-none absolute top-0 left-0 z-10 right-(--sg)">
+      <div className="bg-panel pr-(--pad) pl-[calc(var(--pad)+var(--sg))]" style={{ paddingTop: STICK_TOP }}>
+        <div className="pointer-events-auto mx-auto w-full max-w-measure">
           {clamped || expanded ? (
             <button
               type="button"
               aria-expanded={expanded}
               aria-label={expanded ? "Collapse the pinned request" : "Expand the pinned request"}
               onClick={() => setExpanded((x) => !x)}
-              className={cn(boxClass, "transition-[border-color] duration-100 hover:border-line-strong")}
+              className={cn(boxClass, "press-row hover:border-line-strong")}
             >
               {body}
             </button>
@@ -48,7 +62,7 @@ export function StickyPrompt(props: { text: string; author: string | null; gutte
           )}
         </div>
       </div>
-      <div aria-hidden className="h-6 bg-linear-to-b from-panel to-transparent" />
+      <div aria-hidden className="h-6 bg-linear-to-b from-panel to-transparent [@media(max-height:640px)]:h-2.5" />
     </div>
   );
 }

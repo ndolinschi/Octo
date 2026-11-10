@@ -14,10 +14,13 @@ import { backgroundTurn, docsHistory } from "./extra";
 import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
 import { genericTurn } from "./generic";
 import { orbitLive } from "./orbit";
+import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
 import type { Ctx } from "./runtime";
 import { clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store";
 
-export type DemoSeed = "full" | "empty";
+/** full: the regular demo (plus a Stress test project) · empty: no projects · one: a single project ·
+ *  many: 30 projects with short, typical and 120+ character names (0, 1 and 30 requests in the first three). */
+export type DemoSeed = "full" | "empty" | "one" | "many";
 
 const DEFAULT_MODELS: Models = {
   orchestrator: "claude-opus-5-5",
@@ -188,12 +191,39 @@ function seed(): ProjectRecord[] {
     },
     now - 2 * 24 * HOUR,
   );
-  return [orbit, atlas, docs, payments, infra, tokens];
+  const stress = makeProject(
+    {
+      name: "Stress test",
+      description: "200 messages, a very long prompt, long file names",
+      folders: [{ path: "/Users/maya/code/stress-kit", label: "stress-kit" }],
+    },
+    now - 40 * 24 * HOUR,
+  );
+  startScript(stress, now - 30 * HOUR, stressHistory);
+  return [orbit, atlas, docs, payments, infra, tokens, stress];
 }
+
+function seedMany(): ProjectRecord[] {
+  const now = Date.now();
+  return manyProjectNames().map((name, i) => {
+    const rec = makeProject({ name, folders: [{ path: `/Users/maya/code/p${i}`, label: `p${i}` }] }, now - (i + 1) * 5 * HOUR);
+    const count = i === 0 ? 30 : i === 1 ? 1 : 0;
+    if (count) startScript(rec, now - 20 * HOUR, requestsHistory(count));
+    return rec;
+  });
+}
+
+function seedOne(): ProjectRecord[] {
+  const rec = makeProject({ name: "Atlas API", folders: [{ path: "/Users/maya/code/atlas-api", label: "atlas-api" }] }, Date.now() - 30 * HOUR);
+  startScript(rec, Date.now() - 28 * HOUR, atlasHistory);
+  return [rec];
+}
+
+const SEEDERS: Record<DemoSeed, () => ProjectRecord[]> = { full: seed, empty: () => [], one: seedOne, many: seedMany };
 
 export function createDemoBridge(options: { seed?: DemoSeed } = {}): Bridge {
   const records = new Map<string, ProjectRecord>();
-  for (const rec of options.seed === "empty" ? [] : seed()) records.set(rec.project.id, rec);
+  for (const rec of SEEDERS[options.seed ?? "full"]()) records.set(rec.project.id, rec);
 
   const delay = () => new Promise((r) => setTimeout(r, LATENCY_MS));
   const get = (id: string) => {

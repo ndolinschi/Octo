@@ -521,6 +521,22 @@ const DOCS_SITE: Seed = {
   "src/styles/global.css": "html {\n  font-family: system-ui, sans-serif;\n  line-height: 1.6;\n}\n\nmain {\n  max-width: 720px;\n  margin: 0 auto;\n}\n",
 };
 
+/** Stress test: a dozen small files, very long names, one file wider than any editor. */
+const STRESS_KIT: Seed = {
+  ...Object.fromEntries(
+    ["api", "auth", "billing", "cache", "clock", "config", "db", "events", "flags", "http", "logger", "queue"].map((n) => [
+      `src/${n}.ts`,
+      `// ${n}\nexport const ${n} = {\n  enabled: true,\n  name: "${n}",\n  retries: 3,\n};\n`,
+    ]),
+  ),
+  "src/components/ConversationTranscriptVirtualizedListWithStickyHeadersAndKeyboardNavigation.tsx":
+    'export function ConversationTranscriptVirtualizedListWithStickyHeadersAndKeyboardNavigation() {\n  return null;\n}\n',
+  "docs/an-unusually-long-architecture-decision-record-about-retries-and-idempotency-keys.md":
+    "# Retries and idempotency keys\n\nEvery write accepts an `Idempotency-Key` header.\n",
+  "src/wide.ts": `export const ALLOWED_ORIGINS = [${Array.from({ length: 14 }, (_, i) => `"https://tenant-${i + 1}.example.com"`).join(", ")}];\n`,
+  "README.md": "# stress-kit\n\nFiles for layout stress tests.\n",
+};
+
 const GENERIC: Seed = {
   "README.md": "# Project\n\nAttach notes about setup here.\n",
   "package.json": '{\n  "name": "project",\n  "private": true\n}\n',
@@ -532,6 +548,7 @@ const SEEDS: Record<string, Seed> = {
   "atlas-web": ATLAS_WEB,
   "orbit-app": ORBIT_APP,
   "docs-site": DOCS_SITE,
+  "stress-kit": STRESS_KIT,
 };
 
 /** The in-memory tree for a folder label; unknown labels get a tiny generic project. */

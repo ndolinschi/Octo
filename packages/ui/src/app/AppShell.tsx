@@ -9,6 +9,7 @@ import { ProjectProvider } from "../state/project";
 import { RequestsProvider } from "../state/requests";
 import { Button } from "../components/primitives/Button";
 import { Dialog } from "../components/primitives/Dialog";
+import { Presence, usePresence } from "../components/primitives/Presence";
 import { NoProjectsHero } from "../components/project/NoProjectsHero";
 import { ProjectDialog } from "../components/project/ProjectDialog";
 import { CommandPalette, type PaletteAction } from "../components/shell/CommandPalette";
@@ -112,7 +113,6 @@ function Shell() {
   const actions: PaletteAction[] = [
     { id: "new", label: "New project", run: newProject },
     { id: "settings", label: "Open settings", run: openSettings },
-    ...(workspace ? [{ id: "pane", label: "Toggle side panel", run: () => void nav.togglePane() }] : []),
     { id: "sidebar", label: "Toggle sidebar", run: toggleSidebar },
   ];
 
@@ -120,31 +120,26 @@ function Shell() {
     <div className="flex h-full overflow-hidden bg-window text-fg">
       {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} />}
       <div
-        className={cn("relative flex min-w-0 flex-1 flex-col py-1.5 pr-1.5 max-sm:p-0", !drawerMode && inlineOpen ? "pl-0" : "pl-1.5")}
+        className={cn("relative flex min-w-0 flex-1 flex-col pr-1.5 pb-1.5 max-sm:p-0", !drawerMode && inlineOpen ? "pl-0" : "pl-1.5")}
         inert={drawerShown}
       >
         {workspace && route.projectId ? (
           <ProjectProvider key={route.projectId} projectId={route.projectId}>
-            <ProjectWorkspace
-              agentId={route.agentId}
-              sidebarOpen={sidebarOpen}
-              sidebarIsDrawer={drawerMode}
-              onToggleSidebar={toggleSidebar}
-            />
+            <ProjectWorkspace agentId={route.agentId} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
           </ProjectProvider>
         ) : (
-          <Panel className="h-full">
+          <>
             <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
-            <div className="min-h-0 flex-1">{main}</div>
-          </Panel>
+            <Panel className="flex-1">{main}</Panel>
+          </>
         )}
       </div>
-      {drawerShown && (
+      <Presence show={drawerShown}>
         <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
           <Sidebar {...sidebarProps} onClose={() => setDrawerOpen(false)} />
         </SidebarDrawer>
-      )}
-      {creating && (
+      </Presence>
+      <Presence show={creating}>
         <ProjectDialog
           onClose={() => setCreating(false)}
           onSubmit={async (input) => {
@@ -154,10 +149,14 @@ function Shell() {
             navigate(project.id);
           }}
         />
-      )}
-      {settings && <SettingsDialog onClose={() => setSettings(false)} />}
-      {palette && <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />}
-      {pending && (
+      </Presence>
+      <Presence show={settings}>
+        <SettingsDialog onClose={() => setSettings(false)} />
+      </Presence>
+      <Presence show={palette}>
+        <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
+      </Presence>
+      <Presence show={pending}>
         <LeaveDialog
           count={nav.unsavedCount()}
           onStay={() => {
@@ -166,13 +165,13 @@ function Shell() {
           }}
           onLeave={proceed}
         />
-      )}
+      </Presence>
     </div>
   );
 }
 
 function LeaveDialog(props: { count: number; onStay(): void; onLeave(): void }) {
-  const files = props.count === 1 ? "1 file has" : `${props.count} files have`;
+  const files = props.count === 1 ? "1\u00a0file has" : `${props.count}\u00a0files have`;
   return (
     <Dialog
       width="sm"
@@ -195,21 +194,22 @@ function LeaveDialog(props: { count: number; onStay(): void; onLeave(): void }) 
   );
 }
 
-/** Fixed overlay with a scrim; takes focus on open and gives it back on close. */
+/** Fixed overlay with a scrim; takes focus on open and gives it back as soon as it starts closing. */
 function SidebarDrawer(props: { onClose(): void; opener: React.RefObject<HTMLElement | null>; children: React.ReactNode }) {
   const { onClose, opener, children } = props;
   const panel = useRef<HTMLDivElement>(null);
+  const state = usePresence();
   useEffect(() => {
     const el = panel.current;
     (el?.querySelector<HTMLElement>('a[aria-current="page"]') ?? el?.querySelector<HTMLElement>("button:not([disabled]), a[href]"))?.focus();
-    return () => {
-      if (opener.current?.isConnected) opener.current.focus();
-    };
-  }, [opener]);
+  }, []);
+  useEffect(() => {
+    if (state === "closed" && opener.current?.isConnected) opener.current.focus();
+  }, [state, opener]);
   return (
-    <div className="fixed inset-0 z-40">
-      <div className="absolute inset-0 bg-scrim" onMouseDown={onClose} aria-hidden />
-      <div ref={panel} className="absolute inset-y-0 left-0 max-w-[calc(100%-48px)] overscroll-contain shadow-pop">
+    <div className="fixed inset-0 z-40" inert={state === "closed"}>
+      <div className="octo-scrim absolute inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
+      <div ref={panel} data-state={state} className="octo-drawer absolute inset-y-0 left-0 max-w-[calc(100%-48px)] overscroll-contain shadow-pop">
         {children}
       </div>
     </div>

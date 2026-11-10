@@ -9,18 +9,20 @@ import { navigate } from "../../lib/route";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
 import { useRequests } from "../../state/requests";
+import { usePresence } from "../primitives/Presence";
 import { useModal } from "../primitives/useModal";
 
-export type PaletteAction = { id: string; label: string; hint?: string; run(): void };
+export type PaletteAction = { id: string; label: string; hint?: string; shortcut?: string; run(): void };
 
-type Item = { id: string; label: string; detail?: string; run(): void };
+type Item = { id: string; label: string; detail?: string; shortcut?: string; run(): void };
 type Group = { title: string; items: Item[] };
 
 /** Rows per group with an empty query, and when filtering. */
 const LIMIT = 6;
 
 /**
- * Ctrl/Cmd+K: one input over projects, the open project's requests and agents, and app actions.
+ * Ctrl/Cmd+K: one input over projects, the open project's tabs, requests and agents, and actions
+ * (app actions plus the workspace's tab actions).
  * The input keeps focus (combobox + listbox); arrows move the selection, Enter runs it.
  * Hovering highlights a row without moving the keyboard selection.
  */
@@ -36,6 +38,12 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
   const openProject = projects?.find((p) => p.id === props.openProjectId);
   const { requests } = useRequests(openProject, true);
   const { onClose } = props;
+  const state = usePresence();
+  // The workspace's tabs and tab actions, as they are when the palette opens.
+  const [workspace] = useState(() => {
+    const api = nav.workspace();
+    return api ? { api, tabs: api.tabs(), actions: api.actions() } : null;
+  });
 
   useModal(panel, onClose);
 
@@ -69,6 +77,10 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
     };
     const pid = openId;
     const all: Group[] = [
+      {
+        title: "Tabs",
+        items: workspace ? rank(workspace.tabs.map((t) => ({ ...t, run: go(t.run) })), (i) => i.label) : [],
+      },
       {
         title: "Projects",
         items: rank(
@@ -108,7 +120,11 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
                   id: `a:${a.id}`,
                   label: root ? "Orchestrator" : a.role,
                   detail: root ? undefined : a.title,
-                  run: go(() => navigate(pid, root ? null : a.id)),
+                  run: go(() => {
+                    if (!workspace) return navigate(pid, root ? null : a.id);
+                    if (root) workspace.api.focusChat();
+                    else workspace.api.openAgent(a.id);
+                  }),
                 };
               }),
               (i) => `${i.label} ${i.detail ?? ""}`,
@@ -118,13 +134,16 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
       {
         title: "Actions",
         items: rank(
-          props.actions.map((a) => ({ id: `x:${a.id}`, label: a.label, detail: a.hint, run: go(a.run) })),
+          [
+            ...(workspace?.actions ?? []).map((a) => ({ ...a, id: `w:${a.id}`, run: go(a.run) })),
+            ...props.actions.map((a) => ({ id: `x:${a.id}`, label: a.label, detail: a.hint, shortcut: a.shortcut, run: go(a.run) })),
+          ],
           (i) => i.label,
         ),
       },
     ];
     return all.filter((g) => g.items.length);
-  }, [query, projects, requests, agents, props.actions, openId, nav, onClose]);
+  }, [query, projects, requests, agents, props.actions, openId, nav, onClose, workspace]);
 
   const flat = groups.flatMap((g) => g.items);
   const current = Math.min(selected, Math.max(0, flat.length - 1));
@@ -153,14 +172,15 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
 
   let index = -1;
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 pt-[10vh] sm:pt-[14vh]">
-      <div className="fixed inset-0 bg-scrim" onMouseDown={onClose} aria-hidden />
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 pt-[10vh] sm:pt-[14vh]" inert={state === "closed"}>
+      <div className="octo-scrim fixed inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
-        className="relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay shadow-pop"
+        data-state={state}
+        className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay shadow-pop"
       >
         <div className="flex h-11 shrink-0 items-center gap-2.5 border-b border-line px-3.5">
           <Search size={16} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0 text-fg-3" />
@@ -171,15 +191,15 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
             aria-controls={`${baseId}-list`}
             aria-autocomplete="list"
             aria-activedescendant={flat.length ? optionId(current) : undefined}
-            aria-label="Search projects, requests, agents and actions"
-            placeholder="Search projects, requests, agents, actions"
+            aria-label="Search tabs, projects, requests, agents and actions"
+            placeholder="Search tabs, projects, requests, agents, actions"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setSelected(0);
             }}
             onKeyDown={onKeyDown}
-            className="h-full min-w-0 flex-1 bg-transparent text-base text-fg placeholder:text-fg-3 focus:outline-none focus-visible:outline-none max-sm:text-[16px]"
+            className="h-full min-w-0 flex-1 bg-transparent text-base text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
           />
         </div>
         <div ref={list} id={`${baseId}-list`} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
@@ -201,12 +221,14 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={item.run}
                     className={cn(
-                      "flex h-8 items-center gap-3 rounded-sm px-2 text-sm",
+                      // Radius = panel radius (10) − list padding (6).
+                      "press-row flex h-8 items-center gap-3 rounded-xs px-2 text-sm",
                       isSelected ? "bg-active text-fg" : "text-fg hover:bg-hover",
                     )}
                   >
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {item.detail && <span className={cn("max-w-[45%] shrink-0 truncate text-xs", isSelected ? "text-fg-2" : "text-fg-3")}>{item.detail}</span>}
+                    {item.shortcut && <kbd className="shrink-0 rounded-2xs bg-active px-1 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
                   </div>
                 );
               })}

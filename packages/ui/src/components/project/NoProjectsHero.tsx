@@ -4,7 +4,7 @@ export function NoProjectsHero({ onCreate }: { onCreate(): void }) {
   return (
     <section aria-labelledby="hero-title" className="grid h-full place-items-center overflow-y-auto px-6">
       <div className="w-full max-w-[440px]">
-        <h1 id="hero-title" className="text-[15px] leading-5 font-semibold">
+        <h1 id="hero-title" className="text-title text-fg">
           No projects yet
         </h1>
         <p className="mt-1 text-sm text-fg-2">

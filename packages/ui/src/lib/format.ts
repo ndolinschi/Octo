@@ -53,3 +53,11 @@ export function basename(path: string): string {
   const parts = path.replace(/[\\/]+$/, "").split(/[\\/]/);
   return parts[parts.length - 1] || path;
 }
+
+/** Shortens a long path or name in the middle, keeping its end (the file name / extension) visible. */
+export function middleTruncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const slash = text.lastIndexOf("/");
+  const tail = slash >= 0 && text.length - slash <= max - 8 ? text.slice(slash) : text.slice(-Math.ceil((max - 1) / 2));
+  return `${text.slice(0, max - 1 - tail.length)}…${tail}`;
+}

@@ -3,8 +3,13 @@ import { useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { IconButton } from "./Button";
+import { usePresence } from "./Presence";
 import { useModal } from "./useModal";
 
+/**
+ * Modal dialog. Put the primary action last in `footer`: side by side it sits on the right; below
+ * 420px the buttons stack full width with the primary on top.
+ */
 export function Dialog(props: {
   title: string;
   description?: string;
@@ -17,39 +22,43 @@ export function Dialog(props: {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descId = useId();
+  const state = usePresence();
 
   useModal(panel, onClose);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 pt-[6vh] sm:p-6 sm:pt-[9vh]">
-      <div className="fixed inset-0 bg-scrim" onMouseDown={onClose} aria-hidden />
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 pt-[6vh] sm:p-6 sm:pt-[9vh]" inert={state === "closed"}>
+      <div className="octo-scrim fixed inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={props.description ? descId : undefined}
+        data-state={state}
         className={cn(
-          "relative flex max-h-[88vh] w-full flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
+          "octo-overlay relative flex max-h-[88vh] w-full flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
           props.width === "sm" ? "max-w-[400px]" : "max-w-[520px]",
         )}
       >
-        <header className="flex items-center gap-3 px-4 pt-4 pb-3 sm:px-5">
-          <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-[14px] leading-5 font-semibold">
+        <header className="flex items-start gap-3 px-4 pt-4 pb-3 sm:px-5">
+          <div className="min-w-0 flex-1 pt-0.5">
+            <h2 id={titleId} className="text-heading text-fg">
               {props.title}
             </h2>
             {props.description && (
-              <p id={descId} className="mt-0.5 text-sm text-fg-3">
+              <p id={descId} className="mt-1 text-sm text-fg-2">
                 {props.description}
               </p>
             )}
           </div>
-          <IconButton icon={X} label="Close" onClick={onClose} className="-mr-1.5" />
+          <IconButton icon={X} label="Close" onClick={onClose} className="-mt-0.5 -mr-1.5" />
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-5">{props.children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 empty:hidden sm:px-5">{props.children}</div>
         {props.footer && (
-          <footer className="flex flex-wrap items-center justify-end gap-2 px-4 pt-1 pb-4 sm:px-5">{props.footer}</footer>
+          <footer className="flex flex-wrap items-center justify-end gap-2 px-4 pt-1 pb-4 max-[420px]:flex-col-reverse max-[420px]:flex-nowrap max-[420px]:items-stretch sm:px-5">
+            {props.footer}
+          </footer>
         )}
       </div>
     </div>,

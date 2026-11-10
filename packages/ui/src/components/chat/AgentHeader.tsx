@@ -5,8 +5,9 @@ import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Markdown } from "./Markdown";
-import { shortModel, statusLabel, tierLabel } from "../primitives/Status";
+import { modelLabel, statusLabel, tierLabel } from "../primitives/Status";
 
 export function roleName(agent: Agent): string {
   return agent.parent_id === null ? "Orchestrator" : agent.role;
@@ -14,6 +15,7 @@ export function roleName(agent: Agent): string {
 
 export function Breadcrumb({ agent }: { agent: Agent }) {
   const { projectId, project, state } = useProject();
+  const ws = useOptionalWorkspace();
   const chain = ancestorsOf(state, agent.id);
   const sep = (
     <span aria-hidden className="text-fg-3">
@@ -27,7 +29,16 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
         {chain.map((a) => (
           <li key={a.id} className="flex min-w-0 items-center gap-1.5">
             {sep}
-            <a href={hrefFor(projectId, a.parent_id === null ? null : a.id)} className="max-w-[200px] truncate hover:text-fg">
+            <a
+              href={hrefFor(projectId, a.parent_id === null ? null : a.id)}
+              onClick={(e) => {
+                if (!ws || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                e.preventDefault();
+                if (a.parent_id === null) ws.focusChat();
+                else ws.openAgent(a.id, { otherSide: e.altKey });
+              }}
+              className="inline-block h-6 max-w-[200px] truncate rounded-xs leading-6 hover:text-fg"
+            >
               {roleName(a)}
             </a>
           </li>
@@ -50,7 +61,7 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
   const duration = agentDuration(agent, now);
   const nested = descendantCount(state, agent.id);
   const meta = [
-    shortModel(agent.model),
+    modelLabel(agent.model),
     agent.tier ? tierLabel(agent.tier) : "",
     duration !== null ? formatDuration(duration) : "",
     nested > 0 ? `${nested} nested` : "",
@@ -60,10 +71,15 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
     <header className="mb-5">
       <Breadcrumb agent={agent} />
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <h1 className="shrink-0 text-base font-semibold text-fg">{agent.role}</h1>
+        <h1 className="shrink-0 text-heading text-fg">{agent.role}</h1>
         {agent.title && <p className="min-w-0 flex-1 truncate text-base text-fg-2">{agent.title}</p>}
-        <p className="ml-auto shrink-0 text-xs text-fg-3">
-          {meta.join(" · ")} · <span className={cn(agent.status === "failed" && "text-err")}>{statusLabel(agent.status)}</span>
+        <p className="ml-auto shrink-0 text-xs text-fg-3 tabular-nums" title={agent.model}>
+          {meta.map((m) => (
+            <span key={m} className="ml-3 first:ml-0">
+              {m}
+            </span>
+          ))}
+          <span className={cn("ml-3", agent.status === "failed" ? "text-err" : "text-fg-2")}>{statusLabel(agent.status)}</span>
         </p>
       </div>
       {agent.status === "failed" && (
@@ -78,14 +94,14 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
             aria-expanded={briefOpen}
             aria-controls={briefId}
             onClick={() => setBriefOpen((o) => !o)}
-            className="-ml-1.5 inline-flex h-6 items-center gap-1 rounded-sm px-1.5 text-sm text-fg-3 transition-[background-color,color] duration-100 hover:bg-hover hover:text-fg-2"
+            className="press -ml-1.5 inline-flex h-6 items-center gap-1 rounded-sm px-1.5 text-sm text-fg-3 hover:bg-hover hover:text-fg-2"
           >
             Task brief
-            <ChevronRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className={cn(briefOpen && "rotate-90")} />
+            <ChevronRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className={cn("transition-[rotate] duration-150", briefOpen && "rotate-90")} />
           </button>
           {briefOpen && (
             <div id={briefId} className="mt-1 border-l border-line-strong pl-3">
-              <Markdown text={agent.task} className="octo-prose text-[13px]! text-fg-2!" />
+              <Markdown text={agent.task} className="octo-prose octo-prose-sm" />
             </div>
           )}
         </div>

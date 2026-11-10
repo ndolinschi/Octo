@@ -5,6 +5,19 @@ export type TurnRef = { projectId: string; messageId: number };
 
 type Listener = (turn: TurnRef) => void;
 
+/** One palette row offered by the open workspace (tabs and tab actions). */
+export type WorkspaceCommand = { id: string; label: string; detail?: string; shortcut?: string; run(): void };
+
+/** What the open project workspace lets the shell (palette) do. */
+export type WorkspaceApi = {
+  openAgent(agentId: string): void;
+  focusChat(): void;
+  /** Tab actions that apply now (move, split, close…). */
+  actions(): WorkspaceCommand[];
+  /** One row per open tab. */
+  tabs(): WorkspaceCommand[];
+};
+
 /**
  * Stable cross-cutting actions between the shell (sidebar, palette) and the open workspace.
  * Kept apart from `NavState` so components that only act never re-render on scroll.
@@ -20,9 +33,9 @@ type NavActions = {
   /** The workspace registers how many unsaved files leaving it would discard. */
   setLeaveGuard(count: (() => number) | null): void;
   unsavedCount(): number;
-  /** The workspace registers its side-pane toggle (for the palette). */
-  setPaneToggle(toggle: (() => void) | null): void;
-  togglePane(): boolean;
+  /** The open workspace registers itself (for the palette). */
+  setWorkspace(api: WorkspaceApi | null): void;
+  workspace(): WorkspaceApi | null;
 };
 
 type NavState = {
@@ -38,7 +51,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const pending = useRef<TurnRef | null>(null);
   const listeners = useRef(new Set<Listener>());
   const guard = useRef<(() => number) | null>(null);
-  const pane = useRef<(() => void) | null>(null);
+  const workspace = useRef<WorkspaceApi | null>(null);
 
   const actions = useMemo<NavActions>(
     () => ({
@@ -69,14 +82,10 @@ export function NavProvider({ children }: { children: ReactNode }) {
         guard.current = count;
       },
       unsavedCount: () => guard.current?.() ?? 0,
-      setPaneToggle: (toggle) => {
-        pane.current = toggle;
+      setWorkspace: (api) => {
+        workspace.current = api;
       },
-      togglePane: () => {
-        if (!pane.current) return false;
-        pane.current();
-        return true;
-      },
+      workspace: () => workspace.current,
     }),
     [],
   );

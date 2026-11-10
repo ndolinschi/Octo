@@ -8,7 +8,7 @@ export default function App() {
   const bridge = useMemo(
     () =>
       demo
-        ? createDemoBridge({ seed: demo === "empty" ? "empty" : "full" })
+        ? createDemoBridge({ seed: demo === "empty" || demo === "one" || demo === "many" ? demo : "full" })
         : createHttpBridge({ baseUrl: bridgeUrl }),
     [demo, bridgeUrl],
   );

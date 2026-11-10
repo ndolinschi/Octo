@@ -14,12 +14,13 @@ type Buffer = {
 /**
  * Monaco models for one project's open files, keyed by folder + path. Lives in the
  * project's code state (not in the editor component) so unsaved edits and view state
- * survive closing the pane or switching tabs. Only `import type` from Monaco here: the
+ * survive a File tab moving to another group (which remounts its editor). Only `import type` from Monaco here: the
  * runtime arrives later through `attach()` from the lazily loaded editor chunk.
  */
 export class EditorBuffers {
   monaco: MonacoApi | null = null;
-  editor: Monaco.editor.IStandaloneCodeEditor | null = null;
+  /** Live editors (one per mounted File tab). */
+  readonly editors = new Set<Monaco.editor.IStandaloneCodeEditor>();
   private buffers = new Map<string, Buffer>();
 
   constructor(
@@ -71,10 +72,10 @@ export class EditorBuffers {
     const buffer = this.buffers.get(key);
     if (!buffer) return;
     if (buffer.model.getValue() !== content) {
-      const shown = this.editor?.getModel() === buffer.model;
-      const view = shown ? this.editor!.saveViewState() : buffer.view;
+      const editor = this.editorFor(buffer.model);
+      const view = editor ? editor.saveViewState() : buffer.view;
       buffer.model.pushEditOperations([], [{ range: buffer.model.getFullModelRange(), text: content }], () => null);
-      if (shown && view) this.editor!.restoreViewState(view);
+      if (editor && view) editor.restoreViewState(view);
       else buffer.view = view;
     }
     buffer.savedVersion = buffer.model.getAlternativeVersionId();
@@ -93,7 +94,7 @@ export class EditorBuffers {
   dispose(key: string) {
     const buffer = this.buffers.get(key);
     if (!buffer) return;
-    if (this.editor?.getModel() === buffer.model) this.editor.setModel(null);
+    this.editorFor(buffer.model)?.setModel(null);
     buffer.sub.dispose();
     buffer.model.dispose();
     this.buffers.delete(key);
@@ -101,6 +102,11 @@ export class EditorBuffers {
 
   disposeAll() {
     for (const key of [...this.buffers.keys()]) this.dispose(key);
+  }
+
+  private editorFor(model: Monaco.editor.ITextModel) {
+    for (const e of this.editors) if (e.getModel() === model) return e;
+    return null;
   }
 
   private check(key: string, buffer: Buffer) {

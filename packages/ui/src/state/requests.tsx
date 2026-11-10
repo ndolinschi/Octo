@@ -31,6 +31,14 @@ class RequestStore {
     for (const l of this.listeners) l();
   }
 
+  /** Loads again now (after "Couldn't load"), whatever the cached `updated_at` says. */
+  retry(project: ProjectSummary) {
+    const current = this.entries.get(project.id);
+    if (current?.loading) return;
+    this.set(project.id, { updatedAt: project.updated_at, requests: current?.requests ?? null, error: null, loading: true });
+    void this.load(project);
+  }
+
   ensure(project: ProjectSummary) {
     const current = this.entries.get(project.id);
     if (current && (current.updatedAt === project.updated_at || current.loading)) return;
@@ -80,5 +88,11 @@ export function useRequests(project: ProjectSummary | undefined, enabled: boolea
   useEffect(() => {
     if (enabled && project) store.ensure(project);
   }, [enabled, project, store]);
-  return { requests: entry?.requests ?? null, error: entry?.error ?? null };
+  return {
+    requests: entry?.requests ?? null,
+    error: entry?.error ?? null,
+    retry: () => {
+      if (project) store.retry(project);
+    },
+  };
 }

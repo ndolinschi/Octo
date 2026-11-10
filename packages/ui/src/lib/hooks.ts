@@ -57,6 +57,23 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
     if (atBottomRef.current) scrollToBottom();
   }, deps);
 
+  // Reflow (a group resized, a prompt expanded, the composer shrank) keeps a reader at the bottom there.
+  const observed = useRef<{ el: Element; ro: ResizeObserver } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (observed.current?.el === el) return;
+    observed.current?.ro.disconnect();
+    observed.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (atBottomRef.current && el.offsetParent !== null) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    observed.current = { el, ro };
+  });
+  useEffect(() => () => observed.current?.ro.disconnect(), []);
+
   return { ref, atBottom, onScroll, scrollToBottom, release };
 }
 
@@ -91,4 +108,32 @@ export function useEscape(active: boolean, onEscape: () => void) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [active]);
+}
+
+/** Loading indicators wait this long before showing, then stay at least `MIN_SHOWN` once shown. */
+const SHOW_AFTER = 200;
+const MIN_SHOWN = 300;
+
+/**
+ * Whether to show a loading indicator for `loading`: never for loads under 200ms (no flash), and
+ * once shown, for at least 300ms (no flicker). While it returns true, keep showing the indicator
+ * even if the data has arrived.
+ */
+export function useDelayedLoading(loading: boolean): boolean {
+  const [shown, setShown] = useState(false);
+  const since = useRef(0);
+  useEffect(() => {
+    if (loading && !shown) {
+      const id = window.setTimeout(() => {
+        since.current = Date.now();
+        setShown(true);
+      }, SHOW_AFTER);
+      return () => window.clearTimeout(id);
+    }
+    if (!loading && shown) {
+      const id = window.setTimeout(() => setShown(false), Math.max(0, since.current + MIN_SHOWN - Date.now()));
+      return () => window.clearTimeout(id);
+    }
+  }, [loading, shown]);
+  return shown;
 }

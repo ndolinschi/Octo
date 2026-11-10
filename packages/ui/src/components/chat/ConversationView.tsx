@@ -1,10 +1,12 @@
 import { ArrowDown } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
 import { promptText } from "../../lib/transcript";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { CHAT } from "../../state/workspace/layout";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { AgentHeader, roleName } from "./AgentHeader";
 import { Composer, type ComposerHandle } from "./Composer";
 import { ObserverBar } from "./ObserverBar";
@@ -13,8 +15,17 @@ import { StickyPrompt } from "./StickyPrompt";
 import { Transcript } from "./Transcript";
 import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
 
-export function ConversationView({ agentId }: { agentId: string }) {
+type ScrollMemory = { top: number; atBottom: boolean };
+
+/**
+ * A conversation (the orchestrator's Chat tab or a sub-agent's Agent tab). The transcript column,
+ * the pinned prompt and the composer / read-only bar share both edges exactly: the scroll area
+ * reserves its scrollbar gutter on both sides (`scroll-quiet`) and the rows outside it add the same
+ * gutter (`--sg`) to the same padding (`--pad`).
+ */
+export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: string }) {
   const { health } = useApp();
+  const ws = useOptionalWorkspace();
   const { project, state, running, ensureMessages, send, cancel, projectId, live } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
@@ -23,21 +34,60 @@ export function ConversationView({ agentId }: { agentId: string }) {
   const isOrchestrator = agent?.parent_id === null;
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
+  const memory = ws?.memory;
+  const saved = memory?.get(`${tab}:scroll`) as ScrollMemory | undefined;
   const scroll = useStickToBottom<HTMLDivElement>(
     [messages, streaming, agent?.status, agentId],
-    isOrchestrator || agent?.status === "running",
+    saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
   );
+  const [gutter, setGutter] = useState(0);
 
   const stuck = useStuckTurn(scroll.ref);
   const promptCount = useMemo(() => messages?.filter((m) => m.role === "user").length ?? 0, [messages]);
   useViewTurn(scroll.ref, projectId, isOrchestrator, promptCount);
-  useTurnRequests({ root: scroll.ref, projectId, enabled: isOrchestrator, loaded: messages !== undefined, release: scroll.release });
+  useTurnRequests({
+    root: scroll.ref,
+    projectId,
+    enabled: isOrchestrator,
+    loaded: messages !== undefined,
+    release: scroll.release,
+    reveal: ws ? () => ws.activate(tab) : undefined,
+  });
   const { onScroll: measureStuck } = stuck;
   useEffect(measureStuck, [messages, streaming, measureStuck]);
 
   useEffect(() => {
     ensureMessages(agentId);
   }, [agentId, ensureMessages]);
+
+  // Half of the reserved scrollbar space: the same inset for the rows outside the scroll area.
+  useLayoutEffect(() => {
+    const el = scroll.ref.current;
+    if (!el) return;
+    const measure = () => setGutter(Math.max(0, (el.offsetWidth - el.clientWidth) / 2));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [scroll.ref, agent]);
+
+  // Moving a tab remounts it: put the reader back where they were.
+  const restored = useRef(false);
+  useLayoutEffect(() => {
+    const el = scroll.ref.current;
+    if (restored.current || !el || messages === undefined) return;
+    restored.current = true;
+    if (saved && !saved.atBottom) {
+      scroll.release();
+      el.scrollTop = saved.top;
+    }
+  }, [messages, saved, scroll]);
+  useEffect(() => {
+    const el = scroll.ref.current;
+    return () => {
+      if (el && memory) memory.set(`${tab}:scroll`, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight < 80 });
+    };
+  }, [memory, tab, scroll.ref]);
 
   if (!project) return null;
   if (!agent) {
@@ -57,20 +107,18 @@ export function ConversationView({ agentId }: { agentId: string }) {
   const loadedEmpty = messages !== undefined && messages.length === 0;
   const showStarters = isOrchestrator && loadedEmpty && !running;
   const stuckPrompt = stuck.stuckId !== null ? messages?.find((m) => m.id === stuck.stuckId) : undefined;
-  const scroller = scroll.ref.current;
-  const gutter = scroller ? scroller.offsetWidth - scroller.clientWidth : 0;
+  const watched = ws ? ws.watched === tab : true;
   const offlineReason =
     health === "offline" ? "Bridge offline. Start harness serve to continue." : live === "reconnecting" ? "Reconnecting to the bridge…" : null;
+  const draftKey = `${tab}:draft`;
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col">
+    <div
+      className="@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]"
+      style={{ "--sg": `${gutter}px` } as CSSProperties}
+    >
       {stuckPrompt && (
-        <StickyPrompt
-          key={stuckPrompt.id}
-          text={promptText(stuckPrompt)}
-          author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
-          gutter={gutter}
-        />
+        <StickyPrompt key={stuckPrompt.id} text={promptText(stuckPrompt)} author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"} />
       )}
       <div
         ref={scroll.ref}
@@ -80,49 +128,55 @@ export function ConversationView({ agentId }: { agentId: string }) {
         }}
         className="scroll-quiet min-h-0 flex-1 overflow-y-auto"
       >
-        <div className="mx-auto w-full max-w-measure px-6 pt-3 pb-8 max-[1000px]:px-4">
-          {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
-          {showStarters ? (
-            <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
-          ) : (
-            <Transcript
-              agent={agent}
-              messages={messages ?? []}
-              now={now}
-              speaker={roleName(agent)}
-              promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
-              hideFirstPrompt={!isOrchestrator}
-            />
-          )}
+        <div className="px-(--pad)">
+          <div data-column className="mx-auto w-full max-w-measure pt-3 pb-8">
+            {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
+            {showStarters ? (
+              <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
+            ) : (
+              <Transcript
+                agent={agent}
+                messages={messages ?? []}
+                now={now}
+                watched={watched}
+                speaker={roleName(agent)}
+                promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
+                hideFirstPrompt={!isOrchestrator}
+              />
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="relative shrink-0 px-6 max-[1000px]:px-4">
+      <div className="relative shrink-0 px-[calc(var(--pad)+var(--sg))]">
         {!scroll.atBottom && (
           <button
             type="button"
             onClick={() => scroll.scrollToBottom(true)}
             aria-label="Jump to latest"
             title="Jump to latest"
-            className="absolute right-4 -top-10 grid size-7 place-items-center rounded-full border border-line-strong bg-raised text-fg-2 transition-[color,background-color] duration-100 hover:text-fg"
+            className="press absolute -top-11 left-1/2 z-10 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-strong bg-raised text-fg-2 shadow-pop hover:text-fg"
           >
             <ArrowDown size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
           </button>
         )}
-        {isOrchestrator ? (
-          <Composer
-            ref={composer}
-            running={running}
-            disabledReason={offlineReason}
-            followUp={(messages?.length ?? 0) > 0}
-            folders={project.folders}
-            model={project.models.orchestrator}
-            onSend={send}
-            onCancel={cancel}
-          />
-        ) : (
-          <ObserverBar />
-        )}
+        <div data-column className="mx-auto w-full max-w-measure pb-3">
+          {isOrchestrator ? (
+            <Composer
+              ref={composer}
+              running={running}
+              disabledReason={offlineReason}
+              followUp={(messages?.length ?? 0) > 0}
+              folders={project.folders}
+              model={project.models.orchestrator}
+              onSend={send}
+              onCancel={cancel}
+              draft={memory ? { initial: (memory.get(draftKey) as string | undefined) ?? "", save: (text) => memory.set(draftKey, text) } : undefined}
+            />
+          ) : (
+            <ObserverBar />
+          )}
+        </div>
       </div>
 
       <p aria-live="polite" className="sr-only">

@@ -19,7 +19,7 @@ export function NotesPanel() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 pr-2 pl-4 text-xs text-fg-3">
-        <span>The orchestrator reads these every turn</span>
+        <span className="min-w-0 truncate">The orchestrator reads these every turn</span>
         <IconButton icon={Plus} label="Add note" size="sm" className="ml-auto" onClick={() => setEditing("new")} disabled={editing === "new"} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
@@ -71,15 +71,20 @@ function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): 
   return (
     <li className="group rounded-sm px-2 py-2 transition-[background-color] duration-100 hover:bg-hover">
       <div className="flex h-6 items-center gap-2">
-        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{note.title}</h3>
-        <div className="flex items-center opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-fg" title={note.title}>
+          {note.title}
+        </h3>
+        {/* Visible on hover, on keyboard focus, and always on touch screens (no hover there). */}
+        <div className="flex items-center opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
           <IconButton icon={Pencil} label={`Edit ${note.title}`} size="sm" onClick={props.onEdit} />
           <IconButton icon={Trash2} label={`Delete ${note.title}`} size="sm" onClick={() => setConfirming(true)} />
         </div>
       </div>
-      <p className="text-xs text-fg-3">
-        {note.author === "orchestrator" ? "Orchestrator" : "You"} ·{" "}
-        <time dateTime={note.updated_at}>{formatRelative(note.updated_at, props.now)}</time>
+      <p className="flex gap-3 text-xs text-fg-3">
+        <span>{note.author === "orchestrator" ? "Orchestrator" : "You"}</span>
+        <time dateTime={note.updated_at} className="tabular-nums">
+          {formatRelative(note.updated_at, props.now)}
+        </time>
       </p>
       <button
         type="button"
@@ -88,7 +93,7 @@ function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): 
         className="mt-1 block w-full rounded-xs text-left"
       >
         {expanded ? (
-          <Markdown text={note.content} className="octo-prose text-[13px]! text-fg-2!" />
+          <Markdown text={note.content} className="octo-prose octo-prose-sm" />
         ) : (
           <p className="line-clamp-2 text-sm text-fg-2">{excerpt(note.content, 400)}</p>
         )}

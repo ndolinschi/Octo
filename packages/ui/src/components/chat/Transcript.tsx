@@ -1,21 +1,25 @@
 import type { Agent, Message } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { cn } from "../../lib/cn";
 import { formatDuration, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { buildTurns, promptText, type Turn } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { Button, IconButton } from "../primitives/Button";
-import { Spinner } from "../primitives/Status";
+import { RunningDot, Spinner } from "../primitives/Status";
 import { DelegationGroup } from "./DelegationGroup";
 import { Markdown } from "./Markdown";
 import { ToolGroup } from "./ToolGroup";
 import { TranscriptContext, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 
-export function Transcript(props: {
+/** Memoised: the conversation re-renders on scroll (pinned prompt, jump button); the transcript need not. */
+export const Transcript = memo(function Transcript(props: {
   agent: Agent;
   messages: Message[];
   now: number;
+  /** This conversation is the one being watched: its live indicator may animate. */
+  watched: boolean;
   speaker: string;
   promptAuthor: string;
   hideFirstPrompt?: boolean;
@@ -35,6 +39,8 @@ export function Transcript(props: {
   const isOrchestrator = agent.parent_id === null;
   const lastTurn = isOrchestrator ? state.lastTurn : null;
   const lastPrompt = turns[turns.length - 1]?.prompt ?? null;
+  // Finished turns only show minutes-old times; a coarse clock lets them skip the per-second tick.
+  const minute = Math.floor(now / 60_000) * 60_000;
 
   return (
     <TranscriptContext.Provider value={ctx}>
@@ -52,9 +58,10 @@ export function Transcript(props: {
                 turn={turn}
                 speaker={props.speaker}
                 live={last && running}
+                watched={props.watched}
                 streaming={last ? streaming : ""}
                 startedAt={started}
-                now={now}
+                now={last ? now : minute}
                 footer={isOrchestrator}
               />
             </section>
@@ -65,6 +72,7 @@ export function Transcript(props: {
             turn={{ key: "pending", prompt: null, items: [], lastAt: null }}
             speaker={props.speaker}
             live
+            watched={props.watched}
             streaming={streaming}
             startedAt={agent.started_at}
             now={now}
@@ -80,25 +88,55 @@ export function Transcript(props: {
       </div>
     </TranscriptContext.Provider>
   );
-}
+});
 
-function UserPrompt({ text, author, external }: { text: string; author: string; external: boolean }) {
+/** Prompts longer than twelve lines collapse, with a toggle to read them in full. */
+const UserPrompt = memo(function UserPrompt({ text, author, external }: { text: string; author: string; external: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const id = useId();
+
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || expanded) return;
+    const check = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, expanded]);
+
   return (
-    <div data-prompt className="rounded-md border border-line bg-raised px-3.5 py-2.5 text-base whitespace-pre-wrap text-fg transition-[box-shadow] duration-300">
+    <div data-prompt className="rounded-md border border-line bg-raised px-3.5 py-2.5 text-base text-fg transition-[box-shadow] duration-300">
       {external ? (
         <div className="mb-0.5 text-xs text-fg-3">From {author}</div>
       ) : (
         <span className="sr-only">{author}: </span>
       )}
-      {text}
+      <div ref={box} id={id} className={cn("whitespace-pre-wrap wrap-anywhere", !expanded && "line-clamp-12")}>
+        {text}
+      </div>
+      {(overflows || expanded) && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={id}
+          onClick={() => setExpanded((x) => !x)}
+          className="press -ml-1.5 mt-1 inline-flex h-6 items-center rounded-sm px-1.5 text-sm text-fg-2 hover:bg-hover hover:text-fg"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
     </div>
   );
-}
+});
 
-function AssistantTurn(props: {
+const AssistantTurn = memo(function AssistantTurn(props: {
   turn: Turn;
   speaker: string;
   live: boolean;
+  watched: boolean;
   streaming: string;
   startedAt: string | null;
   now: number;
@@ -122,14 +160,14 @@ function AssistantTurn(props: {
       {streaming && <Markdown text={streaming} className="octo-prose my-1.5" streaming />}
       {live && (
         <p className="mt-1.5 flex h-6 items-center gap-2 text-sm text-fg-3 tabular-nums">
-          <Spinner className="text-accent" />
+          {props.watched ? <Spinner className="text-accent" /> : <RunningDot />}
           Working…{start !== null && <span>{formatDuration(props.now - start)}</span>}
         </p>
       )}
       {props.footer && !live && reply && turn.lastAt && <TurnFooter reply={reply} at={turn.lastAt} now={props.now} />}
     </article>
   );
-}
+});
 
 /** Muted row under a finished orchestrator reply: copy it, and when it finished. */
 function TurnFooter({ reply, at, now }: { reply: string; at: string; now: number }) {

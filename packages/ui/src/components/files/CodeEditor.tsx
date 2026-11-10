@@ -1,6 +1,7 @@
 import type * as Monaco from "monaco-editor";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { OpenFile } from "../../state/code";
+import { useDelayedLoading } from "../../lib/hooks";
 import { Spinner } from "../primitives/Status";
 import type { EditorBuffers, MonacoApi } from "./buffers";
 
@@ -21,8 +22,8 @@ export function loadMonaco(): Promise<MonacoModule> {
 const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
 /**
- * Thin Monaco wrapper: one editor instance, one model per open file (kept in `buffers`
- * so edits outlive this component), view state saved and restored per tab.
+ * Thin Monaco wrapper: one editor instance per File tab, showing that file's model (kept in
+ * `buffers` so edits outlive this component); view state is saved on unmount and restored.
  */
 export function CodeEditor(props: {
   file: OpenFile;
@@ -34,6 +35,7 @@ export function CodeEditor(props: {
   const host = useRef<HTMLDivElement>(null);
   const [mod, setMod] = useState<MonacoModule | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const loadingShown = useDelayedLoading(!mod && !failed);
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const shownKey = useRef<string | null>(null);
   const onSave = useRef(props.onSave);
@@ -68,6 +70,8 @@ export function CodeEditor(props: {
       minimap: { enabled: false },
       rulers: [],
       scrollBeyondLastLine: false,
+      // No horizontal scrollbar unless a line really is wider than the editor.
+      scrollBeyondLastColumn: 0,
       padding: { top: 8, bottom: 8 },
       wordWrap: "off",
       detectIndentation: true,
@@ -83,7 +87,14 @@ export function CodeEditor(props: {
       stickyScroll: { enabled: false },
       bracketPairColorization: { enabled: false },
       guides: { indentation: true, bracketPairs: false },
-      scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
+      scrollbar: {
+        verticalScrollbarSize: 10,
+        horizontalScrollbarSize: 10,
+        verticalSliderSize: 6,
+        horizontalSliderSize: 6,
+        useShadows: false,
+        alwaysConsumeMouseWheel: false,
+      },
       smoothScrolling: false,
       cursorBlinking: reduced ? "solid" : "blink",
       cursorSmoothCaretAnimation: "off",
@@ -93,11 +104,11 @@ export function CodeEditor(props: {
     });
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave.current());
     editorRef.current = editor;
-    buffers.editor = editor;
+    buffers.editors.add(editor);
     return () => {
       if (shownKey.current) buffers.saveView(shownKey.current, editor.saveViewState());
       shownKey.current = null;
-      if (buffers.editor === editor) buffers.editor = null;
+      buffers.editors.delete(editor);
       editor.setModel(null);
       editor.dispose();
       editorRef.current = null;
@@ -132,8 +143,8 @@ export function CodeEditor(props: {
 
   return (
     <div className="relative h-full min-h-0">
-      {!mod && (
-        <div className="absolute inset-0 flex items-start gap-2 px-3 pt-3 text-sm text-fg-3">
+      {loadingShown && (
+        <div className="absolute inset-0 z-10 flex items-start gap-2 bg-panel px-3 pt-3 text-sm text-fg-3">
           <Spinner />
           Loading editor…
         </div>

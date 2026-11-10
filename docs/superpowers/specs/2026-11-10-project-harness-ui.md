@@ -3,6 +3,110 @@
 **Date:** 2026-11-10 · **Parent:** [`2026-11-10-project-harness-design.md`](./2026-11-10-project-harness-design.md)
 **Code:** `packages/ui` (`@octo/ui`), hosted by `apps/desktop`.
 
+## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
+
+Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)
+plus the v3 design-review findings. Code comments and LSP come next; their seams are the composer footer
+(`components/chat/Composer.tsx`, left slot) and the editor header (`components/files/FileTab.tsx`, right slot).
+
+### Model
+
+```text
+window ─────────────────────────────────────────────────────────────────────────────────────┐
+│ sidebar │ [◧] Project name ················ [agents][notes][files] [⚙]   ← header row   │
+│         │ ╭ group 1 ──────────────────────╮ 6 ╭ group 2 ──────────────────────────────╮ │
+│         │ │ [Chat][Test runner •]         │ ┃ │ [Agents][refresh.ts ●][metro.config.js]│ │
+│         │ │ conversation                  │ ┃ │ editor / tree / notes                  │ │
+│         │ ╰───────────────────────────────╯   ╰───────────────────────────────────────╯ │
+└──────────────────────────────────────────────────────────────────────── 6px margins ────┘
+```
+
+- **Layout** = ordered groups in one row: `{ groups: [{ id, tabs: TabId[], active, size }], focused }`.
+  Tab ids: `chat`, `agents`, `notes`, `files`, `agent:{agentId}`, `file:{folder}\0{path}`. Pure reducers in
+  `state/workspace/layout.ts` (open, close, move, split, activate, resize, parse/validate); the provider
+  (`state/workspace/WorkspaceProvider.tsx`) adds persistence, routing, guards and the tab memory.
+- **Groups**: sizes are fractions (flex weights); min 280px; at most 4; empty groups are removed. The
+  6px gap between groups is the divider (`role="separator"`, arrows ±16px, Shift ±64, double-click = equal).
+- **Opening**: delegation rows and the agents tree → Agent tab in Chat's group (Alt/Option-click → the other
+  side); file links and the Files tree → File tab in the *side group* (the neighbour of Chat's group; created
+  to its right at 50% for a file, 360px for a tool); header buttons → Agents / Notes / Files in the side group.
+  "Other side" of group *i* = *i*+1, or *i*−1 for the last group, or a new group on the right when alone.
+- **Shortcuts**: `Ctrl/Cmd+\` move active tab to the other side · `Ctrl/Cmd+W` close · `Ctrl+Tab` /
+  `Ctrl+Shift+Tab` cycle in the group (capture phase, so they work inside Monaco). Tab strip: ←/→/Home/End,
+  Delete closes, Shift+F10 / context-menu key opens the tab menu (Move to the other side, Split right, Close,
+  Close others). Middle-click closes.
+- **Persistence**: `localStorage["octo.layout.{projectId}"]` (guarded). Unknown ids, duplicates, agents that no
+  longer exist, files in removed folders or gone from disk are dropped silently; Chat is always restored.
+- **Routes**: `#/p/{pid}` focuses Chat; `#/p/{pid}/a/{aid}` opens/focuses that Agent tab. Focusing a Chat or
+  Agent tab writes its route (so back/forward walk conversations); tool and file tabs leave the hash alone.
+- **Narrow**: when the window is < 1100px or the dock is narrower than the groups' minimum widths, only the
+  focused group is shown and its strip lists every tab of every group (no drag, no split; the menu offers Close /
+  Close others). Groups stay mounted, so crossing the breakpoint keeps scroll positions and editors.
+- **Keep-alive**: a tab's view mounts on first show and stays mounted (hidden) while it stays in its group; moving
+  a tab remounts it, so conversations remember scroll position and the composer draft in a per-project tab
+  memory. Each File tab owns a Monaco editor (models stay in `EditorBuffers`).
+- **Drag and drop** (pointer events, 4px threshold, no layout change on start): a floating chip follows the
+  pointer, the source tab dims; over a strip a 2px accent insertion bar shows the slot; over a group body the
+  outer quarter on either side shows a half-width "split" zone, the middle a full "into this group" zone
+  (accent 10% fill + accent 40% edge, radius 8, inset 6px). Esc or releasing outside cancels.
+
+### Dock library decision
+
+| Option | Initial JS (gzip) | Theming | Verdict |
+| --- | --- | --- | --- |
+| `dockview-core` 8.9.0 + `dockview-react` (MIT, active) | +89 kB for core alone, tree-shaken with esbuild (UMD min, no styles: 94 kB) + React adapter + ~6 kB CSS | CSS variables over its own DOM (sash, tab, drop-target classes); floating groups, popouts and grid nesting we don't need | Fails the ~70 kB budget |
+| Hand-built dock (`components/dock/`) | +11.7 kB measured for all of v4 (168.55 → 180.22 kB) | Tokens only; same tab/row/focus states as the rest of the UI | **Chosen** |
+
+The dock needs one row of groups, tabs that move between groups or split a group left/right, and resizable
+dividers. That is ~800 lines of our own code and keeps every pixel on our tokens.
+
+### Motion
+
+| What | Enter | Exit | Reduced motion |
+| --- | --- | --- | --- |
+| Dialog, palette (opened by pointer) | 160ms, opacity + scale 0.98→1 + 4px rise, `cubic-bezier(0.2,0,0,1)` | 100ms opacity + scale 0.98, ease-out | opacity only (120 / 80ms) |
+| Anything opened from the keyboard (Ctrl/Cmd+K, Shift+F10…) | instant (`html[data-input="keyboard"]`) | instant | — |
+| Context menu | instant | instant | — |
+| Drawer (sidebar) | 160ms, translateX(−12px)→0 + opacity; scrim opacity | 120ms ease-out | opacity only |
+| Press (buttons, icon buttons, send) | `:active` scale 0.97, 120ms ease-out | — | none |
+| Press (rows, tabs) | `:active` hover tint over the current fill, 100ms | — | same (tone) |
+| Drop indicator, drag chip | 120ms fade; zone glides 120ms `cubic-bezier(0.2,0,0,1)` | removed | fade only |
+| Hover fills | 100ms background-color | — | instant |
+| Tabs open/close, tab switching, group split/merge | instant (no layout jump; panes keep their scroll) | instant | — |
+| Theme switch | transitions suppressed for one frame | | |
+
+Interaction transitions are ≤ 200ms and always name their properties (no `transition: all`).
+
+### Craft rules (orchestrator addendum)
+
+- **Meta** is laid out in columns or with spacing and tones, never joined with "·".
+- **Loading** indicators (`useDelayedLoading`): nothing for loads under 200ms; once shown, at least 300ms
+  (file tree folders, requests, editor, opening a file, saving).
+- **Tooltips** (`components/primitives/Tooltips.tsx`): one layer fed by the `title` every control has; first after
+  600ms, neighbours instantly for 400ms after; none on disabled controls; `data-shortcut` adds a `kbd` hint (also
+  in palette rows and the tab menu).
+- **Focus** ring = `box-shadow` on `:focus-visible` (inset for rows/tabs, `focus-inset`), so it follows the radius;
+  transparent outline for forced colours. Nested radii are concentric: menu rows 4 (8−4), palette rows 4 (10−6),
+  delegation rows 2 (8−6).
+- **Text**: no weight change between states; tabular numerals on durations/counters; "…"; NBSP between a number
+  and its noun ("2 agents"); chrome (buttons, tabs, rows, menus) is `user-select: none`, transcript and code are
+  selectable; `::selection` uses the `selection` token.
+- **Paths** in tooltips and long file-tab names are shortened in the middle, keeping the file name.
+- **Hit areas** ≥ 24px (the tab close glyph is 16px with a 24px `::before`; dividers are the exception at 14px so
+  they never cover a neighbouring panel's scrollbar).
+
+### Review fixes folded in (v3 review)
+
+Requests "Couldn't load" gets Retry · composer, read-only bar and transcript share both edges (symmetric scrollbar
+gutter, one measure token) · sidebar keeps creation order · 24px tree chevrons that never navigate · re-tuned text
+ramp (table below) · legible Monaco palette and line numbers, no needless horizontal scrollbar · Jump to latest
+centred above the composer · one-line pinned prompt on short viewports · starter prompts as bordered rows · pressed
+states · "Keep mine" · overlay motion · two-step heading scale (`text-title` 16/1.3, `text-heading` 14/1.4, both 600)
+· "Show requests in {name}" · stacked dialog footer under 420px · note actions visible on touch and focus · one
+spinner at most (the watched live turn; everything else running = static accent dot) · delegation card as
+caption + status, aligned grid rows · model shown once per context (composer footer, Agent tab header, short label
+on delegation rows).
+
 ## Structure v3 (2026-11-10, plan; supersedes the flat two-column layout below)
 
 Owner verdict on v2: "still reads as a web page". The fix is structural, not cosmetic.
@@ -51,7 +155,9 @@ grey and the panels white.
 | `active` | white 10% | black 7% | **the one selected fill**: sidebar rows, requests, agents tree, file tree, tabs, palette, theme radio |
 | `line` | white 8% | black 9% | panel edge, hairlines, cards, user box |
 | `line-strong` | white 14% | black 14% | hover edge, separators on hover |
-| `fg` / `fg-2` / `fg-3` | `#e6e6e6` / `#b0b0b0` / `#9c9c9c` | `#1a1a1a` / `#474747` / `#5f5f5f` | text ramp |
+| `fg` / `fg-2` / `fg-3` | `#f0f0f0` / `#c6c6c6` / `#a2a2a2` | `#1a1a1a` / `#424242` / `#636363` | text ramp (v4: neighbours ≥1.49:1 apart, every pair ≥4.5:1 everywhere) |
+| `selection` | accent 32% | accent 20% | `::selection` |
+| `drop`, `drop-edge` | accent 10% / 45% | accent 8% / 40% | dock drop zone fill / edge |
 | `accent` | `#5c9dff` | `#0a66e0` | activity: running spinners, unseen-activity dot, jump highlight |
 | `link` | `#6fa8ff` | `#0a5fd1` | markdown links |
 | `ok` / `err` | `#5fbf7f` / `#f6847e` | `#1a7f45` / `#b42a23` | done glyph / failed glyph and error text |
@@ -62,24 +168,25 @@ Measured pixels (Playwright, DPR 2, dark / light): window `#1b1b1b` / `#f2f2f2`,
 user box `#222222` / `#f5f5f5`, selected sidebar row `#323232` / `#e0e0e0`, hover row `#262626`,
 panel edge `#262626`, active tab on panel `#2b2b2b`.
 
-**Contrast (WCAG 2), computed from the tokens with alpha fills composited** (`scratchpad/v3contrast.py`):
+**Contrast (WCAG 2), v4 ramp, computed from the tokens with alpha fills composited** (`scratchpad/v4contrast.py`).
+Separation: dark fg/fg-2 1.50, fg-2/fg-3 1.49 (v3: 1.74 / 1.27); light 1.73 / 1.67 (v3: 1.87 / 1.46).
 
 | Surface / state | Dark fg · fg-2 · fg-3 · err | Light fg · fg-2 · fg-3 · err |
 | --- | --- | --- |
-| window | 13.80 · 7.94 · 6.27 · 6.99 | 15.55 · 8.30 · 5.70 · 5.69 |
-| window + hover | 12.13 · 6.98 · 5.51 · 6.14 | 14.20 · 7.58 · 5.21 · 5.20 |
-| window + active (selected row) | 10.27 · 5.91 · 4.67 · 5.20 | 13.31 · 7.11 · 4.88 · 4.87 |
-| panel | 14.76 · 8.49 · 6.71 · 7.47 | 17.40 · 9.29 · 6.39 · 6.37 |
-| panel + hover | 13.05 · 7.51 · 5.93 · 6.61 | 15.96 · 8.52 · 5.86 · 5.84 |
-| panel + active | 11.19 · 6.44 · 5.09 · 5.67 | 14.87 · 7.94 · 5.45 · 5.44 |
-| raised | 12.75 · 7.34 · 5.80 · 6.46 | 15.96 · 8.52 · 5.86 · 5.84 |
-| overlay | 12.59 · 7.25 · 5.72 · 6.38 | 17.40 · 9.29 · 6.39 · 6.37 |
-| overlay + hover | 10.88 · 6.26 · 4.95 · 5.51 | 15.96 · 8.52 · 5.86 · 5.84 |
-| overlay + active (palette selection) | 9.25 · 5.33 · *4.21* · 4.69 | 14.87 · 7.94 · 5.45 · 5.44 |
-| code | 13.65 · 7.86 · 6.21 · 6.91 | 15.96 · 8.52 · 5.86 · 5.84 |
+| window | 15.11 · 10.08 · 6.75 · 6.99 | 15.55 · 8.98 · 5.37 · 5.69 |
+| window + hover | 13.28 · 8.86 · 5.93 · 6.14 | 14.20 · 8.20 · 4.90 · 5.20 |
+| window + active | 11.25 · 7.51 · 5.02 · 5.20 | 13.31 · 7.69 · 4.59 · 4.87 |
+| panel | 16.17 · 10.79 · 7.22 · 7.47 | 17.40 · 10.05 · 6.01 · 6.37 |
+| panel + hover | 14.30 · 9.54 · 6.38 · 6.61 | 15.96 · 9.22 · 5.51 · 5.84 |
+| panel + active | 12.25 · 8.18 · 5.47 · 5.67 | 14.87 · 8.58 · 5.13 · 5.44 |
+| raised | 13.96 · 9.31 · 6.23 · 6.46 | 15.96 · 9.22 · 5.51 · 5.84 |
+| overlay | 13.79 · 9.20 · 6.16 · 6.38 | 17.40 · 10.05 · 6.01 · 6.37 |
+| overlay + hover | 11.92 · 7.95 · 5.32 · 5.51 | 15.96 · 9.22 · 5.51 · 5.84 |
+| overlay + active | 10.13 · 6.76 · 4.52 · 4.69 | 14.87 · 8.58 · 5.13 · 5.44 |
+| code | 14.95 · 9.98 · 6.68 · 6.91 | 15.96 · 9.22 · 5.51 · 5.84 |
 
-Every pair is ≥ 4.5:1 except dark `fg-3` on `overlay + active` (4.21): the palette therefore
-switches its meta text to `fg-2` on the selected row (rule: meta on a selected row is `fg-2`).
+Every pair is ≥ 4.5:1, including the selected states (the v3 exception on `overlay + active` is gone; meta on
+selected rows may still use `fg-2` for emphasis).
 `accent` as a non-text glyph: 6.3 / 4.7 on the window, 6.8 / 5.3 on panels.
 
 ### Type
@@ -92,8 +199,8 @@ mono `ui-monospace, "SF Mono", Menlo, Consolas, monospace`. No bundled fonts.
 | Meta, context line, captions in cards | 12 / 16 | 400 |
 | UI (rows, buttons, tabs, title bar) | 13 / 20 | 400, 500 for the title |
 | Prose, tables, user message, composer, "Worked for" | 14 / 1.6 | 400 |
-| Markdown h3 / h2 / h1 | 15 / 16 / 17, 1.3 | 600 |
-| Sub-agent role | 14 | 600 |
+| `text-title`: page / dialog-less titles, markdown h1–h2 | 16 / 1.3 | 600 |
+| `text-heading`: dialog titles, sub-agent role, markdown h3–h4 | 14 / 1.4 | 600 |
 | Code, tool arguments | 12 mono | 400 |
 
 Sentence case everywhere. Durations and counts use `tabular-nums`.
@@ -101,8 +208,8 @@ Sentence case everywhere. Durations and counts use `tabular-nums`.
 ### Spacing and radius
 
 4px grid. Top bar 40px. Sidebar 260px (`w-sidebar`), action and project rows 32px.
-Right pane 320px (`w-pane`), tab strip 40px (aligned with the top bar), tabs 28px, tree rows 28px.
-Chat column 760px (`max-w-measure`) with 24px gutters (16px below 1000px). Composer 40px tall when one line.
+v4: header row 40px on the window surface; group tab strip 36px, tabs 28px, tree rows 28px.
+Chat column: `--spacing-measure` 720px of content plus 24px padding (16px when the conversation is under 560px, a container query); transcript, pinned prompt and composer share both edges. Composer 40px tall when one line.
 Radius (tokens, nothing rounder): `xs 4` inline code · `sm 6` controls, rows, tabs · `md 8` user message,
 cards (delegation), inputs, code · `lg 10` inset panels, dialogs, palette · `xl 12` composer and read-only bar.
 Inset panels: 1px `line` edge, radius 10, 6px window margin top/right/bottom and between panels, flush to the
@@ -131,11 +238,11 @@ sidebar; full-bleed (no edge, no radius, no margin) below 640px. Elevation: dial
   `model · tier · duration · status` muted on the right (wraps beneath on narrow). Failed agents
   show the error in `err` plus "Ask the orchestrator to retry it." "Task brief" collapsed.
   Bottom: bordered `raised` read-only bar with "Back to orchestrator".
-- **Right pane.** Its own inset panel (docked) or a `panel`-coloured overlay with an edge and shadow (narrow).
-  Tab strip with "Agents", "Notes" and "Files" (small leading icon, active = `active` fill, no close buttons). Agents tree: one line per agent; the root shows a glyph only when not idle.
-  Notes: quiet list with inline add/edit/delete. Files: see *Code pane* below.
-- **Composer.** One `raised` row: textarea, muted model name, round send button (stop square while
-  running). Placeholder "Message the orchestrator" when empty, "Send follow-up" once there are
+- **Groups (v4).** Each tab group is an inset panel; its 36px strip holds compact text tabs with a kind icon
+  (Chat, Agent, File, Agents, Notes, Files), active = `active` fill (`hover` fill when the group is not focused),
+  close on hover/active (never Chat), grey dot = unsaved, accent dot = working agent. See *Workspace v4*.
+- **Composer.** One `raised` row: textarea and a round send button (stop square while running). Footer
+  line: folders on the left (pending comments will join them), the orchestrator model as a quiet label on the right. Placeholder "Message the orchestrator" when empty, "Send follow-up" once there are
   messages; the accessible name is always "Message the orchestrator". Focus = `focus` edge.
   Below the box: folder names as one muted 12px line. No attach button.
 - **Errors.** Every error names a next step; Retry where possible (turn failed → resend the last
@@ -185,7 +292,7 @@ Projects                       +
 Ctrl/Cmd+K anywhere (capture phase, so it also works in Monaco) or the sidebar search button. Centred overlay
 (`overlay`, radius 10, max 560px): an input (`role="combobox"`, `aria-activedescendant`) over a listbox with
 groups **Projects**, **Requests** (open project), **Agents** (open project, `listAgents` on open) and
-**Actions** (New project, Open settings, Toggle side panel, Toggle sidebar). Substring match ranked by position
+**Tabs** (every open tab) and **Actions** (Show agents/notes/files, Move tab to the other side, Split right, Close tab, Close other tabs, Make groups equal width — when they apply — then New project, Open settings, Toggle sidebar; shortcuts as `kbd` hints). Substring match ranked by position
 and word start, else in-order fuzzy match; 6 rows per group. ↑/↓/PgUp/PgDn move, Enter runs, Esc closes, Tab
 stays in the input, focus returns to the opener; hover highlights but never moves the keyboard selection; the
 result count is announced (`role="status"`).
@@ -200,31 +307,26 @@ the URL is restored, and a dialog asks "Discard unsaved changes?" (Stay / Discar
 Spec: [`2026-11-10-code-pane-design.md`](./2026-11-10-code-pane-design.md). Code: `components/files/`,
 `state/code.tsx` (open files, tree cache, save/conflict/live refresh), `lib/files.ts`.
 
-- **Resizable pane.** Docked pane has a 6px separator on its left edge (`role="separator"`, arrows ±16px,
-  Shift ±64, Home/End = min/max, double-click resets). Min 280px; the conversation keeps ≥400px.
-  Width persists (`octo.paneWidth`); unset + a file open on the Files tab = half the window.
-  Overlay (<1100px) stays as before: 320px, or `min(100%, 640px)` with a file open; not resizable.
+- **Tabs (v4).** The Files tree is a tab; every open file is its own File tab in the dock (no nested editor strip).
+  Opening a file from the tree or a link puts it in the side group (widened to ≥45% of the row). Each File tab has a
+  32px header (path crumbs; right slot for editor actions), the notice line, then its own Monaco editor.
 - **Tree.** One collapsible root per project folder (label, medium weight, `title` = absolute path; roots
   start expanded), directories load on expand. Rows exactly like the agents tree: 28px, 14px indent per level,
   12px chevron, 14px `fg-3` file/folder icon, truncating name with `title` = `folder/path`, selected = `active`.
   Loading / "Couldn't load … Retry" / "Empty folder" rows in 12px `fg-3`. ARIA tree: arrows, ←/→ collapse/expand,
   Home/End, Enter opens or toggles.
-- **Editor area.** Shown once a file is open. 40px tab strip with a bottom hairline: leading tree toggle,
-  then 28px tabs like the panel tabs (active = `raised`): name, 8px `fg-2` dot when modified, 12px close
-  (visible on the active tab, on hover elsewhere; the dot yields to it on hover). Middle-click closes,
-  ←/→/Home/End move, Delete closes, `title` = full path. Pane ≥600px wide: tree (220px, hairline right)
-  beside the editor, collapsible (`octo.filesTree`); narrower: tree and editor switch inside the editor area.
-  Closing a modified tab asks first (Dialog: Cancel / Discard changes).
+- **Closing** a File tab with unsaved edits asks first (one dialog for several files: Cancel / Discard changes).
 - **Notices.** One hairline-bounded line under the tab strip: "Changed on disk since you opened it."
-  + Reload from disk / Overwrite (409 on save); "Changed on disk." + Reload / keep (agent changed a modified
+  + Reload from disk / Overwrite (409 on save); "Changed on disk." + Reload / "Keep mine" (agent changed a modified
   file); "Couldn't save: …" in `err` + Retry. Too-large / binary / open error: one line in place of the editor.
 - **Monaco.** Loaded only via `import()` (`components/files/monaco.ts`), workers bundled with `?worker`,
   no CDN. 13/20 mono from the token stack, no minimap/rulers/sticky scroll/bracket colours, padding top 8.
-  Themes `octo-{dark,light}`: background = `panel` (the pane is always on a panel surface), grey gutter/selection/guides,
-  syntax = grey ramp + three muted hues (keyword blue-grey, string sage, number sand), italic comments
-  (≥4.5:1). `Ctrl/Cmd+S` saves.
+  Themes `octo-{dark,light}`: background = `panel`; plain text grey; keywords blue, strings sage, numbers sand,
+  types teal, italic grey comments — each ≥4.5:1 on the panel and visibly distinct from plain text; line numbers
+  ≥4.5:1 (`#808080` / `#737373`). `scrollBeyondLastColumn: 0`, so no horizontal scrollbar unless a line is wider than
+  the editor; slim neutral scrollbars. `Ctrl/Cmd+S` saves.
 - **Links.** read_file / write_file paths in tool details open the file (list_dir reveals the folder) in the
-  Files tab, opening the pane; omitted `folder` = first folder. Host `openFile` wins. No link without folders.
+  Files tab / File tab; omitted `folder` = first folder. Host `openFile` wins. No link without folders.
 - **Empty.** "No folders attached. Add one in project settings." + Project settings button.
 
 ## Principles
@@ -265,19 +367,20 @@ closes on navigation and Esc, and opening it closes the pane overlay so the two 
 
 | Folder | Components |
 | --- | --- |
-| `primitives` | Button, IconButton, Dialog and `useModal` (focus trap, Esc, restore focus), Field/Input/Textarea, Tabs, Spinner, StatusIcon |
+| `primitives` | Button, IconButton, Dialog and `useModal` (focus trap, Esc, restore focus), Field/Input/Textarea, Menu, Presence (exit animations), Tooltips, Spinner, RunningDot, StatusIcon |
 | `shell` | Sidebar (+ConnectionStatus), ProjectItem (+RequestList), Panel, CommandPalette, SettingsDialog, TopBar, OfflineState |
 | `chat` | ConversationView, Transcript (+UserPrompt, AssistantTurn, TurnFooter, TurnBanner), Markdown (+CodeBlock copy), ToolGroup, DelegationGroup/DelegationRow, Composer, ObserverBar, AgentHeader/Breadcrumb, StarterPrompts |
-| `agents` | AgentsPanel (ARIA tree) |
+| `agents` | AgentsPanel (ARIA tree, 24px chevrons) |
 | `notes` | NotesPanel (+NoteItem, NoteEditor) |
-| `files` | FilesPanel (+TabStrip, EditorBody, Notice), FileTree (ARIA tree), CodeEditor (Monaco wrapper), `buffers.ts` (models per file), `monaco.ts` (lazy chunk: Monaco, workers, themes) |
+| `dock` | Dock (groups), TabStrip (+tab menu), Divider, DragLayer, TabView, `drag.ts`, `tabInfo.ts` |
+| `files` | FilesTool (tree tab), FileTab (+Notice), FileTree (ARIA tree), CodeEditor (Monaco wrapper), `buffers.ts` (models per file), `monaco.ts` (lazy chunk: Monaco, workers, themes) |
 | `project` | ProjectHeader, ProjectDialog (create + settings + delete), NoProjectsHero |
 
 `app/` holds `OctoApp` (props: `bridge`, `bridgeUrl`, `shell`, `demo?`), `AppShell` (sidebar
-inline/drawer) and `ProjectWorkspace` (top bar, conversation, docked/overlay pane).
+inline/drawer) and `ProjectWorkspace` (header row + dock). v4 adds `components/dock/` (Dock, TabStrip, Divider, DragLayer, TabView, drag store) and `state/workspace/` (layout reducers, WorkspaceProvider); `state/pane.tsx` and the side pane are gone.
 
 State: `state/app.tsx` (bridge, health, projects, config, theme preference), `state/nav.tsx` (request jumps,
-request in view, leave guard, pane toggle), `state/requests.tsx` (cached request lists), `state/pane.tsx`, and `state/project.tsx`
+request in view, leave guard, workspace API for the palette), `state/requests.tsx` (cached request lists, Retry), and `state/project.tsx`
 (`useReducer` over agent-client `applyEvent`/`with*`, SSE subscription, refetch on reconnect).
 Routing: `lib/route.ts` — `#/p/{projectId}` and `#/p/{projectId}/a/{agentId}`; `useGuardedRoute` can hold a change.
 

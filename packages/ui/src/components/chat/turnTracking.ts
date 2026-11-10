@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useNav } from "../../state/nav";
 
 /** Distance from the scroll area's top at which a prompt counts as stuck (the sticky copy's inset). */
@@ -47,13 +47,19 @@ export function useStuckTurn(root: RefObject<HTMLElement | null>): { stuckId: nu
     if (!el) return;
     const top = el.getBoundingClientRect().top + STICK_TOP;
     let next: number | null = null;
-    for (const s of turnsIn(el)) {
-      const r = s.getBoundingClientRect();
-      if (r.top > top) break;
-      if (r.bottom <= top + 40) continue;
+    // Turns are in document order: binary-search the first one still reaching below the line.
+    const turns = turnsIn(el);
+    let lo = 0;
+    let hi = turns.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (turns[mid].getBoundingClientRect().bottom <= top + 40) lo = mid + 1;
+      else hi = mid;
+    }
+    const s = turns[lo];
+    if (s && s.getBoundingClientRect().top <= top) {
       const prompt = s.querySelector(PROMPT);
       if (prompt && prompt.getBoundingClientRect().top < top) next = Number(s.dataset.turnId);
-      break;
     }
     setStuckId(next);
   }, [root]);
@@ -83,9 +89,15 @@ export function useTurnRequests(opts: {
   enabled: boolean;
   loaded: boolean;
   release(): void;
+  /** Brings this conversation's tab to the front first (it may be hidden behind another tab). */
+  reveal?: () => void;
 }) {
   const nav = useNav();
   const { root, projectId, enabled, loaded, release } = opts;
+  const revealRef = useRef(opts.reveal);
+  useLayoutEffect(() => {
+    revealRef.current = opts.reveal;
+  });
 
   const scrollTo = useCallback(
     (messageId: number) => {
@@ -105,12 +117,17 @@ export function useTurnRequests(opts: {
 
   useEffect(() => {
     if (!enabled || !loaded) return;
+    // A hidden tab has no layout to scroll: show it, then scroll once it has been laid out.
+    const go = (messageId: number) => {
+      revealRef.current?.();
+      requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(messageId)));
+    };
     const pending = nav.takePendingTurn(projectId);
-    if (pending) requestAnimationFrame(() => scrollTo(pending.messageId));
+    if (pending) go(pending.messageId);
     return nav.onTurnRequest((turn) => {
       if (turn.projectId !== projectId) return;
       nav.takePendingTurn(projectId);
-      scrollTo(turn.messageId);
+      go(turn.messageId);
     });
   }, [enabled, loaded, nav, projectId, scrollTo]);
 }

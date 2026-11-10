@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { EditorBuffers } from "../components/files/buffers";
-import { ancestors, fileKey, fileName, normalizePath, parentPath } from "../lib/files";
+import { ancestors, fileKey, fileName, normalizePath, parentPath, splitKey } from "../lib/files";
 import { useApp } from "./app";
 import { useOptionalNav } from "./nav";
 import { useProject } from "./project";
@@ -39,29 +39,27 @@ export type OpenFile = {
 
 export type DirState = { status: "loading" | "ready" | "error"; entries: FileEntry[]; error: string | null };
 
-/** Which half of the Files tab is shown when the pane is too narrow for both. */
-export type FilesView = "tree" | "editor";
-
 type CodeValue = {
   /** The project's folders (label + absolute path), one tree root each. */
   folders: { label: string; path: string }[];
   files: OpenFile[];
-  activeKey: string | null;
-  active: OpenFile | null;
+  file(key: string): OpenFile | undefined;
   buffers: EditorBuffers;
   dirs: Record<string, DirState>;
   isExpanded(key: string): boolean;
   setExpanded(folder: string, path: string, expanded: boolean): void;
   ensureDir(folder: string, path: string): void;
   reloadDir(folder: string, path: string): void;
-  /** Tree row that reflects the latest open/reveal; bumps `revealTick` to scroll it into view. */
+  /** Tree row that reflects the latest open/reveal/focused file; bumps `revealTick` to scroll it into view. */
   selectedKey: string | null;
   revealTick: number;
-  view: FilesView;
-  setView(view: FilesView): void;
+  /** Opens a file (loading it once) and asks the workspace to show its tab. */
   openFile(folder: string, path: string): void;
+  /** Loads a file restored with the layout, without showing it; a file gone from disk is reported via `onGone`. */
+  restore(key: string): void;
+  /** Marks the file whose tab has focus in the tree. */
+  select(key: string): void;
   revealDir(folder: string, path: string): void;
-  activate(key: string): void;
   close(key: string): void;
   save(key: string, options?: { overwrite?: boolean }): Promise<void>;
   reloadFromDisk(key: string): Promise<void>;
@@ -77,34 +75,43 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+type Callbacks = {
+  /** Show the tab of a file the user opened. */
+  onOpen(key: string): void;
+  /** Show the Files tab (a folder was revealed). */
+  onReveal(): void;
+  /** A restored file no longer exists; drop its tab silently. */
+  onGone(key: string): void;
+};
+
 /**
- * Open files and the file tree for one project. Sits above the side pane so tabs, unsaved
- * edits and expanded folders survive closing the pane or switching side-pane tabs.
- * `onReveal` asks the workspace to show the Files tab (opening the pane if needed).
+ * Open files and the file tree for one project. Sits above the dock, so unsaved edits and
+ * expanded folders survive moving and closing tabs. Which file tab is shown where is the
+ * workspace's business; it is told through the callbacks.
  */
-export function CodeProvider({ children, onReveal }: { children: ReactNode; onReveal(): void }) {
+export function CodeProvider({ children, ...callbacks }: Callbacks & { children: ReactNode }) {
   const { bridge } = useApp();
   const { projectId, project, onEvent } = useProject();
   const folders = project?.folders;
   const [files, setFiles] = useState<OpenFile[]>([]);
-  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [dirs, setDirs] = useState<Record<string, DirState>>({});
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [revealTick, setRevealTick] = useState(0);
-  const [view, setView] = useState<FilesView>("tree");
 
   const filesRef = useRef(files);
   const dirsRef = useRef(dirs);
   const expandedRef = useRef(expanded);
+  const selectedRef = useRef(selectedKey);
   useLayoutEffect(() => {
     filesRef.current = files;
     dirsRef.current = dirs;
     expandedRef.current = expanded;
+    selectedRef.current = selectedKey;
   });
-  const revealRef = useRef(onReveal);
+  const cb = useRef(callbacks);
   useLayoutEffect(() => {
-    revealRef.current = onReveal;
+    cb.current = callbacks;
   });
 
   const patch = useCallback((key: string, next: Partial<OpenFile>) => {
@@ -158,13 +165,14 @@ export function CodeProvider({ children, onReveal }: { children: ReactNode; onRe
   /* ---------- files ---------- */
 
   const load = useCallback(
-    async (key: string, folder: string, path: string) => {
+    async (key: string, folder: string, path: string, restored = false) => {
       try {
         const fc = await bridge.readFile(projectId, folder, path);
         patch(key, { status: "ready", content: fc.content, mtime: fc.mtime, error: null, notice: null });
         buffers.replace(key, fc.content);
       } catch (e) {
         const code = e instanceof BridgeError ? e.code : "";
+        if (restored && code === "not_found") return cb.current.onGone(key);
         const status: FileStatus = code === "file_too_large" ? "too_large" : code === "binary_file" ? "binary" : "error";
         patch(key, { status, error: errorMessage(e) });
       }
@@ -172,36 +180,51 @@ export function CodeProvider({ children, onReveal }: { children: ReactNode; onRe
     [bridge, projectId, patch, buffers],
   );
 
+  /** Adds the file to the open set (loading it) unless it is already there. */
+  const ensure = useCallback(
+    (folder: string, path: string, restored = false) => {
+      const key = fileKey(folder, path);
+      if (filesRef.current.some((f) => f.key === key)) return key;
+      const file: OpenFile = {
+        key,
+        folder,
+        path,
+        name: fileName(path),
+        status: "loading",
+        error: null,
+        content: "",
+        mtime: "",
+        modified: false,
+        saving: false,
+        notice: null,
+      };
+      filesRef.current = [...filesRef.current, file];
+      setFiles((fs) => (fs.some((f) => f.key === key) ? fs : [...fs, file]));
+      void load(key, folder, path, restored);
+      return key;
+    },
+    [load],
+  );
+
   const openFile = useCallback(
     (folder: string, rawPath: string) => {
       const path = normalizePath(rawPath);
       if (!path) return;
-      const key = fileKey(folder, path);
-      if (!filesRef.current.some((f) => f.key === key)) {
-        const file: OpenFile = {
-          key,
-          folder,
-          path,
-          name: fileName(path),
-          status: "loading",
-          error: null,
-          content: "",
-          mtime: "",
-          modified: false,
-          saving: false,
-          notice: null,
-        };
-        setFiles((fs) => (fs.some((f) => f.key === key) ? fs : [...fs, file]));
-        void load(key, folder, path);
-      }
-      setActiveKey(key);
+      const key = ensure(folder, path);
       setSelectedKey(key);
       setRevealTick((n) => n + 1);
-      setView("editor");
       expandTo(folder, ancestors(path));
-      revealRef.current();
+      cb.current.onOpen(key);
     },
-    [load, expandTo],
+    [ensure, expandTo],
+  );
+
+  const restore = useCallback(
+    (key: string) => {
+      const { folder, path } = splitKey(key);
+      if (path) ensure(folder, path, true);
+    },
+    [ensure],
   );
 
   const revealDir = useCallback(
@@ -210,8 +233,7 @@ export function CodeProvider({ children, onReveal }: { children: ReactNode; onRe
       expandTo(folder, [...ancestors(path), path]);
       setSelectedKey(fileKey(folder, path));
       setRevealTick((n) => n + 1);
-      setView("tree");
-      revealRef.current();
+      cb.current.onReveal();
     },
     [expandTo],
   );
@@ -225,8 +247,6 @@ export function CodeProvider({ children, onReveal }: { children: ReactNode; onRe
       const rest = fs.filter((f) => f.key !== key);
       filesRef.current = rest;
       setFiles(rest);
-      setActiveKey((current) => (current === key ? (rest[Math.min(i, rest.length - 1)]?.key ?? null) : current));
-      if (!rest.length) setView("tree");
     },
     [buffers],
   );
@@ -331,7 +351,10 @@ export function CodeProvider({ children, onReveal }: { children: ReactNode; onRe
   const anyModified = files.some((f) => f.modified);
   useEffect(() => {
     if (!anyModified) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ""; // still required by Chromium-based webviews
+    };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [anyModified]);
@@ -340,8 +363,7 @@ export function CodeProvider({ children, onReveal }: { children: ReactNode; onRe
     () => ({
       folders: folders ?? NO_FOLDERS,
       files,
-      activeKey,
-      active: files.find((f) => f.key === activeKey) ?? null,
+      file: (key) => files.find((f) => f.key === key),
       buffers,
       dirs,
       isExpanded,
@@ -354,22 +376,22 @@ export function CodeProvider({ children, onReveal }: { children: ReactNode; onRe
       reloadDir: (folder, path) => void loadDir(folder, path),
       selectedKey,
       revealTick,
-      view,
-      setView,
       openFile,
-      revealDir,
-      activate: (key) => {
-        setActiveKey(key);
+      restore,
+      select: (key) => {
+        if (selectedRef.current === key) return;
+        selectedRef.current = key;
         setSelectedKey(key);
-        setView("editor");
+        setRevealTick((n) => n + 1);
       },
+      revealDir,
       close,
       save,
       reloadFromDisk,
       retryOpen,
       dismissNotice: (key) => patch(key, { notice: null }),
     }),
-    [folders, files, activeKey, buffers, dirs, isExpanded, ensureDir, loadDir, selectedKey, revealTick, view, openFile, revealDir, close, save, reloadFromDisk, retryOpen, patch],
+    [folders, files, buffers, dirs, isExpanded, ensureDir, loadDir, selectedKey, revealTick, openFile, restore, revealDir, close, save, reloadFromDisk, retryOpen, patch],
   );
 
   return <CodeContext.Provider value={value}>{children}</CodeContext.Provider>;

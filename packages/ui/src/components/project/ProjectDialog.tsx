@@ -115,7 +115,7 @@ export function ProjectDialog(props: {
       footer={
         confirmDelete ? (
           <>
-            <p className="basis-full text-sm text-fg-2 sm:basis-0 sm:flex-1">
+            <p className="basis-full text-sm text-fg-2 max-[420px]:order-last sm:basis-0 sm:flex-1">
               Delete <span className="text-fg">{props.project?.name}</span> and its history? This can't be undone.
             </p>
             <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
@@ -128,7 +128,7 @@ export function ProjectDialog(props: {
         ) : (
           <>
             {props.onDelete && (
-              <Button variant="ghost" className="mr-auto -ml-3 text-err! hover:text-err!" onClick={() => setConfirmDelete(true)}>
+              <Button variant="ghost" className="text-err! hover:text-err! min-[421px]:mr-auto min-[421px]:-ml-3" onClick={() => setConfirmDelete(true)}>
                 Delete project
               </Button>
             )}

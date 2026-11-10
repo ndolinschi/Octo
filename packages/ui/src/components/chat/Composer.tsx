@@ -3,7 +3,7 @@ import { ArrowUp, Square } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
-import { shortModel } from "../primitives/Status";
+import { modelLabel } from "../primitives/Status";
 
 export type ComposerHandle = { focus(): void; fill(text: string): void };
 
@@ -16,12 +16,18 @@ type Props = {
   model: string | null;
   onSend(text: string): Promise<void>;
   onCancel(): Promise<void>;
+  /** Keeps an unsent draft across remounts (moving the Chat tab to another group). */
+  draft?: { initial: string; save(text: string): void };
 };
 
 const MAX_HEIGHT_VH = 0.4;
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(props, handle) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => props.draft?.initial ?? "");
+  const saveDraft = props.draft?.save;
+  useEffect(() => {
+    saveDraft?.(text);
+  }, [text, saveDraft]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -88,7 +94,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
   const folders = props.folders.map((f) => f.label).join(", ");
 
   return (
-    <div className="mx-auto w-full max-w-measure pb-3">
+    <div>
       {error && (
         <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm">
           <p className="min-w-0 flex-1 text-fg-2">
@@ -108,6 +114,13 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
           "flex items-end gap-2 rounded-xl border border-line bg-raised pr-1.5 pl-3.5 transition-[border-color] duration-100",
           !disabled && "focus-within:border-focus",
         )}
+        onMouseDown={(e) => {
+          // Clicking the padding around the textarea still puts the caret in it.
+          if (e.target === e.currentTarget) {
+            e.preventDefault();
+            area.current?.focus();
+          }
+        }}
       >
         <label htmlFor="octo-composer" className="sr-only">
           Message the orchestrator
@@ -121,20 +134,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="block max-h-[40vh] min-h-10 min-w-0 flex-1 resize-none bg-transparent py-[9px] text-base leading-[22px] text-fg placeholder:text-fg-3 focus:outline-none focus-visible:outline-none disabled:cursor-not-allowed"
+          className="block max-h-[40vh] min-h-10 min-w-0 flex-1 resize-none overscroll-contain bg-transparent py-[9px] text-base leading-[22px] wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
         />
-        {props.model && (
-          <span className="mb-1.5 hidden h-7 shrink-0 items-center text-sm text-fg-3 min-[480px]:flex" title={props.model}>
-            {shortModel(props.model)}
-          </span>
-        )}
         {props.running ? (
           <button
             type="button"
             onClick={() => void props.onCancel()}
             aria-label="Stop the current turn"
             title="Stop"
-            className="mb-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-fg transition-opacity duration-100 hover:opacity-90"
+            className="press mb-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-fg hover:opacity-90"
           >
             <Square size={9} fill="currentColor" strokeWidth={0} aria-hidden />
           </button>
@@ -144,15 +152,23 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
             disabled={!canSend}
             aria-label="Send message"
             title="Send"
-            className="mb-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-fg transition-[background-color,color,opacity] duration-100 hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100"
+            className="press mb-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-fg hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100"
           >
             <ArrowUp size={15} strokeWidth={2} absoluteStrokeWidth aria-hidden />
           </button>
         )}
       </form>
-      <p className="mt-1.5 truncate px-1 text-xs text-fg-3" title={props.folders.map((f) => f.path).join("\n") || undefined}>
-        {folders || "No folders attached"}
-      </p>
+      {/* Footer: context on the left (folders; pending comments will join it), the model on the right. */}
+      <div className="mt-1.5 flex h-4 items-center gap-3 px-1 text-xs text-fg-3">
+        <p className="min-w-0 flex-1 truncate" title={props.folders.map((f) => f.path).join("\n") || undefined}>
+          {folders || "No folders attached"}
+        </p>
+        {props.model && (
+          <p className="shrink-0" title={`Orchestrator model: ${props.model}`}>
+            {modelLabel(props.model)}
+          </p>
+        )}
+      </div>
     </div>
   );
 });

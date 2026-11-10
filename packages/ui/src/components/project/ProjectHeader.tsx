@@ -1,22 +1,24 @@
-import { PanelRight, Settings2, SquareArrowOutUpRight } from "lucide-react";
-import { forwardRef } from "react";
+import { FolderTree, NotebookText, Settings2, SquareArrowOutUpRight, Workflow } from "lucide-react";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
+import type { ToolTab } from "../../state/workspace/layout";
+import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
 import { TopBar } from "../shell/TopBar";
 
-/** Project title bar. The forwarded ref is the side-panel toggle, so focus can return to it. */
-export const ProjectHeader = forwardRef<
-  HTMLButtonElement,
-  {
-    sidebarOpen: boolean;
-    onToggleSidebar(): void;
-    paneOpen: boolean;
-    onTogglePane(): void;
-    onSettings(): void;
-  }
->(function ProjectHeader(props, paneToggle) {
+const TOOLS: { tool: ToolTab; label: string; icon: typeof Workflow }[] = [
+  { tool: "agents", label: "Show agents", icon: Workflow },
+  { tool: "notes", label: "Show notes", icon: NotebookText },
+  { tool: "files", label: "Show files", icon: FolderTree },
+];
+
+/**
+ * Header row of a project: its name, the tools (open or focus Agents / Notes / Files in the side
+ * group; pressed while showing) and project settings. It never repeats the tabs themselves.
+ */
+export function ProjectHeader(props: { sidebarOpen: boolean; onToggleSidebar(): void; onSettings(): void }) {
   const { project } = useProject();
+  const ws = useWorkspace();
   const { openProjectInEditor } = useHost();
   return (
     <TopBar
@@ -25,6 +27,10 @@ export const ProjectHeader = forwardRef<
       actions={
         project && (
           <>
+            {TOOLS.map((t) => (
+              <IconButton key={t.tool} icon={t.icon} label={t.label} pressed={ws.isVisible(t.tool)} onClick={() => ws.openTool(t.tool)} />
+            ))}
+            <span aria-hidden className="mx-1 h-4 w-px bg-line-strong" />
             {openProjectInEditor && (
               <IconButton
                 icon={SquareArrowOutUpRight}
@@ -35,22 +41,15 @@ export const ProjectHeader = forwardRef<
               />
             )}
             <IconButton icon={Settings2} label="Project settings" onClick={props.onSettings} />
-            <IconButton
-              ref={paneToggle}
-              icon={PanelRight}
-              label="Side panel"
-              pressed={props.paneOpen}
-              onClick={props.onTogglePane}
-            />
           </>
         )
       }
     >
       {project && (
-        <h1 className="min-w-0 truncate pl-1 text-sm font-medium" title={project.name}>
+        <h1 className="min-w-0 truncate pl-1 text-sm font-medium text-fg" title={project.name}>
           {project.name}
         </h1>
       )}
     </TopBar>
   );
-});
+}

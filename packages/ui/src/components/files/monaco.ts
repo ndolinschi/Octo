@@ -47,8 +47,9 @@ for (const defaults of [monaco.typescript.typescriptDefaults, monaco.typescript.
 }
 monaco.json.jsonDefaults.setDiagnosticsOptions({ validate: true, allowComments: true, trailingCommas: "ignore", enableSchemaRequest: false });
 
-/* Themes derived from the UI tokens in styles.css. Syntax uses three muted hues
-   (keyword, string, number) over the grey ramp; everything else is grey. */
+/* Themes derived from the UI tokens in styles.css. Restrained but legible: plain text is grey,
+   and keywords, strings, numbers, types and comments each have their own quiet hue/tone, every one
+   ≥ 4.5:1 on the panel background (line numbers too). */
 type Palette = {
   text: string;
   strong: string;
@@ -57,6 +58,7 @@ type Palette = {
   keyword: string;
   string: string;
   number: string;
+  type: string;
   lineNumber: string;
   lineNumberActive: string;
   overlay: string;
@@ -68,15 +70,16 @@ type Palette = {
 };
 
 const DARK: Palette = {
-  text: "#d4d4d4",
-  strong: "#e6e6e6",
-  muted: "#9a9a9a",
-  comment: "#808080",
-  keyword: "#a9b6c9",
-  string: "#b4c1a4",
-  number: "#ccb491",
-  lineNumber: "#5e5e5e",
-  lineNumberActive: "#a3a3a3",
+  text: "#d8d8d8",
+  strong: "#ededed",
+  muted: "#a6a6a6",
+  comment: "#8a8a8a",
+  keyword: "#82a8de",
+  string: "#a5c48f",
+  number: "#d8b07a",
+  type: "#7cc3b6",
+  lineNumber: "#808080",
+  lineNumberActive: "#d0d0d0",
   overlay: "#232323",
   raised: "#222222",
   err: "#f6847e",
@@ -85,15 +88,16 @@ const DARK: Palette = {
 };
 
 const LIGHT: Palette = {
-  text: "#2b2b2b",
-  strong: "#1a1a1a",
-  muted: "#6b6b6b",
-  comment: "#737373",
-  keyword: "#3b5577",
-  string: "#4b6a3d",
-  number: "#82602c",
-  lineNumber: "#a8a8a8",
-  lineNumberActive: "#5c5c5c",
+  text: "#262626",
+  strong: "#141414",
+  muted: "#5e5e5e",
+  comment: "#6b6b6b",
+  keyword: "#2a5ea3",
+  string: "#3d6b2c",
+  number: "#8a5512",
+  type: "#16706a",
+  lineNumber: "#737373",
+  lineNumberActive: "#262626",
   overlay: "#ffffff",
   raised: "#f5f5f5",
   err: "#b42a23",
@@ -123,8 +127,8 @@ function theme(base: "vs" | "vs-dark", p: Palette, background: string): monaco.e
       rule("number.json", p.number),
       rule("constant", p.number),
       rule("regexp", p.number),
-      rule("type", p.strong),
-      rule("type.identifier", p.strong),
+      rule("type", p.type),
+      rule("type.identifier", p.type),
       rule("identifier", p.text),
       rule("variable", p.text),
       rule("variable.predefined", p.strong),
@@ -136,6 +140,7 @@ function theme(base: "vs" | "vs-dark", p: Palette, background: string): monaco.e
       rule("delimiter.xml", p.muted),
       rule("operator", p.muted),
       rule("tag", p.keyword),
+      rule("tag.html", p.keyword),
       rule("metatag", p.muted),
       rule("attribute.name", p.number),
       rule("attribute.value", p.string),
@@ -203,9 +208,10 @@ function theme(base: "vs" | "vs-dark", p: Palette, background: string): monaco.e
       "menu.separatorBackground": p.tint("17"),
       "widget.shadow": base === "vs-dark" ? "#00000080" : "#0000001f",
       "scrollbar.shadow": "#00000000",
+      // Same slim neutral thumb as the app's scrollbars (line-strong), a step darker on hover.
       "scrollbarSlider.background": p.tint("24"),
-      "scrollbarSlider.hoverBackground": p.tint("33"),
-      "scrollbarSlider.activeBackground": p.tint("40"),
+      "scrollbarSlider.hoverBackground": p.tint("38"),
+      "scrollbarSlider.activeBackground": p.tint("48"),
     },
   };
 }

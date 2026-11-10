@@ -6,7 +6,8 @@ import { formatRelative } from "../../lib/format";
 import { hrefFor, navigate } from "../../lib/route";
 import { useNav, useNavState } from "../../state/nav";
 import { useRequests, type Request } from "../../state/requests";
-import { Spinner } from "../primitives/Status";
+import { useDelayedLoading } from "../../lib/hooks";
+import { RunningDot } from "../primitives/Status";
 
 /** Requests shown before "Show all". */
 const PREVIEW = 5;
@@ -24,7 +25,7 @@ export function ProjectItem(props: {
   now: number;
 }) {
   const { project, active, expanded } = props;
-  const { requests, error } = useRequests(project, expanded);
+  const { requests, error, retry } = useRequests(project, expanded);
   const { viewTurn } = useNavState();
   const listId = useId();
   const running = project.status === "running";
@@ -36,7 +37,7 @@ export function ProjectItem(props: {
     <li>
       <div
         className={cn(
-          "flex h-8 items-center rounded-sm transition-[background-color] duration-100",
+          "press-row flex h-8 items-center rounded-sm",
           active && !viewingShown ? "bg-active" : "hover:bg-hover",
         )}
       >
@@ -44,10 +45,10 @@ export function ProjectItem(props: {
           type="button"
           aria-expanded={expanded}
           aria-controls={expanded ? listId : undefined}
-          aria-label={`Requests in ${project.name}`}
-          title={expanded ? "Hide requests" : "Show requests"}
+          aria-label={`Show requests in ${project.name}`}
+          title={`Show requests in ${project.name}`}
           onClick={() => props.onExpanded(!expanded)}
-          className="ml-0.5 grid size-6 shrink-0 place-items-center rounded-xs text-fg-3 transition-[color] duration-100 hover:text-fg focus-visible:-outline-offset-2"
+          className="ml-0.5 grid size-6 shrink-0 place-items-center rounded-xs text-fg-3 transition-[color] duration-100 hover:text-fg focus-inset"
         >
           <ChevronRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className={cn("transition-[rotate] duration-150", expanded && "rotate-90")} />
         </button>
@@ -55,9 +56,9 @@ export function ProjectItem(props: {
           href={hrefFor(project.id)}
           aria-current={active ? "page" : undefined}
           title={project.name}
-          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-r-sm pr-2 pl-1 text-sm text-fg focus-visible:-outline-offset-2"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-r-sm pr-2 pl-1 text-sm text-fg focus-inset"
         >
-          <span className={cn("min-w-0 flex-1 truncate", active && "font-medium")}>{project.name}</span>
+          <span className="min-w-0 flex-1 truncate">{project.name}</span>
           <ProjectState project={project} running={running} unseen={props.unseen} active={active && !viewingShown} now={props.now} />
         </a>
       </div>
@@ -67,6 +68,7 @@ export function ProjectItem(props: {
           project={project}
           requests={requests}
           error={error}
+          onRetry={retry}
           running={running}
           activeId={viewingShown ? viewing : null}
           now={props.now}
@@ -77,19 +79,13 @@ export function ProjectItem(props: {
 }
 
 function ProjectState(props: { project: ProjectSummary; running: boolean; unseen: boolean; active: boolean; now: number }) {
-  if (props.running) {
+  // Running and unseen share the static accent dot; the text alternative tells them apart.
+  if (props.running || props.unseen) {
+    const label = props.running ? "Working" : "New activity";
     return (
-      <span className="grid size-4 shrink-0 place-items-center">
-        <Spinner className="text-accent" />
-        <span className="sr-only">Working</span>
-      </span>
-    );
-  }
-  if (props.unseen) {
-    return (
-      <span className="grid size-4 shrink-0 place-items-center" title="New activity">
-        <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-        <span className="sr-only">New activity</span>
+      <span className="grid size-4 shrink-0 place-items-center" title={label}>
+        <RunningDot />
+        <span className="sr-only">{label}</span>
       </span>
     );
   }
@@ -105,6 +101,7 @@ function RequestList(props: {
   project: ProjectSummary;
   requests: Request[] | null;
   error: string | null;
+  onRetry(): void;
   running: boolean;
   activeId: number | null;
   now: number;
@@ -113,11 +110,30 @@ function RequestList(props: {
   const nav = useNav();
   const [all, setAll] = useState(false);
   const muted = cn("flex h-7 items-center pr-2 text-xs text-fg-3", INSET);
+  const slow = useDelayedLoading(!requests && !props.error);
 
   if (!requests) {
     return (
       <ul id={props.id} aria-label={`Requests in ${project.name}`}>
-        <li className={muted}>{props.error ? "Couldn't load requests" : <span aria-label="Loading requests" className="h-2 w-2/3 rounded-full bg-hover" />}</li>
+        {props.error ? (
+          <li className={cn(muted, "gap-2")} title={props.error}>
+            <span className="min-w-0 flex-1 truncate">Couldn't load requests</span>
+            <button
+              type="button"
+              onClick={props.onRetry}
+              aria-label={`Retry loading requests in ${project.name}`}
+              className="press h-6 shrink-0 rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg"
+            >
+              Retry
+            </button>
+          </li>
+        ) : (
+          slow && (
+            <li className={muted}>
+              <span aria-label="Loading requests" className="h-2 w-2/3 rounded-full bg-hover" />
+            </li>
+          )
+        )}
       </ul>
     );
   }
@@ -152,15 +168,15 @@ function RequestList(props: {
                 open(r);
               }}
               className={cn(
-                "flex h-7 items-center gap-2 rounded-sm pr-2 text-sm transition-[background-color] duration-100 focus-visible:-outline-offset-2",
+                "press-row flex h-7 items-center gap-2 rounded-sm pr-2 text-sm focus-inset",
                 INSET,
                 current ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
               )}
             >
               <span className="min-w-0 flex-1 truncate">{firstLine(r.text)}</span>
               {live ? (
-                <span className="grid size-4 shrink-0 place-items-center">
-                  <Spinner size={10} className="text-accent" />
+                <span className="grid size-4 shrink-0 place-items-center" title="Working">
+                  <RunningDot />
                   <span className="sr-only">Working</span>
                 </span>
               ) : (
@@ -178,7 +194,7 @@ function RequestList(props: {
             type="button"
             aria-expanded={all}
             onClick={() => setAll((a) => !a)}
-            className={cn("flex h-7 w-full items-center rounded-sm pr-2 text-xs text-fg-3 transition-[background-color,color] duration-100 hover:bg-hover hover:text-fg-2", INSET)}
+            className={cn("press-row flex h-7 w-full items-center rounded-sm pr-2 text-xs text-fg-3 hover:bg-hover hover:text-fg-2", INSET)}
           >
             {all ? "Show fewer" : `Show all (${requests.length})`}
           </button>

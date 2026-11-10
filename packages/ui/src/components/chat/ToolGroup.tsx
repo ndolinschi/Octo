@@ -6,7 +6,7 @@ import { useOptionalCode } from "../../state/code";
 import { useHost } from "../../state/host";
 import { toolMeta, toolPath } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
-import { Spinner } from "../primitives/Status";
+import { RunningDot } from "../primitives/Status";
 import { toolState, useTranscript, type ToolState } from "./transcriptContext";
 
 const PHRASES: Record<string, [string, string]> = {
@@ -62,17 +62,17 @@ export function ToolGroup({ uses }: { uses: ToolUse[] }) {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className="group -mx-1.5 flex h-7 max-w-[calc(100%+12px)] items-center gap-1.5 rounded-sm px-1.5 text-sm text-fg-3 transition-[background-color,color] duration-100 hover:bg-hover hover:text-fg-2"
+        className="press-row group -mx-1.5 flex h-7 max-w-[calc(100%+12px)] items-center gap-1.5 rounded-sm px-1.5 text-sm text-fg-3 hover:bg-hover hover:text-fg-2"
       >
         <Summary uses={uses} />
-        {running && <Spinner />}
+        {running && <RunningDot />}
         {errors > 0 && <span className="shrink-0 text-err">{single ? "failed" : `${errors} failed`}</span>}
         <ChevronRight
           size={14}
           strokeWidth={1.5}
           absoluteStrokeWidth
           aria-hidden
-          className={cn("shrink-0", open && "rotate-90")}
+          className={cn("shrink-0 transition-[rotate] duration-150", open && "rotate-90")}
         />
       </button>
       {open && (
@@ -96,13 +96,13 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className="-mx-1.5 flex h-6 w-[calc(100%+12px)] min-w-0 items-center gap-2 rounded-sm px-1.5 text-left font-mono text-xs transition-[background-color] duration-100 hover:bg-hover"
+        className="press-row -mx-1.5 flex h-6 w-[calc(100%+12px)] min-w-0 items-center gap-2 rounded-sm px-1.5 text-left font-mono text-xs hover:bg-hover"
       >
         <span className="shrink-0 font-sans text-fg-2">{meta.verb}</span>
         {meta.arg && <span className="min-w-0 truncate text-fg-3">{meta.arg}</span>}
         {meta.folder && <span className="shrink-0 font-sans text-fg-3">in {meta.folder}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2 font-sans">
-          {state === "running" && <Spinner size={10} />}
+          {state === "running" && <RunningDot />}
           {state === "error" && <span className="text-err">failed</span>}
           {state === "interrupted" && <span className="text-fg-3">no result</span>}
         </span>

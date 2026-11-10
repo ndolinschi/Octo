@@ -4,9 +4,9 @@ import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
-import { navigate } from "../../lib/route";
 import { useProject } from "../../state/project";
-import { shortModel, StatusIcon } from "../primitives/Status";
+import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { StatusIcon } from "../primitives/Status";
 
 type Row = { agent: Agent; level: number; hasChildren: boolean; expanded: boolean; hidden: number };
 
@@ -30,8 +30,11 @@ function flatten(state: ProjectState, root: Agent, overrides: Record<string, boo
   return rows;
 }
 
-export function AgentsPanel({ currentAgentId }: { currentAgentId: string }) {
+/** The Agents tab: the whole agent tree; selecting a row opens that agent's tab (Alt: on the other side). */
+export function AgentsPanel() {
   const { state, project } = useProject();
+  const ws = useWorkspace();
+  const currentAgentId = ws.currentAgentId;
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [focusId, setFocusId] = useState<string | null>(null);
   const refs = useRef(new Map<string, HTMLDivElement>());
@@ -51,7 +54,7 @@ export function AgentsPanel({ currentAgentId }: { currentAgentId: string }) {
     refs.current.get(id)?.focus();
   };
   const setExpanded = (id: string, value: boolean) => setOverrides((o) => ({ ...o, [id]: value }));
-  const open = (a: Agent) => navigate(project.id, a.parent_id === null ? null : a.id);
+  const open = (a: Agent, otherSide = false) => (a.parent_id === null ? ws.focusChat() : ws.openAgent(a.id, { otherSide }));
 
   const onKeyDown = (e: KeyboardEvent, i: number) => {
     const row = rows[i];
@@ -68,7 +71,7 @@ export function AgentsPanel({ currentAgentId }: { currentAgentId: string }) {
         if (row.hasChildren && row.expanded) setExpanded(row.agent.id, false);
         else if (row.agent.parent_id) focus(row.agent.parent_id);
       },
-      Enter: () => open(row.agent),
+      Enter: () => open(row.agent, e.altKey),
       " ": () => open(row.agent),
     };
     const fn = moves[e.key];
@@ -100,24 +103,26 @@ export function AgentsPanel({ currentAgentId }: { currentAgentId: string }) {
             title={isRoot ? undefined : a.status === "failed" && a.error ? `${a.title} — failed: ${a.error}` : a.title}
             onFocus={() => setFocusId(a.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            onClick={() => open(a)}
+            onClick={(e) => open(a, e.altKey)}
             className={cn(
-              "flex h-7 items-center gap-1.5 rounded-sm pr-2 text-sm transition-[background-color] duration-100 focus-visible:-outline-offset-2",
+              "press-row flex h-7 items-center gap-1 rounded-sm pr-2 text-sm focus-inset",
               current ? "bg-active" : "hover:bg-hover",
             )}
-            style={{ paddingLeft: 2 + (row.level - 1) * 14 }}
+            style={{ paddingLeft: (row.level - 1) * 14 }}
           >
+            {/* A 24px target that only toggles: it never opens the agent (keyboard: ←/→ on the row). */}
             <button
               type="button"
               tabIndex={-1}
               aria-hidden
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 setExpanded(a.id, !row.expanded);
               }}
-              className={cn("grid size-4 shrink-0 place-items-center text-fg-3 hover:text-fg", !row.hasChildren && "invisible")}
+              className={cn("grid size-6 shrink-0 place-items-center rounded-xs text-fg-3 hover:bg-hover hover:text-fg", !row.hasChildren && "invisible")}
             >
-              <ChevronRight size={12} strokeWidth={1.5} absoluteStrokeWidth className={cn(row.expanded && "rotate-90")} />
+              <ChevronRight size={12} strokeWidth={1.5} absoluteStrokeWidth className={cn("transition-[rotate] duration-150", row.expanded && "rotate-90")} />
             </button>
             {!(isRoot && a.status === "idle") && <StatusIcon status={a.status} />}
             <span className="min-w-0 truncate text-fg">{isRoot ? "Orchestrator" : a.role}</span>
@@ -126,13 +131,13 @@ export function AgentsPanel({ currentAgentId }: { currentAgentId: string }) {
                 +{row.hidden}
               </span>
             )}
-            <span className={cn("ml-auto shrink-0 pl-2 text-xs", current ? "text-fg-2" : "text-fg-3", !isRoot && "tabular-nums")}>
-              {isRoot ? shortModel(a.model) : duration !== null ? formatDuration(duration) : ""}
-            </span>
+            {!isRoot && duration !== null && (
+              <span className={cn("ml-auto shrink-0 pl-2 text-xs tabular-nums", current ? "text-fg-2" : "text-fg-3")}>{formatDuration(duration)}</span>
+            )}
           </div>
         );
       })}
-      {rows.length === 1 && <p className="px-2 pt-1 text-xs text-fg-3">No sub-agents yet</p>}
+      {rows.length === 1 && <p className="px-2 pt-1 text-xs text-fg-3">No sub-agents yet. They appear here when the orchestrator delegates.</p>}
     </div>
   );
 }

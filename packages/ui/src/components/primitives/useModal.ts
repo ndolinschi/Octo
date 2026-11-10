@@ -1,29 +1,42 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { usePresence } from "./Presence";
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /**
  * Modal behaviour for an overlay panel: focuses `[data-autofocus]` (or the first focusable) on
- * open and restores focus on close; Esc closes; Tab cycles inside the panel.
+ * open; Esc closes; Tab cycles inside the panel. Focus goes back to the opener as soon as the
+ * overlay starts closing (inside a <Presence>, before its exit animation) or unmounts.
  */
 export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => void) {
+  const open = usePresence() === "open";
   const close = useRef(onClose);
+  const previous = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     close.current = onClose;
   });
 
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
+    previous.current = document.activeElement as HTMLElement | null;
     const el = panel.current;
     const first = el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>(FOCUSABLE);
     first?.focus();
-    return () => {
-      if (previous?.isConnected) previous.focus();
-    };
+    return restore;
   }, [panel]);
 
   useEffect(() => {
+    if (!open) restore();
+  }, [open]);
+
+  function restore() {
+    const p = previous.current;
+    previous.current = null;
+    if (p?.isConnected) p.focus();
+  }
+
+  useEffect(() => {
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -49,5 +62,7 @@ export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => vo
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [panel]);
+  }, [panel, open]);
+
+  return open;
 }

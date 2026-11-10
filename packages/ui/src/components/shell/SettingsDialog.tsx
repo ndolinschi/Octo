@@ -79,7 +79,7 @@ function ThemeChoice() {
 
 function BridgeStatus({ demo }: { demo: boolean }) {
   const { bridgeUrl, health, retry, version } = useApp();
-  const state = health === "online" ? (demo ? "Demo data, in memory" : `Connected${version ? ` · ${version}` : ""}`) : health === "offline" ? "Offline" : "Connecting…";
+  const state = health === "online" ? (demo ? "Demo data, in memory" : `Connected${version ? `, version ${version}` : ""}`) : health === "offline" ? "Offline" : "Connecting…";
   return (
     <section>
       <h3 className="text-sm text-fg-2">Bridge</h3>

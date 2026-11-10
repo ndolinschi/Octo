@@ -11,7 +11,7 @@ export function OfflineState() {
   return (
     <section aria-labelledby="offline-title" className="grid h-full place-items-center px-6">
       <div className="w-full max-w-[440px]">
-        <h1 id="offline-title" className="text-[15px] leading-5 font-semibold">
+        <h1 id="offline-title" className="text-title text-fg">
           Can't reach the harness bridge
         </h1>
         <p className="mt-1 text-sm text-fg-2">

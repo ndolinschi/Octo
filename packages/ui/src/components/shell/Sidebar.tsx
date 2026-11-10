@@ -1,13 +1,16 @@
 import { ArrowLeft, ArrowRight, FolderPlus, PanelLeftClose, Plus, Search, Settings } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useHistoryAvailability } from "../../lib/history";
 import { useNow } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { IconButton } from "../primitives/Button";
 import { Spinner } from "../primitives/Status";
-import { ProjectItem } from "./ProjectItem";
 
-const ROW = "flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-sm text-fg transition-[background-color] duration-100 hover:bg-hover";
+/** Interactive rows: 32px, the one hover fill, and a press tint. */
+import { ProjectItem } from "./ProjectItem";
+import { MOD } from "../../state/workspace/WorkspaceProvider";
+
+const ROW = "press-row flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-sm text-fg hover:bg-hover";
 
 export function Sidebar(props: {
   activeProjectId: string | null;
@@ -25,11 +28,17 @@ export function Sidebar(props: {
   // The open project starts expanded; any row can be toggled.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const canCreate = health === "online";
+  // Stable order (newest project first by creation), so rows never jump under the pointer as
+  // activity changes `updated_at`; activity shows as the dot instead.
+  const ordered = useMemo(
+    () => (projects ? [...projects].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || a.id.localeCompare(b.id)) : null),
+    [projects],
+  );
 
   return (
     <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window">
       <div className="box-content flex h-10 shrink-0 items-center gap-0.5 pt-1.5 pr-2 pl-2.5">
-        <IconButton icon={Search} label="Search" title="Search (Ctrl+K)" aria-keyshortcuts="Control+K Meta+K" onClick={props.onSearch} />
+        <IconButton icon={Search} label="Search" data-shortcut={`${MOD}K`} aria-keyshortcuts="Control+K Meta+K" onClick={props.onSearch} />
         <span className="flex-1" />
         <IconButton icon={ArrowLeft} label="Back" onClick={() => window.history.back()} disabled={!history.back} />
         <IconButton icon={ArrowRight} label="Forward" onClick={() => window.history.forward()} disabled={!history.forward} />
@@ -58,7 +67,7 @@ export function Sidebar(props: {
               <span className="h-2 rounded-full bg-hover" style={{ width: `${62 - i * 14}%` }} />
             </li>
           ))}
-        {projects?.map((p) => {
+        {ordered?.map((p) => {
           const active = p.id === props.activeProjectId;
           return (
             <ProjectItem
