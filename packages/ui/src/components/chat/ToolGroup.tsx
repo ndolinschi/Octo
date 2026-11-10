@@ -56,13 +56,13 @@ export function ToolGroup({ uses }: { uses: ToolUse[] }) {
   const single = uses.length === 1;
 
   return (
-    <div className="my-1">
+    <div>
       <button
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className="press-row group -mx-1.5 flex h-7 max-w-[calc(100%+12px)] items-center gap-1.5 rounded-sm px-1.5 text-sm text-fg-3 hover:bg-hover hover:text-fg-2"
+        className="press-row group -mx-2 flex h-row max-w-[calc(100%+16px)] items-center gap-2 rounded-xs px-2 text-sm text-fg-3 hover:bg-hover hover:text-fg-2"
       >
         <Summary uses={uses} />
         {running && <RunningDot />}
@@ -76,7 +76,7 @@ export function ToolGroup({ uses }: { uses: ToolUse[] }) {
         />
       </button>
       {open && (
-        <div id={panelId} className="mt-0.5 mb-1">
+        <div id={panelId} className="mt-1">
           {single ? <ToolDetail use={uses[0]} /> : uses.map((u, i) => <ToolRow key={u.id} use={u} state={states[i]} />)}
         </div>
       )}
@@ -96,7 +96,7 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className="press-row -mx-1.5 flex h-6 w-[calc(100%+12px)] min-w-0 items-center gap-2 rounded-sm px-1.5 text-left font-mono text-xs hover:bg-hover"
+        className="press-row -mx-2 flex h-row w-[calc(100%+16px)] min-w-0 items-center gap-2 rounded-xs px-2 text-left font-mono text-xs hover:bg-hover"
       >
         <span className="shrink-0 font-sans text-fg-2">{meta.verb}</span>
         {meta.arg && <span className="min-w-0 truncate text-fg-3">{meta.arg}</span>}
@@ -108,7 +108,7 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
         </span>
       </button>
       {open && (
-        <div id={panelId} className="mt-0.5 mb-1.5">
+        <div id={panelId} className="mt-1 mb-2">
           <ToolDetail use={use} />
         </div>
       )}
@@ -163,11 +163,11 @@ function PathLink({ use }: { use: ToolUse }) {
 function ToolSection({ label, body, error, action }: { label: string; body: string; error?: boolean; action?: ReactNode }) {
   return (
     <div className="border-line not-first:border-t">
-      <div className={cn("flex items-baseline gap-2 px-3 pt-2", error ? "text-err" : "text-fg-3")}>
+      <div className={cn("flex items-baseline gap-2 px-3 pt-3", error ? "text-err" : "text-fg-3")}>
         {label}
         {action}
       </div>
-      <pre className="max-h-64 overflow-auto px-3 pt-0.5 pb-2.5 font-mono text-xs leading-[1.6] whitespace-pre-wrap text-fg-2">
+      <pre className="max-h-64 overflow-auto px-3 pt-1 pb-3 font-mono text-xs leading-5 whitespace-pre-wrap text-fg-2">
         {body || "(empty)"}
       </pre>
     </div>

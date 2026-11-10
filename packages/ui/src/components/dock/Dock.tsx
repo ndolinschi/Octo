@@ -37,7 +37,7 @@ export function Dock() {
       {groups.map((g, i) => (
         <Fragment key={g.id}>
           {i > 0 && !ws.narrow && <Divider index={i - 1} value={groups[i - 1].size} />}
-          <GroupView group={g} name={groupName(i, groups.length)} />
+          <GroupView group={g} name={groupName(i, groups.length)} first={i === 0 || ws.narrow} last={i === groups.length - 1 || ws.narrow} />
         </Fragment>
       ))}
       <DragLayer />
@@ -57,7 +57,7 @@ function useVisited(group: Group): Set<string> {
   return visited;
 }
 
-function GroupView({ group, name }: { group: Group; name: string }) {
+function GroupView({ group, name, first, last }: { group: Group; name: string; first: boolean; last: boolean }) {
   const ws = useWorkspace();
   const visited = useVisited(group);
   const focused = group.id === ws.layout.focused;
@@ -75,7 +75,7 @@ function GroupView({ group, name }: { group: Group; name: string }) {
       onFocusCapture={() => ws.focusGroup(group.id)}
       className={cn(panelClass, narrow && "flex-1")}
     >
-      <TabStrip label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`} tabs={strip.tabs} active={strip.active} focused={focused} />
+      <TabStrip label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`} tabs={strip.tabs} active={strip.active} focused={focused} first={first} last={last} />
       <div data-dock-body className="relative min-h-0 flex-1">
         {group.tabs
           .filter((t) => visited.has(t))

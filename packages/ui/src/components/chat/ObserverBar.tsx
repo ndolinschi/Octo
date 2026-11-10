@@ -7,8 +7,9 @@ export function ObserverBar() {
   const { projectId } = useProject();
   const ws = useOptionalWorkspace();
   return (
-    <div role="note" className="flex min-h-[42px] flex-wrap items-center gap-x-3 rounded-xl border border-line bg-raised py-1.5 pr-1.5 pl-3.5 text-sm">
-      <p className="min-w-0 grow basis-[220px] text-fg-2">Read-only. Only the orchestrator can direct this agent.</p>
+    // The composer's box: radius 12, 8px inset, text on the composer's 16px line.
+    <div role="note" className="flex flex-wrap items-center gap-x-3 rounded-xl border border-line bg-raised p-2 text-sm">
+      <p className="min-w-0 grow basis-[220px] px-2 text-fg-2">Read-only. Only the orchestrator can direct this agent.</p>
       <a
         href={hrefFor(projectId)}
         onClick={(e) => {
@@ -16,7 +17,7 @@ export function ObserverBar() {
           e.preventDefault();
           ws.focusChat();
         }}
-        className="press ml-auto inline-flex h-7 shrink-0 items-center rounded-sm px-2 text-fg hover:bg-hover"
+        className="press ml-auto inline-flex h-row shrink-0 items-center rounded-xs px-2 text-fg hover:bg-hover"
       >
         Back to orchestrator
       </a>

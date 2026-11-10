@@ -35,12 +35,12 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
   const failed = agents.some((a) => a?.status === "failed");
 
   return (
-    <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container my-2 rounded-md border border-line">
+    <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container rounded-md border border-line">
       <div className="flex h-8 items-center gap-3 px-3 text-sm">
         <span className="text-fg-2">{caption}</span>
         <span className={cn("ml-auto text-xs tabular-nums", failed && status.endsWith("failed") ? "text-err" : "text-fg-3")}>{status}</span>
       </div>
-      <ul className="grid grid-cols-[12px_fit-content(36%)_minmax(0,1fr)_auto] gap-x-2.5 px-1.5 pb-1.5 @max-[440px]:grid-cols-[12px_fit-content(44%)_minmax(0,1fr)_auto]">
+      <ul className="grid grid-cols-[12px_fit-content(36%)_minmax(0,1fr)_auto] gap-x-2 px-1 pb-1 @max-[440px]:grid-cols-[12px_fit-content(44%)_minmax(0,1fr)_auto]">
         {uses.map((u, i) => (
           <li key={u.id} className="col-span-full grid grid-cols-subgrid">
             <DelegationRow use={u} agent={agents[i]} />
@@ -92,14 +92,14 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
           </span>
         )}
       </span>
-      <span className="block min-w-0 truncate leading-8 text-fg-2">{title}</span>
-      <span className="flex h-8 max-w-[24ch] min-w-0 items-center justify-end gap-2.5 text-xs text-fg-3 @max-[440px]:max-w-[12ch]">{right}</span>
+      <span className="block min-w-0 truncate py-1.5 leading-5 text-fg-2">{title}</span>
+      <span className="flex h-8 max-w-[24ch] min-w-0 items-center justify-end gap-2 text-xs text-fg-3 @max-[440px]:max-w-[12ch]">{right}</span>
       {error && <span className="col-span-3 col-start-2 -mt-1 truncate pb-1.5 text-xs text-err">{error}</span>}
     </>
   );
 
-  // Radius = card radius (8) − its inset (6).
-  const row = "col-span-full grid grid-cols-subgrid items-center rounded-2xs px-1.5 text-sm";
+  // Radius 4 = card radius (8) − its inset (4); 8px row padding puts the glyph on the caption's 12px line.
+  const row = "col-span-full grid grid-cols-subgrid items-center rounded-xs px-2 text-sm";
   if (!agent) return <div className={row}>{body}</div>;
   return (
     <a

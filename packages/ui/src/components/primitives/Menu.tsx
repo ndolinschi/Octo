@@ -1,21 +1,26 @@
+import { Check } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
 
-export type MenuItem = { id: string; label: string; shortcut?: string; disabled?: boolean; run(): void } | { id: string; separator: true };
+export type MenuItem =
+  | { id: string; label: string; shortcut?: string; disabled?: boolean; /** A choice in a set (menuitemradio). */ checked?: boolean; title?: string; run(): void }
+  | { id: string; separator: true };
 
 const isAction = (item: MenuItem): item is Extract<MenuItem, { run(): void }> => !("separator" in item);
 
 /** Gap kept between the menu and the viewport edges. */
 const EDGE = 8;
 
+const ITEM = '[data-menu-item]:not([aria-disabled="true"])';
+
 /**
- * A small context menu at a point. It appears and leaves instantly (no animation): (pointer position or a control's corner). Arrow keys, Home/End and
+ * A small context menu at a point (or opening upwards from it with `above`). It appears and leaves instantly (no animation): (pointer position or a control's corner). Arrow keys, Home/End and
  * type-ahead move; Enter/Space runs; Esc, Tab, a click outside or scrolling closes. Focus moves into the
  * menu on open and back to the opener when it starts closing.
  */
-export function Menu(props: { label: string; x: number; y: number; items: MenuItem[]; onClose(): void }) {
+export function Menu(props: { label: string; x: number; y: number; items: MenuItem[]; onClose(): void; above?: boolean }) {
   const { onClose } = props;
   const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -31,16 +36,16 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
     const flipX = props.x + width + EDGE > window.innerWidth;
-    const flipY = props.y + height + EDGE > window.innerHeight;
+    const flipY = props.above || props.y + height + EDGE > window.innerHeight;
     setPos({
       left: Math.max(EDGE, flipX ? props.x - width : props.x),
       top: Math.max(EDGE, flipY ? props.y - height : props.y),
     });
-  }, [props.x, props.y]);
+  }, [props.x, props.y, props.above]);
 
   useEffect(() => {
     opener.current = document.activeElement as HTMLElement | null;
-    ref.current?.querySelector<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])')?.focus();
+    (ref.current?.querySelector<HTMLElement>(`${ITEM}[aria-checked="true"]`) ?? ref.current?.querySelector<HTMLElement>(ITEM))?.focus();
     return () => {
       if (opener.current?.isConnected) opener.current.focus();
     };
@@ -70,7 +75,7 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
     };
   }, [open, onClose]);
 
-  const items = () => [...(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [])];
+  const items = () => [...(ref.current?.querySelectorAll<HTMLElement>(ITEM) ?? [])];
   const move = (delta: number | "first" | "last") => {
     const list = items();
     if (!list.length) return;
@@ -123,9 +128,12 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
         isAction(item) ? (
           <div
             key={item.id}
-            role="menuitem"
+            role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+            aria-checked={item.checked}
             tabIndex={-1}
+            data-menu-item
             data-id={item.id}
+            title={item.title}
             aria-disabled={item.disabled || undefined}
             onClick={() => run(item)}
             onKeyDown={(e) => {
@@ -139,12 +147,17 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
             }}
             className={cn(
               // Radius = menu radius (8) − its padding (4).
-              "flex h-7 items-center gap-6 rounded-xs px-2 outline-none focus-visible:shadow-none",
+              "flex h-row items-center gap-6 rounded-xs px-2 outline-none focus-visible:shadow-none",
               item.disabled ? "text-fg-3" : "text-fg focus:bg-active",
             )}
           >
             <span className="min-w-0 flex-1 truncate">{item.label}</span>
             {item.shortcut && <kbd className="shrink-0 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
+            {item.checked !== undefined && (
+              <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+                {item.checked && <Check size={14} strokeWidth={1.5} absoluteStrokeWidth />}
+              </span>
+            )}
           </div>
         ) : (
           <div key={item.id} role="separator" className="mx-2 my-1 h-px bg-line" />

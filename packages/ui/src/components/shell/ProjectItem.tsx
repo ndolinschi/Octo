@@ -12,8 +12,8 @@ import { RunningDot } from "../primitives/Status";
 /** Requests shown before "Show all". */
 const PREVIEW = 5;
 
-/** Text inset shared by the project name and its request rows (chevron column + gap). */
-const INSET = "pl-[30px]";
+/** Request rows: an empty 16px leading slot, so their text starts on the project name's line (8 + 16 + 8). */
+const INSET = "pl-8";
 
 export function ProjectItem(props: {
   project: ProjectSummary;
@@ -35,12 +35,8 @@ export function ProjectItem(props: {
 
   return (
     <li>
-      <div
-        className={cn(
-          "press-row flex h-8 items-center rounded-sm",
-          active && !viewingShown ? "bg-active" : "hover:bg-hover",
-        )}
-      >
+      {/* One row shape (radius 4 on all corners); the chevron's 24px target is centred on the 16px leading slot. */}
+      <div className={cn("press-row flex h-row-nav items-center rounded-xs pr-2 pl-1", active && !viewingShown ? "bg-active" : "hover:bg-hover")}>
         <button
           type="button"
           aria-expanded={expanded}
@@ -48,7 +44,7 @@ export function ProjectItem(props: {
           aria-label={`Show requests in ${project.name}`}
           title={`Show requests in ${project.name}`}
           onClick={() => props.onExpanded(!expanded)}
-          className="ml-0.5 grid size-6 shrink-0 place-items-center rounded-xs text-fg-3 transition-[color] duration-100 hover:text-fg focus-inset"
+          className="grid size-6 shrink-0 place-items-center rounded-xs text-fg-3 transition-[color] duration-100 hover:text-fg focus-inset"
         >
           <ChevronRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className={cn("transition-[rotate] duration-150", expanded && "rotate-90")} />
         </button>
@@ -56,7 +52,7 @@ export function ProjectItem(props: {
           href={hrefFor(project.id)}
           aria-current={active ? "page" : undefined}
           title={project.name}
-          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-r-sm pr-2 pl-1 text-sm text-fg focus-inset"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-xs pl-1 text-sm text-fg focus-inset"
         >
           <span className="min-w-0 flex-1 truncate">{project.name}</span>
           <ProjectState project={project} running={running} unseen={props.unseen} active={active && !viewingShown} now={props.now} />
@@ -83,7 +79,7 @@ function ProjectState(props: { project: ProjectSummary; running: boolean; unseen
   if (props.running || props.unseen) {
     const label = props.running ? "Working" : "New activity";
     return (
-      <span className="grid size-4 shrink-0 place-items-center" title={label}>
+      <span data-meta className="grid size-4 shrink-0 place-items-center" title={label}>
         <RunningDot />
         <span className="sr-only">{label}</span>
       </span>
@@ -109,7 +105,7 @@ function RequestList(props: {
   const { project, requests } = props;
   const nav = useNav();
   const [all, setAll] = useState(false);
-  const muted = cn("flex h-7 items-center pr-2 text-xs text-fg-3", INSET);
+  const muted = cn("flex h-row items-center pr-2 text-xs text-fg-3", INSET);
   const slow = useDelayedLoading(!requests && !props.error);
 
   if (!requests) {
@@ -122,7 +118,7 @@ function RequestList(props: {
               type="button"
               onClick={props.onRetry}
               aria-label={`Retry loading requests in ${project.name}`}
-              className="press h-6 shrink-0 rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg"
+              className="press -mr-1 h-6 shrink-0 rounded-sm px-1 text-xs text-fg-2 hover:bg-hover hover:text-fg"
             >
               Retry
             </button>
@@ -168,14 +164,14 @@ function RequestList(props: {
                 open(r);
               }}
               className={cn(
-                "press-row flex h-7 items-center gap-2 rounded-sm pr-2 text-sm focus-inset",
+                "press-row flex h-row items-center gap-2 rounded-xs pr-2 text-sm focus-inset",
                 INSET,
                 current ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
               )}
             >
               <span className="min-w-0 flex-1 truncate">{firstLine(r.text)}</span>
               {live ? (
-                <span className="grid size-4 shrink-0 place-items-center" title="Working">
+                <span data-meta className="grid size-4 shrink-0 place-items-center" title="Working">
                   <RunningDot />
                   <span className="sr-only">Working</span>
                 </span>
@@ -194,7 +190,7 @@ function RequestList(props: {
             type="button"
             aria-expanded={all}
             onClick={() => setAll((a) => !a)}
-            className={cn("press-row flex h-7 w-full items-center rounded-sm pr-2 text-xs text-fg-3 hover:bg-hover hover:text-fg-2", INSET)}
+            className={cn("press-row flex h-row w-full items-center rounded-xs pr-2 text-xs text-fg-3 hover:bg-hover hover:text-fg-2", INSET)}
           >
             {all ? "Show fewer" : `Show all (${requests.length})`}
           </button>

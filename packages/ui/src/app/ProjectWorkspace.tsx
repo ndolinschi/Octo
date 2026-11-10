@@ -11,17 +11,17 @@ import { Button } from "../components/primitives/Button";
 import { Dialog } from "../components/primitives/Dialog";
 import { Presence } from "../components/primitives/Presence";
 import { ProjectDialog } from "../components/project/ProjectDialog";
-import { ProjectHeader } from "../components/project/ProjectHeader";
 import { Panel } from "../components/shell/Panel";
+import { PanelBar } from "../components/shell/SidebarToggle";
 
 /** One project: header row, then the dock of tab groups. */
-export function ProjectWorkspace(props: { agentId: string | null; sidebarOpen: boolean; onToggleSidebar(): void }) {
+export function ProjectWorkspace(props: { agentId: string | null }) {
   const [settings, setSettings] = useState(false);
   const openSettings = useCallback(() => setSettings(true), []);
   return (
     <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
       <Files>
-        <Body sidebarOpen={props.sidebarOpen} onToggleSidebar={props.onToggleSidebar} onSettings={openSettings} />
+        <Body />
         <SettingsDialog show={settings} onClose={() => setSettings(false)} />
         <CloseDialog />
       </Files>
@@ -75,14 +75,14 @@ function CodeLink() {
   return null;
 }
 
-function Body(props: { sidebarOpen: boolean; onToggleSidebar(): void; onSettings(): void }) {
+/** The dock of tab groups; the project's global actions live in the strips (see `WorkspaceActions`). */
+function Body() {
   const { project, loadError, reload } = useProject();
-  const header = <ProjectHeader sidebarOpen={props.sidebarOpen} onToggleSidebar={props.onToggleSidebar} onSettings={props.onSettings} />;
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
-      {header}
       {loadError && !project ? (
         <Panel className="flex-1">
+          <PanelBar />
           <LoadError message={loadError} onRetry={reload} />
         </Panel>
       ) : (

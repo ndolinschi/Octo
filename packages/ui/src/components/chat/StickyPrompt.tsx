@@ -55,12 +55,12 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
       </span>
     </>
   );
-  const boxClass = "block w-full rounded-md border border-line bg-raised px-3.5 py-2.5 text-left text-base text-fg";
+  const boxClass = "block w-full rounded-md border border-line bg-raised p-card text-left text-base text-fg";
 
   return (
     <div ref={root} data-pinned className="pointer-events-none absolute top-0 left-0 z-10 right-(--sg)">
       <div className="bg-panel pr-(--pad) pl-[calc(var(--pad)+var(--sg))]" style={{ paddingTop: STICK_TOP }}>
-        <div className="pointer-events-auto mx-auto w-full max-w-measure">
+        <div data-pinned-box className="pointer-events-auto mx-auto w-full max-w-measure">
           {clamped || expanded ? (
             <button
               type="button"

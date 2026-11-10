@@ -64,3 +64,29 @@ export function buildTurns(messages: Message[]): Turn[] {
   }
   return turns;
 }
+
+export type RequestState = "done" | "working" | "failed" | "stopped";
+
+/** One user request of a conversation, for the turn rail and the floating composer's status chip. */
+export type RequestSummary = { id: number; text: string; state: RequestState; startedAt: number; endedAt: number | null };
+
+/**
+ * The requests of a conversation with their state: the last one is working while the agent runs, failed
+ * or stopped when the last turn ended so; earlier ones are done, lasting from the prompt to their last message.
+ */
+export function requestSummaries(turns: Turn[], running: boolean, lastTurn: "completed" | "failed" | "cancelled" | null): RequestSummary[] {
+  const out: RequestSummary[] = [];
+  turns.forEach((t, i) => {
+    if (!t.prompt) return;
+    const last = i === turns.length - 1;
+    const state: RequestState = last && running ? "working" : last && lastTurn === "failed" ? "failed" : last && lastTurn === "cancelled" ? "stopped" : "done";
+    out.push({
+      id: t.prompt.id,
+      text: promptText(t.prompt),
+      state,
+      startedAt: Date.parse(t.prompt.created_at),
+      endedAt: state === "working" || !t.lastAt ? null : Date.parse(t.lastAt),
+    });
+  });
+  return out;
+}

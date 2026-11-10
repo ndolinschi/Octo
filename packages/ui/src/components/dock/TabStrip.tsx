@@ -1,8 +1,9 @@
 import { X } from "lucide-react";
 import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "../files/CommentCount";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
+import { useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
 import { closable, type TabId } from "../../state/workspace/layout";
@@ -12,14 +13,18 @@ import { Presence } from "../primitives/Presence";
 import { pressTab, useDrag } from "./drag";
 import { domId } from "./ids";
 import { tabInfo } from "./tabInfo";
-
+import { SidebarToggle } from "../shell/SidebarToggle";
+import { WorkspaceActions } from "./WorkspaceActions";
 
 /**
- * One group's tab strip (or, when narrow, every tab in one strip). Compact text tabs with a kind
- * icon; overflow scrolls sideways with faded edges. Roving focus: ←/→/Home/End move and select,
- * Delete closes, Shift+F10 or the context-menu key opens the tab menu. Middle-click closes.
+ * One group's tab strip (or, when narrow, every tab in one strip), 8px from the panel's top and sides
+ * (the pane inset). Compact 28px text tabs: [16px icon slot] 8 [label] [trailing state], 8px padding,
+ * radius 4 (panel 12 − inset 8). Overflow scrolls sideways with faded edges. The first strip starts
+ * with "Show sidebar" while the sidebar is hidden; the last ends with the project's global actions.
+ * Roving focus: ←/→/Home/End move and select, Delete closes, Shift+F10 or the context-menu key opens
+ * the tab menu. Middle-click closes.
  */
-export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; focused: boolean }) {
+export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; focused: boolean; first: boolean; last: boolean }) {
   const ws = useWorkspace();
   const code = useCode();
   const { state, project } = useProject();
@@ -32,12 +37,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
   const button = (tab: TabId) => list.current?.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${CSS.escape(tab)}"]`) ?? null;
 
   /* Overflow: fade whichever end has more tabs, and keep the selected tab in view. */
-  const updateFade = useCallback(() => {
-    const el = list.current;
-    if (!el) return;
-    const fade = [el.scrollLeft > 1 && "start", el.scrollLeft + el.clientWidth < el.scrollWidth - 1 && "end"].filter(Boolean).join(" ");
-    if ((el.dataset.fade ?? "") !== fade) el.dataset.fade = fade;
-  }, []);
+  const updateFade = useScrollFade(list, "x");
   useLayoutEffect(() => {
     const el = list.current;
     const tab = button(props.active)?.parentElement;
@@ -48,14 +48,6 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
     }
     updateFade();
   }, [props.active, props.tabs, updateFade]);
-  useEffect(() => {
-    const el = list.current;
-    if (!el) return;
-    const ro = new ResizeObserver(updateFade);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [updateFade]);
-
   // After a keyboard move or close, the tab that now holds the selection takes focus.
   useEffect(() => {
     if (ws.focusRequest && props.tabs.includes(ws.focusRequest.tab)) button(ws.focusRequest.tab)?.focus();
@@ -110,22 +102,23 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
   };
 
   return (
-    <div data-strip className="flex h-9 shrink-0 items-center px-1.5">
+    <div data-strip className="flex shrink-0 items-center gap-1 px-pane pt-pane">
+      {props.first && <SidebarToggle />}
       <div
         ref={list}
         role="tablist"
         aria-label={props.label}
-        onScroll={updateFade}
         onWheel={(e) => {
           if (list.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) list.current.scrollLeft += e.deltaY;
         }}
-        className="fade-x flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
+        className="fade-x flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
       >
         {props.tabs.map((tab, i) => {
           const info = tabInfo(tab, ctx);
           const selected = tab === props.active;
           const canClose = closable(tab);
           const Icon = info.icon;
+          const trailing = canClose || info.status !== null;
           return (
             <div
               key={tab}
@@ -149,7 +142,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 openMenuAt(tab, e.clientX, e.clientY);
               }}
               className={cn(
-                "group/tab press-row relative flex h-7 max-w-[220px] min-w-0 shrink-0 items-center rounded-sm",
+                "group/tab press-row relative flex h-row max-w-[220px] min-w-0 shrink-0 items-center rounded-xs",
                 selected ? (props.focused ? "bg-active text-fg" : "bg-hover text-fg") : "text-fg-3 hover:bg-hover hover:text-fg-2",
                 drag?.tab === tab && "opacity-50",
               )}
@@ -166,9 +159,11 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 title={info.title}
                 aria-description={commentsDescription(info.comments)}
                 onKeyDown={(e) => onKeyDown(e, i)}
-                className="flex h-full min-w-0 items-center gap-1.5 rounded-sm pr-0.5 pl-2 text-sm focus-inset"
+                className={cn("flex h-full min-w-0 items-center gap-2 rounded-xs pl-2 text-sm focus-inset", trailing ? "pr-1" : "pr-2")}
               >
-                <Icon size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0" />
+                <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+                  <Icon size={14} strokeWidth={1.5} absoluteStrokeWidth />
+                </span>
                 <span className="min-w-0 truncate" aria-hidden={info.name ? true : undefined}>
                   {info.label}
                 </span>
@@ -177,7 +172,8 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 {info.status === "modified" && <span className="sr-only"> (unsaved)</span>}
                 {info.status === "running" && <span className="sr-only"> (working)</span>}
               </button>
-              <span className="relative mr-1 grid size-4 shrink-0 place-items-center">
+              {/* Trailing slot: 16px box, 6px from the edge (its 12px glyph sits 8px in, like the leading icon). */}
+              {trailing && <span className="relative mr-1.5 grid size-4 shrink-0 place-items-center">
                 {info.status && (
                   <span
                     aria-hidden
@@ -207,11 +203,12 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                     <X size={12} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
                   </button>
                 )}
-              </span>
+              </span>}
             </div>
           );
         })}
       </div>
+      {props.last && <WorkspaceActions />}
       <Presence show={menu !== null} exitMs={0}>
         {menu && <Menu label="Tab actions" x={menu.x} y={menu.y} items={menuItems(menu.tab)} onClose={() => setMenu(null)} />}
       </Presence>

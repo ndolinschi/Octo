@@ -41,7 +41,7 @@ export function CommentsControl() {
         title="Pending comments, sent with your next message"
         onClick={() => setOpen((x) => !x)}
         className={cn(
-          "press -my-1 -ml-1 flex h-6 shrink-0 items-center gap-1 rounded-sm px-1 text-xs tabular-nums hover:bg-hover hover:text-fg",
+          "press flex h-row shrink-0 items-center gap-1 rounded-sm px-2 text-xs tabular-nums hover:bg-hover hover:text-fg",
           open ? "bg-active text-fg" : "text-fg-2",
         )}
       >

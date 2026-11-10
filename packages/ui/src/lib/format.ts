@@ -61,3 +61,11 @@ export function middleTruncate(text: string, max: number): string {
   const tail = slash >= 0 && text.length - slash <= max - 8 ? text.slice(slash) : text.slice(-Math.ceil((max - 1) / 2));
   return `${text.slice(0, max - 1 - tail.length)}…${tail}`;
 }
+
+/** Token totals as a quiet count: 820, 2.4k, 24k, 1.2M. */
+export function formatTokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+}

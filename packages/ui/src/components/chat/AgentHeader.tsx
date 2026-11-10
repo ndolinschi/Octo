@@ -37,7 +37,7 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
                 if (a.parent_id === null) ws.focusChat();
                 else ws.openAgent(a.id, { otherSide: e.altKey });
               }}
-              className="inline-block h-6 max-w-[200px] truncate rounded-xs leading-6 hover:text-fg"
+              className="inline-block h-6 max-w-[200px] truncate rounded-xs py-0.5 leading-5 hover:text-fg"
             >
               {roleName(a)}
             </a>

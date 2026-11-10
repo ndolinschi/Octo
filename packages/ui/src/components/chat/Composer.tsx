@@ -3,28 +3,36 @@ import { ArrowUp, Square } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
-import { modelLabel } from "../primitives/Status";
+import { ModelSelect } from "./ModelSelect";
 
 export type ComposerHandle = { focus(): void; fill(text: string): void };
 
-type Props = {
+export type ComposerProps = {
   running: boolean;
   disabledReason: string | null;
   /** The conversation already has messages: the placeholder invites a follow-up. */
   followUp: boolean;
   folders: Folder[];
-  model: string | null;
+  /** The orchestrator model selector (choose rejects to roll back). */
+  model: { value: string; options: string[]; choose(model: string): Promise<void> } | null;
   onSend(text: string): Promise<void>;
   onCancel(): Promise<void>;
   /** Keeps an unsent draft across remounts (moving the Chat tab to another group). */
   draft?: { initial: string; save(text: string): void };
   /** Pending code comments go out with the next message (which may then have no text). */
   comments?: { count: number; control: ReactNode };
+  /** Floating over a file view: a shadow instead of the hairline, no folder line. */
+  floating?: boolean;
 };
 
 const MAX_HEIGHT_VH = 0.4;
 
-export const Composer = forwardRef<ComposerHandle, Props>(function Composer(props, handle) {
+/**
+ * A tall rounded box (radius 12, 8px inset): the text area on top, a control row inside at the bottom
+ * (left: pending comments, the orchestrator model; right: send / stop). Text and control labels start
+ * on one line 16px in (box 8 + control 8). Folder names follow as one quiet line below the box.
+ */
+export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(props, handle) {
   const [text, setText] = useState(() => props.draft?.initial ?? "");
   const saveDraft = props.draft?.save;
   useEffect(() => {
@@ -32,6 +40,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
   }, [text, saveDraft]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<{ model: string; message: string } | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
 
   useImperativeHandle(handle, () => ({
@@ -101,15 +110,32 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
         ? "Send follow-up"
         : "Message the orchestrator";
   const folders = props.folders.map((f) => f.label).join(", ");
+  const model = props.model;
+  const chooseModel = (next: string) => {
+    if (!model) return;
+    setModelError(null);
+    model.choose(next).catch((e: unknown) => setModelError({ model: next, message: e instanceof Error ? e.message : String(e) }));
+  };
 
   return (
     <div data-composer>
       {error && (
-        <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm">
+        <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 text-sm">
           <p className="min-w-0 flex-1 text-fg-2">
             <span className="text-err">Couldn't send.</span> {error.replace(/\.$/, "")}. Your message is still in the box.
           </p>
           <Button size="sm" onClick={() => void submit()} disabled={!canSend}>
+            Retry
+          </Button>
+        </div>
+      )}
+      {modelError && (
+        <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 text-sm">
+          <p className="min-w-0 flex-1 text-fg-2">
+            <span className="text-err">Couldn't switch the orchestrator model.</span> {modelError.message.replace(/\.$/, "")}. It still uses{" "}
+            {model?.value ?? "the previous model"}.
+          </p>
+          <Button size="sm" onClick={() => chooseModel(modelError.model)}>
             Retry
           </Button>
         </div>
@@ -120,7 +146,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
           void submit();
         }}
         className={cn(
-          "flex items-end gap-2 rounded-xl border border-line bg-raised pr-1.5 pl-3.5 transition-[border-color] duration-100",
+          "flex flex-col rounded-xl border bg-raised p-2 transition-[border-color] duration-100",
+          props.floating ? "border-transparent shadow-float" : "border-line",
           !disabled && "focus-within:border-focus",
         )}
         onMouseDown={(e) => {
@@ -131,11 +158,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
           }
         }}
       >
-        <label htmlFor="octo-composer" className="sr-only">
+        <label htmlFor={props.floating ? "octo-composer-float" : "octo-composer"} className="sr-only">
           Message the orchestrator
         </label>
         <textarea
-          id="octo-composer"
+          id={props.floating ? "octo-composer-float" : "octo-composer"}
           ref={area}
           rows={1}
           value={text}
@@ -143,42 +170,41 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="block max-h-[40vh] min-h-10 min-w-0 flex-1 resize-none overscroll-contain bg-transparent py-[9px] text-base leading-[22px] wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
+          className="block max-h-[40vh] min-w-0 resize-none overscroll-contain bg-transparent px-2 py-1.5 text-base wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
         />
-        {props.running ? (
-          <button
-            type="button"
-            onClick={() => void props.onCancel()}
-            aria-label="Stop the current turn"
-            title="Stop"
-            className="press mb-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-fg hover:opacity-90"
-          >
-            <Square size={9} fill="currentColor" strokeWidth={0} aria-hidden />
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!canSend}
-            aria-label="Send message"
-            title="Send"
-            className="press mb-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary text-primary-fg hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100"
-          >
-            <ArrowUp size={15} strokeWidth={2} absoluteStrokeWidth aria-hidden />
-          </button>
-        )}
+        <div className="mt-1 flex h-row items-center gap-1">
+          {pendingComments > 0 && props.comments?.control}
+          {model && <ModelSelect value={model.value} options={model.options} onChoose={chooseModel} disabled={disabled} />}
+          <span className="flex-1" />
+          {props.running ? (
+            <button
+              type="button"
+              onClick={() => void props.onCancel()}
+              aria-label="Stop the current turn"
+              title="Stop"
+              // Radius 4 = box 12 − inset 8.
+              className="press grid size-7 shrink-0 place-items-center rounded-xs bg-primary text-primary-fg hover:opacity-90"
+            >
+              <Square size={10} fill="currentColor" strokeWidth={0} aria-hidden />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!canSend}
+              aria-label="Send message"
+              title="Send"
+              className="press grid size-7 shrink-0 place-items-center rounded-xs bg-primary text-primary-fg hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100"
+            >
+              <ArrowUp size={16} strokeWidth={2} absoluteStrokeWidth aria-hidden />
+            </button>
+          )}
+        </div>
       </form>
-      {/* Footer: context on the left (pending comments, folders), the model on the right. */}
-      <div className="mt-1.5 flex h-4 items-center gap-3 px-1 text-xs text-fg-3">
-        {pendingComments > 0 && props.comments?.control}
-        <p className="min-w-0 flex-1 truncate" title={props.folders.map((f) => f.path).join("\n") || undefined}>
+      {!props.floating && (
+        <p className="mt-2 h-4 truncate px-4 text-xs text-fg-3" title={props.folders.map((f) => f.path).join("\n") || undefined}>
           {folders || "No folders attached"}
         </p>
-        {props.model && (
-          <p className="shrink-0" title={`Orchestrator model: ${props.model}`}>
-            {modelLabel(props.model)}
-          </p>
-        )}
-      </div>
+      )}
     </div>
   );
 });

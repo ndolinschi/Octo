@@ -23,19 +23,20 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   const lang = /language-([\w+-]+)/.exec(className)?.[1];
   const code = textOf(children).replace(/\n$/, "");
   return (
-    <div className="my-3 overflow-hidden rounded-md bg-code-bg">
-      <div className="flex h-8 items-center pr-1 pl-3">
+    // Card inset 12 on all sides: a 20px caption row, 8 below it, then 20px code lines.
+    <div className="my-3 overflow-hidden rounded-md bg-code-bg p-card">
+      <div className="mb-2 flex h-5 items-center">
         <span className="font-mono text-xs text-fg-3">{lang ?? "text"}</span>
         <button
           type="button"
           onClick={() => copy(code)}
-          className="press ml-auto inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
+          className="press -my-0.5 -mr-2 ml-auto inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
         >
           {copied ? <Check size={12} aria-hidden /> : <Copy size={12} aria-hidden />}
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="overflow-x-auto px-3 pb-3 font-mono text-xs leading-[1.6] text-fg">
+      <pre className="overflow-x-auto font-mono text-xs leading-5 text-fg">
         <code>{code}</code>
       </pre>
     </div>

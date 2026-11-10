@@ -9,8 +9,8 @@ import type { Layout, TabId, ToolTab } from "./layout";
 
 /** Narrowest a group may get; below the sum of these the dock shows one strip. */
 export const MIN_GROUP = 280;
-/** Gap between groups (also the divider's hit area). */
-export const GAP = 6;
+/** Gap between groups = the window gutter (also the divider's hit area). */
+export const GAP = 8;
 /** Width a newly opened side group takes for a tool (Agents, Notes, Files). */
 const TOOL_WIDTH = 360;
 /** Below this window width the dock always shows a single strip. */

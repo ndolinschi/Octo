@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { cn } from "../lib/cn";
 import { useEscape, useMediaQuery } from "../lib/hooks";
 import { navigate, useGuardedRoute } from "../lib/route";
 import { useUnseen } from "../lib/seen";
@@ -7,6 +6,7 @@ import { useApp } from "../state/app";
 import { NavProvider, useNav } from "../state/nav";
 import { ProjectProvider } from "../state/project";
 import { RequestsProvider } from "../state/requests";
+import { ShellContext } from "../state/shell";
 import { Button } from "../components/primitives/Button";
 import { Dialog } from "../components/primitives/Dialog";
 import { Presence, usePresence } from "../components/primitives/Presence";
@@ -17,7 +17,7 @@ import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
 import { SettingsDialog } from "../components/shell/SettingsDialog";
 import { Sidebar } from "../components/shell/Sidebar";
-import { TopBar } from "../components/shell/TopBar";
+import { PanelBar } from "../components/shell/SidebarToggle";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 
 /** Below this width the sidebar becomes an overlay drawer, closed by default. */
@@ -117,26 +117,25 @@ function Shell() {
   ];
 
   return (
+    <ShellContext.Provider value={{ sidebarOpen, toggleSidebar }}>
     <div className="flex h-full overflow-hidden bg-window text-fg">
-      {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} />}
-      <div
-        className={cn("relative flex min-w-0 flex-1 flex-col pr-1.5 pb-1.5 max-sm:p-0", !drawerMode && inlineOpen ? "pl-0" : "pl-1.5")}
-        inert={drawerShown}
-      >
+      {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} onToggle={toggleSidebar} />}
+      {/* Equal gutters on every side of every panel (the sidebar card included); full-bleed on phones. */}
+      <div className="relative flex min-w-0 flex-1 flex-col p-gutter max-sm:p-0" inert={drawerShown}>
         {workspace && route.projectId ? (
           <ProjectProvider key={route.projectId} projectId={route.projectId}>
-            <ProjectWorkspace agentId={route.agentId} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
+            <ProjectWorkspace agentId={route.agentId} />
           </ProjectProvider>
         ) : (
-          <>
-            <TopBar sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
-            <Panel className="flex-1">{main}</Panel>
-          </>
+          <Panel className="flex-1">
+            <PanelBar />
+            <div className="min-h-0 flex-1">{main}</div>
+          </Panel>
         )}
       </div>
       <Presence show={drawerShown}>
         <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
-          <Sidebar {...sidebarProps} onClose={() => setDrawerOpen(false)} />
+          <Sidebar {...sidebarProps} onToggle={() => setDrawerOpen(false)} />
         </SidebarDrawer>
       </Presence>
       <Presence show={creating}>
@@ -167,6 +166,7 @@ function Shell() {
         />
       </Presence>
     </div>
+    </ShellContext.Provider>
   );
 }
 

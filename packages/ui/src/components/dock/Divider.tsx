@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 
 /**
- * The 6px gap between two groups, as a resize handle: drag, or arrows (±16px, Shift ±64);
+ * The 8px gap between two groups, as a resize handle: drag, or arrows (±16px, Shift ±64);
  * double-click makes all groups equal.
  */
 export function Divider({ index, value }: { index: number; value: number }) {
@@ -59,11 +59,11 @@ export function Divider({ index, value }: { index: number; value: number }) {
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={() => ws.equalize()}
-      className="group/divider relative w-1.5 shrink-0 cursor-col-resize outline-none focus-visible:shadow-none before:absolute before:inset-y-0 before:-inset-x-[4px] before:content-['']"
+      className="group/divider relative w-gutter shrink-0 cursor-col-resize outline-none focus-visible:shadow-none before:absolute before:inset-y-0 before:-inset-x-1 before:content-['']"
     >
       <span
         aria-hidden
-        className="absolute inset-y-3 left-[2px] w-[2px] rounded-full transition-[background-color] duration-100 group-hover/divider:bg-line-strong group-focus-visible/divider:bg-focus group-data-[dragging]/divider:bg-focus"
+        className="absolute inset-y-3 left-[3px] w-0.5 rounded-full transition-[background-color] duration-100 group-hover/divider:bg-line-strong group-focus-visible/divider:bg-focus group-data-[dragging]/divider:bg-focus"
       />
     </div>
   );

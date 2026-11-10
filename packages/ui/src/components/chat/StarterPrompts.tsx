@@ -27,19 +27,19 @@ function prompts(project: Project): Starter[] {
 /** Empty project: its name, one line, and three quiet bordered rows that fill the composer. */
 export function StarterPrompts({ project, onPick }: { project: Project; onPick(text: string): void }) {
   return (
-    <section aria-labelledby="starter-title" className="pt-3">
+    <section aria-labelledby="starter-title" className="pt-4">
       <h1 id="starter-title" className="text-title text-fg">
         {project.name}
       </h1>
       <p className="mt-1 text-sm text-fg-2">Ask the orchestrator. It plans, delegates to sub-agents and keeps notes.</p>
-      <ul className="mt-4 flex flex-col gap-1.5">
+      <ul className="mt-4 flex flex-col gap-2">
         {prompts(project).map((p) => (
           <li key={p.title}>
             <button
               type="button"
               onClick={() => onPick(p.text)}
               title={p.text}
-              className="press-row flex w-full items-start gap-3 rounded-md border border-line px-3 py-2.5 text-left hover:border-line-strong hover:bg-hover"
+              className="press-row flex w-full items-start gap-3 rounded-md border border-line p-card text-left hover:border-line-strong hover:bg-hover"
             >
               <p.icon size={16} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="mt-0.5 shrink-0 text-fg-3" />
               <span className="min-w-0 flex-1">

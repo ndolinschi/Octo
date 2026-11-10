@@ -4,19 +4,22 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* Neutral greys; colour means state: ok (done), err (failed), accent (activity: running, unseen), link.
-   Surfaces nest: the window (sidebar tone) holds inset panels; raised boxes sit on panels. */
+   v6 surfaces: a near-black neutral window holds LIGHTER panels as cards (8px gutters, radius 12, faint
+   edge + 1px inner top highlight); raised boxes sit on panels; overlays float above everything. */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --octo-window: #1b1b1b;
-  --octo-panel: #141414;
-  --octo-raised: #222222;
-  --octo-overlay: #232323;
-  --octo-code-bg: #1c1c1c;
+  --octo-window: #0a0a0a;
+  --octo-panel: #171717;
+  --octo-raised: #212121;
+  --octo-overlay: #262626;
+  --octo-code-bg: #1d1d1d;
   --octo-hover: rgb(255 255 255 / 0.05);
-  --octo-active: rgb(255 255 255 / 0.1);
+  --octo-active: rgb(255 255 255 / 0.09);
   --octo-line: rgb(255 255 255 / 0.08);
   --octo-line-strong: rgb(255 255 255 / 0.14);
+  --octo-panel-edge: rgb(255 255 255 / 0.05);
+  --octo-panel-highlight: rgb(255 255 255 / 0.04);
   --octo-input-border: #6e6e6e;
   --octo-fg: #f0f0f0;
   --octo-fg-2: #c6c6c6;
@@ -29,9 +32,10 @@
   --octo-primary: #ececec;
   --octo-primary-fg: #141414;
   --octo-focus: rgb(255 255 255 / 0.6);
-  --octo-scrim: rgb(0 0 0 / 0.5);
-  --octo-shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.08), 0 16px 40px -12px rgb(0 0 0 / 0.6);
-  --octo-shadow-panel: 0 1px 2px rgb(0 0 0 / 0.25);
+  --octo-scrim: rgb(0 0 0 / 0.55);
+  --octo-shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.08), 0 16px 40px -12px rgb(0 0 0 / 0.7);
+  --octo-shadow-panel: inset 0 1px 0 var(--octo-panel-highlight);
+  --octo-shadow-float: 0 0 0 1px rgb(255 255 255 / 0.08), 0 8px 24px -8px rgb(0 0 0 / 0.7);
   --octo-drop: rgb(92 157 255 / 0.1);
   --octo-drop-edge: rgb(92 157 255 / 0.45);
   --octo-selection: rgb(92 157 255 / 0.32);
@@ -40,19 +44,21 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --octo-window: #f2f2f2;
+  --octo-window: #ececec;
   --octo-panel: #ffffff;
-  --octo-raised: #f5f5f5;
+  --octo-raised: #f6f6f6;
   --octo-overlay: #ffffff;
   --octo-code-bg: #f5f5f5;
   --octo-hover: rgb(0 0 0 / 0.04);
   --octo-active: rgb(0 0 0 / 0.07);
   --octo-line: rgb(0 0 0 / 0.09);
   --octo-line-strong: rgb(0 0 0 / 0.14);
+  --octo-panel-edge: rgb(0 0 0 / 0.06);
+  --octo-panel-highlight: rgb(255 255 255 / 0);
   --octo-input-border: #8a8a8a;
   --octo-fg: #1a1a1a;
   --octo-fg-2: #424242;
-  --octo-fg-3: #636363;
+  --octo-fg-3: #5e5e5e;
   --octo-accent: #0a66e0;
   --octo-link: #0a5fd1;
   --octo-ok: #1a7f45;
@@ -64,10 +70,20 @@
   --octo-scrim: rgb(0 0 0 / 0.2);
   --octo-shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.04), 0 16px 40px -12px rgb(0 0 0 / 0.18);
   --octo-shadow-panel: 0 1px 2px rgb(0 0 0 / 0.04);
+  --octo-shadow-float: 0 0 0 1px rgb(0 0 0 / 0.08), 0 8px 24px -8px rgb(0 0 0 / 0.18);
   --octo-drop: rgb(10 102 224 / 0.08);
   --octo-drop-edge: rgb(10 102 224 / 0.4);
   --octo-selection: rgb(10 102 224 / 0.2);
   --octo-comment-line: rgb(10 102 224 / 0.06);
+}
+
+/* Spacing scale (px): 2 4 6 8 12 16 20 24 32 40 — nothing else. Tailwind steps 0.5 1 1.5 2 3 4 5 6 8 10
+   are exactly these; the semantic names below say what a value is for. Prose uses the --octo-* ones. */
+:root {
+  --octo-prose-gap: 12px; /* between paragraphs, lists, tables, code blocks, cards */
+  --octo-prose-heading-top: 24px;
+  --octo-prose-heading-bottom: 8px;
+  --octo-prose-item: 4px; /* between list items */
 }
 
 @theme inline {
@@ -95,6 +111,8 @@
   --color-scrim: var(--octo-scrim);
   --shadow-pop: var(--octo-shadow-pop);
   --shadow-panel: var(--octo-shadow-panel);
+  --shadow-float: var(--octo-shadow-float);
+  --color-panel-edge: var(--octo-panel-edge);
   --color-drop: var(--octo-drop);
   --color-drop-edge: var(--octo-drop-edge);
 }
@@ -107,29 +125,44 @@
   --text-sm: 13px;
   --text-sm--line-height: 20px;
   --text-base: 14px;
-  --text-base--line-height: 1.6;
-  /* Two-step heading scale (both semibold): title for page/dialog titles and markdown h1–h2,
-     heading for section titles, markdown h3–h4 and the sub-agent role. */
+  --text-base--line-height: 22px;
+  /* Two-step heading scale (both semibold): title for page titles and markdown h1–h2,
+     heading for dialog/section titles, markdown h3–h4 and the sub-agent role. */
   --text-title: 16px;
-  --text-title--line-height: 1.3;
+  --text-title--line-height: 20px;
   --text-title--font-weight: 600;
   --text-heading: 14px;
-  --text-heading--line-height: 1.4;
+  --text-heading--line-height: 20px;
   --text-heading--font-weight: 600;
   /* Inputs on touch screens stay at 16px so iOS does not zoom. */
   --text-input-touch: 16px;
-  --text-input-touch--line-height: 1.4;
-  /* Radius scale: 2xs rows inset 6px in an 8px card · xs inline code, menu/palette rows · sm controls, rows, tabs · md boxes, cards, inputs ·
-     lg inset panels, dialogs · xl composer. Nothing rounder. */
+  --text-input-touch--line-height: 20px;
+  /* Radius scale. Concentric: a child at inset i inside radius R takes R − i.
+     2xs 2 delegation rows (8 − 6 → see card) · xs 4 rows, tabs, menu items, palette results, inline code
+     (panel 12 − 8, menu 8 − 4, palette 12 − 8) · sm 6 controls · md 8 cards, inputs, menus, popovers,
+     code blocks · xl 12 panels, dialogs, palette, composer. Nothing rounder. */
   --radius-2xs: 2px;
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 10px;
   --radius-xl: 12px;
-  /* Content width of the conversation column (transcript, composer, read-only bar share both edges). */
+  /* Semantic spacing (all on the scale). */
+  --spacing-gutter: 8px; /* window edge → panel, panel → panel, sidebar card → panel */
+  --spacing-pane: 8px; /* panel or sidebar edge → its tab strip, rows, bars (one inset rule) */
+  --spacing-card: 12px; /* card edge → content (prompt box, delegation card, code block, comment card) */
+  --spacing-dialog: 20px; /* dialog edge → content (16 under 640px) */
+  --spacing-pad: 24px; /* conversation side padding (16 when the conversation is under 560px) */
+  /* Semantic sizes. Rows: 28 for every list row (tabs, requests, tree, agents, menus, popovers, filter);
+     32 for top-level rows (sidebar nav and project rows, palette results). Controls: 24 / 28 / 32. */
+  --spacing-row: 28px;
+  --spacing-row-nav: 32px;
+  --spacing-slot: 16px; /* leading slot of every row (icon, chevron or status), centred 16px in */
+  --spacing-bar: 36px; /* slim bars: file breadcrumb row */
+  /* Content width of the conversation column (transcript, header, pinned prompt, composer share both edges). */
   --spacing-measure: 720px;
   --spacing-sidebar: 260px;
+  --spacing-preview: 760px;
+  --spacing-float: 704px;
   --ease-out-quint: cubic-bezier(0.2, 0, 0, 1);
   --animate-caret: caret 1s steps(2, start) infinite;
 
@@ -230,6 +263,20 @@
   }
   &[data-fade~="start"][data-fade~="end"] {
     mask-image: linear-gradient(to right, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  }
+}
+
+/* Vertical lists whose scrollbar is hidden (so rows keep the pane inset on both sides): overflowing ends fade. */
+@utility fade-y {
+  scrollbar-width: none;
+  &[data-fade~="start"] {
+    mask-image: linear-gradient(to bottom, transparent, #000 24px);
+  }
+  &[data-fade~="end"] {
+    mask-image: linear-gradient(to top, transparent, #000 24px);
+  }
+  &[data-fade~="start"][data-fade~="end"] {
+    mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
   }
 }
 
@@ -334,10 +381,11 @@
   }
 }
 
-/* Prose (assistant markdown) */
+/* Prose (assistant markdown). One rhythm: blocks 12 apart, headings 24 above / 8 below, list items 4,
+   lines 22 (body) / 20 (code); every value from the spacing scale. */
 .octo-prose {
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 22px;
   color: var(--octo-fg);
   overflow-wrap: anywhere;
   text-wrap: pretty;
@@ -353,15 +401,14 @@
 .octo-prose ol,
 .octo-prose table,
 .octo-prose blockquote {
-  margin: 0 0 0.75em;
+  margin: 0 0 var(--octo-prose-gap);
 }
 .octo-prose h1,
 .octo-prose h2,
 .octo-prose h3,
 .octo-prose h4 {
   font-weight: 600;
-  line-height: 1.3;
-  margin: 1.25em 0 0.5em;
+  margin: var(--octo-prose-heading-top) 0 var(--octo-prose-heading-bottom);
 }
 .octo-prose h1,
 .octo-prose h2 {
@@ -376,11 +423,12 @@
 /* Compact prose (notes, task briefs): UI size, secondary colour. */
 .octo-prose.octo-prose-sm {
   font-size: 13px;
+  line-height: 20px;
   color: var(--octo-fg-2);
 }
 .octo-prose ul,
 .octo-prose ol {
-  padding-left: 1.4em;
+  padding-left: 24px;
 }
 .octo-prose ul {
   list-style: disc;
@@ -389,8 +437,15 @@
   list-style: decimal;
 }
 .octo-prose li {
-  margin: 0.15em 0;
-  padding-left: 0.15em;
+  margin: var(--octo-prose-item) 0 0;
+  padding-left: 2px;
+}
+.octo-prose li:first-child {
+  margin-top: 0;
+}
+.octo-prose li > ul,
+.octo-prose li > ol {
+  margin: var(--octo-prose-item) 0 0;
 }
 .octo-prose li::marker {
   color: var(--octo-fg-3);
@@ -414,19 +469,19 @@
 }
 .octo-prose blockquote {
   border-left: 2px solid var(--octo-line-strong);
-  padding-left: 0.9em;
+  padding-left: 12px;
   color: var(--octo-fg-2);
 }
 .octo-prose hr {
   border: 0;
   border-top: 1px solid var(--octo-line);
-  margin: 1.25em 0;
+  margin: var(--octo-prose-heading-top) 0;
 }
 .octo-prose table {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 20px;
   display: block;
   overflow-x: auto;
   border: 1px solid var(--octo-line);
@@ -536,7 +591,7 @@
   line-height: 20px;
 }
 :root .monaco-editor .monaco-hover .hover-contents {
-  padding: 6px 10px;
+  padding: 8px 12px;
 }
 :root .monaco-editor .monaco-hover code {
   font-family: var(--font-mono);

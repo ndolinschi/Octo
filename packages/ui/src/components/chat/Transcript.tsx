@@ -46,13 +46,13 @@ export const Transcript = memo(function Transcript(props: {
 
   return (
     <TranscriptContext.Provider value={ctx}>
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-8">
         {turns.map((turn, i) => {
           const last = i === turns.length - 1;
           const hidePrompt = props.hideFirstPrompt && i === 0;
           const started = turn.prompt?.created_at ?? (i === 0 ? agent.started_at : null);
           return (
-            <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-6">
+            <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-4">
               {turn.prompt && !hidePrompt && (
                 <UserPrompt text={promptText(turn.prompt)} author={props.promptAuthor} external={!isOrchestrator} />
               )}
@@ -111,7 +111,7 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
   }, [text, expanded]);
 
   return (
-    <div data-prompt className="rounded-md border border-line bg-raised px-3.5 py-2.5 text-base text-fg transition-[box-shadow] duration-300">
+    <div data-prompt className="rounded-md border border-line bg-raised p-card text-base text-fg transition-[box-shadow] duration-300">
       {external ? (
         <div className="mb-0.5 text-xs text-fg-3">From {author}</div>
       ) : (
@@ -134,7 +134,7 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
         </button>
       )}
       {comments.length > 0 && (
-        <div className={cn(text && "mt-2.5")}>
+        <div className={cn(text && "mt-3")}>
           <SentComments comments={comments} />
         </div>
       )}
@@ -160,16 +160,17 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   const worked = !live && start !== null && end !== null && end - start >= 1000 ? end - start : null;
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
   return (
-    <article aria-label={`${props.speaker} response`} className="flex flex-col">
-      {worked !== null && <p className="mb-1.5 text-base text-fg-3 tabular-nums">Worked for {formatDuration(worked)}</p>}
+    // Blocks of a reply (prose, tool lines, delegation cards, the live line, the footer) sit 12 apart.
+    <article aria-label={`${props.speaker} response`} className="flex flex-col gap-3">
+      {worked !== null && <p className="text-base text-fg-3 tabular-nums">Worked for {formatDuration(worked)}</p>}
       {turn.items.map((item) => {
-        if (item.kind === "text") return <Markdown key={item.key} text={item.text} className="octo-prose my-1.5" />;
+        if (item.kind === "text") return <Markdown key={item.key} text={item.text} className="octo-prose" />;
         if (item.kind === "tools") return <ToolGroup key={item.key} uses={item.uses} />;
         return <DelegationGroup key={item.key} uses={item.uses} />;
       })}
-      {streaming && <Markdown text={streaming} className="octo-prose my-1.5" streaming />}
+      {streaming && <Markdown text={streaming} className="octo-prose" streaming />}
       {live && (
-        <p className="mt-1.5 flex h-6 items-center gap-2 text-sm text-fg-3 tabular-nums">
+        <p className="flex h-6 items-center gap-2 text-sm text-fg-3 tabular-nums">
           {props.watched ? <Spinner className="text-accent" /> : <RunningDot />}
           Working…{start !== null && <span>{formatDuration(props.now - start)}</span>}
         </p>
@@ -183,7 +184,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
 function TurnFooter({ reply, at, now }: { reply: string; at: string; now: number }) {
   const [copied, copy] = useCopy();
   return (
-    <div className="mt-2 -ml-1 flex h-6 items-center gap-1.5 text-sm text-fg-3">
+    <div className="-ml-1 flex h-6 items-center gap-1.5 text-sm text-fg-3">
       <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : "Copy reply"} size="sm" onClick={() => copy(reply)} />
       <time dateTime={at} title={new Date(at).toLocaleString()} className="tabular-nums">
         {timeAgo(at, now)}

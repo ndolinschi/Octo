@@ -2,16 +2,17 @@ import { ArrowDown } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { promptText } from "../../lib/transcript";
-import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { CHAT } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { AgentHeader, roleName } from "./AgentHeader";
-import { requestTitle, withComments } from "../../lib/comments";
-import { useOptionalComments } from "../../state/comments";
+import { requestTitle } from "../../lib/comments";
+import { buildTurns, promptText, requestSummaries } from "../../lib/transcript";
+import { ChatHeader } from "./ChatHeader";
 import { CommentsControl } from "./CommentsControl";
 import { Composer, type ComposerHandle } from "./Composer";
+import { TurnRail } from "./TurnRail";
+import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { ObserverBar } from "./ObserverBar";
 import { StarterPrompts } from "./StarterPrompts";
 import { StickyPrompt } from "./StickyPrompt";
@@ -20,22 +21,24 @@ import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
 
 type ScrollMemory = { top: number; atBottom: boolean };
 
+/** The turn rail appears from this many requests on. */
+const RAIL_MIN_REQUESTS = 3;
+
 /**
- * A conversation (the orchestrator's Chat tab or a sub-agent's Agent tab). The transcript column,
- * the pinned prompt and the composer / read-only bar share both edges exactly: the scroll area
- * reserves its scrollbar gutter on both sides (`scroll-quiet`) and the rows outside it add the same
- * gutter (`--sg`) to the same padding (`--pad`).
+ * A conversation (the orchestrator's Chat tab or a sub-agent's Agent tab). The header, transcript
+ * column, pinned prompt, jump button and composer / read-only bar share both edges exactly: the scroll
+ * area reserves its scrollbar gutter on both sides (`scroll-quiet`) and the rows outside it add the same
+ * gutter (`--sg`) to the same padding (`--pad`). Rhythm: turns 32 apart, prompt → reply 16, blocks 12.
  */
 export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: string }) {
-  const { health } = useApp();
   const ws = useOptionalWorkspace();
-  const { project, state, running, ensureMessages, send, cancel, projectId, live } = useProject();
+  const { project, state, running, ensureMessages, projectId } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
   const streaming = state.streaming[agentId];
   const composer = useRef<ComposerHandle>(null);
-  const comments = useOptionalComments();
   const isOrchestrator = agent?.parent_id === null;
+  const composerProps = useOrchestratorComposer(`${tab}:draft`);
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
   const memory = ws?.memory;
@@ -48,6 +51,11 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
 
   const stuck = useStuckTurn(scroll.ref);
   const promptCount = useMemo(() => messages?.filter((m) => m.role === "user").length ?? 0, [messages]);
+  const lastTurnStatus = isOrchestrator ? (state.lastTurn?.status ?? null) : null;
+  const requests = useMemo(
+    () => (isOrchestrator && messages ? requestSummaries(buildTurns(messages), agent?.status === "running", lastTurnStatus) : []),
+    [isOrchestrator, messages, agent?.status, lastTurnStatus],
+  );
   useViewTurn(scroll.ref, projectId, isOrchestrator, promptCount);
   useTurnRequests({
     root: scroll.ref,
@@ -112,52 +120,62 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   const showStarters = isOrchestrator && loadedEmpty && !running;
   const stuckPrompt = stuck.stuckId !== null ? messages?.find((m) => m.id === stuck.stuckId) : undefined;
   const watched = ws ? ws.watched === tab : true;
-  const offlineReason =
-    health === "offline" ? "Bridge offline. Start harness serve to continue." : live === "reconnecting" ? "Reconnecting to the bridge…" : null;
-  const draftKey = `${tab}:draft`;
 
   return (
     <div
       className="@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]"
       style={{ "--sg": `${gutter}px` } as CSSProperties}
     >
-      {stuckPrompt && (
-        <StickyPrompt
-          key={stuckPrompt.id}
-          text={requestTitle(promptText(stuckPrompt))}
-          author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
-          onHeight={stuck.setPinnedHeight}
-        />
-      )}
-      <div
-        ref={scroll.ref}
-        onScroll={() => {
-          scroll.onScroll();
-          stuck.onScroll();
-        }}
-        className="scroll-quiet min-h-0 flex-1 overflow-y-auto"
-      >
-        <div className="px-(--pad)">
-          <div data-column className="mx-auto w-full max-w-measure pt-3 pb-8">
-            {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
-            {showStarters ? (
-              <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
-            ) : (
-              <Transcript
-                agent={agent}
-                messages={messages ?? []}
-                now={now}
-                watched={watched}
-                speaker={roleName(agent)}
-                promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
-                hideFirstPrompt={!isOrchestrator}
-              />
-            )}
+      {isOrchestrator && <ChatHeader requests={requests} />}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {stuckPrompt && (
+          <StickyPrompt
+            key={stuckPrompt.id}
+            text={requestTitle(promptText(stuckPrompt))}
+            author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
+            onHeight={stuck.setPinnedHeight}
+          />
+        )}
+        {requests.length >= RAIL_MIN_REQUESTS && (
+          // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16.
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-[calc(var(--pad)+var(--sg))] @max-[560px]/conv:hidden">
+            <div className="relative mx-auto max-w-measure">
+              <div className="pointer-events-auto absolute top-2 right-full mr-1">
+                <TurnRail requests={requests} projectId={projectId} now={now} />
+              </div>
+            </div>
+          </div>
+        )}
+        <div
+          ref={scroll.ref}
+          onScroll={() => {
+            scroll.onScroll();
+            stuck.onScroll();
+          }}
+          className="scroll-quiet min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-(--pad)">
+            <div data-column className="mx-auto w-full max-w-measure pt-2 pb-8">
+              {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
+              {showStarters ? (
+                <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
+              ) : (
+                <Transcript
+                  agent={agent}
+                  messages={messages ?? []}
+                  now={now}
+                  watched={watched}
+                  speaker={roleName(agent)}
+                  promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
+                  hideFirstPrompt={!isOrchestrator}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="relative shrink-0 px-[calc(var(--pad)+var(--sg))]">
+      <div className="relative shrink-0 px-[calc(var(--pad)+var(--sg))] pb-3">
         {!scroll.atBottom && (
           <>
             {/* Content fades out under the button (stopping short of the scrollbar), so the button never
@@ -174,24 +192,12 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
             </button>
           </>
         )}
-        <div data-column className="mx-auto w-full max-w-measure pb-3">
+        <div data-column-edge className="mx-auto w-full max-w-measure">
           {isOrchestrator ? (
             <Composer
               ref={composer}
-              running={running}
-              disabledReason={offlineReason}
-              followUp={(messages?.length ?? 0) > 0}
-              folders={project.folders}
-              model={project.models.orchestrator}
-              onSend={async (text) => {
-                // Pending code comments ride along as an `octo-comments` block, then clear.
-                const prepared = comments ? await comments.prepare() : null;
-                await send(prepared ? withComments(text, prepared.block) : text);
-                prepared?.commit();
-              }}
-              comments={comments ? { count: comments.comments.length, control: <CommentsControl /> } : undefined}
-              onCancel={cancel}
-              draft={memory ? { initial: (memory.get(draftKey) as string | undefined) ?? "", save: (text) => memory.set(draftKey, text) } : undefined}
+              {...composerProps}
+              comments={composerProps.commentCount ? { count: composerProps.commentCount, control: <CommentsControl /> } : undefined}
             />
           ) : (
             <ObserverBar />

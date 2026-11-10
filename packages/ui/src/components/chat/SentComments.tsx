@@ -40,7 +40,7 @@ function CommentCard({ comment: c }: { comment: SentComment }) {
 
   return (
     <li className="overflow-hidden rounded-sm border border-line bg-panel">
-      <div className="flex min-h-8 items-center gap-2 px-2.5 py-1 text-xs">
+      <div className="flex min-h-8 items-center gap-2 px-3 py-1 text-xs">
         {canOpen ? (
           <button
             type="button"
@@ -60,7 +60,7 @@ function CommentCard({ comment: c }: { comment: SentComment }) {
       </div>
       {c.quote.length > 0 && (
         <div className="border-t border-line bg-code-bg">
-          <pre id={quoteId} className="overflow-x-auto px-2.5 py-1.5 font-mono text-xs leading-[1.6] text-fg-2">
+          <pre id={quoteId} className="overflow-x-auto px-3 py-2 font-mono text-xs leading-5 text-fg-2">
             {lines.map((line, i) => (
               <span key={i} className="block">
                 <span aria-hidden className="mr-3 inline-block text-right text-fg-3 tabular-nums select-none" style={{ width: `${width}ch` }}>
@@ -77,14 +77,14 @@ function CommentCard({ comment: c }: { comment: SentComment }) {
               aria-expanded={expanded}
               aria-controls={quoteId}
               onClick={() => setExpanded((x) => !x)}
-              className="press mb-1 ml-1 inline-flex h-6 items-center rounded-xs px-1.5 text-xs text-fg-3 hover:bg-hover hover:text-fg"
+              className="press mb-1 ml-1.5 inline-flex h-6 items-center rounded-xs px-1.5 text-xs text-fg-3 hover:bg-hover hover:text-fg"
             >
               {expanded ? "Show less" : `Show ${hidden} more ${hidden === 1 ? "line" : "lines"}`}
             </button>
           )}
         </div>
       )}
-      {c.text && <p className="border-t border-line px-2.5 py-2 text-base whitespace-pre-wrap wrap-anywhere text-fg">{c.text}</p>}
+      {c.text && <p className="border-t border-line px-3 py-2 text-base whitespace-pre-wrap wrap-anywhere text-fg">{c.text}</p>}
     </li>
   );
 }

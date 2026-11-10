@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 /** Idle clocks only move for relative times ("2h ago"). */
 const IDLE_TICK = 60_000;
@@ -143,4 +143,35 @@ export function useDelayedLoading(loading: boolean): boolean {
     }
   }, [loading, shown]);
   return shown;
+}
+
+/**
+ * Fades whichever end of a scroller has more content (`data-fade="start end"`, styled by the `fade-x` /
+ * `fade-y` utilities): the cue for lists whose scrollbar is hidden so their rows keep the panel's insets.
+ * Returns an updater to call after programmatic scrolls.
+ */
+export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, axis: "x" | "y"): () => void {
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const [pos, size, total] = axis === "x" ? [el.scrollLeft, el.clientWidth, el.scrollWidth] : [el.scrollTop, el.clientHeight, el.scrollHeight];
+    const fade = [pos > 1 && "start", pos + size < total - 1 && "end"].filter(Boolean).join(" ");
+    if ((el.dataset.fade ?? "") !== fade) el.dataset.fade = fade;
+  }, [ref, axis]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    const mo = new MutationObserver(update);
+    mo.observe(el, { childList: true, subtree: true });
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [ref, update]);
+  return update;
 }
