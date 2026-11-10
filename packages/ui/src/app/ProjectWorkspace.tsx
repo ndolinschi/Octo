@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { navigate } from "../lib/route";
 import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";
+import { CommentsProvider } from "../state/comments";
 import { useProject } from "../state/project";
 import { allTabs, fileTab, focusedGroup, parseTab } from "../state/workspace/layout";
 import { useWorkspace, WorkspaceProvider } from "../state/workspace/WorkspaceProvider";
@@ -34,7 +35,7 @@ function Files({ children }: { children: ReactNode }) {
   return (
     <CodeProvider onOpen={(key) => ws.openFileTab(key)} onReveal={() => ws.openTool("files")} onGone={(key) => ws.dropTab(fileTab(key))}>
       <CodeLink />
-      {children}
+      <CommentsProvider>{children}</CommentsProvider>
     </CodeProvider>
   );
 }

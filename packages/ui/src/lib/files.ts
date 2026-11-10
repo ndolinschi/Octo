@@ -41,3 +41,6 @@ export function resolveFolder(folders: { label: string }[], folder: string | und
   if (folder) return folders.some((f) => f.label === folder) ? folder : null;
   return folders[0]?.label ?? null;
 }
+
+/** Where to put the cursor when opening a file: 1-based lines (a range when `endLine` is given). */
+export type FilePosition = { line: number; column?: number; endLine?: number };

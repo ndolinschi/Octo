@@ -33,10 +33,24 @@ self.MonacoEnvironment = {
   },
 };
 
-// No language servers beyond syntax: files are viewed out of their project context, so
-// unresolved imports would paint every file red. Syntax errors still show.
+// Built-in TypeScript intelligence stays at syntax level: files are viewed out of their project
+// context, so unresolved imports would paint every file red and hovers/completions would guess.
+// Hover, completion and definitions come from the project's language servers (src/lsp) instead,
+// which see the real project. Set before any model exists: the worker reads it once at setup.
 for (const defaults of [monaco.typescript.typescriptDefaults, monaco.typescript.javascriptDefaults]) {
   defaults.setDiagnosticsOptions({ noSemanticValidation: true, noSuggestionDiagnostics: true });
+  defaults.setModeConfiguration({
+    ...defaults.modeConfiguration,
+    completionItems: false,
+    hovers: false,
+    definitions: false,
+    references: false,
+    documentHighlights: false,
+    signatureHelp: false,
+    rename: false,
+    codeActions: false,
+    inlayHints: false,
+  });
   defaults.setCompilerOptions({
     target: monaco.typescript.ScriptTarget.ESNext,
     module: monaco.typescript.ModuleKind.ESNext,
@@ -64,6 +78,7 @@ type Palette = {
   overlay: string;
   raised: string;
   err: string;
+  warn: string;
   link: string;
   /** Alpha-suffixed neutral (white in dark, black in light). */
   tint: (alpha: string) => string;
@@ -83,6 +98,7 @@ const DARK: Palette = {
   overlay: "#232323",
   raised: "#222222",
   err: "#f6847e",
+  warn: "#d8b07a",
   link: "#6fa8ff",
   tint: (a) => `#ffffff${a}`,
 };
@@ -101,6 +117,7 @@ const LIGHT: Palette = {
   overlay: "#ffffff",
   raised: "#f5f5f5",
   err: "#b42a23",
+  warn: "#8a5512",
   link: "#0a5fd1",
   tint: (a) => `#000000${a}`,
 };
@@ -178,29 +195,66 @@ function theme(base: "vs" | "vs-dark", p: Palette, background: string): monaco.e
       // Brackets stay grey (no pair colourisation).
       ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`editorBracketHighlight.foreground${n}`, p.muted])),
       "editorBracketHighlight.unexpectedBracket.foreground": p.err,
+      // Diagnostics: squiggles in the err / warn tokens; unused code fades.
       "editorError.foreground": p.err,
-      "editorWarning.foreground": p.number,
+      "editorWarning.foreground": p.warn,
       "editorInfo.foreground": p.muted,
+      "editorHint.foreground": p.muted,
+      "editorUnnecessaryCode.opacity": "#000000a0",
       "editorLink.activeForeground": p.link,
+      "textLink.foreground": p.link,
+      "textLink.activeForeground": p.link,
+      "textCodeBlock.background": p.raised,
+      "textPreformat.foreground": p.strong,
+      // Widgets (hover, suggest, peek, find) use the overlay surface and the hairline of dialogs.
       "editorWidget.background": p.overlay,
       "editorWidget.foreground": p.strong,
       "editorWidget.border": p.tint("17"),
+      "editorWidget.resizeBorder": p.tint("24"),
       "editorHoverWidget.background": p.overlay,
+      "editorHoverWidget.foreground": p.strong,
       "editorHoverWidget.border": p.tint("17"),
+      "editorHoverWidget.highlightForeground": p.strong,
+      "editorHoverWidget.statusBarBackground": p.overlay,
       "editorSuggestWidget.background": p.overlay,
       "editorSuggestWidget.border": p.tint("17"),
-      "editorSuggestWidget.selectedBackground": p.tint("14"),
+      "editorSuggestWidget.foreground": p.text,
+      "editorSuggestWidget.selectedBackground": p.tint("1a"),
+      "editorSuggestWidget.selectedForeground": p.strong,
+      "editorSuggestWidget.selectedIconForeground": p.strong,
       "editorSuggestWidget.highlightForeground": p.strong,
+      "editorSuggestWidget.focusHighlightForeground": p.strong,
+      "editorMarkerNavigation.background": p.overlay,
+      "editorMarkerNavigationError.background": p.err,
+      "editorMarkerNavigationWarning.background": p.warn,
+      "peekView.border": p.tint("24"),
+      "peekViewTitle.background": p.overlay,
+      "peekViewTitleLabel.foreground": p.strong,
+      "peekViewTitleDescription.foreground": p.muted,
+      "peekViewResult.background": p.overlay,
+      "peekViewResult.fileForeground": p.strong,
+      "peekViewResult.lineForeground": p.muted,
+      "peekViewResult.selectionBackground": p.tint("1a"),
+      "peekViewResult.selectionForeground": p.strong,
+      "peekViewResult.matchHighlightBackground": p.tint("24"),
+      "peekViewEditor.background": background,
+      "peekViewEditorGutter.background": background,
+      "peekViewEditor.matchHighlightBackground": p.tint("24"),
       "editorStickyScroll.background": background,
       "input.background": p.raised,
       "input.border": p.tint("17"),
       "inputOption.activeBorder": p.tint("60"),
       "focusBorder": p.tint("99"),
       "list.hoverBackground": p.tint("0d"),
-      "list.activeSelectionBackground": p.tint("14"),
+      "list.hoverForeground": p.strong,
+      "list.activeSelectionBackground": p.tint("1a"),
       "list.activeSelectionForeground": p.strong,
-      "list.focusBackground": p.tint("14"),
+      "list.inactiveSelectionBackground": p.tint("14"),
+      "list.focusBackground": p.tint("1a"),
+      "list.focusForeground": p.strong,
+      "list.focusOutline": "#00000000",
       "list.highlightForeground": p.strong,
+      "list.focusHighlightForeground": p.strong,
       "menu.background": p.overlay,
       "menu.foreground": p.strong,
       "menu.selectionBackground": p.tint("14"),
@@ -208,10 +262,11 @@ function theme(base: "vs" | "vs-dark", p: Palette, background: string): monaco.e
       "menu.separatorBackground": p.tint("17"),
       "widget.shadow": base === "vs-dark" ? "#00000080" : "#0000001f",
       "scrollbar.shadow": "#00000000",
-      // Same slim neutral thumb as the app's scrollbars (line-strong), a step darker on hover.
+      // Same quiet neutral thumb as the app's scrollbars (line-strong), stronger on hover and drag;
+      // its slim, rounded shape is in styles.css.
       "scrollbarSlider.background": p.tint("24"),
-      "scrollbarSlider.hoverBackground": p.tint("38"),
-      "scrollbarSlider.activeBackground": p.tint("48"),
+      "scrollbarSlider.hoverBackground": p.tint("3d"),
+      "scrollbarSlider.activeBackground": p.tint("52"),
     },
   };
 }
@@ -225,3 +280,7 @@ export function themeName(mode: "dark" | "light"): string {
 }
 
 export { monaco };
+
+/* Editor features that only exist once Monaco does: code comments and the language-server client. */
+export { EditorComments } from "./editor/EditorComments";
+export { LspManager } from "../../lsp/manager";

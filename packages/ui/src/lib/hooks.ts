@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+/** Idle clocks only move for relative times ("2h ago"). */
+const IDLE_TICK = 60_000;
+
+/**
+ * A clock that ticks every `intervalMs` while `active`, and once a minute otherwise. The value is
+ * stable between ticks, so memoised children that take it (the transcript) don't re-render on
+ * unrelated updates such as scrolling.
+ */
 export function useNow(active: boolean, intervalMs = 1000): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!active) return;
     setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    const id = window.setInterval(() => setNow(Date.now()), active ? intervalMs : IDLE_TICK);
     return () => window.clearInterval(id);
   }, [active, intervalMs]);
-  return active ? now : Date.now();
+  return now;
 }
 
 export function useMediaQuery(query: string): boolean {

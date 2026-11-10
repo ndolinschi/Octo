@@ -1,3 +1,4 @@
+import { requestTitle } from "../lib/comments";
 import { act, delegate, say, turn, type Ctx } from "./runtime";
 
 function brief(text: string): string {
@@ -14,7 +15,7 @@ export async function genericTurn(ctx: Ctx, prompt: string): Promise<void> {
       [
         {
           role: "Researcher",
-          title: brief(prompt),
+          title: brief(requestTitle(prompt)),
           tier: "fast",
           task: `The user asked: "${prompt}". Investigate the project and report concrete findings with file references.`,
           run: async (cc, id) => {

@@ -4,12 +4,14 @@ import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { formatDuration, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
+import { splitComments } from "../../lib/comments";
 import { buildTurns, promptText, type Turn } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { Button, IconButton } from "../primitives/Button";
 import { RunningDot, Spinner } from "../primitives/Status";
 import { DelegationGroup } from "./DelegationGroup";
 import { Markdown } from "./Markdown";
+import { SentComments } from "./SentComments";
 import { ToolGroup } from "./ToolGroup";
 import { TranscriptContext, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 
@@ -90,8 +92,9 @@ export const Transcript = memo(function Transcript(props: {
   );
 });
 
-/** Prompts longer than twelve lines collapse, with a toggle to read them in full. */
-const UserPrompt = memo(function UserPrompt({ text, author, external }: { text: string; author: string; external: boolean }) {
+/** Prompts longer than twelve lines collapse, with a toggle to read them in full; code comments show as cards. */
+const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { text: string; author: string; external: boolean }) {
+  const { prose: text, comments } = useMemo(() => splitComments(raw), [raw]);
   const box = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -114,10 +117,12 @@ const UserPrompt = memo(function UserPrompt({ text, author, external }: { text: 
       ) : (
         <span className="sr-only">{author}: </span>
       )}
-      <div ref={box} id={id} className={cn("whitespace-pre-wrap wrap-anywhere", !expanded && "line-clamp-12")}>
-        {text}
-      </div>
-      {(overflows || expanded) && (
+      {text && (
+        <div ref={box} id={id} className={cn("whitespace-pre-wrap wrap-anywhere", !expanded && "line-clamp-12")}>
+          {text}
+        </div>
+      )}
+      {text && (overflows || expanded) && (
         <button
           type="button"
           aria-expanded={expanded}
@@ -127,6 +132,11 @@ const UserPrompt = memo(function UserPrompt({ text, author, external }: { text: 
         >
           {expanded ? "Show less" : "Show more"}
         </button>
+      )}
+      {comments.length > 0 && (
+        <div className={cn(text && "mt-2.5")}>
+          <SentComments comments={comments} />
+        </div>
       )}
     </div>
   );

@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { cn } from "../../lib/cn";
 import { fileKey, parentPath } from "../../lib/files";
 import { useCode, type DirState } from "../../state/code";
+import { useOptionalComments } from "../../state/comments";
+import { CommentCount, commentsDescription } from "./CommentCount";
 import { useDelayedLoading } from "../../lib/hooks";
 import { Spinner } from "../primitives/Status";
 
@@ -49,6 +51,7 @@ function flatten(
 /** ARIA tree of the project's folders; directories load when expanded. */
 export function FileTree({ folders }: { folders: { label: string; path: string }[] }) {
   const code = useCode();
+  const counts = useOptionalComments()?.counts;
   const { dirs, isExpanded, ensureDir, selectedKey, revealTick } = code;
   const allRows = useMemo(() => flatten(folders, dirs, isExpanded), [folders, dirs, isExpanded]);
   // Loading rows appear only for slow folders (after 200ms) and then stay ≥300ms.
@@ -174,6 +177,7 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
             {...common}
             aria-expanded={row.kind === "dir" ? row.expanded : undefined}
             aria-selected={selected}
+            aria-description={row.kind === "file" ? commentsDescription(counts?.get(row.id) ?? 0) : undefined}
             title={row.title}
             onClick={() => activate(row)}
             className={cn(
@@ -191,6 +195,11 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
             </span>
             {!isRoot && <Icon size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="mr-0.5 shrink-0 text-fg-3" />}
             <span className={cn("min-w-0 truncate", isRoot ? "font-medium text-fg" : "text-fg")}>{row.name}</span>
+            {row.kind === "file" && (counts?.get(row.id) ?? 0) > 0 && (
+              <span className="ml-auto pl-2">
+                <CommentCount count={counts!.get(row.id)!} />
+              </span>
+            )}
           </div>
         );
       })}

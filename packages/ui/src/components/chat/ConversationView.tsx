@@ -8,6 +8,9 @@ import { useProject } from "../../state/project";
 import { CHAT } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { AgentHeader, roleName } from "./AgentHeader";
+import { requestTitle, withComments } from "../../lib/comments";
+import { useOptionalComments } from "../../state/comments";
+import { CommentsControl } from "./CommentsControl";
 import { Composer, type ComposerHandle } from "./Composer";
 import { ObserverBar } from "./ObserverBar";
 import { StarterPrompts } from "./StarterPrompts";
@@ -31,6 +34,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   const messages = state.messages[agentId];
   const streaming = state.streaming[agentId];
   const composer = useRef<ComposerHandle>(null);
+  const comments = useOptionalComments();
   const isOrchestrator = agent?.parent_id === null;
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
@@ -118,7 +122,12 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
       style={{ "--sg": `${gutter}px` } as CSSProperties}
     >
       {stuckPrompt && (
-        <StickyPrompt key={stuckPrompt.id} text={promptText(stuckPrompt)} author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"} />
+        <StickyPrompt
+          key={stuckPrompt.id}
+          text={requestTitle(promptText(stuckPrompt))}
+          author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
+          onHeight={stuck.setPinnedHeight}
+        />
       )}
       <div
         ref={scroll.ref}
@@ -150,15 +159,20 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
 
       <div className="relative shrink-0 px-[calc(var(--pad)+var(--sg))]">
         {!scroll.atBottom && (
-          <button
-            type="button"
-            onClick={() => scroll.scrollToBottom(true)}
-            aria-label="Jump to latest"
-            title="Jump to latest"
-            className="press absolute -top-11 left-1/2 z-10 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-strong bg-raised text-fg-2 shadow-pop hover:text-fg"
-          >
-            <ArrowDown size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
-          </button>
+          <>
+            {/* Content fades out under the button (stopping short of the scrollbar), so the button never
+                reads as part of whatever it sits over. */}
+            <div aria-hidden className="octo-fade pointer-events-none absolute -top-14 right-[calc(var(--sg)*2)] left-0 h-14 bg-linear-to-t from-panel from-30% to-transparent" />
+            <button
+              type="button"
+              onClick={() => scroll.scrollToBottom(true)}
+              aria-label="Jump to latest"
+              title="Jump to latest"
+              className="press octo-fade absolute -top-11 left-1/2 z-10 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
+            >
+              <ArrowDown size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
+            </button>
+          </>
         )}
         <div data-column className="mx-auto w-full max-w-measure pb-3">
           {isOrchestrator ? (
@@ -169,7 +183,13 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
               followUp={(messages?.length ?? 0) > 0}
               folders={project.folders}
               model={project.models.orchestrator}
-              onSend={send}
+              onSend={async (text) => {
+                // Pending code comments ride along as an `octo-comments` block, then clear.
+                const prepared = comments ? await comments.prepare() : null;
+                await send(prepared ? withComments(text, prepared.block) : text);
+                prepared?.commit();
+              }}
+              comments={comments ? { count: comments.comments.length, control: <CommentsControl /> } : undefined}
               onCancel={cancel}
               draft={memory ? { initial: (memory.get(draftKey) as string | undefined) ?? "", save: (text) => memory.set(draftKey, text) } : undefined}
             />

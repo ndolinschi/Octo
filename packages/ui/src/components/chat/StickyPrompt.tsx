@@ -4,13 +4,29 @@ import { STICK_TOP } from "./turnTracking";
 
 /**
  * The prompt of the turn being read, pinned over the top of the scroll area once its own copy has
- * scrolled under. Opaque, with a soft fade below; long prompts clamp (three lines, one on short
+ * scrolled out entirely (never two boxes at once). Opaque, with a short fade below; long prompts clamp (three lines, one on short
  * viewports) and expand on click. It overlays the transcript (not in flow), so pinning never shifts
  * the content. It spans the scroll area minus the scrollbar and uses the conversation's `--pad` /
  * `--sg` insets, so its edges match the transcript column.
  */
-export function StickyPrompt(props: { text: string; author: string | null }) {
+export function StickyPrompt(props: { text: string; author: string | null; onHeight(px: number): void }) {
   const box = useRef<HTMLSpanElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const onHeight = useRef(props.onHeight);
+  useLayoutEffect(() => {
+    onHeight.current = props.onHeight;
+  });
+
+  // The conversation needs the copy's full height (fade included) to know when to let it go.
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const report = () => onHeight.current(el.getBoundingClientRect().height);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
 
@@ -42,7 +58,7 @@ export function StickyPrompt(props: { text: string; author: string | null }) {
   const boxClass = "block w-full rounded-md border border-line bg-raised px-3.5 py-2.5 text-left text-base text-fg";
 
   return (
-    <div className="pointer-events-none absolute top-0 left-0 z-10 right-(--sg)">
+    <div ref={root} data-pinned className="pointer-events-none absolute top-0 left-0 z-10 right-(--sg)">
       <div className="bg-panel pr-(--pad) pl-[calc(var(--pad)+var(--sg))]" style={{ paddingTop: STICK_TOP }}>
         <div className="pointer-events-auto mx-auto w-full max-w-measure">
           {clamped || expanded ? (
@@ -62,7 +78,7 @@ export function StickyPrompt(props: { text: string; author: string | null }) {
           )}
         </div>
       </div>
-      <div aria-hidden className="h-6 bg-linear-to-b from-panel to-transparent [@media(max-height:640px)]:h-2.5" />
+      <div aria-hidden className="h-3 bg-linear-to-b from-panel to-transparent [@media(max-height:640px)]:h-2" />
     </div>
   );
 }

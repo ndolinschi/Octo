@@ -22,6 +22,22 @@ export function longPrompt(): string {
   return lines.join("\n");
 }
 
+/** A long reply to the long prompt, so its turn outlasts the pinned copy while scrolling. */
+function longAnswer(): string {
+  const rows = Array.from({ length: 58 }, (_, i) => {
+    const n = i + 1;
+    const status = n === 14 || n === 41 ? "Needs follow-up" : "OK";
+    return `| ${n} | ${STEPS[n % STEPS.length]} | ${status} |`;
+  });
+  return [
+    "Went through all 58 steps. Two need follow-up: step 14 (cursor pagination) and step 41 (clock reads); everything else checks out.",
+    "",
+    "| Step | Check | Result |",
+    "| --- | --- | --- |",
+    ...rows,
+  ].join("\n");
+}
+
 const QUESTIONS = [
   "Where is the rate limiter configured?",
   "Why did the nightly build take 14 minutes?",
@@ -35,7 +51,7 @@ export async function stressHistory(ctx: Ctx): Promise<void> {
     const prompt = i === 60 ? longPrompt() : `${QUESTIONS[i % QUESTIONS.length]} (${i + 1})`;
     await turn(ctx, prompt, async (c, orch) => {
       if (i % 10 === 4) await act(c, orch, [{ name: "read_file", input: { path: "src/config.ts" }, result: "export const config = { … }", ms: 300 }]);
-      await say(c, orch, i === 60 ? "Went through all 58 steps. Two need follow-up: step 14 (cursor pagination) and step 41 (clock reads); everything else checks out." : `Answer ${i + 1}: the short version is in \`src/config.ts\`; nothing else needs to change.`);
+      await say(c, orch, i === 60 ? longAnswer() : `Answer ${i + 1}: the short version is in \`src/config.ts\`; nothing else needs to change.`);
     });
     await sleep(ctx, 11 * 60_000);
   }

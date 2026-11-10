@@ -1,4 +1,6 @@
 import { X } from "lucide-react";
+import { useOptionalComments } from "../../state/comments";
+import { CommentCount, commentsDescription } from "../files/CommentCount";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { useCode } from "../../state/code";
@@ -24,7 +26,8 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
   const list = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ tab: TabId; x: number; y: number } | null>(null);
   const drag = useDrag();
-  const ctx = { state, orchestratorId: project?.orchestrator_agent_id, file: code.file };
+  const counts = useOptionalComments()?.counts;
+  const ctx = { state, orchestratorId: project?.orchestrator_agent_id, file: code.file, comments: (key: string) => counts?.get(key) ?? 0 };
 
   const button = (tab: TabId) => list.current?.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${CSS.escape(tab)}"]`) ?? null;
 
@@ -161,6 +164,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 aria-controls={`${domId(tab)}-panel`}
                 tabIndex={selected ? 0 : -1}
                 title={info.title}
+                aria-description={commentsDescription(info.comments)}
                 onKeyDown={(e) => onKeyDown(e, i)}
                 className="flex h-full min-w-0 items-center gap-1.5 rounded-sm pr-0.5 pl-2 text-sm focus-inset"
               >
@@ -169,6 +173,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                   {info.label}
                 </span>
                 {info.name && <span className="sr-only">{info.name}</span>}
+                {info.comments > 0 && <CommentCount count={info.comments} />}
                 {info.status === "modified" && <span className="sr-only"> (unsaved)</span>}
                 {info.status === "running" && <span className="sr-only"> (working)</span>}
               </button>

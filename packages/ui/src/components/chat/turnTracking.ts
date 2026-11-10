@@ -36,30 +36,41 @@ export function useViewTurn(root: RefObject<HTMLElement | null>, projectId: stri
   useEffect(() => () => nav.setViewTurn(null), [nav]);
 }
 
-/** The turn whose prompt has scrolled under the top edge while the turn is still being read. */
-export function useStuckTurn(root: RefObject<HTMLElement | null>): { stuckId: number | null; onScroll(): void } {
+/** Height the pinned copy is assumed to take before it has been measured (3 lines + insets + fade). */
+const PINNED_ESTIMATE = 128;
+
+/**
+ * The turn whose prompt has scrolled out above the top edge while the turn is still being read.
+ * Pinning never shows two prompt boxes: a prompt pins only once its in-flow box is entirely above
+ * the scroll area, and the pinned copy (its height incl. the fade is reported through
+ * `setPinnedHeight`) gives way as soon as the next turn's prompt would slide under it.
+ */
+export function useStuckTurn(root: RefObject<HTMLElement | null>): { stuckId: number | null; onScroll(): void; setPinnedHeight(px: number): void } {
   const [stuckId, setStuckId] = useState<number | null>(null);
   const frame = useRef(0);
+  const pinned = useRef(PINNED_ESTIMATE);
 
   const measure = useCallback(() => {
     frame.current = 0;
     const el = root.current;
     if (!el) return;
-    const top = el.getBoundingClientRect().top + STICK_TOP;
+    const top = el.getBoundingClientRect().top;
+    // The pinned copy covers [top, top + pinned): a turn ending inside it is done being read.
+    const covered = top + pinned.current;
     let next: number | null = null;
-    // Turns are in document order: binary-search the first one still reaching below the line.
+    // Turns are in document order: binary-search the first one still reaching below the covered band.
     const turns = turnsIn(el);
     let lo = 0;
     let hi = turns.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (turns[mid].getBoundingClientRect().bottom <= top + 40) lo = mid + 1;
+      if (turns[mid].getBoundingClientRect().bottom <= covered) lo = mid + 1;
       else hi = mid;
     }
     const s = turns[lo];
-    if (s && s.getBoundingClientRect().top <= top) {
+    if (s && s.getBoundingClientRect().top < top) {
       const prompt = s.querySelector(PROMPT);
-      if (prompt && prompt.getBoundingClientRect().top < top) next = Number(s.dataset.turnId);
+      if (prompt && prompt.getBoundingClientRect().bottom <= top) next = Number(s.dataset.turnId);
     }
     setStuckId(next);
   }, [root]);
@@ -68,6 +79,15 @@ export function useStuckTurn(root: RefObject<HTMLElement | null>): { stuckId: nu
     if (!frame.current) frame.current = requestAnimationFrame(measure);
   }, [measure]);
 
+  const setPinnedHeight = useCallback(
+    (px: number) => {
+      if (Math.abs(px - pinned.current) < 1) return;
+      pinned.current = px;
+      onScroll();
+    },
+    [onScroll],
+  );
+
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
@@ -75,7 +95,7 @@ export function useStuckTurn(root: RefObject<HTMLElement | null>): { stuckId: nu
     },
     [],
   );
-  return { stuckId, onScroll };
+  return { stuckId, onScroll, setPinnedHeight };
 }
 
 /**

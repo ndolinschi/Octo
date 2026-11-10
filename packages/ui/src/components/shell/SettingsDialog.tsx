@@ -4,6 +4,7 @@ import { useApp, type ThemePref } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Spinner } from "../primitives/Status";
+import { PluginsSection } from "./PluginsSection";
 
 const THEMES: { value: ThemePref; label: string }[] = [
   { value: "system", label: "System" },
@@ -11,14 +12,15 @@ const THEMES: { value: ThemePref; label: string }[] = [
   { value: "light", label: "Light" },
 ];
 
-/** App-wide settings: theme (unless the host owns it) and the bridge connection. */
+/** App-wide settings: theme (unless the host owns it), the bridge connection and the plugins it loaded. */
 export function SettingsDialog({ onClose }: { onClose(): void }) {
   const { canChooseTheme, demo } = useApp();
   return (
-    <Dialog title="Settings" onClose={onClose} width="sm">
+    <Dialog title="Settings" onClose={onClose}>
       <div className="flex flex-col gap-5 pt-1">
         {canChooseTheme && <ThemeChoice />}
         <BridgeStatus demo={demo} />
+        <PluginsSection />
       </div>
     </Dialog>
   );

@@ -1,6 +1,6 @@
 import type { Folder } from "@octo/agent-client";
 import { ArrowUp, Square } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
 import { modelLabel } from "../primitives/Status";
@@ -18,6 +18,8 @@ type Props = {
   onCancel(): Promise<void>;
   /** Keeps an unsent draft across remounts (moving the Chat tab to another group). */
   draft?: { initial: string; save(text: string): void };
+  /** Pending code comments go out with the next message (which may then have no text). */
+  comments?: { count: number; control: ReactNode };
 };
 
 const MAX_HEIGHT_VH = 0.4;
@@ -67,7 +69,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
   }, [fit]);
 
   const disabled = props.disabledReason !== null;
-  const canSend = !disabled && !props.running && !sending && text.trim().length > 0;
+  const pendingComments = props.comments?.count ?? 0;
+  const canSend = !disabled && !props.running && !sending && (text.trim().length > 0 || pendingComments > 0);
 
   const submit = async () => {
     if (!canSend) return;
@@ -90,11 +93,17 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
     }
   };
 
-  const placeholder = disabled ? props.disabledReason! : props.followUp ? "Send follow-up" : "Message the orchestrator";
+  const placeholder = disabled
+    ? props.disabledReason!
+    : pendingComments > 0
+      ? "Add a message (optional)"
+      : props.followUp
+        ? "Send follow-up"
+        : "Message the orchestrator";
   const folders = props.folders.map((f) => f.label).join(", ");
 
   return (
-    <div>
+    <div data-composer>
       {error && (
         <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm">
           <p className="min-w-0 flex-1 text-fg-2">
@@ -158,8 +167,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
           </button>
         )}
       </form>
-      {/* Footer: context on the left (folders; pending comments will join it), the model on the right. */}
+      {/* Footer: context on the left (pending comments, folders), the model on the right. */}
       <div className="mt-1.5 flex h-4 items-center gap-3 px-1 text-xs text-fg-3">
+        {pendingComments > 0 && props.comments?.control}
         <p className="min-w-0 flex-1 truncate" title={props.folders.map((f) => f.path).join("\n") || undefined}>
           {folders || "No folders attached"}
         </p>

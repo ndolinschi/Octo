@@ -1,6 +1,10 @@
 import type * as Monaco from "monaco-editor";
+import type { FilePosition } from "../../lib/files";
 
 export type MonacoApi = typeof Monaco;
+
+/** Told when a file's model is created (shown in an editor for the first time) and before it is disposed. */
+export type BufferWatcher = { opened(key: string, model: Monaco.editor.ITextModel): void; closed(key: string): void };
 
 type Buffer = {
   model: Monaco.editor.ITextModel;
@@ -22,6 +26,11 @@ export class EditorBuffers {
   /** Live editors (one per mounted File tab). */
   readonly editors = new Set<Monaco.editor.IStandaloneCodeEditor>();
   private buffers = new Map<string, Buffer>();
+  private watchers = new Set<BufferWatcher>();
+  private reveals = new Map<string, FilePosition>();
+  private revealListeners = new Set<(key: string) => void>();
+  /** True while disk content replaces a buffer (comment ranges keep their line numbers then). */
+  replacing = false;
 
   constructor(
     private readonly projectId: string,
@@ -32,19 +41,51 @@ export class EditorBuffers {
     this.monaco = monaco;
   }
 
+  /** The model URI of a project file (`octo://{projectId}/{folder}/{path}`). */
+  uriFor(folder: string, path: string): Monaco.Uri | null {
+    return this.monaco?.Uri.from({ scheme: "octo", authority: this.projectId, path: `/${folder}/${path}` }) ?? null;
+  }
+
   /** The model for `key`, created from `content` on first use. */
   ensure(key: string, folder: string, path: string, content: string): Monaco.editor.ITextModel | null {
     const monaco = this.monaco;
-    if (!monaco) return null;
+    const uri = this.uriFor(folder, path);
+    if (!monaco || !uri) return null;
     const existing = this.buffers.get(key);
     if (existing) return existing.model;
-    const uri = monaco.Uri.from({ scheme: "octo", authority: this.projectId, path: `/${folder}/${path}` });
-    // Language is inferred from the file name (extension) in the URI.
+    // Language is inferred from the file name (extension) in the URI. A model made earlier for a
+    // definition peek is adopted, with the content just read from disk.
     const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(content, undefined, uri);
+    if (model.getValue() !== content) model.setValue(content);
     const buffer: Buffer = { model, savedVersion: model.getAlternativeVersionId(), modified: false, view: null, sub: { dispose() {} } };
     buffer.sub = model.onDidChangeContent(() => this.check(key, buffer));
     this.buffers.set(key, buffer);
+    this.watchers.forEach((w) => w.opened(key, model));
     return model;
+  }
+
+  /** Follows models as they open and close (the language-server client); called at once for open ones. */
+  watch(watcher: BufferWatcher): () => void {
+    this.watchers.add(watcher);
+    for (const [key, b] of this.buffers) watcher.opened(key, b.model);
+    return () => void this.watchers.delete(watcher);
+  }
+
+  /** Asks the editor showing `key` (now or once it does) to select and reveal a position. */
+  reveal(key: string, at: FilePosition) {
+    this.reveals.set(key, at);
+    this.revealListeners.forEach((l) => l(key));
+  }
+
+  takeReveal(key: string): FilePosition | null {
+    const at = this.reveals.get(key) ?? null;
+    this.reveals.delete(key);
+    return at;
+  }
+
+  onReveal(listener: (key: string) => void): () => void {
+    this.revealListeners.add(listener);
+    return () => void this.revealListeners.delete(listener);
   }
 
   has(key: string): boolean {
@@ -74,7 +115,12 @@ export class EditorBuffers {
     if (buffer.model.getValue() !== content) {
       const editor = this.editorFor(buffer.model);
       const view = editor ? editor.saveViewState() : buffer.view;
-      buffer.model.pushEditOperations([], [{ range: buffer.model.getFullModelRange(), text: content }], () => null);
+      this.replacing = true;
+      try {
+        buffer.model.pushEditOperations([], [{ range: buffer.model.getFullModelRange(), text: content }], () => null);
+      } finally {
+        this.replacing = false;
+      }
       if (editor && view) editor.restoreViewState(view);
       else buffer.view = view;
     }
@@ -94,6 +140,8 @@ export class EditorBuffers {
   dispose(key: string) {
     const buffer = this.buffers.get(key);
     if (!buffer) return;
+    this.watchers.forEach((w) => w.closed(key));
+    this.reveals.delete(key);
     this.editorFor(buffer.model)?.setModel(null);
     buffer.sub.dispose();
     buffer.model.dispose();

@@ -25,6 +25,7 @@
   --octo-link: #6fa8ff;
   --octo-ok: #5fbf7f;
   --octo-err: #f6847e;
+  --octo-warn: #d8b07a;
   --octo-primary: #ececec;
   --octo-primary-fg: #141414;
   --octo-focus: rgb(255 255 255 / 0.6);
@@ -34,6 +35,7 @@
   --octo-drop: rgb(92 157 255 / 0.1);
   --octo-drop-edge: rgb(92 157 255 / 0.45);
   --octo-selection: rgb(92 157 255 / 0.32);
+  --octo-comment-line: rgb(92 157 255 / 0.08);
 }
 
 :root[data-theme="light"] {
@@ -55,6 +57,7 @@
   --octo-link: #0a5fd1;
   --octo-ok: #1a7f45;
   --octo-err: #b42a23;
+  --octo-warn: #8a5512;
   --octo-primary: #1a1a1a;
   --octo-primary-fg: #ffffff;
   --octo-focus: rgb(0 0 0 / 0.55);
@@ -64,6 +67,7 @@
   --octo-drop: rgb(10 102 224 / 0.08);
   --octo-drop-edge: rgb(10 102 224 / 0.4);
   --octo-selection: rgb(10 102 224 / 0.2);
+  --octo-comment-line: rgb(10 102 224 / 0.06);
 }
 
 @theme inline {
@@ -85,6 +89,7 @@
   --color-link: var(--octo-link);
   --color-ok: var(--octo-ok);
   --color-err: var(--octo-err);
+  --color-warn: var(--octo-warn);
   --color-primary: var(--octo-primary);
   --color-primary-fg: var(--octo-primary-fg);
   --color-scrim: var(--octo-scrim);
@@ -462,4 +467,91 @@
   vertical-align: -0.15em;
   background: var(--octo-fg-2);
   animation: var(--animate-caret);
+}
+
+/* ---------- Monaco: shapes the theme can't express (colours live in components/files/monaco.ts) ---------- */
+
+/* Code comments: commented lines carry a 2px accent rail in the line-decorations gutter and a faint
+   accent tint; the hovered line a neutral one, so the "+" target is unambiguous. */
+.monaco-editor .octo-comment-rail {
+  width: 2px !important;
+  margin-left: 3px;
+  background: var(--octo-accent);
+}
+.monaco-editor .octo-comment-line {
+  background: var(--octo-comment-line);
+}
+.monaco-editor .octo-hover-line {
+  background: var(--octo-hover);
+}
+/* Comment boxes (overlay widgets) use the UI font and our focus treatment, not Monaco's outline. */
+.monaco-editor .octo-comment-box {
+  font-family: var(--font-sans);
+}
+.monaco-editor .octo-comment-box :focus {
+  outline-color: transparent !important;
+}
+
+/* Scrollbars: a slim rounded thumb inset in its track (like the app's thin scrollbars), a little
+   wider and stronger while hovered or dragged. Colours come from the theme. */
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+  border-radius: 999px;
+  transition-property: width, height, left, top, background-color;
+  transition-duration: 100ms;
+  transition-timing-function: ease-out;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar.vertical > .slider {
+  width: 6px !important;
+  left: 2px !important;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar.horizontal > .slider {
+  height: 6px !important;
+  top: 2px !important;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar.vertical:hover > .slider,
+.monaco-editor .monaco-scrollable-element > .scrollbar.vertical > .slider.active {
+  width: 8px !important;
+  left: 1px !important;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar.horizontal:hover > .slider,
+.monaco-editor .monaco-scrollable-element > .scrollbar.horizontal > .slider.active {
+  height: 8px !important;
+  top: 1px !important;
+}
+
+/* Hover, suggest and peek widgets: overlay surface, radius 8, the popover shadow, UI type. `:root` lifts
+   these above Monaco's own rules, which load later (lazy chunk) with the same specificity. */
+:root .monaco-editor .monaco-resizable-hover,
+:root .monaco-editor .suggest-widget,
+:root .monaco-editor .suggest-details,
+:root .monaco-editor .monaco-editor-overlaymessage .message {
+  border-radius: 8px;
+  box-shadow: var(--octo-shadow-pop);
+  overflow: hidden;
+}
+:root .monaco-editor .monaco-hover {
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+}
+:root .monaco-editor .monaco-hover .hover-contents {
+  padding: 6px 10px;
+}
+:root .monaco-editor .monaco-hover code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+:root .monaco-editor .monaco-hover hr {
+  border-top-color: var(--octo-line);
+}
+:root .monaco-editor .monaco-hover .hover-row.status-bar {
+  border-top: 1px solid var(--octo-line);
+  font-size: 12px;
+}
+:root .monaco-editor .suggest-widget .monaco-list .monaco-list-row {
+  border-radius: 4px;
+}
+:root .monaco-editor .peekview-widget .head {
+  font-family: var(--font-sans);
 }

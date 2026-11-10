@@ -13,6 +13,7 @@ import { atlasHistory } from "./atlas";
 import { backgroundTurn, docsHistory } from "./extra";
 import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
 import { genericTurn } from "./generic";
+import { demoLanguageServers, demoPlugins } from "./plugins";
 import { orbitLive } from "./orbit";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
 import type { Ctx } from "./runtime";
@@ -21,6 +22,17 @@ import { clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store"
 /** full: the regular demo (plus a Stress test project) · empty: no projects · one: a single project ·
  *  many: 30 projects with short, typical and 120+ character names (0, 1 and 30 requests in the first three). */
 export type DemoSeed = "full" | "empty" | "one" | "many";
+
+/** How the demo language servers behave: ok · fail-once (first start of each server fails, Retry works) ·
+ *  slow (3s to start) · exit (crashes 4s after starting). */
+export type DemoLsp = "ok" | "fail-once" | "slow" | "exit";
+
+export type DemoOptions = { seed?: DemoSeed; lsp?: DemoLsp; plugins?: boolean };
+
+/** Demo-only trace of calls a scripted check wants to observe (console.debug, never shown). */
+function trace(event: string, detail: unknown): void {
+  console.debug(`[octo demo] ${event}`, typeof detail === "string" ? detail : JSON.stringify(detail));
+}
 
 const DEFAULT_MODELS: Models = {
   orchestrator: "claude-opus-5-5",
@@ -221,7 +233,10 @@ function seedOne(): ProjectRecord[] {
 
 const SEEDERS: Record<DemoSeed, () => ProjectRecord[]> = { full: seed, empty: () => [], one: seedOne, many: seedMany };
 
-export function createDemoBridge(options: { seed?: DemoSeed } = {}): Bridge {
+export function createDemoBridge(options: DemoOptions = {}): Bridge {
+  const lspMode = options.lsp ?? "ok";
+  const pluginsOn = options.plugins ?? true;
+  const failedOnce = new Set<string>();
   const records = new Map<string, ProjectRecord>();
   for (const rec of SEEDERS[options.seed ?? "full"]()) records.set(rec.project.id, rec);
 
@@ -291,6 +306,7 @@ export function createDemoBridge(options: { seed?: DemoSeed } = {}): Bridge {
       await delay();
       const rec = get(id);
       if (rec.turn) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
+      trace("sendMessage", text);
       startScript(rec, Date.now(), (ctx) => genericTurn(ctx, text));
       const orch = orchestratorOf(rec);
       const sent = [...rec.messages].reverse().find((m) => m.agent_id === orch.id && m.role === "user");
@@ -340,6 +356,30 @@ export function createDemoBridge(options: { seed?: DemoSeed } = {}): Bridge {
       await delay();
       await ensureSeeded(get(id));
       return writeDemo(get(id), input);
+    },
+    listPlugins: async () => (await delay(), demoPlugins(pluginsOn)),
+    listLanguageServers: async (id) => (await delay(), get(id), demoLanguageServers(pluginsOn)),
+    openLanguageServer: async (id, serverId) => {
+      await delay();
+      const rec = get(id);
+      const info = demoLanguageServers(pluginsOn).find((s) => s.id === serverId);
+      if (!info) throw new BridgeError(404, "not_found", "language server not found");
+      if (!info.available) throw new BridgeError(409, "unavailable", `${info.label} is not installed on this machine`);
+      const once = `${id}/${serverId}`;
+      if (lspMode === "fail-once" && !failedOnce.has(once)) {
+        failedOnce.add(once);
+        throw new BridgeError(500, "spawn_failed", `${info.label} exited during startup (exit status 1)`);
+      }
+      await ensureSeeded(rec);
+      const { createDemoServer } = await import("./lsp");
+      const session = createDemoServer(rec, {
+        serverId,
+        startMs: lspMode === "slow" ? 3_000 : 80,
+        exitAfterMs: lspMode === "exit" ? 4_000 : null,
+      });
+      trace("lsp open", serverId);
+      const close = session.close;
+      return { ...session, close: () => (trace("lsp close", serverId), close()) };
     },
     subscribe(id, handlers) {
       const rec = records.get(id);

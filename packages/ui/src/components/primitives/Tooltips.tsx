@@ -7,7 +7,7 @@ const WARM_FOR = 400;
 const GAP = 6;
 const EDGE = 8;
 
-type Tip = { text: string; shortcut: string | null; rect: DOMRect };
+type Tip = { text: string; shortcut: string | null; rect: DOMRect; side: "below" | "left" };
 
 function disabled(el: Element): boolean {
   return el.matches(":disabled, [aria-disabled='true']");
@@ -25,7 +25,7 @@ function tipOf(el: HTMLElement): string | null {
 
 /**
  * One tooltip layer for the whole app, driven by the `title` attribute every control already has
- * (plus `data-shortcut` for a keyboard hint). Appears after 600ms, instantly for neighbours while
+ * (plus `data-shortcut` for a keyboard hint, `data-tip-side="left"` to sit beside it). Appears after 600ms, instantly for neighbours while
  * warm; never on disabled controls; hides on press, key, scroll or leave. Text alternatives stay
  * in aria-label / visible text; the tooltip is visual only.
  */
@@ -66,7 +66,7 @@ export function Tooltips() {
         // Tall targets (dividers, rows of text) anchor at the pointer rather than their whole box.
         const box = el.getBoundingClientRect();
         const rect = box.height > 48 ? new DOMRect(pointer.x - 1, pointer.y - 8, 2, 16) : box;
-        setTip({ text, shortcut: el.dataset.shortcut ?? null, rect });
+        setTip({ text, shortcut: el.dataset.shortcut ?? null, rect, side: el.dataset.tipSide === "left" ? "left" : "below" });
       };
       if (Date.now() < warmUntil) show();
       else timer = window.setTimeout(show, DELAY);
@@ -94,11 +94,21 @@ export function Tooltips() {
   }, []);
 
   // Below the control, centred and kept in the viewport; above it when there is no room below.
+  // `data-tip-side="left"` (controls over content, like the editor's comment button): to the left,
+  // vertically centred; above when there is no room on the left.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!tip || !el) return setPos(null);
     const { width, height } = el.getBoundingClientRect();
     const r = tip.rect;
+    if (tip.side === "left") {
+      const left = r.left - GAP - width;
+      return setPos(
+        left >= EDGE
+          ? { left: Math.round(left), top: Math.round(r.top + r.height / 2 - height / 2) }
+          : { left: Math.round(Math.max(EDGE, r.left + r.width / 2 - width / 2)), top: Math.round(r.top - GAP - height) },
+      );
+    }
     const below = r.bottom + GAP + height + EDGE <= window.innerHeight;
     setPos({
       left: Math.round(Math.min(window.innerWidth - width - EDGE, Math.max(EDGE, r.left + r.width / 2 - width / 2))),

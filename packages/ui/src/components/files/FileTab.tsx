@@ -8,6 +8,7 @@ import { useCode, type OpenFile } from "../../state/code";
 import { Button } from "../primitives/Button";
 import { Spinner } from "../primitives/Status";
 import { CodeEditor } from "./CodeEditor";
+import { EditorStatus } from "./EditorStatus";
 
 /**
  * One open file: a slim header (path; its right slot is where editor actions go), a notice line
@@ -33,19 +34,28 @@ export function FileTab({ fileKey }: { fileKey: string }) {
     <div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       <header className="flex h-8 shrink-0 items-center gap-3 border-b border-line pr-2 pl-3 text-xs text-fg-3">
         <PathCrumbs folder={folder} path={path} />
-        <span className="ml-auto flex shrink-0 items-center gap-1.5" role="status">
-          {saving && (
-            <>
-              <Spinner size={10} /> Saving…
-            </>
-          )}
-          {file?.modified && !saving && <span>Unsaved</span>}
+        <span className="ml-auto flex min-w-0 items-center gap-3">
+          <span className="flex shrink-0 items-center gap-1.5 empty:hidden" role="status">
+            {saving && (
+              <>
+                <Spinner size={10} /> Saving…
+              </>
+            )}
+            {file?.modified && !saving && <span>Unsaved</span>}
+          </span>
+          <EditorStatus intel={code.intel} fileKey={fileKey} onJump={(p) => code.openFile(folder, path, { line: p.line, column: p.column })} />
         </span>
       </header>
       {file && <Notice file={file} />}
       <div className="min-h-0 flex-1">
         {file?.status === "ready" && !opening ? (
-          <CodeEditor file={file} buffers={code.buffers} theme={theme} onSave={() => void code.save(file.key)} />
+          <CodeEditor
+            file={file}
+            buffers={code.buffers}
+            theme={theme}
+            onSave={() => void code.save(file.key)}
+            onMonaco={(mod) => code.startIntel((o) => new mod.LspManager({ ...o, monaco: mod.monaco }))}
+          />
         ) : (
           <Message file={file} name={path.slice(path.lastIndexOf("/") + 1)} showLoading={opening} />
         )}

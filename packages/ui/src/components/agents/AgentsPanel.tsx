@@ -1,6 +1,6 @@
 import { childrenOf, descendantCount, type Agent, type ProjectState } from "@octo/agent-client";
 import { ChevronRight } from "lucide-react";
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
@@ -35,7 +35,23 @@ export function AgentsPanel() {
   const { state, project } = useProject();
   const ws = useWorkspace();
   const currentAgentId = ws.currentAgentId;
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  // Expansion and scroll live in the workspace's tab memory, so moving this tab to another group
+  // (which remounts it) keeps them.
+  const memory = ws.memory;
+  const [overrides, setOverridesState] = useState<Record<string, boolean>>(() => (memory.get("agents:expanded") as Record<string, boolean> | undefined) ?? {});
+  const setOverrides = (update: (o: Record<string, boolean>) => Record<string, boolean>) =>
+    setOverridesState((o) => {
+      const next = update(o);
+      memory.set("agents:expanded", next);
+      return next;
+    });
+  const scroller = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    const top = memory.get("agents:scroll") as number | undefined;
+    if (el && top) el.scrollTop = top;
+  }, [memory]);
+
   const [focusId, setFocusId] = useState<string | null>(null);
   const refs = useRef(new Map<string, HTMLDivElement>());
   const root = project ? state.agents[project.orchestrator_agent_id] : undefined;
@@ -82,7 +98,12 @@ export function AgentsPanel() {
   };
 
   return (
-    <div role="tree" aria-label="Agent tree" className="h-full min-h-0 overflow-y-auto overscroll-contain px-2 pt-1 pb-4">
+    <div
+      ref={scroller}
+      role="tree"
+      aria-label="Agent tree"
+      onScroll={(e) => memory.set("agents:scroll", e.currentTarget.scrollTop)}
+      className="h-full min-h-0 overflow-y-auto overscroll-contain px-2 pt-1 pb-4">
       {rows.map((row, i) => {
         const a = row.agent;
         const current = a.id === currentAgentId;

@@ -1,4 +1,4 @@
-import { BridgeError, type FileEntry } from "@octo/agent-client";
+import { BridgeError, type FileEntry, type Folder } from "@octo/agent-client";
 import {
   createContext,
   useCallback,
@@ -11,7 +11,9 @@ import {
   type ReactNode,
 } from "react";
 import { EditorBuffers } from "../components/files/buffers";
-import { ancestors, fileKey, fileName, normalizePath, parentPath, splitKey } from "../lib/files";
+import { ancestors, fileKey, fileName, normalizePath, parentPath, splitKey, type FilePosition } from "../lib/files";
+import { EditorIntel, type IntelClient } from "../lsp/hub";
+import type { LspManagerOptions } from "../lsp/manager";
 import { useApp } from "./app";
 import { useOptionalNav } from "./nav";
 import { useProject } from "./project";
@@ -45,6 +47,10 @@ type CodeValue = {
   files: OpenFile[];
   file(key: string): OpenFile | undefined;
   buffers: EditorBuffers;
+  /** Language-server status and problems per file (written by the lazily loaded client). */
+  intel: EditorIntel;
+  /** Starts the language-server client once Monaco is loaded (the factory comes from the editor chunk). */
+  startIntel(create: (options: Omit<LspManagerOptions, "monaco">) => IntelClient): void;
   dirs: Record<string, DirState>;
   isExpanded(key: string): boolean;
   setExpanded(folder: string, path: string, expanded: boolean): void;
@@ -53,8 +59,8 @@ type CodeValue = {
   /** Tree row that reflects the latest open/reveal/focused file; bumps `revealTick` to scroll it into view. */
   selectedKey: string | null;
   revealTick: number;
-  /** Opens a file (loading it once) and asks the workspace to show its tab. */
-  openFile(folder: string, path: string): void;
+  /** Opens a file (loading it once) and asks the workspace to show its tab, optionally at a position. */
+  openFile(folder: string, path: string, at?: FilePosition): void;
   /** Loads a file restored with the layout, without showing it; a file gone from disk is reported via `onGone`. */
   restore(key: string): void;
   /** Marks the file whose tab has focus in the tree. */
@@ -68,6 +74,7 @@ type CodeValue = {
 };
 
 const NO_FOLDERS: { label: string; path: string }[] = [];
+const NO_FOLDERS_FULL: Folder[] = [];
 
 const CodeContext = createContext<CodeValue | null>(null);
 
@@ -119,7 +126,17 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   }, []);
 
   const [buffers] = useState(() => new EditorBuffers(projectId, (key, modified) => patch(key, { modified })));
-  useEffect(() => () => buffers.disposeAll(), [buffers]);
+  const [intel] = useState(() => new EditorIntel());
+  useEffect(
+    () => () => {
+      // Language servers stop before their models go away (project switch, unmount).
+      intel.dispose();
+      buffers.disposeAll();
+    },
+    [buffers, intel],
+  );
+  const foldersRef = useRef(folders);
+  foldersRef.current = folders;
 
   const saving = useRef(new Set<string>());
   const find = (key: string) => filesRef.current.find((f) => f.key === key);
@@ -207,16 +224,17 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   );
 
   const openFile = useCallback(
-    (folder: string, rawPath: string) => {
+    (folder: string, rawPath: string, at?: FilePosition) => {
       const path = normalizePath(rawPath);
       if (!path) return;
       const key = ensure(folder, path);
+      if (at) buffers.reveal(key, at);
       setSelectedKey(key);
       setRevealTick((n) => n + 1);
       expandTo(folder, ancestors(path));
       cb.current.onOpen(key);
     },
-    [ensure, expandTo],
+    [ensure, expandTo, buffers],
   );
 
   const restore = useCallback(
@@ -365,6 +383,18 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       files,
       file: (key) => files.find((f) => f.key === key),
       buffers,
+      intel,
+      startIntel: (create) =>
+        intel.start(() =>
+          create({
+            bridge,
+            projectId,
+            folders: () => foldersRef.current ?? NO_FOLDERS_FULL,
+            buffers,
+            intel,
+            open: (folder, path, at) => openFile(folder, path, at),
+          }),
+        ),
       dirs,
       isExpanded,
       setExpanded: (folder, path, value) => {
@@ -391,7 +421,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       retryOpen,
       dismissNotice: (key) => patch(key, { notice: null }),
     }),
-    [folders, files, buffers, dirs, isExpanded, ensureDir, loadDir, selectedKey, revealTick, openFile, restore, revealDir, close, save, reloadFromDisk, retryOpen, patch],
+    [folders, files, buffers, intel, bridge, projectId, dirs, isExpanded, ensureDir, loadDir, selectedKey, revealTick, openFile, restore, revealDir, close, save, reloadFromDisk, retryOpen, patch],
   );
 
   return <CodeContext.Provider value={value}>{children}</CodeContext.Provider>;

@@ -6,8 +6,7 @@
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)
-plus the v3 design-review findings. Code comments and LSP come next; their seams are the composer footer
-(`components/chat/Composer.tsx`, left slot) and the editor header (`components/files/FileTab.tsx`, right slot).
+plus the v3 design-review findings. Code comments, language servers and the plugins view followed in v5 (below).
 
 ### Model
 
@@ -107,6 +106,86 @@ spinner at most (the watched live turn; everything else running = static accent 
 caption + status, aligned grid rows · model shown once per context (composer footer, Agent tab header, short label
 on delegation rows).
 
+## v5 — code comments, language servers, plugins (2026-11-10)
+
+Implements §5 and the UI part of §3 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md).
+Everything inside the editor (comment boxes, the LSP client) is in the lazily loaded Monaco chunk; the initial
+bundle grew 180.89 → 188.94 kB gzip.
+
+### Code comments
+
+```text
+  10   const token = await verifyRefresh(raw);
+ ▌11 [+]if (token.revokedAt) throw …          ← hovered line: neutral full-width tint, "+" at the code's start
+     ╭ 💬 Line 11 ·················· Edit Remove ╮   ← card: overlay widget over a view zone, code column → right − 12px
+     │ Add a grace window here.                   │
+     ╰────────────────────────────────────────────╯
+  12   await db.refreshTokens.revoke(token.id);
+```
+
+- **Model** (`state/comments.tsx`, `lib/comments.ts`): `CodeComment = { id, folder, path, start, end, text, created }`
+  (1-based inclusive lines), per project in `localStorage["octo.comments.{projectId}"]` (guarded; malformed entries
+  dropped on load). Counts per file key feed the File tab and tree markers (`aria-description`, names unchanged).
+- **Editor** (`components/files/editor/`): hovering a line tints it (`hover`) and shows an 18px filled `primary` "+"
+  straddling the start of the code (code left − 4px, centred on the line; it never moves the gutter or code; it stays
+  while the pointer travels onto it; tooltip to its left). "+", `Ctrl/Cmd+Alt+C` and the context menu's "Add comment"
+  open the composer under the line — or under the selection when several lines are selected. Commented lines carry a
+  2px `accent` rail in the line-decorations gutter and a faint accent tint (`--octo-comment-line`).
+- **Boxes**: each composer/card is a Monaco *view zone* (the room) plus an *overlay widget* (the box: above the text
+  layer so it takes the pointer, fixed to the viewport so horizontal scroll never clips it), one React root each.
+  Left edge = code left, right edge = content right − 12px, 4px above and below. A new box is rendered and measured
+  before its zone is inserted, so the code below moves once, by exactly its height. Raised surface, `line` hairline,
+  radius 8, `focus` edge — the chat composer's treatment. Enter adds, Shift+Enter newline, Esc cancels.
+- **Tracking**: ranges are tracked decorations; edits move comments (a deleted range collapses onto the nearest line);
+  a disk reload (`buffers.replacing`) keeps line numbers.
+- **Sending**: the composer footer shows "N comments" (popover grouped by file: jump, remove, Remove all); send is
+  enabled with comments and no text. `prepare()` quotes the lines as they are now (open buffer, else disk) and appends
+  the fenced `octo-comments` block (≤ 6 quoted lines, then `> …`; the fence grows past any backtick run in the text);
+  `commit()` clears exactly those comments after the send succeeds.
+- **Transcript**: `splitComments` renders the prose, then cards (path + lines link → opens the file with the range
+  selected; quoted lines in mono, 3 then "Show N more lines"; the comment). Sidebar, palette and pinned prompt use
+  `requestTitle`: the prose, else "N comments on {file}".
+
+### Language servers
+
+- `lsp/hub.ts` (main chunk) is the seam: per-file `{ status, problems, notice }` read by the File tab header with
+  `useSyncExternalStore`. The client (`lsp/manager.ts`, `session.ts`, `rpc.ts`, `convert.ts`, `uri.ts`) loads with
+  Monaco; `CodeProvider.startIntel` starts it, and disposes it (sessions closed) on project switch/unmount.
+- One session per (project, server), started when the first model in one of its languages opens and closed when its
+  last file closes. `initialize` (20s) → `initialized`; full-text `didOpen` / `didChange` (250ms debounce, flushed
+  before requests) / `didClose`. Requests time out after 5s and honour Monaco cancellation (`$/cancelRequest`);
+  server→client requests get null answers (configuration, registration, progress) or "method not found".
+- URIs: `file:///` + folder path + relative path, each segment percent-encoded (drive letters kept); `fromFileUri`
+  maps back to the deepest matching folder.
+- Diagnostics → markers (owner `lsp`; error/warning squiggles in `err` / `warn`, unnecessary code faded) and the
+  header's "N problems" popover (row → line). Hover, completion and definition providers are registered once per
+  language and routed by model. A definition in the project opens that file as a tab at the position (editor opener);
+  outside → a quiet header notice. Monaco's built-in TypeScript hover/completion/definitions are off from load (the
+  worker reads its mode configuration once): intelligence comes only from the project's servers.
+- Header status (`EditorStatus`): "{label}" when ready, spinner + "starting…" only after 200ms, "failed" / "stopped" in
+  `err` with Retry; accessible name "Language server: {label}, {state}".
+- Widgets: theme colours for hover / suggest / peek / list; radius 8, `shadow-pop`, UI type (styles.css, `:root`
+  specificity because Monaco's CSS loads later). Scrollbars: 6px rounded thumb, 8px and stronger on hover/drag.
+
+### Plugins view
+
+Settings → Plugins (read-only `listPlugins()`): per plugin name (mono), version, description; rows for language
+servers (with languages), agents and tool servers; "Available" (ok dot) / "Not found on this machine"; manifest
+errors in `err`. Empty: one sentence naming `plugin.json`, `{data-dir}/plugins/` and `--plugins-dir`. The dialog is
+now the 520px width.
+
+### Review fixes (v4 review)
+
+- **Pinned prompt**: pins only once the in-flow prompt is fully above the scroll area, and lets go as soon as the
+  next prompt would reach the pinned copy's bottom (its measured height incl. the fade) — never two boxes, no ghosting.
+  Fade 12px (8px on short viewports).
+- **Transcript scroll**: `useNow` returned a fresh `Date.now()` on every render while idle, defeating the transcript's
+  `memo` on each scroll-driven re-render. Idle clocks now tick once a minute.
+- **Agents tree**: expansion and scroll live in the workspace tab memory, so moving the tab keeps them.
+- **Jump to latest**: 12px above the composer on `overlay` with `shadow-pop`, over a panel-coloured fade so the content
+  under it reads as fading out.
+- **Demo**: `?lsp=fail-once|slow|exit`, `?plugins=none`; a scripted TS/Go language server (`demo/lsp.ts`, lazy).
+
 ## Structure v3 (2026-11-10, plan; supersedes the flat two-column layout below)
 
 Owner verdict on v2: "still reads as a web page". The fix is structural, not cosmetic.
@@ -158,6 +237,8 @@ grey and the panels white.
 | `fg` / `fg-2` / `fg-3` | `#f0f0f0` / `#c6c6c6` / `#a2a2a2` | `#1a1a1a` / `#424242` / `#636363` | text ramp (v4: neighbours ≥1.49:1 apart, every pair ≥4.5:1 everywhere) |
 | `selection` | accent 32% | accent 20% | `::selection` |
 | `drop`, `drop-edge` | accent 10% / 45% | accent 8% / 40% | dock drop zone fill / edge |
+| `warn` | `#d8b07a` | `#8a5512` | warning glyphs and squiggles (v5) |
+| `comment-line` | accent 8% | accent 6% | tint of commented lines in the editor (v5) |
 | `accent` | `#5c9dff` | `#0a66e0` | activity: running spinners, unseen-activity dot, jump highlight |
 | `link` | `#6fa8ff` | `#0a5fd1` | markdown links |
 | `ok` / `err` | `#5fbf7f` / `#f6847e` | `#1a7f45` / `#b42a23` | done glyph / failed glyph and error text |
@@ -324,7 +405,7 @@ Spec: [`2026-11-10-code-pane-design.md`](./2026-11-10-code-pane-design.md). Code
   Themes `octo-{dark,light}`: background = `panel`; plain text grey; keywords blue, strings sage, numbers sand,
   types teal, italic grey comments — each ≥4.5:1 on the panel and visibly distinct from plain text; line numbers
   ≥4.5:1 (`#808080` / `#737373`). `scrollBeyondLastColumn: 0`, so no horizontal scrollbar unless a line is wider than
-  the editor; slim neutral scrollbars. `Ctrl/Cmd+S` saves.
+  the editor; slim neutral scrollbars (v5: 6px rounded thumb, 8px on hover/drag). `Ctrl/Cmd+S` saves.
 - **Links.** read_file / write_file paths in tool details open the file (list_dir reveals the folder) in the
   Files tab / File tab; omitted `folder` = first folder. Host `openFile` wins. No link without folders.
 - **Empty.** "No folders attached. Add one in project settings." + Project settings button.

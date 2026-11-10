@@ -1,5 +1,6 @@
 import type { Bridge, ProjectSummary } from "@octo/agent-client";
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { requestTitle } from "../lib/comments";
 import { promptText } from "../lib/transcript";
 import { useApp } from "./app";
 
@@ -56,7 +57,7 @@ class RequestStore {
       const messages = await this.bridge.listMessages(project.id, orchestrator);
       const requests = messages
         .filter((m) => m.role === "user")
-        .map((m) => ({ id: m.id, text: promptText(m).trim(), created_at: m.created_at }))
+        .map((m) => ({ id: m.id, text: requestTitle(promptText(m)).trim(), created_at: m.created_at }))
         .filter((r) => r.text)
         .reverse();
       this.set(project.id, { updatedAt: project.updated_at, requests, error: null, loading: false });
