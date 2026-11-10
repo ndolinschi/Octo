@@ -11,7 +11,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "audit:spacing": "node scripts/spacing-audit.mjs"
   },
   "dependencies": {
     "@octo/agent-client": "workspace:*",
