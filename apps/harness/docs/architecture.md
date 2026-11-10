@@ -1,6 +1,6 @@
 # Harness architecture
 
-Go module: `github.com/ndolinschi/Octo/apps/harness`. A thin **Anthropic Messages tool loop** with workspace file/shell tools, optional HTTP-discovered tools, and a dedicated SQLite session store. It is a client of any Anthropic-compatible Messages endpoint — usually [Octo router](../router/) on loopback.
+Go module: `github.com/ndolinschi/Octo/apps/harness`. A thin **Anthropic Messages tool loop** with workspace file/shell tools, optional HTTP-discovered tools, a legacy one-shot CLI session store, and a project-based HTTP/SSE server (`harness serve`) where a long-lived orchestrator delegates to nested sub-agents. It is a client of any Anthropic-compatible Messages endpoint — usually [Octo router](../router/) on loopback.
 
 ## Runtime shape
 
@@ -29,16 +29,23 @@ flowchart TB
 
 | Path | Role |
 | --- | --- |
-| `cmd/harness` | CLI: `run`, `sessions`, `show` (wiring only) |
-| `internal/config` | Env defaults (`ANTHROPIC_*`, `HARNESS_*`) |
+| `cmd/harness` | CLI: `serve`, `run`, `sessions`, `show` (wiring only; `serve.go` is the one wiring site for the server) |
+| `internal/config` | Env defaults (`ANTHROPIC_*`, `HARNESS_*`), model tiers |
 | `internal/anthropicclient` | SDK client + optional `ANTHROPIC_BASE_URL` |
-| `internal/agent` | Turn loop, streaming assistant text, tool dispatch |
-| `internal/store` | `harness.sqlite`: sessions + message JSON blobs |
-| `internal/tools` | Registry → Anthropic tool defs |
-| `internal/tools/local` | `bash`, `read_file`, `write_file`, `list_dir` |
+| `internal/agent` | `Loop`: system prompt, history, streaming, concurrent tools, usage, `Sink`; `Runner` = legacy CLI session |
+| `internal/store` | Legacy `harness.sqlite`: sessions + message JSON blobs |
+| `internal/projectstore` | `registry.sqlite` + per-project `project.sqlite` (projects, folders, agents, messages, notes); no SDK/agent imports |
+| `internal/events` | Per-project pub/sub hub with in-memory `seq` |
+| `internal/orchestrator` | Turn lifecycle, `spawn_agent`, note tools, system prompts, tool sets per agent kind, cancel/shutdown |
+| `internal/project` | Service layer: validation, defaults, notes, error kinds the bridge maps to HTTP |
+| `internal/bridge` | `net/http` handlers (Go 1.22 `ServeMux` patterns), SSE, CORS, JSON errors |
+| `internal/mockllm` | Scripted Anthropic-compatible Messages server (used by tests and `examples/mockllm`) |
+| `internal/tools` | Registry → Anthropic tool defs; `ToolUseID(ctx)` for handlers |
+| `internal/tools/local` | `bash`, `read_file`, `write_file`, `list_dir` over one or more labelled roots |
 | `internal/tools/remote` | `GET {base}/tools` discovery, `POST {base}/tools/{name}` invoke |
 | `internal/cache` | On-disk cache for remote manifests (fallback when GET fails) |
 | `examples/remotetool` | Minimal remote tool server |
+| `examples/mockllm` | Thin `main` around `internal/mockllm` |
 
 ## Conventions
 
@@ -47,7 +54,55 @@ flowchart TB
 - All I/O takes `context.Context`; shared state must be race-free.
 - Planned project roots for Anthropic-compatible **skills/hooks**: `.agency/` and `.code/` (same shapes as Claude Code: `skills/*/SKILL.md`, hooks in `settings.json`). Loaders stay out of the agent core.
 
-## Agent loop
+## Project server
+
+Spec and HTTP/SSE contract: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../../docs/superpowers/specs/2026-11-10-project-harness-design.md).
+
+```mermaid
+flowchart LR
+  http[bridge] --> svc[project.Service]
+  svc --> pstore[(projectstore)]
+  svc --> orch[orchestrator]
+  orch --> loop[agent.Loop]
+  orch --> pstore
+  orch --> hub[events.Hub]
+  hub --> http
+  loop --> llm[Messages API]
+```
+
+- One **turn** per project at a time (`409 turn_in_progress`). `POST /messages` persists the user message and runs the turn in the background; progress arrives over SSE.
+- The orchestrator thread is reloaded from `project.sqlite` every turn. If the previous turn left a `tool_use` without results (cancel/crash), a synthetic `is_error` result is stored before the new user message.
+- `spawn_agent` creates the child row (`spawn_tool_use_id` from `tools.ToolUseID(ctx)`), runs the child loop synchronously, and returns its final text. A failed or cancelled child yields an `is_error` tool result; the parent continues. Agents at `depth == max_depth` do not get `spawn_agent`.
+- Several tool calls in one assistant message run concurrently (`errgroup`); results keep call order. Parallel `spawn_agent` calls therefore run in parallel, so sibling rows appear in nondeterministic creation order.
+- Cancel (`POST /cancel`) or shutdown cancels the turn context; the whole tree stops, running agents become `cancelled`, the orchestrator returns to `idle`, and `turn.finished` is emitted with `cancelled`.
+- Orchestrator row: `idle` between turns, `running` during one. A failed turn still ends `idle`; the failure is in its `error` field and in `turn.finished`.
+- Startup recovery: agents left `running` become `failed` ("interrupted"); the orchestrator becomes `idle`.
+- Stored message content is the SDK `content` array; the API returns normalized `text` / `tool_use` / `tool_result` blocks (empty text skipped, tool_result content flattened to a string).
+
+### Project storage
+
+```text
+{data-dir}/
+  harness.sqlite               # legacy CLI sessions
+  registry.sqlite              # projects(id, name, created_at)
+  projects/{project_id}/project.sqlite
+```
+
+Tables in `project.sqlite`: `project` (one row), `folders`, `agents`, `messages`, `notes` (columns per the spec). Each database is opened with WAL, `busy_timeout`, and a single pooled connection, so parallel sub-agents serialize their writes inside the process. Deleting a project removes its directory.
+
+### Tools by agent kind
+
+| Tool | Orchestrator | Sub-agent |
+| --- | --- | --- |
+| `spawn_agent` | yes | yes while `depth < max_depth` |
+| `list_dir`, `read_file` | yes | yes |
+| `write_file`, `bash` | no | yes |
+| `save_note`, `delete_note` | yes | no |
+| remote tools (`--remote`) | no | yes |
+
+File and shell tools take an optional `folder` label (defaults to the first folder; the schema only advertises it with 2+ folders). Each root is confined independently (symlink escape rejected). A project with no folders gets no file/shell tools. Model tiers default to `claude-opus-5-5` / `claude-haiku-5-5` / `claude-sonnet-5-5` / `claude-opus-5-5` (orchestrator / fast / balanced / deep); override with `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project.
+
+## Agent loop (legacy CLI session)
 
 1. Create session row; persist user message.
 2. Call Messages API (streaming when `Runner.Stream` is true — CLI `--stream` / `HARNESS_STREAM`, default true).
@@ -100,8 +155,9 @@ Set `ANTHROPIC_API_KEY` to the key the upstream expects (OpenRouter bearer or An
 
 | Command | Purpose |
 | --- | --- |
+| `harness serve` | Project HTTP + SSE server on `--addr` (default `127.0.0.1:8790`); requires `ANTHROPIC_API_KEY` |
 | `harness run --prompt "…"` | New session, tool loop; session id on stderr, final text on stdout |
 | `harness sessions` | JSON list of sessions |
 | `harness show <session-id>` | JSON message rows for one session |
 
-Common flags: `--workspace`, `--base-url`, `--model`, `--data-dir`, `--remote` (repeatable), `--max-turns`, `--octo-key`.
+Common flags: `--workspace` (`run`), `--base-url`, `--model` (`run`), `--data-dir`, `--remote` (repeatable), `--max-turns`, `--octo-key`. `serve` also takes `--addr`.

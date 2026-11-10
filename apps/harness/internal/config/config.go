@@ -9,7 +9,51 @@ import (
 const (
 	defaultDataDir  = "./data/harness"
 	defaultMaxTurns = 25
+
+	DefaultMaxDepth = 3
+	MaxDepthLimit   = 8
+	DefaultAddr     = "127.0.0.1:8790"
 )
+
+// Models maps agent kinds and tiers to model ids.
+type Models struct {
+	Orchestrator string `json:"orchestrator"`
+	Fast         string `json:"fast"`
+	Balanced     string `json:"balanced"`
+	Deep         string `json:"deep"`
+}
+
+// ForTier returns the model id for a tier name, or "" for an unknown tier.
+func (m Models) ForTier(tier string) string {
+	switch tier {
+	case "fast":
+		return m.Fast
+	case "balanced":
+		return m.Balanced
+	case "deep":
+		return m.Deep
+	}
+	return ""
+}
+
+// DefaultModels returns the built-in tiers with HARNESS_MODEL_* overrides applied.
+func DefaultModels() Models { return defaultModels() }
+
+func defaultModels() Models {
+	return Models{
+		Orchestrator: envOr("HARNESS_MODEL_ORCHESTRATOR", "claude-opus-5-5"),
+		Fast:         envOr("HARNESS_MODEL_FAST", "claude-haiku-5-5"),
+		Balanced:     envOr("HARNESS_MODEL_BALANCED", "claude-sonnet-5-5"),
+		Deep:         envOr("HARNESS_MODEL_DEEP", "claude-opus-5-5"),
+	}
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
 
 type Config struct {
 	APIKey      string
@@ -21,6 +65,7 @@ type Config struct {
 	RemoteBases []string
 	MaxTurns    int
 	Stream      bool
+	Models      Models
 }
 
 func Load() (Config, error) {
@@ -31,6 +76,7 @@ func Load() (Config, error) {
 		DataDir:  defaultDataDir,
 		MaxTurns: defaultMaxTurns,
 		Stream:   true,
+		Models:   defaultModels(),
 	}
 	if v := os.Getenv("HARNESS_DATA_DIR"); v != "" {
 		cfg.DataDir = v

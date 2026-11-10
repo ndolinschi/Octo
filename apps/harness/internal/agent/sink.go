@@ -1,0 +1,44 @@
+package agent
+
+import (
+	"context"
+
+	"github.com/anthropics/anthropic-sdk-go/v2"
+)
+
+// Sink receives everything the loop produces. Message is called for every
+// message that must be persisted, in conversation order. The other methods may
+// be called from concurrent goroutines.
+type Sink interface {
+	Message(ctx context.Context, role string, msg anthropic.MessageParam) error
+	TextDelta(text string)
+	ToolStarted(id, name string)
+	ToolFinished(id string, isError bool)
+	Usage(u Usage)
+}
+
+type Usage struct {
+	InputTokens  int64
+	OutputTokens int64
+}
+
+func (u *Usage) add(o Usage) {
+	u.InputTokens += o.InputTokens
+	u.OutputTokens += o.OutputTokens
+}
+
+type Result struct {
+	Text  string
+	Usage Usage
+}
+
+// ContentOf returns the content blocks of a user or assistant message.
+func ContentOf(msg anthropic.MessageParam) []anthropic.ContentBlockParamUnion {
+	switch {
+	case msg.OfUser != nil:
+		return msg.OfUser.Content
+	case msg.OfAssistant != nil:
+		return msg.OfAssistant.Content
+	}
+	return nil
+}

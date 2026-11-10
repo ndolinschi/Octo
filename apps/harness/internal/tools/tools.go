@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/anthropics/anthropic-sdk-go/v2/packages/param"
@@ -72,5 +73,14 @@ func (r *Registry) AnthropicTools() []anthropic.ToolUnionParam {
 		}
 		out = append(out, union)
 	}
+	return out
+}
+
+func (r *Registry) All() []Def {
+	out := make([]Def, 0, len(r.byName))
+	for _, d := range r.byName {
+		out = append(out, d)
+	}
+	slices.SortFunc(out, func(a, b Def) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }

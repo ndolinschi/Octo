@@ -72,3 +72,17 @@ func TestLoad_StreamDefaultTrue(t *testing.T) {
 		t.Fatal("Stream = false, want true")
 	}
 }
+
+func TestLoad_ModelDefaultsAndOverrides(t *testing.T) {
+	t.Setenv("HARNESS_MODEL_FAST", "tiny")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Models.Fast != "tiny" {
+		t.Errorf("Fast = %q, want tiny", cfg.Models.Fast)
+	}
+	if cfg.Models.Balanced != "claude-sonnet-5-5" {
+		t.Errorf("Balanced = %q", cfg.Models.Balanced)
+	}
+}

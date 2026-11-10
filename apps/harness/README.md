@@ -1,6 +1,6 @@
 # harness
 
-Go agent harness (`github.com/ndolinschi/Octo/apps/harness`): Anthropic Messages tool loop with local workspace tools, optional remote HTTP tools, and its own SQLite session store. Talks to any Anthropic-compatible Messages endpoint — typically [Octo](../router/README.md) on loopback.
+Go agent harness (`github.com/ndolinschi/Octo/apps/harness`): Anthropic Messages tool loop with local workspace tools, optional remote HTTP tools, a project server (`harness serve`: orchestrator + nested sub-agents over HTTP/SSE), and its own SQLite stores. Talks to any Anthropic-compatible Messages endpoint — typically [Octo](../router/README.md) on loopback.
 
 Product architecture: [docs/architecture.md](./docs/architecture.md).
 
@@ -23,6 +23,17 @@ go vet ./...
 go test ./...
 go build -o octo-harness ./cmd/harness
 ```
+
+## Serve (projects, no API key needed with mockllm)
+
+```bash
+go run ./examples/mockllm                       # scripted Messages server on 127.0.0.1:8791
+ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:8791 --data-dir /tmp/octo-data
+```
+
+Then `curl -XPOST localhost:8790/v1/projects -d '{"name":"Demo","folders":[{"path":"'$PWD'"}]}'`, post a message to `/v1/projects/{id}/messages`, and follow `/v1/projects/{id}/events`. API contract: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../docs/superpowers/specs/2026-11-10-project-harness-design.md). Against a real endpoint, drop `--base-url` (or point it at Octo) and set a real key.
+
+`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--max-turns`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Say "quick" in a message to make mockllm answer without delegating.
 
 ## Run (direct Messages through Octo)
 
@@ -90,11 +101,13 @@ go run ./examples/remotetool
 
 Under `--data-dir` (default `./data/harness`):
 
-- `harness.sqlite` — sessions and message JSON
+- `harness.sqlite` — legacy CLI sessions and message JSON
+- `registry.sqlite` — project index (`serve`)
+- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes
 - `cache/` — cached remote tool manifests
 
 Harness data is separate from Octo Rust `data/history.sqlite`.
 
 ## Local tools and workspace
 
-`read_file`, `write_file`, and `list_dir` resolve paths under `--workspace` only (symlink escape rejected). `bash` is documented above: full host shell, not a sandbox. Path checks for file tools happen at resolve time, not again at open/read/write (TOCTOU). Tool stdout and file reads are capped at 1 MiB (`\n...truncated` when clipped).
+`read_file`, `write_file`, and `list_dir` resolve paths under `--workspace` only (symlink escape rejected). Under `serve`, they resolve under the project's attached folders (optional `folder` label per call); `bash` runs with the chosen folder as cwd and is equally unsandboxed. `bash` is documented above: full host shell, not a sandbox. Path checks for file tools happen at resolve time, not again at open/read/write (TOCTOU). Tool stdout and file reads are capped at 1 MiB (`\n...truncated` when clipped).

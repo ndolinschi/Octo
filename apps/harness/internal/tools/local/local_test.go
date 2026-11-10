@@ -166,3 +166,62 @@ func TestBashEcho(t *testing.T) {
 		t.Fatalf("output %q missing hi", output)
 	}
 }
+
+func TestRegisterRoots_FolderSelectionAndConfinement(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(a, "a.txt"), []byte("from-a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b, "b.txt"), []byte("from-b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(b, filepath.Join(a, "link")); err != nil {
+		t.Fatal(err)
+	}
+	reg := tools.NewRegistry()
+	roots := []Root{{Label: "alpha", Path: a}, {Label: "beta", Path: b}}
+	if err := RegisterRoots(reg, roots, ToolReadFile, ToolListDir); err != nil {
+		t.Fatalf("RegisterRoots: %v", err)
+	}
+	if _, ok := reg.Get(ToolBash); ok {
+		t.Fatal("bash registered but not requested")
+	}
+	cases := []struct {
+		name, tool, input string
+		wantErr           bool
+		wantOut           string
+	}{
+		{"default first folder", ToolReadFile, `{"path":"a.txt"}`, false, "from-a"},
+		{"explicit second folder", ToolReadFile, `{"path":"b.txt","folder":"beta"}`, false, "from-b"},
+		{"file in wrong folder", ToolReadFile, `{"path":"b.txt","folder":"alpha"}`, true, ""},
+		{"unknown folder", ToolReadFile, `{"path":"a.txt","folder":"nope"}`, true, "unknown folder"},
+		{"dotdot", ToolReadFile, `{"path":"../x","folder":"beta"}`, true, ""},
+		{"symlink escape", ToolReadFile, `{"path":"link/b.txt"}`, true, "escapes"},
+		{"list second root", ToolListDir, `{"folder":"beta"}`, false, "b.txt"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			def, _ := reg.Get(tc.tool)
+			out, isErr, err := def.Handle(context.Background(), json.RawMessage(tc.input))
+			if err != nil {
+				t.Fatalf("Handle: %v", err)
+			}
+			if isErr != tc.wantErr {
+				t.Fatalf("isError = %v, want %v (out=%q)", isErr, tc.wantErr, out)
+			}
+			if !strings.Contains(out, tc.wantOut) {
+				t.Fatalf("out = %q, want substring %q", out, tc.wantOut)
+			}
+		})
+	}
+}
+
+func TestRegisterRoots_NoRootsRegistersNothing(t *testing.T) {
+	reg := tools.NewRegistry()
+	if err := RegisterRoots(reg, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(reg.All()) != 0 {
+		t.Fatal("expected no tools without folders")
+	}
+}

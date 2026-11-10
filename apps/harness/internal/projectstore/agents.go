@@ -1,0 +1,143 @@
+package projectstore
+
+import (
+	"context"
+	"database/sql"
+)
+
+const agentCols = `id, parent_id, depth, role, title, task, model, tier, status, result, error,
+	spawn_tool_use_id, input_tokens, output_tokens, created_at, started_at, finished_at`
+
+type scanner interface{ Scan(dest ...any) error }
+
+func (d *DB) scanAgent(r scanner) (Agent, error) {
+	a := Agent{ProjectID: d.id}
+	var tier sql.NullString
+	var parent, result, errText, spawn, started, finished sql.NullString
+	err := r.Scan(&a.ID, &parent, &a.Depth, &a.Role, &a.Title, &a.Task, &a.Model, &tier, &a.Status,
+		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished)
+	if err != nil {
+		return a, err
+	}
+	a.ParentID = nullStr(parent)
+	a.Result = nullStr(result)
+	a.Error = nullStr(errText)
+	a.SpawnToolUseID = nullStr(spawn)
+	a.StartedAt = nullStr(started)
+	a.FinishedAt = nullStr(finished)
+	if tier.Valid {
+		t := Tier(tier.String)
+		a.Tier = &t
+	}
+	return a, nil
+}
+
+func nullStr(n sql.NullString) *string {
+	if !n.Valid {
+		return nil
+	}
+	return &n.String
+}
+
+func (d *DB) CreateAgent(ctx context.Context, in NewAgent) (Agent, error) {
+	id := NewID("agt")
+	now := Now()
+	var started any
+	if in.Started {
+		started = now
+	}
+	var tier any
+	if in.Tier != nil {
+		tier = string(*in.Tier)
+	}
+	_, err := d.sql.ExecContext(ctx,
+		`INSERT INTO agents (id, parent_id, depth, role, title, task, model, tier, status, spawn_tool_use_id, created_at, started_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, in.ParentID, in.Depth, in.Role, in.Title, in.Task, in.Model, tier, string(in.Status), in.SpawnToolUseID, now, started)
+	if err != nil {
+		return Agent{}, err
+	}
+	if err := d.Touch(ctx); err != nil {
+		return Agent{}, err
+	}
+	return d.Agent(ctx, id)
+}
+
+func (d *DB) Agent(ctx context.Context, id string) (Agent, error) {
+	a, err := d.scanAgent(d.sql.QueryRowContext(ctx, `SELECT `+agentCols+` FROM agents WHERE id = ?`, id))
+	if err == sql.ErrNoRows {
+		return a, ErrNotFound
+	}
+	return a, err
+}
+
+func (d *DB) Agents(ctx context.Context) ([]Agent, error) {
+	rows, err := d.sql.QueryContext(ctx, `SELECT `+agentCols+` FROM agents ORDER BY rowid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Agent{}
+	for rows.Next() {
+		a, err := d.scanAgent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// Orchestrator returns the project's root agent.
+func (d *DB) Orchestrator(ctx context.Context) (Agent, error) {
+	a, err := d.scanAgent(d.sql.QueryRowContext(ctx, `SELECT `+agentCols+` FROM agents WHERE parent_id IS NULL`))
+	if err == sql.ErrNoRows {
+		return a, ErrNotFound
+	}
+	return a, err
+}
+
+func (d *DB) UpdateAgent(ctx context.Context, id string, p AgentPatch) (Agent, error) {
+	set := newSetter()
+	if p.Reset {
+		set.add("result", nil)
+		set.add("error", nil)
+		set.add("finished_at", nil)
+	}
+	if p.Status != nil {
+		set.add("status", string(*p.Status))
+	}
+	set.str("model", p.Model)
+	set.str("result", p.Result)
+	set.str("error", p.Error)
+	set.str("started_at", p.StartedAt)
+	set.str("finished_at", p.FinishedAt)
+	if err := set.exec(ctx, d.sql, "agents", "id = ?", id); err != nil {
+		return Agent{}, err
+	}
+	if err := d.Touch(ctx); err != nil {
+		return Agent{}, err
+	}
+	return d.Agent(ctx, id)
+}
+
+func (d *DB) AddUsage(ctx context.Context, id string, in, out int64) (Agent, error) {
+	_, err := d.sql.ExecContext(ctx,
+		`UPDATE agents SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ? WHERE id = ?`, in, out, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	return d.Agent(ctx, id)
+}
+
+// RecoverInterrupted settles agents left running by a previous process.
+func (d *DB) RecoverInterrupted(ctx context.Context) error {
+	now := Now()
+	if _, err := d.sql.ExecContext(ctx,
+		`UPDATE agents SET status = 'idle' WHERE parent_id IS NULL AND status = 'running'`); err != nil {
+		return err
+	}
+	_, err := d.sql.ExecContext(ctx,
+		`UPDATE agents SET status = 'failed', error = 'interrupted', finished_at = ? WHERE status = 'running'`, now)
+	return err
+}
