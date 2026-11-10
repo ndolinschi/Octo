@@ -10,7 +10,11 @@ func jsonUnmarshal(raw json.RawMessage, v any) error { return json.Unmarshal(raw
 
 // New returns a deterministic Anthropic-compatible Messages server. delay is
 // the pause between streamed chunks.
-func New(delay time.Duration) http.Handler {
+func New(delay time.Duration, opts ...Option) http.Handler {
+	m := &server{style: StyleAnthropic, now: time.Now}
+	for _, o := range opts {
+		o(m)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/messages", func(w http.ResponseWriter, r *http.Request) {
 		var req request
@@ -19,6 +23,7 @@ func New(delay time.Duration) http.Handler {
 			return
 		}
 		rep := plan(&req)
+		m.setRateLimits(w.Header())
 		if req.Stream {
 			streamReply(w, r, &req, rep, delay)
 			return

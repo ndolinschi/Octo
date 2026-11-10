@@ -23,6 +23,7 @@ type Server struct {
 	plugins PluginSource
 	langs   LanguageServers
 	lsp     LSPSessions
+	limits  LimitSource
 	ping    time.Duration
 }
 
@@ -53,6 +54,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /v1/config", s.config)
 	mux.HandleFunc("GET /v1/plugins", s.listPlugins)
+	mux.HandleFunc("GET /v1/usage", s.usage)
+	mux.HandleFunc("GET /v1/limits", s.listLimits)
 	mux.HandleFunc("GET /v1/projects", s.listProjects)
 	mux.HandleFunc("POST /v1/projects", s.createProject)
 	mux.HandleFunc("GET /v1/projects/{pid}", s.getProject)

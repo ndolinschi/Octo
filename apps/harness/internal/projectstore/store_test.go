@@ -112,7 +112,7 @@ func TestAgentsAndMessages(t *testing.T) {
 	if _, err := db.UpdateAgent(ctx, child.ID, AgentPatch{Status: &done, Result: &res, FinishedAt: &fin}); err != nil {
 		t.Fatal(err)
 	}
-	child, _ = db.AddUsage(ctx, child.ID, 10, 5)
+	child, _ = db.RecordUsage(ctx, UsageRecord{AgentID: child.ID, Model: "m", Source: SourceAPI, InputTokens: 10, OutputTokens: 5})
 	if child.Status != StatusCompleted || *child.Result != "report" || child.InputTokens != 10 || child.OutputTokens != 5 {
 		t.Fatalf("child after update = %+v", child)
 	}
@@ -246,7 +246,7 @@ func TestConcurrentWrites(t *testing.T) {
 				return
 			}
 			for range 5 {
-				if _, err := db.AddUsage(ctx, a.ID, 1, 1); err != nil {
+				if _, err := db.RecordUsage(ctx, UsageRecord{AgentID: a.ID, Model: "m", Source: SourceAPI, InputTokens: 1, OutputTokens: 1}); err != nil {
 					errs <- err
 				}
 				if _, err := db.AppendMessage(ctx, a.ID, "user", []byte(`[]`)); err != nil {

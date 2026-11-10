@@ -168,10 +168,18 @@ type ToolCall struct {
 
 type ToolCallUpdate = ToolCall
 
-// Usage is a usage_update: tokens currently in context and the window size.
+// Cost is the cumulative session cost an agent may report in a usage_update.
+type Cost struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// Usage is a usage_update: tokens currently in context, the window size and,
+// when the agent reports it, the cumulative cost.
 type Usage struct {
 	Used int64 `json:"used"`
 	Size int64 `json:"size"`
+	Cost *Cost `json:"cost,omitempty"`
 }
 
 // PermissionOption is one choice offered by session/request_permission.

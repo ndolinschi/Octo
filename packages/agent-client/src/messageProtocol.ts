@@ -66,6 +66,8 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "readFile",
   "writeFile",
   "listPlugins",
+  "getUsage",
+  "getLimits",
   "listLanguageServers",
 ];
 

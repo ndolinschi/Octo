@@ -358,6 +358,12 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       return writeDemo(get(id), input);
     },
     listPlugins: async () => (await delay(), demoPlugins(pluginsOn)),
+    getUsage: async (params) => {
+      await delay();
+      const total = { key: "total", label: "Total", input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, requests: 0, cost_usd: null, cost_estimated: false };
+      return { from: params?.from ?? "", to: params?.to ?? "", group: params?.group ?? "day", buckets: [], total };
+    },
+    getLimits: async () => (await delay(), []),
     listLanguageServers: async (id) => (await delay(), get(id), demoLanguageServers(pluginsOn)),
     openLanguageServer: async (id, serverId) => {
       await delay();

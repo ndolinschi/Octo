@@ -6,9 +6,11 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -30,10 +32,22 @@ type Service struct {
 	hub      *events.Hub
 	turns    Turns
 	defaults Defaults
+	prices   prices.Table
+	now      func() time.Time
 }
 
-func NewService(store *projectstore.Store, hub *events.Hub, turns Turns, defaults Defaults) *Service {
-	return &Service{store: store, hub: hub, turns: turns, defaults: defaults}
+// ServiceOption customizes NewService.
+type ServiceOption func(*Service)
+
+// WithPrices sets the table used to estimate API usage cost.
+func WithPrices(t prices.Table) ServiceOption { return func(s *Service) { s.prices = t } }
+
+func NewService(store *projectstore.Store, hub *events.Hub, turns Turns, defaults Defaults, opts ...ServiceOption) *Service {
+	s := &Service{store: store, hub: hub, turns: turns, defaults: defaults, now: time.Now}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 func (s *Service) Defaults() Defaults { return s.defaults }

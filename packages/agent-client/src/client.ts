@@ -8,12 +8,15 @@ import type {
   FileStat,
   LanguageServerInfo,
   LanguageServerSession,
+  Limit,
   Message,
   Note,
   Plugin,
   Project,
   ProjectInput,
   ProjectSummary,
+  UsageParams,
+  UsageReport,
   WriteFileInput,
 } from "./types";
 import { openLspSession } from "./lspSession";
@@ -83,6 +86,8 @@ export interface Bridge {
   readFile(projectId: string, folder: string, path: string): Promise<FileContent>;
   writeFile(projectId: string, input: WriteFileInput): Promise<FileStat>;
   listPlugins(): Promise<Plugin[]>;
+  getUsage(params?: UsageParams): Promise<UsageReport>;
+  getLimits(): Promise<Limit[]>;
   listLanguageServers(projectId: string): Promise<LanguageServerInfo[]>;
   openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
@@ -184,6 +189,15 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
     return body[key] as T;
   }
 
+  const usageQuery = (params: UsageParams | undefined) => {
+    const parts: string[] = [];
+    for (const k of ["from", "to", "group", "project"] as const) {
+      const v = params?.[k];
+      if (typeof v === "string" && v !== "") parts.push(`${k}=${encodeURIComponent(v)}`);
+    }
+    return parts.length === 0 ? "" : `?${parts.join("&")}`;
+  };
+
   const p = (id: string) => `/v1/projects/${encodeURIComponent(id)}`;
   const fileQuery = (folder: string, path: string) =>
     `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}`;
@@ -225,6 +239,8 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
     writeFile: (id, input) =>
       request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
     listPlugins: () => unwrap<Plugin[]>(request("GET", "/v1/plugins"), "plugins"),
+    getUsage: (params) => request("GET", `/v1/usage${usageQuery(params)}`) as Promise<UsageReport>,
+    getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
     listLanguageServers: (id) =>
       unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
     openLanguageServer: (id, serverId) =>

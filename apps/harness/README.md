@@ -128,6 +128,28 @@ go run ./examples/remotetool
 # harness run ... --remote http://127.0.0.1:9100
 ```
 
+## Usage, cost and limits
+
+Spec: [`2026-11-10-usage-design.md`](../../docs/superpowers/specs/2026-11-10-usage-design.md) (Phase A).
+
+- `GET /v1/usage?from=&to=&group=day|model|project|agent&project=` sums per-request usage rows (input, output, cache read and cache write tokens, request count, cost) across all projects, or one with `project=`. `from`/`to` are RFC 3339 or `YYYY-MM-DD` (UTC; `to` exclusive; default the last 30 days); `group` defaults to `day`. Days without usage are omitted, an empty range returns empty `buckets`, bad parameters return 400 and an unknown `project` 404. `total` is the sum of the buckets. Usage is recorded from the migration on; earlier history is not back-filled.
+- `GET /v1/limits` returns `{"limits":[{provider, model, kind, limit, remaining, resets_at, observed_at}]}`: the latest rate-limit headers the base URL's host returned (`anthropic-ratelimit-*`, else `x-ratelimit-*`; duration resets such as `6m0s` become RFC 3339 using the observation time), one entry per provider host, model and kind. Held in memory, so the list is empty after a restart or while no response carried such headers. mockllm sends Anthropic-style headers by default; `go run ./examples/mockllm -ratelimit openai` sends `x-ratelimit-*` ones, `-ratelimit none` none.
+- Cost: a source-reported cost (an ACP agent's `usage_update.cost` in USD, as the increase since its previous update) is summed as is. API usage is estimated as tokens x price from the optional `{data-dir}/prices.toml` (read at startup; never the router's price file). A bucket's `cost_usd` is `null` when nothing in it has a price, `cost_estimated` is true when any part came from the table, and models missing from the table contribute nothing rather than zero. Cache prices are optional and fall back to the input price.
+
+```toml
+[models."claude-opus-5-5"]
+input = 5.0        # USD per 1M tokens
+output = 25.0
+cache_read = 0.5   # optional
+cache_write = 6.25 # optional
+```
+
+The file is a small TOML subset (`[models."id"]` tables, `key = number`, `#` comments) read by the harness itself. A malformed file is logged and treated as missing.
+
+ACP agents also report context occupancy: `context_used` and `context_size` on the agent (null until the agent sends a `usage_update`).
+
+**Not read:** subscription plan limits (Claude Pro/Max, ChatGPT Plus/Pro, Google AI plans). No documented programmatic source exists for them, so the harness neither reads CLI credentials nor calls undocumented endpoints; those limits are shown by the agent's own CLI. OpenRouter key info is not polled in Phase A.
+
 ## Data layout
 
 Under `--data-dir` (default `./data/harness`):
@@ -136,6 +158,7 @@ Under `--data-dir` (default `./data/harness`):
 - `registry.sqlite` — project index (`serve`)
 - `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes
 - `cache/` — cached remote tool manifests
+- `prices.toml` — optional price table for usage cost estimates (you create it; the harness only reads it)
 
 Harness data is separate from Octo Rust `data/history.sqlite`.
 

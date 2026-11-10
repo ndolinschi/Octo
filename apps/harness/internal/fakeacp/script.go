@@ -18,7 +18,23 @@ const (
 	MarkerHang    = "[hang]"
 	MarkerDeaf    = "[deaf]"
 	MarkerUnknown = "[unknown]"
+	// MarkerNonUSD makes the usage_update costs use EUR instead of USD.
+	MarkerNonUSD = "[eur]"
 )
+
+// Cumulative session costs the default script reports in its usage_updates.
+const (
+	CostAfterRead = 0.012
+	CostAfterEdit = 0.03
+)
+
+// usageUpdate reports context occupancy and a cumulative cost.
+func (a *agent) usageUpdate(used int, cost float64, currency string) {
+	a.update(map[string]any{
+		"sessionUpdate": "usage_update", "used": used, "size": 200000,
+		"cost": map[string]any{"amount": cost, "currency": currency},
+	})
+}
 
 // NoteFile is the file the default script writes into the session cwd.
 const NoteFile = "acp-demo-note.md"
@@ -100,10 +116,14 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 			extra = " Unknown request unexpectedly succeeded."
 		}
 	}
-	return a.defaultScript(ctx, cwd, extra)
+	currency := "USD"
+	if has(MarkerNonUSD) {
+		currency = "EUR"
+	}
+	return a.defaultScript(ctx, cwd, extra, currency)
 }
 
-func (a *agent) defaultScript(ctx context.Context, cwd, extra string) string {
+func (a *agent) defaultScript(ctx context.Context, cwd, extra, currency string) string {
 	a.say("Reading the README. ")
 	readme := filepath.Join(cwd, "README.md")
 	a.toolCall("call-read", "Read README.md", "read", "pending", readme)
@@ -123,7 +143,7 @@ func (a *agent) defaultScript(ctx context.Context, cwd, extra string) string {
 		summary = fmt.Sprintf("README.md has %d bytes and starts with %q", len(r.Content), first)
 		a.toolUpdate("call-read", "completed", textContent(fmt.Sprintf("read %d bytes", len(r.Content))))
 	}
-	a.update(map[string]any{"sessionUpdate": "usage_update", "used": 1200, "size": 200000})
+	a.usageUpdate(1200, CostAfterRead, currency)
 
 	a.say("Now I'll record a note. ")
 	note := filepath.Join(cwd, NoteFile)
@@ -147,7 +167,7 @@ func (a *agent) defaultScript(ctx context.Context, cwd, extra string) string {
 		return "end_turn"
 	}
 	a.toolUpdate("call-edit", "completed", map[string]any{"type": "diff", "path": note, "oldText": nil, "newText": noteBody})
-	a.update(map[string]any{"sessionUpdate": "usage_update", "used": 1800, "size": 200000})
+	a.usageUpdate(1800, CostAfterEdit, currency)
 	a.say("Summary: " + summary + "; I wrote " + NoteFile + " with a short note." + extra)
 	return "end_turn"
 }

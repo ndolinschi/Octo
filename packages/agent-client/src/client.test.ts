@@ -57,6 +57,18 @@ test("request shapes and envelope unwrapping", async () => {
     { run: (b) => b.readFile("p", "src", "x/y z.ts"), reply: '{"content":"hi","mtime":"t"}', method: "GET", path: "/v1/projects/p/files/content?folder=src&path=x%2Fy%20z.ts", result: { content: "hi", mtime: "t" } },
     { run: (b) => b.writeFile("p", { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }), reply: '{"size":1,"mtime":"t2"}', method: "PUT", path: "/v1/projects/p/files/content", body: { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }, result: { size: 1, mtime: "t2" } },
     { run: (b) => b.listPlugins(), reply: '{"plugins":[{"name":"go-tools"}]}', method: "GET", path: "/v1/plugins", result: [{ name: "go-tools" }] },
+    { run: (b) => b.getUsage(), reply: '{"group":"day","buckets":[]}', method: "GET", path: "/v1/usage", result: { group: "day", buckets: [] } },
+    { run: (b) => b.getUsage({}), reply: '{"group":"day"}', method: "GET", path: "/v1/usage", result: { group: "day" } },
+    {
+      run: (b) => b.getUsage({ from: "2026-11-01", to: "2026-11-10T00:00:00+02:00", group: "model", project: "prj a/b" }),
+      reply: '{"group":"model"}',
+      method: "GET",
+      path: "/v1/usage?from=2026-11-01&to=2026-11-10T00%3A00%3A00%2B02%3A00&group=model&project=prj%20a%2Fb",
+      result: { group: "model" },
+    },
+    { run: (b) => b.getUsage({ group: "agent", from: "" }), reply: '{"group":"agent"}', method: "GET", path: "/v1/usage?group=agent", result: { group: "agent" } },
+    { run: (b) => b.getLimits(), reply: '{"limits":[{"provider":"api.anthropic.com","kind":"requests"}]}', method: "GET", path: "/v1/limits", result: [{ provider: "api.anthropic.com", kind: "requests" }] },
+    { run: (b) => b.getLimits(), reply: '{"limits":[]}', method: "GET", path: "/v1/limits", result: [] },
     { run: (b) => b.listLanguageServers("a/b"), reply: '{"servers":[{"id":"gopls"}]}', method: "GET", path: "/v1/projects/a%2Fb/lsp", result: [{ id: "gopls" }] },
   ];
   for (const c of cases) {

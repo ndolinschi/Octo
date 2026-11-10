@@ -90,7 +90,7 @@ func (s *Store) Create(ctx context.Context, in NewProject) (*DB, error) {
 	if err := os.MkdirAll(s.projectDir(id), 0o755); err != nil {
 		return nil, err
 	}
-	db, err := s.open(id)
+	db, err := s.open(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -118,10 +118,10 @@ func (s *Store) Get(ctx context.Context, id string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.open(id)
+	return s.open(ctx, id)
 }
 
-func (s *Store) open(id string) (*DB, error) {
+func (s *Store) open(ctx context.Context, id string) (*DB, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if db, ok := s.dbs[id]; ok {
@@ -132,6 +132,10 @@ func (s *Store) open(id string) (*DB, error) {
 		return nil, err
 	}
 	db := &DB{id: id, sql: sdb}
+	if err := db.migrate(ctx); err != nil {
+		_ = sdb.Close()
+		return nil, err
+	}
 	s.dbs[id] = db
 	return db, nil
 }

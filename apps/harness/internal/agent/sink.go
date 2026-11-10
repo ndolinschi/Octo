@@ -17,14 +17,22 @@ type Sink interface {
 	Usage(u Usage)
 }
 
+// Usage is the token usage of one model response. Model is the model the
+// request asked for; CostUSD is a source-reported cost, nil when there is none.
 type Usage struct {
-	InputTokens  int64
-	OutputTokens int64
+	Model            string
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	CostUSD          *float64
 }
 
 func (u *Usage) add(o Usage) {
 	u.InputTokens += o.InputTokens
 	u.OutputTokens += o.OutputTokens
+	u.CacheReadTokens += o.CacheReadTokens
+	u.CacheWriteTokens += o.CacheWriteTokens
 }
 
 type Result struct {

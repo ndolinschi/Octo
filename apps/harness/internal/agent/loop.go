@@ -67,7 +67,13 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 		if err != nil {
 			return res, err
 		}
-		u := Usage{InputTokens: resp.Usage.InputTokens, OutputTokens: resp.Usage.OutputTokens}
+		u := Usage{
+			Model:            l.Model,
+			InputTokens:      resp.Usage.InputTokens,
+			OutputTokens:     resp.Usage.OutputTokens,
+			CacheReadTokens:  resp.Usage.CacheReadInputTokens,
+			CacheWriteTokens: resp.Usage.CacheCreationInputTokens,
+		}
 		res.Usage.add(u)
 		l.Sink.Usage(u)
 

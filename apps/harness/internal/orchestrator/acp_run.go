@@ -26,7 +26,7 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, ag plug
 	}
 	defer client.Close()
 
-	h := newACPSession(rt, child.ID, ag.ID)
+	h := newACPSession(rt, child.ID, ag.ID, child.Model)
 	stop, err := client.Run(ctx, cwd, child.Task, h)
 	h.finish(ctx, err != nil)
 	if err != nil {

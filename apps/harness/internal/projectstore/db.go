@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS agents (
 	output_tokens INTEGER NOT NULL DEFAULT 0,
 	created_at TEXT NOT NULL,
 	started_at TEXT,
-	finished_at TEXT
+	finished_at TEXT,
+	context_used INTEGER,
+	context_size INTEGER
 );
 CREATE TABLE IF NOT EXISTS messages (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,7 +58,20 @@ CREATE TABLE IF NOT EXISTS notes (
 	author TEXT NOT NULL,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
-);`
+);
+CREATE TABLE IF NOT EXISTS usage (
+	id INTEGER PRIMARY KEY,
+	agent_id TEXT NOT NULL,
+	model TEXT NOT NULL,
+	source TEXT NOT NULL,
+	input_tokens INTEGER NOT NULL,
+	output_tokens INTEGER NOT NULL,
+	cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+	cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+	cost_usd REAL,
+	created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS usage_created ON usage (created_at);`
 
 // DB is one project's database. All methods are safe for concurrent use.
 type DB struct {
@@ -67,9 +82,6 @@ type DB struct {
 func (d *DB) ID() string { return d.id }
 
 func (d *DB) init(ctx context.Context, in NewProject) error {
-	if _, err := d.sql.ExecContext(ctx, projectSchema); err != nil {
-		return err
-	}
 	now := Now()
 	_, err := d.sql.ExecContext(ctx,
 		`INSERT INTO project (id, name, description, instructions, models_json, max_depth, created_at, updated_at)

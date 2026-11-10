@@ -18,8 +18,10 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/limits"
 	"github.com/ndolinschi/Octo/apps/harness/internal/lsp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
+	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -88,16 +90,23 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 
 	pluginReg := loadPlugins(ctx, cfg, remoteReg)
 
+	priceTable, err := prices.Load(filepath.Join(cfg.DataDir, prices.File))
+	if err != nil {
+		slog.Warn("ignoring price table; costs will be unknown", "err", err)
+	}
+	limitStore := limits.NewStore()
+
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
-		Client:   anthropicclient.New(cfg.APIKey, cfg.BaseURL, cfg.OctoKey),
+		Client:   anthropicclient.New(cfg.APIKey, cfg.BaseURL, cfg.OctoKey, anthropicclient.WithResponseObserver(limitStore.Observe)),
 		MaxTurns: cfg.MaxTurns,
 		Stream:   cfg.Stream,
 		Remote:   remoteReg.All(),
 		Agents:   pluginReg.Agents(),
 	})
-	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth})
+	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth},
+		project.WithPrices(priceTable))
 	if err := svc.Recover(ctx); err != nil {
 		return fmt.Errorf("restart recovery: %w", err)
 	}
@@ -111,7 +120,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	defer cancelRequests()
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
-			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr)),
+			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore)),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}

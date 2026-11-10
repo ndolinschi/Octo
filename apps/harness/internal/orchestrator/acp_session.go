@@ -11,6 +11,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
 const toolNameFallback = "tool"
@@ -22,6 +23,7 @@ type acpSession struct {
 	sink    *agentSink
 	agentID string
 	label   string
+	model   string
 
 	mu       sync.Mutex
 	pending  strings.Builder
@@ -30,12 +32,14 @@ type acpSession struct {
 	open     map[string]bool
 	seen     map[string]bool
 	lastUsed int64
+	lastCost float64
 	done     bool
 }
 
-func newACPSession(rt *runtime, agentID, label string) *acpSession {
+func newACPSession(rt *runtime, agentID, label, model string) *acpSession {
 	return &acpSession{
-		rt: rt, sink: &agentSink{rt: rt, agentID: agentID}, agentID: agentID, label: label,
+		rt: rt, sink: &agentSink{rt: rt, agentID: agentID, source: projectstore.SourceACP},
+		agentID: agentID, label: label, model: model,
 		open: map[string]bool{}, seen: map[string]bool{},
 	}
 }
@@ -78,14 +82,38 @@ func (s *acpSession) ToolCallUpdate(ctx context.Context, up acp.ToolCallUpdate) 
 	}
 }
 
+// Usage maps a usage_update: the window goes on the agent, the growth in used
+// tokens and the increase in (USD) cost become one usage row.
 func (s *acpSession) Usage(_ context.Context, u acp.Usage) {
 	s.mu.Lock()
 	delta := u.Used - s.lastUsed
 	s.lastUsed = u.Used
+	cost := s.costDeltaLocked(u.Cost)
 	s.mu.Unlock()
-	if delta > 0 {
-		s.sink.Usage(agent.Usage{InputTokens: delta})
+	w := projectstore.ContextWindow{Used: u.Used, Size: u.Size}
+	if delta <= 0 && cost == nil {
+		s.sink.setContext(w)
+		return
 	}
+	s.sink.record(agent.Usage{Model: s.model, InputTokens: max(delta, 0), CostUSD: cost}, &w)
+}
+
+// costDeltaLocked converts the cumulative cost of a usage_update into the
+// increase since the previous one. Only USD is understood; a counter that went
+// backwards is taken as restarted.
+func (s *acpSession) costDeltaLocked(c *acp.Cost) *float64 {
+	if c == nil || !strings.EqualFold(c.Currency, "USD") || c.Amount < 0 {
+		return nil
+	}
+	d := c.Amount - s.lastCost
+	if d < 0 {
+		d = c.Amount
+	}
+	s.lastCost = c.Amount
+	if d == 0 {
+		return nil
+	}
+	return &d
 }
 
 func (s *acpSession) RequestPermission(_ context.Context, req acp.PermissionRequest) string {

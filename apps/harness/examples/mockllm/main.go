@@ -19,9 +19,14 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8791", "listen address")
 	delay := flag.Duration("delay", 25*time.Millisecond, "pause between streamed chunks")
+	style := flag.String("ratelimit", string(mockllm.StyleAnthropic), "rate-limit headers: anthropic, openai (x-ratelimit-*, duration resets) or none")
 	flag.Parse()
+	if !mockllm.RateLimitStyle(*style).Valid() {
+		slog.Error("bad -ratelimit", "value", *style)
+		os.Exit(2)
+	}
 
-	srv := &http.Server{Addr: *addr, Handler: mockllm.New(*delay), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: *addr, Handler: mockllm.New(*delay, mockllm.WithRateLimitStyle(mockllm.RateLimitStyle(*style))), ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

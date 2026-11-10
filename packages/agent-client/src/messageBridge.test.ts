@@ -45,7 +45,7 @@ function fakeBridge(): FakeBridge {
   const names = [
     "health", "getConfig", "listProjects", "createProject", "getProject", "updateProject",
     "deleteProject", "listAgents", "getAgent", "listMessages", "sendMessage", "cancelTurn",
-    "listNotes", "createNote", "updateNote", "deleteNote", "listFiles", "readFile", "writeFile", "listPlugins", "listLanguageServers",
+    "listNotes", "createNote", "updateNote", "deleteNote", "listFiles", "readFile", "writeFile", "listPlugins", "getUsage", "getLimits", "listLanguageServers",
   ];
   for (const name of names) {
     (self as unknown as Record<string, unknown>)[name] = async (...args: unknown[]) => {
@@ -99,6 +99,9 @@ test("every Bridge method round-trips args and return value", async () => {
     ["readFile", b.readFile("p", "f", "a/b"), ["p", "f", "a/b"]],
     ["writeFile", b.writeFile("p", { folder: "f", path: "a", content: "c", expected_mtime: "t" }), ["p", { folder: "f", path: "a", content: "c", expected_mtime: "t" }]],
     ["listPlugins", b.listPlugins(), []],
+    ["getUsage", b.getUsage(), []],
+    ["getUsage", b.getUsage({ group: "model", project: "p" }), [{ group: "model", project: "p" }]],
+    ["getLimits", b.getLimits(), []],
     ["listLanguageServers", b.listLanguageServers("p"), ["p"]],
   ];
   for (const [name, promise, args] of calls) {

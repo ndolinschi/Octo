@@ -9,12 +9,15 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
 // agentSink persists an agent's messages and turns loop activity into events.
 type agentSink struct {
 	rt      *runtime
 	agentID string
+	// source labels usage rows; empty means the Messages API.
+	source string
 }
 
 func (s *agentSink) Message(ctx context.Context, role string, msg anthropic.MessageParam) error {
@@ -44,12 +47,36 @@ func (s *agentSink) ToolFinished(id string, isError bool) {
 	s.rt.publish(events.ToolFinished, map[string]any{"agent_id": s.agentID, "tool_use_id": id, "is_error": isError})
 }
 
-func (s *agentSink) Usage(u agent.Usage) {
+func (s *agentSink) Usage(u agent.Usage) { s.record(u, nil) }
+
+// record stores one usage row (and totals), plus the context window when known.
+func (s *agentSink) record(u agent.Usage, w *projectstore.ContextWindow) {
+	source := s.source
+	if source == "" {
+		source = projectstore.SourceAPI
+	}
 	c, cancel := dbCtx(context.Background())
 	defer cancel()
-	a, err := s.rt.db.AddUsage(c, s.agentID, u.InputTokens, u.OutputTokens)
+	a, err := s.rt.db.RecordUsage(c, projectstore.UsageRecord{
+		AgentID: s.agentID, Model: u.Model, Source: source,
+		InputTokens: u.InputTokens, OutputTokens: u.OutputTokens,
+		CacheReadTokens: u.CacheReadTokens, CacheWriteTokens: u.CacheWriteTokens,
+		CostUSD: u.CostUSD, Context: w,
+	})
 	if err != nil {
-		s.rt.logErr("add usage", err)
+		s.rt.logErr("record usage", err)
+		return
+	}
+	s.rt.publishAgent(events.AgentUpdated, a)
+}
+
+// setContext stores the context window without writing a usage row.
+func (s *agentSink) setContext(w projectstore.ContextWindow) {
+	c, cancel := dbCtx(context.Background())
+	defer cancel()
+	a, err := s.rt.db.SetContext(c, s.agentID, w)
+	if err != nil {
+		s.rt.logErr("set context", err)
 		return
 	}
 	s.rt.publishAgent(events.AgentUpdated, a)

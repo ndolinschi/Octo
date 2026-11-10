@@ -75,6 +75,8 @@ type Agent struct {
 	CreatedAt      string      `json:"created_at"`
 	StartedAt      *string     `json:"started_at"`
 	FinishedAt     *string     `json:"finished_at"`
+	ContextUsed    *int64      `json:"context_used"`
+	ContextSize    *int64      `json:"context_size"`
 }
 
 type NewAgent struct {
@@ -131,6 +133,7 @@ type NewProject struct {
 }
 
 // Now returns a fixed-width RFC 3339 UTC timestamp that sorts lexically.
-func Now() string {
-	return time.Now().UTC().Format("2006-01-02T15:04:05.000Z07:00")
-}
+func Now() string { return Stamp(time.Now()) }
+
+// Stamp formats t the way Now does, for comparing against stored times.
+func Stamp(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z07:00") }

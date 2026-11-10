@@ -6,7 +6,8 @@ import (
 )
 
 const agentCols = `id, parent_id, depth, role, title, task, model, tier, status, result, error,
-	spawn_tool_use_id, input_tokens, output_tokens, created_at, started_at, finished_at`
+	spawn_tool_use_id, input_tokens, output_tokens, created_at, started_at, finished_at,
+	context_used, context_size`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -14,8 +15,9 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	a := Agent{ProjectID: d.id}
 	var tier sql.NullString
 	var parent, result, errText, spawn, started, finished sql.NullString
+	var ctxUsed, ctxSize sql.NullInt64
 	err := r.Scan(&a.ID, &parent, &a.Depth, &a.Role, &a.Title, &a.Task, &a.Model, &tier, &a.Status,
-		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished)
+		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished, &ctxUsed, &ctxSize)
 	if err != nil {
 		return a, err
 	}
@@ -25,6 +27,8 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	a.SpawnToolUseID = nullStr(spawn)
 	a.StartedAt = nullStr(started)
 	a.FinishedAt = nullStr(finished)
+	a.ContextUsed = nullInt(ctxUsed)
+	a.ContextSize = nullInt(ctxSize)
 	if tier.Valid {
 		t := Tier(tier.String)
 		a.Tier = &t
@@ -37,6 +41,13 @@ func nullStr(n sql.NullString) *string {
 		return nil
 	}
 	return &n.String
+}
+
+func nullInt(n sql.NullInt64) *int64 {
+	if !n.Valid {
+		return nil
+	}
+	return &n.Int64
 }
 
 func (d *DB) CreateAgent(ctx context.Context, in NewAgent) (Agent, error) {
@@ -116,15 +127,6 @@ func (d *DB) UpdateAgent(ctx context.Context, id string, p AgentPatch) (Agent, e
 		return Agent{}, err
 	}
 	if err := d.Touch(ctx); err != nil {
-		return Agent{}, err
-	}
-	return d.Agent(ctx, id)
-}
-
-func (d *DB) AddUsage(ctx context.Context, id string, in, out int64) (Agent, error) {
-	_, err := d.sql.ExecContext(ctx,
-		`UPDATE agents SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ? WHERE id = ?`, in, out, id)
-	if err != nil {
 		return Agent{}, err
 	}
 	return d.Agent(ctx, id)

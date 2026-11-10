@@ -140,6 +140,8 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     readFile: (id, folder, path) => call("readFile", [id, folder, path]),
     writeFile: (id, input) => call("writeFile", [id, input]),
     listPlugins: () => call("listPlugins", []),
+    getUsage: (params) => call("getUsage", params === undefined ? [] : [params]),
+    getLimits: () => call("getLimits", []),
     listLanguageServers: (id) => call("listLanguageServers", [id]),
     openLanguageServer: (projectId, serverId) => {
       const id = nextId++;

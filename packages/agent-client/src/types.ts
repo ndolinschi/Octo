@@ -59,6 +59,9 @@ export type Agent = {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  /** Tokens in the agent's context and the window size; null when unknown (the bridge always sends them). */
+  context_used?: number | null;
+  context_size?: number | null;
 };
 
 export type ContentBlock =
@@ -182,4 +185,54 @@ export type LanguageServerSession = {
   onMessage(cb: (message: unknown) => void): () => void;
   onExit(cb: (info: LanguageServerExit) => void): () => void;
   close(): Promise<void>;
+};
+
+export type UsageGroup = "day" | "model" | "project" | "agent";
+
+/** `from`/`to` are RFC 3339 or YYYY-MM-DD (UTC; `to` exclusive); default is the last 30 days, grouped by day. */
+export type UsageParams = {
+  from?: string;
+  to?: string;
+  group?: UsageGroup;
+  /** Narrows the report to one project id. */
+  project?: string;
+};
+
+export type UsageBucket = {
+  /** Day (YYYY-MM-DD), model id, project id or agent id. */
+  key: string;
+  /** Same as key for day and model; the project name or the agent role otherwise. */
+  label: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  requests: number;
+  /** Reported cost plus estimated cost; null when nothing in the bucket has a price. */
+  cost_usd: number | null;
+  /** True when any part comes from the harness's price table. */
+  cost_estimated: boolean;
+};
+
+export type UsageReport = {
+  from: string;
+  to: string;
+  group: UsageGroup;
+  buckets: UsageBucket[];
+  total: UsageBucket;
+};
+
+export type LimitKind = "requests" | "tokens" | "input_tokens" | "output_tokens";
+
+export type Limit = {
+  /** Host of the harness's base URL, e.g. "api.anthropic.com". */
+  provider: string;
+  /** Model of the response the headers came with. */
+  model: string;
+  kind: LimitKind;
+  limit: number | null;
+  remaining: number | null;
+  /** RFC 3339; duration resets are converted using observed_at. */
+  resets_at: string | null;
+  observed_at: string;
 };
