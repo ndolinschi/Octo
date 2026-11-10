@@ -180,6 +180,40 @@ Fourth batch (E: a messenger-style bot app — "interesting ways to interact wit
     how to add one (`plugin.json`, `{data-dir}/plugins/`, `--plugins-dir`). The dialog is 640px wide for this view.
     The palette gets "Open integrations".
 
+Fifth batch (F: a start screen with a dithered light streak behind the composer and overview cards — owner:
+"this effect looks cool"):
+
+| Pattern | Verdict | What we do |
+| --- | --- | --- |
+| F: a diagonal light streak rendered with visible ordered dithering (pixel grain) across the start screen | Good: gives the product a face without an illustration or a logo; the grain hides banding and reads as crafted, not as a stock gradient. Bad if it sits under dense text or runs everywhere | Decision 21: our own streak, start screens only (supersedes the plain radial glow of decision 12) |
+| F: overview cards under the composer — activity heat map, usage total with provider split, recent sessions, this month | Good: the empty start screen becomes useful. Each card must be real data | Decision 22: Home with cards computed from what the harness stores |
+| F: cards as translucent dark panels over the effect | Good, if text contrast is measured on the brightest spot | Cards use `panel` at 88% with `backdrop-filter: blur(12px)`; fall back to opaque `panel` |
+| F: pull-request list, "PRs merged" | No backing data (no git integration) | Not built |
+| F: saturated full-spectrum colours (red/orange/blue) | Too loud for a tool whose colour means state; also the other product's signature | Our palette: `accent` blue through indigo with one thin warm edge at low alpha |
+
+21. **Streak** (`components/shell/Streak.tsx`, canvas, lazily loaded, not in the initial bundle): one diagonal band
+    of light (about 24° from the top-left to the right edge) built from 3–4 soft lobes in `accent` → indigo with
+    a thin warm (`warn`-hued) rim, quantised with a 4×4 Bayer ordered dither at 2 CSS px cells (so the grain is
+    visible but fine), over the `panel` colour. Peak alpha: dark ≤ 55% inside the band's core, light ≤ 22%; the
+    band never passes behind body text — the title and composer sit on it, cards are their own surfaces. Drawn
+    once per size/theme change (ResizeObserver, DPR-aware, ≤ 4 ms at 1440×900); a 20 s ± 12px drift is allowed
+    only when `prefers-reduced-motion` is not set and the tab is visible; otherwise static. Fades in 240ms. Used on
+    Home, the empty project and the no-projects hero — nowhere else. `aria-hidden`, pointer-events none. Text on
+    it keeps ≥ 4.5:1 at the brightest pixel (measured; add a local scrim under the title if needed).
+22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
+    the last project as before): the streak, a title ("What should we work on?"), a project picker row
+    (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
+    card grid (2 columns ≥ 900px, 1 below; radius 10; 16px padding; caption row with a 14px glyph):
+    **Activity** — heat map of the last 26 weeks, one cell per day (10px cells, 2px gaps, 5 tones from `hover` to
+    `accent`), count = agents started that day across projects; caption "N agent runs · M requests"; cells have
+    `title` with date and count; **Tokens** — total (compact, e.g. "92.8M tokens"), split by model family
+    as a muted line, 30 days; **Recent requests** — last 5 across projects (title, project, relative time; click
+    jumps to it), "N more" opens the palette on Requests; **This month** — requests, agent runs, files written,
+    each with the change against the previous month in `ok`/`err`. Data: `listProjects` + `listAgents` (and the
+    request cache) per project, at most 4 in flight, cached in memory for the session and refreshed when a
+    project's `updated_at` changes; each card shows a skeleton until its data is in and a quiet "No activity
+    yet" when empty. No limits/reset dates until the harness reports them (see the usage research).
+
 ### Acceptance criteria (v6)
 
 1. `spacing-audit.mjs` exits 0 on every listed state and width; its before/after counts are recorded below.
