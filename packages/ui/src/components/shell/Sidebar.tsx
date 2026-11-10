@@ -12,7 +12,7 @@ import { Spinner } from "../primitives/Status";
 const SEARCH_THRESHOLD = 6;
 
 export function Sidebar(props: { activeProjectId: string | null; onNewProject(): void; onClose?(): void }) {
-  const { projects, health, theme, toggleTheme } = useApp();
+  const { projects, health, theme, canToggleTheme, toggleTheme } = useApp();
   const [query, setQuery] = useState("");
   const now = useNow(true, 30_000);
   const canCreate = health === "online";
@@ -75,12 +75,14 @@ export function Sidebar(props: { activeProjectId: string | null; onNewProject():
       <div className="flex h-10 shrink-0 items-center gap-2 pr-2 pl-4">
         <span className="shrink-0 text-xs text-fg-3">Octo</span>
         <ConnectionStatus />
-        <IconButton
-          icon={theme === "dark" ? Sun : Moon}
-          label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          onClick={toggleTheme}
-          className="ml-auto"
-        />
+        {canToggleTheme && (
+          <IconButton
+            icon={theme === "dark" ? Sun : Moon}
+            label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            onClick={toggleTheme}
+            className="ml-auto"
+          />
+        )}
       </div>
     </nav>
   );

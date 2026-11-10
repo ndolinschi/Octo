@@ -3,6 +3,7 @@ import { ChevronRight, Plus, X } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
 import { basename } from "../../lib/format";
+import { useHost } from "../../state/host";
 import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
@@ -30,6 +31,7 @@ export function ProjectDialog(props: {
   onDelete?(): Promise<void>;
 }) {
   const { config } = useApp();
+  const { pickFolder } = useHost();
   const editing = Boolean(props.project);
   const initialModels = props.project?.models ?? config?.default_models ?? FALLBACK_MODELS;
   const [name, setName] = useState(props.project?.name ?? "");
@@ -198,6 +200,16 @@ export function ProjectDialog(props: {
                   placeholder={f.path.trim() ? basename(f.path.trim()) : "label"}
                   className="flex-1"
                 />
+                {pickFolder && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Browse for folder ${i + 1}`}
+                    onClick={() => void pickFolder().then((path) => path && updateFolder(f.key, { path }))}
+                  >
+                    Browse
+                  </Button>
+                )}
                 <IconButton
                   icon={X}
                   label={`Remove folder ${i + 1}`}

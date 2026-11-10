@@ -1,7 +1,8 @@
 import { ChevronRight } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { toolMeta } from "../../lib/tools";
+import { useHost } from "../../state/host";
+import { toolMeta, toolPath } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
 import { Spinner } from "../primitives/Status";
 import { toolState, useTranscript, type ToolState } from "./transcriptContext";
@@ -115,19 +116,41 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
 
 function ToolDetail({ use }: { use: ToolUse }) {
   const ctx = useTranscript();
+  const { openFile } = useHost();
   const result = ctx.results.get(use.id);
+  const path = toolPath(use.name, use.input);
+  const folder = toolMeta(use.name, use.input).folder;
   return (
     <div className="overflow-hidden rounded-md bg-code-bg text-xs">
-      <ToolSection label="Input" body={formatInput(use)} />
+      <ToolSection
+        label="Input"
+        body={formatInput(use)}
+        action={
+          openFile &&
+          path && (
+            <button
+              type="button"
+              aria-label={`Open ${path} in editor`}
+              onClick={() => openFile(path, folder || undefined)}
+              className="min-w-0 truncate rounded-sm font-mono text-fg-2 hover:underline focus-visible:underline"
+            >
+              {path}
+            </button>
+          )
+        }
+      />
       {result && <ToolSection label={result.is_error ? "Error" : "Result"} body={result.content} error={result.is_error} />}
     </div>
   );
 }
 
-function ToolSection({ label, body, error }: { label: string; body: string; error?: boolean }) {
+function ToolSection({ label, body, error, action }: { label: string; body: string; error?: boolean; action?: ReactNode }) {
   return (
     <div className="border-line not-first:border-t">
-      <div className={cn("px-3 pt-2", error ? "text-err" : "text-fg-3")}>{label}</div>
+      <div className={cn("flex items-baseline gap-2 px-3 pt-2", error ? "text-err" : "text-fg-3")}>
+        {label}
+        {action}
+      </div>
       <pre className="max-h-64 overflow-auto px-3 pt-0.5 pb-2.5 font-mono text-xs leading-[1.6] whitespace-pre-wrap text-fg-2">
         {body || "(empty)"}
       </pre>

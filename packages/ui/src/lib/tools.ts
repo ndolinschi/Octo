@@ -24,6 +24,12 @@ export function toolMeta(name: string, input: unknown): { verb: string; arg: str
   return { verb: meta.verb, arg: meta.arg(record), folder: str(record.folder) };
 }
 
+/** The file or folder path a tool call operates on, if it has one. */
+export function toolPath(name: string, input: unknown): string {
+  if (name !== "read_file" && name !== "write_file" && name !== "list_dir") return "";
+  return typeof input === "object" && input !== null ? str((input as Record<string, unknown>).path) : "";
+}
+
 export type SpawnInput = { role: string; title: string; task: string; tier: string };
 
 export function spawnInput(input: unknown): SpawnInput {

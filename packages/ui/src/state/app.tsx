@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useHost } from "./host";
 import { readPref, writePref } from "../lib/storage";
 
 export type Health = "checking" | "online" | "offline";
@@ -27,6 +28,8 @@ type AppValue = {
   retry(): void;
   refreshProjects(): Promise<void>;
   theme: Theme;
+  /** False when the host dictates the theme. */
+  canToggleTheme: boolean;
   toggleTheme(): void;
 };
 
@@ -50,7 +53,9 @@ export function AppProvider(props: {
   const [version, setVersion] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [config, setConfig] = useState<BridgeConfig | null>(null);
-  const [theme, setTheme] = useState<Theme>(initialTheme);
+  const host = useHost();
+  const [ownTheme, setTheme] = useState<Theme>(initialTheme);
+  const theme = host.theme ?? ownTheme;
   const [attempt, setAttempt] = useState(0);
   const healthRef = useRef<Health>("checking");
 
@@ -120,6 +125,7 @@ export function AppProvider(props: {
       },
       refreshProjects,
       theme,
+      canToggleTheme: !host.theme,
       toggleTheme: () =>
         setTheme((t) => {
           const next = t === "dark" ? "light" : "dark";
@@ -127,7 +133,7 @@ export function AppProvider(props: {
           return next;
         }),
     }),
-    [bridge, props.bridgeUrl, props.shell, props.demo, health, version, projects, config, refreshProjects, theme],
+    [bridge, props.bridgeUrl, props.shell, props.demo, health, version, projects, config, refreshProjects, theme, host.theme],
   );
 
   return <AppContext.Provider value={value}>{props.children}</AppContext.Provider>;

@@ -1,5 +1,6 @@
-import { PanelRight, Settings2 } from "lucide-react";
+import { PanelRight, Settings2, SquareArrowOutUpRight } from "lucide-react";
 import { forwardRef } from "react";
+import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
 import { IconButton } from "../primitives/Button";
 import { TopBar } from "../shell/TopBar";
@@ -18,6 +19,7 @@ export const ProjectHeader = forwardRef<
   }
 >(function ProjectHeader(props, paneToggle) {
   const { project } = useProject();
+  const { openProjectInEditor } = useHost();
   return (
     <TopBar
       sidebarOpen={props.sidebarOpen}
@@ -25,6 +27,15 @@ export const ProjectHeader = forwardRef<
       actions={
         project && (
           <>
+            {openProjectInEditor && (
+              <IconButton
+                icon={SquareArrowOutUpRight}
+                label="Open in editor"
+                title={project.folders.length ? "Open project folders in the editor" : "Add a folder to the project to open it in the editor"}
+                disabled={project.folders.length === 0}
+                onClick={() => openProjectInEditor(project.id)}
+              />
+            )}
             <IconButton icon={Settings2} label="Project settings" onClick={props.onSettings} />
             <IconButton
               ref={paneToggle}
