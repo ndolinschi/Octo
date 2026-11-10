@@ -95,6 +95,11 @@ export function CodeEditor(props: {
     buffers.attach(monaco);
     onMonaco.current(mod);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Hover, suggest and peek widgets live in a layer on <body> above the app (fixed positions), so the
+    // tree column, the breadcrumb row and the panel's clipping can never cut them or slide over them.
+    const overflow = document.createElement("div");
+    overflow.className = "monaco-editor octo-monaco-overflow";
+    document.body.appendChild(overflow);
     const editor = monaco.editor.create(host.current, {
       model: null,
       theme: mod.themeName(props.theme),
@@ -111,7 +116,8 @@ export function CodeEditor(props: {
       wordWrap: "off",
       detectIndentation: true,
       lineNumbersMinChars: 3,
-      glyphMargin: false,
+      // The comment "+" has its own lane left of the line numbers, so it never covers code (any indent).
+      glyphMargin: true,
       folding: true,
       showFoldingControls: "mouseover",
       renderLineHighlight: "line",
@@ -139,6 +145,7 @@ export function CodeEditor(props: {
       cursorBlinking: reduced ? "solid" : "blink",
       cursorSmoothCaretAnimation: "off",
       fixedOverflowWidgets: true,
+      overflowWidgetsDomNode: overflow,
       ariaLabel: "Code editor",
       tabFocusMode: false,
     });
@@ -153,6 +160,7 @@ export function CodeEditor(props: {
       buffers.editors.delete(editor);
       editor.setModel(null);
       editor.dispose();
+      overflow.remove();
       editorRef.current = null;
     };
     // Theme changes are applied below without recreating the editor.

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useEscape, useMediaQuery } from "../lib/hooks";
+import { focusSoon, visibleComposer } from "../lib/focus";
 import { navigate, useGuardedRoute } from "../lib/route";
 import { useUnseen } from "../lib/seen";
 import { useApp } from "../state/app";
@@ -15,10 +16,14 @@ import { ProjectDialog } from "../components/project/ProjectDialog";
 import { CommandPalette, type PaletteAction } from "../components/shell/CommandPalette";
 import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
-import { SettingsDialog } from "../components/shell/SettingsDialog";
+import { SettingsDialog, type SettingsView } from "../components/shell/SettingsDialog";
 import { Sidebar } from "../components/shell/Sidebar";
 import { PanelBar } from "../components/shell/SidebarToggle";
 import { ProjectWorkspace } from "./ProjectWorkspace";
+import { ActivityProvider } from "../state/activity";
+
+/** Home loads on first visit (its own chunk); the app usually opens a project. */
+const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
 
 /** Below this width the sidebar becomes an overlay drawer, closed by default. */
 const DRAWER_QUERY = "(max-width: 999px)";
@@ -27,7 +32,9 @@ export function AppShell() {
   return (
     <NavProvider>
       <RequestsProvider>
-        <Shell />
+        <ActivityProvider>
+          <Shell />
+        </ActivityProvider>
       </RequestsProvider>
     </NavProvider>
   );
@@ -44,7 +51,7 @@ function Shell() {
   const [inlineOpen, setInlineOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [settings, setSettings] = useState(false);
+  const [settings, setSettings] = useState<SettingsView | null>(null);
   const [palette, setPalette] = useState(false);
   const drawerOpener = useRef<HTMLElement | null>(null);
   const sidebarOpen = drawerMode ? drawerOpen : inlineOpen;
@@ -54,14 +61,19 @@ function Shell() {
   const unseen = useUnseen(projects, known ? route.projectId : null);
   const firstId = projects?.[0]?.id ?? null;
 
+  // Opening the app (no route) shows the most recently active project, as before; `#/` is Home and stays
+  // (decision 22); an unknown project id falls back to the first project.
+  const opened = useRef(window.location.hash === "" || window.location.hash === "#");
   useEffect(() => {
     if (health !== "online" || projects === null) return;
-    if (!known && firstId) navigate(firstId);
-  }, [health, projects, known, firstId]);
+    const atHome = route.projectId === null && !opened.current;
+    opened.current = false;
+    if (!known && firstId && !atHome) navigate(firstId);
+  }, [health, projects, known, firstId, route.projectId]);
 
   // The drawer closes on navigation and whenever the window grows out of drawer mode.
   useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, drawerMode]);
-  useEscape(drawerMode && drawerOpen && !palette && !settings, () => setDrawerOpen(false));
+  useEscape(drawerMode && drawerOpen && !palette && settings === null, () => setDrawerOpen(false));
 
   // Ctrl/Cmd+K toggles the palette from anywhere, the editor included (capture phase).
   useEffect(() => {
@@ -70,6 +82,15 @@ function Shell() {
         e.preventDefault();
         e.stopPropagation();
         setPalette((p) => !p);
+      }
+      // Ctrl/Cmd+L: the caret into the visible composer, from anywhere (Monaco keeps Tab for indenting).
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "l" && !document.querySelector('[aria-modal="true"]')) {
+        const composer = visibleComposer();
+        if (composer) {
+          e.preventDefault();
+          e.stopPropagation();
+          composer.focus();
+        }
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -86,9 +107,9 @@ function Shell() {
     setDrawerOpen(false);
     setCreating(true);
   };
-  const openSettings = () => {
+  const openSettings = (view: SettingsView = "general") => {
     setDrawerOpen(false);
-    setSettings(true);
+    setSettings(view);
   };
   const openPalette = () => {
     setDrawerOpen(false);
@@ -99,20 +120,28 @@ function Shell() {
   let main: React.ReactNode = null;
   if (health === "offline") main = <OfflineState />;
   else if (projects && projects.length === 0) main = <NoProjectsHero onCreate={newProject} />;
+  else if (route.projectId === null && projects) main = (
+      <Suspense fallback={null}>
+        <Home onNewProject={newProject} />
+      </Suspense>
+    );
 
   const drawerShown = drawerMode && drawerOpen;
   const sidebarProps = {
     activeProjectId: route.projectId,
+    home: route.projectId === null && (projects?.length ?? 0) > 0,
     activeAgentId: route.agentId,
     unseen,
     onNewProject: newProject,
     onSearch: openPalette,
-    onSettings: openSettings,
+    onSettings: () => openSettings(),
   };
 
   const actions: PaletteAction[] = [
+    { id: "home", label: "Go to Home", run: () => navigate(null) },
     { id: "new", label: "New project", run: newProject },
-    { id: "settings", label: "Open settings", run: openSettings },
+    { id: "settings", label: "Open settings", run: () => openSettings() },
+    { id: "integrations", label: "Open integrations", run: () => openSettings("integrations") },
     { id: "sidebar", label: "Toggle sidebar", run: toggleSidebar },
   ];
 
@@ -146,11 +175,13 @@ function Shell() {
             await refreshProjects();
             setCreating(false);
             navigate(project.id);
+            // The new project's composer takes focus once the dialog is gone and the project is in.
+            focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
           }}
         />
       </Presence>
-      <Presence show={settings}>
-        <SettingsDialog onClose={() => setSettings(false)} />
+      <Presence show={settings !== null}>
+        <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
       </Presence>
       <Presence show={palette}>
         <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />

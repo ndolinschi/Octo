@@ -7,12 +7,14 @@ import {
   type Project,
   type ProjectInput,
   type ProjectSummary,
+  type UsageBucket,
 } from "@octo/agent-client";
 import { basename } from "../lib/format";
 import { atlasHistory } from "./atlas";
 import { backgroundTurn, docsHistory } from "./extra";
 import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
 import { genericTurn } from "./generic";
+import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
 import { orbitLive } from "./orbit";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
@@ -165,16 +167,33 @@ function seed(): ProjectRecord[] {
     },
     now - 3 * 24 * HOUR,
   );
-  startScript(
-    payments,
-    now - 1_200,
-    backgroundTurn(
+  startScript(payments, now - 182 * 24 * HOUR, async (ctx) => {
+    await pastHistory(ctx, {
+      seed: 7,
+      turns: 46,
+      days: 182,
+      roles: ["Implementer", "Test writer", "Reviewer", "Code explorer"],
+      files: ["jobs/reconcile.ts", "jobs/payouts.ts", "reports/uk.sql", "test/settle.test.ts", "lib/money.ts", "lib/types.ts"],
+      prompts: [
+        "Add the UK region to the nightly settlement.",
+        "The reconciliation report is missing refunds; find out why.",
+        "Speed up the settlement query for merchants with many lines.",
+        "Write a test for the month-end cut-over.",
+        "Review last week's changes to money.ts.",
+        "Export the EU totals as CSV for finance.",
+        "Retry failed payouts once with backoff.",
+      ],
+    });
+    ctx.t = Math.max(ctx.t, now - 26 * HOUR);
+    await ledgerShowcase(ctx);
+    ctx.t = Math.max(ctx.t, now - 1_200);
+    await backgroundTurn(
       "Re-run last night's settlement for the EU merchants and tell me if the totals match.",
       { name: "bash", input: { command: "pnpm settle --region eu --date yesterday --dry-run" }, result: "Settled 1,284 merchants · €2,418,903.17 · 0 mismatches" },
       "Re-ran the EU settlement as a dry run: **1,284 merchants, €2,418,903.17**, and the totals match the ledger exactly. Nothing was written.",
       2_600,
-    ),
-  );
+    )(ctx);
+  });
 
   const infra = makeProject(
     {
@@ -184,16 +203,31 @@ function seed(): ProjectRecord[] {
     },
     now - 6 * 24 * HOUR,
   );
-  startScript(
-    infra,
-    now - 800,
-    backgroundTurn(
+  startScript(infra, now - 180 * 24 * HOUR, async (ctx) => {
+    await pastHistory(ctx, {
+      seed: 23,
+      turns: 34,
+      days: 180,
+      roles: ["Implementer", "Reviewer", "Planner"],
+      files: ["modules/node-pool/variables.tf", "modules/dns/main.tf", "envs/staging/variables.tf", "envs/production/variables.tf", "docs/runbook.md"],
+      prompts: [
+        "Bump the provider versions and run a plan.",
+        "Add a DNS module for the internal zone.",
+        "Why does the production plan want to replace the bucket?",
+        "Tag every resource with its cost centre.",
+        "Split the staging stack into network and compute.",
+      ],
+    });
+    ctx.t = Math.max(ctx.t, now - 3 * HOUR);
+    await infraAcpTurn(ctx, "/Users/maya/code/infra");
+    ctx.t = Math.max(ctx.t, now - 800);
+    await backgroundTurn(
       "Plan the staging upgrade to the new node pool module and summarise the diff.",
       { name: "bash", input: { command: "terraform -chdir=envs/staging plan -no-color" }, result: "Plan: 3 to add, 1 to change, 2 to destroy." },
       "The staging plan adds the new node pool, updates the autoscaler and removes the two old pools: **3 to add, 1 to change, 2 to destroy**. No production resources are touched.",
       4_200,
-    ),
-  );
+    )(ctx);
+  });
 
   const tokens = makeProject(
     {
@@ -358,10 +392,34 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       return writeDemo(get(id), input);
     },
     listPlugins: async () => (await delay(), demoPlugins(pluginsOn)),
+    // Usage rows from the demo agents (an agent's tokens count on the day it started): enough for Home's
+    // Tokens card to show real arithmetic over the seeded history.
     getUsage: async (params) => {
       await delay();
-      const total = { key: "total", label: "Total", input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, requests: 0, cost_usd: null, cost_estimated: false };
-      return { from: params?.from ?? "", to: params?.to ?? "", group: params?.group ?? "day", buckets: [], total };
+      const to = params?.to ? Date.parse(params.to) : Date.now();
+      const from = params?.from ? Date.parse(params.from) : to - 30 * 24 * HOUR;
+      const group = params?.group ?? "day";
+      const bucket = (key: string, label: string): UsageBucket => ({ key, label, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, requests: 0, cost_usd: null, cost_estimated: false });
+      const total = bucket("total", "Total");
+      const buckets = new Map<string, UsageBucket>();
+      for (const rec of records.values()) {
+        if (params?.project && rec.project.id !== params.project) continue;
+        for (const a of rec.agents) {
+          const at = Date.parse(a.started_at ?? a.created_at);
+          if (at < from || at >= to) continue;
+          const key = group === "model" ? a.model : group === "project" ? rec.project.id : group === "agent" ? a.id : new Date(at).toISOString().slice(0, 10);
+          const label = group === "project" ? rec.project.name : group === "agent" ? a.role : key;
+          const b = buckets.get(key) ?? bucket(key, label);
+          buckets.set(key, b);
+          const calls = rec.messages.filter((m) => m.agent_id === a.id && m.role === "assistant").length;
+          for (const t of [b, total]) {
+            t.input_tokens += a.input_tokens;
+            t.output_tokens += a.output_tokens;
+            t.requests += calls;
+          }
+        }
+      }
+      return { from: new Date(from).toISOString(), to: new Date(to).toISOString(), group, buckets: [...buckets.values()], total };
     },
     getLimits: async () => (await delay(), []),
     listLanguageServers: async (id) => (await delay(), get(id), demoLanguageServers(pluginsOn)),

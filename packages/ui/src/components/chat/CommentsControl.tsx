@@ -51,7 +51,7 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
         onClick={() => setOpen((x) => !x)}
         className={cn(
           chip
-            ? "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs tabular-nums shadow-float hover:text-fg"
+            ? "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs tabular-nums shadow-float octo-ring-float hover:text-fg"
             : "press flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-2 text-xs tabular-nums hover:bg-hover hover:text-fg",
           open ? (chip ? "text-fg" : "bg-active text-fg") : "text-fg-2",
         )}

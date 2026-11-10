@@ -6,6 +6,7 @@ import { useProject } from "../../state/project";
 import { Button, IconButton } from "../primitives/Button";
 import { Input, Textarea } from "../primitives/Field";
 import { Markdown } from "../chat/Markdown";
+import { FloatRoom } from "../primitives/floatRoom";
 
 export function NotesPanel() {
   const { state, createNote, updateNote, deleteNote } = useProject();
@@ -17,7 +18,7 @@ export function NotesPanel() {
   const now = Date.now();
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col pt-pane">
       <div className="flex h-8 shrink-0 items-center gap-2 pr-2 pl-4 text-xs text-fg-3">
         <span className="min-w-0 truncate">The orchestrator reads these every turn</span>
         <IconButton icon={Plus} label="Add note" size="sm" className="ml-auto" onClick={() => setEditing("new")} disabled={editing === "new"} />
@@ -59,6 +60,7 @@ export function NotesPanel() {
             ),
           )}
         </ul>
+        <FloatRoom />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import type { Agent, Message } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
 import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
-import { formatDuration, timeAgo } from "../../lib/format";
+import { formatDuration, formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
 import { buildTurns, promptText, type Turn } from "../../lib/transcript";
@@ -51,8 +51,11 @@ export const Transcript = memo(function Transcript(props: {
           const last = i === turns.length - 1;
           const hidePrompt = props.hideFirstPrompt && i === 0;
           const started = turn.prompt?.created_at ?? (i === 0 ? agent.started_at : null);
+          const prev = turns[i - 1];
+          const separator = isOrchestrator && turn.prompt && needsSeparator(prev ? (prev.lastAt ?? prev.prompt?.created_at ?? null) : null, turn.prompt.created_at);
           return (
             <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-4">
+              {separator && turn.prompt && <TimeSeparator at={turn.prompt.created_at} now={minute} />}
               {turn.prompt && !hidePrompt && (
                 <UserPrompt text={promptText(turn.prompt)} author={props.promptAuthor} external={!isOrchestrator} />
               )}
@@ -91,6 +94,17 @@ export const Transcript = memo(function Transcript(props: {
     </TranscriptContext.Provider>
   );
 });
+
+/** Orients in a long-lived conversation (decision 18): a centred 12px line before a request after a pause. */
+function TimeSeparator({ at, now }: { at: string; now: number }) {
+  return (
+    <div data-time-sep className="flex h-4 items-center justify-center text-xs text-fg-3 tabular-nums">
+      <time dateTime={at} title={new Date(at).toLocaleString()}>
+        {formatSeparator(at, now)}
+      </time>
+    </div>
+  );
+}
 
 /** Prompts longer than eight lines collapse, with a toggle to read them in full; code comments show as cards. */
 const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { text: string; author: string; external: boolean }) {
@@ -164,11 +178,11 @@ const AssistantTurn = memo(function AssistantTurn(props: {
     <article aria-label={`${props.speaker} response`} className="flex flex-col gap-3">
       {worked !== null && <p className="text-base text-fg-3 tabular-nums">Worked for {formatDuration(worked)}</p>}
       {turn.items.map((item) => {
-        if (item.kind === "text") return <Markdown key={item.key} text={item.text} className="octo-prose" />;
+        if (item.kind === "text") return <Markdown key={item.key} text={item.text} className="octo-prose" fileLinks />;
         if (item.kind === "tools") return <ToolGroup key={item.key} uses={item.uses} />;
         return <DelegationGroup key={item.key} uses={item.uses} />;
       })}
-      {streaming && <Markdown text={streaming} className="octo-prose" streaming />}
+      {streaming && <Markdown text={streaming} className="octo-prose" streaming fileLinks />}
       {live && (
         <p className="flex h-6 items-center gap-2 text-sm text-fg-3 tabular-nums">
           {props.watched ? <Spinner className="text-accent" /> : <RunningDot />}

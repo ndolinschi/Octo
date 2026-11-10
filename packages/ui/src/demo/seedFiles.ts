@@ -590,8 +590,51 @@ const STRESS_KIT: Seed = {
     'export function ConversationTranscriptVirtualizedListWithStickyHeadersAndKeyboardNavigation() {\n  return null;\n}\n',
   "docs/an-unusually-long-architecture-decision-record-about-retries-and-idempotency-keys.md":
     "# Retries and idempotency keys\n\nEvery write accepts an `Idempotency-Key` header.\n",
+  "src/features/chat/transcript/virtual/rows/ListRow.tsx": "export function ListRow() {\n  return null;\n}\n",
   "src/wide.ts": `export const ALLOWED_ORIGINS = [${Array.from({ length: 14 }, (_, i) => `"https://tenant-${i + 1}.example.com"`).join(", ")}];\n`,
   "README.md": "# stress-kit\n\nFiles for layout stress tests.\n",
+};
+
+/** Payments ledger: the settlement job the showcase answer links to (lines 14–22 hold the rounding). */
+const LEDGER: Seed = {
+  "README.md": "# ledger\n\nSettlement batch jobs and the reconciliation report.\n",
+  "jobs/settle.ts": `import { Money } from "../lib/money";
+import type { Batch, Line } from "../lib/types";
+
+/**
+ * Nightly settlement for one region: sums every merchant's lines and writes one payout per merchant.
+ * Runs at 02:00 UTC; a dry run prints the totals without writing.
+ */
+export type SettleOptions = { region: string; date: string; dryRun: boolean };
+
+export async function settle(batch: Batch, options: SettleOptions) {
+  if (batch.lines.length === 0) return Money.zero("EUR");
+  // Rounds every line before summing: sub-cent fees drift.
+  let sum = 0;
+  for (const line of batch.lines) {
+    sum += Math.round(line.amount * 100) / 100;
+  }
+  if (options.dryRun) {
+    console.log(JSON.stringify({ merchants: batch.merchants, total: sum.toFixed(2) }));
+  }
+  return Money.of(sum, "EUR");
+}
+
+export function total(lines: Line[]): number {
+  return lines.reduce((sum, l) => sum + l.amount, 0);
+}
+`,
+  "reports/eu.sql": "select merchant_id, sum(amount_minor) as total_minor\nfrom settlement_lines\nwhere region = 'eu' and settled_on = $1\ngroup by merchant_id\norder by merchant_id;\n",
+  "cmd/reconcile/main.go": "package main\n\nimport \"fmt\"\n\ntype Line struct{ AmountMinor int64 }\n\nfunc total(lines []Line) int64 {\n\tvar sum int64\n\tfor _, l := range lines {\n\t\tsum += l.AmountMinor\n\t}\n\treturn sum\n}\n\nfunc main() { fmt.Println(total(nil)) }\n",
+  "package.json": '{\n  "name": "ledger",\n  "private": true,\n  "scripts": { "settle": "tsx jobs/settle.ts" }\n}\n',
+};
+
+/** Infrastructure: Terraform modules and environment stacks. */
+const INFRA: Seed = {
+  "README.md": "# infra\n\nShared Terraform modules and the staging / production stacks.\n",
+  "modules/node-pool/main.tf": 'variable "name" {}\nvariable "size" { default = 3 }\n\nresource "google_container_node_pool" "node_pool" {\n  name       = var.name\n  node_count = var.size\n}\n',
+  "envs/staging/main.tf": 'module "pool_a" {\n  source = "../../modules/node-pool"\n  name   = "pool-a"\n}\n',
+  "envs/production/main.tf": 'module "pool_a" {\n  source = "../../modules/node-pool"\n  name   = "pool-a"\n  size   = 6\n}\n',
 };
 
 const GENERIC: Seed = {
@@ -606,6 +649,8 @@ const SEEDS: Record<string, Seed> = {
   "orbit-app": ORBIT_APP,
   "docs-site": DOCS_SITE,
   "stress-kit": STRESS_KIT,
+  ledger: LEDGER,
+  infra: INFRA,
 };
 
 /** The in-memory tree for a folder label; unknown labels get a tiny generic project. */

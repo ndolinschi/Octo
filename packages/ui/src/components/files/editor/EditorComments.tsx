@@ -19,9 +19,9 @@ type Zone = { id: string; spec: Monaco.editor.IViewZone; root: Root; dispose(): 
 /** Events that must not reach Monaco from inside a box (it would move the caret or run keybindings). */
 const CONTAINED = ["mousedown", "pointerdown", "mouseup", "click", "dblclick", "contextmenu", "keydown", "keyup", "keypress"] as const;
 
-/** The "+" is an 18px square straddling the start of the code column, centred on the line. */
+/** The "+" is an 18px square centred in the glyph-margin lane (left of the line numbers) and on the line: it
+ *  never covers code at any indentation, nor the line numbers or the fold controls. */
 const PLUS = 18;
-const PLUS_OVERHANG = 4;
 
 let widgetSeq = 0;
 
@@ -89,7 +89,7 @@ export function EditorComments(props: { editor: Monaco.editor.IStandaloneCodeEdi
       const info = editor.getLayoutInfo();
       const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
       // First visual row of the line (wrapped lines keep the button on their first row).
-      return { line, top: pos.top + (lineHeight - PLUS) / 2, left: info.contentLeft - PLUS_OVERHANG };
+      return { line, top: pos.top + (lineHeight - PLUS) / 2, left: info.glyphMarginLeft + Math.max(0, (info.glyphMarginWidth - PLUS) / 2) };
     };
     const subs = [
       editor.onMouseMove((e) => {
@@ -332,7 +332,7 @@ export function EditorComments(props: { editor: Monaco.editor.IStandaloneCodeEdi
         if (!(e.relatedTarget as Element | null)?.closest?.(".monaco-editor")) setHover(null);
       }}
       onClick={onPlus}
-      className="press absolute z-[5] grid place-items-center rounded-xs bg-primary text-primary-fg shadow-panel before:absolute before:-inset-[3px] before:content-[''] hover:opacity-90"
+      className="press absolute z-[5] grid place-items-center rounded-xs bg-primary text-primary-fg shadow-panel octo-ring-panel before:absolute before:-inset-[3px] before:content-[''] hover:opacity-90"
     >
       <Glyph icon={Plus} size={14} />
     </button>

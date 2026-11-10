@@ -13,12 +13,14 @@ in `.claude/rules/typescript.md`). This file describes structure: what lives whe
 
 ```text
 app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host), AppShell, ProjectWorkspace
-components/<feature>/   chat · files · agents · notes · project · shell   (screens and their parts)
+components/<feature>/   chat · files · agents · notes · details · home · project · shell   (screens and their parts)
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point
-components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status glyphs
+components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs, InfoList rows,
+                        FloatRoom, Streak (lazy canvas) + StreakLayer
 state/                  one provider per concern (see the tree below); state/workspace/layout.ts is pure
 lsp/                    language-server client (hub in the main chunk, the rest loads with Monaco)
-lib/                    pure helpers and small hooks: files, format, match, comments, transcript, tools, route, storage
+lib/                    pure helpers and small hooks: files, format, match, comments, transcript, tools, route, storage,
+                        fileLinks, codePalette, highlight (lazy), streak, focus — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
 demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks)
 styles.css              design tokens (@theme), base rules, Monaco widget overrides
 scripts/                spacing-audit.mjs (Playwright; fails on off-scale spacing)
@@ -42,7 +44,8 @@ Allowed imports (a row may import the columns marked ✓):
 HostProvider              embedding capabilities (openFile, pickFolder, theme) — all optional
 └ AppProvider             bridge, health polling, project list, config, theme preference
   └ NavProvider           request jumps, request in view, leave guard, palette hooks (actions / state split)
-    └ RequestsProvider    cached request lists (external store)
+    └ RequestsProvider    cached request lists (external store, 4 loads in flight)
+      └ ActivityProvider  session cache of agent lists and transcripts for Home / Details (4 in flight)
       └ ProjectProvider   one project: SSE subscription → reducer (agent-client applyEvent), notes
         └ WorkspaceProvider   dock layout (pure layout.ts), persistence, routing, shortcuts, tab memory
           └ FileViewProvider  tree column width / open state

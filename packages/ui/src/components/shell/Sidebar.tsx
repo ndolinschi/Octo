@@ -1,4 +1,5 @@
-import { ArrowLeft, ArrowRight, PanelLeft, Plus, Search, Settings, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, House, PanelLeft, Plus, Search, Settings, type LucideIcon } from "lucide-react";
+import { navigate } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
@@ -16,7 +17,7 @@ import { ProjectItem } from "./ProjectItem";
  */
 export const NAV_ROW = "press-row flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-sm text-fg hover:bg-hover";
 
-function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disabled?: boolean; trailing?: ReactNode; shortcut?: { hint: string; keys: string } }) {
+function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disabled?: boolean; trailing?: ReactNode; shortcut?: { hint: string; keys: string }; current?: boolean }) {
   const Icon = props.icon;
   return (
     <button
@@ -24,7 +25,8 @@ function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disab
       onClick={props.onClick}
       disabled={props.disabled}
       aria-keyshortcuts={props.shortcut?.keys}
-      className={cn(NAV_ROW, "disabled:text-fg-3 disabled:hover:bg-transparent")}
+      aria-current={props.current ? "page" : undefined}
+      className={cn(NAV_ROW, "disabled:text-fg-3 disabled:hover:bg-transparent", props.current && "bg-active hover:bg-active")}
     >
       <Glyph icon={Icon} size={16} className="shrink-0 text-fg-2" />
       <span className="min-w-0 flex-1 truncate text-left">{props.label}</span>
@@ -43,6 +45,8 @@ function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disab
  */
 export function Sidebar(props: {
   activeProjectId: string | null;
+  /** Home is showing (no project open). */
+  home: boolean;
   activeAgentId: string | null;
   /** Projects with activity the user has not seen (see `useUnseen`). */
   unseen: Set<string>;
@@ -79,6 +83,7 @@ export function Sidebar(props: {
         </div>
 
         <div className="mt-2 flex shrink-0 flex-col">
+          <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
           <NavRow icon={Search} label="Search" onClick={props.onSearch} shortcut={{ hint: `${MOD}K`, keys: "Control+K Meta+K" }} />
           <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />
         </div>

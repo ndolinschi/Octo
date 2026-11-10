@@ -4,11 +4,11 @@ import { Glyph } from "./Glyph";
 import { cn } from "../../lib/cn";
 
 const LABEL: Record<AgentStatus, string> = {
-  idle: "idle",
-  running: "working",
-  completed: "done",
-  failed: "failed",
-  cancelled: "cancelled",
+  idle: "Idle",
+  running: "Working",
+  completed: "Done",
+  failed: "Failed",
+  cancelled: "Cancelled",
 };
 
 export function statusLabel(status: AgentStatus): string {
@@ -70,6 +70,8 @@ export function isTier(v: unknown): v is Tier {
 
 /** "claude-sonnet-5-5-20261001" → "Sonnet 5.5"; ids that don't follow that shape lose only the vendor prefix. */
 export function modelLabel(model: string): string {
+  // An ACP agent from a plugin: its id, marked as such.
+  if (model.startsWith("acp:")) return `${model.slice(4)} (ACP)`;
   const id = model.replace(/^claude-/, "").replace(/-\d{8}$/, "");
   const m = /^([a-z]+)-(\d+)(?:-(\d+))?$/.exec(id);
   if (!m) return id;

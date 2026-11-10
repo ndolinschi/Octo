@@ -16,7 +16,9 @@ export function Dialog(props: {
   onClose(): void;
   children: ReactNode;
   footer?: ReactNode;
-  width?: "sm" | "md";
+  width?: "sm" | "md" | "lg";
+  /** A row under the title (view tabs). */
+  nav?: ReactNode;
 }) {
   const { onClose } = props;
   const panel = useRef<HTMLDivElement>(null);
@@ -40,7 +42,7 @@ export function Dialog(props: {
         data-state={state}
         className={cn(
           "octo-overlay relative flex max-h-[88vh] w-full shrink-0 flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
-          props.width === "sm" ? "max-w-[400px]" : "max-w-[520px]",
+          props.width === "sm" ? "max-w-[400px]" : props.width === "lg" ? "max-w-dialog-wide" : "max-w-[520px]",
         )}
       >
         <header className="flex items-start gap-3 px-4 pt-4 pb-3 sm:px-5">
@@ -56,6 +58,7 @@ export function Dialog(props: {
           </div>
           <IconButton icon={X} label="Close" onClick={onClose} className="-mt-0.5 -mr-1.5" />
         </header>
+        {props.nav && <div className="px-4 pb-3 sm:px-5">{props.nav}</div>}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 empty:hidden sm:px-5">{props.children}</div>
         {props.footer && (
           <footer className="flex flex-wrap items-center justify-end gap-2 px-4 pt-1 pb-4 max-[420px]:flex-col-reverse max-[420px]:flex-nowrap max-[420px]:items-stretch sm:px-5">

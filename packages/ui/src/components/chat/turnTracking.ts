@@ -125,10 +125,14 @@ export function useTurnRequests(opts: {
       const turn = el?.querySelector<HTMLElement>(`[data-turn-id="${messageId}"]`);
       if (!el || !turn) return;
       const prompt = turn.querySelector<HTMLElement>(PROMPT) ?? turn;
+      // A time separator above the prompt lands in view with it.
+      const anchor = turn.querySelector<HTMLElement>("[data-time-sep]") ?? prompt;
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       release();
-      const top = prompt.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 2 * STICK_TOP;
-      el.scrollTo({ top, behavior: reduced ? "auto" : "smooth" });
+      const top = anchor.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 2 * STICK_TOP;
+      // Glide over short distances only: further than two screens, jump (a long glide reads as lag).
+      const far = Math.abs(top - el.scrollTop) > 2 * el.clientHeight;
+      el.scrollTo({ top, behavior: reduced || far ? "auto" : "smooth" });
       prompt.setAttribute("data-flash", "");
       window.setTimeout(() => prompt.removeAttribute("data-flash"), 1600);
     },

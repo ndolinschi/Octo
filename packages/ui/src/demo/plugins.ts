@@ -27,6 +27,39 @@ const PLUGINS: Plugin[] = [
     tool_servers: [{ url: "http://127.0.0.1:9000" }],
     errors: ['languageServers[1]: duplicate id "gopls" (already defined by web-tools)'],
   },
+  {
+    name: "python",
+    version: "0.9.3",
+    description: "Python type checking and linting",
+    language_servers: [
+      { id: "pyright", label: "pyright", languages: ["python"], available: true },
+      { id: "ruff", label: "ruff server", languages: ["python"], available: true },
+    ],
+    agents: [],
+    tool_servers: [],
+    errors: [],
+  },
+  {
+    name: "review-kit",
+    version: "1.0.0",
+    description: "A local review agent and the team's docs search",
+    language_servers: [],
+    agents: [{ id: "reviewer", label: "Local reviewer", available: true }],
+    tool_servers: [{ url: "http://127.0.0.1:9100/mcp" }, { url: "https://docs.internal.example/mcp" }],
+    errors: [],
+  },
+  {
+    name: "data-tools",
+    version: "0.4.0",
+    description: "SQL and YAML language servers",
+    language_servers: [
+      { id: "sqls", label: "sqls", languages: ["sql"], available: false },
+      { id: "yaml-language-server", label: "yaml-language-server", languages: ["yaml"], available: true },
+    ],
+    agents: [],
+    tool_servers: [],
+    errors: [],
+  },
 ];
 
 export function demoPlugins(enabled: boolean): Plugin[] {

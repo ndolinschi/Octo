@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "audit:spacing": "node scripts/spacing-audit.mjs"
+    "audit:spacing": "node scripts/spacing-audit.mjs",
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@octo/agent-client": "workspace:*",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "tsx": "^4.20.5"
   }
 }

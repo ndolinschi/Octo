@@ -1,5 +1,5 @@
 import type { Bridge, PluginAgent } from "@octo/agent-client";
-import { MessageSquare, Search, Settings2, type LucideIcon } from "lucide-react";
+import { MessageSquare, Search, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
 import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
@@ -9,7 +9,7 @@ import { useApp } from "../../state/app";
 import { useOptionalCode } from "../../state/code";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Highlight } from "../files/FileTree";
-import { fileIcon } from "../files/fileIcons";
+import { fileIcon } from "../primitives/fileIcons";
 import { usePresence } from "../primitives/Presence";
 
 /** What picking an entry does: text goes into the composer at the trigger (or the caret); `run` does something else. */
@@ -111,10 +111,11 @@ export const ComposerMenu = forwardRef<
     }
     if (ws) {
       const actions: [string, string, LucideIcon, () => void][] = [
-        ["settings", "Project settings", Settings2, ws.openSettings],
+        ["settings", "Project settings", GLYPH.settings, ws.openSettings],
         ["agents", "Show agents", GLYPH.agents, () => ws.openTool("agents")],
         ["notes", "Show notes", GLYPH.notes, () => ws.openTool("notes")],
         ["files", "Show files", GLYPH.files, () => ws.openTool("files")],
+        ["details", "Show project details", GLYPH.details, () => ws.openTool("details")],
       ];
       for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Actions", label, hint: "Run", icon, match: label, pick: { run } });
     }
@@ -141,9 +142,11 @@ export const ComposerMenu = forwardRef<
     return () => window.removeEventListener("resize", place);
   }, [props.anchor]);
 
+  // Opened by the button, the search field takes focus once the panel exists (it renders after `pos`).
+  const placed = pos !== null;
   useEffect(() => {
-    if (props.query === null) search.current?.focus();
-  }, [props.query]);
+    if (props.query === null && placed) search.current?.focus();
+  }, [props.query, placed]);
   useEffect(() => {
     const outside = (e: PointerEvent) => {
       const t = e.target as Node;
@@ -246,7 +249,10 @@ export const ComposerMenu = forwardRef<
                         <bdi>{e.detail.slice(0, e.detail.lastIndexOf("/"))}</bdi>
                       </span>
                     )}
-                    <span className="ml-auto shrink-0 pl-2 text-xs text-fg-3">{isSelected ? e.hint : ""}</span>
+                    {/* The hint slot is reserved on every row, so selecting one never shifts its folder column. */}
+                    <span aria-hidden={!isSelected} className={cn("ml-auto shrink-0 pl-2 text-xs text-fg-3", !isSelected && "invisible")}>
+                      {e.hint}
+                    </span>
                   </div>
                 );
               })}

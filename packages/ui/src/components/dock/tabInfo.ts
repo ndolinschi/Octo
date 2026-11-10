@@ -3,7 +3,7 @@ import { GLYPH } from "../primitives/glyphs";
 import type { ProjectState } from "@octo/agent-client";
 import type { OpenFile } from "../../state/code";
 import { middleTruncate } from "../../lib/format";
-import { fileIcon } from "../files/fileIcons";
+import { fileIcon } from "../primitives/fileIcons";
 import { parseTab, type TabId } from "../../state/workspace/layout";
 
 export type TabInfo = {
@@ -24,6 +24,7 @@ const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> 
   agents: { label: "Agents", icon: GLYPH.agents, title: "Agents in this project" },
   notes: { label: "Notes", icon: GLYPH.notes, title: "Project notes" },
   files: { label: "Files", icon: GLYPH.files, title: "Project files: select a file to open it here" },
+  details: { label: "Details", icon: GLYPH.details, title: "Project details: folders, models, tokens, activity, files written" },
 };
 
 export function tabInfo(
@@ -54,7 +55,7 @@ export function tabInfo(
   const name = f?.name ?? path.slice(path.lastIndexOf("/") + 1);
   return {
     // Long names lose their middle, so the extension (and path tail) stay readable.
-    label: middleTruncate(name, 28),
+    label: middleTruncate(name, 22),
     name,
     title: middleTruncate(`${ref.key.slice(0, i)}/${path}`, 96),
     icon: fileIcon(name),

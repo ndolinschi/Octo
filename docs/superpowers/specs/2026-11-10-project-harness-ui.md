@@ -300,6 +300,124 @@ rail wiring, glyph set). Monaco chunk unchanged (336.7 kB gzip, lazy).
 **Spacing audit** (`packages/ui/scripts/spacing-audit.mjs`, all states, 1440/1100/960/390): 866 violations before
 the pass (orchestrator's run on the partial build), 263 midway, **0 after** (allow-list empty).
 
+### As built (v6.1)
+
+Decisions 15–22, the fix list F1–F8 and the v6 review (`docs/superpowers/research/2026-11-10-ui-review-v6.md`).
+Scripted checks: `scratchpad/v61/accept61.cjs` (102 checks) next to the v6 script (40); unit tests for the new pure
+modules run with `pnpm --filter @octo/ui test` (node:test via tsx).
+
+**Fixes.**
+
+- **F1 comment "+"**: the editor now has a glyph-margin lane (20px, left of the line numbers) and the "+" is centred
+  in it. Measured on column-1, tab-indented (Go) and space-indented (TS) lines: "+" right edge 874px, line numbers
+  start 875px, first glyph ≥ 924px — it can never touch code or numbers. Cost: the gutter is 20px wider.
+- **F2 last line**: "at the end" is now strict (≤ 2px, was < 80px), so stopping a few lines short always shows Jump
+  to latest; a reflow (tab moved, group resized) never releases a following reader — only scrolling up does; a
+  conversation kept alive in a background tab returns to the end when shown (root cause of the clipped footer:
+  the turn finished while the tab was hidden). Jump's smooth glide ignores its own scroll events.
+- **F3 ACP tools**: `kind` + `{ title, raw_input, locations }` render as the title — first word in the verb style,
+  the rest as prose (mono for paths, commands and `execute`); the detail shows `raw_input` and the locations as links
+  (absolute paths mapped to the deepest project folder, `:line` kept). Summary lines name ACP kinds ("edited 1
+  file"). Demo: Infrastructure → "External agent" (`acp:claude-code`) reads, searches, edits and runs a command.
+- **F4 / R12 pin**: 8px solid panel, then a 32px ease-in fade (stops 97/86/60/26/0%), so content reappears from ~0%
+  and no row is cut. Measured: the 8px band is the panel colour exactly (Δ0), the next 6px differ by ≤ 7/255.
+- **F5 floating composer over tools**: kept over Agents / Notes / Details (it is the way to talk while reading
+  them); each list ends with a `FloatRoom` spacer = composer height + 16 (the editor's rule), so the last row
+  scrolls above it (measured on Details).
+- **F6** overlay tree: Esc (filter empty or toggle focused) and a pointer down outside close it; focus returns to the
+  toggle. **F7** tool panels share the pane inset: content starts 8px under the strip (Agents, Notes, Details).
+- **F8** Monaco hover / suggest / peek render in a layer on `<body>` (`overflowWidgetsDomNode`, z 45 — above panels
+  and the tree, below dialogs): measured on line 3 next to the tree, all four corners of the hover are on top.
+
+**Review fixes.** R1 the "+" menu's search takes focus once the panel exists (button route works from the keyboard).
+R2 controls with their own shadow compose the ring (`.octo-ring-float/-pop/-panel`). R3 focus never drops to
+`<body>`: Show files focuses the filter also when it mounts the view (one-shot request); a tree pick focuses the
+editor / preview when the row went away; chips and the Agents root focus the composer; a new project's composer
+takes focus. R4 the rail compresses its pitch 8 → 3px to fit the visible height, then scrolls with the request in
+view; ticks `line-strong`, 12px from the text; the card is clamped inside the rail's box. R5 the pinned prompt is
+always one `button` (the swap lost `clamped`). R7 icons, below. R9 more than three directories collapse into one
+"…" crumb (menu of the hidden folders); the file name is shortened once in the middle; tab labels shorten at 22.
+P2 done: reserved hint slot in the "+" menu; no double space after a pick; Enter during a running turn says "The
+orchestrator is still working…" (no queue is faked); tooltips also on keyboard focus and never re-armed by a press;
+hover/selected 0.05/0.12 (dark), 0.04/0.09 (light); preview h1/h2/h3 20/16/14; the breadcrumb hairline is an inset
+shadow (40px content box, no half pixels); clear-filter hit area 24; chips are not a live region (one sr-only status
+for state changes); Ctrl/Cmd+L focuses the visible composer from anywhere (Monaco keeps Tab); long rail jumps are
+instant beyond two screens; the bottom pin survives a group resize (F2); the chat header drops the project crumb
+under 420px; status words capitalised; the composer's folder label carries the folder glyph; the empty project's
+title no longer repeats the name and starter rows lost their three unrelated icons (full prompt as tooltip and
+description). P2 skipped: #19 tree resizer (re-tested: stored width is already clamped to the real max), #27 close
+button under the strip fade at 390.
+
+**15 / 17 Details** (`components/details/`, lazy chunk 3.0 kB): Folders (opens the tree on that root), Models,
+Tokens (total, then the orchestrator and one row per role with ×N — eight "Code explorer" rows became one — 2px bar,
+`in / out`, ACP rows "approx."), Plugins in use (available language servers and ACP agents), Activity (8, then Show
+all) and Files written (from `write_file` and successful ACP `edit` calls; Today / This week / Earlier; ×N; 8 per
+group then Show more). Transcripts load through `ActivityStore` (4 in flight, cached per agent `finished_at`, a
+running agent re-read on `file.changed` from an agent). Skeletons hold their room from the start (no jump). Rows
+fade at the fold. No context-window share: the optional `context_used` / `context_size` are not shown (no decision
+covers them yet).
+
+**16 Code highlighting**: one compact rule tokenizer (`lib/highlight.ts`, lazy chunk 2.7 kB gzip) for ts/js, go,
+json, bash, python, rust, css, yaml, toml, sql, html and line-based diff; token classes take the editor's palette,
+now in one module (`lib/codePalette.ts`) that the Monaco themes import too. Deviation: Monaco's `colorize` is not
+used even when the editor is loaded — two tokenizers would colour the same block differently depending on load order;
+one tokenizer gives one result. Colours only (comments are not italic in prose), so blocks keep their size: measured
+exactly lines × 20px plain and highlighted. Plain text uses the editor's text colour from the start.
+
+**18 Time separators**: 12px `fg-3`, centred, before the first request and any request > 30 min after the previous
+turn ended or on another day; inside the turn's section (the rail and jumps land on it). Locale time ("Today 4:11
+PM", "Yesterday 18:42", "6 Nov, 09:15").
+
+**19 File links**: inline code in assistant prose (orchestrator and agent transcripts) that resolves to a loaded file
+(`folder/path`, or a path unique under one folder; `:12` / `:12-20`) becomes a button holding the same chip with the
+file glyph; `link` colour on hover/focus only. The first path-like code asks for the Filter-files index; nothing
+blocks render. Opening selects the lines.
+
+**Tables**: numeric columns (every body cell a number, incl. "—") right-aligned with tabular numerals (rehype pass).
+
+**20 Integrations** (Settings → General | Integrations; 640px for this view; lazy chunk 2.6 kB): search, kind chips
+with counts (`aria-pressed`), "N available / N not found", two columns of 40px rows (one under 560px): 28px tile —
+`Server` (language server), `Bot` (agent), `Plug` (tool server) — name, one muted line (languages / `acp:id` / "Tool
+server"), plugin on the right; state "Available" / "Not found" (full text in the tooltip and for screen readers) or
+"Configured" for tool servers (no availability check exists). Rows stay grouped per plugin so a manifest error sits
+full width right under its plugin's rows. Palette: "Open integrations".
+
+**21 Streak** (`primitives/Streak.tsx` + `lib/streak.ts`, lazy chunk 1.9 kB): four lobes along a 24° band, accent →
+indigo (`--octo-streak-indigo`, the one new colour token) with a warm rim, 6 alpha levels, 4×4 Bayer, 2 CSS px
+cells drawn at cell resolution and scaled `pixelated`; peak alpha clamped (dark 0.55, light 0.22, measured).
+Drift 20s ±12px as a CSS transform (not under reduced motion, paused while hidden). Deviation: a draw takes 6.9–7.6ms
+at 1440×900 in Chromium (4.8–6ms in Node for the same cells), not ≤ 4ms; it runs once per size/theme change, so no
+frame budget is affected. Text sits on a feathered panel scrim (`.octo-streak-scrim`: 84% panel, 24px blur) — the
+first radial version left starter rows at 3.06:1 over the warm rim. Measured worst text at the brightest pixel behind
+it (text hidden, DPR 1): Home dark 6.51 (list row, fg-3), light 6.27; Home title 11.13 / 14.90; empty project dark
+5.81 (starter, fg-3) / light 5.97, at 390px 6.86 / 6.19; no-projects hero 9.05 / 9.39. Glow (decision 12) removed.
+
+**22 Home** (`#/`, sidebar row "Home"; the app still opens the last active project when there is no route; lazy chunk
+4.9 kB): streak, title (new `text-display` 20/28 token, Home and nowhere else), recent projects (32px rows: name,
+last request, time; ↑/↓; New project), cards (2 columns from a 900px container): Activity — 26 × 7 cells that fill
+the card's width (cells ~14px; decision said 10px), five tones `hover` → `accent`, titled, caption "N agent runs"
+"M requests"; Tokens — `getUsage({ group: "model" })` total, families as rows with bars (< 1% folded into Other), a
+30-day bar row from `getUsage({ group: "day" })` (falls back to agent totals if the endpoint is missing); Recent
+requests — 5, "N more" expands to 15 (deviation: the palette lists requests of the open project only); This month —
+requests, agent runs, files written with ±change in `ok`/`err` and this-vs-last bars. Cards in a row share their
+height; the block is centred vertically. Demo: Payments and Infrastructure carry 26 weeks of seeded history; demo
+`getUsage` now computes buckets from the demo agents (the stub returned nothing).
+
+**Icons (R7)**: file types are badge-free — `CodeXml`, `Braces`, `AlignLeft`, `Image`, `File`; folder rows carry
+only their chevron (a file's glyph sits where a folder's label starts). Tools: Agents `ListTree`, Notes `Notebook`,
+Details `ChartNoAxesColumn`; settings is one gear (app and project); Home `House`. Sheet:
+`scratchpad/v61/shots/icons-{dark,light}.png`.
+
+**Bundle** (initial `index-*.js` gzip): 201.22 → 202.88 kB (+1.66; Home, Details and Integrations are lazy, as are
+the streak and the highlighter). Monaco chunk 336.46 kB.
+
+**Spacing**: `spacing-audit.mjs` total 0 on every listed state. New surfaces measured with the same rules
+(`scratchpad/v61/myaudit61.cjs`): Home (1440/1100/390), Details and Integrations (1440/1100) — 0 off-scale
+paddings/margins/gaps (the sr-only helper's −1px and `ml-auto` excluded), 0 rows outside the set, icon → label 8 in
+Details, card insets equal on both sides (17 = 16 + border). States to add to the audit script: `home` (1440, 1100,
+390), `details-tab` (1440, 1100, with a floating composer), `integrations` (1440, 390), `empty-project` (1440, 390),
+`no-projects` (1440), `acp-agent-tab` (1440).
+
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)

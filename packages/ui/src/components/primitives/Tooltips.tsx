@@ -39,9 +39,17 @@ export function Tooltips() {
     let current: HTMLElement | null = null;
     let warmUntil = 0;
     const pointer = { x: 0, y: 0 };
+    // After a press, nothing shows until the pointer really moves: a click that changes the layout must not
+    // pop the tooltip of whatever slid under the pointer.
+    let pressedAt: { x: number; y: number } | null = null;
     const track = (e: PointerEvent) => {
       pointer.x = e.clientX;
       pointer.y = e.clientY;
+      if (pressedAt && Math.hypot(e.clientX - pressedAt.x, e.clientY - pressedAt.y) > 4) pressedAt = null;
+    };
+    const press = (e: PointerEvent) => {
+      pressedAt = { x: e.clientX, y: e.clientY };
+      hide();
     };
     const hide = () => {
       window.clearTimeout(timer);
@@ -55,6 +63,23 @@ export function Tooltips() {
       const el = (e.target as Element | null)?.closest<HTMLElement>("[title], [data-tip]");
       if (el === current) return;
       if (!el) return hide();
+      if (pressedAt) return;
+      arm(el);
+    };
+    // Keyboard focus shows the focused control's tooltip too (same delay and warmth); pointer focus does not.
+    const focusIn = (e: FocusEvent) => {
+      if (document.documentElement.dataset.input !== "keyboard") return;
+      const el = (e.target as Element | null)?.closest<HTMLElement>("[title], [data-tip]");
+      if (!el || el === current) return;
+      const box = el.getBoundingClientRect();
+      pointer.x = box.left + box.width / 2;
+      pointer.y = box.top + box.height / 2;
+      arm(el);
+    };
+    const focusOut = (e: FocusEvent) => {
+      if (current && current === e.target) hide();
+    };
+    const arm = (el: HTMLElement) => {
       window.clearTimeout(timer);
       if (current) warmUntil = Date.now() + WARM_FOR;
       current = el;
@@ -77,7 +102,9 @@ export function Tooltips() {
     document.addEventListener("pointermove", track, true);
     document.addEventListener("pointerover", over, true);
     document.addEventListener("pointerout", leaveWindow, true);
-    document.addEventListener("pointerdown", hide, true);
+    document.addEventListener("pointerdown", press, true);
+    document.addEventListener("focusin", focusIn, true);
+    document.addEventListener("focusout", focusOut, true);
     document.addEventListener("keydown", hide, true);
     document.addEventListener("scroll", hide, true);
     window.addEventListener("blur", hide);
@@ -86,7 +113,9 @@ export function Tooltips() {
       document.removeEventListener("pointermove", track, true);
       document.removeEventListener("pointerover", over, true);
       document.removeEventListener("pointerout", leaveWindow, true);
-      document.removeEventListener("pointerdown", hide, true);
+      document.removeEventListener("pointerdown", press, true);
+      document.removeEventListener("focusin", focusIn, true);
+      document.removeEventListener("focusout", focusOut, true);
       document.removeEventListener("keydown", hide, true);
       document.removeEventListener("scroll", hide, true);
       window.removeEventListener("blur", hide);

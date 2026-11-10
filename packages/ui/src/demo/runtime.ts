@@ -16,6 +16,8 @@ export type ChildSpec = {
   title: string;
   task: string;
   tier: Tier;
+  /** An ACP agent from a plugin (`spawn_agent` with `agent`): the child's model is `acp:{id}`, no tier. */
+  acp?: string;
   run(ctx: Ctx, agentId: string): Promise<string>;
 };
 
@@ -111,6 +113,7 @@ export async function act(ctx: Ctx, agentId: string, tools: ToolSpec[], text?: s
     emit(ctx.rec, { type: "tool.finished", agent_id: agentId, tool_use_id: u.id, is_error: Boolean(u.spec.error) });
     if (u.spec.name === "save_note" && !u.spec.error) saveNote(ctx, String(u.spec.input.title), String(u.spec.input.content));
     if (u.spec.name === "write_file" && !u.spec.error && u.spec.content !== undefined) agentWrite(ctx, u.spec);
+    if (u.spec.name === "edit" && !u.spec.error && u.spec.content !== undefined) acpWrite(ctx, u.spec);
   }
   addMessage(
     ctx,
@@ -124,6 +127,16 @@ function agentWrite(ctx: Ctx, spec: ToolSpec) {
   const folder = typeof spec.input.folder === "string" ? spec.input.folder : ctx.rec.project.folders[0]?.label;
   const path = String(spec.input.path ?? "").replace(/^\.\//, "");
   if (folder && ctx.rec.project.folders.some((f) => f.label === folder)) writeDemoFile(ctx.rec, folder, path, spec.content ?? "", "agent", ctx.t);
+}
+
+/** An ACP agent's edit: its locations are absolute paths; the demo writes the first one inside a project folder. */
+function acpWrite(ctx: Ctx, spec: ToolSpec) {
+  const locations = Array.isArray(spec.input.locations) ? (spec.input.locations as { path?: unknown }[]) : [];
+  for (const l of locations) {
+    const abs = typeof l.path === "string" ? l.path : "";
+    const folder = ctx.rec.project.folders.find((f) => abs.startsWith(`${f.path}/`));
+    if (folder) return void writeDemoFile(ctx.rec, folder.label, abs.slice(folder.path.length + 1), spec.content ?? "", "agent", ctx.t);
+  }
 }
 
 export function saveNote(ctx: Ctx, title: string, content: string, author: Note["author"] = "orchestrator"): void {
@@ -147,7 +160,7 @@ export async function delegate(ctx: Ctx, parentId: string, children: ChildSpec[]
       type: "tool_use" as const,
       id: u.id,
       name: "spawn_agent",
-      input: { role: u.spec.role, title: u.spec.title, task: u.spec.task, tier: u.spec.tier },
+      input: u.spec.acp ? { role: u.spec.role, title: u.spec.title, task: u.spec.task, agent: u.spec.acp } : { role: u.spec.role, title: u.spec.title, task: u.spec.task, tier: u.spec.tier },
     })),
   ]);
   charge(ctx, parentId, (text?.length ?? 0) + children.reduce((n, c) => n + c.task.length, 0));
@@ -164,8 +177,8 @@ export async function delegate(ctx: Ctx, parentId: string, children: ChildSpec[]
         role: u.spec.role,
         title: u.spec.title,
         task: u.spec.task,
-        model: MODEL[u.spec.tier],
-        tier: u.spec.tier,
+        model: u.spec.acp ? `acp:${u.spec.acp}` : MODEL[u.spec.tier],
+        tier: u.spec.acp ? null : u.spec.tier,
         status: "running",
         result: null,
         error: null,

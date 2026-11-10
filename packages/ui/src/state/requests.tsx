@@ -2,6 +2,7 @@ import type { Bridge, ProjectSummary } from "@octo/agent-client";
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { requestTitle } from "../lib/comments";
 import { promptText } from "../lib/transcript";
+import { Limiter } from "./activity";
 import { useApp } from "./app";
 
 /** One user message of a project's orchestrator thread. */
@@ -17,6 +18,8 @@ class RequestStore {
   private entries = new Map<string, Entry>();
   private listeners = new Set<() => void>();
   private orchestrators = new Map<string, string>();
+  /** Home asks for every project at once: at most 4 loads in flight. */
+  private limiter = new Limiter(4);
   constructor(private bridge: Bridge) {}
 
   subscribe = (l: () => void) => {
@@ -26,9 +29,12 @@ class RequestStore {
     };
   };
   get = (projectId: string) => this.entries.get(projectId);
+  private changes = 0;
+  version = () => this.changes;
 
   private set(projectId: string, entry: Entry) {
     this.entries.set(projectId, entry);
+    this.changes += 1;
     for (const l of this.listeners) l();
   }
 
@@ -47,7 +53,11 @@ class RequestStore {
     void this.load(project);
   }
 
-  private async load(project: ProjectSummary) {
+  private load(project: ProjectSummary): Promise<void> {
+    return this.limiter.run(() => this.read(project));
+  }
+
+  private async read(project: ProjectSummary) {
     try {
       let orchestrator = this.orchestrators.get(project.id);
       if (!orchestrator) {
@@ -79,6 +89,20 @@ export function RequestsProvider({ children }: { children: ReactNode }) {
   const { bridge } = useApp();
   const store = useMemo(() => new RequestStore(bridge), [bridge]);
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
+}
+
+/** Several projects' requests at once (Home), loading every one of them; entries are null until loaded. */
+export function useAllRequests(projects: ProjectSummary[] | null): Map<string, Request[] | null> {
+  const store = useContext(StoreContext);
+  if (!store) throw new Error("useAllRequests outside RequestsProvider");
+  const version = useSyncExternalStore(store.subscribe, store.version);
+  useEffect(() => {
+    for (const p of projects ?? []) store.ensure(p);
+  }, [projects, store]);
+  return useMemo(() => {
+    void version;
+    return new Map((projects ?? []).map((p) => [p.id, store.get(p.id)?.requests ?? null]));
+  }, [projects, store, version]);
 }
 
 /** The project's requests, loading them while `enabled`. Null until the first load finishes. */

@@ -15,7 +15,8 @@
   --octo-overlay: #262626;
   --octo-code-bg: #1d1d1d;
   --octo-hover: rgb(255 255 255 / 0.05);
-  --octo-active: rgb(255 255 255 / 0.09);
+  /* Selected rows/tabs sit clearly above hover (v6.1 review: 0.05 vs 0.09 read as two selections). */
+  --octo-active: rgb(255 255 255 / 0.12);
   --octo-line: rgb(255 255 255 / 0.08);
   --octo-line-strong: rgb(255 255 255 / 0.14);
   --octo-panel-edge: rgb(255 255 255 / 0.05);
@@ -50,7 +51,7 @@
   --octo-overlay: #ffffff;
   --octo-code-bg: #f5f5f5;
   --octo-hover: rgb(0 0 0 / 0.04);
-  --octo-active: rgb(0 0 0 / 0.07);
+  --octo-active: rgb(0 0 0 / 0.09);
   --octo-line: rgb(0 0 0 / 0.09);
   --octo-line-strong: rgb(0 0 0 / 0.14);
   --octo-panel-edge: rgb(0 0 0 / 0.06);
@@ -131,6 +132,13 @@
   --text-title: 16px;
   --text-title--line-height: 20px;
   --text-title--font-weight: 600;
+  /* Home only: the page title and the cards' figures. */
+  --text-display: 20px;
+  --text-display--line-height: 28px;
+  --text-display--font-weight: 600;
+  --text-figure: 24px;
+  --text-figure--line-height: 32px;
+  --text-figure--font-weight: 600;
   --text-heading: 14px;
   --text-heading--line-height: 20px;
   --text-heading--font-weight: 600;
@@ -169,6 +177,8 @@
   --spacing-measure: 720px;
   --spacing-sidebar: 260px;
   --spacing-float: 640px; /* floating composer, max width */
+  --spacing-home: 880px; /* Home's content column (two cards side by side) */
+  --spacing-dialog-wide: 640px; /* dialogs with a two-column body (Settings → Integrations) */
   --ease-out-quint: cubic-bezier(0.2, 0, 0, 1);
   --animate-caret: caret 1s steps(2, start) infinite;
 
@@ -284,6 +294,33 @@
   &[data-fade~="start"][data-fade~="end"] {
     mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
   }
+}
+
+/* Controls that carry their own elevation shadow (chips, Jump to latest, the comment "+"): the focus ring is
+   composed with it, never replaced by it (unlayered, so it wins over the shadow utility). */
+.octo-ring-float:focus-visible {
+  box-shadow: 0 0 0 2px var(--octo-focus), var(--octo-shadow-float);
+}
+.octo-ring-pop:focus-visible {
+  box-shadow: 0 0 0 2px var(--octo-focus), var(--octo-shadow-pop);
+}
+.octo-ring-panel:focus-visible {
+  box-shadow: 0 0 0 2px var(--octo-focus), var(--octo-shadow-panel);
+}
+
+/* Under the pinned prompt: 8px of panel, then an ease-in fade (content reappears from ~0%, so a line passing
+   under the pin has no visible cut edge; multi-stop, no band). */
+.octo-pin-fade {
+  background: linear-gradient(
+    to bottom,
+    var(--octo-panel) 0,
+    var(--octo-panel) 8px,
+    color-mix(in srgb, var(--octo-panel) 97%, transparent) calc(8px + (100% - 8px) * 0.2),
+    color-mix(in srgb, var(--octo-panel) 86%, transparent) calc(8px + (100% - 8px) * 0.42),
+    color-mix(in srgb, var(--octo-panel) 60%, transparent) calc(8px + (100% - 8px) * 0.66),
+    color-mix(in srgb, var(--octo-panel) 26%, transparent) calc(8px + (100% - 8px) * 0.86),
+    transparent 100%
+  );
 }
 
 /* A prompt the sidebar or palette jumped to: a brief accent ring (static under reduced motion). */
@@ -426,6 +463,16 @@
   font-size: var(--text-heading);
   line-height: var(--text-heading--line-height);
 }
+/* Document prose (the Markdown preview): a three-step heading scale, 20 / 16 / 14, so a file's h1 and
+   h2 are told apart (the chat keeps its two-step scale). */
+.octo-prose.octo-doc h1 {
+  font-size: 20px;
+  line-height: 28px;
+}
+.octo-prose.octo-doc h2 {
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+}
 /* Compact prose (notes, task briefs): UI size, secondary colour. */
 .octo-prose.octo-prose-sm {
   font-size: 13px;
@@ -473,6 +520,37 @@
   background: var(--octo-active);
   overflow-wrap: anywhere;
 }
+/* A file named in prose (decision 19): the inline-code chip with the file glyph; link colour on hover. */
+.octo-prose .octo-file-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: text;
+}
+.octo-prose .octo-file-link > code {
+  transition-property: color;
+  transition-duration: 100ms;
+}
+.octo-prose .octo-file-link svg {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -2px;
+  color: var(--octo-fg-3);
+}
+@media (hover: hover) {
+  .octo-prose .octo-file-link:hover > code,
+  .octo-prose .octo-file-link:hover svg {
+    color: var(--octo-link);
+  }
+}
+.octo-prose .octo-file-link:focus-visible > code {
+  color: var(--octo-link);
+}
 .octo-prose blockquote {
   border-left: 2px solid var(--octo-line-strong);
   padding-left: 12px;
@@ -514,6 +592,12 @@
 .octo-prose th {
   font-weight: 600;
 }
+/* Numeric columns (every body cell a number): right-aligned, tabular numerals. */
+.octo-prose th.octo-num,
+.octo-prose td.octo-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .octo-prose tr:last-child td {
   border-bottom: 0;
 }
@@ -528,6 +612,20 @@
   vertical-align: -0.15em;
   background: var(--octo-fg-2);
   animation: var(--animate-caret);
+}
+
+/* Fenced code in prose: the editor's plain-text colour (lib/codePalette.ts), so a block does not change
+   colour when the highlighter's token colours arrive. */
+:root,
+:root[data-theme="dark"] {
+  --octo-code-text: #d8d8d8;
+}
+:root[data-theme="light"] {
+  --octo-code-text: #262626;
+}
+.octo-code {
+  color: var(--octo-code-text);
+  tab-size: 4;
 }
 
 /* ---------- Monaco: shapes the theme can't express (colours live in components/files/monaco.ts) ---------- */
@@ -551,6 +649,18 @@
 }
 .monaco-editor .octo-comment-box :focus {
   outline-color: transparent !important;
+}
+
+/* The editors' overflow-widget layer (hover, suggest, peek) on <body>: above panels and the tree column,
+   below dialogs and the palette (z 50+). It is a positioning root only. */
+:root .monaco-editor.octo-monaco-overflow {
+  position: fixed;
+  inset: 0 auto auto 0;
+  z-index: 45;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  background: transparent;
 }
 
 /* Scrollbars: a slim rounded thumb inset in its track (like the app's thin scrollbars), a little
@@ -617,33 +727,84 @@
   font-family: var(--font-sans);
 }
 
-/* Glow (contract v6 decision 12): one static radial wash of `accent` behind the centred composer of an
-   empty project and behind the no-projects hero — the place to start. Multi-stop falloff (no banding),
-   0 by the ellipse's edge (480px from the centre horizontally); fades in once and never moves. Not
-   used on any screen with a transcript, code or lists. */
+/* Streak (contract v6 decision 21, supersedes the glow of decision 12): a dithered band of light on the
+   start screens only — Home, the empty project, the no-projects hero. The canvas is drawn at 2px cells and
+   scaled with `pixelated`; it overhangs by 12px for the optional 20s drift (no drift under reduced motion
+   or while the page is hidden). It fades in once. `--octo-streak-indigo` is its only colour token; the
+   band never sits behind body text without a local scrim (`.octo-streak-scrim`). */
 :root,
 :root[data-theme="dark"] {
-  --octo-glow: rgb(92 157 255 / 0.14);
+  --octo-streak-indigo: #6f6cf2;
 }
 :root[data-theme="light"] {
-  --octo-glow: rgb(10 102 224 / 0.08);
+  --octo-streak-indigo: #5b54e8;
 }
-.octo-glow {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 960px;
-  height: 560px;
-  translate: -50% -50%;
-  pointer-events: none;
-  background: radial-gradient(
-    closest-side,
-    var(--octo-glow) 0%,
-    color-mix(in srgb, var(--octo-glow) 82%, transparent) 20%,
-    color-mix(in srgb, var(--octo-glow) 55%, transparent) 42%,
-    color-mix(in srgb, var(--octo-glow) 28%, transparent) 64%,
-    color-mix(in srgb, var(--octo-glow) 9%, transparent) 84%,
-    transparent 100%
-  );
+.octo-streak-layer {
   animation: octo-fade-in 240ms ease-out both;
+}
+.octo-streak {
+  position: absolute;
+  left: -12px;
+  top: -12px;
+  max-width: none;
+  image-rendering: pixelated;
+  opacity: 0;
+  transition-property: opacity;
+  transition-duration: 240ms;
+}
+.octo-streak[data-drawn] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .octo-streak[data-drawn] {
+    animation: octo-drift 20s ease-in-out infinite alternate;
+  }
+  .octo-streak[data-paused] {
+    animation-play-state: paused;
+  }
+}
+@keyframes octo-drift {
+  from {
+    translate: -12px 6px;
+  }
+  to {
+    translate: 12px -6px;
+  }
+}
+/* Home cards over the streak: the panel at 88% with a 12px blur (opaque panel where blur is unsupported);
+   radius 10, the panel edge. The heat map's five tones run from `hover` to `accent`. */
+.octo-card {
+  background: var(--octo-panel);
+  border: 1px solid var(--octo-panel-edge);
+  box-shadow: var(--octo-shadow-panel);
+}
+@supports (backdrop-filter: blur(12px)) {
+  .octo-card {
+    background: color-mix(in srgb, var(--octo-panel) 88%, transparent);
+    backdrop-filter: blur(12px);
+  }
+}
+.octo-heat-1 {
+  background: color-mix(in srgb, var(--octo-accent) 28%, var(--octo-panel));
+}
+.octo-heat-2 {
+  background: color-mix(in srgb, var(--octo-accent) 50%, var(--octo-panel));
+}
+.octo-heat-3 {
+  background: color-mix(in srgb, var(--octo-accent) 74%, var(--octo-panel));
+}
+.octo-heat-4 {
+  background: var(--octo-accent);
+}
+
+/* Behind a text block that sits on the streak: a feathered panel-coloured wash, so every line keeps ≥ 4.5:1
+   at the band's brightest pixel (measured; see As built v6.1). */
+.octo-streak-scrim {
+  position: absolute;
+  inset: -16px -24px;
+  pointer-events: none;
+  border-radius: 24px;
+  /* A feathered rectangle (not a radial wash): even cover across a wide text block, to its row ends. */
+  background: color-mix(in srgb, var(--octo-panel) 84%, transparent);
+  filter: blur(24px);
 }

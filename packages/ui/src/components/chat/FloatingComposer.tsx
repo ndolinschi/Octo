@@ -19,7 +19,7 @@ export function useFloatingHere(tab: TabId): boolean {
   return focusedGroup(ws.layout).active === tab && !ws.isVisible(CHAT);
 }
 
-const CHIP = "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs text-fg-2 tabular-nums shadow-float hover:text-fg";
+const CHIP = "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs text-fg-2 tabular-nums shadow-float octo-ring-float hover:text-fg";
 
 /**
  * The orchestrator composer floating over a file view (or Agents / Notes) while no Chat tab is visible:
@@ -91,7 +91,7 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
     <div data-floating-composer role="region" aria-label="Floating composer" className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center">
       <div ref={root} className="pointer-events-auto w-full max-w-float">
         {chips && (
-          <div className="mb-2 flex flex-wrap items-center gap-2" role="status">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             {turn && (
               <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the conversation">
                 {turn}
@@ -106,6 +106,10 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
             {composer.commentCount > 0 && <CommentsControl variant="chip" open={commentsOpen} onOpenChange={setCommentsOpen} />}
           </div>
         )}
+        {/* State changes only (not the ticking timer) are announced. */}
+        <p role="status" className="sr-only">
+          {last?.state === "working" ? "The orchestrator is working" : last?.state === "failed" ? "Turn failed" : last?.state === "done" ? "Turn finished" : ""}
+        </p>
         <Composer
           {...composer}
           floating

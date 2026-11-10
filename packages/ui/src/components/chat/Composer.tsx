@@ -1,6 +1,7 @@
 import type { Folder } from "@octo/agent-client";
 import { ArrowUp, Plus, Square } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
+import { GLYPH } from "../primitives/glyphs";
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
@@ -58,6 +59,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [activeOption, setActiveOption] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [busyHint, setBusyHint] = useState(false);
+  useEffect(() => {
+    if (!props.running) setBusyHint(false);
+  }, [props.running]);
   const area = useRef<HTMLTextAreaElement>(null);
   const box = useRef<HTMLFormElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
@@ -146,10 +151,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const from = current?.mode === "inline" ? current.start : caret;
     const to = current?.mode === "inline" ? caret : (el?.selectionEnd ?? caret);
     const before = text.slice(0, from);
+    const after = text.slice(to);
     const lead = before && !/\s$/.test(before) ? " " : "";
-    const next = before + lead + p.insert + text.slice(to);
+    // Never two spaces: the pick's trailing space is dropped when a space already follows.
+    const insert = /^\s/.test(after) ? p.insert.replace(/\s+$/, "") : p.insert;
+    const next = before + lead + insert + after;
     setText(next);
-    const at = (before + lead + p.insert).length;
+    const at = (before + lead + insert).length + (insert === p.insert ? 0 : 1);
     requestAnimationFrame(() => {
       area.current?.focus();
       area.current?.setSelectionRange(at, at);
@@ -163,6 +171,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
+      // A running turn takes no new message (queueing is a harness feature to come): say so, quietly.
+      if (props.running && text.trim()) setBusyHint(true);
       void submit();
     }
   };
@@ -208,6 +218,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </Button>
         </div>
       )}
+      {busyHint && (
+        <p role="status" className="mb-2 px-4 text-sm text-fg-2">
+          The orchestrator is still working. Send this when the turn ends, or stop it first.
+        </p>
+      )}
       <form
         ref={box}
         onSubmit={(e) => {
@@ -251,6 +266,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           disabled={disabled}
           onChange={(e) => {
             setText(e.target.value);
+            setBusyHint(false);
             syncTrigger(e.target.value, e.target.selectionStart);
           }}
           onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
@@ -290,8 +306,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <div className="mt-1 flex h-6 min-w-0 items-center gap-1 px-1.5 text-xs">
           {modelSelect}
           {pendingComments > 0 && props.comments?.render(commentsOpen, setCommentsOpen)}
-          <p className="min-w-0 truncate px-2 text-fg-3" title={props.folders.map((f) => f.path).join("\n") || undefined}>
-            {folders || "No folders attached"}
+          {/* The folders the orchestrator works in (glyph = the Files meaning). */}
+          <p className="flex min-w-0 items-center gap-1.5 px-2 text-fg-3" title={props.folders.map((f) => f.path).join("\n") || undefined}>
+            <Glyph icon={GLYPH.files} size={14} className="shrink-0" />
+            <span className="min-w-0 truncate">{folders || "No folders attached"}</span>
           </p>
           <p id={`${listId}-hint`} className={cn("ml-auto flex shrink-0 items-center gap-3 pl-2 text-fg-3 max-sm:hidden", !(focused && !text) && "hidden")}>
             <span>

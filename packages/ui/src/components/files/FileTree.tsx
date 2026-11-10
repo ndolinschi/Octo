@@ -6,7 +6,7 @@ import { ancestors, fileKey, parentPath } from "../../lib/files";
 import { useCode, type DirState } from "../../state/code";
 import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "./CommentCount";
-import { fileIcon, folderIcon } from "./fileIcons";
+import { fileIcon } from "../primitives/fileIcons";
 import { useDelayedLoading } from "../../lib/hooks";
 import { Spinner } from "../primitives/Status";
 
@@ -256,7 +256,9 @@ export const FileTree = forwardRef<FileTreeHandle, {
         }
         const selected = row.id === selectedKey;
         const isRoot = row.kind === "dir" && row.path === "";
-        const Icon = row.kind === "file" ? fileIcon(row.name) : folderIcon(row.expanded);
+        // Folders carry only their chevron (one glyph per row); a file's type glyph sits where a folder's
+        // label starts, so siblings line up.
+        const Icon = row.kind === "file" ? fileIcon(row.name) : null;
         const comments = row.kind === "file" ? (counts?.get(row.id) ?? 0) : 0;
         return (
           <div
@@ -278,10 +280,12 @@ export const FileTree = forwardRef<FileTreeHandle, {
               <Glyph icon={ChevronRight} size={14}
                 className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")}/>
             </span>
-            <span aria-hidden className="ml-1 grid size-4 shrink-0 place-items-center text-fg-3">
-              <Glyph icon={Icon} size={14} />
-            </span>
-            <span data-label className={cn("ml-2 min-w-0 truncate text-fg", isRoot && "font-medium")}>
+            {Icon && (
+              <span aria-hidden className="ml-1 grid size-4 shrink-0 place-items-center text-fg-3">
+                <Glyph icon={Icon} size={14} />
+              </span>
+            )}
+            <span data-label className={cn("min-w-0 truncate text-fg", Icon ? "ml-2" : "ml-1", isRoot && "font-medium")}>
               {query && row.kind === "file" ? <Highlight text={row.name} query={query} /> : row.name}
             </span>
             {comments > 0 && (

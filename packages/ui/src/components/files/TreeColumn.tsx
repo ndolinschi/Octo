@@ -29,13 +29,12 @@ export function TreeColumn(props: { id: string; tab: TabId; overlay: boolean; ma
     if (active) indexFiles();
   }, [active, indexFiles]);
 
-  // "Show files" (header) and "Reveal in tree" land in the visible view's filter input.
-  const tick = useRef(fv.focusTreeTick);
+  // "Show files" (header) and "Reveal in tree" land in the visible view's filter input — also when the
+  // request is what mounted this column (the Files tab opening, the column being shown).
+  const { takeFocusRequest } = fv;
   useEffect(() => {
-    if (tick.current === fv.focusTreeTick) return;
-    tick.current = fv.focusTreeTick;
-    if (ws.isVisible(props.tab)) input.current?.focus({ preventScroll: true });
-  }, [fv.focusTreeTick, ws, props.tab]);
+    if (ws.isVisible(props.tab) && takeFocusRequest()) input.current?.focus({ preventScroll: true });
+  }, [fv.focusTreeTick, ws, props.tab, takeFocusRequest]);
 
   const onInputKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape" && filter) {
@@ -84,7 +83,7 @@ export function TreeColumn(props: { id: string; tab: TabId; overlay: boolean; ma
                 setFilter("");
                 input.current?.focus();
               }}
-              className="press -mr-1 grid size-5 shrink-0 place-items-center rounded-2xs text-fg-3 hover:bg-hover hover:text-fg"
+              className="press relative -mr-1 grid size-5 shrink-0 place-items-center rounded-2xs text-fg-3 before:absolute before:-inset-0.5 before:content-[''] hover:bg-hover hover:text-fg"
             >
               <Glyph icon={X} size={14} />
             </button>

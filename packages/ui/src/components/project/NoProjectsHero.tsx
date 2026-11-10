@@ -1,12 +1,18 @@
 import { Plus } from "lucide-react";
+import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
+import { StreakLayer } from "../primitives/StreakLayer";
 
-/** No projects yet: a centred title, one line and the one action, over the start-here glow. */
+const HERO_STREAK = { x: 0.5, y: 0.46 } as const;
+
+/** No projects yet: a centred title, one line and the one action, over the start-here streak. */
 export function NoProjectsHero({ onCreate }: { onCreate(): void }) {
+  const { theme } = useApp();
   return (
     <section aria-labelledby="hero-title" className="relative grid h-full place-items-center overflow-x-hidden overflow-y-auto px-6">
+      <StreakLayer anchor={HERO_STREAK} theme={theme} />
       <div className="relative w-full max-w-[440px] text-center">
-        <div aria-hidden className="octo-glow" />
+        <div aria-hidden className="octo-streak-scrim" />
         <h1 id="hero-title" className="relative text-title text-fg">
           No projects yet
         </h1>

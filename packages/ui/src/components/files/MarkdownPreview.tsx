@@ -1,4 +1,4 @@
-import { FileImage } from "lucide-react";
+import { Image } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { Components } from "react-markdown";
@@ -65,7 +65,7 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
           title={`Images aren't loaded in the preview${typeof src === "string" && src ? `: ${src}` : ""}`}
           className="inline-flex h-6 max-w-full items-center gap-2 rounded-sm border border-line px-2 align-middle text-xs text-fg-3"
         >
-          <Glyph icon={FileImage} size={14} className="shrink-0" />
+          <Glyph icon={Image} size={14} className="shrink-0" />
           <span className="truncate">{alt || "Image"}</span>
         </span>
       ),
@@ -73,10 +73,10 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
   }, [file.folder, file.path, onOpen]);
 
   return (
-    <div ref={root} data-md-preview className="scroll-quiet h-full min-h-0 overflow-y-auto">
+    <div ref={root} data-md-preview data-file-focus tabIndex={-1} className="scroll-quiet focus-inset h-full min-h-0 overflow-y-auto">
       <div className="px-6">
         <article aria-label={`Preview of ${file.name}`} className="mx-auto w-full max-w-measure py-8">
-          <Markdown text={text} components={components} />
+          <Markdown text={text} components={components} className="octo-prose octo-doc" />
         </article>
         {/* Room for the floating composer: a spacer, so the padding stays on the scale. */}
         {bottomRoom > 0 && <div aria-hidden style={{ height: bottomRoom }} />}

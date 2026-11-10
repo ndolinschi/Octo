@@ -30,25 +30,58 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-const STICK_THRESHOLD = 80;
+/** Further than this from the end, something is cut off below: the reader is no longer at the end. */
+const END_TOLERANCE = 2;
 
+/**
+ * Follows new content while the reader is at the end. "At the end" is strict (nothing hidden below, 2px
+ * tolerance): a reader who stopped a few lines short always gets Jump to latest, and the last line is
+ * never left under the composer. A view hidden by its tab (display: none) keeps its intent: shown again,
+ * it returns to the end. Scroll events of the smooth Jump-to-latest animation are not the reader's.
+ */
 export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initialStick = true) {
   const ref = useRef<T>(null);
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(initialStick);
+  const hidden = useRef(false);
+  const gliding = useRef(false);
+  const lastTop = useRef(0);
 
   const onScroll = useCallback(() => {
     const el = ref.current;
-    if (!el) return;
-    const next = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD;
-    atBottomRef.current = next;
-    setAtBottom(next);
+    // Scroll events from hiding/showing the tab (scrollTop reset) say nothing about the reader.
+    if (!el || hidden.current || el.clientHeight === 0) return;
+    const end = el.scrollHeight - el.scrollTop - el.clientHeight <= END_TOLERANCE;
+    const movedUp = el.scrollTop < lastTop.current - 1;
+    lastTop.current = el.scrollTop;
+    if (gliding.current) {
+      if (!end) return;
+      gliding.current = false;
+    }
+    // A reflow (the group resized, a tab moved) that leaves a following reader short of the end is not
+    // the reader scrolling away: only scrolling up lets go.
+    if (!end && atBottomRef.current && !movedUp) {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    atBottomRef.current = end;
+    setAtBottom(end);
+  }, []);
+
+  /** Back to the end if the reader was following (a hidden tab shown again). */
+  const restick = useCallback(() => {
+    const el = ref.current;
+    if (!el || !atBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    lastTop.current = el.scrollTop;
+    setAtBottom(true);
   }, []);
 
   const scrollToBottom = useCallback((smooth = false) => {
     const el = ref.current;
     if (!el) return;
     const animate = smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    gliding.current = animate;
     el.scrollTo({ top: el.scrollHeight, behavior: animate ? "smooth" : "auto" });
     atBottomRef.current = true;
     setAtBottom(true);
@@ -64,7 +97,8 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
     if (atBottomRef.current) scrollToBottom();
   }, deps);
 
-  // Reflow (a group resized, a prompt expanded, the composer shrank) keeps a reader at the bottom there.
+  // Reflow (a group resized, a prompt expanded, the composer shrank) keeps a reader at the bottom there;
+  // coming back from hidden (the tab was in the background while the turn went on) returns to the end.
   const observed = useRef<{ el: Element; ro: ResizeObserver } | null>(null);
   useEffect(() => {
     const el = ref.current;
@@ -73,7 +107,16 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
     observed.current = null;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
-      if (atBottomRef.current && el.offsetParent !== null) el.scrollTop = el.scrollHeight;
+      if (el.clientHeight === 0) {
+        hidden.current = true;
+        return;
+      }
+      const wasHidden = hidden.current;
+      hidden.current = false;
+      if (atBottomRef.current) {
+        el.scrollTop = el.scrollHeight;
+        if (wasHidden) setAtBottom(true);
+      }
     });
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
@@ -81,7 +124,7 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   });
   useEffect(() => () => observed.current?.ro.disconnect(), []);
 
-  return { ref, atBottom, onScroll, scrollToBottom, release };
+  return { ref, atBottom, onScroll, scrollToBottom, release, restick };
 }
 
 export function useCopy(timeoutMs = 1400): [boolean, (text: string) => void] {

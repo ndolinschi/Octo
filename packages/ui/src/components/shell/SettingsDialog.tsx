@@ -1,10 +1,10 @@
-import { useId, type KeyboardEvent } from "react";
+import { lazy, Suspense, useId, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { useApp, type ThemePref } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Spinner } from "../primitives/Status";
-import { PluginsSection } from "./PluginsSection";
+const IntegrationsView = lazy(() => import("./IntegrationsView").then((m) => ({ default: m.IntegrationsView })));
 
 const THEMES: { value: ThemePref; label: string }[] = [
   { value: "system", label: "System" },
@@ -12,15 +12,68 @@ const THEMES: { value: ThemePref; label: string }[] = [
   { value: "light", label: "Light" },
 ];
 
-/** App-wide settings: theme (unless the host owns it), the bridge connection and the plugins it loaded. */
-export function SettingsDialog({ onClose }: { onClose(): void }) {
+export type SettingsView = "general" | "integrations";
+
+const VIEWS: { id: SettingsView; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "integrations", label: "Integrations" },
+];
+
+/** App-wide settings in two views: General (theme unless the host owns it, the bridge) and Integrations (640px wide). */
+export function SettingsDialog({ onClose, initialView = "general" }: { onClose(): void; initialView?: SettingsView }) {
   const { canChooseTheme, demo } = useApp();
+  const [view, setView] = useState<SettingsView>(initialView);
+  const baseId = useId();
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const i = VIEWS.findIndex((v) => v.id === view);
+    const delta = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!delta) return;
+    e.preventDefault();
+    const next = VIEWS[(i + delta + VIEWS.length) % VIEWS.length];
+    if (!next) return;
+    setView(next.id);
+    e.currentTarget.querySelector<HTMLElement>(`[data-view="${next.id}"]`)?.focus();
+  };
   return (
-    <Dialog title="Settings" onClose={onClose}>
-      <div className="flex flex-col gap-5 pt-1">
-        {canChooseTheme && <ThemeChoice />}
-        <BridgeStatus demo={demo} />
-        <PluginsSection />
+    <Dialog
+      title="Settings"
+      onClose={onClose}
+      width={view === "integrations" ? "lg" : "md"}
+      nav={
+        <div role="tablist" aria-label="Settings" onKeyDown={onKeyDown} className="flex items-center gap-1">
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              role="tab"
+              id={`${baseId}-${v.id}-tab`}
+              data-view={v.id}
+              aria-selected={view === v.id}
+              aria-controls={`${baseId}-${v.id}`}
+              tabIndex={view === v.id ? 0 : -1}
+              onClick={() => setView(v.id)}
+              className={cn(
+                "press-row flex h-row items-center rounded-sm px-2 text-sm focus-inset",
+                view === v.id ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg",
+              )}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div role="tabpanel" id={`${baseId}-${view}`} aria-labelledby={`${baseId}-${view}-tab`} className="pt-1">
+        {view === "general" ? (
+          <div className="flex flex-col gap-5">
+            {canChooseTheme && <ThemeChoice />}
+            <BridgeStatus demo={demo} />
+          </div>
+        ) : (
+          <Suspense fallback={<p className="h-9" aria-busy />}>
+            <IntegrationsView />
+          </Suspense>
+        )}
       </div>
     </Dialog>
   );

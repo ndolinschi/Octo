@@ -37,12 +37,13 @@ export function ChatHeader({ requests }: { requests: RequestSummary[] }) {
     <div data-chat-header className="scroll-quiet shrink-0 overflow-hidden bg-panel px-(--pad)">
       <div data-column-edge className="mx-auto flex h-bar w-full max-w-measure min-w-0 items-center gap-3 text-sm">
         <p className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="max-w-[40%] shrink-0 truncate text-fg-2" title={project.name}>
+          {/* Under 420px of conversation the project crumb goes first (it is in the sidebar and the tab). */}
+          <span className={cn("max-w-[40%] shrink-0 truncate text-fg-2", request && "@max-[420px]/conv:hidden")} title={project.name}>
             {project.name}
           </span>
           {request && (
             <>
-              <span aria-hidden className="text-fg-3">
+              <span aria-hidden className="text-fg-3 @max-[420px]/conv:hidden">
                 /
               </span>
               <span className="min-w-0 truncate text-fg" title={request.text}>

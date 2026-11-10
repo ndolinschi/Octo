@@ -1,4 +1,4 @@
-import { Settings2, SquareArrowOutUpRight } from "lucide-react";
+import { SquareArrowOutUpRight, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
@@ -7,10 +7,11 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
 import { useShowFiles } from "../files/useShowFiles";
 
-const TOOLS: { tool: ToolTab; label: string; icon: typeof Settings2 }[] = [
+const TOOLS: { tool: ToolTab; label: string; icon: LucideIcon }[] = [
   { tool: "agents", label: "Show agents", icon: GLYPH.agents },
   { tool: "notes", label: "Show notes", icon: GLYPH.notes },
   { tool: "files", label: "Show files", icon: GLYPH.files },
+  { tool: "details", label: "Show project details", icon: GLYPH.details },
 ];
 
 /**
@@ -43,7 +44,7 @@ export function WorkspaceActions() {
           onClick={() => openProjectInEditor(project.id)}
         />
       )}
-      <IconButton icon={Settings2} label="Project settings" onClick={ws.openSettings} />
+      <IconButton icon={GLYPH.settings} label="Project settings" onClick={ws.openSettings} />
     </div>
   );
 }

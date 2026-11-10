@@ -62,24 +62,23 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
     <div ref={root} data-pinned className="scroll-quiet pointer-events-none absolute inset-x-0 top-0 z-10 overflow-hidden">
       <div className="bg-panel px-(--pad)" style={{ paddingTop: STICK_TOP }}>
         <div data-pinned-box className="pointer-events-auto mx-auto w-full max-w-measure">
-          {clamped || expanded ? (
-            <button
-              type="button"
-              aria-expanded={expanded}
-              aria-label={expanded ? "Collapse the pinned request" : "Expand the pinned request"}
-              onClick={() => setExpanded((x) => !x)}
-              className={cn(boxClass, "press-row hover:border-line-strong")}
-            >
-              {body}
-            </button>
-          ) : (
-            <div aria-hidden className={boxClass}>
-              {body}
-            </div>
-          )}
+          {/* One element in both states (a swap would remount the measured text and lose `clamped`). */}
+          <button
+            type="button"
+            aria-expanded={clamped || expanded ? expanded : undefined}
+            aria-label={clamped || expanded ? (expanded ? "Collapse the pinned request" : "Expand the pinned request") : undefined}
+            aria-hidden={clamped || expanded ? undefined : true}
+            tabIndex={clamped || expanded ? undefined : -1}
+            onClick={() => (clamped || expanded) && setExpanded((x) => !x)}
+            className={cn(boxClass, clamped || expanded ? "press-row hover:border-line-strong" : "pointer-events-none")}
+          >
+            {body}
+          </button>
         </div>
       </div>
-      <div aria-hidden className="h-6 bg-linear-to-b from-panel from-25% to-transparent [@media(max-height:640px)]:h-3" />
+      {/* 8px opaque, then a 32px eased fade (16 on short viewports): what passes under the pin fades out
+          — never a hard-cut table row or code line right under the box. */}
+      <div aria-hidden className="octo-pin-fade h-10 [@media(max-height:640px)]:h-6" />
     </div>
   );
 }

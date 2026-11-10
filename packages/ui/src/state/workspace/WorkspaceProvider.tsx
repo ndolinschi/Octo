@@ -1,3 +1,4 @@
+import { focusSoon } from "../../lib/focus";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
@@ -215,7 +216,11 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         const next = L.focusGroup(layoutRef.current, id);
         if (next !== layoutRef.current) commit(next, { route: false });
       },
-      focusChat: () => commit(L.activate(layoutRef.current, L.CHAT)),
+      // Showing the conversation puts the caret in its composer (chips, palette, the Agents root row).
+      focusChat: () => {
+        commit(L.activate(layoutRef.current, L.CHAT));
+        focusSoon(() => document.getElementById("octo-composer"));
+      },
       openAgent,
       // The Files tab is a file view (editor + tree column): it opens at half the row like a file.
       openTool: (tool) => {
@@ -387,6 +392,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           { id: "tool-agents", label: "Show agents", run: () => ws.openTool("agents") },
           { id: "tool-notes", label: "Show notes", run: () => ws.openTool("notes") },
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
+          { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
         ];
         if (ws.canMoveToOtherSide(active)) out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD}\\`, run: () => ws.moveToOtherSide(active) });
         if (ws.canSplitRight(active)) out.push({ id: "split", label: "Split right", detail: name, run: () => ws.splitRight(active) });

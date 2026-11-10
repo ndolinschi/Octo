@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { readPref, writePref } from "../lib/storage";
 
 /** The file view's tree column: 280px by default, resizable 200–480 (contract v6 decision 4). */
@@ -17,6 +17,8 @@ type FileViewValue = {
   /** Bumped when something asks the visible file view to focus its tree (the header's Files button, Reveal in tree). */
   focusTreeTick: number;
   focusTree(): void;
+  /** True once for a focus request made in the last second: a tree column mounted by it takes focus. */
+  takeFocusRequest(): boolean;
 };
 
 const FileViewContext = createContext<FileViewValue | null>(null);
@@ -45,13 +47,20 @@ export function FileViewProvider({ projectId, children }: { projectId: string; c
   }, [stored, projectId]);
   const setTreeOpen = useCallback((open: boolean) => setStored((s) => (s.open === open ? s : { ...s, open })), []);
   const setTreeWidth = useCallback((width: number) => setStored((s) => ({ ...s, width: clamp(width) })), []);
+  const requested = useRef(0);
   const focusTree = useCallback(() => {
     setStored((s) => (s.open ? s : { ...s, open: true }));
+    requested.current = performance.now();
     setTick((n) => n + 1);
   }, []);
+  const takeFocusRequest = useCallback(() => {
+    const fresh = requested.current > 0 && performance.now() - requested.current < 1000;
+    requested.current = 0;
+    return fresh;
+  }, []);
   const value = useMemo(
-    () => ({ treeOpen: stored.open, treeWidth: stored.width, setTreeOpen, setTreeWidth, focusTreeTick, focusTree }),
-    [stored, setTreeOpen, setTreeWidth, focusTreeTick, focusTree],
+    () => ({ treeOpen: stored.open, treeWidth: stored.width, setTreeOpen, setTreeWidth, focusTreeTick, focusTree, takeFocusRequest }),
+    [stored, setTreeOpen, setTreeWidth, focusTreeTick, focusTree, takeFocusRequest],
   );
   return <FileViewContext.Provider value={value}>{children}</FileViewContext.Provider>;
 }

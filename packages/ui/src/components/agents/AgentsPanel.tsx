@@ -8,6 +8,7 @@ import { useNow } from "../../lib/hooks";
 import { useProject } from "../../state/project";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { StatusIcon } from "../primitives/Status";
+import { FloatRoom } from "../primitives/floatRoom";
 
 type Row = { agent: Agent; level: number; hasChildren: boolean; expanded: boolean; hidden: number };
 
@@ -104,7 +105,7 @@ export function AgentsPanel() {
       role="tree"
       aria-label="Agent tree"
       onScroll={(e) => memory.set("agents:scroll", e.currentTarget.scrollTop)}
-      className="h-full min-h-0 overflow-y-auto overscroll-contain px-2 pt-1 pb-4">
+      className="h-full min-h-0 overflow-y-auto overscroll-contain px-pane pt-pane pb-4">
       {rows.map((row, i) => {
         const a = row.agent;
         const current = a.id === currentAgentId;
@@ -163,6 +164,7 @@ export function AgentsPanel() {
         );
       })}
       {rows.length === 1 && <p className="px-2 pt-1 text-xs text-fg-3">No sub-agents yet. They appear here when the orchestrator delegates.</p>}
+      <FloatRoom />
     </div>
   );
 }

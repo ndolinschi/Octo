@@ -8,12 +8,12 @@ export type TabId = string;
 export type Group = { id: string; tabs: TabId[]; active: TabId; size: number };
 export type Layout = { groups: Group[]; focused: string };
 
-export type ToolTab = "agents" | "notes" | "files";
+export type ToolTab = "agents" | "notes" | "files" | "details";
 export type TabRef = { kind: "chat" } | { kind: "tool"; tool: ToolTab } | { kind: "agent"; agentId: string } | { kind: "file"; key: string };
 
 export const CHAT: TabId = "chat";
 export const MAX_GROUPS = 4;
-const TOOLS: readonly string[] = ["agents", "notes", "files"];
+const TOOLS: readonly string[] = ["agents", "notes", "files", "details"];
 
 export const agentTab = (agentId: string): TabId => `agent:${agentId}`;
 export const fileTab = (key: string): TabId => `file:${key}`;

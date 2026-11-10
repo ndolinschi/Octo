@@ -1,6 +1,6 @@
 import { ArrowDown } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
@@ -15,6 +15,8 @@ import { CommentsControl } from "./CommentsControl";
 import { Composer, type ComposerHandle } from "./Composer";
 import { TurnRail } from "./TurnRail";
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
+import { StreakLayer } from "../primitives/StreakLayer";
+import { useApp } from "../../state/app";
 import { ObserverBar } from "./ObserverBar";
 import { StarterPrompts } from "./StarterPrompts";
 import { StickyPrompt } from "./StickyPrompt";
@@ -26,6 +28,8 @@ type ScrollMemory = { top: number; atBottom: boolean };
 /** A row outside the scroll area with the scroll area's gutters and side padding (see the doc comment). */
 export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
 
+/** The empty project's streak passes behind the title block (upper middle of the view). */
+const EMPTY_STREAK = { x: 0.5, y: 0.3 } as const;
 /** The turn rail appears from this many requests on. */
 const RAIL_MIN_REQUESTS = 3;
 
@@ -39,6 +43,7 @@ const RAIL_MIN_REQUESTS = 3;
  */
 export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: string }) {
   const ws = useOptionalWorkspace();
+  const { theme } = useApp();
   const { project, state, running, ensureMessages, projectId } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
@@ -54,6 +59,32 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
     [messages, streaming, agent?.status, agentId],
     saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
   );
+
+  // The scroll area's visible height: the turn rail never grows past it.
+  const [scrollHeight, setScrollHeight] = useState(0);
+  const sized = useRef<{ el: HTMLElement; ro: ResizeObserver } | null>(null);
+  useLayoutEffect(() => {
+    const el = scroll.ref.current;
+    if (sized.current?.el === el) return;
+    sized.current?.ro.disconnect();
+    sized.current = null;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      // Hidden (background tab): keep the last size.
+      if (el.clientHeight > 0) setScrollHeight(el.clientHeight);
+    });
+    ro.observe(el);
+    sized.current = { el, ro };
+    if (el.clientHeight > 0) setScrollHeight(el.clientHeight);
+  });
+  useEffect(() => () => sized.current?.ro.disconnect(), []);
+
+  // A conversation kept alive in a background tab returns to the end when shown again (if it was there).
+  const shown = ws ? ws.isVisible(tab) : true;
+  const { restick } = scroll;
+  useLayoutEffect(() => {
+    if (shown) restick();
+  }, [shown, restick]);
 
   const stuck = useStuckTurn(scroll.ref);
   const promptCount = useMemo(() => messages?.filter((m) => m.role === "user").length ?? 0, [messages]);
@@ -92,7 +123,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   useEffect(() => {
     const el = scroll.ref.current;
     return () => {
-      if (el && memory) memory.set(`${tab}:scroll`, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight < 80 });
+      if (el && memory) memory.set(`${tab}:scroll`, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
     };
   }, [memory, tab, scroll.ref]);
 
@@ -123,11 +154,16 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
       <div className="@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]">
         <ChatHeader requests={requests} />
         <div data-empty-project className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-(--pad)">
-          <div className="m-auto w-full max-w-float py-8">
+          <StreakLayer anchor={EMPTY_STREAK} theme={theme} />
+          <div className="relative m-auto w-full max-w-float py-8">
+            {/* The streak shows around the block, never at full strength behind its text (decision 21). */}
+            <div aria-hidden className="octo-streak-scrim" />
             <div className="relative">
-              <div aria-hidden className="octo-glow" />
-              <h1 className="relative text-center text-title text-fg">{project.name}</h1>
-              <p className="relative mt-2 text-center text-sm text-fg-2">Ask the orchestrator. It plans, delegates to sub-agents and keeps notes.</p>
+              {/* The project's name is already in the sidebar and the header: the title says what to do. */}
+              <div className="relative">
+                <h1 className="relative text-center text-title text-fg">What should the orchestrator do first?</h1>
+                <p className="relative mt-2 text-center text-sm text-fg-2">It plans, delegates to sub-agents and keeps notes.</p>
+              </div>
               <div className="relative mt-6">
                 <Composer
                   ref={composer}
@@ -140,7 +176,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
                 />
               </div>
             </div>
-            <div className="mt-4">
+            <div className="relative mt-4">
               <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
             </div>
           </div>
@@ -164,10 +200,10 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
         {requests.length >= RAIL_MIN_REQUESTS && (
           // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16. The
           // layer covers the whole scroll area (it clips like the transcript) but takes no pointer events.
-          <div className={cn(EDGES, "pointer-events-none absolute inset-0 z-20 @max-[560px]/conv:hidden")}>
+          <div className={cn(EDGES, "pointer-events-none absolute inset-x-0 top-0 z-20 @max-[560px]/conv:hidden")} style={{ height: scrollHeight }}>
             <div className="relative mx-auto max-w-measure">
-              <div className="pointer-events-auto absolute top-2 right-full mr-1">
-                <TurnRail requests={requests} projectId={projectId} now={now} />
+              <div className="pointer-events-auto absolute top-2 right-full mr-3">
+                <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
               </div>
             </div>
           </div>
@@ -208,7 +244,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
               onClick={() => scroll.scrollToBottom(true)}
               aria-label="Jump to latest"
               title="Jump to latest"
-              className="press octo-fade grid size-8 place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
+              className="press octo-fade grid size-8 place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop octo-ring-pop hover:text-fg"
             >
               <Glyph icon={ArrowDown} size={14} />
             </button>

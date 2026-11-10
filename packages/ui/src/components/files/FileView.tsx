@@ -2,14 +2,15 @@ import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelRight } from "lucid
 import { Glyph } from "../primitives/Glyph";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { splitKey } from "../../lib/files";
+import { fileKey as fileKeyOf, splitKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
 import { useCopy, useDelayedLoading } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useCode, type OpenFile } from "../../state/code";
 import { TREE_MIN, useFileView } from "../../state/fileView";
 import { useProject } from "../../state/project";
-import type { TabId } from "../../state/workspace/layout";
+import { fileTab, type TabId } from "../../state/workspace/layout";
+import { focusSoon } from "../../lib/focus";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { FloatingComposer, useFloatingHere } from "../chat/FloatingComposer";
 import { useGroup } from "../dock/group";
@@ -20,7 +21,7 @@ import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
 import { CodeEditor } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
-import { fileIcon, isMarkdown } from "./fileIcons";
+import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { TreeColumn } from "./TreeColumn";
 
@@ -84,15 +85,53 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
     if (overlay && ws.isVisible(tab)) setOverlayOpen(true);
   }, [fv.focusTreeTick, overlay, ws, tab]);
 
+  const treeId = `${domId(tab)}-tree`;
   // Files picked in this view's tree open in this group; the empty view turns into the file in place.
   const groupId = group?.groupId;
+  // Opening a file never leaves focus on nothing: when the picked row went away (the overlay closed, the
+  // empty Files view turned into the file in place), the file's editor or preview takes it.
   const openHere = useCallback(
     (f: string, p: string) => {
       setOverlayOpen(false);
       code.openFile(f, p, undefined, groupId ? { group: groupId, replace: fileKey ? undefined : tab } : undefined);
+      const panel = `${domId(fileTab(fileKeyOf(f, p)))}-panel`;
+      focusSoon(() => {
+        const el = document.getElementById(panel);
+        return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
+      }, { onlyIfLost: true, timeout: 1500 });
     },
     [code, groupId, fileKey, tab],
   );
+
+  // The overlay tree (narrow views) closes on Esc and on a pointer down outside it; focus goes back to the toggle.
+  const toggle = useRef<HTMLButtonElement>(null);
+  const overlayShown = overlay && overlayOpen;
+  useEffect(() => {
+    if (!overlayShown) return;
+    const tree = () => document.getElementById(treeId);
+    const close = (refocus: boolean) => {
+      setOverlayOpen(false);
+      if (refocus) requestAnimationFrame(() => toggle.current?.focus());
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const el = tree();
+      if (!el || !(el.contains(document.activeElement) || toggle.current === document.activeElement)) return;
+      e.preventDefault();
+      close(true);
+    };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (tree()?.contains(t) || toggle.current?.contains(t)) return;
+      close(tree()?.contains(document.activeElement) ?? false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [overlayShown, treeId]);
 
   // Ctrl/Cmd+S anywhere in the view (Monaco binds it too; saving is guarded against doubles).
   const onKeyDown = (e: KeyboardEvent) => {
@@ -102,7 +141,6 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
     }
   };
 
-  const treeId = `${domId(tab)}-tree`;
   let body: ReactNode;
   if (!fileKey) {
     body = (
@@ -130,7 +168,8 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
 
   return (
     <div ref={root} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
-      <div data-file-bar className="flex h-bar shrink-0 items-center gap-1 border-b border-line px-2 text-xs text-fg-3">
+      {/* The hairline is an inset shadow, so the 40px row keeps a 40px content box (no half-pixel centring). */}
+      <div data-file-bar className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]">
         <IconButton icon={ArrowLeft} label="Back" title="Back (previous file in this group)" disabled={!group?.canBack} onClick={group?.back} />
         <IconButton icon={ArrowRight} label="Forward" title="Forward (next file in this group)" disabled={!group?.canForward} onClick={group?.forward} />
         {fileKey ? <Crumbs folder={folder} path={path} compact={overlay} /> : <p className="ml-1 min-w-0 truncate px-1 text-sm text-fg-2">{project?.name}</p>}
@@ -148,6 +187,7 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
         {markdown && file?.status === "ready" && <ModeToggle mode={mode} onChange={setMode} />}
         {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
         <IconButton
+          ref={toggle}
           icon={PanelRight}
           label={treeShown ? "Hide file tree" : "Show file tree"}
           aria-expanded={treeShown}
@@ -185,38 +225,93 @@ function NoFolders() {
  * icon. `compact` (a narrow view) keeps only the nearest directory and the file — the full path is the
  * tooltip — so the file name never truncates first.
  */
+/** More directories than this between the folder and the file collapse into one "…" crumb. */
+const CRUMB_DIRS = 3;
+
 function Crumbs({ folder, path, compact = false }: { folder: string; path: string; compact?: boolean }) {
   const code = useCode();
   const all = path.split("/");
   const name = all.pop() ?? path;
-  const parts = compact ? all.slice(-1) : all;
-  const skipped = all.length - parts.length;
+  // Narrow: only the nearest directory. Deep: the first and the last directory, the middle behind "…".
+  const keep = compact ? all.slice(-1) : all.length > CRUMB_DIRS ? [all[0] ?? "", all[all.length - 1] ?? ""] : all;
+  const hidden = compact ? [] : all.length > CRUMB_DIRS ? all.slice(1, -1) : [];
   const Icon = fileIcon(name);
   const crumb = "press h-6 min-w-[2ch] shrink-[8] truncate rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg";
+  const dirOf = (i: number) => all.slice(0, i + 1).join("/");
+  const dirCrumb = (label: string, index: number) => (
+    <button type="button" className={cn(crumb, "max-w-[120px]")} title={`Reveal ${folder}/${dirOf(index)} in the tree`} onClick={() => code.revealDir(folder, dirOf(index))}>
+      {label}
+    </button>
+  );
   return (
     <nav aria-label="File path" className="ml-1 flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap" title={middleTruncate(`${folder}/${path}`, 96)}>
-      {!(compact && parts.length) && (
+      {!(compact && keep.length) && (
         <button type="button" className={cn(crumb, "max-w-[160px]")} title={`Reveal ${folder} in the tree`} onClick={() => code.revealDir(folder, "")}>
           {folder}
         </button>
       )}
-      {parts.map((p, i) => {
-        const dir = all.slice(0, skipped + i + 1).join("/");
-        return (
-          <Fragment key={dir}>
-            {(i > 0 || !compact) && <Sep />}
-            <button type="button" className={cn(crumb, "max-w-[120px]")} title={`Reveal ${folder}/${dir} in the tree`} onClick={() => code.revealDir(folder, dir)}>
-              {p}
-            </button>
-          </Fragment>
-        );
-      })}
+      {compact
+        ? keep.map((p) => (
+            <Fragment key={p}>
+              {dirCrumb(p, all.length - 1)}
+            </Fragment>
+          ))
+        : keep.map((p, i) => (
+            <Fragment key={`${i}-${p}`}>
+              <Sep />
+              {dirCrumb(p, i === 0 ? 0 : all.length - 1)}
+              {i === 0 && hidden.length > 0 && (
+                <>
+                  <Sep />
+                  <HiddenCrumbs folder={folder} dirs={hidden.map((d, j) => ({ label: d, path: dirOf(j + 1) }))} />
+                </>
+              )}
+            </Fragment>
+          ))}
       <Sep />
-      <span aria-current="page" className="flex h-6 min-w-0 shrink-[0.2] items-center gap-2 px-1 text-sm text-fg">
+      <span aria-current="page" className="flex h-6 min-w-0 shrink-[0.2] items-center gap-2 px-1 text-sm text-fg" title={name}>
         <Glyph icon={Icon} size={14} className="shrink-0 text-fg-3" />
-        <span className="min-w-0 truncate">{name}</span>
+        {/* Shortened once, in the middle (the extension stays); CSS truncation is only a guard. */}
+        <span className="min-w-0 truncate">{middleTruncate(name, 40)}</span>
       </span>
     </nav>
+  );
+}
+
+/** The "…" crumb: a menu of the directories it stands for (each reveals itself in the tree). */
+function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string; path: string }[] }) {
+  const code = useCode();
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={menu !== null}
+        aria-label={`${dirs.length} more folders`}
+        title={dirs.map((d) => d.label).join("/")}
+        onClick={() => {
+          const r = button.current?.getBoundingClientRect();
+          if (r) setMenu(menu ? null : { x: r.left, y: r.bottom + 4 });
+        }}
+        className={cn("press h-6 shrink-0 rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg", menu && "bg-active text-fg")}
+      >
+        …
+      </button>
+      <Presence show={menu !== null} exitMs={0}>
+        {menu && (
+          <Menu
+            label="Folders in the path"
+            x={menu.x}
+            y={menu.y}
+            onClose={() => setMenu(null)}
+            items={dirs.map((d) => ({ id: d.path, label: d.label, title: `${folder}/${d.path}`, run: () => code.revealDir(folder, d.path) }))}
+          />
+        )}
+      </Presence>
+    </>
   );
 }
 
