@@ -61,6 +61,36 @@ structure, proportion and finish only — no other product's name, icons or asse
    opaque and the transcript starts below it (no overlap when scrolled); Chat tab label padding symmetric; one
    selected-row shape (radius 6, same insets) across sidebar, trees, palette, menus.
 
+### Reference analysis (owner: "analyse the good and the bad, then mix")
+
+Two references: an agent IDE window (A) and a desktop assistant's code view (B).
+
+| Pattern | Verdict | What we do |
+| --- | --- | --- |
+| A: one tab strip for everything (chat, file, changes) with kind icons, tabs of even width | Good: one mental model | Keep our dock; tabs get a min width 96 / max 200 so short labels do not hug their edges |
+| A: breadcrumb row + back/forward, tree as a right column, editor edge to edge | Good: the file is the content, chrome is one row | Decision 4 |
+| A: floating composer with status chips over a file | Good: never lose the conversation while reading code | Decision 8 |
+| A: "+" menu in the composer: one searchable list (modes, skills, attach, tool servers), match highlighted in the row, hint on the right | Good: one entry point, keyboard first. Bad: modes and skills we do not have; coloured mode icons | Decision 10: our list holds only real things |
+| A: "N files changed" card under a turn with per-file rows and Review | Good: the result of a turn is visible. Bad for us today: needs per-turn change records and a diff view | Deferred to v7 with a harness endpoint (per-turn changed files); no fake counts now |
+| A: built-in browser, element inspector, ports | Out of scope: not an agent-harness feature | Not built |
+| A: seven tabs of equal weight, half of them empty tools | Bad: chrome competes with the conversation | We keep Chat primary; tools open on demand |
+| A: low-contrast grey on near-black for secondary text | Bad: fails 4.5:1 | Keep our measured ramp |
+| B: sidebar = sessions grouped under their project, "+" per group, quiet state glyphs on the right | Good; we already have the two-level sidebar | Keep; align row anatomy (decision 1) |
+| B: user message as a right-aligned bubble with "Show more" clamp | Mixed: the clamp is good, the bubble narrows long prompts | Keep the full-width box; clamp prompts longer than 8 lines with "Show more" |
+| B: title with a menu in the header; tool icons on the right | Good | Chat header: project / request, plus a `…` menu (Copy request, Project settings) |
+| B: composer hint line ("↵ to send…"), model and mode under the box | Good: teaches without a tooltip | Composer footer: model on the left, "↵ send · ⇧↵ new line" hint in `fg-3` on the right when the box is empty and focused |
+| B: tool summary line "Ran 4 commands, read 2 files ›" | Good; we already have it | Keep |
+
+10. **Composer "+" menu** (button at the composer's left, also opened by typing `/` or `@` at the start of a word):
+    a searchable popover above the composer (`overlay`, radius 10, rows 28px, max 8 visible, match highlighted,
+    ↑/↓/Enter/Esc, type-ahead filters). Groups, only when they have entries: **Files** (search project files —
+    same loader as Filter files — Enter inserts `folder/path` as inline code and keeps focus), **Agents** (plugin
+    ACP agents that are available: inserts "Use the {label} agent for this." — the orchestrator's `spawn_agent`
+    already accepts `agent`), **Comments** ("Review N pending comments" opens the comments popover), **Actions**
+    (Project settings, Show agents / notes / files). Nothing that the harness cannot do: no modes, no attach
+    upload, no MCP picker.
+11. **Long prompts** in the transcript clamp at 8 lines with "Show more" / "Show less" (`aria-expanded`).
+
 ### Acceptance criteria (v6)
 
 1. `spacing-audit.mjs` exits 0 on every listed state and width; its before/after counts are recorded below.
@@ -72,7 +102,9 @@ structure, proportion and finish only — no other product's name, icons or asse
 6. With only a file view visible, the floating composer sends to the orchestrator; chips show the live turn;
    the editor's last line is reachable above it.
 7. The four listed defects are gone (screenshots at 1440 and 1100, dark and light).
-8. Gates: agent-client tests, UI lint/type-check, desktop build; no console errors; initial bundle growth recorded.
+8. The "+" menu opens by button, `/` and `@`; a file pick inserts its path; with `?plugins=none` there is no
+   Agents group; a 20-line prompt is clamped and expands.
+9. Gates: agent-client tests, UI lint/type-check, desktop build; no console errors; initial bundle growth recorded.
 
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
