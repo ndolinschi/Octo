@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test src/bridge.test.ts"
+    "test": "node --import tsx --test src/*.test.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.5",
