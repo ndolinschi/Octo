@@ -445,15 +445,15 @@ struct PriceRow {
 }
 
 fn default_autoroute_low_model() -> String {
-    "mistralai/mistral-nemo".to_string()
+    "deepseek/deepseek-v4.1-flash".to_string()
 }
 
 fn default_autoroute_mid_model() -> String {
-    "mistralai/mistral-small-3.2-24b-instruct".to_string()
+    "minimax/minimax-m3.1-flash".to_string()
 }
 
 fn default_autoroute_high_model() -> String {
-    "deepseek/deepseek-v4-flash".to_string()
+    "deepseek/deepseek-v4.1-flash-1017".to_string()
 }
 
 fn default_autoroute_hard_threshold() -> f64 {

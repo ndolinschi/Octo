@@ -1,9 +1,9 @@
 [autoroute]
 # Model slugs used by /autoroute when JEV picks a complexity band.
-# OpenRouter ladder (cheaper sweep): nemo → small-3.2 → deepseek-v4-flash.
-low = "mistralai/mistral-nemo"
-mid = "mistralai/mistral-small-3.2-24b-instruct"
-high = "deepseek/deepseek-v4-flash"
+# OpenRouter ladder (DeepSWE v1.1 $/score): v4.1-flash → minimax-m3.1 → v4.1-flash-1017.
+low = "deepseek/deepseek-v4.1-flash"
+mid = "minimax/minimax-m3.1-flash"
+high = "deepseek/deepseek-v4.1-flash-1017"
 hard_threshold = 0.5
 easy_threshold = 0.5
 
@@ -20,9 +20,6 @@ high_allow = []
 session_budget_usd = 0
 # Keep this many recent messages when trimming housekeeping turns (system + tools always kept).
 housekeeping_keep_messages = 6
-# Prefer Mistral's own endpoint over Cloudflare (3.1 mid was Cloudflare-only and flaky with tools).
-# DeepSeek high still works via allow_fallbacks when Mistral has no match.
-provider_order = ["Mistral"]
 allow_fallbacks = true
 
 # Top-level Anthropic-only keys removed before OpenRouter (Filter by Parameters).

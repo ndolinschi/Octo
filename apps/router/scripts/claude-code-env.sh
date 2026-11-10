@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sourceable Claude Code → local Octo /autoroute env (Mistral tiers).
+# Sourceable Claude Code → local Octo /autoroute env (autoroute ladder tiers).
 #
 # Usage (from apps/router):
 #   cp .env.example .env    # once; put real OPENROUTER_API_KEY there
@@ -153,10 +153,10 @@ export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://${OCTO_BIND}/autoroute}"
 export ANTHROPIC_AUTH_TOKEN="${OPENROUTER_API_KEY}"
 unset ANTHROPIC_API_KEY
 
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-mistralai/mistral-nemo}"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-mistralai/mistral-small-3.2-24b-instruct}"
-export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-deepseek/deepseek-v4-flash}"
-export CLAUDE_CODE_SUBAGENT_MODEL="${CLAUDE_CODE_SUBAGENT_MODEL:-mistralai/mistral-nemo}"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-deepseek/deepseek-v4.1-flash}"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-minimax/minimax-m3.1-flash}"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-deepseek/deepseek-v4.1-flash-1017}"
+export CLAUDE_CODE_SUBAGENT_MODEL="${CLAUDE_CODE_SUBAGENT_MODEL:-deepseek/deepseek-v4.1-flash}"
 
 export OCTO_ROOT="${_OCTO_ROOT}"
 export OCTO_EXPERIMENTS_DIR="${_OCTO_ROOT}/experiments"
