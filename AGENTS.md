@@ -86,7 +86,7 @@ Open the **monorepo root** for rust-analyzer (Cargo workspace) and gopls (`apps/
 git submodule update --init --recursive
 ```
 
-Vendored: `.cursor/skills/superpowers/`, `.cursor/skills/ponytail/`.
+Vendored: `.cursor/skills/superpowers/`, `.cursor/skills/ponytail/`, `.cursor/skills/interfaces/` (UI review and polish: `better-interface`, `better-ui`, `better-typography`, `better-colors`, `better-layout`, `better-writing`).
 
 ## Git
 
