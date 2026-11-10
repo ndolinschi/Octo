@@ -39,6 +39,26 @@ cache_write = 0.0
 output = 0.0
 # billed_as = "deepseek-v4-flash"
 
+[prices."deepseek/deepseek-v4.1-flash"]
+input = 0.051
+cache_read = 0.018
+cache_write = 0.0
+output = 0.567
+# billed_as = "deepseek-v4.1-flash"
+
+[prices."minimax/minimax-m3.1-flash"]
+input = 0.15
+cache_read = 0.015
+cache_write = 0.0
+output = 0.60
+
+[prices."deepseek/deepseek-v4.1-flash-1017"]
+input = 0.006
+cache_read = 0.005
+cache_write = 0.0
+output = 0.50
+# billed_as = "deepseek-v4.1-flash-1017"
+
 [prices."mistralai/devstral-2512"]
 input = 0.0
 cache_read = 0.0

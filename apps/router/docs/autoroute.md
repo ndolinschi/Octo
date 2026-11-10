@@ -10,7 +10,7 @@ Autoroute is the session-aware model ladder for Claude Code → OpenRouter. It l
 | `POST` | `/autoroute/v1/chat/completions` | Same decide/shape; **no** Messages compact API; no text-tool-call hook |
 | `GET` | `/autoroute/status` | JSON for statusline (`?session=` optional) |
 
-Ladder slugs and policy: `config/autoroute.toml` (default: `mistral-nemo` → `mistral-small-3.2-24b-instruct` → `deepseek-v4-flash`; `provider_order = ["Mistral"]`, `allow_fallbacks = true`).
+Ladder slugs and policy: `config/autoroute.toml` (default: `deepseek/deepseek-v4.1-flash` → `minimax/minimax-m3.1-flash` → `deepseek/deepseek-v4.1-flash-1017`; no `provider_order` pin; `allow_fallbacks = true`).
 
 ## Decide pipeline
 

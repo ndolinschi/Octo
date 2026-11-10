@@ -26,7 +26,7 @@ Helpers (not loaded as Config fragments): `claude-code.env.example`, `experiment
 
 | Key | Default (shipped) | Meaning |
 | --- | --- | --- |
-| `low` / `mid` / `high` | Mistral ladder | Slugs for bands |
+| `low` / `mid` / `high` | DeepSWE v1.1 ladder | Slugs for bands |
 | `hard_threshold` / `easy_threshold` | `0.5` | JEV band cutoffs |
 | `stall_window` | `6` | Recent turns for stall detect |
 | `escalate_turns` | `3` | Hold higher after stall |

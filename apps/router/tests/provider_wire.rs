@@ -17,19 +17,19 @@ fn loads_split_config_directory() {
         config.openrouter_messages_url,
         "https://openrouter.ai/api/v1/messages"
     );
-    assert_eq!(config.autoroute_low_model, "mistralai/mistral-nemo");
+    assert_eq!(config.autoroute_low_model, "deepseek/deepseek-v4.1-flash");
+    assert_eq!(config.autoroute_mid_model, "minimax/minimax-m3.1-flash");
     assert_eq!(
-        config.autoroute_mid_model,
-        "mistralai/mistral-small-3.2-24b-instruct"
+        config.autoroute_high_model,
+        "deepseek/deepseek-v4.1-flash-1017"
     );
-    assert_eq!(config.autoroute_high_model, "deepseek/deepseek-v4-flash");
     assert_eq!(config.autoroute_hard_threshold, 0.5);
     assert_eq!(config.autoroute_easy_threshold, 0.5);
     assert_eq!(config.autoroute_stall_window, 6);
     assert_eq!(config.autoroute_escalate_turns, 3);
     assert_eq!(config.autoroute_down_confirm, 2);
     assert!(config.autoroute_high_allow.is_empty());
-    assert_eq!(config.autoroute_provider_order, vec!["Mistral".to_string()]);
+    assert!(config.autoroute_provider_order.is_empty());
     assert_eq!(config.autoroute_session_budget_usd, 0.0);
     assert_eq!(
         config.autoroute_strip_fields,
