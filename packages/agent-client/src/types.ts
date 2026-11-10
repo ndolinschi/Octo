@@ -1,4 +1,4 @@
-export type ShellKind = "desktop" | "web";
+export type ShellKind = "desktop" | "web" | "vscode";
 
 export type AgentBridgeConfig = {
   baseUrl: string;
