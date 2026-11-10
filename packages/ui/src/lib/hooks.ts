@@ -47,11 +47,17 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
     setAtBottom(true);
   }, []);
 
+  /** Stop following new content (before a programmatic scroll elsewhere). */
+  const release = useCallback(() => {
+    atBottomRef.current = false;
+    setAtBottom(false);
+  }, []);
+
   useLayoutEffect(() => {
     if (atBottomRef.current) scrollToBottom();
   }, deps);
 
-  return { ref, atBottom, onScroll, scrollToBottom };
+  return { ref, atBottom, onScroll, scrollToBottom, release };
 }
 
 export function useCopy(timeoutMs = 1400): [boolean, (text: string) => void] {

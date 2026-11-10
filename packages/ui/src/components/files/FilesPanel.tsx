@@ -26,7 +26,7 @@ function useWidth<T extends HTMLElement>() {
   return [ref, width] as const;
 }
 
-export function FilesPanel(props: { surface: "docked" | "overlay"; onSettings(): void }) {
+export function FilesPanel(props: { onSettings(): void }) {
   const code = useCode();
   const { theme } = useApp();
   const [ref, width] = useWidth<HTMLDivElement>();
@@ -89,7 +89,7 @@ export function FilesPanel(props: { surface: "docked" | "overlay"; onSettings():
             {!split && treeShown ? (
               <div className="min-h-0 flex-1">{tree}</div>
             ) : (
-              active && <EditorBody file={active} theme={theme} surface={props.surface} />
+              active && <EditorBody file={active} theme={theme} />
             )}
           </div>
         </>
@@ -165,7 +165,7 @@ function TabStrip({ leading, onClose }: { leading: ReactNode; onClose(file: Open
               key={f.key}
               className={cn(
                 "group relative flex h-7 max-w-[200px] min-w-0 shrink-0 items-center rounded-sm transition-[background-color,color] duration-100",
-                selected ? "bg-raised text-fg" : "text-fg-3 hover:bg-hover hover:text-fg-2",
+                selected ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg-2",
               )}
               onAuxClick={(e) => {
                 if (e.button === 1) {
@@ -226,14 +226,14 @@ function TabStrip({ leading, onClose }: { leading: ReactNode; onClose(file: Open
   );
 }
 
-function EditorBody({ file, theme, surface }: { file: OpenFile; theme: "dark" | "light"; surface: "docked" | "overlay" }) {
+function EditorBody({ file, theme }: { file: OpenFile; theme: "dark" | "light" }) {
   const code = useCode();
   return (
     <div id="file-editor" role="tabpanel" aria-label={file.name} className="flex min-h-0 flex-1 flex-col">
       <Notice file={file} />
       <div className="min-h-0 flex-1">
         {file.status === "ready" ? (
-          <CodeEditor file={file} buffers={code.buffers} theme={theme} surface={surface} onSave={() => void code.save(file.key)} />
+          <CodeEditor file={file} buffers={code.buffers} theme={theme} onSave={() => void code.save(file.key)} />
         ) : (
           <Message file={file} />
         )}

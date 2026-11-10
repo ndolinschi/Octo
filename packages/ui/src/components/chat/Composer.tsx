@@ -105,7 +105,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
           void submit();
         }}
         className={cn(
-          "flex items-end gap-2 rounded-lg border border-line bg-raised pr-1.5 pl-3.5 transition-[border-color] duration-100",
+          "flex items-end gap-2 rounded-xl border border-line bg-raised pr-1.5 pl-3.5 transition-[border-color] duration-100",
           !disabled && "focus-within:border-focus",
         )}
       >

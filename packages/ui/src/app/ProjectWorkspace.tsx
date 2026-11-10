@@ -1,11 +1,13 @@
 import { FolderTree, NotebookText, Workflow } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { cn } from "../lib/cn";
 import { useEscape, useMediaQuery } from "../lib/hooks";
 import { navigate } from "../lib/route";
 import { readPref, writePref } from "../lib/storage";
 import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";
+import { useNav } from "../state/nav";
+import { PaneProvider, type PanelTab } from "../state/pane";
 import { useProject } from "../state/project";
 import { AgentsPanel } from "../components/agents/AgentsPanel";
 import { FilesPanel } from "../components/files/FilesPanel";
@@ -14,7 +16,8 @@ import { NotesPanel } from "../components/notes/NotesPanel";
 import { Button } from "../components/primitives/Button";
 import { Tabs } from "../components/primitives/Tabs";
 import { ProjectDialog } from "../components/project/ProjectDialog";
-import { ProjectHeader, type PanelTab } from "../components/project/ProjectHeader";
+import { ProjectHeader } from "../components/project/ProjectHeader";
+import { Panel, panelClass } from "../components/shell/Panel";
 
 /** At this width the side panel sits beside the conversation; below it, it overlays it. */
 const DOCK_QUERY = "(min-width: 1100px)";
@@ -24,6 +27,8 @@ const PANE_MIN = 280;
 const PANE_DEFAULT = 320;
 const MIN_MAIN = 400;
 const SIDEBAR = 260;
+/** Window margin and gap around the inset panels (6px each). */
+const GUTTERS = 12;
 
 function savedTab(): PanelTab {
   const v = readPref("panel");
@@ -57,6 +62,7 @@ export function ProjectWorkspace(props: {
   onToggleSidebar(): void;
 }) {
   const { bridge, refreshProjects, projects } = useApp();
+  const nav = useNav();
   const { project, loadError, update, projectId, reload } = useProject();
   const docked = useMediaQuery(DOCK_QUERY);
   const [paneOpen, setPaneOpen] = useState(initiallyOpen);
@@ -83,6 +89,21 @@ export function ProjectWorkspace(props: {
     setPaneOpen(true);
     remember(true, tab);
   };
+  const openPane = (next: PanelTab) => {
+    setPaneOpen(true);
+    setTabState(next);
+    remember(true, next);
+  };
+
+  // The command palette toggles the pane through the shell.
+  const toggleRef = useRef(togglePane);
+  useLayoutEffect(() => {
+    toggleRef.current = togglePane;
+  });
+  useEffect(() => {
+    nav.setPaneToggle(() => toggleRef.current());
+    return () => nav.setPaneToggle(null);
+  }, [nav]);
 
   // An overlay pane takes focus when it opens; Esc or navigation closes it.
   useEffect(() => {
@@ -112,10 +133,10 @@ export function ProjectWorkspace(props: {
 
   if (loadError && !project) {
     return (
-      <div className="flex h-full flex-col">
+      <Panel className="h-full">
         {header}
         <LoadError message={loadError} onRetry={reload} />
-      </div>
+      </Panel>
     );
   }
 
@@ -133,16 +154,11 @@ export function ProjectWorkspace(props: {
     />
   );
 
-  const reveal = () => {
-    setPaneOpen(true);
-    setTabState("files");
-    remember(true, "files");
-  };
-
   return (
-    <CodeProvider onReveal={reveal}>
-    <div className="flex h-full min-w-0">
-      <div className="flex min-w-0 flex-1 flex-col">
+    <PaneProvider value={{ openPane, shown: paneOpen ? tab : null }}>
+    <CodeProvider onReveal={() => openPane("files")}>
+    <div className="flex h-full min-w-0 gap-1.5">
+      <Panel className="flex-1">
         {header}
         <div className="relative flex min-h-0 flex-1">
           <main className="min-w-0 flex-1" aria-label="Conversation">
@@ -150,7 +166,7 @@ export function ProjectWorkspace(props: {
           </main>
           {overlay && paneBody}
         </div>
-      </div>
+      </Panel>
       {paneOpen && docked && paneBody}
       {settings && project && (
         <ProjectDialog
@@ -171,6 +187,7 @@ export function ProjectWorkspace(props: {
       )}
     </div>
     </CodeProvider>
+    </PaneProvider>
   );
 }
 
@@ -188,7 +205,7 @@ function SidePane(props: {
   const windowWidth = useWindowWidth();
   const [userWidth, setUserWidth] = useState(savedWidth);
   const [dragging, setDragging] = useState(false);
-  const max = Math.max(PANE_MIN, windowWidth - props.sidebarWidth - MIN_MAIN);
+  const max = Math.max(PANE_MIN, windowWidth - props.sidebarWidth - GUTTERS - MIN_MAIN);
   const clamp = (w: number) => Math.round(Math.min(max, Math.max(PANE_MIN, w)));
   // With a file open the pane defaults to about half the window, until the user picks a width.
   const width = clamp(userWidth ?? (hasFiles && tab === "files" ? windowWidth / 2 : PANE_DEFAULT));
@@ -243,60 +260,64 @@ function SidePane(props: {
     commit(clamp(fn()));
   };
 
+  const separator = !overlay && (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize side panel"
+      aria-valuemin={PANE_MIN}
+      aria-valuemax={max}
+      aria-valuenow={width}
+      tabIndex={0}
+      title="Drag to resize; double-click to reset"
+      data-dragging={dragging || undefined}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      onDoubleClick={() => commit(null)}
+      className="group absolute inset-y-0 -left-1.5 z-30 w-1.5 cursor-col-resize rounded-xs outline-none focus-visible:outline-none"
+    >
+      <span
+        aria-hidden
+        className="absolute inset-y-2 left-[2px] w-[2px] rounded-full transition-[background-color] duration-100 group-hover:bg-line-strong group-focus-visible:bg-focus group-data-[dragging]:bg-focus"
+      />
+    </div>
+  );
+
   return (
     <aside
       ref={props.paneRef}
       aria-label="Side panel"
       style={overlay ? (wide ? { width: "min(100%, 640px)" } : undefined) : { width }}
       className={cn(
-        "relative flex max-w-full shrink-0 flex-col border-l border-line",
-        overlay ? "absolute inset-y-0 right-0 z-20 bg-overlay shadow-pop" : "bg-bg",
+        "relative flex max-w-full shrink-0 flex-col",
+        overlay ? "absolute inset-y-0 right-0 z-20 border-l border-line bg-panel shadow-pop" : "h-full",
         overlay && !wide && "w-pane",
       )}
     >
-      {!overlay && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize side panel"
-          aria-valuemin={PANE_MIN}
-          aria-valuemax={max}
-          aria-valuenow={width}
-          tabIndex={0}
-          title="Drag to resize; double-click to reset"
-          data-dragging={dragging || undefined}
-          onPointerDown={onPointerDown}
-          onKeyDown={onKeyDown}
-          onDoubleClick={() => commit(null)}
-          className="group absolute inset-y-0 -left-[3px] z-30 w-[6px] cursor-col-resize outline-none"
-        >
-          <span
-            aria-hidden
-            className="absolute inset-y-0 left-[2px] w-[2px] transition-[background-color] duration-100 group-hover:bg-line-strong group-focus-visible:bg-focus group-data-[dragging]:bg-focus"
+      {separator}
+      <div className={cn("flex min-h-0 flex-1 flex-col", !overlay && cn(panelClass, "h-full"))}>
+        <div className="flex h-10 shrink-0 items-center px-2">
+          <Tabs<PanelTab>
+            label="Side panel"
+            idPrefix="panel"
+            value={tab}
+            onChange={props.onTab}
+            options={[
+              { value: "agents", label: "Agents", icon: Workflow },
+              { value: "notes", label: "Notes", icon: NotebookText },
+              { value: "files", label: "Files", icon: FolderTree },
+            ]}
           />
         </div>
-      )}
-      <div className="flex h-10 shrink-0 items-center px-2">
-        <Tabs<PanelTab>
-          label="Side panel"
-          idPrefix="panel"
-          value={tab}
-          onChange={props.onTab}
-          options={[
-            { value: "agents", label: "Agents", icon: Workflow },
-            { value: "notes", label: "Notes", icon: NotebookText },
-            { value: "files", label: "Files", icon: FolderTree },
-          ]}
-        />
-      </div>
-      <div role="tabpanel" id={`panel-panel-${tab}`} aria-labelledby={`panel-tab-${tab}`} className="min-h-0 flex-1">
-        {tab === "agents" ? (
-          <AgentsPanel currentAgentId={props.agentId} />
-        ) : tab === "notes" ? (
-          <NotesPanel />
-        ) : (
-          <FilesPanel surface={overlay ? "overlay" : "docked"} onSettings={props.onSettings} />
-        )}
+        <div role="tabpanel" id={`panel-panel-${tab}`} aria-labelledby={`panel-tab-${tab}`} className="min-h-0 flex-1">
+          {tab === "agents" ? (
+            <AgentsPanel currentAgentId={props.agentId} />
+          ) : tab === "notes" ? (
+            <NotesPanel />
+          ) : (
+            <FilesPanel onSettings={props.onSettings} />
+          )}
+        </div>
       </div>
     </aside>
   );

@@ -11,10 +11,12 @@ import {
   type ReactNode,
 } from "react";
 import { useHost } from "./host";
+import { useMediaQuery } from "../lib/hooks";
 import { readPref, writePref } from "../lib/storage";
 
 export type Health = "checking" | "online" | "offline";
 export type Theme = "dark" | "light";
+export type ThemePref = "system" | Theme;
 
 type AppValue = {
   bridge: Bridge;
@@ -27,18 +29,20 @@ type AppValue = {
   config: BridgeConfig | null;
   retry(): void;
   refreshProjects(): Promise<void>;
+  /** The theme in effect. */
   theme: Theme;
+  /** What the user chose; "system" follows the OS. */
+  themePref: ThemePref;
   /** False when the host dictates the theme. */
-  canToggleTheme: boolean;
-  toggleTheme(): void;
+  canChooseTheme: boolean;
+  setThemePref(pref: ThemePref): void;
 };
 
 const AppContext = createContext<AppValue | null>(null);
 
-function initialTheme(): Theme {
+function savedThemePref(): ThemePref {
   const saved = readPref("theme");
-  if (saved === "dark" || saved === "light") return saved;
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  return saved === "dark" || saved === "light" ? saved : "system";
 }
 
 export function AppProvider(props: {
@@ -54,13 +58,20 @@ export function AppProvider(props: {
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [config, setConfig] = useState<BridgeConfig | null>(null);
   const host = useHost();
-  const [ownTheme, setTheme] = useState<Theme>(initialTheme);
-  const theme = host.theme ?? ownTheme;
+  const [themePref, setThemePrefState] = useState<ThemePref>(savedThemePref);
+  const systemLight = useMediaQuery("(prefers-color-scheme: light)");
+  const theme: Theme = host.theme ?? (themePref === "system" ? (systemLight ? "light" : "dark") : themePref);
   const [attempt, setAttempt] = useState(0);
   const healthRef = useRef<Health>("checking");
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    // Swap without every colour transition firing at once.
+    const root = document.documentElement;
+    root.dataset.themeSwitching = "";
+    root.dataset.theme = theme;
+    void root.offsetHeight;
+    const id = requestAnimationFrame(() => delete root.dataset.themeSwitching);
+    return () => cancelAnimationFrame(id);
   }, [theme]);
 
   const refreshProjects = useCallback(async () => {
@@ -125,15 +136,14 @@ export function AppProvider(props: {
       },
       refreshProjects,
       theme,
-      canToggleTheme: !host.theme,
-      toggleTheme: () =>
-        setTheme((t) => {
-          const next = t === "dark" ? "light" : "dark";
-          writePref("theme", next);
-          return next;
-        }),
+      themePref,
+      canChooseTheme: !host.theme,
+      setThemePref: (pref) => {
+        setThemePrefState(pref);
+        writePref("theme", pref);
+      },
     }),
-    [bridge, props.bridgeUrl, props.shell, props.demo, health, version, projects, config, refreshProjects, theme, host.theme],
+    [bridge, props.bridgeUrl, props.shell, props.demo, health, version, projects, config, refreshProjects, theme, themePref, host.theme],
   );
 
   return <AppContext.Provider value={value}>{props.children}</AppContext.Provider>;

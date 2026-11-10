@@ -77,9 +77,9 @@ const DARK: Palette = {
   number: "#ccb491",
   lineNumber: "#5e5e5e",
   lineNumberActive: "#a3a3a3",
-  overlay: "#1f1f1f",
-  raised: "#212121",
-  err: "#f0726b",
+  overlay: "#232323",
+  raised: "#222222",
+  err: "#f6847e",
   link: "#6fa8ff",
   tint: (a) => `#ffffff${a}`,
 };
@@ -95,8 +95,8 @@ const LIGHT: Palette = {
   lineNumber: "#a8a8a8",
   lineNumberActive: "#5c5c5c",
   overlay: "#ffffff",
-  raised: "#f0f0f0",
-  err: "#c4312a",
+  raised: "#f5f5f5",
+  err: "#b42a23",
   link: "#0a5fd1",
   tint: (a) => `#000000${a}`,
 };
@@ -210,16 +210,12 @@ function theme(base: "vs" | "vs-dark", p: Palette, background: string): monaco.e
   };
 }
 
-/** Surface the pane sits on: docked (`bg`) or overlaid (`overlay`). */
-export type Surface = "docked" | "overlay";
+/* The editor always sits on an inset panel (`--octo-panel`). */
+monaco.editor.defineTheme("octo-dark", theme("vs-dark", DARK, "#141414"));
+monaco.editor.defineTheme("octo-light", theme("vs", LIGHT, "#ffffff"));
 
-monaco.editor.defineTheme("octo-dark-docked", theme("vs-dark", DARK, "#161616"));
-monaco.editor.defineTheme("octo-dark-overlay", theme("vs-dark", DARK, "#1f1f1f"));
-monaco.editor.defineTheme("octo-light-docked", theme("vs", LIGHT, "#fbfbfb"));
-monaco.editor.defineTheme("octo-light-overlay", theme("vs", LIGHT, "#ffffff"));
-
-export function themeName(mode: "dark" | "light", surface: Surface): string {
-  return `octo-${mode}-${surface}`;
+export function themeName(mode: "dark" | "light"): string {
+  return `octo-${mode}`;
 }
 
 export { monaco };

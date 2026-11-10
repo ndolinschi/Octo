@@ -40,7 +40,7 @@ export function Tabs<T extends string>(props: {
             onClick={() => props.onChange(o.value)}
             className={cn(
               "inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-sm transition-[background-color,color] duration-100",
-              selected ? "bg-raised text-fg" : "text-fg-3 hover:bg-hover hover:text-fg-2",
+              selected ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg-2",
             )}
           >
             {o.icon && <o.icon size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0" />}

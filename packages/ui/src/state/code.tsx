@@ -13,6 +13,7 @@ import {
 import { EditorBuffers } from "../components/files/buffers";
 import { ancestors, fileKey, fileName, normalizePath, parentPath } from "../lib/files";
 import { useApp } from "./app";
+import { useOptionalNav } from "./nav";
 import { useProject } from "./project";
 
 export type FileStatus = "loading" | "ready" | "error" | "too_large" | "binary";
@@ -317,6 +318,14 @@ export function CodeProvider({ children, onReveal }: { children: ReactNode; onRe
       }),
     [onEvent, bridge, projectId, loadDir, patch, buffers, retryOpen],
   );
+
+  // Leaving the project unmounts this provider and its buffers: the shell asks first.
+  const nav = useOptionalNav();
+  useEffect(() => {
+    if (!nav) return;
+    nav.setLeaveGuard(() => filesRef.current.filter((f) => f.modified).length);
+    return () => nav.setLeaveGuard(null);
+  }, [nav]);
 
   // Unsaved edits would be lost on reload or window close.
   const anyModified = files.some((f) => f.modified);

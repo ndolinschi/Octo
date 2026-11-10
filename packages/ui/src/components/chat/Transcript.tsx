@@ -1,6 +1,6 @@
 import type { Agent, Message } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatDuration, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { buildTurns, promptText, type Turn } from "../../lib/transcript";
@@ -44,7 +44,7 @@ export function Transcript(props: {
           const hidePrompt = props.hideFirstPrompt && i === 0;
           const started = turn.prompt?.created_at ?? (i === 0 ? agent.started_at : null);
           return (
-            <Fragment key={turn.key}>
+            <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-6">
               {turn.prompt && !hidePrompt && (
                 <UserPrompt text={promptText(turn.prompt)} author={props.promptAuthor} external={!isOrchestrator} />
               )}
@@ -57,7 +57,7 @@ export function Transcript(props: {
                 now={now}
                 footer={isOrchestrator}
               />
-            </Fragment>
+            </section>
           );
         })}
         {turns.length === 0 && running && (
@@ -84,7 +84,7 @@ export function Transcript(props: {
 
 function UserPrompt({ text, author, external }: { text: string; author: string; external: boolean }) {
   return (
-    <div className="rounded-md border border-line bg-raised px-3.5 py-2.5 text-base whitespace-pre-wrap text-fg">
+    <div data-prompt className="rounded-md border border-line bg-raised px-3.5 py-2.5 text-base whitespace-pre-wrap text-fg transition-[box-shadow] duration-300">
       {external ? (
         <div className="mb-0.5 text-xs text-fg-3">From {author}</div>
       ) : (
@@ -122,7 +122,7 @@ function AssistantTurn(props: {
       {streaming && <Markdown text={streaming} className="octo-prose my-1.5" streaming />}
       {live && (
         <p className="mt-1.5 flex h-6 items-center gap-2 text-sm text-fg-3 tabular-nums">
-          <Spinner />
+          <Spinner className="text-accent" />
           Working…{start !== null && <span>{formatDuration(props.now - start)}</span>}
         </p>
       )}

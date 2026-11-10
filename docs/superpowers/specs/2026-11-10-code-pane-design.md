@@ -60,7 +60,8 @@ the three methods are added to the message-bridge allow-list; the reducer ignore
   and, once a file is opened, an editor area with a tab per open file. The pane is
   resizable by dragging its left edge; width is remembered. With a file open the pane
   takes roughly half the window by default.
-- Editor: Monaco with neutral dark/light themes derived from the UI tokens, language
+- Editor: Monaco with neutral dark/light themes derived from the UI tokens (background = the
+  `panel` token of the inset side panel, v3), language
   by file extension, `Ctrl/Cmd+S` saves, a dot marks unsaved tabs, closing an unsaved
   tab asks first. A `409` on save offers "Reload from disk" or "Overwrite".
 - On `file.changed` for an open file: unmodified tab reloads silently; modified tab
@@ -89,5 +90,5 @@ existing SSE subscription), not a second connection.
 6. **Offline and light.** No network requests for the editor; Monaco is in a lazily
    loaded chunk and the initial bundle grows by no more than ~15 kB gzip.
 7. **Fits in.** Same neutral visual language in dark and light; keyboard reachable;
-   no console errors.
+   no console errors. Switching project with unsaved edits asks first (v3).
 8. **Quality gates.** Go vet/race tests, agent-client tests, UI lint, desktop build all pass.

@@ -28,7 +28,6 @@ export function CodeEditor(props: {
   file: OpenFile;
   buffers: EditorBuffers;
   theme: "dark" | "light";
-  surface: "docked" | "overlay";
   onSave(): void;
 }) {
   const { file, buffers } = props;
@@ -61,7 +60,7 @@ export function CodeEditor(props: {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const editor = monaco.editor.create(host.current, {
       model: null,
-      theme: mod.themeName(props.theme, props.surface),
+      theme: mod.themeName(props.theme),
       automaticLayout: true,
       fontFamily: MONO,
       fontSize: 13,
@@ -107,8 +106,8 @@ export function CodeEditor(props: {
   }, [mod, buffers]);
 
   useEffect(() => {
-    if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme, props.surface));
-  }, [mod, props.theme, props.surface]);
+    if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme));
+  }, [mod, props.theme]);
 
   // Show the active file's model, saving the previous tab's view state.
   useEffect(() => {

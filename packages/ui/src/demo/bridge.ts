@@ -10,6 +10,7 @@ import {
 } from "@octo/agent-client";
 import { basename } from "../lib/format";
 import { atlasHistory } from "./atlas";
+import { backgroundTurn, docsHistory } from "./extra";
 import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
 import { genericTurn } from "./generic";
 import { orbitLive } from "./orbit";
@@ -137,9 +138,57 @@ function seed(): ProjectRecord[] {
       description: "Marketing site and docs (Astro)",
       folders: [{ path: "/Users/maya/code/docs-site" }],
     },
-    now - 3 * HOUR,
+    now - 10 * HOUR,
   );
-  return [orbit, atlas, docs];
+  startScript(docs, now - 9 * HOUR, docsHistory);
+
+  const payments = makeProject(
+    {
+      name: "Payments ledger reconciliation and nightly settlement jobs",
+      description: "Settlement batch jobs and the reconciliation report",
+      folders: [{ path: "/Users/maya/code/ledger", label: "ledger" }],
+    },
+    now - 3 * 24 * HOUR,
+  );
+  startScript(
+    payments,
+    now - 1_200,
+    backgroundTurn(
+      "Re-run last night's settlement for the EU merchants and tell me if the totals match.",
+      { name: "bash", input: { command: "pnpm settle --region eu --date yesterday --dry-run" }, result: "Settled 1,284 merchants · €2,418,903.17 · 0 mismatches" },
+      "Re-ran the EU settlement as a dry run: **1,284 merchants, €2,418,903.17**, and the totals match the ledger exactly. Nothing was written.",
+      2_600,
+    ),
+  );
+
+  const infra = makeProject(
+    {
+      name: "Infrastructure: Terraform modules for staging and production clusters",
+      description: "Shared Terraform modules and environment stacks",
+      folders: [{ path: "/Users/maya/code/infra", label: "infra" }],
+    },
+    now - 6 * 24 * HOUR,
+  );
+  startScript(
+    infra,
+    now - 800,
+    backgroundTurn(
+      "Plan the staging upgrade to the new node pool module and summarise the diff.",
+      { name: "bash", input: { command: "terraform -chdir=envs/staging plan -no-color" }, result: "Plan: 3 to add, 1 to change, 2 to destroy." },
+      "The staging plan adds the new node pool, updates the autoscaler and removes the two old pools: **3 to add, 1 to change, 2 to destroy**. No production resources are touched.",
+      4_200,
+    ),
+  );
+
+  const tokens = makeProject(
+    {
+      name: "Design system tokens",
+      description: "Colour, type and spacing tokens shared by the web apps",
+      folders: [{ path: "/Users/maya/code/tokens", label: "tokens" }],
+    },
+    now - 2 * 24 * HOUR,
+  );
+  return [orbit, atlas, docs, payments, infra, tokens];
 }
 
 export function createDemoBridge(options: { seed?: DemoSeed } = {}): Bridge {

@@ -3,58 +3,66 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* Neutral greys only. Colour means state: ok (done), err (failed), link. */
+/* Neutral greys; colour means state: ok (done), err (failed), accent (activity: running, unseen), link.
+   Surfaces nest: the window (sidebar tone) holds inset panels; raised boxes sit on panels. */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --octo-bg: #161616;
-  --octo-raised: #212121;
-  --octo-overlay: #1f1f1f;
+  --octo-window: #1b1b1b;
+  --octo-panel: #141414;
+  --octo-raised: #222222;
+  --octo-overlay: #232323;
   --octo-code-bg: #1c1c1c;
   --octo-hover: rgb(255 255 255 / 0.05);
-  --octo-active: rgb(255 255 255 / 0.08);
-  --octo-line: rgb(255 255 255 / 0.09);
+  --octo-active: rgb(255 255 255 / 0.1);
+  --octo-line: rgb(255 255 255 / 0.08);
   --octo-line-strong: rgb(255 255 255 / 0.14);
   --octo-input-border: #6e6e6e;
   --octo-fg: #e6e6e6;
-  --octo-fg-2: #a3a3a3;
-  --octo-fg-3: #939393;
+  --octo-fg-2: #b0b0b0;
+  --octo-fg-3: #9c9c9c;
+  --octo-accent: #5c9dff;
   --octo-link: #6fa8ff;
   --octo-ok: #5fbf7f;
-  --octo-err: #f0726b;
+  --octo-err: #f6847e;
   --octo-primary: #e6e6e6;
-  --octo-primary-fg: #161616;
+  --octo-primary-fg: #141414;
   --octo-focus: rgb(255 255 255 / 0.6);
   --octo-scrim: rgb(0 0 0 / 0.5);
   --octo-shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.08), 0 16px 40px -12px rgb(0 0 0 / 0.6);
+  --octo-shadow-panel: 0 1px 2px rgb(0 0 0 / 0.25);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --octo-bg: #fbfbfb;
-  --octo-raised: #f0f0f0;
+  --octo-window: #f2f2f2;
+  --octo-panel: #ffffff;
+  --octo-raised: #f5f5f5;
   --octo-overlay: #ffffff;
-  --octo-code-bg: #f3f3f3;
+  --octo-code-bg: #f5f5f5;
   --octo-hover: rgb(0 0 0 / 0.04);
   --octo-active: rgb(0 0 0 / 0.07);
   --octo-line: rgb(0 0 0 / 0.09);
   --octo-line-strong: rgb(0 0 0 / 0.14);
   --octo-input-border: #8a8a8a;
   --octo-fg: #1a1a1a;
-  --octo-fg-2: #5c5c5c;
-  --octo-fg-3: #666666;
+  --octo-fg-2: #474747;
+  --octo-fg-3: #5f5f5f;
+  --octo-accent: #0a66e0;
   --octo-link: #0a5fd1;
   --octo-ok: #1a7f45;
-  --octo-err: #c4312a;
+  --octo-err: #b42a23;
   --octo-primary: #1a1a1a;
-  --octo-primary-fg: #fbfbfb;
+  --octo-primary-fg: #ffffff;
   --octo-focus: rgb(0 0 0 / 0.55);
   --octo-scrim: rgb(0 0 0 / 0.2);
   --octo-shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.04), 0 16px 40px -12px rgb(0 0 0 / 0.18);
+  --octo-shadow-panel: 0 1px 2px rgb(0 0 0 / 0.04);
 }
 
 @theme inline {
-  --color-bg: var(--octo-bg);
+  --color-window: var(--octo-window);
+  --color-panel: var(--octo-panel);
   --color-raised: var(--octo-raised);
   --color-overlay: var(--octo-overlay);
   --color-code-bg: var(--octo-code-bg);
@@ -67,6 +75,7 @@
   --color-fg: var(--octo-fg);
   --color-fg-2: var(--octo-fg-2);
   --color-fg-3: var(--octo-fg-3);
+  --color-accent: var(--octo-accent);
   --color-link: var(--octo-link);
   --color-ok: var(--octo-ok);
   --color-err: var(--octo-err);
@@ -74,6 +83,7 @@
   --color-primary-fg: var(--octo-primary-fg);
   --color-scrim: var(--octo-scrim);
   --shadow-pop: var(--octo-shadow-pop);
+  --shadow-panel: var(--octo-shadow-panel);
 }
 
 @theme {
@@ -87,10 +97,13 @@
   --text-base--line-height: 1.6;
   --text-lg: 16px;
   --text-lg--line-height: 1.3;
+  /* Radius scale: xs inline code · sm controls, rows, tabs · md boxes, cards, inputs ·
+     lg inset panels, dialogs · xl composer. Nothing rounder. */
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
   --spacing-measure: 760px;
   --spacing-sidebar: 260px;
   --spacing-pane: 320px;
@@ -111,7 +124,7 @@
   }
   body {
     margin: 0;
-    background: var(--octo-bg);
+    background: var(--octo-window);
     color: var(--octo-fg);
     font-family: var(--font-sans);
     font-size: 13px;
@@ -137,6 +150,17 @@
 
 @utility scroll-quiet {
   scrollbar-gutter: stable;
+}
+
+/* A prompt the sidebar or palette jumped to: a brief accent ring (static under reduced motion). */
+[data-flash] {
+  box-shadow: 0 0 0 2px var(--octo-accent);
+}
+
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

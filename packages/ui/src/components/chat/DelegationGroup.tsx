@@ -4,6 +4,7 @@ import { agentDuration, formatDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
 import { spawnInput } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
+import { useOptionalPane } from "../../state/pane";
 import { useProject } from "../../state/project";
 import { isTier, shortModel, Spinner, StatusIcon, tierLabel } from "../primitives/Status";
 import { useTranscript } from "./transcriptContext";
@@ -11,19 +12,24 @@ import { useTranscript } from "./transcriptContext";
 /** Hairline-bordered card: a caption row, then one row per sub-agent. */
 export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
   const { state } = useProject();
+  const pane = useOptionalPane();
   const agents = uses.map((u) => agentBySpawnToolUse(state, u.id));
   const caption = uses.length === 1 ? "1 agent" : `${uses.length} agents`;
   const running = agents.some((a) => !a || a.status === "running");
   const done = agents.filter((a) => a && (a.status === "completed" || a.status === "failed" || a.status === "cancelled")).length;
 
   return (
-    <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container my-2 rounded-lg border border-line">
-      <div className="flex h-8 items-center gap-2 px-3 text-sm text-fg-3">
-        <span>{caption}</span>
-        {running && (
-          <span className="ml-auto tabular-nums">
-            {done}/{uses.length} done
-          </span>
+    <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container my-2 rounded-md border border-line">
+      <div className="flex h-8 items-center gap-2 pr-1.5 pl-3 text-sm text-fg-3">
+        <span className="tabular-nums">{running ? `${done}/${uses.length} done` : caption}</span>
+        {pane && pane.shown !== "agents" && (
+          <button
+            type="button"
+            onClick={() => pane.openPane("agents")}
+            className="ml-auto h-6 rounded-sm px-1.5 text-xs text-fg-3 transition-[background-color,color] duration-100 hover:bg-hover hover:text-fg"
+          >
+            Show in panel
+          </button>
         )}
       </div>
       <ul className="px-1.5 pb-1.5">

@@ -1,11 +1,9 @@
 import { X } from "lucide-react";
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { IconButton } from "./Button";
-
-const FOCUSABLE =
-  'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+import { useModal } from "./useModal";
 
 export function Dialog(props: {
   title: string;
@@ -20,39 +18,7 @@ export function Dialog(props: {
   const titleId = useId();
   const descId = useId();
 
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const el = panel.current;
-    const first = el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>(FOCUSABLE);
-    first?.focus();
-    return () => previous?.focus?.();
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab" || !panel.current) return;
-      const nodes = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-        (n) => n.offsetParent !== null,
-      );
-      if (!nodes.length) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  useModal(panel, onClose);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 pt-[6vh] sm:p-6 sm:pt-[9vh]">

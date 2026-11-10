@@ -1,14 +1,17 @@
 import { ArrowDown } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
+import { promptText } from "../../lib/transcript";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { AgentHeader, roleName } from "./AgentHeader";
 import { Composer, type ComposerHandle } from "./Composer";
 import { ObserverBar } from "./ObserverBar";
 import { StarterPrompts } from "./StarterPrompts";
+import { StickyPrompt } from "./StickyPrompt";
 import { Transcript } from "./Transcript";
+import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
 
 export function ConversationView({ agentId }: { agentId: string }) {
   const { health } = useApp();
@@ -24,6 +27,13 @@ export function ConversationView({ agentId }: { agentId: string }) {
     [messages, streaming, agent?.status, agentId],
     isOrchestrator || agent?.status === "running",
   );
+
+  const stuck = useStuckTurn(scroll.ref);
+  const promptCount = useMemo(() => messages?.filter((m) => m.role === "user").length ?? 0, [messages]);
+  useViewTurn(scroll.ref, projectId, isOrchestrator, promptCount);
+  useTurnRequests({ root: scroll.ref, projectId, enabled: isOrchestrator, loaded: messages !== undefined, release: scroll.release });
+  const { onScroll: measureStuck } = stuck;
+  useEffect(measureStuck, [messages, streaming, measureStuck]);
 
   useEffect(() => {
     ensureMessages(agentId);
@@ -46,12 +56,30 @@ export function ConversationView({ agentId }: { agentId: string }) {
   const parent = agent.parent_id ? state.agents[agent.parent_id] : undefined;
   const loadedEmpty = messages !== undefined && messages.length === 0;
   const showStarters = isOrchestrator && loadedEmpty && !running;
+  const stuckPrompt = stuck.stuckId !== null ? messages?.find((m) => m.id === stuck.stuckId) : undefined;
+  const scroller = scroll.ref.current;
+  const gutter = scroller ? scroller.offsetWidth - scroller.clientWidth : 0;
   const offlineReason =
     health === "offline" ? "Bridge offline. Start harness serve to continue." : live === "reconnecting" ? "Reconnecting to the bridge…" : null;
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <div ref={scroll.ref} onScroll={scroll.onScroll} className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
+      {stuckPrompt && (
+        <StickyPrompt
+          key={stuckPrompt.id}
+          text={promptText(stuckPrompt)}
+          author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
+          gutter={gutter}
+        />
+      )}
+      <div
+        ref={scroll.ref}
+        onScroll={() => {
+          scroll.onScroll();
+          stuck.onScroll();
+        }}
+        className="scroll-quiet min-h-0 flex-1 overflow-y-auto"
+      >
         <div className="mx-auto w-full max-w-measure px-6 pt-3 pb-8 max-[1000px]:px-4">
           {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
           {showStarters ? (
@@ -76,7 +104,7 @@ export function ConversationView({ agentId }: { agentId: string }) {
             onClick={() => scroll.scrollToBottom(true)}
             aria-label="Jump to latest"
             title="Jump to latest"
-            className="absolute right-4 -top-10 grid size-7 place-items-center rounded-full border border-line-strong bg-bg text-fg-2 transition-[color,background-color] duration-100 hover:bg-raised hover:text-fg"
+            className="absolute right-4 -top-10 grid size-7 place-items-center rounded-full border border-line-strong bg-raised text-fg-2 transition-[color,background-color] duration-100 hover:text-fg"
           >
             <ArrowDown size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
           </button>
