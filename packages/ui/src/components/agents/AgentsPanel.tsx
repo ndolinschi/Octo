@@ -105,7 +105,8 @@ export function AgentsPanel() {
       role="tree"
       aria-label="Agent tree"
       onScroll={(e) => memory.set("agents:scroll", e.currentTarget.scrollTop)}
-      className="h-full min-h-0 overflow-y-auto overscroll-contain px-pane pt-pane pb-4">
+      className="h-full min-h-0 overflow-y-auto overscroll-contain px-pane pt-pane pb-4"
+    >
       {rows.map((row, i) => {
         const a = row.agent;
         const current = a.id === currentAgentId;
@@ -129,7 +130,7 @@ export function AgentsPanel() {
             onClick={(e) => open(a, e.altKey)}
             className={cn(
               // The file tree's anatomy: 16px per level (a spacer), [24px chevron] 4 [16px status slot] 8 [role].
-              "press-row flex h-row items-center rounded-sm px-1 text-sm focus-inset",
+              "flex h-row items-center rounded-sm px-1 text-sm press-row focus-inset",
               current ? "bg-active" : "hover:bg-hover",
             )}
           >
@@ -148,9 +149,7 @@ export function AgentsPanel() {
             >
               <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", row.expanded && "rotate-90")} />
             </button>
-            <span className="ml-1 grid size-4 shrink-0 place-items-center">
-              {!(isRoot && a.status === "idle") && <StatusIcon status={a.status} />}
-            </span>
+            <span className="ml-1 grid size-4 shrink-0 place-items-center">{!(isRoot && a.status === "idle") && <StatusIcon status={a.status} />}</span>
             <span className="ml-2 min-w-0 truncate text-fg">{isRoot ? "Orchestrator" : a.role}</span>
             {row.hidden > 0 && (
               <span className={cn("ml-2 shrink-0 text-xs tabular-nums", current ? "text-fg-2" : "text-fg-3")} title={`${row.hidden} nested agents hidden`}>

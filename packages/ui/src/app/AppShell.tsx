@@ -120,7 +120,8 @@ function Shell() {
   let main: React.ReactNode = null;
   if (health === "offline") main = <OfflineState />;
   else if (projects && projects.length === 0) main = <NoProjectsHero onCreate={newProject} />;
-  else if (route.projectId === null && projects) main = (
+  else if (route.projectId === null && projects)
+    main = (
       <Suspense fallback={null}>
         <Home onNewProject={newProject} />
       </Suspense>
@@ -147,56 +148,56 @@ function Shell() {
 
   return (
     <ShellContext.Provider value={{ sidebarOpen, toggleSidebar }}>
-    <div className="flex h-full overflow-hidden bg-window text-fg">
-      {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} onToggle={toggleSidebar} />}
-      {/* Equal gutters on every side of every panel (the sidebar card included); full-bleed on phones. */}
-      <div className="relative flex min-w-0 flex-1 flex-col p-gutter max-sm:p-0" inert={drawerShown}>
-        {workspace && route.projectId ? (
-          <ProjectProvider key={route.projectId} projectId={route.projectId}>
-            <ProjectWorkspace agentId={route.agentId} />
-          </ProjectProvider>
-        ) : (
-          <Panel className="flex-1">
-            <PanelBar />
-            <div className="min-h-0 flex-1">{main}</div>
-          </Panel>
-        )}
+      <div className="flex h-full overflow-hidden bg-window text-fg">
+        {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} onToggle={toggleSidebar} />}
+        {/* Equal gutters on every side of every panel (the sidebar card included); full-bleed on phones. */}
+        <div className="relative flex min-w-0 flex-1 flex-col p-gutter max-sm:p-0" inert={drawerShown}>
+          {workspace && route.projectId ? (
+            <ProjectProvider key={route.projectId} projectId={route.projectId}>
+              <ProjectWorkspace agentId={route.agentId} />
+            </ProjectProvider>
+          ) : (
+            <Panel className="flex-1">
+              <PanelBar />
+              <div className="min-h-0 flex-1">{main}</div>
+            </Panel>
+          )}
+        </div>
+        <Presence show={drawerShown}>
+          <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
+            <Sidebar {...sidebarProps} onToggle={() => setDrawerOpen(false)} />
+          </SidebarDrawer>
+        </Presence>
+        <Presence show={creating}>
+          <ProjectDialog
+            onClose={() => setCreating(false)}
+            onSubmit={async (input) => {
+              const project = await bridge.createProject(input);
+              await refreshProjects();
+              setCreating(false);
+              navigate(project.id);
+              // The new project's composer takes focus once the dialog is gone and the project is in.
+              focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
+            }}
+          />
+        </Presence>
+        <Presence show={settings !== null}>
+          <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
+        </Presence>
+        <Presence show={palette}>
+          <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
+        </Presence>
+        <Presence show={pending}>
+          <LeaveDialog
+            count={nav.unsavedCount()}
+            onStay={() => {
+              nav.clearPendingTurn();
+              stay();
+            }}
+            onLeave={proceed}
+          />
+        </Presence>
       </div>
-      <Presence show={drawerShown}>
-        <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
-          <Sidebar {...sidebarProps} onToggle={() => setDrawerOpen(false)} />
-        </SidebarDrawer>
-      </Presence>
-      <Presence show={creating}>
-        <ProjectDialog
-          onClose={() => setCreating(false)}
-          onSubmit={async (input) => {
-            const project = await bridge.createProject(input);
-            await refreshProjects();
-            setCreating(false);
-            navigate(project.id);
-            // The new project's composer takes focus once the dialog is gone and the project is in.
-            focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
-          }}
-        />
-      </Presence>
-      <Presence show={settings !== null}>
-        <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
-      </Presence>
-      <Presence show={palette}>
-        <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
-      </Presence>
-      <Presence show={pending}>
-        <LeaveDialog
-          count={nav.unsavedCount()}
-          onStay={() => {
-            nav.clearPendingTurn();
-            stay();
-          }}
-          onLeave={proceed}
-        />
-      </Presence>
-    </div>
     </ShellContext.Provider>
   );
 }

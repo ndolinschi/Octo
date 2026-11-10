@@ -31,7 +31,11 @@ function reveal(editor: Monaco.editor.IStandaloneCodeEditor, at: FilePosition | 
     const line = Math.min(Math.max(1, at.line), model.getLineCount());
     const end = Math.min(Math.max(line, at.endLine ?? line), model.getLineCount());
     const column = at.endLine === undefined ? Math.max(1, at.column ?? 1) : 1;
-    editor.setSelection(at.endLine === undefined ? { startLineNumber: line, startColumn: column, endLineNumber: line, endColumn: column } : { startLineNumber: line, startColumn: 1, endLineNumber: end, endColumn: model.getLineMaxColumn(end) });
+    editor.setSelection(
+      at.endLine === undefined
+        ? { startLineNumber: line, startColumn: column, endLineNumber: line, endColumn: column }
+        : { startLineNumber: line, startColumn: 1, endLineNumber: end, endColumn: model.getLineMaxColumn(end) },
+    );
     editor.revealLinesInCenterIfOutsideViewport(line, end);
     editor.focus();
   };

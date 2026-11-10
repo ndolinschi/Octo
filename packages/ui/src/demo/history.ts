@@ -66,7 +66,14 @@ export async function pastHistory(ctx: Ctx, spec: HistorySpec): Promise<void> {
           task: `${prompt} Work on \`${file}\` and report what changed.`,
           run: async (cc, id) => {
             const tools: ToolSpec[] = [{ name: "read_file", input: { path: file }, result: `// ${file}\n…`, ms: 300 }];
-            if (writes) tools.push({ name: "write_file", input: { path: file, content: `// ${file}\n` }, result: "written", ms: 300, content: `// ${file} — updated by ${role}\n` });
+            if (writes)
+              tools.push({
+                name: "write_file",
+                input: { path: file, content: `// ${file}\n` },
+                result: "written",
+                ms: 300,
+                content: `// ${file} — updated by ${role}\n`,
+              });
             await act(cc, id, tools);
             const r = writes ? `Updated \`${file}\`.` : `Read \`${file}\`; no change needed.`;
             await say(cc, id, r);
@@ -86,7 +93,12 @@ export async function ledgerShowcase(ctx: Ctx): Promise<void> {
   await turn(ctx, "Why did the EU settlement total drift by €4.12 last Tuesday? Show me the fix before you apply it.", async (c, orch) => {
     await act(c, orch, [
       { name: "read_file", input: { path: "jobs/settle.ts" }, result: "export async function settle(batch: Batch) { … }", ms: 400 },
-      { name: "bash", input: { command: "pnpm settle --region eu --date 2026-11-03 --dry-run --json" }, result: '{ "merchants": 1284, "total": "2418899.05", "mismatches": 3 }', ms: 900 },
+      {
+        name: "bash",
+        input: { command: "pnpm settle --region eu --date 2026-11-03 --dry-run --json" },
+        result: '{ "merchants": 1284, "total": "2418899.05", "mismatches": 3 }',
+        ms: 900,
+      },
     ]);
     await say(
       c,
@@ -162,13 +174,27 @@ export async function infraAcpTurn(ctx: Ctx, root: string): Promise<void> {
           task: "Read the module README and write docs/upgrade-notes.md for the node-pool v2 upgrade.",
           run: async (cc, id) => {
             await act(cc, id, [
-              { name: "read", input: { title: "Read README.md", raw_input: { path: `${root}/README.md` }, locations: [{ path: `${root}/README.md` }] }, result: "# Project\n\nAttach notes about setup here.\n", ms: 400 },
-              { name: "search", input: { title: "Search for node_pool in modules", raw_input: { pattern: "node_pool", path: `${root}/modules` } }, result: "modules/node-pool/main.tf:3", ms: 300 },
+              {
+                name: "read",
+                input: { title: "Read README.md", raw_input: { path: `${root}/README.md` }, locations: [{ path: `${root}/README.md` }] },
+                result: "# Project\n\nAttach notes about setup here.\n",
+                ms: 400,
+              },
+              {
+                name: "search",
+                input: { title: "Search for node_pool in modules", raw_input: { pattern: "node_pool", path: `${root}/modules` } },
+                result: "modules/node-pool/main.tf:3",
+                ms: 300,
+              },
             ]);
             await act(cc, id, [
               {
                 name: "edit",
-                input: { title: "Write docs/upgrade-notes.md", raw_input: { path: `${root}/docs/upgrade-notes.md` }, locations: [{ path: `${root}/docs/upgrade-notes.md`, line: 1 }] },
+                input: {
+                  title: "Write docs/upgrade-notes.md",
+                  raw_input: { path: `${root}/docs/upgrade-notes.md` },
+                  locations: [{ path: `${root}/docs/upgrade-notes.md`, line: 1 }],
+                },
                 result: "Wrote 18 lines",
                 ms: 500,
                 content: "# Node pool v2 upgrade\n\n1. Plan staging first.\n2. Drain the old pools.\n",

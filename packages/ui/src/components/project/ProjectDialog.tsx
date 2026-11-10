@@ -25,12 +25,7 @@ function isAbsolute(path: string) {
   return path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("\\\\");
 }
 
-export function ProjectDialog(props: {
-  project?: Project;
-  onClose(): void;
-  onSubmit(input: ProjectInput): Promise<void>;
-  onDelete?(): Promise<void>;
-}) {
+export function ProjectDialog(props: { project?: Project; onClose(): void; onSubmit(input: ProjectInput): Promise<void>; onDelete?(): Promise<void> }) {
   const { config } = useApp();
   const { pickFolder } = useHost();
   const editing = Boolean(props.project);
@@ -58,19 +53,12 @@ export function ProjectDialog(props: {
   const folderError = badPath ? "Use an absolute path, like /Users/you/code/repo." : null;
   const depthError = submitted && !depthOk ? "Enter a whole number from 1 to 8." : null;
 
-  const updateFolder = (key: number, patch: Partial<FolderRow>) =>
-    setFolders((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const updateFolder = (key: number, patch: Partial<FolderRow>) => setFolders((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    const firstInvalid = !name.trim()
-      ? `${id}-name`
-      : badPath
-        ? `${id}-folder-${badPath.key}`
-        : !depthOk
-          ? `${id}-depth`
-          : null;
+    const firstInvalid = !name.trim() ? `${id}-name` : badPath ? `${id}-folder-${badPath.key}` : !depthOk ? `${id}-depth` : null;
     if (firstInvalid) {
       if (firstInvalid === `${id}-depth`) setAdvanced(true);
       requestAnimationFrame(() => document.getElementById(firstInvalid)?.focus());
@@ -78,9 +66,7 @@ export function ProjectDialog(props: {
     }
     setBusy(true);
     setError(null);
-    const changedModels = Object.fromEntries(
-      (Object.keys(models) as (keyof Models)[]).filter((k) => models[k].trim()).map((k) => [k, models[k].trim()]),
-    );
+    const changedModels = Object.fromEntries((Object.keys(models) as (keyof Models)[]).filter((k) => models[k].trim()).map((k) => [k, models[k].trim()]));
     try {
       await props.onSubmit({
         name: name.trim(),
@@ -116,7 +102,7 @@ export function ProjectDialog(props: {
       footer={
         confirmDelete ? (
           <>
-            <p className="basis-full text-sm text-fg-2 max-[420px]:order-last sm:basis-0 sm:flex-1">
+            <p className="basis-full text-sm text-fg-2 max-[420px]:order-last sm:flex-1 sm:basis-0">
               Delete <span className="text-fg">{props.project?.name}</span> and its history? This can't be undone.
             </p>
             <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
@@ -158,12 +144,7 @@ export function ProjectDialog(props: {
             />
           </Field>
           <Field label="Description" htmlFor={`${id}-desc`} optional>
-            <Input
-              id={`${id}-desc`}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Payments API and webhook workers"
-            />
+            <Input id={`${id}-desc`} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Payments API and webhook workers" />
           </Field>
           <Field label="Instructions" htmlFor={`${id}-instr`} optional>
             <Textarea

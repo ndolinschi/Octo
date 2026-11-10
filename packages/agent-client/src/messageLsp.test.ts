@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BridgeError, type Bridge } from "./client";
-import {
-  createMessageClient,
-  isClientMessage,
-  isHostMessage,
-  serveBridge,
-  type MessagePortLike,
-} from "./messageBridge";
+import { createMessageClient, isClientMessage, isHostMessage, serveBridge, type MessagePortLike } from "./messageBridge";
 import { createLspChannel } from "./lspChannel";
 import type { LanguageServerExit, LanguageServerSession } from "./types";
 
@@ -132,7 +126,10 @@ test("host dispose closes every session", async () => {
   await client.bridge.openLanguageServer("p", "b");
   server.dispose();
   await tick();
-  assert.deepEqual(fakes.map((f) => f.closed), [1, 1]);
+  assert.deepEqual(
+    fakes.map((f) => f.closed),
+    [1, 1],
+  );
 });
 
 test("client dispose rejects a pending open", async () => {

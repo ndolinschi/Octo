@@ -85,7 +85,10 @@ function hitTest(ws: WorkspaceValue, tab: TabId, x: number, y: number): { target
     }
     const into: DropTarget = { kind: "into", group };
     if (!ws.canDrop(tab, into)) return null;
-    return { target: into, indicator: { shape: "zone", left: body.left + INSET, top: body.top + INSET, width: body.width - INSET * 2, height: body.height - INSET * 2 } };
+    return {
+      target: into,
+      indicator: { shape: "zone", left: body.left + INSET, top: body.top + INSET, width: body.width - INSET * 2, height: body.height - INSET * 2 },
+    };
   }
   return null;
 }

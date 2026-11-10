@@ -36,7 +36,7 @@ export function StarterPrompts({ project, onPick }: { project: Project; onPick(t
             onClick={() => onPick(p.text)}
             title={p.text}
             aria-description={p.text}
-            className="press-row flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-hover"
+            className="flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-left text-sm press-row hover:bg-hover"
           >
             <span className="shrink-0 text-fg">{p.title}</span>
             <span className="min-w-0 flex-1 truncate text-fg-3">{p.text}</span>

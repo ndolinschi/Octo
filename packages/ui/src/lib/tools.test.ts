@@ -24,14 +24,22 @@ test("locations map to the deepest project folder", () => {
 
 test("written files: write_file and ACP edits that did not fail", () => {
   const msgs = [
-    { agent_id: "a", role: "assistant", created_at: "2026-11-10T10:00:00Z", content: [
-      { type: "tool_use", id: "1", name: "write_file", input: { path: "./src/a.ts" } },
-      { type: "tool_use", id: "2", name: "write_file", input: { folder: "web", path: "b.ts" } },
-      { type: "tool_use", id: "3", name: "edit", input: { title: "Write c.md", locations: [{ path: "/Users/maya/code/infra/c.md" }] } },
-      { type: "tool_use", id: "4", name: "read", input: { title: "Read d.md", locations: [{ path: "/Users/maya/code/infra/d.md" }] } },
-      { type: "tool_use", id: "5", name: "write_file", input: { path: "fails.ts" } },
-    ] },
+    {
+      agent_id: "a",
+      role: "assistant",
+      created_at: "2026-11-10T10:00:00Z",
+      content: [
+        { type: "tool_use", id: "1", name: "write_file", input: { path: "./src/a.ts" } },
+        { type: "tool_use", id: "2", name: "write_file", input: { folder: "web", path: "b.ts" } },
+        { type: "tool_use", id: "3", name: "edit", input: { title: "Write c.md", locations: [{ path: "/Users/maya/code/infra/c.md" }] } },
+        { type: "tool_use", id: "4", name: "read", input: { title: "Read d.md", locations: [{ path: "/Users/maya/code/infra/d.md" }] } },
+        { type: "tool_use", id: "5", name: "write_file", input: { path: "fails.ts" } },
+      ],
+    },
     { agent_id: "a", role: "user", created_at: "2026-11-10T10:00:01Z", content: [{ type: "tool_result", tool_use_id: "5", content: "x", is_error: true }] },
   ];
-  assert.deepEqual(writtenFiles(msgs, folders).map((w) => `${w.folder}/${w.path}`), ["infra/src/a.ts", "web/b.ts", "infra/c.md"]);
+  assert.deepEqual(
+    writtenFiles(msgs, folders).map((w) => `${w.folder}/${w.path}`),
+    ["infra/src/a.ts", "web/b.ts", "infra/c.md"],
+  );
 });

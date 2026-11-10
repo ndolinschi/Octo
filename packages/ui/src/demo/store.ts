@@ -50,14 +50,7 @@ export function clone<T>(value: T): T {
 }
 
 /** Writes a demo file and announces it like the harness does after a save or an agent write. */
-export function writeDemoFile(
-  rec: ProjectRecord,
-  folder: string,
-  path: string,
-  content: string,
-  source: "user" | "agent",
-  at = Date.now(),
-): DemoFile {
+export function writeDemoFile(rec: ProjectRecord, folder: string, path: string, content: string, source: "user" | "agent", at = Date.now()): DemoFile {
   const tree = rec.files.get(folder) ?? new Map<string, DemoFile>();
   rec.files.set(folder, tree);
   const previous = tree.get(path);

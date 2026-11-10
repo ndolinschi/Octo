@@ -19,7 +19,8 @@ export function useFloatingHere(tab: TabId): boolean {
   return focusedGroup(ws.layout).active === tab && !ws.isVisible(CHAT);
 }
 
-const CHIP = "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs text-fg-2 tabular-nums shadow-float octo-ring-float hover:text-fg";
+const CHIP =
+  "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs text-fg-2 tabular-nums shadow-float octo-ring-float hover:text-fg";
 
 /**
  * The orchestrator composer floating over a file view (or Agents / Notes) while no Chat tab is visible:
@@ -88,7 +89,12 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
   const chips = turn !== null || agentsRunning > 0 || composer.commentCount > 0;
 
   return (
-    <div data-floating-composer role="region" aria-label="Floating composer" className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center">
+    <div
+      data-floating-composer
+      role="region"
+      aria-label="Floating composer"
+      className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center"
+    >
       <div ref={root} className="pointer-events-auto w-full max-w-float">
         {chips && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -120,4 +126,3 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
     </div>
   );
 }
-

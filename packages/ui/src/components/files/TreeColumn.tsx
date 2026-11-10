@@ -52,10 +52,7 @@ export function TreeColumn(props: { id: string; tab: TabId; overlay: boolean; ma
       id={props.id}
       aria-label="File tree"
       style={{ width }}
-      className={cn(
-        "flex shrink-0 flex-col border-l border-line bg-panel",
-        props.overlay ? "absolute inset-y-0 right-0 z-20 shadow-pop" : "relative",
-      )}
+      className={cn("flex shrink-0 flex-col border-l border-line bg-panel", props.overlay ? "absolute inset-y-0 right-0 z-20 shadow-pop" : "relative")}
     >
       <ResizeHandle width={width} max={props.maxWidth} />
       <div className="flex h-bar shrink-0 items-center px-2">
@@ -83,7 +80,7 @@ export function TreeColumn(props: { id: string; tab: TabId; overlay: boolean; ma
                 setFilter("");
                 input.current?.focus();
               }}
-              className="press relative -mr-1 grid size-5 shrink-0 place-items-center rounded-2xs text-fg-3 before:absolute before:-inset-0.5 before:content-[''] hover:bg-hover hover:text-fg"
+              className="relative -mr-1 grid size-5 shrink-0 press place-items-center rounded-2xs text-fg-3 before:absolute before:-inset-0.5 before:content-[''] hover:bg-hover hover:text-fg"
             >
               <Glyph icon={X} size={14} />
             </button>
@@ -94,7 +91,11 @@ export function TreeColumn(props: { id: string; tab: TabId; overlay: boolean; ma
         {active && fileIndex.status === "done" && fileIndex.partial && (
           <p className="flex h-row items-center px-2 text-xs text-fg-3">Showing matches in loaded folders</p>
         )}
-        {active && fileIndex.status === "loading" && <p className="sr-only" role="status">Searching folders…</p>}
+        {active && fileIndex.status === "loading" && (
+          <p className="sr-only" role="status">
+            Searching folders…
+          </p>
+        )}
         <FileTree ref={tree} folders={code.folders} filter={filter} onOpenFile={props.onOpenFile} onExitTop={() => input.current?.focus()} />
       </div>
     </aside>
@@ -117,7 +118,16 @@ function ResizeHandle({ width, max }: { width: number; max: number }) {
   };
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const step = e.shiftKey ? 64 : 16;
-    const next = e.key === "ArrowLeft" ? width + step : e.key === "ArrowRight" ? width - step : e.key === "Home" ? TREE_MIN : e.key === "End" ? Math.min(max, TREE_MAX) : null;
+    const next =
+      e.key === "ArrowLeft"
+        ? width + step
+        : e.key === "ArrowRight"
+          ? width - step
+          : e.key === "Home"
+            ? TREE_MIN
+            : e.key === "End"
+              ? Math.min(max, TREE_MAX)
+              : null;
     if (next === null) return;
     e.preventDefault();
     fv.setTreeWidth(Math.min(max, next));
@@ -140,7 +150,10 @@ function ResizeHandle({ width, max }: { width: number; max: number }) {
       onKeyDown={onKeyDown}
       className="group/handle absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none focus-visible:shadow-none"
     >
-      <span aria-hidden className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-[background-color] duration-100 group-hover/handle:bg-line-strong group-focus-visible/handle:bg-focus" />
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-[background-color] duration-100 group-hover/handle:bg-line-strong group-focus-visible/handle:bg-focus"
+      />
     </div>
   );
 }

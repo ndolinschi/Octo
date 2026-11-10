@@ -23,9 +23,33 @@ const KIND_ICON: Record<Kind, LucideIcon> = { server: Server, agent: GLYPH.agent
 
 function itemsOf(plugins: Plugin[]): Item[] {
   return plugins.flatMap((p) => [
-    ...p.language_servers.map((s): Item => ({ key: `${p.name}/ls/${s.id}`, kind: "server", name: s.label, detail: s.languages.join(", "), plugin: p.name, available: s.available, mono: false })),
-    ...p.agents.map((a): Item => ({ key: `${p.name}/agent/${a.id}`, kind: "agent", name: a.label, detail: `acp:${a.id}`, plugin: p.name, available: a.available, mono: true })),
-    ...p.tool_servers.map((t, i): Item => ({ key: `${p.name}/tool/${i}`, kind: "tool", name: t.url.replace(/^https?:\/\//, ""), detail: t.url.startsWith("https") ? "Tool server, HTTPS" : "Tool server", plugin: p.name, available: null, mono: true })),
+    ...p.language_servers.map((s): Item => ({
+      key: `${p.name}/ls/${s.id}`,
+      kind: "server",
+      name: s.label,
+      detail: s.languages.join(", "),
+      plugin: p.name,
+      available: s.available,
+      mono: false,
+    })),
+    ...p.agents.map((a): Item => ({
+      key: `${p.name}/agent/${a.id}`,
+      kind: "agent",
+      name: a.label,
+      detail: `acp:${a.id}`,
+      plugin: p.name,
+      available: a.available,
+      mono: true,
+    })),
+    ...p.tool_servers.map((t, i): Item => ({
+      key: `${p.name}/tool/${i}`,
+      kind: "tool",
+      name: t.url.replace(/^https?:\/\//, ""),
+      detail: t.url.startsWith("https") ? "Tool server, HTTPS" : "Tool server",
+      plugin: p.name,
+      available: null,
+      mono: true,
+    })),
   ]);
 }
 
@@ -114,7 +138,10 @@ export function IntegrationsView() {
                 type="button"
                 aria-pressed={on}
                 onClick={() => setKind(k.kind)}
-                className={cn("press flex h-chip items-center gap-1.5 rounded-sm border px-2 text-xs", on ? "border-transparent bg-active text-fg" : "border-line text-fg-2 hover:bg-hover hover:text-fg")}
+                className={cn(
+                  "flex h-chip press items-center gap-1.5 rounded-sm border px-2 text-xs",
+                  on ? "border-transparent bg-active text-fg" : "border-line text-fg-2 hover:bg-hover hover:text-fg",
+                )}
               >
                 {k.label}
                 <span className="text-fg-3 tabular-nums">{count}</span>
@@ -143,7 +170,11 @@ export function IntegrationsView() {
               ...rows.map((i) => <IntegrationRow key={i.key} item={i} />),
               ...(errors.length
                 ? [
-                    <li key={`${p.name}/errors`} aria-label={`Problems in ${p.name} ${p.version}`} className="col-span-2 flex flex-col gap-1 px-1.5 pt-1 pb-2 max-[560px]:col-span-1">
+                    <li
+                      key={`${p.name}/errors`}
+                      aria-label={`Problems in ${p.name} ${p.version}`}
+                      className="col-span-2 flex flex-col gap-1 px-1.5 pt-1 pb-2 max-[560px]:col-span-1"
+                    >
                       {errors.map((e, n) => (
                         <p key={n} className="flex items-start gap-2 text-xs text-err">
                           <span className="grid h-4 shrink-0 place-items-center">
@@ -162,14 +193,13 @@ export function IntegrationsView() {
         </ul>
       )}
       {problems.length > 0 && (kind !== "all" || q) && (
-        <p className="text-xs text-err">
-          {problems.reduce((n, p) => n + p.errors.length, 0)}&nbsp;manifest problems (shown under All)
-        </p>
+        <p className="text-xs text-err">{problems.reduce((n, p) => n + p.errors.length, 0)}&nbsp;manifest problems (shown under All)</p>
       )}
 
       <p className="border-t border-line pt-3 text-xs text-fg-3">
-        To add one, put a folder with a <code className="font-mono text-fg-2">plugin.json</code> in <code className="font-mono text-fg-2">{"{data-dir}"}/plugins/</code> or
-        a directory passed with <code className="font-mono whitespace-nowrap text-fg-2">--plugins-dir</code>, then restart the harness.
+        To add one, put a folder with a <code className="font-mono text-fg-2">plugin.json</code> in{" "}
+        <code className="font-mono text-fg-2">{"{data-dir}"}/plugins/</code> or a directory passed with{" "}
+        <code className="font-mono whitespace-nowrap text-fg-2">--plugins-dir</code>, then restart the harness.
       </p>
     </div>
   );
@@ -179,7 +209,11 @@ export function IntegrationsView() {
 function IntegrationRow({ item: i }: { item: Item }) {
   const Icon = KIND_ICON[i.kind];
   return (
-    <li data-row className="flex h-bar min-w-0 items-center gap-2 rounded-sm px-1.5" title={i.kind === "tool" ? `${i.plugin}: ${i.name}` : `${i.name} — ${i.detail} (${i.plugin})`}>
+    <li
+      data-row
+      className="flex h-bar min-w-0 items-center gap-2 rounded-sm px-1.5"
+      title={i.kind === "tool" ? `${i.plugin}: ${i.name}` : `${i.name} — ${i.detail} (${i.plugin})`}
+    >
       <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-sm bg-hover text-fg-2">
         <Glyph icon={Icon} size={14} />
       </span>
@@ -204,9 +238,14 @@ function IntegrationRow({ item: i }: { item: Item }) {
 
 function State({ available }: { available: boolean }) {
   return (
-    <span className={cn("ml-auto flex shrink-0 items-center gap-1.5 text-xs", available ? "text-fg-3" : "text-fg-2")} title={available ? "Available" : "Not found on this machine"}>
+    <span
+      className={cn("ml-auto flex shrink-0 items-center gap-1.5 text-xs", available ? "text-fg-3" : "text-fg-2")}
+      title={available ? "Available" : "Not found on this machine"}
+    >
       <span aria-hidden className={cn("size-1.5 rounded-full", available ? "bg-ok" : "border border-fg-3")} />
-      {available ? "Available" : (
+      {available ? (
+        "Available"
+      ) : (
         <>
           Not found<span className="sr-only"> on this machine</span>
         </>

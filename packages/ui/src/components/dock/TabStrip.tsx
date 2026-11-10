@@ -115,7 +115,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
         onWheel={(e) => {
           if (list.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) list.current.scrollLeft += e.deltaY;
         }}
-        className="fade-x flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto fade-x"
       >
         {props.tabs.map((tab, i) => {
           const info = tabInfo(tab, ctx);
@@ -147,7 +147,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 openMenuAt(tab, e.clientX, e.clientY);
               }}
               className={cn(
-                "group/tab press-row relative flex h-row w-max max-w-[200px] min-w-24 shrink-0 items-center rounded-sm",
+                "group/tab relative flex h-row w-max max-w-[200px] min-w-24 shrink-0 items-center rounded-sm press-row",
                 selected ? (props.focused ? "bg-active text-fg" : "bg-hover text-fg") : "text-fg-3 hover:bg-hover hover:text-fg-2",
                 drag?.tab === tab && "opacity-50",
               )}
@@ -178,37 +178,39 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 {info.status === "running" && <span className="sr-only"> (working)</span>}
               </button>
               {/* Trailing slot: a 16px box 8px from the edge, mirroring the leading icon slot. */}
-              {trailing && <span className="relative mr-2 grid size-4 shrink-0 place-items-center">
-                {info.status && (
-                  <span
-                    aria-hidden
-                    data-testid={info.status === "modified" ? "modified-dot" : undefined}
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      info.status === "running" ? "bg-accent" : "bg-fg-2",
-                      canClose && "group-focus-within/tab:invisible group-hover/tab:invisible",
-                    )}
-                  />
-                )}
-                {canClose && (
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    aria-label={`Close ${info.name ?? info.label}`}
-                    title={`Close ${info.label}`}
-                    data-shortcut={`${MOD}W`}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => ws.requestClose([tab])}
-                    className={cn(
-                      // 16px glyph box, 24px hit area (the ::before overhangs by 4px).
-                      "absolute inset-0 grid place-items-center rounded-sm text-fg-3 before:absolute before:-inset-1 before:content-[''] hover:bg-hover hover:text-fg",
-                      selected && !info.status ? "" : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
-                    )}
-                  >
-                    <Glyph icon={X} size={14} />
-                  </button>
-                )}
-              </span>}
+              {trailing && (
+                <span className="relative mr-2 grid size-4 shrink-0 place-items-center">
+                  {info.status && (
+                    <span
+                      aria-hidden
+                      data-testid={info.status === "modified" ? "modified-dot" : undefined}
+                      className={cn(
+                        "size-1.5 rounded-full",
+                        info.status === "running" ? "bg-accent" : "bg-fg-2",
+                        canClose && "group-focus-within/tab:invisible group-hover/tab:invisible",
+                      )}
+                    />
+                  )}
+                  {canClose && (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label={`Close ${info.name ?? info.label}`}
+                      title={`Close ${info.label}`}
+                      data-shortcut={`${MOD}W`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => ws.requestClose([tab])}
+                      className={cn(
+                        // 16px glyph box, 24px hit area (the ::before overhangs by 4px).
+                        "absolute inset-0 grid place-items-center rounded-sm text-fg-3 before:absolute before:-inset-1 before:content-[''] hover:bg-hover hover:text-fg",
+                        selected && !info.status ? "" : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
+                      )}
+                    >
+                      <Glyph icon={X} size={14} />
+                    </button>
+                  )}
+                </span>
+              )}
             </div>
           );
         })}

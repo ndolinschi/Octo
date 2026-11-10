@@ -11,10 +11,7 @@ import { FloatRoom } from "../primitives/floatRoom";
 export function NotesPanel() {
   const { state, createNote, updateNote, deleteNote } = useProject();
   const [editing, setEditing] = useState<string | "new" | null>(null);
-  const notes = useMemo(
-    () => [...state.notes].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)),
-    [state.notes],
-  );
+  const notes = useMemo(() => [...state.notes].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)), [state.notes]);
   const now = Date.now();
 
   return (
@@ -88,12 +85,7 @@ function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): 
           {formatRelative(note.updated_at, props.now)}
         </time>
       </p>
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        aria-expanded={expanded}
-        className="mt-1 block w-full rounded-sm text-left"
-      >
+      <button type="button" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded} className="mt-1 block w-full rounded-sm text-left">
         {expanded ? (
           <Markdown text={note.content} className="octo-prose octo-prose-sm" />
         ) : (
@@ -117,11 +109,7 @@ function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): 
   );
 }
 
-function NoteEditor(props: {
-  note?: Note;
-  onCancel(): void;
-  onSave(input: { title: string; content: string }): Promise<void>;
-}) {
+function NoteEditor(props: { note?: Note; onCancel(): void; onSave(input: { title: string; content: string }): Promise<void> }) {
   const [title, setTitle] = useState(props.note?.title ?? "");
   const [content, setContent] = useState(props.note?.content ?? "");
   const [error, setError] = useState<string | null>(null);

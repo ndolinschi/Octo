@@ -51,8 +51,8 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
         onClick={() => setOpen((x) => !x)}
         className={cn(
           chip
-            ? "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs tabular-nums shadow-float octo-ring-float hover:text-fg"
-            : "press flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-2 text-xs tabular-nums hover:bg-hover hover:text-fg",
+            ? "octo-ring-float flex h-6 shrink-0 press items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs tabular-nums shadow-float hover:text-fg"
+            : "flex h-6 shrink-0 press items-center gap-1.5 rounded-sm px-2 text-xs tabular-nums hover:bg-hover hover:text-fg",
           open ? (chip ? "text-fg" : "bg-active text-fg") : "text-fg-2",
         )}
       >
@@ -65,7 +65,9 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
           edge={() => anchor.current?.closest<HTMLElement>("[data-composer], [data-floating-composer]") ?? null}
           label="Pending comments"
           side="top"
-          onClose={() => setOpen(false)} className="w-[min(380px,calc(100vw-16px))]">
+          onClose={() => setOpen(false)}
+          className="w-[min(380px,calc(100vw-16px))]"
+        >
           <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-2">
             <p className="min-w-0 flex-1 truncate px-2 text-xs text-fg-3">Sent with your next message</p>
             <button
@@ -74,7 +76,7 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
                 store.removeAll();
                 setOpen(false);
               }}
-              className="press h-6 shrink-0 rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg"
+              className="h-6 shrink-0 press rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg"
             >
               Remove all
             </button>
@@ -99,9 +101,11 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
                           store.reveal(c);
                         }}
                         aria-label={`Go to ${linesLabel(c.start, c.end)} of ${fileName(c.path)}: ${c.text}`}
-                        className="press-row flex h-row-nav w-full items-center gap-3 rounded-sm px-2 text-left hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
+                        className="flex h-row-nav w-full items-center gap-3 rounded-sm px-2 text-left press-row hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
                       >
-                        <span className="w-[72px] shrink-0 text-xs whitespace-nowrap text-fg-3 tabular-nums">{linesLabel(c.start, c.end).replace(/^l/, "L")}</span>
+                        <span className="w-[72px] shrink-0 text-xs whitespace-nowrap text-fg-3 tabular-nums">
+                          {linesLabel(c.start, c.end).replace(/^l/, "L")}
+                        </span>
                         <span className="min-w-0 flex-1 truncate text-sm text-fg">{c.text.split("\n", 1)[0]}</span>
                         {/* Room for the remove button that sits over the row's end. */}
                         <span aria-hidden className="w-6 shrink-0" />
@@ -111,7 +115,7 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
                         aria-label={`Remove comment on ${linesLabel(c.start, c.end)} of ${fileName(c.path)}`}
                         title="Remove comment"
                         onClick={() => store.remove(c.id)}
-                        className="press absolute top-1 right-1 grid size-6 place-items-center rounded-sm text-fg-3 opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                        className="absolute top-1 right-1 grid size-6 press place-items-center rounded-sm text-fg-3 opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                       >
                         <Glyph icon={X} size={14} />
                       </button>

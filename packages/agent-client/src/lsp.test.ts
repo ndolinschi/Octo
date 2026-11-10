@@ -25,8 +25,7 @@ class FakeEventSource implements EventSourceLike {
   }
 }
 
-const CREATED =
-  '{"session_id":"s 1","root_uri":"file:///w","workspace_folders":[{"uri":"file:///w","name":"w"}]}';
+const CREATED = '{"session_id":"s 1","root_uri":"file:///w","workspace_folders":[{"uri":"file:///w","name":"w"}]}';
 
 function setup(replies: Record<string, [number, string]> = {}) {
   const calls: Call[] = [];
@@ -90,10 +89,7 @@ test("send posts one JSON-RPC message", async () => {
 
 test("send maps server errors to BridgeError", async () => {
   const { session } = await open({
-    "POST http://h/v1/projects/p/lsp/sessions/s%201/messages": [
-      413,
-      '{"error":{"code":"message_too_large","message":"too big"}}',
-    ],
+    "POST http://h/v1/projects/p/lsp/sessions/s%201/messages": [413, '{"error":{"code":"message_too_large","message":"too big"}}'],
   });
   await assert.rejects(session.send({}), (e: unknown) => {
     assert.ok(e instanceof BridgeError);
@@ -153,10 +149,7 @@ test("unavailable server maps to BridgeError and opens no stream", async () => {
 
 test("malformed create response is invalid_response", async () => {
   const { bridge } = setup({ [CREATE_KEY]: [201, '{"session_id":"s"}'] });
-  await assert.rejects(
-    bridge.openLanguageServer("p", "gopls"),
-    (e: unknown) => e instanceof BridgeError && e.code === "invalid_response",
-  );
+  await assert.rejects(bridge.openLanguageServer("p", "gopls"), (e: unknown) => e instanceof BridgeError && e.code === "invalid_response");
 });
 
 test("session satisfies the public type", async () => {

@@ -233,7 +233,10 @@ export class LspManager implements IntelClient {
     if (!uri) return null;
     const existing = this.o.monaco.editor.getModel(uri);
     if (existing) return existing;
-    const content = await this.o.bridge.readFile(this.o.projectId, folder, path).then((f) => f.content, () => null);
+    const content = await this.o.bridge.readFile(this.o.projectId, folder, path).then(
+      (f) => f.content,
+      () => null,
+    );
     if (content === null || this.disposed) return null;
     const model = this.o.monaco.editor.getModel(uri) ?? this.o.monaco.editor.createModel(content, undefined, uri);
     this.peeks.add(model);

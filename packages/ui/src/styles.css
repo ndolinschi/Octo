@@ -299,13 +299,19 @@
 /* Controls that carry their own elevation shadow (chips, Jump to latest, the comment "+"): the focus ring is
    composed with it, never replaced by it (unlayered, so it wins over the shadow utility). */
 .octo-ring-float:focus-visible {
-  box-shadow: 0 0 0 2px var(--octo-focus), var(--octo-shadow-float);
+  box-shadow:
+    0 0 0 2px var(--octo-focus),
+    var(--octo-shadow-float);
 }
 .octo-ring-pop:focus-visible {
-  box-shadow: 0 0 0 2px var(--octo-focus), var(--octo-shadow-pop);
+  box-shadow:
+    0 0 0 2px var(--octo-focus),
+    var(--octo-shadow-pop);
 }
 .octo-ring-panel:focus-visible {
-  box-shadow: 0 0 0 2px var(--octo-focus), var(--octo-shadow-panel);
+  box-shadow:
+    0 0 0 2px var(--octo-focus),
+    var(--octo-shadow-panel);
 }
 
 /* Under the pinned prompt: 8px of panel, then an ease-in fade (content reappears from ~0%, so a line passing

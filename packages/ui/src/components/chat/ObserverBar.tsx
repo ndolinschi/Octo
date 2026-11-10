@@ -28,7 +28,7 @@ export function ObserverBar() {
             e.preventDefault();
             ws.focusChat();
           }}
-          className="press inline-flex h-7 shrink-0 items-center gap-2 rounded-sm px-2 text-fg hover:bg-hover @max-[360px]/obs:w-7 @max-[360px]/obs:justify-center @max-[360px]/obs:px-0"
+          className="inline-flex h-7 shrink-0 press items-center gap-2 rounded-sm px-2 text-fg hover:bg-hover @max-[360px]/obs:w-7 @max-[360px]/obs:justify-center @max-[360px]/obs:px-0"
         >
           <Glyph icon={ArrowLeft} size={16} className="hidden @max-[360px]/obs:block" />
           <span className="@max-[360px]/obs:hidden">Back to orchestrator</span>

@@ -48,8 +48,7 @@ function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
 function addMessage(state: ProjectState, message: Message): ProjectState {
   const list = state.messages[message.agent_id] ?? [];
   const next = list.some((m) => m.id === message.id) ? list : mergeMessages(list, [message]);
-  const streaming =
-    message.role === "assistant" ? omitKey(state.streaming, message.agent_id) : state.streaming;
+  const streaming = message.role === "assistant" ? omitKey(state.streaming, message.agent_id) : state.streaming;
   return { ...state, messages: { ...state.messages, [message.agent_id]: next }, streaming };
 }
 
@@ -96,9 +95,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "note.changed":
       return {
         ...state,
-        notes: event.note
-          ? upsertNote(state.notes, event.note)
-          : state.notes.filter((n) => n.id !== event.note_id),
+        notes: event.note ? upsertNote(state.notes, event.note) : state.notes.filter((n) => n.id !== event.note_id),
       };
     case "turn.finished":
       return {
@@ -131,11 +128,7 @@ export function withAgents(state: ProjectState, agents: Agent[]): ProjectState {
   };
 }
 
-export function withMessages(
-  state: ProjectState,
-  agentId: string,
-  messages: Message[],
-): ProjectState {
+export function withMessages(state: ProjectState, agentId: string, messages: Message[]): ProjectState {
   const merged = mergeMessages(state.messages[agentId] ?? [], messages);
   return { ...state, messages: { ...state.messages, [agentId]: merged } };
 }
@@ -145,9 +138,7 @@ export function withNotes(state: ProjectState, notes: Note[]): ProjectState {
 }
 
 export function childrenOf(state: ProjectState, agentId: string): Agent[] {
-  return state.agentOrder
-    .map((id) => state.agents[id])
-    .filter((a): a is Agent => a !== undefined && a.parent_id === agentId);
+  return state.agentOrder.map((id) => state.agents[id]).filter((a): a is Agent => a !== undefined && a.parent_id === agentId);
 }
 
 export function ancestorsOf(state: ProjectState, agentId: string): Agent[] {
@@ -169,16 +160,10 @@ export function agentBySpawnToolUse(state: ProjectState, toolUseId: string): Age
 }
 
 export function descendantCount(state: ProjectState, agentId: string): number {
-  return childrenOf(state, agentId).reduce(
-    (sum, child) => sum + 1 + descendantCount(state, child.id),
-    0,
-  );
+  return childrenOf(state, agentId).reduce((sum, child) => sum + 1 + descendantCount(state, child.id), 0);
 }
 
-export function toolResultFor(
-  messages: Message[],
-  toolUseId: string,
-): Extract<ContentBlock, { type: "tool_result" }> | undefined {
+export function toolResultFor(messages: Message[], toolUseId: string): Extract<ContentBlock, { type: "tool_result" }> | undefined {
   for (const message of messages) {
     for (const block of message.content) {
       if (block.type === "tool_result" && block.tool_use_id === toolUseId) return block;

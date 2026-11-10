@@ -18,18 +18,28 @@ const words = (list: string) => new Set(list.split(" "));
 const JS_KEYWORDS = words(
   "abstract as async await break case catch class const continue debugger declare default delete do else enum export extends false finally for from function get if implements import in infer instanceof interface is keyof let namespace new null of package private protected public readonly return satisfies set static super switch this throw true try type typeof undefined var void while with yield",
 );
-const GO_KEYWORDS = words("break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false iota");
-const GO_TYPES = words("bool byte complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string uint uint8 uint16 uint32 uint64 uintptr any");
-const PY_KEYWORDS = words("and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield match case self");
-const RS_KEYWORDS = words("as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while");
+const GO_KEYWORDS = words(
+  "break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false iota",
+);
+const GO_TYPES = words(
+  "bool byte complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string uint uint8 uint16 uint32 uint64 uintptr any",
+);
+const PY_KEYWORDS = words(
+  "and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield match case self",
+);
+const RS_KEYWORDS = words(
+  "as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while",
+);
 const RS_TYPES = words("bool char f32 f64 i8 i16 i32 i64 i128 isize str u8 u16 u32 u64 u128 usize String Vec Option Result Box");
 const SH_KEYWORDS = words("if then else elif fi for while until do done case esac in function return export local readonly set unset source alias");
 const SQL_KEYWORDS = words(
   "select from where and or not insert into values update set delete create table index view drop alter add column primary key foreign references join left right inner outer on as group by order having limit offset distinct union all null is in exists like between case when then else end returning with count sum avg min max",
 );
 
-const ident = (keywords: Set<string>, types?: Set<string>, pascalIsType = true) => (m: string): TokenKind =>
-  keywords.has(m) ? "keyword" : types?.has(m) ? "type" : pascalIsType && /^[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*$/.test(m) ? "type" : "plain";
+const ident =
+  (keywords: Set<string>, types?: Set<string>, pascalIsType = true) =>
+  (m: string): TokenKind =>
+    keywords.has(m) ? "keyword" : types?.has(m) ? "type" : pascalIsType && /^[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*$/.test(m) ? "type" : "plain";
 
 const NUMBER: Rule = [/\b(?:0[xX][\da-fA-F_]+|0[bB][01_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?n?)\b/y, "number"];
 const PUNCT: Rule = [/[{}()[\];,.:]/y, "muted"];
@@ -160,11 +170,33 @@ const LANGS: Record<string, Rule[]> = {
 };
 
 const ALIASES: Record<string, string> = {
-  typescript: "ts", tsx: "ts", js: "ts", jsx: "ts", javascript: "ts", mjs: "ts", cjs: "ts",
-  golang: "go", jsonc: "json", json5: "json",
-  sh: "bash", shell: "bash", zsh: "bash", console: "bash", shellscript: "bash",
-  py: "python", rs: "rust", scss: "css", less: "css", yml: "yaml", xml: "html", svg: "html", vue: "html",
-  postgres: "sql", postgresql: "sql", psql: "sql", patch: "diff",
+  typescript: "ts",
+  tsx: "ts",
+  js: "ts",
+  jsx: "ts",
+  javascript: "ts",
+  mjs: "ts",
+  cjs: "ts",
+  golang: "go",
+  jsonc: "json",
+  json5: "json",
+  sh: "bash",
+  shell: "bash",
+  zsh: "bash",
+  console: "bash",
+  shellscript: "bash",
+  py: "python",
+  rs: "rust",
+  scss: "css",
+  less: "css",
+  yml: "yaml",
+  xml: "html",
+  svg: "html",
+  vue: "html",
+  postgres: "sql",
+  postgresql: "sql",
+  psql: "sql",
+  patch: "diff",
 };
 
 /** The language a fence names, if we colour it. */
@@ -185,7 +217,15 @@ function push(out: Token[], text: string, kind: TokenKind) {
 function diff(code: string): Token[] {
   const out: Token[] = [];
   code.split(/(?<=\n)/).forEach((line) => {
-    const kind: TokenKind = /^(?:\+\+\+|---|diff |index )/.test(line) ? "strong" : line.startsWith("@@") ? "keyword" : line.startsWith("+") ? "added" : line.startsWith("-") ? "removed" : "plain";
+    const kind: TokenKind = /^(?:\+\+\+|---|diff |index )/.test(line)
+      ? "strong"
+      : line.startsWith("@@")
+        ? "keyword"
+        : line.startsWith("+")
+          ? "added"
+          : line.startsWith("-")
+            ? "removed"
+            : "plain";
     push(out, line, kind);
   });
   return out;

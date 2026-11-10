@@ -76,7 +76,10 @@ function Empty({ children = "No activity yet" }: { children?: ReactNode }) {
 function RecentProjects({ data, now, onNewProject }: { data: ReturnType<typeof useOverview>; now: number; onNewProject(): void }) {
   const { health } = useApp();
   const list = useRef<HTMLDivElement>(null);
-  const projects = useMemo(() => [...(data.projects ?? [])].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)).slice(0, RECENT_PROJECTS), [data.projects]);
+  const projects = useMemo(
+    () => [...(data.projects ?? [])].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)).slice(0, RECENT_PROJECTS),
+    [data.projects],
+  );
   const last = (id: string) => data.requests.all.find((r) => r.project.id === id);
   // ↑/↓ move between the rows (Enter opens: they are buttons).
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -104,7 +107,13 @@ function RecentProjects({ data, now, onNewProject }: { data: ReturnType<typeof u
           </button>
         );
       })}
-      <button type="button" data-row onClick={onNewProject} disabled={health !== "online"} className={cn(INFO_ROW_BUTTON, "h-row-nav text-fg-2 disabled:text-fg-3")}>
+      <button
+        type="button"
+        data-row
+        onClick={onNewProject}
+        disabled={health !== "online"}
+        className={cn(INFO_ROW_BUTTON, "h-row-nav text-fg-2 disabled:text-fg-3")}
+      >
         <Glyph icon={Plus} size={16} className="shrink-0 text-fg-3" />
         New project
       </button>
@@ -117,11 +126,23 @@ function RecentProjects({ data, now, onNewProject }: { data: ReturnType<typeof u
 const TONES = ["bg-hover", "octo-heat-1", "octo-heat-2", "octo-heat-3", "octo-heat-4"] as const;
 
 function ActivityCard({ agents, requests, now }: { agents: ProjectAgents[] | null; requests: RecentRequest[] | null; now: number }) {
-  const heat = useMemo(() => (agents && requests ? heatCounts(agents, requests.map((r) => Date.parse(r.created_at)), now) : null), [agents, requests, now]);
+  const heat = useMemo(
+    () =>
+      agents && requests
+        ? heatCounts(
+            agents,
+            requests.map((r) => Date.parse(r.created_at)),
+            now,
+          )
+        : null,
+    [agents, requests, now],
+  );
   const max = heat ? Math.max(1, ...heat.days.map((d) => d.count)) : 1;
   const tone = (n: number) => (n === 0 ? 0 : Math.min(4, 1 + Math.floor(((n - 1) / max) * 4)));
   const first = heat?.days[0]?.at;
-  const range = first ? `${new Date(first).toLocaleDateString(undefined, { month: "short" })} – ${new Date(now).toLocaleDateString(undefined, { month: "short" })}` : "";
+  const range = first
+    ? `${new Date(first).toLocaleDateString(undefined, { month: "short" })} – ${new Date(now).toLocaleDateString(undefined, { month: "short" })}`
+    : "";
   return (
     <Card icon={CalendarDays} title="Activity" label="Activity" aside={heat && <span className="shrink-0 text-xs text-fg-3">{range}</span>}>
       {!heat ? (
@@ -141,7 +162,11 @@ function ActivityCard({ agents, requests, now }: { agents: ProjectAgents[] | nul
               <span
                 key={d.at}
                 aria-hidden
-                title={future ? undefined : `${new Date(d.at).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}: ${d.count} ${d.count === 1 ? "agent run" : "agent runs"}`}
+                title={
+                  future
+                    ? undefined
+                    : `${new Date(d.at).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}: ${d.count} ${d.count === 1 ? "agent run" : "agent runs"}`
+                }
                 className={cn("aspect-square w-full rounded-2xs", future ? "bg-transparent" : TONES[tone(d.count)])}
               />
             );
@@ -172,7 +197,17 @@ function family(model: string): string {
 /** Families under 1% of the total are folded into "Other". */
 const MIN_SHARE = 0.01;
 
-function TokensCard({ usage, daily, agents, now }: { usage: UsageReport | "unavailable" | null; daily: UsageReport | null; agents: ProjectAgents[] | null; now: number }) {
+function TokensCard({
+  usage,
+  daily,
+  agents,
+  now,
+}: {
+  usage: UsageReport | "unavailable" | null;
+  daily: UsageReport | null;
+  agents: ProjectAgents[] | null;
+  now: number;
+}) {
   const split = useMemo(() => {
     const by = new Map<string, number>();
     let total = 0;
@@ -329,7 +364,10 @@ function MonthCard({ month }: { month: Month | null }) {
                 <div className="flex items-baseline gap-2 tabular-nums">
                   <dt className="min-w-0 flex-1 truncate text-xs text-fg-3">{label}</dt>
                   <dd className="text-figure text-fg">{cur.toLocaleString()}</dd>
-                  <dd className={cn("w-12 shrink-0 text-right text-xs", delta > 0 ? "text-ok" : delta < 0 ? "text-err" : "text-fg-3")} aria-label={delta === 0 ? "same as last month" : `${delta > 0 ? "up" : "down"} ${Math.abs(delta)} from last month`}>
+                  <dd
+                    className={cn("w-12 shrink-0 text-right text-xs", delta > 0 ? "text-ok" : delta < 0 ? "text-err" : "text-fg-3")}
+                    aria-label={delta === 0 ? "same as last month" : `${delta > 0 ? "up" : "down"} ${Math.abs(delta)} from last month`}
+                  >
                     {delta === 0 ? "±0" : `${delta > 0 ? "+" : "−"}${Math.abs(delta).toLocaleString()}`}
                   </dd>
                 </div>

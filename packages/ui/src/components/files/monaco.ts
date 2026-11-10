@@ -190,7 +190,7 @@ function theme(base: "vs" | "vs-dark", p: Palette, background: string): monaco.e
       "input.background": p.raised,
       "input.border": p.tint("17"),
       "inputOption.activeBorder": p.tint("60"),
-      "focusBorder": p.tint("99"),
+      focusBorder: p.tint("99"),
       "list.hoverBackground": p.tint("0d"),
       "list.hoverForeground": p.strong,
       "list.activeSelectionBackground": p.tint("1a"),

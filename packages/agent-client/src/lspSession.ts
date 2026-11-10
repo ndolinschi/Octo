@@ -28,12 +28,7 @@ function parseCreated(body: unknown): {
   folders: LanguageServerFolder[];
 } {
   const r = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
-  if (
-    typeof r.session_id !== "string" ||
-    typeof r.root_uri !== "string" ||
-    !Array.isArray(r.workspace_folders) ||
-    !r.workspace_folders.every(isFolder)
-  ) {
+  if (typeof r.session_id !== "string" || typeof r.root_uri !== "string" || !Array.isArray(r.workspace_folders) || !r.workspace_folders.every(isFolder)) {
     throw new BridgeError(0, "invalid_response", "malformed language server session response");
   }
   return { sessionId: r.session_id, rootUri: r.root_uri, folders: r.workspace_folders };
@@ -47,14 +42,8 @@ async function deleteSession(t: LspTransport, path: string): Promise<void> {
   }
 }
 
-export async function openLspSession(
-  t: LspTransport,
-  projectPath: string,
-  serverId: string,
-): Promise<LanguageServerSession> {
-  const created = parseCreated(
-    await t.request("POST", `${projectPath}/lsp/${encodeURIComponent(serverId)}/sessions`),
-  );
+export async function openLspSession(t: LspTransport, projectPath: string, serverId: string): Promise<LanguageServerSession> {
+  const created = parseCreated(await t.request("POST", `${projectPath}/lsp/${encodeURIComponent(serverId)}/sessions`));
   const sessionPath = `${projectPath}/lsp/sessions/${encodeURIComponent(created.sessionId)}`;
   const channel = createLspChannel();
   let source: EventSourceLike;

@@ -85,15 +85,18 @@ export type FileTreeHandle = { focusFirst(): void };
  * [24px chevron box] 4 [16px icon slot] 8 [name] … 8 — one anatomy for roots (medium weight),
  * folders and files (files keep the chevron box empty).
  */
-export const FileTree = forwardRef<FileTreeHandle, {
-  folders: { label: string; path: string }[];
-  filter?: string;
-  /** Opens a file (default: `code.openFile`, which shows it in the side group). */
-  onOpenFile?(folder: string, path: string): void;
-  /** ↑ from the first row (back to the filter input). */
-  onExitTop?(): void;
-  label?: string;
-}>(function FileTree({ folders, filter = "", onOpenFile, onExitTop, label = "Project files" }, handle) {
+export const FileTree = forwardRef<
+  FileTreeHandle,
+  {
+    folders: { label: string; path: string }[];
+    filter?: string;
+    /** Opens a file (default: `code.openFile`, which shows it in the side group). */
+    onOpenFile?(folder: string, path: string): void;
+    /** ↑ from the first row (back to the filter input). */
+    onExitTop?(): void;
+    label?: string;
+  }
+>(function FileTree({ folders, filter = "", onOpenFile, onExitTop, label = "Project files" }, handle) {
   const code = useCode();
   const counts = useOptionalComments()?.counts;
   const { dirs, isExpanded, ensureDir, selectedKey, revealTick, loadedFiles } = code;
@@ -245,7 +248,7 @@ export const FileTree = forwardRef<FileTreeHandle, {
                     type="button"
                     tabIndex={-1}
                     onClick={() => code.reloadDir(row.folder, row.path)}
-                    className="press ml-auto h-6 shrink-0 rounded-sm px-2 text-fg-2 hover:bg-hover hover:text-fg"
+                    className="ml-auto h-6 shrink-0 press rounded-sm px-2 text-fg-2 hover:bg-hover hover:text-fg"
                   >
                     Retry
                   </button>
@@ -270,15 +273,11 @@ export const FileTree = forwardRef<FileTreeHandle, {
             data-path={row.title}
             data-root={isRoot || undefined}
             onClick={() => activate(row)}
-            className={cn(
-              "press-row flex h-row shrink-0 items-center rounded-sm px-1 text-sm focus-inset",
-              selected ? "bg-active" : "hover:bg-hover",
-            )}
+            className={cn("flex h-row shrink-0 items-center rounded-sm px-1 text-sm press-row focus-inset", selected ? "bg-active" : "hover:bg-hover")}
           >
             <Indent px={indent} />
             <span aria-hidden className={cn("grid size-6 shrink-0 place-items-center text-fg-3", row.kind !== "dir" && "invisible")}>
-              <Glyph icon={ChevronRight} size={14}
-                className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")}/>
+              <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")} />
             </span>
             {Icon && (
               <span aria-hidden className="ml-1 grid size-4 shrink-0 place-items-center text-fg-3">

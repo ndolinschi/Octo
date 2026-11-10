@@ -71,9 +71,14 @@ export function useOverview() {
     if (!projects) return;
     let cancelled = false;
     // A project whose agents cannot be read is left out of the cards (the next refresh tries again).
-    void Promise.all(projects.map((p) => activity.agentsOf(p).then((list) => ({ project: p, agents: list }), () => ({ project: p, agents: [] as Agent[] })))).then(
-      (all) => !cancelled && setAgents(all),
-    );
+    void Promise.all(
+      projects.map((p) =>
+        activity.agentsOf(p).then(
+          (list) => ({ project: p, agents: list }),
+          () => ({ project: p, agents: [] as Agent[] }),
+        ),
+      ),
+    ).then((all) => !cancelled && setAgents(all));
     return () => {
       cancelled = true;
     };
@@ -153,7 +158,10 @@ export function useOverview() {
     const count = (t: number[]) => ({ current: t.filter((x) => x >= mid).length, previous: t.filter((x) => x >= from && x < mid).length });
     const req = count(requests.all.map((r) => Date.parse(r.created_at)));
     const runs = count(agents.flatMap((p) => p.agents.filter(isRun).map(started)));
-    return { current: { requests: req.current, runs: runs.current, files: files.current }, previous: { requests: req.previous, runs: runs.previous, files: files.previous } };
+    return {
+      current: { requests: req.current, runs: runs.current, files: files.current },
+      previous: { requests: req.previous, runs: runs.previous, files: files.previous },
+    };
   }, [agents, requests, files]);
 
   return { projects, agents, usage, daily, requests, month };

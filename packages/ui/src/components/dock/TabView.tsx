@@ -25,7 +25,19 @@ export function TabView({ tab }: { tab: TabId }) {
       return <FileView tab={tab} fileKey={ref.key} />;
     case "tool":
       if (ref.tool === "files") return <FileView tab={tab} fileKey={null} />;
-      return <ToolView tab={tab}>{ref.tool === "agents" ? <AgentsPanel /> : ref.tool === "notes" ? <NotesPanel /> : <Suspense fallback={null}><DetailsPanel /></Suspense>}</ToolView>;
+      return (
+        <ToolView tab={tab}>
+          {ref.tool === "agents" ? (
+            <AgentsPanel />
+          ) : ref.tool === "notes" ? (
+            <NotesPanel />
+          ) : (
+            <Suspense fallback={null}>
+              <DetailsPanel />
+            </Suspense>
+          )}
+        </ToolView>
+      );
   }
 }
 

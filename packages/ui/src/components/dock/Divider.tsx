@@ -59,7 +59,7 @@ export function Divider({ index, value }: { index: number; value: number }) {
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
       onDoubleClick={() => ws.equalize()}
-      className="group/divider relative w-gutter shrink-0 cursor-col-resize outline-none focus-visible:shadow-none before:absolute before:inset-y-0 before:-inset-x-1 before:content-['']"
+      className="group/divider relative w-gutter shrink-0 cursor-col-resize outline-none before:absolute before:-inset-x-1 before:inset-y-0 before:content-[''] focus-visible:shadow-none"
     >
       <span
         aria-hidden

@@ -73,7 +73,33 @@ export function toHoverContents(contents: unknown): Monaco.IMarkdownString[] {
 /** LSP CompletionItemKind (1-based) → Monaco's enum. */
 export function completionKind(monaco: MonacoApi, kind: unknown): Monaco.languages.CompletionItemKind {
   const K = monaco.languages.CompletionItemKind;
-  const table = [K.Text, K.Method, K.Function, K.Constructor, K.Field, K.Variable, K.Class, K.Interface, K.Module, K.Property, K.Unit, K.Value, K.Enum, K.Keyword, K.Snippet, K.Color, K.File, K.Reference, K.Folder, K.EnumMember, K.Constant, K.Struct, K.Event, K.Operator, K.TypeParameter];
+  const table = [
+    K.Text,
+    K.Method,
+    K.Function,
+    K.Constructor,
+    K.Field,
+    K.Variable,
+    K.Class,
+    K.Interface,
+    K.Module,
+    K.Property,
+    K.Unit,
+    K.Value,
+    K.Enum,
+    K.Keyword,
+    K.Snippet,
+    K.Color,
+    K.File,
+    K.Reference,
+    K.Folder,
+    K.EnumMember,
+    K.Constant,
+    K.Struct,
+    K.Event,
+    K.Operator,
+    K.TypeParameter,
+  ];
   return typeof kind === "number" ? (table[kind - 1] ?? K.Text) : K.Text;
 }
 

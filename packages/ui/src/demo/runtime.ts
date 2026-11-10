@@ -160,7 +160,9 @@ export async function delegate(ctx: Ctx, parentId: string, children: ChildSpec[]
       type: "tool_use" as const,
       id: u.id,
       name: "spawn_agent",
-      input: u.spec.acp ? { role: u.spec.role, title: u.spec.title, task: u.spec.task, agent: u.spec.acp } : { role: u.spec.role, title: u.spec.title, task: u.spec.task, tier: u.spec.tier },
+      input: u.spec.acp
+        ? { role: u.spec.role, title: u.spec.title, task: u.spec.task, agent: u.spec.acp }
+        : { role: u.spec.role, title: u.spec.title, task: u.spec.task, tier: u.spec.tier },
     })),
   ]);
   charge(ctx, parentId, (text?.length ?? 0) + children.reduce((n, c) => n + c.task.length, 0));

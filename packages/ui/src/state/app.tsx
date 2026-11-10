@@ -1,15 +1,5 @@
 import type { Bridge, BridgeConfig, ProjectSummary, ShellKind } from "@octo/agent-client";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHost } from "./host";
 import { useMediaQuery } from "../lib/hooks";
 import { readPref, writePref } from "../lib/storage";
@@ -45,13 +35,7 @@ function savedThemePref(): ThemePref {
   return saved === "dark" || saved === "light" ? saved : "system";
 }
 
-export function AppProvider(props: {
-  bridge: Bridge;
-  bridgeUrl: string;
-  shell: ShellKind;
-  demo: boolean;
-  children: ReactNode;
-}) {
+export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: ShellKind; demo: boolean; children: ReactNode }) {
   const { bridge } = props;
   const [health, setHealth] = useState<Health>("checking");
   const [version, setVersion] = useState<string | null>(null);

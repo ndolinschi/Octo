@@ -2,10 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parseColor, renderStreak } from "./streak";
 
-const base = { cell: 2, overhang: 12, anchor: { x: 0.5, y: 0.3 }, panel: [23, 23, 23] as const, accent: [92, 157, 255] as const, indigo: [111, 108, 242] as const, warm: [216, 176, 122] as const, rimPeak: 0.3 };
+const base = {
+  cell: 2,
+  overhang: 12,
+  anchor: { x: 0.5, y: 0.3 },
+  panel: [23, 23, 23] as const,
+  accent: [92, 157, 255] as const,
+  indigo: [111, 108, 242] as const,
+  warm: [216, 176, 122] as const,
+  rimPeak: 0.3,
+};
 
 test("never brighter than the peak, and dithered (more than two values in the band)", () => {
-  const cols = 300, rows = 200;
+  const cols = 300,
+    rows = 200;
   const out = new Uint32Array(cols * rows);
   const peak = renderStreak(out, { ...base, cols, rows, peak: 0.55 });
   assert.ok(peak <= 0.55 && peak > 0.4, String(peak));

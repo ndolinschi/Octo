@@ -74,10 +74,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
       clearPendingTurn: () => {
         pending.current = null;
       },
-      setViewTurn: (turn) =>
-        setViewTurnState((prev) =>
-          prev?.projectId === turn?.projectId && prev?.messageId === turn?.messageId ? prev : turn,
-        ),
+      setViewTurn: (turn) => setViewTurnState((prev) => (prev?.projectId === turn?.projectId && prev?.messageId === turn?.messageId ? prev : turn)),
       setLeaveGuard: (count) => {
         guard.current = count;
       },

@@ -160,9 +160,7 @@ function LoadError({ message, onRetry }: { message: string; onRetry(): Promise<v
   return (
     <div role="alert" className="mx-auto w-full max-w-measure px-6 pt-10 text-sm max-[1000px]:px-4">
       <p className="text-fg">Couldn't load this project.</p>
-      <p className="mt-1 text-fg-2">
-        {message.replace(/\.$/, "")}. Check that the harness bridge is running, then retry.
-      </p>
+      <p className="mt-1 text-fg-2">{message.replace(/\.$/, "")}. Check that the harness bridge is running, then retry.</p>
       <Button
         size="sm"
         className="mt-3"

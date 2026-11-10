@@ -21,10 +21,17 @@ const DOCKED_QUERY = "(min-width: 1100px)";
 export const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
 /** Where a dragged tab lands. */
-export type DropTarget = { kind: "strip"; group: string; index: number } | { kind: "into"; group: string } | { kind: "split"; group: string; side: "left" | "right" };
+export type DropTarget =
+  { kind: "strip"; group: string; index: number } | { kind: "into"; group: string } | { kind: "split"; group: string; side: "left" | "right" };
 
 /** What the workspace needs from the open-files state (attached by a component inside CodeProvider). */
-export type CodeLink = { modified(key: string): boolean; name(key: string): string; close(key: string): void; restore(key: string): void; select(key: string): void };
+export type CodeLink = {
+  modified(key: string): boolean;
+  name(key: string): string;
+  close(key: string): void;
+  restore(key: string): void;
+  select(key: string): void;
+};
 
 type Closing = { tabs: TabId[]; files: string[] };
 
@@ -277,7 +284,9 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         if (!from) return false;
         if (target.kind === "into") return target.group !== from.id;
         if (target.kind === "strip") return true;
-        return L.canSplit(layout, tab, target.group) && (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= (n + 1) * MIN_GROUP + n * GAP);
+        return (
+          L.canSplit(layout, tab, target.group) && (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= (n + 1) * MIN_GROUP + n * GAP)
+        );
       },
       drop: (tab, target) => {
         const current = layoutRef.current;
@@ -302,7 +311,24 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         code.current = link;
       },
     };
-  }, [projectId, project, layout, narrow, dockWidth, n, lastConversation, focusRequest, memory, closing, onSettings, commit, openAgent, openSide, requestClose, doClose]);
+  }, [
+    projectId,
+    project,
+    layout,
+    narrow,
+    dockWidth,
+    n,
+    lastConversation,
+    focusRequest,
+    memory,
+    closing,
+    onSettings,
+    commit,
+    openAgent,
+    openSide,
+    requestClose,
+    doClose,
+  ]);
 
   /* ---------- routing ---------- */
 
@@ -394,19 +420,19 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
           { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
         ];
-        if (ws.canMoveToOtherSide(active)) out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD}\\`, run: () => ws.moveToOtherSide(active) });
+        if (ws.canMoveToOtherSide(active))
+          out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD}\\`, run: () => ws.moveToOtherSide(active) });
         if (ws.canSplitRight(active)) out.push({ id: "split", label: "Split right", detail: name, run: () => ws.splitRight(active) });
         if (L.closable(active)) out.push({ id: "close", label: "Close tab", detail: name, shortcut: `${MOD}W`, run: () => ws.requestClose([active]) });
-        if (L.allTabs(layoutRef.current).length > 1) out.push({ id: "close-others", label: "Close other tabs", detail: name, run: () => ws.closeOthers(active) });
+        if (L.allTabs(layoutRef.current).length > 1)
+          out.push({ id: "close-others", label: "Close other tabs", detail: name, run: () => ws.closeOthers(active) });
         if (layoutRef.current.groups.length > 1 && !ws.narrow) out.push({ id: "equalize", label: "Make groups equal width", run: () => ws.equalize() });
         return out;
       },
       tabs: () => {
         const groups = layoutRef.current.groups;
         const side = (i: number) => (groups.length === 1 ? undefined : i === 0 ? "left" : i === groups.length - 1 ? "right" : "middle");
-        return groups.flatMap((g, i) =>
-          g.tabs.map((t) => ({ id: `tab:${t}`, label: label(t), detail: side(i), run: () => valueRef.current.activate(t) })),
-        );
+        return groups.flatMap((g, i) => g.tabs.map((t) => ({ id: `tab:${t}`, label: label(t), detail: side(i), run: () => valueRef.current.activate(t) })));
       },
     };
     nav.setWorkspace(api);

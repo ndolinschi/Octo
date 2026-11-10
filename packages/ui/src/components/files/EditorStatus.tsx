@@ -23,7 +23,17 @@ const ICON: Record<ProblemSeverity, { icon: typeof CircleX; className: string; l
  * text, no state shown for the first 200ms of starting (no flash), Retry after a failure or exit.
  * `compact` (a narrow breadcrumb row) shows the server as a dot only, so it never competes with the crumbs.
  */
-export function EditorStatus({ intel, fileKey, onJump, compact = false }: { intel: EditorIntel; fileKey: string; onJump(problem: Problem): void; /** Narrow row: the server as a state dot, its name in the tooltip. */ compact?: boolean }) {
+export function EditorStatus({
+  intel,
+  fileKey,
+  onJump,
+  compact = false,
+}: {
+  intel: EditorIntel;
+  fileKey: string;
+  onJump(problem: Problem): void;
+  /** Narrow row: the server as a state dot, its name in the tooltip. */ compact?: boolean;
+}) {
   const info = useSyncExternalStore(intel.subscribe, () => intel.get(fileKey));
   const { status, problems, notice } = info;
   const starting = useDelayedLoading(status?.state === "starting");
@@ -56,7 +66,11 @@ export function EditorStatus({ intel, fileKey, onJump, compact = false }: { inte
         </span>
       )}
       {status && broken && (
-        <button type="button" onClick={() => intel.retry(fileKey)} className="press h-6 shrink-0 rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg">
+        <button
+          type="button"
+          onClick={() => intel.retry(fileKey)}
+          className="h-6 shrink-0 press rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg"
+        >
           Retry
         </button>
       )}
@@ -84,7 +98,10 @@ function ProblemsButton({ problems, onJump }: { problems: Problem[]; onJump(prob
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((x) => !x)}
-        className={cn("press flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-2 tabular-nums hover:bg-hover hover:text-fg", open ? "bg-active text-fg" : "text-fg-2")}
+        className={cn(
+          "flex h-6 shrink-0 press items-center gap-1.5 rounded-sm px-2 tabular-nums hover:bg-hover hover:text-fg",
+          open ? "bg-active text-fg" : "text-fg-2",
+        )}
       >
         <Glyph icon={Icon} size={14} className={top.className} />
         {n}&nbsp;{n === 1 ? "problem" : "problems"}
@@ -103,7 +120,7 @@ function ProblemsButton({ problems, onJump }: { problems: Problem[]; onJump(prob
                       setOpen(false);
                       onJump(p);
                     }}
-                    className="press-row flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
+                    className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left press-row hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
                   >
                     <span className="grid h-5 shrink-0 place-items-center">
                       <Glyph icon={PIcon} size={14} aria-label={s.label} className={s.className} />

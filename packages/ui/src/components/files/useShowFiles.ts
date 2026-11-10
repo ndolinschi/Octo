@@ -9,10 +9,12 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 export function useShowFiles(): { shown: boolean; show(): void } {
   const ws = useWorkspace();
   const fv = useFileView();
-  const visible = ws.layout.groups.map((g) => g.active).find((t) => {
-    const ref = parseTab(t);
-    return (ref?.kind === "file" || (ref?.kind === "tool" && ref.tool === "files")) && ws.isVisible(t);
-  });
+  const visible = ws.layout.groups
+    .map((g) => g.active)
+    .find((t) => {
+      const ref = parseTab(t);
+      return (ref?.kind === "file" || (ref?.kind === "tool" && ref.tool === "files")) && ws.isVisible(t);
+    });
   return {
     shown: visible !== undefined && fv.treeOpen,
     show: () => {

@@ -50,10 +50,7 @@ function useTokens(code: string, lang: string | undefined) {
 function CodeBlock({ children }: { children?: ReactNode }) {
   const [copied, copy] = useCopy();
   const child = Array.isArray(children) ? children[0] : children;
-  const className =
-    child && typeof child === "object" && "props" in child
-      ? ((child as { props: { className?: string } }).props.className ?? "")
-      : "";
+  const className = child && typeof child === "object" && "props" in child ? ((child as { props: { className?: string } }).props.className ?? "") : "";
   const lang = /language-([\w+-]+)/.exec(className)?.[1];
   const code = textOf(children).replace(/\n$/, "");
   const tokens = useTokens(code, lang);
@@ -65,7 +62,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
         <button
           type="button"
           onClick={() => copy(code)}
-          className="press -my-0.5 -mr-2 ml-auto inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
+          className="-my-0.5 -mr-2 ml-auto inline-flex h-6 press items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
         >
           {copied ? <Glyph icon={Check} size={14} /> : <Glyph icon={Copy} size={14} />}
           {copied ? "Copied" : "Copy"}
@@ -73,7 +70,19 @@ function CodeBlock({ children }: { children?: ReactNode }) {
       </div>
       {/* Plain first, coloured when the highlighter is in: same text, same metrics (colours only). */}
       <pre className="octo-code overflow-x-auto font-mono text-xs leading-5">
-        <code>{tokens ? tokens.map((t, i) => (t.kind === "plain" ? t.text : <span key={i} className={`octo-tok-${t.kind}`}>{t.text}</span>)) : code}</code>
+        <code>
+          {tokens
+            ? tokens.map((t, i) =>
+                t.kind === "plain" ? (
+                  t.text
+                ) : (
+                  <span key={i} className={`octo-tok-${t.kind}`}>
+                    {t.text}
+                  </span>
+                ),
+              )
+            : code}
+        </code>
       </pre>
     </div>
   );

@@ -53,7 +53,10 @@ export class EditorIntel {
   notify(key: string, notice: string): void {
     window.clearTimeout(this.noticeTimers.get(key));
     this.patch(key, { notice });
-    this.noticeTimers.set(key, window.setTimeout(() => this.patch(key, { notice: null }), NOTICE_MS));
+    this.noticeTimers.set(
+      key,
+      window.setTimeout(() => this.patch(key, { notice: null }), NOTICE_MS),
+    );
   }
 
   /** Forgets a closed file. */

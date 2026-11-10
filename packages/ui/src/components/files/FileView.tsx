@@ -95,10 +95,13 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
       setOverlayOpen(false);
       code.openFile(f, p, undefined, groupId ? { group: groupId, replace: fileKey ? undefined : tab } : undefined);
       const panel = `${domId(fileTab(fileKeyOf(f, p)))}-panel`;
-      focusSoon(() => {
-        const el = document.getElementById(panel);
-        return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
-      }, { onlyIfLost: true, timeout: 1500 });
+      focusSoon(
+        () => {
+          const el = document.getElementById(panel);
+          return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
+        },
+        { onlyIfLost: true, timeout: 1500 },
+      );
     },
     [code, groupId, fileKey, tab],
   );
@@ -143,11 +146,7 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
 
   let body: ReactNode;
   if (!fileKey) {
-    body = (
-      <div className="grid h-full place-items-center text-sm text-fg-3">
-        {code.folders.length ? "Select a file" : <NoFolders />}
-      </div>
-    );
+    body = <div className="grid h-full place-items-center text-sm text-fg-3">{code.folders.length ? "Select a file" : <NoFolders />}</div>;
   } else if (file?.status === "ready" && !opening) {
     body =
       markdown && mode === "preview" ? (
@@ -182,7 +181,14 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
             )}
             {file?.modified && !saving && <span>Unsaved</span>}
           </span>
-          {fileKey && <EditorStatus compact={width > 0 && width < 640} intel={code.intel} fileKey={fileKey} onJump={(p) => code.openFile(folder, path, { line: p.line, column: p.column })} />}
+          {fileKey && (
+            <EditorStatus
+              compact={width > 0 && width < 640}
+              intel={code.intel}
+              fileKey={fileKey}
+              onJump={(p) => code.openFile(folder, path, { line: p.line, column: p.column })}
+            />
+          )}
         </span>
         {markdown && file?.status === "ready" && <ModeToggle mode={mode} onChange={setMode} />}
         {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
@@ -202,7 +208,15 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
           <div className="min-h-0 flex-1">{body}</div>
           {floating && <FloatingComposer onHeight={setFloatHeight} />}
         </div>
-        {treeShown && <TreeColumn id={treeId} tab={tab} overlay={overlay} maxWidth={overlay ? width - 48 : Math.max(TREE_MIN, Math.min(width - 320, Math.round(width * 0.4)))} onOpenFile={openHere} />}
+        {treeShown && (
+          <TreeColumn
+            id={treeId}
+            tab={tab}
+            overlay={overlay}
+            maxWidth={overlay ? width - 48 : Math.max(TREE_MIN, Math.min(width - 320, Math.round(width * 0.4)))}
+            onOpenFile={openHere}
+          />
+        )}
       </div>
     </div>
   );
@@ -239,23 +253,28 @@ function Crumbs({ folder, path, compact = false }: { folder: string; path: strin
   const crumb = "press h-6 min-w-[2ch] shrink-[8] truncate rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg";
   const dirOf = (i: number) => all.slice(0, i + 1).join("/");
   const dirCrumb = (label: string, index: number) => (
-    <button type="button" className={cn(crumb, "max-w-[120px]")} title={`Reveal ${folder}/${dirOf(index)} in the tree`} onClick={() => code.revealDir(folder, dirOf(index))}>
+    <button
+      type="button"
+      className={cn(crumb, "max-w-[120px]")}
+      title={`Reveal ${folder}/${dirOf(index)} in the tree`}
+      onClick={() => code.revealDir(folder, dirOf(index))}
+    >
       {label}
     </button>
   );
   return (
-    <nav aria-label="File path" className="ml-1 flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap" title={middleTruncate(`${folder}/${path}`, 96)}>
+    <nav
+      aria-label="File path"
+      className="ml-1 flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap"
+      title={middleTruncate(`${folder}/${path}`, 96)}
+    >
       {!(compact && keep.length) && (
         <button type="button" className={cn(crumb, "max-w-[160px]")} title={`Reveal ${folder} in the tree`} onClick={() => code.revealDir(folder, "")}>
           {folder}
         </button>
       )}
       {compact
-        ? keep.map((p) => (
-            <Fragment key={p}>
-              {dirCrumb(p, all.length - 1)}
-            </Fragment>
-          ))
+        ? keep.map((p) => <Fragment key={p}>{dirCrumb(p, all.length - 1)}</Fragment>)
         : keep.map((p, i) => (
             <Fragment key={`${i}-${p}`}>
               <Sep />
@@ -296,7 +315,7 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
           const r = button.current?.getBoundingClientRect();
           if (r) setMenu(menu ? null : { x: r.left, y: r.bottom + 4 });
         }}
-        className={cn("press h-6 shrink-0 rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg", menu && "bg-active text-fg")}
+        className={cn("h-6 shrink-0 press rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg", menu && "bg-active text-fg")}
       >
         …
       </button>
@@ -326,7 +345,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange(m: Mode): void })
       type="button"
       aria-pressed={mode === m}
       onClick={() => onChange(m)}
-      className={cn("press h-6 rounded-sm px-2 text-xs", mode === m ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg")}
+      className={cn("h-6 press rounded-sm px-2 text-xs", mode === m ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg")}
     >
       {label}
     </button>
@@ -369,7 +388,12 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
             alignEnd
             onClose={() => setMenu(null)}
             items={[
-              { id: "path", label: "Copy path", title: absolute ? `${absolute}/${path}` : undefined, run: () => copy(absolute ? `${absolute.replace(/\/$/, "")}/${path}` : `${folder}/${path}`) },
+              {
+                id: "path",
+                label: "Copy path",
+                title: absolute ? `${absolute}/${path}` : undefined,
+                run: () => copy(absolute ? `${absolute.replace(/\/$/, "")}/${path}` : `${folder}/${path}`),
+              },
               { id: "rel", label: "Copy relative path", title: `${folder}/${path}`, run: () => copy(`${folder}/${path}`) },
               { id: "reveal", label: "Reveal in tree", run: () => code.openFile(folder, path) },
               { id: "sep", separator: true },

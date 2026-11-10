@@ -1,15 +1,5 @@
 import { BridgeError, type FileEntry, type Folder } from "@octo/agent-client";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EditorBuffers } from "../components/files/buffers";
 import { ancestors, fileKey, fileName, normalizePath, parentPath, splitKey, type FilePosition } from "../lib/files";
 import { EditorIntel, type IntelClient } from "../lsp/hub";
@@ -19,10 +9,7 @@ import { useOptionalNav } from "./nav";
 import { useProject } from "./project";
 
 export type FileStatus = "loading" | "ready" | "error" | "too_large" | "binary";
-export type FileNotice =
-  | { kind: "conflict" }
-  | { kind: "save_error"; message: string }
-  | { kind: "changed" };
+export type FileNotice = { kind: "conflict" } | { kind: "save_error"; message: string } | { kind: "changed" };
 
 export type OpenFile = {
   key: string;
@@ -487,7 +474,31 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       retryOpen,
       dismissNotice: (key) => patch(key, { notice: null }),
     }),
-    [folders, files, buffers, intel, bridge, projectId, dirs, indexFiles, fileIndex, loadedFiles, isExpanded, ensureDir, loadDir, selectedKey, revealTick, openFile, restore, revealDir, close, save, reloadFromDisk, retryOpen, patch],
+    [
+      folders,
+      files,
+      buffers,
+      intel,
+      bridge,
+      projectId,
+      dirs,
+      indexFiles,
+      fileIndex,
+      loadedFiles,
+      isExpanded,
+      ensureDir,
+      loadDir,
+      selectedKey,
+      revealTick,
+      openFile,
+      restore,
+      revealDir,
+      close,
+      save,
+      reloadFromDisk,
+      retryOpen,
+      patch,
+    ],
   );
 
   return <CodeContext.Provider value={value}>{children}</CodeContext.Provider>;

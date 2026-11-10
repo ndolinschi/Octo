@@ -53,7 +53,13 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
           if (path) onOpen(file.folder, path);
         };
         return (
-          <a href={href} onClick={onClick} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined} title={external ? href : `Open ${href}`}>
+          <a
+            href={href}
+            onClick={onClick}
+            target={external ? "_blank" : undefined}
+            rel={external ? "noreferrer" : undefined}
+            title={external ? href : `Open ${href}`}
+          >
             {children}
           </a>
         );
@@ -73,7 +79,7 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
   }, [file.folder, file.path, onOpen]);
 
   return (
-    <div ref={root} data-md-preview data-file-focus tabIndex={-1} className="scroll-quiet focus-inset h-full min-h-0 overflow-y-auto">
+    <div ref={root} data-md-preview data-file-focus tabIndex={-1} className="h-full min-h-0 overflow-y-auto focus-inset scroll-quiet">
       <div className="px-6">
         <article aria-label={`Preview of ${file.name}`} className="mx-auto w-full max-w-measure py-8">
           <Markdown text={text} components={components} className="octo-prose octo-doc" />

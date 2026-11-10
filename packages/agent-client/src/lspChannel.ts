@@ -10,11 +10,7 @@ export type LspChannel = {
 export function isExitInfo(v: unknown): v is LanguageServerExit {
   if (typeof v !== "object" || v === null) return false;
   const r = v as Record<string, unknown>;
-  return (
-    typeof r.code === "number" &&
-    Number.isFinite(r.code) &&
-    (r.reason === undefined || typeof r.reason === "string")
-  );
+  return typeof r.code === "number" && Number.isFinite(r.code) && (r.reason === undefined || typeof r.reason === "string");
 }
 
 /** Fans server messages out to listeners; holds them until the first listener attaches. */

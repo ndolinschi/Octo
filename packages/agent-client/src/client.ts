@@ -39,10 +39,7 @@ export type FetchResponseLike = {
   text(): Promise<string>;
 };
 
-export type FetchLike = (
-  url: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string },
-) => Promise<FetchResponseLike>;
+export type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<FetchResponseLike>;
 
 export type EventSourceLike = {
   onopen: ((ev: unknown) => void) | null;
@@ -76,11 +73,7 @@ export interface Bridge {
   cancelTurn(projectId: string): Promise<void>;
   listNotes(projectId: string): Promise<Note[]>;
   createNote(projectId: string, input: { title: string; content: string }): Promise<Note>;
-  updateNote(
-    projectId: string,
-    noteId: string,
-    patch: { title?: string; content?: string },
-  ): Promise<Note>;
+  updateNote(projectId: string, noteId: string, patch: { title?: string; content?: string }): Promise<Note>;
   deleteNote(projectId: string, noteId: string): Promise<void>;
   listFiles(projectId: string, folder: string, path: string): Promise<FileEntry[]>;
   readFile(projectId: string, folder: string, path: string): Promise<FileContent>;
@@ -178,10 +171,7 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
     return parseJson(text);
   }
 
-  async function unwrap<T>(
-    promise: Promise<unknown>,
-    key: string,
-  ): Promise<T> {
+  async function unwrap<T>(promise: Promise<unknown>, key: string): Promise<T> {
     const body = await promise;
     if (!isRecord(body) || !(key in body)) {
       throw new BridgeError(0, "invalid_response", `missing "${key}" in response`);
@@ -199,8 +189,7 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
   };
 
   const p = (id: string) => `/v1/projects/${encodeURIComponent(id)}`;
-  const fileQuery = (folder: string, path: string) =>
-    `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}`;
+  const fileQuery = (folder: string, path: string) => `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}`;
 
   return {
     health: () => request("GET", "/health") as Promise<HealthResponse>,
@@ -213,36 +202,25 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
       await request("DELETE", p(id));
     },
     listAgents: (id) => unwrap<Agent[]>(request("GET", `${p(id)}/agents`), "agents"),
-    getAgent: (id, agentId) =>
-      request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}`) as Promise<Agent>,
-    listMessages: (id, agentId) =>
-      unwrap<Message[]>(
-        request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages`),
-        "messages",
-      ),
-    sendMessage: (id, text) =>
-      unwrap<Message>(request("POST", `${p(id)}/messages`, { text }), "message"),
+    getAgent: (id, agentId) => request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}`) as Promise<Agent>,
+    listMessages: (id, agentId) => unwrap<Message[]>(request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages`), "messages"),
+    sendMessage: (id, text) => unwrap<Message>(request("POST", `${p(id)}/messages`, { text }), "message"),
     cancelTurn: async (id) => {
       await request("POST", `${p(id)}/cancel`);
     },
     listNotes: (id) => unwrap<Note[]>(request("GET", `${p(id)}/notes`), "notes"),
     createNote: (id, input) => request("POST", `${p(id)}/notes`, input) as Promise<Note>,
-    updateNote: (id, noteId, patch) =>
-      request("PATCH", `${p(id)}/notes/${encodeURIComponent(noteId)}`, patch) as Promise<Note>,
+    updateNote: (id, noteId, patch) => request("PATCH", `${p(id)}/notes/${encodeURIComponent(noteId)}`, patch) as Promise<Note>,
     deleteNote: async (id, noteId) => {
       await request("DELETE", `${p(id)}/notes/${encodeURIComponent(noteId)}`);
     },
-    listFiles: (id, folder, path) =>
-      unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path)}`), "entries"),
-    readFile: (id, folder, path) =>
-      request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
-    writeFile: (id, input) =>
-      request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
+    listFiles: (id, folder, path) => unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path)}`), "entries"),
+    readFile: (id, folder, path) => request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
+    writeFile: (id, input) => request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
     listPlugins: () => unwrap<Plugin[]>(request("GET", "/v1/plugins"), "plugins"),
     getUsage: (params) => request("GET", `/v1/usage${usageQuery(params)}`) as Promise<UsageReport>,
     getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
-    listLanguageServers: (id) =>
-      unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
+    listLanguageServers: (id) => unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
     openLanguageServer: (id, serverId) =>
       openLspSession(
         {

@@ -7,7 +7,7 @@ import { cn } from "../../lib/cn";
  */
 export const INFO_ROW = "flex h-row min-w-0 items-center gap-2 rounded-sm px-2 text-sm";
 /** An actionable info row (opens something). */
-export const INFO_ROW_BUTTON = cn(INFO_ROW, "press-row w-full text-left focus-inset hover:bg-hover");
+export const INFO_ROW_BUTTON = cn(INFO_ROW, "w-full text-left press-row focus-inset hover:bg-hover");
 
 export function InfoSection(props: { title: string; aside?: ReactNode; children: ReactNode; className?: string; labelId?: string }) {
   return (

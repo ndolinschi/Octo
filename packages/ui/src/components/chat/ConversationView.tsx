@@ -214,20 +214,20 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
             scroll.onScroll();
             stuck.onScroll();
           }}
-          className="scroll-quiet min-h-0 flex-1 overflow-y-auto"
+          className="min-h-0 flex-1 overflow-y-auto scroll-quiet"
         >
           <div className="px-(--pad)">
             <div data-column className="mx-auto w-full max-w-measure pt-2 pb-8">
               {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
               <Transcript
-                  agent={agent}
-                  messages={messages ?? []}
-                  now={now}
-                  watched={watched}
-                  speaker={roleName(agent)}
-                  promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
-                  hideFirstPrompt={!isOrchestrator}
-                />
+                agent={agent}
+                messages={messages ?? []}
+                now={now}
+                watched={watched}
+                speaker={roleName(agent)}
+                promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
+                hideFirstPrompt={!isOrchestrator}
+              />
             </div>
           </div>
         </div>
@@ -236,7 +236,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
           // (4 + 32 + 4), so it never sits on text, and the last 12px of text fade out above that room.
           // The content does not move (the scroll position is kept); at the bottom the room goes again.
           <div data-jump-room className="relative flex h-10 shrink-0 items-center justify-center">
-            <div aria-hidden className="octo-fade scroll-quiet pointer-events-none absolute inset-x-0 -top-3 h-3 overflow-hidden">
+            <div aria-hidden className="octo-fade pointer-events-none absolute inset-x-0 -top-3 h-3 overflow-hidden scroll-quiet">
               <div className="h-full bg-linear-to-t from-panel to-transparent" />
             </div>
             <button
@@ -244,7 +244,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
               onClick={() => scroll.scrollToBottom(true)}
               aria-label="Jump to latest"
               title="Jump to latest"
-              className="press octo-fade grid size-8 place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop octo-ring-pop hover:text-fg"
+              className="octo-fade octo-ring-pop grid size-8 press place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
             >
               <Glyph icon={ArrowDown} size={14} />
             </button>

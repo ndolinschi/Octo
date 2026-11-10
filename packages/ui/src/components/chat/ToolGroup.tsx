@@ -84,13 +84,12 @@ export function ToolGroup({ uses }: { uses: ToolUse[] }) {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className="press-row group -mx-2 flex h-row max-w-[calc(100%+16px)] items-center gap-2 rounded-sm px-2 text-sm text-fg-3 hover:bg-hover hover:text-fg-2"
+        className="group -mx-2 flex h-row max-w-[calc(100%+16px)] items-center gap-2 rounded-sm px-2 text-sm text-fg-3 press-row hover:bg-hover hover:text-fg-2"
       >
         <Summary uses={uses} />
         {running && <RunningDot />}
         {errors > 0 && <span className="shrink-0 text-err">{single ? "failed" : `${errors} failed`}</span>}
-        <Glyph icon={ChevronRight} size={14}
-          className={cn("shrink-0 transition-[rotate] duration-150", open && "rotate-90")}/>
+        <Glyph icon={ChevronRight} size={14} className={cn("shrink-0 transition-[rotate] duration-150", open && "rotate-90")} />
       </button>
       {open && (
         <div id={panelId} className="mt-1">
@@ -113,7 +112,7 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className="press-row -mx-2 flex h-row w-[calc(100%+16px)] min-w-0 items-center gap-2 rounded-sm px-2 text-left font-mono text-xs hover:bg-hover"
+        className="-mx-2 flex h-row w-[calc(100%+16px)] min-w-0 items-center gap-2 rounded-sm px-2 text-left font-mono text-xs press-row hover:bg-hover"
       >
         <span className="shrink-0 font-sans text-fg-2">{meta.verb}</span>
         {meta.arg && <Arg use={use} text={meta.arg} className="text-fg-3" />}
@@ -188,7 +187,12 @@ function AcpLocations({ use }: { use: ToolUse }) {
       {acp.locations.map((l, i) => {
         const hit = code ? locateInProject(code.folders, l.path) : null;
         const label = hit ? `${hit.folder}/${hit.path}${l.line ? `:${l.line}` : ""}` : l.path;
-        if (!openFile && !hit) return <span key={i} className="min-w-0 truncate font-mono text-fg-3">{label}</span>;
+        if (!openFile && !hit)
+          return (
+            <span key={i} className="min-w-0 truncate font-mono text-fg-3">
+              {label}
+            </span>
+          );
         return (
           <button
             key={i}
@@ -213,9 +217,7 @@ function ToolSection({ label, body, error, action }: { label: string; body: stri
         {label}
         {action}
       </div>
-      <pre className="max-h-64 overflow-auto px-3 pt-1 pb-3 font-mono text-xs leading-5 whitespace-pre-wrap text-fg-2">
-        {body || "(empty)"}
-      </pre>
+      <pre className="max-h-64 overflow-auto px-3 pt-1 pb-3 font-mono text-xs leading-5 whitespace-pre-wrap text-fg-2">{body || "(empty)"}</pre>
     </div>
   );
 }

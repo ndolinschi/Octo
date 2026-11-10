@@ -19,10 +19,11 @@ export function useHistoryAvailability(): { back: boolean; forward: boolean } {
   };
   const [state, setState] = useState(read);
   useEffect(() => {
-    const update = () => setState((prev) => {
-      const next = read();
-      return prev.back === next.back && prev.forward === next.forward ? prev : next;
-    });
+    const update = () =>
+      setState((prev) => {
+        const next = read();
+        return prev.back === next.back && prev.forward === next.forward ? prev : next;
+      });
     const nav = navigation();
     nav?.addEventListener("currententrychange", update);
     window.addEventListener("hashchange", update);

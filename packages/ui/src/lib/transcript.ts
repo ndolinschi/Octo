@@ -4,9 +4,7 @@ import { SPAWN_TOOL } from "./tools";
 export type ToolUse = Extract<ContentBlock, { type: "tool_use" }>;
 
 export type TranscriptItem =
-  | { kind: "text"; key: string; text: string }
-  | { kind: "tools"; key: string; uses: ToolUse[] }
-  | { kind: "delegations"; key: string; uses: ToolUse[] };
+  { kind: "text"; key: string; text: string } | { kind: "tools"; key: string; uses: ToolUse[] } | { kind: "delegations"; key: string; uses: ToolUse[] };
 
 export type Turn = {
   key: string;

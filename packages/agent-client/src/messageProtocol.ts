@@ -31,9 +31,7 @@ export type LspOpenedMessage =
     }
   | { kind: "lsp-opened"; id: number; ok: false; error: WireError };
 
-export type ResultMessage =
-  | { kind: "result"; id: number; ok: true; value: unknown }
-  | { kind: "result"; id: number; ok: false; error: WireError };
+export type ResultMessage = { kind: "result"; id: number; ok: true; value: unknown } | { kind: "result"; id: number; ok: false; error: WireError };
 
 export type HostMessage =
   | ResultMessage
@@ -86,20 +84,11 @@ export function isBridgeMethod(v: unknown): v is BridgeMethod {
 }
 
 function isBridgeEvent(v: unknown): v is BridgeEvent {
-  return (
-    isRec(v) &&
-    typeof v.type === "string" &&
-    (BRIDGE_EVENT_TYPES as readonly string[]).includes(v.type)
-  );
+  return isRec(v) && typeof v.type === "string" && (BRIDGE_EVENT_TYPES as readonly string[]).includes(v.type);
 }
 
 function isWireError(v: unknown): v is WireError {
-  return (
-    isRec(v) &&
-    isNum(v.status) &&
-    typeof v.code === "string" &&
-    typeof v.message === "string"
-  );
+  return isRec(v) && isNum(v.status) && typeof v.code === "string" && typeof v.message === "string";
 }
 
 function isFolder(v: unknown): v is LanguageServerFolder {
@@ -149,11 +138,7 @@ export function isHostMessage(msg: unknown): msg is HostMessage {
       if (!isNum(msg.id)) return false;
       if (msg.ok === false) return isWireError(msg.error);
       return (
-        msg.ok === true &&
-        isNum(msg.session) &&
-        typeof msg.rootUri === "string" &&
-        Array.isArray(msg.workspaceFolders) &&
-        msg.workspaceFolders.every(isFolder)
+        msg.ok === true && isNum(msg.session) && typeof msg.rootUri === "string" && Array.isArray(msg.workspaceFolders) && msg.workspaceFolders.every(isFolder)
       );
     case "lsp-message":
       return isNum(msg.session) && "message" in msg;

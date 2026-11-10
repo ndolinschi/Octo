@@ -34,7 +34,13 @@ export function useOrchestratorComposer(draftKey: string): Omit<ComposerProps, "
 
   // The project's configured models, then the bridge's defaults; each once, in that order.
   const options = useMemo(() => {
-    const ids = [project?.models.orchestrator, project?.models.deep, project?.models.balanced, project?.models.fast, ...Object.values(config?.default_models ?? {})];
+    const ids = [
+      project?.models.orchestrator,
+      project?.models.deep,
+      project?.models.balanced,
+      project?.models.fast,
+      ...Object.values(config?.default_models ?? {}),
+    ];
     return [...new Set(ids.filter((m): m is string => Boolean(m && m.trim())))];
   }, [project?.models, config]);
 

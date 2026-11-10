@@ -87,7 +87,14 @@ export function CommentsProvider({ children }: { children: ReactNode }) {
       if (texts.has(key)) continue;
       const open = buffers.value(key);
       if (open !== null) texts.set(key, open);
-      else texts.set(key, await bridge.readFile(projectId, c.folder, c.path).then((f) => f.content, () => null));
+      else
+        texts.set(
+          key,
+          await bridge.readFile(projectId, c.folder, c.path).then(
+            (f) => f.content,
+            () => null,
+          ),
+        );
     }
     const block = formatComments(
       pending.map((c) => {

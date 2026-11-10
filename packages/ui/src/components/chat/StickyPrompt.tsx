@@ -47,7 +47,7 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
       <span
         ref={box}
         className={cn(
-          "whitespace-pre-wrap wrap-anywhere",
+          "wrap-anywhere whitespace-pre-wrap",
           // No `block` here: line-clamp sets its own display (flow-root) and `block` would cancel it.
           expanded ? "block max-h-[40vh] overflow-y-auto overscroll-contain" : "line-clamp-3 [@media(max-height:640px)]:line-clamp-1",
         )}
@@ -59,7 +59,7 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
   const boxClass = "block w-full rounded-md border border-line bg-raised p-card text-left text-base text-fg";
 
   return (
-    <div ref={root} data-pinned className="scroll-quiet pointer-events-none absolute inset-x-0 top-0 z-10 overflow-hidden">
+    <div ref={root} data-pinned className="pointer-events-none absolute inset-x-0 top-0 z-10 overflow-hidden scroll-quiet">
       <div className="bg-panel px-(--pad)" style={{ paddingTop: STICK_TOP }}>
         <div data-pinned-box className="pointer-events-auto mx-auto w-full max-w-measure">
           {/* One element in both states (a swap would remount the measured text and lose `clamped`). */}

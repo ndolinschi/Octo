@@ -58,7 +58,8 @@ export function locateInProject(folders: { label: string; path: string }[], raw:
   let best: { folder: string; path: string; len: number } | null = null;
   for (const f of folders) {
     const root = f.path.replace(/\\/g, "/").replace(/\/$/, "");
-    if ((p === root || p.startsWith(`${root}/`)) && (!best || root.length > best.len)) best = { folder: f.label, path: p.slice(root.length + 1), len: root.length };
+    if ((p === root || p.startsWith(`${root}/`)) && (!best || root.length > best.len))
+      best = { folder: f.label, path: p.slice(root.length + 1), len: root.length };
   }
   return best && best.path ? { folder: best.folder, path: best.path } : null;
 }
@@ -69,7 +70,10 @@ export type WrittenFile = { folder: string; path: string; at: string; agentId: s
  * Files an agent wrote, from its stored transcript: `write_file` calls and ACP `edit` calls (their
  * locations) whose result was not an error. `at` is the time of the call's message.
  */
-export function writtenFiles(messages: { agent_id: string; role: string; created_at: string; content: { type: string; [k: string]: unknown }[] }[], folders: { label: string; path: string }[]): WrittenFile[] {
+export function writtenFiles(
+  messages: { agent_id: string; role: string; created_at: string; content: { type: string; [k: string]: unknown }[] }[],
+  folders: { label: string; path: string }[],
+): WrittenFile[] {
   const failed = new Set<string>();
   for (const m of messages) for (const b of m.content) if (b.type === "tool_result" && b.is_error) failed.add(String(b.tool_use_id));
   const out: WrittenFile[] = [];

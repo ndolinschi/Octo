@@ -22,15 +22,7 @@ export function statusLabel(status: AgentStatus): string {
  */
 export function Spinner({ size = 12, className = "text-fg-2" }: { size?: number; className?: string }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden
-      data-spinner=""
-      className={cn("shrink-0 animate-spin", className)}
-    >
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden data-spinner="" className={cn("shrink-0 animate-spin", className)}>
       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
       <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>

@@ -35,7 +35,14 @@ export async function orbitLive(ctx: Ctx): Promise<void> {
               { name: "read_file", input: { path: "metro.config.js" }, result: "module.exports = { transformer: { … } }", ms: 1600 },
               { name: "read_file", input: { path: "android/build.gradle" }, result: "minSdkVersion = 23", ms: 1600 },
             ]);
-            await act(cc, id, [{ name: "bash", input: { command: "rg -l 'NativeModules\\.' node_modules/@orbit node_modules/react-native-maps/lib" }, result: "node_modules/@orbit/native-camera/index.js\nnode_modules/react-native-maps/lib/MapView.js", ms: 2600 }]);
+            await act(cc, id, [
+              {
+                name: "bash",
+                input: { command: "rg -l 'NativeModules\\.' node_modules/@orbit node_modules/react-native-maps/lib" },
+                result: "node_modules/@orbit/native-camera/index.js\nnode_modules/react-native-maps/lib/MapView.js",
+                ms: 2600,
+              },
+            ]);
             await say(cc, id, AUDIT);
             return AUDIT;
           },
@@ -46,7 +53,15 @@ export async function orbitLive(ctx: Ctx): Promise<void> {
           tier: "balanced",
           task: "Run the full Jest suite on main before any change. Report pass/fail counts and classify each failure as pre-existing, flaky, or environment.",
           run: async (cc, id) => {
-            await act(cc, id, [{ name: "bash", input: { command: "yarn jest --ci --silent" }, result: "Tests: 9 failed, 3 skipped, 412 passed, 424 total\nTime: 161.2 s", ms: 9000, error: false }]);
+            await act(cc, id, [
+              {
+                name: "bash",
+                input: { command: "yarn jest --ci --silent" },
+                result: "Tests: 9 failed, 3 skipped, 412 passed, 424 total\nTime: 161.2 s",
+                ms: 9000,
+                error: false,
+              },
+            ]);
             await delegate(cc, id, [
               {
                 role: "Flake investigator",
@@ -54,8 +69,12 @@ export async function orbitLive(ctx: Ctx): Promise<void> {
                 tier: "fast",
                 task: "Run src/sync/__tests__/sync.queue.test.ts 20 times and explain the intermittent failures.",
                 run: async (fc, fid) => {
-                  await act(fc, fid, [{ name: "bash", input: { command: "for i in $(seq 20); do yarn jest sync.queue --silent; done | grep -c FAIL" }, result: "7", ms: 7000 }]);
-                  await act(fc, fid, [{ name: "read_file", input: { path: "src/sync/retry.ts" }, result: "await new Promise(r => setTimeout(r, backoff(attempt)))", ms: 900 }]);
+                  await act(fc, fid, [
+                    { name: "bash", input: { command: "for i in $(seq 20); do yarn jest sync.queue --silent; done | grep -c FAIL" }, result: "7", ms: 7000 },
+                  ]);
+                  await act(fc, fid, [
+                    { name: "read_file", input: { path: "src/sync/retry.ts" }, result: "await new Promise(r => setTimeout(r, backoff(attempt)))", ms: 900 },
+                  ]);
                   const r = "7/20 runs fail. `retry.ts` sleeps with a real `setTimeout`; the test uses fake timers only for the queue. Fix: inject the clock.";
                   await say(fc, fid, r);
                   return r;
@@ -80,8 +99,18 @@ export async function orbitLive(ctx: Ctx): Promise<void> {
           task: "Upgrade react-native to 0.80.x with the upgrade helper diff. Raise Android minSdk to 24, migrate metro.config.js, and pin react-native-maps to 1.20. Keep the old-architecture interop for @orbit/native-camera. Build both platforms and run the suite.",
           run: async (cc, id) => {
             await act(cc, id, [{ name: "bash", input: { command: "npx react-native upgrade 0.80.1" }, result: "Applied 41 file changes", ms: 9000 }]);
-            await act(cc, id, [{ name: "write_file", input: { path: "android/build.gradle" }, result: "updated minSdkVersion → 24", ms: 1500, content: ORBIT_WRITES.gradle }]);
-            await act(cc, id, [{ name: "write_file", input: { path: "metro.config.js" }, result: "rewrote with @react-native/metro-config", ms: 1500, content: ORBIT_WRITES.metro }]);
+            await act(cc, id, [
+              { name: "write_file", input: { path: "android/build.gradle" }, result: "updated minSdkVersion → 24", ms: 1500, content: ORBIT_WRITES.gradle },
+            ]);
+            await act(cc, id, [
+              {
+                name: "write_file",
+                input: { path: "metro.config.js" },
+                result: "rewrote with @react-native/metro-config",
+                ms: 1500,
+                content: ORBIT_WRITES.metro,
+              },
+            ]);
             await act(cc, id, [{ name: "bash", input: { command: "cd ios && pod install" }, result: "Pod installation complete! 87 dependencies", ms: 14000 }]);
             await act(cc, id, [{ name: "bash", input: { command: "yarn jest --ci --silent" }, result: "Tests: 9 failed, 412 passed", ms: 16000 }]);
             const r = "Upgraded to 0.80.1; both platforms build. Test results are unchanged from baseline (same 9 pre-existing failures).";

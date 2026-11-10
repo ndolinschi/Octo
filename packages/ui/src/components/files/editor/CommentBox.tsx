@@ -24,7 +24,15 @@ export function CommentZone({ onLayout, ...props }: ZoneProps & { onLayout?: () 
     layout.current?.();
   }, []);
   // Aligned to the code column (the box's left is the code's left), 12px clear of the right edge, 4px above and below.
-  return <div className="py-1 pr-3">{props.kind === "composer" ? <Composer {...(props as Extract<ZoneProps, { kind: "composer" }>)} /> : <Card {...(props as Extract<ZoneProps, { kind: "card" }>)} />}</div>;
+  return (
+    <div className="py-1 pr-3">
+      {props.kind === "composer" ? (
+        <Composer {...(props as Extract<ZoneProps, { kind: "composer" }>)} />
+      ) : (
+        <Card {...(props as Extract<ZoneProps, { kind: "card" }>)} />
+      )}
+    </div>
+  );
 }
 
 function Composer(props: Extract<ZoneProps, { kind: "composer" }>) {
@@ -106,15 +114,15 @@ function Card(props: Extract<ZoneProps, { kind: "card" }>) {
         <Glyph icon={MessageSquare} size={14} className="shrink-0" />
         <span className="min-w-0 truncate tabular-nums">{label.replace(/^l/, "L")}</span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100">
-          <button type="button" onClick={props.onEdit} className="press h-6 rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg">
+          <button type="button" onClick={props.onEdit} className="h-6 press rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg">
             Edit
           </button>
-          <button type="button" onClick={props.onRemove} className="press h-6 rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg">
+          <button type="button" onClick={props.onRemove} className="h-6 press rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg">
             Remove
           </button>
         </span>
       </header>
-      <p className="text-sm whitespace-pre-wrap wrap-anywhere text-fg">{props.text}</p>
+      <p className="text-sm wrap-anywhere whitespace-pre-wrap text-fg">{props.text}</p>
     </article>
   );
 }

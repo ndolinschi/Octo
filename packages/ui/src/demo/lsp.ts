@@ -36,9 +36,21 @@ function declarations(folder: string, path: string, text: string): Decl[] {
       : /^(?:export\s+)?(?:async\s+)?(function|const|let|class|interface|type)\s+([A-Za-z_$][\w$]*)/.exec(line);
     if (!m) return;
     const name = go ? m[1] : m[2];
-    const kind: Decl["kind"] = go ? "function" : m[1] === "function" ? "function" : m[1] === "class" ? "class" : m[1] === "interface" || m[1] === "type" ? "type" : "const";
+    const kind: Decl["kind"] = go
+      ? "function"
+      : m[1] === "function"
+        ? "function"
+        : m[1] === "class"
+          ? "class"
+          : m[1] === "interface" || m[1] === "type"
+            ? "type"
+            : "const";
     const character = line.indexOf(name, go ? 4 : 0);
-    const signature = line.replace(/\s*[{=]\s*$/, "").replace(/\s*\{\s*$/, "").replace(/^export\s+/, "").trim();
+    const signature = line
+      .replace(/\s*[{=]\s*$/, "")
+      .replace(/\s*\{\s*$/, "")
+      .replace(/^export\s+/, "")
+      .trim();
     out.push({ name, kind, signature, folder, path, range: { start: { line: i, character }, end: { line: i, character: character + name.length } } });
   });
   return out;
@@ -89,7 +101,11 @@ function diagnostics(path: string, text: string) {
     const m = /^import\s+(?:type\s+)?\{([^}]+)\}\s+from/.exec(line);
     if (!m) return;
     for (const raw of m[1].split(",")) {
-      const name = raw.replace(/^\s*type\s+/, "").split(/\s+as\s+/).pop()!.trim();
+      const name = raw
+        .replace(/^\s*type\s+/, "")
+        .split(/\s+as\s+/)
+        .pop()!
+        .trim();
       if (!name || count(new RegExp(`\\b${name.replace(/\$/g, "\\$")}\\b`, "g")) > 1) continue;
       const at = line.indexOf(name);
       out.push({
@@ -197,7 +213,12 @@ export function createDemoServer(rec: ProjectRecord, opts: DemoServerOptions): L
       for (const d of allDeclarations(uri)) {
         if (seen.has(d.name) || items.length >= 8 || !d.name.toLowerCase().startsWith(prefix)) continue;
         seen.add(d.name);
-        items.push({ label: d.name, kind: d.kind === "function" ? 3 : d.kind === "class" ? 7 : d.kind === "type" ? 8 : 21, detail: d.signature, sortText: `0${d.name}` });
+        items.push({
+          label: d.name,
+          kind: d.kind === "function" ? 3 : d.kind === "class" ? 7 : d.kind === "type" ? 8 : 21,
+          detail: d.signature,
+          sortText: `0${d.name}`,
+        });
       }
       for (const k of go ? GO_KEYWORDS : TS_KEYWORDS) if (k.startsWith(prefix)) items.push({ label: k, kind: 14, sortText: `1${k}` });
       return { isIncomplete: false, items };

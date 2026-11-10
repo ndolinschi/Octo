@@ -77,14 +77,14 @@ function CommentCard({ comment: c }: { comment: SentComment }) {
               aria-expanded={expanded}
               aria-controls={quoteId}
               onClick={() => setExpanded((x) => !x)}
-              className="press mb-1 ml-1.5 inline-flex h-6 items-center rounded-sm px-1.5 text-xs text-fg-3 hover:bg-hover hover:text-fg"
+              className="mb-1 ml-1.5 inline-flex h-6 press items-center rounded-sm px-1.5 text-xs text-fg-3 hover:bg-hover hover:text-fg"
             >
               {expanded ? "Show less" : `Show ${hidden} more ${hidden === 1 ? "line" : "lines"}`}
             </button>
           )}
         </div>
       )}
-      {c.text && <p className="border-t border-line px-3 py-2 text-base whitespace-pre-wrap wrap-anywhere text-fg">{c.text}</p>}
+      {c.text && <p className="border-t border-line px-3 py-2 text-base wrap-anywhere whitespace-pre-wrap text-fg">{c.text}</p>}
     </li>
   );
 }

@@ -34,7 +34,7 @@ export function ChatHeader({ requests }: { requests: RequestSummary[] }) {
   const tokens = totalTokens(state);
   const total = tokens.input + tokens.output;
   return (
-    <div data-chat-header className="scroll-quiet shrink-0 overflow-hidden bg-panel px-(--pad)">
+    <div data-chat-header className="shrink-0 overflow-hidden bg-panel px-(--pad) scroll-quiet">
       <div data-column-edge className="mx-auto flex h-bar w-full max-w-measure min-w-0 items-center gap-3 text-sm">
         <p className="flex min-w-0 flex-1 items-center gap-2">
           {/* Under 420px of conversation the project crumb goes first (it is in the sidebar and the tab). */}

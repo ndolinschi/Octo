@@ -30,7 +30,7 @@ export function ModelSelect(props: { value: string; options: string[]; onChoose(
         disabled={props.disabled}
         onClick={() => (menu ? setMenu(null) : open())}
         className={cn(
-          "press flex h-6 shrink-0 items-center gap-1 rounded-sm px-2 text-xs hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:text-fg-3",
+          "flex h-6 shrink-0 press items-center gap-1 rounded-sm px-2 text-xs hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:text-fg-3",
           menu ? "bg-active text-fg" : "text-fg-2",
         )}
       >

@@ -251,7 +251,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           aria-expanded={menu?.mode === "button"}
           disabled={disabled}
           onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
-          className={cn(control, "text-fg-3 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40", menu?.mode === "button" && "bg-active text-fg")}
+          className={cn(
+            control,
+            "text-fg-3 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40",
+            menu?.mode === "button" && "bg-active text-fg",
+          )}
         >
           <Glyph icon={Plus} size={16} />
         </button>
@@ -286,7 +290,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         />
         {props.floating && modelSelect && <span className="flex h-7 shrink-0 items-center">{modelSelect}</span>}
         {props.running ? (
-          <button type="button" onClick={() => void props.onCancel()} aria-label="Stop the current turn" title="Stop" className={cn(control, "bg-primary text-primary-fg hover:opacity-90")}>
+          <button
+            type="button"
+            onClick={() => void props.onCancel()}
+            aria-label="Stop the current turn"
+            title="Stop"
+            className={cn(control, "bg-primary text-primary-fg hover:opacity-90")}
+          >
             <Glyph icon={Square} size={14} fill="currentColor" />
           </button>
         ) : (

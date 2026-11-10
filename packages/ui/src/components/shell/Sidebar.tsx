@@ -17,7 +17,15 @@ import { ProjectItem } from "./ProjectItem";
  */
 export const NAV_ROW = "press-row flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-sm text-fg hover:bg-hover";
 
-function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disabled?: boolean; trailing?: ReactNode; shortcut?: { hint: string; keys: string }; current?: boolean }) {
+function NavRow(props: {
+  icon: LucideIcon;
+  label: string;
+  onClick(): void;
+  disabled?: boolean;
+  trailing?: ReactNode;
+  shortcut?: { hint: string; keys: string };
+  current?: boolean;
+}) {
   const Icon = props.icon;
   return (
     <button
@@ -94,7 +102,7 @@ export function Sidebar(props: {
             <IconButton icon={Plus} label="Add project" onClick={props.onNewProject} disabled={!canCreate} className="ml-auto" />
           </div>
         )}
-        <ul ref={list} className="fade-y min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <ul ref={list} className="min-h-0 flex-1 overflow-y-auto overscroll-contain fade-y">
           {projects === null &&
             health !== "offline" &&
             [0, 1, 2].map((i) => (

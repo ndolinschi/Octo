@@ -74,7 +74,10 @@ test("message.created appends once, dedups, clears streaming for assistant only"
   s = applyEvent(s, { type: "message.created", seq: 4, message: msg(2, "a") });
   s = applyEvent(s, { type: "message.created", seq: 5, message: msg(2, "a") });
   assert.equal("a" in s.streaming, false);
-  assert.deepEqual(s.messages.a.map((m) => m.id), [1, 2]);
+  assert.deepEqual(
+    s.messages.a.map((m) => m.id),
+    [1, 2],
+  );
 });
 
 test("tool.started/finished maintain activeTools", () => {
@@ -93,9 +96,15 @@ test("note.changed upserts and deletes", () => {
   s = applyEvent(s, { type: "note.changed", seq: 1, note: note("n1"), note_id: "n1" });
   s = applyEvent(s, { type: "note.changed", seq: 2, note: note("n2"), note_id: "n2" });
   s = applyEvent(s, { type: "note.changed", seq: 3, note: note("n1", "new"), note_id: "n1" });
-  assert.deepEqual(s.notes.map((n) => n.title), ["new", "n2"]);
+  assert.deepEqual(
+    s.notes.map((n) => n.title),
+    ["new", "n2"],
+  );
   s = applyEvent(s, { type: "note.changed", seq: 4, note: null, note_id: "n1" });
-  assert.deepEqual(s.notes.map((n) => n.id), ["n2"]);
+  assert.deepEqual(
+    s.notes.map((n) => n.id),
+    ["n2"],
+  );
 });
 
 test("turn.finished sets lastTurn and clears transient state", () => {
@@ -127,9 +136,15 @@ test("withMessages merges out of order, keeps newer live messages", () => {
   let s = emptyProjectState();
   s = applyEvent(s, { type: "message.created", seq: 1, message: msg(5, "a") });
   s = withMessages(s, "a", [msg(3, "a"), msg(1, "a"), msg(5, "a")]);
-  assert.deepEqual(s.messages.a.map((m) => m.id), [1, 3, 5]);
+  assert.deepEqual(
+    s.messages.a.map((m) => m.id),
+    [1, 3, 5],
+  );
   s = withMessages(s, "a", [msg(2, "a")]);
-  assert.deepEqual(s.messages.a.map((m) => m.id), [1, 2, 3, 5]);
+  assert.deepEqual(
+    s.messages.a.map((m) => m.id),
+    [1, 2, 3, 5],
+  );
 });
 
 test("withAgents loads in order and keeps live-only agents; withNotes replaces", () => {
@@ -138,7 +153,10 @@ test("withAgents loads in order and keeps live-only agents; withNotes replaces",
   s = withAgents(s, [agent("o", null), agent("a", "o")]);
   assert.deepEqual(s.agentOrder, ["o", "a", "live"]);
   s = withNotes(s, [note("n")]);
-  assert.deepEqual(s.notes.map((n) => n.id), ["n"]);
+  assert.deepEqual(
+    s.notes.map((n) => n.id),
+    ["n"],
+  );
 });
 
 function tree() {
@@ -153,9 +171,15 @@ function tree() {
 
 test("selectors on a 3-level tree", () => {
   const s = tree();
-  assert.deepEqual(childrenOf(s, "o").map((a) => a.id), ["a", "b"]);
+  assert.deepEqual(
+    childrenOf(s, "o").map((a) => a.id),
+    ["a", "b"],
+  );
   assert.deepEqual(childrenOf(s, "b"), []);
-  assert.deepEqual(ancestorsOf(s, "a1x").map((a) => a.id), ["o", "a", "a1"]);
+  assert.deepEqual(
+    ancestorsOf(s, "a1x").map((a) => a.id),
+    ["o", "a", "a1"],
+  );
   assert.deepEqual(ancestorsOf(s, "o"), []);
   assert.deepEqual(ancestorsOf(s, "missing"), []);
   assert.equal(agentBySpawnToolUse(s, "tu_a1")?.id, "a1");

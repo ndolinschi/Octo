@@ -41,7 +41,7 @@ export function DetailsPanel() {
   useScrollFade(scroller, "y");
   if (!project) return null;
   return (
-    <div ref={scroller} data-details className="fade-y h-full min-h-0 overflow-y-auto overscroll-contain px-pane pt-pane pb-4">
+    <div ref={scroller} data-details className="h-full min-h-0 overflow-y-auto overscroll-contain fade-y px-pane pt-pane pb-4">
       <div className="flex flex-col gap-2">
         <Folders />
         <Models />
@@ -105,7 +105,10 @@ function tokenRows(agents: Agent[]): TokenRow[] {
     rows.set(key, row);
   }
   return [...rows.values()]
-    .map((r) => ({ ...r, title: `${r.role}${r.count > 1 ? ` (${r.count} agents)` : ""} — ${r.input.toLocaleString()} in, ${r.output.toLocaleString()} out${r.approx ? " (approximate)" : ""}` }))
+    .map((r) => ({
+      ...r,
+      title: `${r.role}${r.count > 1 ? ` (${r.count} agents)` : ""} — ${r.input.toLocaleString()} in, ${r.output.toLocaleString()} out${r.approx ? " (approximate)" : ""}`,
+    }))
     .sort((a, b) => Number(b.key === "orchestrator") - Number(a.key === "orchestrator") || b.input + b.output - (a.input + a.output));
 }
 
@@ -157,7 +160,8 @@ function PluginsInUse() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([bridge.listLanguageServers(projectId), bridge.listPlugins()]).then(
-      ([servers, plugins]) => !cancelled && setLoad({ servers: servers.filter((s) => s.available), agents: plugins.flatMap((p) => p.agents).filter((a) => a.available) }),
+      ([servers, plugins]) =>
+        !cancelled && setLoad({ servers: servers.filter((s) => s.available), agents: plugins.flatMap((p) => p.agents).filter((a) => a.available) }),
       () => !cancelled && setFailed(true),
     );
     return () => {
@@ -212,7 +216,13 @@ function Activity() {
     <InfoSection title="Activity" labelId="details-activity">
       {agents.length === 0 && <p className={cn(INFO_ROW, "text-fg-3")}>No agents have run yet.</p>}
       {shown.map((a) => (
-        <button key={a.id} type="button" onClick={(e) => ws.openAgent(a.id, { otherSide: e.altKey })} title={a.title ? `${roleOf(a)}: ${a.title}` : roleOf(a)} className={INFO_ROW_BUTTON}>
+        <button
+          key={a.id}
+          type="button"
+          onClick={(e) => ws.openAgent(a.id, { otherSide: e.altKey })}
+          title={a.title ? `${roleOf(a)}: ${a.title}` : roleOf(a)}
+          className={INFO_ROW_BUTTON}
+        >
           <span className="grid size-4 shrink-0 place-items-center">
             <StatusIcon status={a.status} />
           </span>
@@ -254,7 +264,13 @@ function FilesWritten() {
             {shown.map((f) => {
               const dir = parentPath(f.path);
               return (
-                <button key={`${f.folder}/${f.path}`} type="button" title={`${f.folder}/${f.path}`} onClick={() => code.openFile(f.folder, f.path)} className={INFO_ROW_BUTTON}>
+                <button
+                  key={`${f.folder}/${f.path}`}
+                  type="button"
+                  title={`${f.folder}/${f.path}`}
+                  onClick={() => code.openFile(f.folder, f.path)}
+                  className={INFO_ROW_BUTTON}
+                >
                   <Glyph icon={fileIcon(f.path)} size={14} className="shrink-0 text-fg-3" />
                   <span className="min-w-0 shrink truncate text-fg">{fileName(f.path)}</span>
                   <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
@@ -269,7 +285,12 @@ function FilesWritten() {
               );
             })}
             {g.files.length > PAGE && (
-              <MoreRow slot label={open[g.label] ? "Show fewer" : `Show ${g.files.length - PAGE} more`} expanded={Boolean(open[g.label])} onClick={() => setOpen((o) => ({ ...o, [g.label]: !o[g.label] }))} />
+              <MoreRow
+                slot
+                label={open[g.label] ? "Show fewer" : `Show ${g.files.length - PAGE} more`}
+                expanded={Boolean(open[g.label])}
+                onClick={() => setOpen((o) => ({ ...o, [g.label]: !o[g.label] }))}
+              />
             )}
           </div>
         );

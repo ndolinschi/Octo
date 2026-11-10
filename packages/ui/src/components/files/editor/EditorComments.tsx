@@ -45,7 +45,13 @@ function selectedLines(editor: Monaco.editor.IStandaloneCodeEditor): { start: nu
  * (or the selected lines). Commented lines carry a rail and a faint tint; pending comments show as
  * cards under their last line and follow edits (tracked decorations).
  */
-export function EditorComments(props: { editor: Monaco.editor.IStandaloneCodeEditor; monaco: MonacoApi; buffers: EditorBuffers; folder: string; path: string }) {
+export function EditorComments(props: {
+  editor: Monaco.editor.IStandaloneCodeEditor;
+  monaco: MonacoApi;
+  buffers: EditorBuffers;
+  folder: string;
+  path: string;
+}) {
   const { editor, monaco, buffers, folder, path } = props;
   const store = useComments();
   const comments = store.forFile(folder, path);
@@ -118,7 +124,9 @@ export function EditorComments(props: { editor: Monaco.editor.IStandaloneCodeEdi
     if (!hoverLine) return;
     const model = editor.getModel();
     if (!model || hoverLine > model.getLineCount()) return;
-    const deco = editor.createDecorationsCollection([{ range: new monaco.Range(hoverLine, 1, hoverLine, 1), options: { isWholeLine: true, className: "octo-hover-line" } }]);
+    const deco = editor.createDecorationsCollection([
+      { range: new monaco.Range(hoverLine, 1, hoverLine, 1), options: { isWholeLine: true, className: "octo-hover-line" } },
+    ]);
     return () => deco.clear();
   }, [editor, monaco, hoverLine]);
 
@@ -129,7 +137,12 @@ export function EditorComments(props: { editor: Monaco.editor.IStandaloneCodeEdi
   const applyRanges = useCallback(() => {
     const model = editor.getModel();
     if (!model) return;
-    const mark = { isWholeLine: true, className: "octo-comment-line", linesDecorationsClassName: "octo-comment-rail", stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges };
+    const mark = {
+      isWholeLine: true,
+      className: "octo-comment-line",
+      linesDecorationsClassName: "octo-comment-rail",
+      stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+    };
     const { comments: list, draft: d } = live.current;
     const next: Monaco.editor.IModelDeltaDecoration[] = list.map((c) => ({ range: lineRange(monaco, model, c.start, c.end), options: mark }));
     if (d && !d.editing) next.push({ range: lineRange(monaco, model, d.start, d.end), options: mark });
@@ -332,7 +345,7 @@ export function EditorComments(props: { editor: Monaco.editor.IStandaloneCodeEdi
         if (!(e.relatedTarget as Element | null)?.closest?.(".monaco-editor")) setHover(null);
       }}
       onClick={onPlus}
-      className="press absolute z-[5] grid place-items-center rounded-xs bg-primary text-primary-fg shadow-panel octo-ring-panel before:absolute before:-inset-[3px] before:content-[''] hover:opacity-90"
+      className="octo-ring-panel absolute z-[5] grid press place-items-center rounded-xs bg-primary text-primary-fg shadow-panel before:absolute before:-inset-[3px] before:content-[''] hover:opacity-90"
     >
       <Glyph icon={Plus} size={14} />
     </button>

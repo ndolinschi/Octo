@@ -52,13 +52,12 @@ export const Transcript = memo(function Transcript(props: {
           const hidePrompt = props.hideFirstPrompt && i === 0;
           const started = turn.prompt?.created_at ?? (i === 0 ? agent.started_at : null);
           const prev = turns[i - 1];
-          const separator = isOrchestrator && turn.prompt && needsSeparator(prev ? (prev.lastAt ?? prev.prompt?.created_at ?? null) : null, turn.prompt.created_at);
+          const separator =
+            isOrchestrator && turn.prompt && needsSeparator(prev ? (prev.lastAt ?? prev.prompt?.created_at ?? null) : null, turn.prompt.created_at);
           return (
             <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-4">
               {separator && turn.prompt && <TimeSeparator at={turn.prompt.created_at} now={minute} />}
-              {turn.prompt && !hidePrompt && (
-                <UserPrompt text={promptText(turn.prompt)} author={props.promptAuthor} external={!isOrchestrator} />
-              )}
+              {turn.prompt && !hidePrompt && <UserPrompt text={promptText(turn.prompt)} author={props.promptAuthor} external={!isOrchestrator} />}
               <AssistantTurn
                 turn={turn}
                 speaker={props.speaker}
@@ -84,11 +83,7 @@ export const Transcript = memo(function Transcript(props: {
           />
         )}
         {lastTurn && lastTurn.status !== "completed" && !running && (
-          <TurnBanner
-            status={lastTurn.status}
-            error={lastTurn.error}
-            retryText={lastPrompt ? promptText(lastPrompt) : null}
-          />
+          <TurnBanner status={lastTurn.status} error={lastTurn.error} retryText={lastPrompt ? promptText(lastPrompt) : null} />
         )}
       </div>
     </TranscriptContext.Provider>
@@ -126,13 +121,9 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
 
   return (
     <div data-prompt className="rounded-md border border-line bg-raised p-card text-base text-fg transition-[box-shadow] duration-300">
-      {external ? (
-        <div className="mb-0.5 text-xs text-fg-3">From {author}</div>
-      ) : (
-        <span className="sr-only">{author}: </span>
-      )}
+      {external ? <div className="mb-0.5 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
       {text && (
-        <div ref={box} id={id} className={cn("whitespace-pre-wrap wrap-anywhere", !expanded && "line-clamp-8")}>
+        <div ref={box} id={id} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
           {text}
         </div>
       )}
@@ -142,7 +133,7 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded((x) => !x)}
-          className="press -ml-1.5 mt-1 inline-flex h-6 items-center rounded-sm px-1.5 text-sm text-fg-2 hover:bg-hover hover:text-fg"
+          className="mt-1 -ml-1.5 inline-flex h-6 press items-center rounded-sm px-1.5 text-sm text-fg-2 hover:bg-hover hover:text-fg"
         >
           {expanded ? "Show less" : "Show more"}
         </button>

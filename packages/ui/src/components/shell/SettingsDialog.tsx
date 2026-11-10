@@ -53,7 +53,7 @@ export function SettingsDialog({ onClose, initialView = "general" }: { onClose()
               tabIndex={view === v.id ? 0 : -1}
               onClick={() => setView(v.id)}
               className={cn(
-                "press-row flex h-row items-center rounded-sm px-2 text-sm focus-inset",
+                "flex h-row items-center rounded-sm px-2 text-sm press-row focus-inset",
                 view === v.id ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg",
               )}
             >
@@ -134,7 +134,14 @@ function ThemeChoice() {
 
 function BridgeStatus({ demo }: { demo: boolean }) {
   const { bridgeUrl, health, retry, version } = useApp();
-  const state = health === "online" ? (demo ? "Demo data, in memory" : `Connected${version ? `, version ${version}` : ""}`) : health === "offline" ? "Offline" : "Connecting…";
+  const state =
+    health === "online"
+      ? demo
+        ? "Demo data, in memory"
+        : `Connected${version ? `, version ${version}` : ""}`
+      : health === "offline"
+        ? "Offline"
+        : "Connecting…";
   return (
     <section>
       <h3 className="text-sm text-fg-2">Bridge</h3>

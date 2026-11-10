@@ -6,7 +6,15 @@ import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
 
 export type MenuItem =
-  | { id: string; label: string; shortcut?: string; disabled?: boolean; /** A choice in a set (menuitemradio). */ checked?: boolean; title?: string; run(): void }
+  | {
+      id: string;
+      label: string;
+      shortcut?: string;
+      disabled?: boolean;
+      /** A choice in a set (menuitemradio). */ checked?: boolean;
+      title?: string;
+      run(): void;
+    }
   | { id: string; separator: true };
 
 const isAction = (item: MenuItem): item is Extract<MenuItem, { run(): void }> => !("separator" in item);
@@ -21,7 +29,15 @@ const ITEM = '[data-menu-item]:not([aria-disabled="true"])';
  * type-ahead move; Enter/Space runs; Esc, Tab, a click outside or scrolling closes. Focus moves into the
  * menu on open and back to the opener when it starts closing.
  */
-export function Menu(props: { label: string; x: number; y: number; items: MenuItem[]; onClose(): void; above?: boolean; /** Opens leftwards from x (its right edge on x). */ alignEnd?: boolean }) {
+export function Menu(props: {
+  label: string;
+  x: number;
+  y: number;
+  items: MenuItem[];
+  onClose(): void;
+  above?: boolean;
+  /** Opens leftwards from x (its right edge on x). */ alignEnd?: boolean;
+}) {
   const { onClose } = props;
   const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -103,7 +119,10 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
     }
     if (e.key.length === 1 && /\S/.test(e.key)) {
       const hit = enabled.find((a) => a.label.toLowerCase().startsWith(e.key.toLowerCase()));
-      if (hit) items().find((el) => el.dataset.id === hit.id)?.focus();
+      if (hit)
+        items()
+          .find((el) => el.dataset.id === hit.id)
+          ?.focus();
     }
   };
 

@@ -59,4 +59,3 @@ export const CODE_LIGHT: CodePalette = {
   link: "#0a5fd1",
   tint: (a) => `#000000${a}`,
 };
-

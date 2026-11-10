@@ -39,7 +39,7 @@ export function ProjectItem(props: {
   return (
     <li>
       {/* One row shape (radius 4 on all corners); the chevron's 24px target is centred on the 16px leading slot. */}
-      <div className={cn("press-row flex h-row-nav items-center rounded-sm pr-2 pl-1", active && !viewingShown ? "bg-active" : "hover:bg-hover")}>
+      <div className={cn("flex h-row-nav items-center rounded-sm pr-2 pl-1 press-row", active && !viewingShown ? "bg-active" : "hover:bg-hover")}>
         <button
           type="button"
           aria-expanded={expanded}
@@ -47,7 +47,7 @@ export function ProjectItem(props: {
           aria-label={`Show requests in ${project.name}`}
           title={`Show requests in ${project.name}`}
           onClick={() => props.onExpanded(!expanded)}
-          className="grid size-6 shrink-0 place-items-center rounded-sm text-fg-3 transition-[color] duration-100 hover:text-fg focus-inset"
+          className="grid size-6 shrink-0 place-items-center rounded-sm text-fg-3 focus-inset transition-[color] duration-100 hover:text-fg"
         >
           <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", expanded && "rotate-90")} />
         </button>
@@ -121,7 +121,7 @@ function RequestList(props: {
               type="button"
               onClick={props.onRetry}
               aria-label={`Retry loading requests in ${project.name}`}
-              className="press -mr-1 h-6 shrink-0 rounded-sm px-1 text-xs text-fg-2 hover:bg-hover hover:text-fg"
+              className="-mr-1 h-6 shrink-0 press rounded-sm px-1 text-xs text-fg-2 hover:bg-hover hover:text-fg"
             >
               Retry
             </button>
@@ -167,7 +167,7 @@ function RequestList(props: {
                 open(r);
               }}
               className={cn(
-                "press-row flex h-row items-center rounded-sm px-2 text-sm focus-inset",
+                "flex h-row items-center rounded-sm px-2 text-sm press-row focus-inset",
                 current ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
               )}
             >
@@ -193,7 +193,7 @@ function RequestList(props: {
             type="button"
             aria-expanded={all}
             onClick={() => setAll((a) => !a)}
-            className="press-row flex h-row w-full items-center rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg-2"
+            className="flex h-row w-full items-center rounded-sm px-2 text-xs text-fg-3 press-row hover:bg-hover hover:text-fg-2"
           >
             <Lead />
             {all ? "Show fewer" : `Show all (${requests.length})`}

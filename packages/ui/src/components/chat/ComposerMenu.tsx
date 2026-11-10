@@ -99,11 +99,29 @@ export const ComposerMenu = forwardRef<
       .slice(0, FILES_SHOWN)
       .forEach((f) => {
         const path = `${f.folder}/${f.path}`;
-        out.push({ id: `file:${path}`, group: "Files", label: f.path.slice(f.path.lastIndexOf("/") + 1), detail: path, hint: "Insert path", icon: fileIcon(f.path), match: path, pick: { insert: `\`${path}\` ` } });
+        out.push({
+          id: `file:${path}`,
+          group: "Files",
+          label: f.path.slice(f.path.lastIndexOf("/") + 1),
+          detail: path,
+          hint: "Insert path",
+          icon: fileIcon(f.path),
+          match: path,
+          pick: { insert: `\`${path}\` ` },
+        });
       });
     for (const a of agents) {
       const text = `Use the ${a.label} agent for this.`;
-      out.push({ id: `agent:${a.id}`, group: "Agents", label: a.label, detail: "ACP agent", hint: "Insert", icon: GLYPH.agent, match: a.label, pick: { insert: `${text} ` } });
+      out.push({
+        id: `agent:${a.id}`,
+        group: "Agents",
+        label: a.label,
+        detail: "ACP agent",
+        hint: "Insert",
+        icon: GLYPH.agent,
+        match: a.label,
+        pick: { insert: `${text} ` },
+      });
     }
     if (props.pendingComments > 0) {
       const label = `Review ${props.pendingComments} pending ${props.pendingComments === 1 ? "comment" : "comments"}`;
@@ -212,7 +230,13 @@ export const ComposerMenu = forwardRef<
           />
         </div>
       )}
-      <div id={props.listId} role="listbox" aria-label="Insert or run" className="overflow-y-auto overscroll-contain p-1" style={{ maxHeight: VISIBLE * ROW + 8 }}>
+      <div
+        id={props.listId}
+        role="listbox"
+        aria-label="Insert or run"
+        className="overflow-y-auto overscroll-contain p-1"
+        style={{ maxHeight: VISIBLE * ROW + 8 }}
+      >
         {groups.map((g) => (
           <div key={g} role="group" aria-labelledby={`${baseId}-${g}`}>
             <div id={`${baseId}-${g}`} className="flex h-row items-center px-2 text-xs text-fg-3">
@@ -235,7 +259,7 @@ export const ComposerMenu = forwardRef<
                     onMouseDown={(ev) => ev.preventDefault()}
                     onPointerMove={() => i !== current && setSelected(i)}
                     onClick={() => choose(e)}
-                    className={cn("press-row flex h-row items-center gap-2 rounded-sm px-2", isSelected ? "bg-active text-fg" : "text-fg")}
+                    className={cn("flex h-row items-center gap-2 rounded-sm px-2 press-row", isSelected ? "bg-active text-fg" : "text-fg")}
                   >
                     <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
                       <Glyph icon={Icon} size={14} />

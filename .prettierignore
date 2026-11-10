@@ -1,0 +1,10 @@
+# Fixture text: formatting would rewrite the demo files' content.
+packages/ui/src/demo/seedFiles.ts
+docs/
+**/node_modules/
+**/dist/
+**/target/
+apps/harness/
+apps/router/
+apps/desktop/src-tauri/
+pnpm-lock.yaml

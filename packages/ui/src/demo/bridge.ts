@@ -135,7 +135,9 @@ function seed(): ProjectRecord[] {
     },
     now - 30 * HOUR,
   );
-  atlas.notes.push(userNote("Deploy constraints", "No deploys on Fridays. Staging is `atlas-stg` and needs the VPN. Ask before touching `src/billing/`.", now - 29 * HOUR));
+  atlas.notes.push(
+    userNote("Deploy constraints", "No deploys on Fridays. Staging is `atlas-stg` and needs the VPN. Ask before touching `src/billing/`.", now - 29 * HOUR),
+  );
   startScript(atlas, now - 28 * HOUR, atlasHistory);
 
   const orbit = makeProject(
@@ -189,7 +191,11 @@ function seed(): ProjectRecord[] {
     ctx.t = Math.max(ctx.t, now - 1_200);
     await backgroundTurn(
       "Re-run last night's settlement for the EU merchants and tell me if the totals match.",
-      { name: "bash", input: { command: "pnpm settle --region eu --date yesterday --dry-run" }, result: "Settled 1,284 merchants · €2,418,903.17 · 0 mismatches" },
+      {
+        name: "bash",
+        input: { command: "pnpm settle --region eu --date yesterday --dry-run" },
+        result: "Settled 1,284 merchants · €2,418,903.17 · 0 mismatches",
+      },
       "Re-ran the EU settlement as a dry run: **1,284 merchants, €2,418,903.17**, and the totals match the ledger exactly. Nothing was written.",
       2_600,
     )(ctx);
@@ -296,9 +302,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     getConfig: async () => (await delay(), { default_models: { ...DEFAULT_MODELS }, default_max_depth: 3 }),
     listProjects: async () => {
       await delay();
-      return [...records.values()]
-        .map((r) => summary(r.project))
-        .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+      return [...records.values()].map((r) => summary(r.project)).sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
     },
     createProject: async (input) => {
       await delay();
@@ -399,7 +403,17 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const to = params?.to ? Date.parse(params.to) : Date.now();
       const from = params?.from ? Date.parse(params.from) : to - 30 * 24 * HOUR;
       const group = params?.group ?? "day";
-      const bucket = (key: string, label: string): UsageBucket => ({ key, label, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, requests: 0, cost_usd: null, cost_estimated: false });
+      const bucket = (key: string, label: string): UsageBucket => ({
+        key,
+        label,
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        requests: 0,
+        cost_usd: null,
+        cost_estimated: false,
+      });
       const total = bucket("total", "Total");
       const buckets = new Map<string, UsageBucket>();
       for (const rec of records.values()) {

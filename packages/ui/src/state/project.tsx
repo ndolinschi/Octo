@@ -12,17 +12,7 @@ import {
   type ProjectInput,
   type ProjectState,
 } from "@octo/agent-client";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./app";
 
 type Action =
@@ -93,11 +83,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
 
   const syncAll = useCallback(async () => {
     try {
-      const [p, agents, notes] = await Promise.all([
-        bridge.getProject(projectId),
-        bridge.listAgents(projectId),
-        bridge.listNotes(projectId),
-      ]);
+      const [p, agents, notes] = await Promise.all([bridge.getProject(projectId), bridge.listAgents(projectId), bridge.listNotes(projectId)]);
       setProject(p);
       setLoadError(null);
       dispatch({ type: "agents", agents });

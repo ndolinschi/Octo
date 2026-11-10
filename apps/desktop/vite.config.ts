@@ -13,10 +13,7 @@ export default defineConfig(() => ({
   resolve: {
     alias: {
       "@octo/ui": path.resolve(rootDir, "../../packages/ui/src"),
-      "@octo/agent-client": path.resolve(
-        rootDir,
-        "../../packages/agent-client/src",
-      ),
+      "@octo/agent-client": path.resolve(rootDir, "../../packages/agent-client/src"),
     },
   },
   clearScreen: false,

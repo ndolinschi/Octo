@@ -4,18 +4,13 @@ import { cn } from "../../lib/cn";
 const CONTROL =
   "w-full rounded-md border border-input-border bg-panel px-3 text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err";
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
-  { className, ...rest },
-  ref,
-) {
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
   return <input ref={ref} className={cn(CONTROL, "h-8", className)} {...rest} />;
 });
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  function Textarea({ className, ...rest }, ref) {
-    return <textarea ref={ref} className={cn(CONTROL, "resize-y py-1.5 leading-5", className)} {...rest} />;
-  },
-);
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, ...rest }, ref) {
+  return <textarea ref={ref} className={cn(CONTROL, "resize-y py-1.5 leading-5", className)} {...rest} />;
+});
 
 export function Field(props: {
   label: string;

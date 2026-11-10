@@ -112,21 +112,21 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
     );
   return (
     <>
-    <a
-      href={hrefFor(projectId, agent.id)}
-      aria-label={`Open ${role}: ${title} (${status})`}
-      aria-description={error ?? undefined}
-      title={error ?? (agent.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : undefined)}
-      onClick={(e) => {
-        if (!ws || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-        e.preventDefault();
-        ws.openAgent(agent.id, { otherSide: e.altKey });
-      }}
-      className={cn(row, "press-row hover:bg-hover focus-inset")}
-    >
-      {body}
-    </a>
-    {errorLine}
+      <a
+        href={hrefFor(projectId, agent.id)}
+        aria-label={`Open ${role}: ${title} (${status})`}
+        aria-description={error ?? undefined}
+        title={error ?? (agent.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : undefined)}
+        onClick={(e) => {
+          if (!ws || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+          e.preventDefault();
+          ws.openAgent(agent.id, { otherSide: e.altKey });
+        }}
+        className={cn(row, "press-row focus-inset hover:bg-hover")}
+      >
+        {body}
+      </a>
+      {errorLine}
     </>
   );
 }

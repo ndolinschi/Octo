@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BridgeError, type Bridge, type SubscribeHandlers } from "./client";
-import {
-  createMessageClient,
-  isClientMessage,
-  isHostMessage,
-  serveBridge,
-  type MessagePortLike,
-} from "./messageBridge";
+import { createMessageClient, isClientMessage, isHostMessage, serveBridge, type MessagePortLike } from "./messageBridge";
 import type { BridgeEvent } from "./types";
 
 type Listener = (msg: unknown) => void;
@@ -43,9 +37,29 @@ function fakeBridge(): FakeBridge {
   const unsubscribed: string[] = [];
   const self: FakeBridge = { log, handlers, unsubscribed } as FakeBridge;
   const names = [
-    "health", "getConfig", "listProjects", "createProject", "getProject", "updateProject",
-    "deleteProject", "listAgents", "getAgent", "listMessages", "sendMessage", "cancelTurn",
-    "listNotes", "createNote", "updateNote", "deleteNote", "listFiles", "readFile", "writeFile", "listPlugins", "getUsage", "getLimits", "listLanguageServers",
+    "health",
+    "getConfig",
+    "listProjects",
+    "createProject",
+    "getProject",
+    "updateProject",
+    "deleteProject",
+    "listAgents",
+    "getAgent",
+    "listMessages",
+    "sendMessage",
+    "cancelTurn",
+    "listNotes",
+    "createNote",
+    "updateNote",
+    "deleteNote",
+    "listFiles",
+    "readFile",
+    "writeFile",
+    "listPlugins",
+    "getUsage",
+    "getLimits",
+    "listLanguageServers",
   ];
   for (const name of names) {
     (self as unknown as Record<string, unknown>)[name] = async (...args: unknown[]) => {
@@ -97,7 +111,11 @@ test("every Bridge method round-trips args and return value", async () => {
     ["deleteNote", b.deleteNote("p", "n"), ["p", "n"]],
     ["listFiles", b.listFiles("p", "f", "a/b"), ["p", "f", "a/b"]],
     ["readFile", b.readFile("p", "f", "a/b"), ["p", "f", "a/b"]],
-    ["writeFile", b.writeFile("p", { folder: "f", path: "a", content: "c", expected_mtime: "t" }), ["p", { folder: "f", path: "a", content: "c", expected_mtime: "t" }]],
+    [
+      "writeFile",
+      b.writeFile("p", { folder: "f", path: "a", content: "c", expected_mtime: "t" }),
+      ["p", { folder: "f", path: "a", content: "c", expected_mtime: "t" }],
+    ],
     ["listPlugins", b.listPlugins(), []],
     ["getUsage", b.getUsage(), []],
     ["getUsage", b.getUsage({ group: "model", project: "p" }), [{ group: "model", project: "p" }]],
@@ -114,22 +132,14 @@ test("BridgeError round-trips with status, code and message", async () => {
   const { client, bridge } = setup();
   bridge.failWith = new BridgeError(404, "not_found", "no such project");
   await assert.rejects(client.bridge.getProject("x"), (err) => {
-    return (
-      err instanceof BridgeError &&
-      err.status === 404 &&
-      err.code === "not_found" &&
-      err.message === "no such project"
-    );
+    return err instanceof BridgeError && err.status === 404 && err.code === "not_found" && err.message === "no such project";
   });
 });
 
 test("non-BridgeError failures map to internal", async () => {
   const { client, bridge } = setup();
   bridge.failWith = new Error("boom");
-  await assert.rejects(
-    client.bridge.health(),
-    (err) => err instanceof BridgeError && err.status === 0 && err.code === "internal" && err.message === "boom",
-  );
+  await assert.rejects(client.bridge.health(), (err) => err instanceof BridgeError && err.status === 0 && err.code === "internal" && err.message === "boom");
 });
 
 test("unknown and disallowed methods yield unknown_method", async () => {
@@ -145,10 +155,7 @@ test("unknown and disallowed methods yield unknown_method", async () => {
   assert.equal(replies.length, 3);
   for (const r of replies) {
     assert.ok(isHostMessage(r));
-    assert.deepEqual(
-      (r as { error: { code: string } }).error.code,
-      "unknown_method",
-    );
+    assert.deepEqual((r as { error: { code: string } }).error.code, "unknown_method");
   }
   assert.equal(bridge.log.length, 0);
 });
@@ -205,15 +212,9 @@ test("host actions: success, throw, unsupported", async () => {
   });
   assert.deepEqual(await withHost.client.callHost("pick", [1, "x"]), { action: "pick", args: [1, "x"] });
   assert.deepEqual(await withHost.client.callHost("pick"), { action: "pick", args: [] });
-  await assert.rejects(
-    withHost.client.callHost("boom"),
-    (err) => err instanceof BridgeError && err.code === "bad" && err.status === 500,
-  );
+  await assert.rejects(withHost.client.callHost("boom"), (err) => err instanceof BridgeError && err.code === "bad" && err.status === 500);
   const bare = setup();
-  await assert.rejects(
-    bare.client.callHost("pick"),
-    (err) => err instanceof BridgeError && err.code === "unsupported",
-  );
+  await assert.rejects(bare.client.callHost("pick"), (err) => err instanceof BridgeError && err.code === "unsupported");
 });
 
 test("theme messages reach listeners until unsubscribed", async () => {
@@ -234,10 +235,20 @@ test("malformed messages are ignored on both sides", async () => {
   serveBridge(b, bridge);
   const client = createMessageClient(a);
   const junk = [
-    null, undefined, 3, "x", [], {}, { kind: "call" }, { kind: "call", id: "1", method: "health", args: [] },
-    { kind: "call", id: 1, method: "health", args: "no" }, { kind: "subscribe", sub: 1 },
-    { kind: "result", id: 1, ok: false }, { kind: "event", sub: 1, event: { type: "bogus" } },
-    { kind: "theme", theme: "blue" }, { kind: "wat" },
+    null,
+    undefined,
+    3,
+    "x",
+    [],
+    {},
+    { kind: "call" },
+    { kind: "call", id: "1", method: "health", args: [] },
+    { kind: "call", id: 1, method: "health", args: "no" },
+    { kind: "subscribe", sub: 1 },
+    { kind: "result", id: 1, ok: false },
+    { kind: "event", sub: 1, event: { type: "bogus" } },
+    { kind: "theme", theme: "blue" },
+    { kind: "wat" },
   ];
   for (const m of junk) {
     assert.equal(isClientMessage(m), false);

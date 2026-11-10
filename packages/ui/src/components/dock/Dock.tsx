@@ -77,23 +77,30 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
       className={cn(panelClass, narrow && "flex-1")}
     >
       <GroupProvider group={group}>
-      <TabStrip label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`} tabs={strip.tabs} active={strip.active} focused={focused} first={first} last={last} />
-      <div data-dock-body className="relative min-h-0 flex-1">
-        {group.tabs
-          .filter((t) => visited.has(t))
-          .map((t) => (
-            <div
-              key={t}
-              id={`${domId(t)}-panel`}
-              role="tabpanel"
-              aria-labelledby={`${domId(t)}-tab`}
-              hidden={t !== group.active}
-              className="absolute inset-0 flex flex-col"
-            >
-              <TabView tab={t} />
-            </div>
-          ))}
-      </div>
+        <TabStrip
+          label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`}
+          tabs={strip.tabs}
+          active={strip.active}
+          focused={focused}
+          first={first}
+          last={last}
+        />
+        <div data-dock-body className="relative min-h-0 flex-1">
+          {group.tabs
+            .filter((t) => visited.has(t))
+            .map((t) => (
+              <div
+                key={t}
+                id={`${domId(t)}-panel`}
+                role="tabpanel"
+                aria-labelledby={`${domId(t)}-tab`}
+                hidden={t !== group.active}
+                className="absolute inset-0 flex flex-col"
+              >
+                <TabView tab={t} />
+              </div>
+            ))}
+        </div>
       </GroupProvider>
     </section>
   );

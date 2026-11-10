@@ -80,7 +80,12 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
     const all: Group[] = [
       {
         title: "Tabs",
-        items: workspace ? rank(workspace.tabs.map((t) => ({ ...t, run: go(t.run) })), (i) => i.label) : [],
+        items: workspace
+          ? rank(
+              workspace.tabs.map((t) => ({ ...t, run: go(t.run) })),
+              (i) => i.label,
+            )
+          : [],
       },
       {
         title: "Projects",
@@ -224,7 +229,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
                     onClick={item.run}
                     className={cn(
                       // Radius 6 = palette radius (10) − list padding (4).
-                      "press-row flex h-row-nav items-center gap-3 rounded-sm px-2 text-sm",
+                      "flex h-row-nav items-center gap-3 rounded-sm px-2 text-sm press-row",
                       isSelected ? "bg-active text-fg" : "text-fg hover:bg-hover",
                     )}
                   >

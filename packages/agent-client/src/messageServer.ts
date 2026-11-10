@@ -43,11 +43,7 @@ function invoke(bridge: Bridge, method: BridgeMethod, args: unknown[]): unknown 
   return fn.apply(bridge, args);
 }
 
-export function serveBridge(
-  port: MessagePortLike,
-  bridge: Bridge,
-  options: ServeBridgeOptions = {},
-): BridgeServer {
+export function serveBridge(port: MessagePortLike, bridge: Bridge, options: ServeBridgeOptions = {}): BridgeServer {
   const subs = new Map<number, () => void>();
   const lsp = new Map<number, LanguageServerSession>();
   let nextSession = 1;
@@ -80,9 +76,7 @@ export function serveBridge(
     const unsubscribe = bridge.subscribe(projectId, {
       onEvent: (event) => live() && post({ kind: "event", sub, event }),
       onOpen: () => live() && post({ kind: "open", sub }),
-      onError: (err) =>
-        live() &&
-        post({ kind: "error", sub, message: err instanceof Error ? err.message : String(err) }),
+      onError: (err) => live() && post({ kind: "error", sub, message: err instanceof Error ? err.message : String(err) }),
     });
     subs.set(sub, unsubscribe);
   }
@@ -114,9 +108,7 @@ export function serveBridge(
         sess.onExit((info) => {
           lsp.delete(session);
           post(
-            info.reason === undefined
-              ? { kind: "lsp-exit", session, code: info.code }
-              : { kind: "lsp-exit", session, code: info.code, reason: info.reason },
+            info.reason === undefined ? { kind: "lsp-exit", session, code: info.code } : { kind: "lsp-exit", session, code: info.code, reason: info.reason },
           );
         });
       },
@@ -141,7 +133,10 @@ export function serveBridge(
       case "lsp-open":
         return handleLspOpen(msg.id, msg.projectId, msg.serverId);
       case "lsp-send":
-        void lsp.get(msg.session)?.send(msg.message).catch(() => undefined);
+        void lsp
+          .get(msg.session)
+          ?.send(msg.message)
+          .catch(() => undefined);
         return;
       case "lsp-close":
         return handleLspClose(msg.session);

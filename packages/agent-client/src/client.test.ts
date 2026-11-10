@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  BridgeError,
-  createHttpBridge,
-  type EventSourceLike,
-  type FetchLike,
-} from "./client";
+import { BridgeError, createHttpBridge, type EventSourceLike, type FetchLike } from "./client";
 import type { BridgeEvent } from "./types";
 
 type Call = { url: string; method: string | undefined; body: string | undefined };
@@ -39,23 +34,73 @@ test("request shapes and envelope unwrapping", async () => {
     { run: (b) => b.health(), reply: '{"ok":true,"version":"1"}', method: "GET", path: "/health", result: { ok: true, version: "1" } },
     { run: (b) => b.getConfig(), reply: '{"default_max_depth":3}', method: "GET", path: "/v1/config", result: { default_max_depth: 3 } },
     { run: (b) => b.listProjects(), reply: '{"projects":[{"id":"a"}]}', method: "GET", path: "/v1/projects", result: [{ id: "a" }] },
-    { run: (b) => b.createProject({ name: "n" }), reply: '{"id":"a"}', status: 201, method: "POST", path: "/v1/projects", body: { name: "n" }, result: { id: "a" } },
+    {
+      run: (b) => b.createProject({ name: "n" }),
+      reply: '{"id":"a"}',
+      status: 201,
+      method: "POST",
+      path: "/v1/projects",
+      body: { name: "n" },
+      result: { id: "a" },
+    },
     { run: (b) => b.getProject("a/b"), reply: '{"id":"x"}', method: "GET", path: "/v1/projects/a%2Fb", result: { id: "x" } },
     { run: (b) => b.updateProject("p", { name: "z" }), reply: '{"id":"p"}', method: "PATCH", path: "/v1/projects/p", body: { name: "z" }, result: { id: "p" } },
     { run: (b) => b.deleteProject("p"), reply: "", status: 204, method: "DELETE", path: "/v1/projects/p", result: undefined },
     { run: (b) => b.listAgents("p"), reply: '{"agents":[{"id":"a"}]}', method: "GET", path: "/v1/projects/p/agents", result: [{ id: "a" }] },
     { run: (b) => b.getAgent("p", "a"), reply: '{"id":"a"}', method: "GET", path: "/v1/projects/p/agents/a", result: { id: "a" } },
     { run: (b) => b.listMessages("p", "a"), reply: '{"messages":[{"id":1}]}', method: "GET", path: "/v1/projects/p/agents/a/messages", result: [{ id: 1 }] },
-    { run: (b) => b.sendMessage("p", "hi"), reply: '{"message":{"id":2}}', status: 202, method: "POST", path: "/v1/projects/p/messages", body: { text: "hi" }, result: { id: 2 } },
+    {
+      run: (b) => b.sendMessage("p", "hi"),
+      reply: '{"message":{"id":2}}',
+      status: 202,
+      method: "POST",
+      path: "/v1/projects/p/messages",
+      body: { text: "hi" },
+      result: { id: 2 },
+    },
     { run: (b) => b.cancelTurn("p"), reply: "", status: 202, method: "POST", path: "/v1/projects/p/cancel", result: undefined },
     { run: (b) => b.listNotes("p"), reply: '{"notes":[{"id":"n"}]}', method: "GET", path: "/v1/projects/p/notes", result: [{ id: "n" }] },
-    { run: (b) => b.createNote("p", { title: "t", content: "c" }), reply: '{"id":"n"}', status: 201, method: "POST", path: "/v1/projects/p/notes", body: { title: "t", content: "c" }, result: { id: "n" } },
-    { run: (b) => b.updateNote("p", "n", { title: "t2" }), reply: '{"id":"n"}', method: "PATCH", path: "/v1/projects/p/notes/n", body: { title: "t2" }, result: { id: "n" } },
+    {
+      run: (b) => b.createNote("p", { title: "t", content: "c" }),
+      reply: '{"id":"n"}',
+      status: 201,
+      method: "POST",
+      path: "/v1/projects/p/notes",
+      body: { title: "t", content: "c" },
+      result: { id: "n" },
+    },
+    {
+      run: (b) => b.updateNote("p", "n", { title: "t2" }),
+      reply: '{"id":"n"}',
+      method: "PATCH",
+      path: "/v1/projects/p/notes/n",
+      body: { title: "t2" },
+      result: { id: "n" },
+    },
     { run: (b) => b.deleteNote("p", "n"), reply: "", status: 204, method: "DELETE", path: "/v1/projects/p/notes/n", result: undefined },
-    { run: (b) => b.listFiles("p", "src dir", "a b/c.txt"), reply: '{"entries":[{"name":"c.txt"}]}', method: "GET", path: "/v1/projects/p/files?folder=src%20dir&path=a%20b%2Fc.txt", result: [{ name: "c.txt" }] },
+    {
+      run: (b) => b.listFiles("p", "src dir", "a b/c.txt"),
+      reply: '{"entries":[{"name":"c.txt"}]}',
+      method: "GET",
+      path: "/v1/projects/p/files?folder=src%20dir&path=a%20b%2Fc.txt",
+      result: [{ name: "c.txt" }],
+    },
     { run: (b) => b.listFiles("p", "src", ""), reply: '{"entries":[]}', method: "GET", path: "/v1/projects/p/files?folder=src&path=", result: [] },
-    { run: (b) => b.readFile("p", "src", "x/y z.ts"), reply: '{"content":"hi","mtime":"t"}', method: "GET", path: "/v1/projects/p/files/content?folder=src&path=x%2Fy%20z.ts", result: { content: "hi", mtime: "t" } },
-    { run: (b) => b.writeFile("p", { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }), reply: '{"size":1,"mtime":"t2"}', method: "PUT", path: "/v1/projects/p/files/content", body: { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }, result: { size: 1, mtime: "t2" } },
+    {
+      run: (b) => b.readFile("p", "src", "x/y z.ts"),
+      reply: '{"content":"hi","mtime":"t"}',
+      method: "GET",
+      path: "/v1/projects/p/files/content?folder=src&path=x%2Fy%20z.ts",
+      result: { content: "hi", mtime: "t" },
+    },
+    {
+      run: (b) => b.writeFile("p", { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }),
+      reply: '{"size":1,"mtime":"t2"}',
+      method: "PUT",
+      path: "/v1/projects/p/files/content",
+      body: { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" },
+      result: { size: 1, mtime: "t2" },
+    },
     { run: (b) => b.listPlugins(), reply: '{"plugins":[{"name":"go-tools"}]}', method: "GET", path: "/v1/plugins", result: [{ name: "go-tools" }] },
     { run: (b) => b.getUsage(), reply: '{"group":"day","buckets":[]}', method: "GET", path: "/v1/usage", result: { group: "day", buckets: [] } },
     { run: (b) => b.getUsage({}), reply: '{"group":"day"}', method: "GET", path: "/v1/usage", result: { group: "day" } },
@@ -66,10 +111,28 @@ test("request shapes and envelope unwrapping", async () => {
       path: "/v1/usage?from=2026-11-01&to=2026-11-10T00%3A00%3A00%2B02%3A00&group=model&project=prj%20a%2Fb",
       result: { group: "model" },
     },
-    { run: (b) => b.getUsage({ group: "agent", from: "" }), reply: '{"group":"agent"}', method: "GET", path: "/v1/usage?group=agent", result: { group: "agent" } },
-    { run: (b) => b.getLimits(), reply: '{"limits":[{"provider":"api.anthropic.com","kind":"requests"}]}', method: "GET", path: "/v1/limits", result: [{ provider: "api.anthropic.com", kind: "requests" }] },
+    {
+      run: (b) => b.getUsage({ group: "agent", from: "" }),
+      reply: '{"group":"agent"}',
+      method: "GET",
+      path: "/v1/usage?group=agent",
+      result: { group: "agent" },
+    },
+    {
+      run: (b) => b.getLimits(),
+      reply: '{"limits":[{"provider":"api.anthropic.com","kind":"requests"}]}',
+      method: "GET",
+      path: "/v1/limits",
+      result: [{ provider: "api.anthropic.com", kind: "requests" }],
+    },
     { run: (b) => b.getLimits(), reply: '{"limits":[]}', method: "GET", path: "/v1/limits", result: [] },
-    { run: (b) => b.listLanguageServers("a/b"), reply: '{"servers":[{"id":"gopls"}]}', method: "GET", path: "/v1/projects/a%2Fb/lsp", result: [{ id: "gopls" }] },
+    {
+      run: (b) => b.listLanguageServers("a/b"),
+      reply: '{"servers":[{"id":"gopls"}]}',
+      method: "GET",
+      path: "/v1/projects/a%2Fb/lsp",
+      result: [{ id: "gopls" }],
+    },
   ];
   for (const c of cases) {
     const { bridge, calls } = bridgeWith(c.status ?? 200, c.reply);
@@ -191,7 +254,5 @@ test("subscribe delivers file.changed", () => {
   FakeEventSource.last.listeners.get("file.changed")?.({
     data: '{"type":"file.changed","seq":4,"folder":"src","path":"a.ts","source":"agent"}',
   });
-  assert.deepEqual(events, [
-    { type: "file.changed", seq: 4, folder: "src", path: "a.ts", source: "agent" },
-  ]);
+  assert.deepEqual(events, [{ type: "file.changed", seq: 4, folder: "src", path: "a.ts", source: "agent" }]);
 });
