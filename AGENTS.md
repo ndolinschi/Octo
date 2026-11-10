@@ -5,10 +5,10 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
 | App / package | Path | Stack | Notes |
 | --- | --- | --- | --- |
 | **router** (Octo) | [`apps/router/`](./apps/router/) | Rust (crate `octo`) | HTTP proxy + autoroute |
-| **harness** | [`apps/harness/`](./apps/harness/) | Go 1.26+ | Anthropic Messages agent client (tools, sessions) |
-| **desktop** | [`apps/desktop/`](./apps/desktop/) | Tauri 2 + React | Shell for shared UI (local tools via future bridge) |
+| **harness** | [`apps/harness/`](./apps/harness/) | Go 1.26+ | Project-based agent harness: `harness serve` bridge, orchestrator + sub-agents, per-project SQLite |
+| **desktop** | [`apps/desktop/`](./apps/desktop/) | Tauri 2 + React + Tailwind 4 | Shell for shared UI (talks to `harness serve`) |
 | **ui** | [`packages/ui/`](./packages/ui/) | React | Shell-agnostic screens (`@octo/ui`) |
-| **agent-client** | [`packages/agent-client/`](./packages/agent-client/) | TypeScript | Bridge URL + future HTTP client (`@octo/agent-client`) |
+| **agent-client** | [`packages/agent-client/`](./packages/agent-client/) | TypeScript | Bridge HTTP + SSE client and project state reducer (`@octo/agent-client`) |
 
 Future **web** host: [`apps/web/`](./apps/web/) (stub). Do not invent other shared packages until something is actually shared twice.
 
@@ -53,20 +53,26 @@ bash scripts/install-go-toolchain.sh
 cd apps/harness
 go test ./...
 go vet ./...
+
+# Full stack without an API key (three terminals)
+go run ./examples/mockllm
+ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:8791
+pnpm --filter @octo/desktop dev   # from repo root, then open http://localhost:1420
 ```
 
 ## Desktop + UI (pnpm)
 
-Design: [`docs/superpowers/specs/2026-11-09-desktop-ui-design.md`](./docs/superpowers/specs/2026-11-09-desktop-ui-design.md). Rules: `.cursor/rules/octo-frontend.mdc`.
+Design: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](./docs/superpowers/specs/2026-11-10-project-harness-design.md) (projects, bridge API) and [`2026-11-10-project-harness-ui.md`](./docs/superpowers/specs/2026-11-10-project-harness-ui.md) (UI). Rules: `.cursor/rules/octo-frontend.mdc`.
 
 ```bash
 pnpm install
 pnpm --filter @octo/agent-client test
+pnpm --filter @octo/ui lint
 pnpm --filter @octo/desktop build
 cd apps/desktop/src-tauri && cargo check
 ```
 
-Phase 1 is UI scaffold only. Harness **bridge** (`harness serve`) is Phase 2 — see [`docs/superpowers/plans/2026-11-09-harness-bridge-phase2.md`](./docs/superpowers/plans/2026-11-09-harness-bridge-phase2.md). Set `VITE_HARNESS_BRIDGE_URL` when the bridge exists (default `http://127.0.0.1:8790`).
+The UI talks only to the harness bridge (`harness serve`, default `http://127.0.0.1:8790`; override with `VITE_HARNESS_BRIDGE_URL`). Open the app with `?demo=1` to run against the in-memory demo bridge with no backend.
 
 Do not share SQLite/config between harness, router, and desktop.
 

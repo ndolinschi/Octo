@@ -1,5 +1,7 @@
 # Harness bridge API (Phase 2) — Plan stub
 
+> **Superseded** by the project-based bridge in [`../specs/2026-11-10-project-harness-design.md`](../specs/2026-11-10-project-harness-design.md), which is implemented. Kept for history.
+
 **Spec:** [`../specs/2026-11-09-desktop-ui-design.md`](../specs/2026-11-09-desktop-ui-design.md)  
 **Depends on:** Phase 1 merged (`packages/ui`, `apps/desktop`).
 

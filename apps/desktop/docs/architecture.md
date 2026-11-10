@@ -7,11 +7,11 @@ Tauri 2 **shell** for shared UI. Product screens live in [`packages/ui`](../../.
 | Layer | Path | Responsibility |
 | --- | --- | --- |
 | UI | `packages/ui` | React screens — **no** Tauri APIs |
-| Client | `packages/agent-client` | Bridge URL + future HTTP/SSE client |
+| Client | `packages/agent-client` | Bridge HTTP + SSE client, state reducer |
 | Shell | `apps/desktop` | Webview host, OS integration |
-| Agent | `apps/harness/` (Phase 2 `serve`) | Tool loop, SQLite sessions |
+| Agent | `apps/harness/` (`harness serve`) | Orchestrator + sub-agent loops, per-project SQLite |
 
-## Data flow (Phase 2)
+## Data flow
 
 ```mermaid
 sequenceDiagram
@@ -25,9 +25,9 @@ sequenceDiagram
   Bridge->>Bridge: local or remote tools
 ```
 
-## Phase 1
+## Running
 
-Desktop loads `OctoApp` with `resolveBridgeUrl()` (default `http://127.0.0.1:8790`). Start bridge manually once Phase 2 lands.
+Desktop loads `OctoApp` with an HTTP bridge at `resolveBridgeUrl()` (default `http://127.0.0.1:8790`), or the in-memory demo bridge when the URL has `?demo=1`. Start `harness serve` manually; sidecar auto-spawn is not implemented.
 
 ## Security
 
