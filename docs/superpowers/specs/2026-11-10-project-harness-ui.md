@@ -118,6 +118,30 @@ an agent app with a customisations page (C) and an assistant's start page with a
     image, config (one glyph for json/toml/yaml/lock/dotfiles). No two different glyphs for the same meaning, no
     glyph reused for two meanings; send = arrow-up, stop = square.
 
+Third batch of references (more of B: a details side panel, stacked tool panels, an outputs list):
+
+| Pattern | Verdict | What we do |
+| --- | --- | --- |
+| B: details panel — Environment (machine, folder), Context ("16% used" with a per-category breakdown: label, value, share in aligned columns, tiny colour keys) | Good: answers "where does this run and what is it costing" without leaving the chat. We have no context-window figure, so a percentage would be invented | Decision 15: a Details tab with real data only (folders, models, tokens per agent) |
+| B: outputs list — icon, name, muted type on the right, one row height | Good row anatomy; we have no "outputs" record | Same anatomy for Details rows and the "+" menu's file rows; an outputs list waits for v7's per-turn change records |
+| B: header tool buttons with a filled "on" state for the open panel | Good; ours match | Keep; make sure the on state is the `active` fill, same as tabs |
+| B: panels stacked vertically (terminal over browser) beside the chat, each with its own strip | Mixed: powerful, but three strips of chrome crush the conversation into a sliver (visible in the reference) | Not now: the dock stays one row of groups; "Split down" is a v7 candidate. No terminal (the harness has no PTY endpoint) and no browser |
+| B: code spans and fenced code in answers are tinted / highlighted | Good, and requested by the owner | Decision 16 |
+
+15. **Details tab** (`details`, header button "Project details", in the side group at 360px like the other tools):
+    sections with 12px `fg-3` captions and 28px rows (icon, label, right-aligned muted value) — **Folders** (label,
+    path shortened in the middle, full path in the tooltip; click opens the file view on that root), **Models**
+    (orchestrator, fast, balanced, deep — as configured), **Tokens** (total in / out, then one row per agent
+    sorted by total: role, a 2px proportional bar in `fg-3`, `in / out` in tabular numerals; the orchestrator
+    first; ACP agents marked "approx."), **Plugins in use** (language servers and agents available to this
+    project). No percentages of a context window — the harness does not report one.
+16. **Code highlighting in the chat**: fenced code blocks in the transcript and in the Markdown preview are
+    syntax-highlighted with the editor's own palette (same token colours as the `octo-dark` / `octo-light` Monaco
+    themes, so chat and editor agree). Implementation: Monaco's `colorize` when the editor chunk is already
+    loaded, otherwise a small lazily loaded tokenizer (no new initial-bundle weight beyond ~3 kB; the block
+    renders plain first and upgrades without changing its size). Unknown languages stay plain. Inline code is
+    never highlighted.
+
 ### Acceptance criteria (v6)
 
 1. `spacing-audit.mjs` exits 0 on every listed state and width; its before/after counts are recorded below.
