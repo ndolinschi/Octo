@@ -196,7 +196,7 @@ func (s *acpSession) finishToolLocked(ctx context.Context, up acp.ToolCallUpdate
 
 func (s *acpSession) resultLocked(ctx context.Context, id, text string, isErr bool) {
 	delete(s.open, id)
-	s.persist(ctx, "user", anthropic.NewUserMessage(anthropic.NewToolResultBlock(id, capText(text), isErr)))
+	s.persist(ctx, "user", anthropic.NewUserMessage(anthropic.NewToolResultBlock(id, s.rt.o.opts.Limits.CapResult(text), isErr)))
 	s.sink.ToolFinished(id, isErr)
 }
 

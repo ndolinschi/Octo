@@ -3,6 +3,7 @@ package local
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,29 +119,118 @@ func TestWriteReadRoundTrip(t *testing.T) {
 	}
 }
 
-func TestReadFile_TruncatesLargeFile(t *testing.T) {
+func readFileTool(t *testing.T, lim tools.Limits, files map[string]string) tools.Def {
+	t.Helper()
 	workspace := t.TempDir()
-	big := strings.Repeat("a", tools.MaxOutputBytes+100)
-	if err := os.WriteFile(filepath.Join(workspace, "big.txt"), []byte(big), 0o644); err != nil {
-		t.Fatal(err)
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	reg := tools.NewRegistry()
-	if err := Register(reg, workspace); err != nil {
+	if err := RegisterRootsLimits(reg, []Root{{Label: "w", Path: workspace}}, lim); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	def, ok := reg.Get("read_file")
 	if !ok {
 		t.Fatal("read_file not registered")
 	}
-	out, isError, err := def.Handle(context.Background(), json.RawMessage(`{"path":"big.txt"}`))
-	if err != nil || isError {
-		t.Fatalf("Handle: err=%v isError=%v out=%s", err, isError, out)
+	return def
+}
+
+func numberedLines(n int) string {
+	var b strings.Builder
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, "line %d\n", i)
 	}
-	if !strings.HasSuffix(out, "...truncated") {
-		t.Fatal("expected truncation suffix")
+	return b.String()
+}
+
+func TestReadFile_OffsetLimit(t *testing.T) {
+	five := numberedLines(5)
+	def := readFileTool(t, tools.Limits{ReadLines: 3}, map[string]string{
+		"five.txt": five, "empty.txt": "", "nonl.txt": "a\nb", "long.txt": numberedLines(5000),
+		"huge-line.txt": strings.Repeat("z", 200<<10) + "\nnext\n",
+	})
+	tests := []struct {
+		name     string
+		input    string
+		want     string // exact output, or prefix when wantPrefix
+		isErr    bool
+		contains []string
+	}{
+		{name: "default limit applies and reports total", input: `{"path":"five.txt"}`,
+			want: "line 1\nline 2\nline 3\n", contains: []string{"showed lines 1-3 of 5 total", "offset=4"}},
+		{name: "explicit limit within file", input: `{"path":"five.txt","limit":5}`, want: five},
+		{name: "offset and limit", input: `{"path":"five.txt","offset":2,"limit":2}`,
+			want: "line 2\nline 3\n", contains: []string{"showed lines 2-3 of 5 total", "offset=4"}},
+		{name: "offset to the end is complete", input: `{"path":"five.txt","offset":4,"limit":10}`, want: "line 4\nline 5\n"},
+		{name: "continuation hint works", input: `{"path":"five.txt","offset":4}`, want: "line 4\nline 5\n"},
+		{name: "offset past end", input: `{"path":"five.txt","offset":6}`, isErr: true, contains: []string{"past the end", "5 lines"}},
+		{name: "negative offset", input: `{"path":"five.txt","offset":-1}`, isErr: true, contains: []string{"must be positive"}},
+		{name: "empty file", input: `{"path":"empty.txt"}`, want: ""},
+		{name: "no trailing newline", input: `{"path":"nonl.txt"}`, want: "a\nb"},
+		{name: "byte cap inside the line window", input: `{"path":"long.txt","limit":5000}`,
+			contains: []string{"showed lines 1-", "of 5000 total"}},
+		{name: "single huge line is clipped", input: `{"path":"huge-line.txt"}`,
+			contains: []string{"showed lines 1-1 of 2 total", "offset=2"}},
 	}
-	if len(out) > tools.MaxOutputBytes+20 {
-		t.Fatalf("output too long: %d", len(out))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out, isErr, err := def.Handle(context.Background(), json.RawMessage(tc.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if isErr != tc.isErr {
+				t.Fatalf("isError = %v, out = %q", isErr, out)
+			}
+			switch {
+			case tc.isErr:
+			case len(tc.contains) == 0:
+				if out != tc.want {
+					t.Fatalf("out = %q, want %q", out, tc.want)
+				}
+			case tc.want != "":
+				if !strings.HasPrefix(out, tc.want) {
+					t.Fatalf("out = %q, want prefix %q", out, tc.want)
+				}
+			}
+			for _, c := range tc.contains {
+				if !strings.Contains(out, c) {
+					t.Fatalf("out %q lacks %q", out[max(0, len(out)-200):], c)
+				}
+			}
+			if len(out) > tools.DefaultMaxResultBytes {
+				t.Fatalf("out is %d bytes, over the result cap", len(out))
+			}
+		})
+	}
+}
+
+func TestReadFile_DefaultLimitIs2000Lines(t *testing.T) {
+	def := readFileTool(t, tools.Limits{}, map[string]string{"big.txt": numberedLines(5000)})
+	out, isErr, err := def.Handle(context.Background(), json.RawMessage(`{"path":"big.txt"}`))
+	if err != nil || isErr {
+		t.Fatalf("err=%v isErr=%v", err, isErr)
+	}
+	// 2000 short lines fit the byte cap, so the line limit is what cuts.
+	if !strings.Contains(out, "showed lines 1-2000 of 5000 total") || !strings.Contains(out, "offset=2001") {
+		t.Fatalf("tail = %q", out[len(out)-200:])
+	}
+}
+
+func TestReadFile_TruncatesLargeFile(t *testing.T) {
+	big := strings.Repeat("a", 300<<10)
+	def := readFileTool(t, tools.Limits{}, map[string]string{"big.txt": big})
+	out, isErr, err := def.Handle(context.Background(), json.RawMessage(`{"path":"big.txt"}`))
+	if err != nil || isErr {
+		t.Fatalf("Handle: err=%v isError=%v", err, isErr)
+	}
+	if len(out) > tools.DefaultMaxResultBytes {
+		t.Fatalf("output %d bytes, over %d", len(out), tools.DefaultMaxResultBytes)
+	}
+	if !strings.Contains(out, "showed lines 1-1 of 1 total") {
+		t.Fatalf("tail = %q", out[len(out)-200:])
 	}
 }
 

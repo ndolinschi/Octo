@@ -31,6 +31,11 @@ type Loop struct {
 	Stream    bool
 	SessionID string
 	Sink      Sink
+	// NoPromptCaching turns off the cache_control breakpoints (see cache.go),
+	// for gateways that reject the field. The zero value caches.
+	NoPromptCaching bool
+	// Limits cap tool results returned to the model; zero fields mean defaults.
+	Limits tools.Limits
 }
 
 // Run continues history (which must end with a user message already persisted
@@ -55,6 +60,9 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 	if l.System != "" {
 		params.System = []anthropic.TextBlockParam{{Text: l.System}}
 	}
+	if !l.NoPromptCaching {
+		markStaticPrefix(&params)
+	}
 
 	var res Result
 	messages := slices.Clone(history)
@@ -63,7 +71,13 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 			return res, err
 		}
 		params.Messages = messages
-		resp, err := l.call(ctx, params)
+		send := params
+		if !l.NoPromptCaching {
+			// Marked on a copy: the breakpoint moves every turn and must never
+			// reach the stored history.
+			send.Messages = withMessageBreakpoint(messages)
+		}
+		resp, err := l.call(ctx, send)
 		if err != nil {
 			return res, err
 		}
@@ -143,7 +157,7 @@ func (l *Loop) runTools(ctx context.Context, uses []anthropic.ToolUseBlock) ([]a
 	for i, tu := range uses {
 		g.Go(func() error {
 			l.Sink.ToolStarted(tu.ID, tu.Name)
-			block, isError, err := dispatchTool(tools.WithToolUseID(gctx, tu.ID), l.Registry, tu)
+			block, isError, err := dispatchTool(tools.WithToolUseID(gctx, tu.ID), l.Registry, tu, l.Limits)
 			if err != nil {
 				return err
 			}
@@ -170,7 +184,7 @@ func collectAssistant(content []anthropic.ContentBlockUnion) (toolUses []anthrop
 	return toolUses, textParts
 }
 
-func dispatchTool(ctx context.Context, reg *tools.Registry, tu anthropic.ToolUseBlock) (anthropic.ContentBlockParamUnion, bool, error) {
+func dispatchTool(ctx context.Context, reg *tools.Registry, tu anthropic.ToolUseBlock, lim tools.Limits) (anthropic.ContentBlockParamUnion, bool, error) {
 	def, ok := reg.Get(tu.Name)
 	if !ok {
 		return anthropic.NewToolResultBlock(tu.ID, fmt.Sprintf("unknown tool %q", tu.Name), true), true, nil
@@ -179,7 +193,7 @@ func dispatchTool(ctx context.Context, reg *tools.Registry, tu anthropic.ToolUse
 	if err != nil {
 		return anthropic.ContentBlockParamUnion{}, false, err
 	}
-	return anthropic.NewToolResultBlock(tu.ID, output, isError), isError, nil
+	return anthropic.NewToolResultBlock(tu.ID, lim.CapResult(output), isError), isError, nil
 }
 
 func cmpOr(v, def int64) int64 {

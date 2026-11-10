@@ -30,6 +30,11 @@ type Options struct {
 	Client   anthropic.Client
 	MaxTurns int
 	Stream   bool
+	// NoPromptCaching drops the cache_control breakpoints from every request.
+	NoPromptCaching bool
+	// Limits cap tool results and sub-agent reports returned to the model
+	// (zero fields mean the defaults in internal/tools).
+	Limits tools.Limits
 	// Remote tools are offered to sub-agents only.
 	Remote []tools.Def
 	// Agents are the plugin-provided ACP agents; only available ones are offered.

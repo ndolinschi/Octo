@@ -26,9 +26,15 @@ type rig struct {
 	hub   *events.Hub
 	orch  *orchestrator.Orchestrator
 	svc   *project.Service
+	notes *project.Notes
 }
 
 func newRig(t *testing.T, llm http.Handler) *rig {
+	return newRigWith(t, llm, orchestrator.Options{})
+}
+
+// newRigWith is newRig with extra orchestrator options (client and max turns are set here).
+func newRigWith(t *testing.T, llm http.Handler, opts orchestrator.Options) *rig {
 	t.Helper()
 	srv := httptest.NewServer(llm)
 	t.Cleanup(srv.Close)
@@ -39,16 +45,15 @@ func newRig(t *testing.T, llm http.Handler) *rig {
 	t.Cleanup(func() { _ = store.Close() })
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
-	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
-		Client: anthropicclient.New("k", srv.URL, ""), MaxTurns: 10,
-	})
+	opts.Client, opts.MaxTurns = anthropicclient.New("k", srv.URL, ""), 10
+	orch := orchestrator.New(store, hub, notes, opts)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = orch.Shutdown(ctx)
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: 3})
-	return &rig{store: store, hub: hub, orch: orch, svc: svc}
+	return &rig{store: store, hub: hub, orch: orch, svc: svc, notes: notes}
 }
 
 func (r *rig) project(t *testing.T, maxDepth int) string {

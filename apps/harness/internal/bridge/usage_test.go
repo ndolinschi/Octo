@@ -184,11 +184,14 @@ func TestUsageCostFromPriceTable(t *testing.T) {
 		for _, b := range s.report(t, map[string]string{"group": "model"}).Buckets {
 			byModel[b.Key] = b
 		}
-		opus := byModel[models.Orchestrator]
+		opus := byModel[models.Deep]
 		if opus.CostUSD == nil || !opus.CostEstimated {
 			t.Fatalf("priced model bucket = %+v", opus)
 		}
-		if want := (float64(opus.InputTokens)*5 + float64(opus.OutputTokens)*25) / 1e6; !near(*opus.CostUSD, want) {
+		// No cache prices in the file: reads are estimated at 0.1x and writes at 1.25x input.
+		want := (float64(opus.InputTokens)*5 + float64(opus.OutputTokens)*25 +
+			float64(opus.CacheReadTokens)*0.5 + float64(opus.CacheWriteTokens)*6.25) / 1e6
+		if !near(*opus.CostUSD, want) {
 			t.Errorf("cost = %v, want tokens x prices = %v", *opus.CostUSD, want)
 		}
 		for _, m := range []string{models.Fast, models.Balanced} {

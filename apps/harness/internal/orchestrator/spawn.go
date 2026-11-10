@@ -90,7 +90,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		if text == "" {
 			return "(sub-agent returned no report)", false, nil
 		}
-		return tools.CapString(text), false, nil
+		return rt.o.opts.Limits.CapReport(text), false, nil
 	case ctx.Err() != nil || errors.Is(err, errAgentCancelled):
 		rt.settle(ctx, child.ID, projectstore.StatusCancelled, "", "")
 		return "sub-agent cancelled", true, nil

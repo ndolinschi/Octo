@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
-	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
 // flattenContent renders tool-call content as plain text: text blocks as is,
@@ -42,5 +41,3 @@ func writePrefixed(b *strings.Builder, prefix, text string) {
 		b.WriteString(prefix + line + "\n")
 	}
 }
-
-func capText(s string) string { return tools.CapString(s) }

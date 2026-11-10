@@ -108,12 +108,12 @@ func invokeHandler(client *http.Client, base, name string) tools.Handler {
 			return err.Error(), true, nil
 		}
 		defer resp.Body.Close()
-		limited := io.LimitReader(resp.Body, int64(tools.MaxOutputBytes)+1)
+		limited := io.LimitReader(resp.Body, int64(tools.MaxRemoteBodyBytes)+1)
 		out, err := io.ReadAll(limited)
 		if err != nil {
 			return err.Error(), true, nil
 		}
-		text := strings.TrimSpace(tools.CapString(string(out)))
+		text := strings.TrimSpace(string(out))
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			if text == "" {
 				text = fmt.Sprintf("remote tool %q: status %d", name, resp.StatusCode)

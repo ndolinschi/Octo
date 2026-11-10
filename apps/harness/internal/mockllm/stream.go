@@ -12,10 +12,26 @@ func messageID(r *request) string { return fmt.Sprintf("msg_mock_%d", len(r.Mess
 
 func toolID(r *request, i int) string { return fmt.Sprintf("toolu_mock_%d_%d", len(r.Messages), i) }
 
-func usage(r *request, rep reply) (in, out int) {
-	in = 300 + 120*len(r.Messages) + 40*len(r.Tools) + len(r.system())/4
-	out = len(rep.Text)/4 + 45*len(rep.Calls) + 12
-	return in, out
+// usage is the request's synthetic token count: a fixed overhead per message and
+// tool plus a quarter byte per character of system prompt and message content,
+// so a large tool result is visibly large. Cache fields are filled in by the
+// caller from the cache store.
+func usage(r *request, rep reply) usageNumbers {
+	content := 0
+	for _, m := range r.Messages {
+		content += len(m.Content)
+	}
+	return usageNumbers{
+		Input:  300 + 120*len(r.Messages) + 40*len(r.Tools) + (len(r.system())+content)/4,
+		Output: len(rep.Text)/4 + 45*len(rep.Calls) + 12,
+	}
+}
+
+func (u usageNumbers) json() map[string]any {
+	return map[string]any{
+		"input_tokens": u.Input, "output_tokens": u.Output,
+		"cache_read_input_tokens": u.CacheRead, "cache_creation_input_tokens": u.CacheWrite,
+	}
 }
 
 func stopReason(rep reply) string {
@@ -25,7 +41,7 @@ func stopReason(rep reply) string {
 	return "end_turn"
 }
 
-func fullMessage(r *request, rep reply) map[string]any {
+func fullMessage(r *request, rep reply, u usageNumbers) map[string]any {
 	content := []any{}
 	if rep.Text != "" {
 		content = append(content, map[string]any{"type": "text", "text": rep.Text})
@@ -33,11 +49,10 @@ func fullMessage(r *request, rep reply) map[string]any {
 	for i, c := range rep.Calls {
 		content = append(content, map[string]any{"type": "tool_use", "id": toolID(r, i), "name": c.Name, "input": c.Input})
 	}
-	in, out := usage(r, rep)
 	return map[string]any{
 		"id": messageID(r), "type": "message", "role": "assistant", "model": r.Model,
 		"content": content, "stop_reason": stopReason(rep), "stop_sequence": nil,
-		"usage": map[string]any{"input_tokens": in, "output_tokens": out},
+		"usage": u.json(),
 	}
 }
 
@@ -73,7 +88,7 @@ func (s *sseWriter) pause() bool {
 	}
 }
 
-func streamReply(w http.ResponseWriter, r *http.Request, req *request, rep reply, delay time.Duration) {
+func streamReply(w http.ResponseWriter, r *http.Request, req *request, rep reply, u usageNumbers, delay time.Duration) {
 	f, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "api_error", "streaming unsupported")
@@ -82,10 +97,11 @@ func streamReply(w http.ResponseWriter, r *http.Request, req *request, rep reply
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	s := &sseWriter{w: w, f: f, r: r, delay: delay}
-	in, out := usage(req, rep)
+	start := u.json()
+	start["output_tokens"] = 1
 	ok = s.event("message_start", map[string]any{"type": "message_start", "message": map[string]any{
 		"id": messageID(req), "type": "message", "role": "assistant", "model": req.Model, "content": []any{},
-		"stop_reason": nil, "stop_sequence": nil, "usage": map[string]any{"input_tokens": in, "output_tokens": 1},
+		"stop_reason": nil, "stop_sequence": nil, "usage": start,
 	}})
 	idx := 0
 	if ok && rep.Text != "" {
@@ -104,7 +120,7 @@ func streamReply(w http.ResponseWriter, r *http.Request, req *request, rep reply
 	}
 	s.event("message_delta", map[string]any{
 		"type": "message_delta", "delta": map[string]any{"stop_reason": stopReason(rep), "stop_sequence": nil},
-		"usage": map[string]any{"output_tokens": out},
+		"usage": map[string]any{"output_tokens": u.Output},
 	})
 	s.event("message_stop", map[string]any{"type": "message_stop"})
 }

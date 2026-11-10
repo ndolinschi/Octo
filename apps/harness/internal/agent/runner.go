@@ -22,6 +22,9 @@ type Runner struct {
 	MaxTurns  int
 	Stream    bool
 	StreamOut io.Writer
+	// NoPromptCaching and Limits are passed to the Loop.
+	NoPromptCaching bool
+	Limits          tools.Limits
 }
 
 func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, finalText string, err error) {
@@ -54,6 +57,9 @@ func (r *Runner) Run(ctx context.Context, prompt string) (sessionID string, fina
 		Stream:    r.Stream,
 		SessionID: sessionID,
 		Sink:      sink,
+
+		NoPromptCaching: r.NoPromptCaching,
+		Limits:          r.Limits,
 	}
 	res, err := loop.Run(ctx, []anthropic.MessageParam{userMsg})
 	return sessionID, res.Text, err

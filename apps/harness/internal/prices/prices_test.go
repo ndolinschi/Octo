@@ -18,6 +18,16 @@ cache_write = 6.25
 [models.cheap-model]
 input = 1
 output = 2
+
+[models.read-only]
+input = 4
+output = 8
+cache_read = 0.2
+
+[models.write-only]
+input = 4
+output = 8
+cache_write = 3
 `
 
 func TestEstimate(t *testing.T) {
@@ -33,7 +43,10 @@ func TestEstimate(t *testing.T) {
 		wantOK bool
 	}{
 		{"all four parts", "claude-opus-5-5", Tokens{1_000_000, 100_000, 2_000_000, 400_000}, 5 + 2.5 + 1 + 2.5, true},
-		{"cache falls back to input price", "cheap-model", Tokens{1_000_000, 0, 1_000_000, 1_000_000}, 3, true},
+		{"missing cache prices estimated at 0.1x read and 1.25x write", "cheap-model", Tokens{1_000_000, 0, 1_000_000, 1_000_000}, 1 + 0.1 + 1.25, true},
+		{"explicit cache prices override the multipliers", "claude-opus-5-5", Tokens{0, 0, 1_000_000, 1_000_000}, 0.5 + 6.25, true},
+		{"only cache_read explicit", "read-only", Tokens{0, 0, 1_000_000, 1_000_000}, 0.2 + 1.25*4, true},
+		{"only cache_write explicit", "write-only", Tokens{0, 0, 1_000_000, 1_000_000}, 0.4 + 3, true},
 		{"unpriced model is unknown, not zero", "other", Tokens{Input: 100}, 0, false},
 		{"zero tokens priced is zero", "cheap-model", Tokens{}, 0, true},
 	}
@@ -77,7 +90,7 @@ func TestLoad(t *testing.T) {
 	if err := os.WriteFile(path, []byte(sample), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if tab, err := Load(path); err != nil || tab.Len() != 2 {
+	if tab, err := Load(path); err != nil || tab.Len() != 4 {
 		t.Fatalf("valid file = %d models, %v", tab.Len(), err)
 	}
 	if err := os.WriteFile(path, []byte("[models.m]\ninput = x\n"), 0o600); err != nil {

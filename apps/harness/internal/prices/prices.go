@@ -17,8 +17,19 @@ const File = "prices.toml"
 
 const perMillion = 1_000_000
 
+// Default cache price multipliers, applied to a model's input price when its
+// entry has no cache_read / cache_write. They follow Anthropic's published
+// ratios (a cache read costs 0.1x input, a 5-minute cache write 1.25x) and are
+// an assumption, not data: an explicit cache_read / cache_write in prices.toml
+// always overrides them, and a provider with other ratios needs those keys.
+const (
+	DefaultCacheReadMultiplier  = 0.1
+	DefaultCacheWriteMultiplier = 1.25
+)
+
 // Price is USD per one million tokens. Cache prices are optional: a missing
-// one bills those tokens at the input price.
+// cache_read is estimated at DefaultCacheReadMultiplier x Input and a missing
+// cache_write at DefaultCacheWriteMultiplier x Input.
 type Price struct {
 	Input      float64
 	Output     float64
@@ -39,7 +50,7 @@ func (t Table) Estimate(model string, tok Tokens) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
-	cacheRead, cacheWrite := p.Input, p.Input
+	cacheRead, cacheWrite := p.Input*DefaultCacheReadMultiplier, p.Input*DefaultCacheWriteMultiplier
 	if p.CacheRead != nil {
 		cacheRead = *p.CacheRead
 	}

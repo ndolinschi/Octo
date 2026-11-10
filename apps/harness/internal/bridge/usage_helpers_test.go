@@ -32,16 +32,16 @@ type usageStack struct {
 // price table, limits store fed by the client, and the mock model with opts.
 func newUsageStack(t *testing.T, priceFile string, reg *plugins.Registry, llmOpts ...mockllm.Option) *usageStack {
 	t.Helper()
-	return buildUsageStack(t, priceFile, false, reg, llmOpts...)
+	return buildUsageStack(t, priceFile, false, orchestrator.Options{}, reg, llmOpts...)
 }
 
 // newUsageStackLenient tolerates a malformed price file, as serve does (it logs and goes on).
 func newUsageStackLenient(t *testing.T, priceFile string) *usageStack {
 	t.Helper()
-	return buildUsageStack(t, priceFile, true, nil)
+	return buildUsageStack(t, priceFile, true, orchestrator.Options{}, nil)
 }
 
-func buildUsageStack(t *testing.T, priceFile string, lenient bool, reg *plugins.Registry, llmOpts ...mockllm.Option) *usageStack {
+func buildUsageStack(t *testing.T, priceFile string, lenient bool, oo orchestrator.Options, reg *plugins.Registry, llmOpts ...mockllm.Option) *usageStack {
 	t.Helper()
 	llmSrv := httptest.NewServer(mockllm.New(0, llmOpts...))
 	t.Cleanup(llmSrv.Close)
@@ -68,10 +68,9 @@ func buildUsageStack(t *testing.T, priceFile string, lenient bool, reg *plugins.
 	lim := limits.NewStore()
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
-	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
-		Client:   anthropicclient.New("k", llmSrv.URL, "", anthropicclient.WithResponseObserver(lim.Observe)),
-		MaxTurns: 12, Stream: true, Agents: reg.Agents(),
-	})
+	oo.Client = anthropicclient.New("k", llmSrv.URL, "", anthropicclient.WithResponseObserver(lim.Observe))
+	oo.MaxTurns, oo.Stream, oo.Agents = 12, true, reg.Agents()
+	orch := orchestrator.New(store, hub, notes, oo)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

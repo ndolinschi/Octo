@@ -86,3 +86,49 @@ func TestLoad_ModelDefaultsAndOverrides(t *testing.T) {
 		t.Errorf("Balanced = %q", cfg.Models.Balanced)
 	}
 }
+
+func TestLoad_CostDefaultsAndOverrides(t *testing.T) {
+	for _, k := range []string{"HARNESS_PROMPT_CACHING", "HARNESS_MAX_TOOL_RESULT_BYTES", "HARNESS_MAX_REPORT_BYTES", "HARNESS_READ_FILE_LINES"} {
+		t.Setenv(k, "")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.PromptCaching || cfg.Limits.ResultBytes != 48<<10 || cfg.Limits.ReportBytes != 32<<10 || cfg.Limits.ReadLines != 2000 {
+		t.Fatalf("defaults = caching %v, %+v", cfg.PromptCaching, cfg.Limits)
+	}
+	if cfg.Models.Orchestrator != "claude-sonnet-5-5" || cfg.Models.Deep != "claude-opus-5-5" {
+		t.Fatalf("models = %+v", cfg.Models)
+	}
+
+	tests := []struct {
+		env, val string
+		check    func(config.Config) bool
+		wantErr  bool
+	}{
+		{"HARNESS_PROMPT_CACHING", "false", func(c config.Config) bool { return !c.PromptCaching }, false},
+		{"HARNESS_PROMPT_CACHING", "0", func(c config.Config) bool { return !c.PromptCaching }, false},
+		{"HARNESS_PROMPT_CACHING", "maybe", nil, true},
+		{"HARNESS_MAX_TOOL_RESULT_BYTES", "1000", func(c config.Config) bool { return c.Limits.ResultBytes == 1000 }, false},
+		{"HARNESS_MAX_REPORT_BYTES", "2000", func(c config.Config) bool { return c.Limits.ReportBytes == 2000 }, false},
+		{"HARNESS_READ_FILE_LINES", "50", func(c config.Config) bool { return c.Limits.ReadLines == 50 }, false},
+		{"HARNESS_MAX_TOOL_RESULT_BYTES", "0", nil, true},
+		{"HARNESS_READ_FILE_LINES", "lots", nil, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.env+"="+tc.val, func(t *testing.T) {
+			t.Setenv(tc.env, tc.val)
+			cfg, err := config.Load()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("accepted a bad value")
+				}
+				return
+			}
+			if err != nil || !tc.check(cfg) {
+				t.Fatalf("cfg = %+v, err %v", cfg, err)
+			}
+		})
+	}
+}

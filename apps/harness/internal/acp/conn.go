@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // maxLine bounds one JSON-RPC message; agents can send whole files.
@@ -160,7 +161,7 @@ func (c *conn) call(ctx context.Context, method string, params, result any) erro
 	}
 	if err != nil {
 		c.forget(id)
-		return err
+		return c.explainWriteFailure(ctx, err)
 	}
 	select {
 	case resp := <-ch:
@@ -180,6 +181,28 @@ func (c *conn) call(ctx context.Context, method string, params, result any) erro
 	case <-c.done:
 		return c.Err()
 	}
+}
+
+// writeFailGrace bounds how long a failed write waits for the read side to
+// report why the peer is gone.
+const writeFailGrace = 3 * time.Second
+
+// explainWriteFailure prefers the connection's own end-of-stream error (which
+// names how the agent exited and its stderr tail) over a bare "broken pipe" or
+// "file already closed": a peer that exits makes the write fail and the read
+// reach EOF at about the same time, and which is seen first is a race. It waits
+// for the read side, not for a fixed time; the grace only bounds a peer that
+// closed its input but is still running.
+func (c *conn) explainWriteFailure(ctx context.Context, writeErr error) error {
+	t := time.NewTimer(writeFailGrace)
+	defer t.Stop()
+	select {
+	case <-c.done:
+		return c.Err()
+	case <-ctx.Done():
+	case <-t.C:
+	}
+	return writeErr
 }
 
 func (c *conn) forget(id int64) {

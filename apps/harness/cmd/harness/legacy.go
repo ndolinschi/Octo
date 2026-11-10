@@ -92,6 +92,7 @@ func cmdRun(args []string) error {
 	dataDir := fs.String("data-dir", "", "Harness data directory")
 	maxTurns := fs.Int("max-turns", 0, "Max agent turns (0 = config default)")
 	octoKey := fs.String("octo-key", "", "Octo x-octo-key (or HARNESS_OCTO_KEY)")
+	promptCaching := fs.Bool("prompt-caching", cfg.PromptCaching, "Send cache_control breakpoints (or HARNESS_PROMPT_CACHING)")
 	stream := fs.Bool("stream", cfg.Stream, "Stream assistant text to stderr (or HARNESS_STREAM)")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable)")
@@ -115,6 +116,7 @@ func cmdRun(args []string) error {
 		cfg.MaxTurns = *maxTurns
 	}
 	cfg.Stream = *stream
+	cfg.PromptCaching = *promptCaching
 	cfg.Model = *model
 	cfg.Workspace = *workspace
 	if len(remoteBases) > 0 {
@@ -136,7 +138,7 @@ func cmdRun(args []string) error {
 	defer st.Close()
 
 	reg := tools.NewRegistry()
-	if err := local.Register(reg, cfg.Workspace); err != nil {
+	if err := local.RegisterRootsLimits(reg, []local.Root{{Label: "workspace", Path: cfg.Workspace}}, cfg.Limits); err != nil {
 		return err
 	}
 	cacheDir := filepath.Join(cfg.DataDir, "cache")
@@ -153,6 +155,9 @@ func cmdRun(args []string) error {
 		Model:    cfg.Model,
 		MaxTurns: cfg.MaxTurns,
 		Stream:   cfg.Stream,
+
+		NoPromptCaching: !cfg.PromptCaching,
+		Limits:          cfg.Limits,
 	}
 	sessionID, finalText, err := runner.Run(ctx, *prompt)
 	if err != nil {

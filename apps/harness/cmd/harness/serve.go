@@ -40,6 +40,7 @@ func cmdServe(args []string) error {
 	baseURL := fs.String("base-url", "", "Anthropic Messages API base URL")
 	octoKey := fs.String("octo-key", "", "Octo x-octo-key (or HARNESS_OCTO_KEY)")
 	maxTurns := fs.Int("max-turns", 0, "Max loop iterations per agent (0 = config default)")
+	promptCaching := fs.Bool("prompt-caching", cfg.PromptCaching, "Send cache_control breakpoints (or HARNESS_PROMPT_CACHING); disable for gateways that reject them")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable; sub-agents only)")
 	var pluginDirs multiFlag
@@ -59,6 +60,7 @@ func cmdServe(args []string) error {
 	if *maxTurns > 0 {
 		cfg.MaxTurns = *maxTurns
 	}
+	cfg.PromptCaching = *promptCaching
 	if len(remoteBases) > 0 {
 		cfg.RemoteBases = remoteBases
 	}
@@ -102,8 +104,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Client:   anthropicclient.New(cfg.APIKey, cfg.BaseURL, cfg.OctoKey, anthropicclient.WithResponseObserver(limitStore.Observe)),
 		MaxTurns: cfg.MaxTurns,
 		Stream:   cfg.Stream,
-		Remote:   remoteReg.All(),
-		Agents:   pluginReg.Agents(),
+
+		NoPromptCaching: !cfg.PromptCaching,
+		Limits:          cfg.Limits,
+		Remote:          remoteReg.All(),
+		Agents:          pluginReg.Agents(),
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth},
 		project.WithPrices(priceTable))

@@ -29,7 +29,7 @@ const folderProp = `"folder":{"type":"string","description":"Folder label; defau
 func schemaFor(tool string, multi bool) json.RawMessage {
 	props := map[string]string{
 		ToolBash:      `"command":{"type":"string","description":"Shell command to run"}`,
-		ToolReadFile:  `"path":{"type":"string","description":"Relative path under the folder"}`,
+		ToolReadFile:  `"path":{"type":"string","description":"Relative path under the folder"},"offset":{"type":"integer","description":"First line to read, 1-based; default 1"},"limit":{"type":"integer","description":"Maximum number of lines to read; defaults to a server-side cap (2000)"}`,
 		ToolWriteFile: `"path":{"type":"string","description":"Relative path under the folder"},"content":{"type":"string","description":"File contents"}`,
 		ToolListDir:   `"path":{"type":"string","description":"Relative directory path; defaults to the folder root"}`,
 	}
@@ -48,7 +48,7 @@ func schemaFor(tool string, multi bool) json.RawMessage {
 
 var descriptions = map[string]string{
 	ToolBash:      "Run a shell command in a project folder",
-	ToolReadFile:  "Read a text file under a project folder",
+	ToolReadFile:  "Read a text file under a project folder. Long files are cut: use offset and limit (lines) to page through them",
 	ToolWriteFile: "Write a text file under a project folder",
 	ToolListDir:   "List a directory under a project folder",
 }
@@ -61,6 +61,12 @@ func Register(reg *tools.Registry, workspace string) error {
 // RegisterRoots installs the named tools (all when none are named) over roots.
 // With no roots nothing is registered.
 func RegisterRoots(reg *tools.Registry, roots []Root, names ...string) error {
+	return RegisterRootsLimits(reg, roots, tools.Limits{}, names...)
+}
+
+// RegisterRootsLimits is RegisterRoots with explicit caps (zero fields mean
+// their defaults); today only read_file's line and byte caps use them.
+func RegisterRootsLimits(reg *tools.Registry, roots []Root, lim tools.Limits, names ...string) error {
 	if len(roots) == 0 {
 		return nil
 	}
@@ -73,7 +79,7 @@ func RegisterRoots(reg *tools.Registry, roots []Root, names ...string) error {
 	}
 	handlers := map[string]tools.Handler{
 		ToolBash:      bashHandler(rs),
-		ToolReadFile:  readFileHandler(rs),
+		ToolReadFile:  readFileHandler(rs, lim),
 		ToolWriteFile: writeFileHandler(rs),
 		ToolListDir:   listDirHandler(rs),
 	}

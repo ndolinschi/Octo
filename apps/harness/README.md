@@ -33,7 +33,13 @@ ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:87
 
 Then `curl -XPOST localhost:8790/v1/projects -d '{"name":"Demo","folders":[{"path":"'$PWD'"}]}'`, post a message to `/v1/projects/{id}/messages`, follow `/v1/projects/{id}/events`, and browse or edit project files via `/v1/projects/{id}/files` (see [`docs/architecture.md`](docs/architecture.md#file-api)). API contract: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../docs/superpowers/specs/2026-11-10-project-harness-design.md). Against a real endpoint, drop `--base-url` (or point it at Octo) and set a real key.
 
-`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--plugins-dir` (repeatable), `--max-turns`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Say "quick" in a message to make mockllm answer without delegating.
+`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--plugins-dir` (repeatable), `--max-turns`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Defaults: orchestrator `claude-sonnet-5-5` (the balanced model; it was opus before 2026-11-10 because the longest-lived thread should not run on the dearest model; projects created earlier keep their stored models), fast `claude-haiku-5-5`, balanced `claude-sonnet-5-5`, deep `claude-opus-5-5`. Say "quick" in a message to make mockllm answer without delegating.
+
+### Cost controls
+
+- **Prompt caching** (`--prompt-caching`, `HARNESS_PROMPT_CACHING`, default on): requests carry `cache_control` breakpoints on the last tool, the last system block and the last message block, so each loop iteration reads the conversation so far from the cache instead of paying full input price. Turn it off (`--prompt-caching=false`) for a gateway that rejects the field. Cache tokens appear in `/v1/usage` as `cache_read_tokens` / `cache_write_tokens`.
+- **Result caps** (what goes back into model context, not the UI file API): tool results 48 KiB (`HARNESS_MAX_TOOL_RESULT_BYTES`), sub-agent reports 32 KiB (`HARNESS_MAX_REPORT_BYTES`), `read_file` 2000 lines by default (`HARNESS_READ_FILE_LINES`; the tool takes `offset` and `limit`). A cut result says how much was cut and how to get the rest.
+- **mockllm** simulates the cache: with breakpoints it reports `cache_creation_input_tokens` for new prefix and `cache_read_input_tokens` for a prefix an earlier request wrote (matched by content hash, ignoring the markers, with the real API's 20-block lookback); without breakpoints both are 0. Its token counts are synthetic (a quarter byte per character plus a fixed overhead per message and tool) and it has no minimum cacheable length.
 
 ## Plugins and ACP agents
 
@@ -134,14 +140,14 @@ Spec: [`2026-11-10-usage-design.md`](../../docs/superpowers/specs/2026-11-10-usa
 
 - `GET /v1/usage?from=&to=&group=day|model|project|agent&project=` sums per-request usage rows (input, output, cache read and cache write tokens, request count, cost) across all projects, or one with `project=`. `from`/`to` are RFC 3339 or `YYYY-MM-DD` (UTC; `to` exclusive; default the last 30 days); `group` defaults to `day`. Days without usage are omitted, an empty range returns empty `buckets`, bad parameters return 400 and an unknown `project` 404. `total` is the sum of the buckets. Usage is recorded from the migration on; earlier history is not back-filled.
 - `GET /v1/limits` returns `{"limits":[{provider, model, kind, limit, remaining, resets_at, observed_at}]}`: the latest rate-limit headers the base URL's host returned (`anthropic-ratelimit-*`, else `x-ratelimit-*`; duration resets such as `6m0s` become RFC 3339 using the observation time), one entry per provider host, model and kind. Held in memory, so the list is empty after a restart or while no response carried such headers. mockllm sends Anthropic-style headers by default; `go run ./examples/mockllm -ratelimit openai` sends `x-ratelimit-*` ones, `-ratelimit none` none.
-- Cost: a source-reported cost (an ACP agent's `usage_update.cost` in USD, as the increase since its previous update) is summed as is. API usage is estimated as tokens x price from the optional `{data-dir}/prices.toml` (read at startup; never the router's price file). A bucket's `cost_usd` is `null` when nothing in it has a price, `cost_estimated` is true when any part came from the table, and models missing from the table contribute nothing rather than zero. Cache prices are optional and fall back to the input price.
+- Cost: a source-reported cost (an ACP agent's `usage_update.cost` in USD, as the increase since its previous update) is summed as is. API usage is estimated as tokens x price from the optional `{data-dir}/prices.toml` (read at startup; never the router's price file). A bucket's `cost_usd` is `null` when nothing in it has a price, `cost_estimated` is true when any part came from the table, and models missing from the table contribute nothing rather than zero. Cache prices are optional; a model without `cache_read` / `cache_write` is estimated at 0.1x and 1.25x its input price (Anthropic's published ratios; a default assumption, not data, and an explicit price always overrides it).
 
 ```toml
 [models."claude-opus-5-5"]
 input = 5.0        # USD per 1M tokens
 output = 25.0
-cache_read = 0.5   # optional
-cache_write = 6.25 # optional
+cache_read = 0.5   # optional; default 0.1 x input
+cache_write = 6.25 # optional; default 1.25 x input
 ```
 
 The file is a small TOML subset (`[models."id"]` tables, `key = number`, `#` comments) read by the harness itself. A malformed file is logged and treated as missing.

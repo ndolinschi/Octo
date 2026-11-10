@@ -42,13 +42,6 @@ func (rt *runtime) orchestratorPrompt() string {
 	b.WriteString("You are the orchestrator of a software project. You are the single long-lived agent the user talks to: " +
 		"every message in this conversation is the same user speaking about the same project.\n\n")
 	b.WriteString(rt.brief())
-	b.WriteString("\nProject notes (durable memory, re-read every turn):\n")
-	if len(rt.notes) == 0 {
-		b.WriteString("(none yet)\n")
-	}
-	for _, n := range rt.notes {
-		fmt.Fprintf(&b, "### %s\n%s\n", n.Title, n.Content)
-	}
 	b.WriteString(`
 How you work:
 - Keep your own context small. Beyond a quick orientation with list_dir/read_file, do not explore, implement or verify yourself; delegate with spawn_agent.
@@ -60,6 +53,16 @@ How you work:
 - Answer the user concisely in markdown from the sub-agent reports: what was found or changed, and what remains.
 `)
 	b.WriteString(rt.acpPrompt())
+	// Notes change whenever save_note runs, so they come last: everything above
+	// stays byte-identical and the prompt-cache prefix (tools + static system)
+	// survives a note change.
+	b.WriteString("\nProject notes (durable memory, re-read every turn):\n")
+	if len(rt.notes) == 0 {
+		b.WriteString("(none yet)\n")
+	}
+	for _, n := range rt.notes {
+		fmt.Fprintf(&b, "### %s\n%s\n", n.Title, n.Content)
+	}
 	return b.String()
 }
 

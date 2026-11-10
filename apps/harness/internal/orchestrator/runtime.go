@@ -77,7 +77,7 @@ func (rt *runtime) registry(a projectstore.Agent) (*tools.Registry, error) {
 	if isOrch {
 		names = []string{local.ToolListDir, local.ToolReadFile}
 	}
-	if err := local.RegisterRoots(reg, rt.roots(), names...); err != nil {
+	if err := local.RegisterRootsLimits(reg, rt.roots(), rt.o.opts.Limits, names...); err != nil {
 		return nil, err
 	}
 	rt.announceWrites(reg)
@@ -131,6 +131,9 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		Stream:    rt.o.opts.Stream,
 		SessionID: a.ID,
 		Sink:      &agentSink{rt: rt, agentID: a.ID},
+
+		NoPromptCaching: rt.o.opts.NoPromptCaching,
+		Limits:          rt.o.opts.Limits,
 	}
 	return loop.Run(ctx, history)
 }

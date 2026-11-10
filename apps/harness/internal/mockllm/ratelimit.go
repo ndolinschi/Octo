@@ -34,6 +34,7 @@ type server struct {
 	style RateLimitStyle
 	reqs  atomic.Int64
 	now   func() time.Time
+	cache *cacheStore
 }
 
 type quota struct {

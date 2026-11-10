@@ -132,8 +132,10 @@ with no folders gets no file/shell tools.
 ### Model tiers
 
 Per project `models`: `{ orchestrator, fast, balanced, deep }`. Defaults (overridable by
-`HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP`): `claude-opus-5-5`, `claude-haiku-5-5`,
-`claude-sonnet-5-5`, `claude-opus-5-5`. When pointing at Octo autoroute, set all four to
+`HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP`): `claude-sonnet-5-5`, `claude-haiku-5-5`,
+`claude-sonnet-5-5`, `claude-opus-5-5`. The orchestrator defaults to the balanced model (it delegates and
+its never-compacted thread is the longest-lived, so it is the costliest place for the deep model); projects
+created earlier keep the `models` stored in `models_json`. When pointing at Octo autoroute, set all four to
 whatever ids the router config expects.
 
 ### Notes (project memory)
