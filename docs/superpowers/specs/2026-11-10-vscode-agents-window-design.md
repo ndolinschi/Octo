@@ -132,10 +132,38 @@ type HostCapabilities = {
 ### Disabling VS Code's own AI surfaces
 
 Through `contributes.configurationDefaults` of the built-in extension (`product.json`
-has no settings-defaults key, so the extension is the only patch-free place): `chat.disableAIFeatures: true`,
-`chat.agent.enabled: false`, `chat.commandCenter.enabled: false`,
-`chat.agentsWindowBanner.enabled: false`, `chat.titleBar.openInAgentsWindow.enabled: false`,
-`chat.viewSessions.enabled: false`, `chat.agentsControl.enabled: false`. No built-in code is removed or patched.
+has no settings-defaults key, so the extension is the only patch-free place):
+`chat.disableAIFeatures: true` (master switch — it sets the "chat setup hidden" context
+that gates the chat view, status entry, title-bar menu and the Open Agents Window
+actions), `chat.agent.enabled: false`, `chat.titleBar.openInAgentsWindow.enabled: false`,
+`chat.agentsControl.enabled: "hidden"`, `chat.unifiedAgentsBar.enabled: false`,
+`chat.commandCenter.enabled: false`, `chat.viewSessions.enabled: false`,
+`workbench.secondarySideBar.defaultVisibility: "hidden"`. The manifest also declares
+`capabilities.agentsWindow.supported: false`. No built-in code is removed or patched.
+
+Limits found in source (1.145.2):
+
+- Extension defaults apply only to window/resource/machine-overridable settings;
+  application-scoped keys (e.g. `chat.agentsWindowBanner.enabled`) cannot be defaulted.
+- `product.json` must keep `defaultChatAgent`: without it the entitlement service
+  returns early and `chat.disableAIFeatures` stops hiding anything.
+- Main-process entry points are not covered by settings: the `--agents` CLI flag,
+  `<protocol>://agents/…` links and the Windows jump-list task can still open the
+  first-party window. Closing those needs a core patch, which is out of scope.
+
+### What the first-party Agents window teaches us
+
+VS Code's own Agents window is a **separate BrowserWindow with its own workbench entry
+point** bound to a fixed empty workspace; sessions own the folders and the window
+mirrors the active session's folders. Extensions cannot open, target or extend it, and
+`createWebviewPanel` cannot request an auxiliary window, its size or its chrome. So an
+extension-hosted window is an **auxiliary window** of an editor window: it closes with
+that window, opens at 1024×768 or its last saved bounds, and gets a clean frame only
+through `workbench.action.enableCompactAuxiliaryWindow` (setting
+`octo.agentsWindow.compact`, default on). A true top-level Agents window that outlives
+editor windows would require core changes; that is the known trade-off of the
+no-patch constraint. Ideas borrowed: one window for many folders, a single "open
+intent" hand-off to the editor, folders mirrored from the active project.
 
 ### Fork recipe (`apps/ide`)
 
