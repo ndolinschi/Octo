@@ -8,6 +8,7 @@ import { Button } from "../primitives/Button";
 import { Presence } from "../primitives/Presence";
 import { ComposerMenu, type ComposerMenuHandle, type MenuPick } from "./ComposerMenu";
 import { ModelSelect } from "./ModelSelect";
+import { errorMessage } from "../../lib/format";
 
 export type ComposerHandle = { focus(): void; fill(text: string): void };
 
@@ -114,7 +115,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       await props.onSend(text.trim());
       setText("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setSending(false);
     }
@@ -190,7 +191,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const chooseModel = (next: string) => {
     if (!model) return;
     setModelError(null);
-    model.choose(next).catch((e: unknown) => setModelError({ model: next, message: e instanceof Error ? e.message : String(e) }));
+    model.choose(next).catch((e: unknown) => setModelError({ model: next, message: errorMessage(e) }));
   };
   const modelSelect = model && <ModelSelect value={model.value} options={model.options} onChoose={chooseModel} disabled={disabled} />;
   const control = "press grid size-7 shrink-0 place-items-center rounded-sm";

@@ -1,6 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { readPref, writePref } from "../lib/storage";
-import { TREE_DEFAULT, TREE_MAX, TREE_MIN, clamp, parseTreePref, type Stored } from "./fileViewPrefs";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { PERSIST_TREE_MS, FOCUS_REQUEST_TTL_MS } from "../lib/constants";
+import { PREFS, usePersistentState } from "../lib/storage";
+import { TREE_DEFAULT, TREE_MAX, TREE_MIN, clamp, treePrefCodec } from "./fileViewPrefs";
+import { createRequiredContext } from "../lib/context";
 
 export { TREE_DEFAULT, TREE_MAX, TREE_MIN };
 
@@ -17,30 +19,22 @@ type FileViewValue = {
   takeFocusRequest(): boolean;
 };
 
-const FileViewContext = createContext<FileViewValue | null>(null);
-
-function load(projectId: string): Stored {
-  return parseTreePref(readPref(`fileTree.${projectId}`));
-}
+export const { Provider: FileViewContextProvider, useRequired: useFileView } = createRequiredContext<FileViewValue>("useFileView");
 
 /** Per-project file-view preferences, persisted in `localStorage["octo.fileTree.{projectId}"]` (guarded). */
 export function FileViewProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
-  const [stored, setStored] = useState(() => load(projectId));
+  const [stored, setStored] = usePersistentState(PREFS.fileTree(projectId), treePrefCodec, { debounceMs: PERSIST_TREE_MS });
   const [focusTreeTick, setTick] = useState(0);
-  useEffect(() => {
-    const id = window.setTimeout(() => writePref(`fileTree.${projectId}`, JSON.stringify(stored)), 150);
-    return () => window.clearTimeout(id);
-  }, [stored, projectId]);
-  const setTreeOpen = useCallback((open: boolean) => setStored((s) => (s.open === open ? s : { ...s, open })), []);
-  const setTreeWidth = useCallback((width: number) => setStored((s) => ({ ...s, width: clamp(width) })), []);
+  const setTreeOpen = useCallback((open: boolean) => setStored((s) => (s.open === open ? s : { ...s, open })), [setStored]);
+  const setTreeWidth = useCallback((width: number) => setStored((s) => ({ ...s, width: clamp(width) })), [setStored]);
   const requested = useRef(0);
   const focusTree = useCallback(() => {
     setStored((s) => (s.open ? s : { ...s, open: true }));
     requested.current = performance.now();
     setTick((n) => n + 1);
-  }, []);
+  }, [setStored]);
   const takeFocusRequest = useCallback(() => {
-    const fresh = requested.current > 0 && performance.now() - requested.current < 1000;
+    const fresh = requested.current > 0 && performance.now() - requested.current < FOCUS_REQUEST_TTL_MS;
     requested.current = 0;
     return fresh;
   }, []);
@@ -48,11 +42,5 @@ export function FileViewProvider({ projectId, children }: { projectId: string; c
     () => ({ treeOpen: stored.open, treeWidth: stored.width, setTreeOpen, setTreeWidth, focusTreeTick, focusTree, takeFocusRequest }),
     [stored, setTreeOpen, setTreeWidth, focusTreeTick, focusTree, takeFocusRequest],
   );
-  return <FileViewContext.Provider value={value}>{children}</FileViewContext.Provider>;
-}
-
-export function useFileView(): FileViewValue {
-  const ctx = useContext(FileViewContext);
-  if (!ctx) throw new Error("useFileView outside FileViewProvider");
-  return ctx;
+  return <FileViewContextProvider value={value}>{children}</FileViewContextProvider>;
 }

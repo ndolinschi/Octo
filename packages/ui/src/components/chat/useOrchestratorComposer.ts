@@ -5,24 +5,28 @@ import { useOptionalComments } from "../../state/comments";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerProps } from "./Composer";
+import { slot, isString, type TabMemory } from "../../state/workspace/tabMemory";
+import type { TabId } from "../../state/workspace/layout";
 
 /** Composers sharing a draft key (the Chat tab's and the floating one) hear each other's edits. */
-function listeners(memory: Map<string, unknown>, key: string): Set<(text: string) => void> {
-  const k = `${key}:listeners`;
-  let set = memory.get(k) as Set<(text: string) => void> | undefined;
-  if (!set) {
-    set = new Set();
-    memory.set(k, set);
-  }
+type DraftListener = (text: string) => void;
+const DRAFT = slot("draft", isString);
+const DRAFT_LISTENERS = slot("draft:listeners", (v): v is Set<DraftListener> => v instanceof Set);
+
+function listeners(memory: TabMemory, tab: TabId): Set<DraftListener> {
+  const existing = memory.get(tab, DRAFT_LISTENERS);
+  if (existing) return existing;
+  const set = new Set<DraftListener>();
+  memory.set(tab, DRAFT_LISTENERS, set);
   return set;
 }
 
 /**
  * Everything a composer that talks to the orchestrator needs (the Chat tab's and the floating one
  * over files): send with pending code comments, stop, offline reason, the draft kept in the tab
- * memory under `draftKey`, and the orchestrator model choice (optimistic, rolled back on failure).
+ * memory under `tab`, and the orchestrator model choice (optimistic, rolled back on failure).
  */
-export function useOrchestratorComposer(draftKey: string): Omit<ComposerProps, "comments"> & { commentCount: number } {
+export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number } {
   const { health, config } = useApp();
   const { project, state, running, send, cancel, live, update } = useProject();
   const comments = useOptionalComments();
@@ -41,7 +45,7 @@ export function useOrchestratorComposer(draftKey: string): Omit<ComposerProps, "
       project?.models.fast,
       ...Object.values(config?.default_models ?? {}),
     ];
-    return [...new Set(ids.filter((m): m is string => Boolean(m && m.trim())))];
+    return [...new Set(ids.filter((m): m is string => Boolean(m?.trim())))];
   }, [project?.models, config]);
 
   return {
@@ -74,14 +78,14 @@ export function useOrchestratorComposer(draftKey: string): Omit<ComposerProps, "
     onCancel: cancel,
     draft: memory
       ? {
-          initial: (memory.get(draftKey) as string | undefined) ?? "",
+          initial: memory.get(tab, DRAFT) ?? "",
           save: (text) => {
-            if (memory.get(draftKey) === text) return;
-            memory.set(draftKey, text);
-            listeners(memory, draftKey).forEach((l) => l(text));
+            if (memory.get(tab, DRAFT) === text) return;
+            memory.set(tab, DRAFT, text);
+            listeners(memory, tab).forEach((l) => l(text));
           },
           subscribe: (cb) => {
-            const set = listeners(memory, draftKey);
+            const set = listeners(memory, tab);
             set.add(cb);
             return () => void set.delete(cb);
           },

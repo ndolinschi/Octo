@@ -1,18 +1,28 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { CLOCK_IDLE_MS, COPY_FEEDBACK_MS, LOADING_MIN_SHOWN_MS, LOADING_SHOW_AFTER_MS, NOW_ACTIVE_MS } from "./constants";
 
-/** Idle clocks only move for relative times ("2h ago"). */
-const IDLE_TICK = 60_000;
+/**
+ * A ref that always holds the latest `value`, updated in a layout effect (after the commit, before any event or effect can
+ * read it). For callbacks and effects that must see current props or state without re-subscribing.
+ */
+export function useLatest<T>(value: T): RefObject<T> {
+  const ref = useRef(value);
+  useLayoutEffect(() => {
+    ref.current = value;
+  });
+  return ref;
+}
 
 /**
  * A clock that ticks every `intervalMs` while `active`, and once a minute otherwise. The value is
  * stable between ticks, so memoised children that take it (the transcript) don't re-render on
  * unrelated updates such as scrolling.
  */
-export function useNow(active: boolean, intervalMs = 1000): number {
+export function useNow(active: boolean, intervalMs = NOW_ACTIVE_MS): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), active ? intervalMs : IDLE_TICK);
+    const id = window.setInterval(() => setNow(Date.now()), active ? intervalMs : CLOCK_IDLE_MS);
     return () => window.clearInterval(id);
   }, [active, intervalMs]);
   return now;
@@ -127,7 +137,7 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   return { ref, atBottom, onScroll, scrollToBottom, release, restick };
 }
 
-export function useCopy(timeoutMs = 1400): [boolean, (text: string) => void] {
+export function useCopy(timeoutMs = COPY_FEEDBACK_MS): [boolean, (text: string) => void] {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(
     (text: string) => {
@@ -146,10 +156,7 @@ export function useCopy(timeoutMs = 1400): [boolean, (text: string) => void] {
 
 /** Calls `onEscape` for Escape presses that nothing inside the page already handled. */
 export function useEscape(active: boolean, onEscape: () => void) {
-  const handler = useRef(onEscape);
-  useLayoutEffect(() => {
-    handler.current = onEscape;
-  });
+  const handler = useLatest(onEscape);
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
@@ -157,12 +164,8 @@ export function useEscape(active: boolean, onEscape: () => void) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [active]);
+  }, [active, handler]);
 }
-
-/** Loading indicators wait this long before showing, then stay at least `MIN_SHOWN` once shown. */
-const SHOW_AFTER = 200;
-const MIN_SHOWN = 300;
 
 /**
  * Whether to show a loading indicator for `loading`: never for loads under 200ms (no flash), and
@@ -177,11 +180,11 @@ export function useDelayedLoading(loading: boolean): boolean {
       const id = window.setTimeout(() => {
         since.current = Date.now();
         setShown(true);
-      }, SHOW_AFTER);
+      }, LOADING_SHOW_AFTER_MS);
       return () => window.clearTimeout(id);
     }
     if (!loading && shown) {
-      const id = window.setTimeout(() => setShown(false), Math.max(0, since.current + MIN_SHOWN - Date.now()));
+      const id = window.setTimeout(() => setShown(false), Math.max(0, since.current + LOADING_MIN_SHOWN_MS - Date.now()));
       return () => window.clearTimeout(id);
     }
     return undefined;

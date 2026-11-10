@@ -16,6 +16,7 @@ import { domId } from "./ids";
 import { tabInfo } from "./tabInfo";
 import { SidebarToggle } from "../shell/SidebarToggle";
 import { WorkspaceActions } from "./WorkspaceActions";
+import { type FileKey } from "../../lib/files";
 
 /**
  * One group's tab strip (or, when narrow, every tab in one strip): 36px, the tabs 8px from the panel's
@@ -36,7 +37,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
   const [menu, setMenu] = useState<{ tab: TabId; x: number; y: number } | null>(null);
   const drag = useDrag();
   const counts = useOptionalComments()?.counts;
-  const ctx = { state, orchestratorId: project?.orchestrator_agent_id, file: code.file, comments: (key: string) => counts?.get(key) ?? 0 };
+  const ctx = { state, orchestratorId: project?.orchestrator_agent_id, file: code.file, comments: (key: FileKey) => counts?.get(key) ?? 0 };
 
   const button = (tab: TabId) => list.current?.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${CSS.escape(tab)}"]`) ?? null;
 

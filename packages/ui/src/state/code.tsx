@@ -1,18 +1,22 @@
 import { BridgeError, type FileEntry, type Folder } from "@octo/agent-client";
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EditorBuffers } from "../components/files/buffers";
-import { ancestors, fileKey, fileName, normalizePath, parentPath, splitKey, type FilePosition } from "../lib/files";
+import { ancestors, fileKey, fileName, normalizePath, parentPath, splitKey, type FilePosition, type FileKey, keyInFolder, isRootKey } from "../lib/files";
 import { EditorIntel, type IntelClient } from "../lsp/hub";
+import type { TabId } from "./workspace/layout";
 import type { LspManagerOptions } from "../lsp/manager";
 import { useApp } from "./app";
 import { useOptionalNav } from "./nav";
 import { useProject } from "./project";
+import { errorMessage } from "../lib/format";
+import { createRequiredContext } from "../lib/context";
+import { useLatest } from "../lib/hooks";
 
 export type FileStatus = "loading" | "ready" | "error" | "too_large" | "binary";
 export type FileNotice = { kind: "conflict" } | { kind: "save_error"; message: string } | { kind: "changed" };
 
 export type OpenFile = {
-  key: string;
+  key: FileKey;
   folder: string;
   path: string;
   name: string;
@@ -39,7 +43,7 @@ type CodeValue = {
   /** The project's folders (label + absolute path), one tree root each. */
   folders: { label: string; path: string }[];
   files: OpenFile[];
-  file(key: string): OpenFile | undefined;
+  file(key: FileKey): OpenFile | undefined;
   buffers: EditorBuffers;
   /** Language-server status and problems per file (written by the lazily loaded client). */
   intel: EditorIntel;
@@ -51,12 +55,12 @@ type CodeValue = {
   fileIndex: FileIndex;
   /** Every file in the loaded directories, folder by folder, paths sorted. */
   loadedFiles: { folder: string; path: string }[];
-  isExpanded(key: string): boolean;
+  isExpanded(key: FileKey): boolean;
   setExpanded(folder: string, path: string, expanded: boolean): void;
   ensureDir(folder: string, path: string): void;
   reloadDir(folder: string, path: string): void;
   /** Tree row that reflects the latest open/reveal/focused file; bumps `revealTick` to scroll it into view. */
-  selectedKey: string | null;
+  selectedKey: FileKey | null;
   revealTick: number;
   /**
    * Opens a file (loading it once) and asks the workspace to show its tab, optionally at a position;
@@ -64,36 +68,32 @@ type CodeValue = {
    */
   openFile(folder: string, path: string, at?: FilePosition, where?: OpenWhere): void;
   /** Loads a file restored with the layout, without showing it; a file gone from disk is reported via `onGone`. */
-  restore(key: string): void;
+  restore(key: FileKey): void;
   /** Marks the file whose tab has focus in the tree. */
-  select(key: string): void;
+  select(key: FileKey): void;
   revealDir(folder: string, path: string): void;
-  close(key: string): void;
-  save(key: string, options?: { overwrite?: boolean }): Promise<void>;
-  reloadFromDisk(key: string): Promise<void>;
-  retryOpen(key: string): void;
-  dismissNotice(key: string): void;
+  close(key: FileKey): void;
+  save(key: FileKey, options?: { overwrite?: boolean }): Promise<void>;
+  reloadFromDisk(key: FileKey): Promise<void>;
+  retryOpen(key: FileKey): void;
+  dismissNotice(key: FileKey): void;
 };
 
 const NO_FOLDERS: { label: string; path: string }[] = [];
 const NO_FOLDERS_FULL: Folder[] = [];
 
-const CodeContext = createContext<CodeValue | null>(null);
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
+export const { Provider: CodeContextProvider, useRequired: useCode, useOptional: useOptionalCode } = createRequiredContext<CodeValue>("useCode");
 
 /** A group to open a file tab in, optionally replacing one of its tabs (the empty file view). */
-export type OpenWhere = { group: string; replace?: string };
+export type OpenWhere = { group: string; replace?: TabId };
 
 type Callbacks = {
   /** Show the tab of a file the user opened. */
-  onOpen(key: string, where?: OpenWhere): void;
+  onOpen(key: FileKey, where?: OpenWhere): void;
   /** Show the Files tab (a folder was revealed). */
   onReveal(): void;
   /** A restored file no longer exists; drop its tab silently. */
-  onGone(key: string): void;
+  onGone(key: FileKey): void;
 };
 
 /**
@@ -108,25 +108,16 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   const [files, setFiles] = useState<OpenFile[]>([]);
   const [dirs, setDirs] = useState<Record<string, DirState>>({});
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<FileKey | null>(null);
   const [revealTick, setRevealTick] = useState(0);
 
-  const filesRef = useRef(files);
-  const dirsRef = useRef(dirs);
-  const expandedRef = useRef(expanded);
-  const selectedRef = useRef(selectedKey);
-  useLayoutEffect(() => {
-    filesRef.current = files;
-    dirsRef.current = dirs;
-    expandedRef.current = expanded;
-    selectedRef.current = selectedKey;
-  });
-  const cb = useRef(callbacks);
-  useLayoutEffect(() => {
-    cb.current = callbacks;
-  });
+  const filesRef = useLatest(files);
+  const dirsRef = useLatest(dirs);
+  const expandedRef = useLatest(expanded);
+  const selectedRef = useLatest(selectedKey);
+  const cb = useLatest(callbacks);
 
-  const patch = useCallback((key: string, next: Partial<OpenFile>) => {
+  const patch = useCallback((key: FileKey, next: Partial<OpenFile>) => {
     setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, ...next } : f)));
   }, []);
 
@@ -140,11 +131,10 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
     },
     [buffers, intel],
   );
-  const foldersRef = useRef(folders);
-  foldersRef.current = folders;
+  const foldersRef = useLatest(folders);
 
   const saving = useRef(new Set<string>());
-  const find = (key: string) => filesRef.current.find((f) => f.key === key);
+  const find = useCallback((key: FileKey) => filesRef.current.find((f) => f.key === key), [filesRef]);
 
   /* ---------- tree ---------- */
 
@@ -163,7 +153,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
         return null;
       }
     },
-    [bridge, projectId],
+    [bridge, projectId, dirsRef],
   );
 
   const [fileIndex, setFileIndex] = useState<FileIndex>({ status: "idle", partial: false });
@@ -177,12 +167,12 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       let seenDirs = 0;
       let seenEntries = 0;
       let partial = false;
-      while (queue.length) {
+      for (let next = queue.shift(); next; next = queue.shift()) {
         if (seenDirs >= INDEX_MAX_DIRS || seenEntries >= INDEX_MAX_ENTRIES) {
           partial = true;
           break;
         }
-        const [folder, path] = queue.shift()!;
+        const [folder, path] = next;
         const known = dirsRef.current[fileKey(folder, path)];
         const entries = known?.status === "ready" ? known.entries : await loadDir(folder, path, true);
         seenDirs += 1;
@@ -194,27 +184,26 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       // A later call (folders changed, files added) walks again, reusing what is loaded.
       indexing.current = false;
     })();
-  }, [loadDir]);
+  }, [loadDir, dirsRef, foldersRef]);
 
   const loadedFiles = useMemo(() => {
     const out: { folder: string; path: string }[] = [];
     for (const f of folders ?? []) {
-      const prefix = `${f.label}\u0000`;
       for (const [key, dir] of Object.entries(dirs)) {
-        if (!key.startsWith(prefix) || dir.status !== "ready") continue;
+        if (!keyInFolder(key, f.label) || dir.status !== "ready") continue;
         for (const e of dir.entries) if (e.type === "file") out.push({ folder: f.label, path: e.path });
       }
     }
     return out.sort((a, b) => (a.folder === b.folder ? a.path.localeCompare(b.path) : 0));
   }, [dirs, folders]);
 
-  const isExpanded = useCallback((key: string) => expanded[key] ?? key.endsWith("\u0000"), [expanded]);
+  const isExpanded = useCallback((key: FileKey) => expanded[key] ?? isRootKey(key), [expanded]);
 
   const ensureDir = useCallback(
     (folder: string, path: string) => {
       if (!dirsRef.current[fileKey(folder, path)]) void loadDir(folder, path);
     },
-    [loadDir],
+    [loadDir, dirsRef],
   );
 
   const expandTo = useCallback(
@@ -232,7 +221,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   /* ---------- files ---------- */
 
   const load = useCallback(
-    async (key: string, folder: string, path: string, restored = false) => {
+    async (key: FileKey, folder: string, path: string, restored = false) => {
       try {
         const fc = await bridge.readFile(projectId, folder, path);
         patch(key, { status: "ready", content: fc.content, mtime: fc.mtime, error: null, notice: null });
@@ -244,7 +233,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
         patch(key, { status, error: errorMessage(e) });
       }
     },
-    [bridge, projectId, patch, buffers],
+    [bridge, projectId, patch, buffers, cb],
   );
 
   /** Adds the file to the open set (loading it) unless it is already there. */
@@ -270,7 +259,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       void load(key, folder, path, restored);
       return key;
     },
-    [load],
+    [load, filesRef],
   );
 
   const openFile = useCallback(
@@ -284,11 +273,11 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       expandTo(folder, ancestors(path));
       cb.current.onOpen(key, where);
     },
-    [ensure, expandTo, buffers],
+    [ensure, expandTo, buffers, cb],
   );
 
   const restore = useCallback(
-    (key: string) => {
+    (key: FileKey) => {
       const { folder, path } = splitKey(key);
       if (path) ensure(folder, path, true);
     },
@@ -303,11 +292,11 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       setRevealTick((n) => n + 1);
       cb.current.onReveal();
     },
-    [expandTo],
+    [expandTo, cb],
   );
 
   const close = useCallback(
-    (key: string) => {
+    (key: FileKey) => {
       const fs = filesRef.current;
       const i = fs.findIndex((f) => f.key === key);
       if (i < 0) return;
@@ -316,11 +305,11 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       filesRef.current = rest;
       setFiles(rest);
     },
-    [buffers],
+    [buffers, filesRef],
   );
 
   const save = useCallback(
-    async (key: string, options: { overwrite?: boolean } = {}) => {
+    async (key: FileKey, options: { overwrite?: boolean } = {}) => {
       const f = find(key);
       if (!f || f.status !== "ready" || saving.current.has(key)) return;
       saving.current.add(key);
@@ -343,11 +332,11 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
         saving.current.delete(key);
       }
     },
-    [bridge, projectId, patch, buffers],
+    [bridge, projectId, patch, buffers, find],
   );
 
   const reloadFromDisk = useCallback(
-    async (key: string) => {
+    async (key: FileKey) => {
       const f = find(key);
       if (!f) return;
       try {
@@ -358,17 +347,17 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
         patch(key, { notice: { kind: "save_error", message: `Couldn't reload: ${errorMessage(e)}` } });
       }
     },
-    [bridge, projectId, patch, buffers],
+    [bridge, projectId, patch, buffers, find],
   );
 
   const retryOpen = useCallback(
-    (key: string) => {
+    (key: FileKey) => {
       const f = find(key);
       if (!f) return;
       patch(key, { status: "loading", error: null });
       void load(key, f.folder, f.path);
     },
-    [load, patch],
+    [load, patch, find],
   );
 
   /* ---------- live refresh ---------- */
@@ -404,7 +393,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
           () => undefined,
         );
       }),
-    [onEvent, bridge, projectId, loadDir, patch, buffers, retryOpen],
+    [onEvent, bridge, projectId, loadDir, patch, buffers, retryOpen, dirsRef, expandedRef, filesRef],
   );
 
   // Leaving the project unmounts this provider and its buffers: the shell asks first.
@@ -413,7 +402,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
     if (!nav) return;
     nav.setLeaveGuard(() => filesRef.current.filter((f) => f.modified).length);
     return () => nav.setLeaveGuard(null);
-  }, [nav]);
+  }, [nav, filesRef]);
 
   // Unsaved edits would be lost on reload or window close.
   const anyModified = files.some((f) => f.modified);
@@ -498,19 +487,10 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       reloadFromDisk,
       retryOpen,
       patch,
+      foldersRef,
+      selectedRef,
     ],
   );
 
-  return <CodeContext.Provider value={value}>{children}</CodeContext.Provider>;
-}
-
-export function useCode(): CodeValue {
-  const ctx = useContext(CodeContext);
-  if (!ctx) throw new Error("useCode outside CodeProvider");
-  return ctx;
-}
-
-/** Null outside a project workspace (e.g. when the transcript is embedded elsewhere). */
-export function useOptionalCode(): CodeValue | null {
-  return useContext(CodeContext);
+  return <CodeContextProvider value={value}>{children}</CodeContextProvider>;
 }

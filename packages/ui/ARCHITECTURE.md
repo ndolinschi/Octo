@@ -20,7 +20,7 @@ components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, s
 state/                  one provider per concern (see the tree below); state/workspace/layout.ts is pure
 lsp/                    language-server client (hub in the main chunk, the rest loads with Monaco)
 lib/                    pure helpers and small hooks: files, format, match, comments, transcript, tools, route, storage,
-                        fileLinks, codePalette, highlight (lazy), streak, focus — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
+                        fileLinks, codePalette, highlight (lazy), streak, focus, constants, context — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
 demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks)
 styles.css              design tokens (@theme), base rules, Monaco widget overrides
 scripts/                spacing-audit.mjs (Playwright; fails on off-scale spacing)
@@ -80,9 +80,20 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
 
 - Hash routes (`lib/route.ts`): `#/p/{projectId}`, `#/p/{projectId}/a/{agentId}`; a guarded route can hold a
   navigation while files are unsaved.
-- `localStorage` only through `lib/storage.ts` (prefix `octo.`, guarded): `octo.theme`, `octo.seen`,
-  `octo.layout.{projectId}`, `octo.fileTree.{projectId}`, `octo.comments.{projectId}`. Stored values are validated
-  on read; stale entries are dropped silently.
+- `localStorage` only through `lib/storage.ts` (prefix `octo.`, guarded). Every key is declared once in its `PREFS`
+  registry (`theme`, `seen`, `layout.{projectId}`, `fileTree.{projectId}`, `comments.{projectId}`); a value is read and
+  written through a codec that validates on read (missing or malformed text becomes a valid default), and state that
+  mirrors a key uses `usePersistentState(key, codec, { debounceMs })`. Formats are those written since v6; a change
+  needs a codec that still reads the old text. The codec of a value lives next to its type (`layoutCodec` in
+  `state/workspace/layout.ts`, `commentsCodec` in `lib/comments.ts`, `seenCodec`, `treePrefCodec`, `themeCodec`).
+- Ids are branded: `TabId` is built and parsed only in `state/workspace/layout.ts` (`CHAT`, `toolTab`, `agentTab`,
+  `fileTab`, `parseTabId`) and `FileKey` only in `lib/files.ts` (`fileKey`, `parseFileKey`, `splitKey`, `keyFolder`,
+  `keyInFolder`, `isRootKey`). The NUL separator of file keys is private to `lib/files.ts`; ESLint (`no-restricted-syntax`,
+  error) forbids it anywhere else.
+- Shared hooks and helpers: `useLatest` (`lib/hooks.ts`, the "latest props in a ref" pattern), `errorMessage`
+  (`lib/format.ts`), `createRequiredContext` (`lib/context.ts`: provider plus a hook that throws outside it), per-tab view
+  memory as typed slots (`state/workspace/tabMemory.ts`, `useTabMemory`), named breakpoints, timings and layout sizes in
+  `lib/constants.ts` (the drawer breakpoint is also the `--breakpoint-drawer` token in `styles.css`; a test keeps them equal).
 - Network: only through the `Bridge`. Polling (health, project list) is in `state/app.tsx`; SSE in `state/project.tsx`.
 - Global keyboard shortcuts are registered in `AppShell` (palette) and `WorkspaceProvider` (tabs), in the capture
   phase so they work inside Monaco.
@@ -104,7 +115,8 @@ and with `scripts/spacing-audit.mjs`.
 ## Known debt (audit of 2026-11-10)
 
 Measured at the time: 114 files, ~14k lines; 14 files over 250 lines; 120 effects; 84 type casts; 13 non-null
-assertions; 0 `any`; 0 unit tests. Do not add to this list; reduce it when you touch the code.
+assertions; 0 `any`; 0 unit tests. Q2 added the unit tests, Q3 the shared helpers (rows removed below). Do not add to
+this list; reduce it when you touch the code.
 
 | Debt | Where | Direction |
 | --- | --- | --- |
@@ -113,12 +125,10 @@ assertions; 0 `any`; 0 unit tests. Do not add to this list; reduce it when you t
 | Note actions compute from captured state | `state/project.tsx` | Reducer actions |
 | `state` and `lsp` import from components | `state/code.tsx`, `lsp/manager.ts` → `components/files/buffers` | Move `EditorBuffers` below components |
 | `files` ↔ `dock` import each other; features import `chat/Markdown`, `files/fileIcons`, `files/FileTree` | `files/FileView.tsx`, `dock/TabView.tsx`, `chat/ComposerMenu.tsx`, `notes/NotesPanel.tsx` | Shared pieces move to `primitives` / `lib` |
-| Untyped tab memory (`Map<string, unknown>` + casts) | `WorkspaceProvider`, `FileView`, `AgentsPanel`, `useOrchestratorComposer` | One typed `useTabMemory` hook |
-| Ids are plain strings; the `\u0000` separator is re-implemented | `layout.ts`, `lib/files.ts`, `state/code.tsx`, `dock/tabInfo.ts` | Branded `TabId` / `FileKey`, one owner each |
 | Cross-component DOM queries | `WorkspaceProvider`, `dock/drag.ts`, `ProjectDialog` | Refs, context, one owning module |
-| Hand-written "latest ref" effects (≈15), duplicated debounce-persist, per-key JSON parsing, 13 copies of the error-message expression | `state/*`, `lib/*` | `useLatest`, `usePersistentState` with a key registry, one `errorMessage` |
 | Large components mixing loading, layout and keyboard | `files/FileView.tsx`, `files/editor/EditorComments.tsx`, `chat/Composer.tsx`, `files/FileTree.tsx`, `project/ProjectDialog.tsx` | Extract hooks |
-| Repeated long class strings; hard-coded breakpoints in CSS classes and JS | `chat/Composer*`, `shell/CommandPalette`, `files/TreeColumn`, `AppShell` | Row / MenuItem / OverlayPanel primitives; named constants |
+| Repeated long class strings; arbitrary-pixel breakpoints in CSS classes (`max-[560px]`, `@max-[360px]/…`) that no JS constant mirrors | `chat/Composer*`, `shell/CommandPalette`, `files/TreeColumn`, `IntegrationsView`, `DelegationGroup` | Row / MenuItem / OverlayPanel primitives; `@theme` breakpoint tokens where a value repeats |
+| `ProjectId` / `AgentId` are plain strings (they come from `@octo/agent-client` types, which this step does not touch) | `state/project.tsx`, `lib/route.ts`, everything keyed by project or agent | Brand them in `@octo/agent-client` with parsers there, then use the brands here |
 | List / listbox / menu keyboard handling written per overlay | `Menu`, `CommandPalette`, `ComposerMenu`, `TabStrip` | Shared hooks in `primitives` |
-| ESLint warnings (121 at the end of Q1: 21 import-boundary, 17 `prefer-optional-chain`, 16 `no-unnecessary-condition`, 9 `!`, 8 `set-state-in-effect`, 7 `refs`, 7 `exhaustive-deps`, 35 jsx-a11y, rest React Compiler rules and deprecations); few unit tests | `eslint.config.mjs` (counts: `pnpm lint`) | Each step Q3–Q5 removes its warnings (boundaries Q4, hooks / a11y Q5) and turns the rule into an error; `node:test` coverage of the pure modules is Q2 |
+| ESLint warnings (108 at the end of Q3, 121 at the end of Q1: 21 import-boundary, 15 `prefer-optional-chain`, 16 `no-unnecessary-condition`, 3 `!`, 7 `set-state-in-effect`, 3 `refs`, 7 `exhaustive-deps`, 35 jsx-a11y, rest React Compiler rules and deprecations); casts: 179 by the Q1 counting script (188 before Q3, tests included) | `eslint.config.mjs` (counts: `pnpm lint`) | Each step Q4–Q5 removes its warnings (boundaries Q4, hooks / a11y Q5) and turns the rule into an error |
 | Demo fixtures are exported from the package root | `src/index.ts` | A `@octo/ui/demo` subpath |

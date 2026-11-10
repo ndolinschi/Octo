@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { STICK_TOP } from "./turnTracking";
+import { useLatest } from "../../lib/hooks";
 
 /**
  * The prompt of the turn being read, pinned over the top of the scroll area once its own copy has
@@ -13,10 +14,7 @@ import { STICK_TOP } from "./turnTracking";
 export function StickyPrompt(props: { text: string; author: string | null; onHeight(px: number): void }) {
   const box = useRef<HTMLSpanElement>(null);
   const root = useRef<HTMLDivElement>(null);
-  const onHeight = useRef(props.onHeight);
-  useLayoutEffect(() => {
-    onHeight.current = props.onHeight;
-  });
+  const onHeight = useLatest(props.onHeight);
 
   // The conversation needs the copy's full height (fade included) to know when to let it go.
   useLayoutEffect(() => {
@@ -27,7 +25,7 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
     const ro = new ResizeObserver(report);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [onHeight]);
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
 

@@ -3,7 +3,7 @@ import { ChevronRight, Plus, X } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
-import { basename } from "../../lib/format";
+import { basename, errorMessage } from "../../lib/format";
 import { useHost } from "../../state/host";
 import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
@@ -77,7 +77,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         max_depth: maxDepth,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
       setBusy(false);
     }
   };
@@ -88,7 +88,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
     try {
       await props.onDelete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
       setBusy(false);
       setConfirmDelete(false);
     }

@@ -5,7 +5,7 @@ import { cn } from "../../lib/cn";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
-import { CHAT } from "../../state/workspace/layout";
+import { CHAT, type TabId } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { AgentHeader, roleName } from "./AgentHeader";
 import { requestTitle } from "../../lib/comments";
@@ -22,8 +22,14 @@ import { StarterPrompts } from "./StarterPrompts";
 import { StickyPrompt } from "./StickyPrompt";
 import { Transcript } from "./Transcript";
 import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
+import { slot } from "../../state/workspace/tabMemory";
 
 type ScrollMemory = { top: number; atBottom: boolean };
+const SCROLL_MEMORY = slot(
+  "scroll",
+  (v): v is ScrollMemory =>
+    typeof v === "object" && v !== null && "top" in v && typeof v.top === "number" && "atBottom" in v && typeof v.atBottom === "boolean",
+);
 
 /** A row outside the scroll area with the scroll area's gutters and side padding (see the doc comment). */
 export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
@@ -41,7 +47,7 @@ const RAIL_MIN_REQUESTS = 3;
  * then all of them pad by `--pad` (24, or 16 under 560px). Rhythm: turns 32 apart, prompt → reply 16,
  * blocks 12.
  */
-export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: string }) {
+export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: TabId }) {
   const ws = useOptionalWorkspace();
   const { theme } = useApp();
   const { project, state, running, ensureMessages, projectId } = useProject();
@@ -50,11 +56,11 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   const streaming = state.streaming[agentId];
   const composer = useRef<ComposerHandle>(null);
   const isOrchestrator = agent?.parent_id === null;
-  const composerProps = useOrchestratorComposer(`${tab}:draft`);
+  const composerProps = useOrchestratorComposer(tab);
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
   const memory = ws?.memory;
-  const saved = memory?.get(`${tab}:scroll`) as ScrollMemory | undefined;
+  const saved = memory?.get(tab, SCROLL_MEMORY);
   const scroll = useStickToBottom<HTMLDivElement>(
     [messages, streaming, agent?.status, agentId],
     saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
@@ -123,7 +129,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   useEffect(() => {
     const el = scroll.ref.current;
     return () => {
-      if (el && memory) memory.set(`${tab}:scroll`, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
+      if (el && memory) memory.set(tab, SCROLL_MEMORY, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
     };
   }, [memory, tab, scroll.ref]);
 

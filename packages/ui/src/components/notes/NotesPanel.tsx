@@ -1,7 +1,7 @@
 import type { Note } from "@octo/agent-client";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useId, useMemo, useRef, useState } from "react";
-import { excerpt, formatRelative } from "../../lib/format";
+import { excerpt, formatRelative, errorMessage } from "../../lib/format";
 import { useProject } from "../../state/project";
 import { Button, IconButton } from "../primitives/Button";
 import { Input, Textarea } from "../primitives/Field";
@@ -130,7 +130,7 @@ function NoteEditor(props: { note?: Note; onCancel(): void; onSave(input: { titl
     try {
       await props.onSave({ title: title.trim(), content: content.trim() });
     } catch (e) {
-      setError(`Couldn't save the note: ${e instanceof Error ? e.message : String(e)}. Try again.`);
+      setError(`Couldn't save the note: ${errorMessage(e)}. Try again.`);
       setBusy(false);
     }
   };

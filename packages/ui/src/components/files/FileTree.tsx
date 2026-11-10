@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { ancestors, fileKey, parentPath } from "../../lib/files";
+import { ancestors, fileKey, parentPath, type FileKey } from "../../lib/files";
 import { useCode, type DirState } from "../../state/code";
 import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "./CommentCount";
@@ -22,7 +22,7 @@ const INDENT = 16;
 function flatten(
   folders: { label: string; path: string }[],
   dirs: Record<string, DirState>,
-  isExpanded: (key: string) => boolean,
+  isExpanded: (key: FileKey) => boolean,
   /** While filtering: only these keys are shown (matches and their ancestors), every shown directory open. */
   only: Set<string> | null,
 ): Row[] {

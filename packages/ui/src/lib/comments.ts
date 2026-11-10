@@ -1,4 +1,5 @@
 import { fileName } from "./files";
+import { jsonCodec } from "./storage";
 
 /**
  * Code comments on the wire: appended to a message as a fenced `octo-comments` block the model
@@ -8,14 +9,58 @@ import { fileName } from "./files";
 /** A pending comment on lines `start`–`end` (1-based, inclusive) of a project file. */
 export type CodeComment = { id: string; folder: string; path: string; start: number; end: number; text: string; created: number };
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+/** A well-formed stored comment: 1-based integer lines with end >= start, a non-empty path and text. */
+export function isCodeComment(v: unknown): v is CodeComment {
+  if (!isRecord(v)) return false;
+  const { id, folder, path, start, end, text, created } = v;
+  const line = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 1;
+  return (
+    typeof id === "string" &&
+    typeof folder === "string" &&
+    typeof path === "string" &&
+    path.length > 0 &&
+    line(start) &&
+    line(end) &&
+    end >= start &&
+    typeof text === "string" &&
+    text.trim().length > 0 &&
+    typeof created === "number"
+  );
+}
+
+/** Pending comments as stored (a JSON list, `octo.comments.{projectId}`): malformed entries are dropped, a non-list is empty. */
+export const commentsCodec = jsonCodec<CodeComment[]>((v) => (Array.isArray(v) ? v.filter(isCodeComment) : []));
+
 /** One comment as sent: header range plus the quoted lines captured at send time. */
 export type SentComment = { folder: string; path: string; start: number; end: number; quote: string[]; truncated: boolean; text: string };
 
 const MAX_QUOTED_LINES = 6;
 const LANG = "octo-comments";
 
+/**
+ * Escape for a comment's text lines: a line that parsing would take for structure (a header shaped like `x/y:3`, or a first
+ * line starting with `>` that would parse as a quote) gets this zero-width space in front; parsing strips one. Old blocks have
+ * no such lines, so they parse the way they always did. See the spec, "Code comments → Sending".
+ */
+const ESCAPE = "\u200b";
+
 function range(start: number, end: number): string {
   return end > start ? `${start}-${end}` : `${start}`;
+}
+
+function looksLikeHeader(line: string): boolean {
+  return HEADER.test(line) && line.includes("/");
+}
+
+function escapeText(text: string): string {
+  return text
+    .split("\n")
+    .map((line, i) => (line.startsWith(ESCAPE) || looksLikeHeader(line) || (i === 0 && /^>( |$)/.test(line)) ? ESCAPE + line : line))
+    .join("\n");
 }
 
 /** The fenced block for `comments` (in order), quoting at most six lines each, then `> …`. */
@@ -23,7 +68,7 @@ export function formatComments(comments: { folder: string; path: string; start: 
   const entries = comments.map((c) => {
     const quoted = c.lines.slice(0, MAX_QUOTED_LINES).map((l) => `> ${l}`.trimEnd());
     if (c.lines.length > MAX_QUOTED_LINES) quoted.push("> \u2026");
-    return [`${c.folder}/${c.path}:${range(c.start, c.end)}`, ...quoted, c.text.trim()].join("\n");
+    return [`${c.folder}/${c.path}:${range(c.start, c.end)}`, ...quoted, escapeText(c.text.trim())].join("\n");
   });
   const body = entries.join("\n\n");
   // A fence longer than any backtick run inside, so comment text can't close it.
@@ -49,7 +94,7 @@ function parseEntries(body: string): SentComment[] {
   for (const [i, line] of all.entries()) {
     const header = HEADER.exec(line);
     const full = header?.[1];
-    if (header && full !== undefined && line.includes("/") && (i === 0 || all[i - 1]?.trim() === "")) {
+    if (header && full !== undefined && !line.startsWith(ESCAPE) && line.includes("/") && (i === 0 || all[i - 1]?.trim() === "")) {
       const slash = full.indexOf("/");
       out.push({
         folder: full.slice(0, slash),
@@ -70,7 +115,7 @@ function parseEntries(body: string): SentComment[] {
       else c.quote.push(line.replace(/^> ?/, ""));
       continue;
     }
-    c.textLines.push(line);
+    c.textLines.push(line.startsWith(ESCAPE) ? line.slice(ESCAPE.length) : line);
   }
   return out.map(({ textLines, ...c }) => ({ ...c, text: textLines.join("\n").trim() }));
 }

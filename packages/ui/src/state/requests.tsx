@@ -1,9 +1,11 @@
 import type { Bridge, ProjectSummary } from "@octo/agent-client";
-import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { requestTitle } from "../lib/comments";
 import { promptText } from "../lib/transcript";
 import { Limiter } from "./activity";
 import { useApp } from "./app";
+import { errorMessage } from "../lib/format";
+import { createRequiredContext } from "../lib/context";
 
 /** One user message of a project's orchestrator thread. */
 export type Request = { id: number; text: string; created_at: string };
@@ -76,25 +78,24 @@ class RequestStore {
       this.set(project.id, {
         updatedAt: "",
         requests: prev?.requests ?? null,
-        error: e instanceof Error ? e.message : String(e),
+        error: errorMessage(e),
         loading: false,
       });
     }
   }
 }
 
-const StoreContext = createContext<RequestStore | null>(null);
+const { Provider: RequestsContextProvider, useRequired: useRequestStore } = createRequiredContext<RequestStore>("useRequestStore");
 
 export function RequestsProvider({ children }: { children: ReactNode }) {
   const { bridge } = useApp();
   const store = useMemo(() => new RequestStore(bridge), [bridge]);
-  return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
+  return <RequestsContextProvider value={store}>{children}</RequestsContextProvider>;
 }
 
 /** Several projects' requests at once (Home), loading every one of them; entries are null until loaded. */
 export function useAllRequests(projects: ProjectSummary[] | null): Map<string, Request[] | null> {
-  const store = useContext(StoreContext);
-  if (!store) throw new Error("useAllRequests outside RequestsProvider");
+  const store = useRequestStore();
   const version = useSyncExternalStore(store.subscribe, store.version);
   useEffect(() => {
     for (const p of projects ?? []) store.ensure(p);
@@ -107,8 +108,7 @@ export function useAllRequests(projects: ProjectSummary[] | null): Map<string, R
 
 /** The project's requests, loading them while `enabled`. Null until the first load finishes. */
 export function useRequests(project: ProjectSummary | undefined, enabled: boolean) {
-  const store = useContext(StoreContext);
-  if (!store) throw new Error("useRequests outside RequestsProvider");
+  const store = useRequestStore();
   const entry = useSyncExternalStore(store.subscribe, () => (project ? store.get(project.id) : undefined));
   useEffect(() => {
     if (enabled && project) store.ensure(project);

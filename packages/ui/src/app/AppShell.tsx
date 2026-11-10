@@ -21,12 +21,12 @@ import { Sidebar } from "../components/shell/Sidebar";
 import { PanelBar } from "../components/shell/SidebarToggle";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { ActivityProvider } from "../state/activity";
+import { DRAWER_QUERY } from "../lib/constants";
 
 /** Home loads on first visit (its own chunk); the app usually opens a project. */
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
 
 /** Below this width the sidebar becomes an overlay drawer, closed by default. */
-const DRAWER_QUERY = "(max-width: 999px)";
 
 export function AppShell() {
   return (

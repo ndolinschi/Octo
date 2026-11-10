@@ -1,6 +1,6 @@
 import type { ProjectSummary } from "@octo/agent-client";
-import { useEffect, useState } from "react";
-import { readPref, writePref } from "./storage";
+import { useEffect } from "react";
+import { PREFS, jsonCodec, usePersistentState } from "./storage";
 
 /**
  * Unseen activity: a project is unseen when its `updated_at` is newer than the last value the
@@ -9,21 +9,26 @@ import { readPref, writePref } from "./storage";
  */
 type Seen = { since: string; projects: Record<string, string> };
 
-function load(): Seen {
-  try {
-    const parsed = JSON.parse(readPref("seen") ?? "") as Seen;
-    if (typeof parsed.since === "string" && parsed.projects && typeof parsed.projects === "object") return parsed;
-  } catch {
-    /* missing or malformed: start fresh */
+/** Stored as `{"since": ISO time, "projects": {id: updated_at}}`; missing or malformed starts fresh (nothing unseen). */
+export const seenCodec = jsonCodec<Seen>((v) => {
+  if (
+    typeof v === "object" &&
+    v !== null &&
+    "since" in v &&
+    typeof v.since === "string" &&
+    "projects" in v &&
+    typeof v.projects === "object" &&
+    v.projects !== null
+  ) {
+    const projects = Object.fromEntries(Object.entries(v.projects).filter((e): e is [string, string] => typeof e[1] === "string"));
+    return { since: v.since, projects };
   }
-  const fresh = { since: new Date().toISOString(), projects: {} };
-  writePref("seen", JSON.stringify(fresh));
-  return fresh;
-}
+  return { since: new Date().toISOString(), projects: {} };
+});
 
 /** Ids of projects with unseen activity; marks the open project as seen as it changes. */
 export function useUnseen(projects: ProjectSummary[] | null, openId: string | null): Set<string> {
-  const [seen, setSeen] = useState(load);
+  const [seen, setSeen] = usePersistentState(PREFS.seen, seenCodec);
   const open = projects?.find((p) => p.id === openId);
 
   useEffect(() => {
@@ -32,9 +37,8 @@ export function useUnseen(projects: ProjectSummary[] | null, openId: string | nu
     // Forget deleted projects while we are writing anyway.
     const kept = projects ? Object.fromEntries(Object.entries(marked).filter(([id]) => projects.some((p) => p.id === id))) : marked;
     const next = { ...seen, projects: kept };
-    writePref("seen", JSON.stringify(next));
     setSeen(next);
-  }, [open, seen, projects]);
+  }, [open, seen, projects, setSeen]);
 
   const unseen = new Set<string>();
   for (const p of projects ?? []) {

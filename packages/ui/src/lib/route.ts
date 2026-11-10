@@ -1,11 +1,20 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLatest } from "./hooks";
 
 export type Route = { projectId: string | null; agentId: string | null };
 
+const NO_ROUTE: Route = { projectId: null, agentId: null };
+
+/** The route of a location hash; anything that is not a project route (including a malformed percent escape) is no route. */
 export function parseHash(hash: string): Route {
   const [, projectId, agentId] = /^#\/p\/([^/]+)(?:\/a\/([^/]+))?/.exec(hash) ?? [];
-  if (projectId === undefined) return { projectId: null, agentId: null };
-  return { projectId: decodeURIComponent(projectId), agentId: agentId ? decodeURIComponent(agentId) : null };
+  if (projectId === undefined) return NO_ROUTE;
+  try {
+    return { projectId: decodeURIComponent(projectId), agentId: agentId ? decodeURIComponent(agentId) : null };
+  } catch {
+    // A URL typed or pasted by hand: the home route is the recovery, not a crash in the first render.
+    return NO_ROUTE;
+  }
 }
 
 export function hrefFor(projectId: string, agentId?: string | null): string {
@@ -25,13 +34,9 @@ export function navigate(projectId: string | null, agentId?: string | null): voi
 export function useGuardedRoute(block: (next: Route, current: Route) => boolean) {
   const [route, setRoute] = useState(() => parseHash(window.location.hash));
   const [pending, setPending] = useState<string | null>(null);
-  const current = useRef(route);
-  const blockRef = useRef(block);
+  const current = useLatest(route);
+  const blockRef = useLatest(block);
   const bypass = useRef(false);
-  useLayoutEffect(() => {
-    current.current = route;
-    blockRef.current = block;
-  });
 
   useEffect(() => {
     const onChange = (e: HashChangeEvent) => {
@@ -47,7 +52,7 @@ export function useGuardedRoute(block: (next: Route, current: Route) => boolean)
     };
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
-  }, []);
+  }, [blockRef, current]);
 
   return {
     route,

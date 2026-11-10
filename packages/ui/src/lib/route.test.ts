@@ -30,10 +30,8 @@ test("hrefFor and parseHash round trip, including ids that need escaping", () =>
   assert.equal(hrefFor("a/b"), "#/p/a%2Fb", "a slash in an id cannot split the path");
 });
 
-test(
-  "a malformed percent escape in the hash is the home route, not a crash",
-  { todo: "parseHash(): decodeURIComponent throws a URIError for '#/p/%E0%A4%A' (route.ts parseHash); the guarded route reads it in a useState initialiser" },
-  () => {
-    assert.deepEqual(parseHash("#/p/%E0%A4%A"), { projectId: null, agentId: null });
-  },
-);
+test("a malformed percent escape in the hash is the home route, not a crash", () => {
+  const none = { projectId: null, agentId: null };
+  for (const hash of ["#/p/%E0%A4%A", "#/p/%", "#/p/ok/a/%E0%A4%A", "#/p/%FF/a/x", "#/p/a%2"]) assert.deepEqual(parseHash(hash), none, hash);
+  assert.deepEqual(parseHash("#/p/a%20b/a/c%2Fd"), { projectId: "a b", agentId: "c/d" }, "well-formed escapes still decode");
+});

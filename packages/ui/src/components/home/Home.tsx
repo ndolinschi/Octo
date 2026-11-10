@@ -12,6 +12,7 @@ import { INFO_ROW_BUTTON, SkeletonRows } from "../primitives/InfoList";
 import { modelLabel } from "../primitives/Status";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { dayStart, heatCounts, useOverview, WEEKS, type Month, type ProjectAgents, type RecentRequest } from "./useOverview";
+import { CLOCK_MINUTE_MS } from "../../lib/constants";
 
 /** The streak passes behind the title (upper third), down to the right edge. */
 const HOME_STREAK = { x: 0.5, y: 0.12 } as const;
@@ -28,7 +29,7 @@ const MORE_REQUESTS = 15;
 export function Home({ onNewProject }: { onNewProject(): void }) {
   const { theme } = useApp();
   const data = useOverview();
-  const now = useNow(true, 60_000);
+  const now = useNow(true, CLOCK_MINUTE_MS);
   return (
     <section aria-labelledby="home-title" data-home className="@container/home relative h-full overflow-x-hidden overflow-y-auto">
       <StreakLayer anchor={HOME_STREAK} theme={theme} />

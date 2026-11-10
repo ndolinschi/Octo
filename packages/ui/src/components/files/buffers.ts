@@ -1,10 +1,11 @@
 import type * as Monaco from "monaco-editor";
 import type { FilePosition } from "../../lib/files";
+import { type FileKey } from "../../lib/files";
 
 export type MonacoApi = typeof Monaco;
 
 /** Told when a file's model is created (shown in an editor for the first time) and before it is disposed. */
-export type BufferWatcher = { opened(key: string, model: Monaco.editor.ITextModel): void; closed(key: string): void };
+export type BufferWatcher = { opened(key: FileKey, model: Monaco.editor.ITextModel): void; closed(key: FileKey): void };
 
 type Buffer = {
   model: Monaco.editor.ITextModel;
@@ -25,17 +26,17 @@ export class EditorBuffers {
   monaco: MonacoApi | null = null;
   /** Live editors (one per mounted File tab). */
   readonly editors = new Set<Monaco.editor.IStandaloneCodeEditor>();
-  private buffers = new Map<string, Buffer>();
+  private buffers = new Map<FileKey, Buffer>();
   private watchers = new Set<BufferWatcher>();
-  private reveals = new Map<string, FilePosition>();
-  private revealListeners = new Set<(key: string) => void>();
-  private changeListeners = new Set<(key: string) => void>();
+  private reveals = new Map<FileKey, FilePosition>();
+  private revealListeners = new Set<(key: FileKey) => void>();
+  private changeListeners = new Set<(key: FileKey) => void>();
   /** True while disk content replaces a buffer (comment ranges keep their line numbers then). */
   replacing = false;
 
   constructor(
     private readonly projectId: string,
-    private readonly onModified: (key: string, modified: boolean) => void,
+    private readonly onModified: (key: FileKey, modified: boolean) => void,
   ) {}
 
   attach(monaco: MonacoApi) {
@@ -48,7 +49,7 @@ export class EditorBuffers {
   }
 
   /** The model for `key`, created from `content` on first use. */
-  ensure(key: string, folder: string, path: string, content: string): Monaco.editor.ITextModel | null {
+  ensure(key: FileKey, folder: string, path: string, content: string): Monaco.editor.ITextModel | null {
     const monaco = this.monaco;
     const uri = this.uriFor(folder, path);
     if (!monaco || !uri) return null;
@@ -77,42 +78,42 @@ export class EditorBuffers {
   }
 
   /** Asks the editor showing `key` (now or once it does) to select and reveal a position. */
-  reveal(key: string, at: FilePosition) {
+  reveal(key: FileKey, at: FilePosition) {
     this.reveals.set(key, at);
     this.revealListeners.forEach((l) => l(key));
   }
 
-  takeReveal(key: string): FilePosition | null {
+  takeReveal(key: FileKey): FilePosition | null {
     const at = this.reveals.get(key) ?? null;
     this.reveals.delete(key);
     return at;
   }
 
-  onReveal(listener: (key: string) => void): () => void {
+  onReveal(listener: (key: FileKey) => void): () => void {
     this.revealListeners.add(listener);
     return () => void this.revealListeners.delete(listener);
   }
 
   /** Told when a buffer's text changes (or its model is created): the Markdown preview follows edits. */
-  onChange(listener: (key: string) => void): () => void {
+  onChange(listener: (key: FileKey) => void): () => void {
     this.changeListeners.add(listener);
     return () => void this.changeListeners.delete(listener);
   }
 
-  has(key: string): boolean {
+  has(key: FileKey): boolean {
     return this.buffers.has(key);
   }
 
-  value(key: string): string | null {
+  value(key: FileKey): string | null {
     return this.buffers.get(key)?.model.getValue() ?? null;
   }
 
-  version(key: string): number | null {
+  version(key: FileKey): number | null {
     return this.buffers.get(key)?.model.getAlternativeVersionId() ?? null;
   }
 
   /** Records that the buffer at `version` now matches the disk. */
-  markSaved(key: string, version: number) {
+  markSaved(key: FileKey, version: number) {
     const buffer = this.buffers.get(key);
     if (!buffer) return;
     buffer.savedVersion = version;
@@ -120,7 +121,7 @@ export class EditorBuffers {
   }
 
   /** Replaces the buffer with disk content, keeping cursor and scroll where they were. */
-  replace(key: string, content: string) {
+  replace(key: FileKey, content: string) {
     const buffer = this.buffers.get(key);
     if (!buffer) return;
     if (buffer.model.getValue() !== content) {
@@ -139,16 +140,16 @@ export class EditorBuffers {
     this.check(key, buffer);
   }
 
-  saveView(key: string, view: Monaco.editor.ICodeEditorViewState | null) {
+  saveView(key: FileKey, view: Monaco.editor.ICodeEditorViewState | null) {
     const buffer = this.buffers.get(key);
     if (buffer) buffer.view = view;
   }
 
-  view(key: string): Monaco.editor.ICodeEditorViewState | null {
+  view(key: FileKey): Monaco.editor.ICodeEditorViewState | null {
     return this.buffers.get(key)?.view ?? null;
   }
 
-  dispose(key: string) {
+  dispose(key: FileKey) {
     const buffer = this.buffers.get(key);
     if (!buffer) return;
     this.watchers.forEach((w) => w.closed(key));
@@ -168,7 +169,7 @@ export class EditorBuffers {
     return null;
   }
 
-  private check(key: string, buffer: Buffer) {
+  private check(key: FileKey, buffer: Buffer) {
     const modified = buffer.model.getAlternativeVersionId() !== buffer.savedVersion;
     if (modified === buffer.modified) return;
     buffer.modified = modified;

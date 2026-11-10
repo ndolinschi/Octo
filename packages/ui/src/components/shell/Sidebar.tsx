@@ -10,6 +10,7 @@ import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
 import { Spinner } from "../primitives/Status";
 import { ProjectItem } from "./ProjectItem";
+import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 
 /**
  * Row anatomy shared by every sidebar row: [16px leading slot] 8 [label] flex [trailing], 8px padding,
@@ -65,7 +66,7 @@ export function Sidebar(props: {
   onToggle(): void;
 }) {
   const { projects, health } = useApp();
-  const now = useNow(true, 30_000);
+  const now = useNow(true, CLOCK_SIDEBAR_MS);
   const history = useHistoryAvailability();
   const list = useRef<HTMLUListElement>(null);
   useScrollFade(list, "y");

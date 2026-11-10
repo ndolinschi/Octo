@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createRequiredContext } from "../lib/context";
 
 /** A request (orchestrator user message) in one project. */
 export type TurnRef = { projectId: string; messageId: number };
@@ -43,7 +44,7 @@ type NavState = {
   viewTurn: TurnRef | null;
 };
 
-const ActionsContext = createContext<NavActions | null>(null);
+export const { Provider: NavContextProvider, useRequired: useNav, useOptional: useOptionalNav } = createRequiredContext<NavActions>("useNav");
 const StateContext = createContext<NavState>({ viewTurn: null });
 
 export function NavProvider({ children }: { children: ReactNode }) {
@@ -89,21 +90,10 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const state = useMemo(() => ({ viewTurn }), [viewTurn]);
 
   return (
-    <ActionsContext.Provider value={actions}>
+    <NavContextProvider value={actions}>
       <StateContext.Provider value={state}>{children}</StateContext.Provider>
-    </ActionsContext.Provider>
+    </NavContextProvider>
   );
-}
-
-export function useNav(): NavActions {
-  const ctx = useContext(ActionsContext);
-  if (!ctx) throw new Error("useNav outside NavProvider");
-  return ctx;
-}
-
-/** Null outside the app shell (e.g. a transcript embedded elsewhere). */
-export function useOptionalNav(): NavActions | null {
-  return useContext(ActionsContext);
 }
 
 export function useNavState(): NavState {

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { allTabs, focusedGroup, type Group } from "../../state/workspace/layout";
-import { MIN_GROUP, useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { panelClass } from "../shell/Panel";
 import { Divider } from "./Divider";
 import { DragLayer } from "./DragLayer";
@@ -9,6 +9,7 @@ import { GroupProvider } from "./group";
 import { domId } from "./ids";
 import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";
+import { MIN_GROUP } from "../../lib/constants";
 
 const SIDES: readonly [string, string, string] = ["Left", "Middle", "Right"];
 

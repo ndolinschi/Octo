@@ -47,8 +47,8 @@ motion) are in `docs/superpowers/specs/2026-11-10-project-harness-ui.md` and are
     updater form. Context values are memoised; actions are stable.
 12. No effect for derived state or for resetting state when a prop changes: compute during render, or use `key`.
     Effects are for synchronising with something outside React.
-13. Every effect that adds a listener, timer, observer or subscription returns its cleanup. Use one shared
-    `useLatest` helper (`lib/hooks.ts`; add it if it is not there yet) instead of a hand-written "copy to ref in a layout effect".
+13. Every effect that adds a listener, timer, observer or subscription returns its cleanup. Use the shared
+    `useLatest` helper (`lib/hooks.ts`) instead of a hand-written "copy to ref in a layout effect".
 14. Do not reach across components with `document.querySelector`. Use refs, context, or one owning module for a
     `data-*` protocol (`dock/drag.ts`, `chat/turnTracking.ts`).
 15. Persisted state goes through `lib/storage.ts` with the key declared in one registry and the stored value
@@ -68,7 +68,7 @@ motion) are in `docs/superpowers/specs/2026-11-10-project-harness-ui.md` and are
 ## Errors, comments, tests
 
 20. Do not swallow errors. An empty `catch` states in a comment where the failure surfaces to the user; error text
-    comes from one shared `errorMessage(e)` (`lib/format.ts`; add it if it is not there yet). Every user-visible error names a next step.
+    comes from the shared `errorMessage(e)` (`lib/format.ts`). Every user-visible error names a next step.
 21. Comments say why, or cite the spec decision. No banners, no narration of what the next line does. When
     behaviour changes, the spec's "As built" section changes in the same commit.
 22. Pure logic lives in React-free modules and ships with a `*.test.ts` beside it (`node:test`, as in

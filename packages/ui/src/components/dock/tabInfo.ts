@@ -5,6 +5,7 @@ import type { OpenFile } from "../../state/code";
 import { middleTruncate } from "../../lib/format";
 import { fileIcon } from "../primitives/fileIcons";
 import { parseTab, type TabId } from "../../state/workspace/layout";
+import { type FileKey, splitKey } from "../../lib/files";
 
 export type TabInfo = {
   /** Shown on the tab (long file names are shortened in the middle). */
@@ -29,7 +30,7 @@ const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> 
 
 export function tabInfo(
   tab: TabId,
-  ctx: { state: ProjectState; orchestratorId: string | undefined; file(key: string): OpenFile | undefined; comments(key: string): number },
+  ctx: { state: ProjectState; orchestratorId: string | undefined; file(key: FileKey): OpenFile | undefined; comments(key: FileKey): number },
 ): TabInfo {
   const ref = parseTab(tab);
   if (!ref) return { label: tab, title: tab, icon: File, status: null, comments: 0 };
@@ -53,14 +54,13 @@ export function tabInfo(
     };
   }
   const f = ctx.file(ref.key);
-  const i = ref.key.indexOf("\u0000");
-  const path = ref.key.slice(i + 1);
+  const { folder, path } = splitKey(ref.key);
   const name = f?.name ?? path.slice(path.lastIndexOf("/") + 1);
   return {
     // Long names lose their middle, so the extension (and path tail) stay readable.
     label: middleTruncate(name, 22),
     name,
-    title: middleTruncate(`${ref.key.slice(0, i)}/${path}`, 96),
+    title: middleTruncate(`${folder}/${path}`, 96),
     icon: fileIcon(name),
     status: f?.modified ? "modified" : null,
     comments: ctx.comments(ref.key),

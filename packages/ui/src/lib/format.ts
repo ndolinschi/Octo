@@ -1,3 +1,8 @@
+/** The text of a caught value: an Error's message, else its string form. The one place errors become user-visible text. */
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   if (s < 60) return `${s}s`;
@@ -59,12 +64,14 @@ export function middleTruncate(text: string, max: number): string {
   return `${text.slice(0, max - 1 - tail.length)}…${tail}`;
 }
 
-/** Token totals as a quiet count: 820, 2.4k, 24k, 1.2M. */
+/** Token totals as a quiet count: 820, 2.4k, 24k, 1.2M, 1B. A value that rounds up to the next unit shows that unit. */
 export function formatTokens(n: number): string {
+  const scaled = (unit: number) => (n / unit).toFixed(1).replace(/\.0$/, "");
   if (n < 1000) return String(n);
-  if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
-  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
-  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n < 10_000) return `${scaled(1e3)}k`;
+  if (n < 999_500) return `${Math.round(n / 1e3)}k`;
+  if (n < 999_950_000) return `${scaled(1e6)}M`;
+  return `${scaled(1e9)}B`;
 }
 
 /** A gap longer than this between turns earns a time separator (contract v6 decision 18). */

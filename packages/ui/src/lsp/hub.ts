@@ -1,3 +1,4 @@
+import { type FileKey } from "../lib/files";
 /**
  * The seam between the lazily loaded LSP client (in the editor chunk) and the always-loaded
  * editor chrome (status, problems popover). The client writes per-file snapshots here; the
@@ -12,7 +13,7 @@ export type Problem = { severity: ProblemSeverity; message: string; source: stri
 export type FileIntel = { status: LspStatus | null; problems: Problem[]; notice: string | null };
 
 /** What the hub needs from the running client. */
-export type IntelClient = { retry(fileKey: string): void; dispose(): void };
+export type IntelClient = { retry(fileKey: FileKey): void; dispose(): void };
 
 const EMPTY: FileIntel = { status: null, problems: [], notice: null };
 const NOTICE_MS = 4_000;
@@ -28,7 +29,7 @@ export class EditorIntel {
     return () => void this.listeners.delete(cb);
   };
 
-  get(key: string): FileIntel {
+  get(key: FileKey): FileIntel {
     return this.files.get(key) ?? EMPTY;
   }
 
@@ -37,20 +38,20 @@ export class EditorIntel {
     this.client ??= create();
   }
 
-  retry(key: string): void {
+  retry(key: FileKey): void {
     this.client?.retry(key);
   }
 
-  setStatus(key: string, status: LspStatus | null): void {
+  setStatus(key: FileKey, status: LspStatus | null): void {
     this.patch(key, { status });
   }
 
-  setProblems(key: string, problems: Problem[]): void {
+  setProblems(key: FileKey, problems: Problem[]): void {
     this.patch(key, { problems });
   }
 
   /** A short-lived, quiet message in the file's header (e.g. a definition outside the project). */
-  notify(key: string, notice: string): void {
+  notify(key: FileKey, notice: string): void {
     window.clearTimeout(this.noticeTimers.get(key));
     this.patch(key, { notice });
     this.noticeTimers.set(
@@ -60,7 +61,7 @@ export class EditorIntel {
   }
 
   /** Forgets a closed file. */
-  clear(key: string): void {
+  clear(key: FileKey): void {
     window.clearTimeout(this.noticeTimers.get(key));
     if (this.files.delete(key)) this.emit();
   }
@@ -74,7 +75,7 @@ export class EditorIntel {
     this.emit();
   }
 
-  private patch(key: string, next: Partial<FileIntel>) {
+  private patch(key: FileKey, next: Partial<FileIntel>) {
     const prev = this.get(key);
     if (Object.entries(next).every(([k, v]) => prev[k as keyof FileIntel] === v)) return;
     this.files.set(key, { ...prev, ...next });

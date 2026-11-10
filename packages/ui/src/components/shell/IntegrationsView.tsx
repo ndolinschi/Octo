@@ -8,6 +8,7 @@ import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
 import { Spinner } from "../primitives/Status";
+import { errorMessage } from "../../lib/format";
 
 type Kind = "server" | "agent" | "tool";
 type Item = { key: string; kind: Kind; name: string; detail: string; plugin: string; available: boolean | null; mono: boolean };
@@ -70,7 +71,7 @@ export function IntegrationsView() {
     setLoad({ status: "loading" });
     bridge.listPlugins().then(
       (plugins) => setLoad({ status: "ready", plugins }),
-      (e: unknown) => setLoad({ status: "error", message: (e instanceof Error ? e.message : String(e)).replace(/\.$/, "") }),
+      (e: unknown) => setLoad({ status: "error", message: errorMessage(e).replace(/\.$/, "") }),
     );
   }, [bridge]);
   useEffect(() => {

@@ -1,7 +1,7 @@
 import type { Bridge, Folder, LanguageServerInfo } from "@octo/agent-client";
 import type * as Monaco from "monaco-editor";
 import type { EditorBuffers } from "../components/files/buffers";
-import { fileKey, splitKey, type FilePosition } from "../lib/files";
+import { fileKey, splitKey, type FilePosition, type FileKey } from "../lib/files";
 import { completionKind, documentation, toHoverContents, toLocations, toLspPosition, toMarkers, toMonacoRange, toProblems } from "./convert";
 import type { EditorIntel, IntelClient } from "./hub";
 import { LspSession } from "./session";
@@ -20,7 +20,7 @@ export type LspManagerOptions = {
   open(folder: string, path: string, at: FilePosition): void;
 };
 
-type Doc = { key: string; uri: string; model: Monaco.editor.ITextModel; session: LspSession; sub: Monaco.IDisposable };
+type Doc = { key: FileKey; uri: string; model: Monaco.editor.ITextModel; session: LspSession; sub: Monaco.IDisposable };
 
 const MARKER_OWNER = "lsp";
 const live = new Set<LspManager>();
@@ -43,7 +43,7 @@ function managerFor(model: Monaco.editor.ITextModel): { manager: LspManager; doc
 export class LspManager implements IntelClient {
   private servers: Promise<LanguageServerInfo[]> | null = null;
   private sessions = new Map<string, LspSession>();
-  private docs = new Map<string, Doc>();
+  private docs = new Map<FileKey, Doc>();
   private byUri = new Map<string, Doc>();
   /** Models created only so Monaco can peek at a definition target; disposed with the manager. */
   private peeks = new Set<Monaco.editor.ITextModel>();
@@ -65,7 +65,7 @@ export class LspManager implements IntelClient {
     return authority === this.o.projectId;
   }
 
-  retry(key: string): void {
+  retry(key: FileKey): void {
     const doc = this.docs.get(key);
     if (doc && (doc.session.state === "failed" || doc.session.state === "stopped")) void doc.session.start();
   }
@@ -84,7 +84,7 @@ export class LspManager implements IntelClient {
 
   /* ---------- documents ---------- */
 
-  private async attach(key: string, model: Monaco.editor.ITextModel) {
+  private async attach(key: FileKey, model: Monaco.editor.ITextModel) {
     const language = model.getLanguageId();
     this.servers ??= this.o.bridge.listLanguageServers(this.o.projectId).catch(() => []);
     const servers = await this.servers;
@@ -103,7 +103,7 @@ export class LspManager implements IntelClient {
     registerProviders(this.o.monaco, language);
   }
 
-  private detach(key: string) {
+  private detach(key: FileKey) {
     const doc = this.docs.get(key);
     if (!doc) return;
     doc.sub.dispose();

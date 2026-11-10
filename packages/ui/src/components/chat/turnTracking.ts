@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useNav } from "../../state/nav";
+import { PROMPT_FLASH_MS } from "../../lib/constants";
+import { useLatest } from "../../lib/hooks";
 
 /** Distance from the scroll area's top at which a prompt counts as stuck (the sticky copy's inset). */
 export const STICK_TOP = 8;
@@ -114,10 +116,7 @@ export function useTurnRequests(opts: {
 }) {
   const nav = useNav();
   const { root, projectId, enabled, loaded, release } = opts;
-  const revealRef = useRef(opts.reveal);
-  useLayoutEffect(() => {
-    revealRef.current = opts.reveal;
-  });
+  const revealRef = useLatest(opts.reveal);
 
   const scrollTo = useCallback(
     (messageId: number) => {
@@ -134,7 +133,7 @@ export function useTurnRequests(opts: {
       const far = Math.abs(top - el.scrollTop) > 2 * el.clientHeight;
       el.scrollTo({ top, behavior: reduced || far ? "auto" : "smooth" });
       prompt.setAttribute("data-flash", "");
-      window.setTimeout(() => prompt.removeAttribute("data-flash"), 1600);
+      window.setTimeout(() => prompt.removeAttribute("data-flash"), PROMPT_FLASH_MS);
     },
     [root, release],
   );
@@ -153,5 +152,5 @@ export function useTurnRequests(opts: {
       nav.takePendingTurn(projectId);
       go(turn.messageId);
     });
-  }, [enabled, loaded, nav, projectId, scrollTo]);
+  }, [enabled, loaded, nav, projectId, scrollTo, revealRef]);
 }

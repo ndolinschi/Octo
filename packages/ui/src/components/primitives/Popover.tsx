@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
+import { useLatest } from "../../lib/hooks";
 
 const EDGE = 8;
 const GAP = 6;
@@ -24,8 +25,7 @@ export function Popover(props: {
   children: ReactNode;
 }) {
   const { anchor, onClose, side = "bottom", align = "start" } = props;
-  const edge = useRef(props.edge);
-  edge.current = props.edge;
+  const edge = useLatest(props.edge);
   const ref = useRef<HTMLDivElement>(null);
   const state = usePresence();
   const open = state === "open";
@@ -50,7 +50,7 @@ export function Popover(props: {
     const ro = new ResizeObserver(place);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [anchor, side, align]);
+  }, [anchor, side, align, edge]);
 
   useEffect(() => {
     const opener = anchor.current;

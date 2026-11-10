@@ -1,7 +1,9 @@
 import { emptyProjectState, type BridgeEvent, type Project, type ProjectInput, type ProjectState } from "@octo/agent-client";
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./app";
 import { projectReducer } from "./projectReducer";
+import { errorMessage } from "../lib/format";
+import { createRequiredContext } from "../lib/context";
 
 export type LiveStatus = "connecting" | "live" | "reconnecting";
 
@@ -24,7 +26,7 @@ type ProjectValue = {
   onEvent(listener: (event: BridgeEvent) => void): () => void;
 };
 
-const ProjectContext = createContext<ProjectValue | null>(null);
+export const { Provider: ProjectContextProvider, useRequired: useProject } = createRequiredContext<ProjectValue>("useProject");
 
 export function ProjectProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
   const { bridge, refreshProjects } = useApp();
@@ -57,7 +59,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       const ids = new Set([p.orchestrator_agent_id, ...loaded.current]);
       await Promise.all([...ids].map(fetchMessages));
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : String(e));
+      setLoadError(errorMessage(e));
     }
   }, [bridge, projectId, fetchMessages]);
 
@@ -131,11 +133,5 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
     [projectId, project, loadError, state, live, running, syncAll, fetchMessages, bridge, refreshProjects],
   );
 
-  return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
-}
-
-export function useProject(): ProjectValue {
-  const ctx = useContext(ProjectContext);
-  if (!ctx) throw new Error("useProject outside ProjectProvider");
-  return ctx;
+  return <ProjectContextProvider value={value}>{children}</ProjectContextProvider>;
 }

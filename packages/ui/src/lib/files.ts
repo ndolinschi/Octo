@@ -1,11 +1,38 @@
-/** Stable id for a file or directory inside a project folder. `path` "" is the folder root. */
-export function fileKey(folder: string, path: string): string {
-  return `${folder}\u0000${path}`;
+/** Stable id for a file or directory inside a project folder. Built only by `fileKey` / `parseFileKey`. */
+export type FileKey = string & { readonly __brand: "FileKey" };
+
+// The one place that knows the separator (NUL cannot occur in a folder label or a path).
+const SEP = "\u0000";
+
+/** The key of `path` inside `folder`; `path` "" is the folder root. */
+export function fileKey(folder: string, path: string): FileKey {
+  // The brand is applied here: the string was just built from its two parts.
+  return `${folder}${SEP}${path}` as FileKey;
 }
 
-export function splitKey(key: string): { folder: string; path: string } {
-  const i = key.indexOf("\u0000");
+/** The key for a raw string (a stored tab id, a DOM attribute), or null when it is not a file key. */
+export function parseFileKey(raw: string): FileKey | null {
+  return raw.includes(SEP) ? (raw as FileKey) : null;
+}
+
+export function splitKey(key: FileKey): { folder: string; path: string } {
+  const i = key.indexOf(SEP);
   return { folder: key.slice(0, i), path: key.slice(i + 1) };
+}
+
+/** The folder a key belongs to. */
+export function keyFolder(key: FileKey): string {
+  return splitKey(key).folder;
+}
+
+/** Whether `key` is a folder root (path ""), the only keys that expand by default. */
+export function isRootKey(key: string): boolean {
+  return key.endsWith(SEP);
+}
+
+/** Whether `key` lies inside `folder` (the folder root included). */
+export function keyInFolder(key: string, folder: string): boolean {
+  return key.startsWith(`${folder}${SEP}`);
 }
 
 /** Folder-relative, slash-separated, no leading "./" or trailing "/"; "." becomes "". */

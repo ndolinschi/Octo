@@ -119,6 +119,8 @@
 }
 
 @theme {
+  /* The sidebar becomes a drawer below this width (`max-drawer:` variant). Mirrors DRAWER_BELOW in lib/constants.ts; a test keeps them equal. */
+  --breakpoint-drawer: 1000px;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-xs: 12px;

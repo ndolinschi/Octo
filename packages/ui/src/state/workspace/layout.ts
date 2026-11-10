@@ -4,26 +4,41 @@
  * a valid active tab per group, sizes summing to 1, Chat present exactly once).
  */
 
-export type TabId = string;
+import { parseFileKey, type FileKey } from "../../lib/files";
+import type { Codec } from "../../lib/storage";
+
+/** A tab's identity. Built only by `CHAT`, `toolTab`, `agentTab`, `fileTab` and `parseTabId`; never concatenate one by hand. */
+export type TabId = string & { readonly __brand: "TabId" };
 export type Group = { id: string; tabs: TabId[]; active: TabId; size: number };
 export type Layout = { groups: Group[]; focused: string };
 
 export type ToolTab = "agents" | "notes" | "files" | "details";
-export type TabRef = { kind: "chat" } | { kind: "tool"; tool: ToolTab } | { kind: "agent"; agentId: string } | { kind: "file"; key: string };
+export type TabRef = { kind: "chat" } | { kind: "tool"; tool: ToolTab } | { kind: "agent"; agentId: string } | { kind: "file"; key: FileKey };
 
-export const CHAT: TabId = "chat";
+// The brand is applied here and nowhere else: every call site below has just validated or built the string.
+const brand = (id: string) => id as TabId;
+
+export const CHAT = brand("chat");
 export const MAX_GROUPS = 4;
-const TOOLS: readonly string[] = ["agents", "notes", "files", "details"];
+const TOOLS: readonly ToolTab[] = ["agents", "notes", "files", "details"];
 
-export const agentTab = (agentId: string): TabId => `agent:${agentId}`;
-export const fileTab = (key: string): TabId => `file:${key}`;
+export const toolTab = (tool: ToolTab): TabId => brand(tool);
+export const agentTab = (agentId: string): TabId => brand(`agent:${agentId}`);
+export const fileTab = (key: FileKey): TabId => brand(`file:${key}`);
 
-export function parseTab(id: TabId): TabRef | null {
+/** What a tab id refers to; null for any string that is not a tab id (stored layouts, DOM attributes). */
+export function parseTab(id: string): TabRef | null {
   if (id === CHAT) return { kind: "chat" };
-  if (TOOLS.includes(id)) return { kind: "tool", tool: id as ToolTab };
+  const tool = TOOLS.find((t) => t === id);
+  if (tool) return { kind: "tool", tool };
   if (id.startsWith("agent:") && id.length > 6) return { kind: "agent", agentId: id.slice(6) };
-  if (id.startsWith("file:") && id.includes("\u0000")) return { kind: "file", key: id.slice(5) };
-  return null;
+  const key = id.startsWith("file:") ? parseFileKey(id.slice(5)) : null;
+  return key ? { kind: "file", key } : null;
+}
+
+/** The tab id for a raw string, or null when it is not one (the only way to turn a stored or DOM string into a `TabId`). */
+export function parseTabId(raw: string | null | undefined): TabId | null {
+  return typeof raw === "string" && parseTab(raw) !== null ? brand(raw) : null;
 }
 
 export const closable = (id: TabId) => id !== CHAT;
@@ -44,6 +59,11 @@ export function groupOf(layout: Layout, tab: TabId): Group | undefined {
   return layout.groups.find((g) => g.tabs.includes(tab));
 }
 
+/** The group holding Chat. Chat is always open (every operation ends in `normalize`), so the fallback is only for a malformed layout. */
+export function chatGroupOf(layout: Layout): Group {
+  return groupOf(layout, CHAT) ?? focusedGroup(layout);
+}
+
 export function indexOfGroup(layout: Layout, groupId: string): number {
   return layout.groups.findIndex((g) => g.id === groupId);
 }
@@ -57,8 +77,11 @@ export function allTabs(layout: Layout): TabId[] {
   return layout.groups.flatMap((g) => g.tabs);
 }
 
-function normalize(layout: Layout): Layout {
-  // Removing an empty group hands its width to the neighbour on its left (or right).
+/**
+ * Drops empty groups (their width goes to the neighbour on the left, else the right), repairs each active tab and the
+ * focused group. Does not touch Chat or the sizes: `insertGroup` needs that state before Chat is placed again.
+ */
+function compact(layout: Layout): Layout {
   const groups: Group[] = [];
   let carry = 0;
   for (const g of layout.groups) {
@@ -72,18 +95,27 @@ function normalize(layout: Layout): Layout {
     groups.push({ ...g, size: g.size + carry, active: g.tabs.includes(g.active) ? g.active : firstTab });
     carry = 0;
   }
+  const focused = groups.some((g) => g.id === layout.focused) ? layout.focused : (groups[0]?.id ?? layout.focused);
+  return { groups, focused };
+}
+
+/**
+ * The invariants every operation ends with: no empty group, a valid active tab per group, Chat present (at the head of
+ * the first group when missing), sizes positive and summing to 1. Sizes: when every size is a positive finite number they
+ * are scaled to sum to 1; when any is invalid (NaN, 0, negative) all groups are equalised, which keeps the rule simple
+ * and the result always whole.
+ */
+function normalize(layout: Layout): Layout {
+  const { groups, focused } = compact(layout);
   if (!groups.some((g) => g.tabs.includes(CHAT))) {
     const head = groups[0];
     if (head) groups[0] = { ...head, tabs: [CHAT, ...head.tabs] };
     else groups.push(chatGroup());
   }
-  const total = groups.reduce((n, g) => n + (Number.isFinite(g.size) && g.size > 0 ? g.size : 0), 0);
-  const sized = groups.map((g) => ({
-    ...g,
-    size: total > 0 && Number.isFinite(g.size) && g.size > 0 ? g.size / total : 1 / groups.length,
-  }));
-  const focused = sized.some((g) => g.id === layout.focused) ? layout.focused : (sized[0]?.id ?? layout.focused);
-  return { groups: sized, focused };
+  const valid = groups.every((g) => Number.isFinite(g.size) && g.size > 0);
+  const total = groups.reduce((n, g) => n + g.size, 0);
+  const sized = groups.map((g) => ({ ...g, size: valid && Number.isFinite(total) ? g.size / total : 1 / groups.length }));
+  return { groups: sized, focused: sized.some((g) => g.id === focused) ? focused : (sized[0]?.id ?? focused) };
 }
 
 function withGroup(layout: Layout, groupId: string, fn: (g: Group) => Group): Layout {
@@ -105,7 +137,8 @@ function removeTab(layout: Layout, tab: TabId): Layout {
       if (i < 0) return g;
       const tabs = g.tabs.filter((t) => t !== tab);
       // The neighbour on the right takes over, else the one on the left.
-      const active = g.active === tab ? (tabs[Math.min(i, tabs.length - 1)] ?? "") : g.active;
+      // An emptied group keeps its old active tab: `compact` removes the group before anyone reads it.
+      const active = g.active === tab ? (tabs[Math.min(i, tabs.length - 1)] ?? g.active) : g.active;
       return { ...g, tabs, active };
     }),
   };
@@ -173,7 +206,8 @@ export function move(layout: Layout, tab: TabId, groupId: string, index?: number
     return { ...withGroup(layout, to.id, (g) => ({ ...g, tabs, active: tab })), focused: to.id };
   }
   const removed = removeTab(layout, tab);
-  const dest = removed.groups.find((g) => g.id === groupId)!;
+  const dest = removed.groups.find((g) => g.id === groupId);
+  if (!dest) return layout;
   const tabs = [...dest.tabs];
   if (index === undefined) tabs.splice(tabs.indexOf(dest.active) + 1, 0, tab);
   else tabs.splice(Math.max(0, Math.min(tabs.length, index)), 0, tab);
@@ -196,7 +230,8 @@ export function split(layout: Layout, tab: TabId, groupId: string, side: "left" 
 }
 
 function insertGroup(layout: Layout, tab: TabId, groupId: string, side: "left" | "right", size?: number): Layout {
-  const removed = normalize(removeTab(layout, tab));
+  // Not normalize(): that would put Chat back into the first group when `tab` is Chat, and the new group would hold it too.
+  const removed = compact(removeTab(layout, tab));
   const at = indexOfGroup(removed, groupId);
   if (at < 0 || removed.groups.length >= MAX_GROUPS) return layout;
   const anchor = removed.groups[at];
@@ -240,7 +275,9 @@ export function resize(layout: Layout, index: number, delta: number, min: number
   const b = layout.groups[index + 1];
   if (!a || !b) return layout;
   const pair = a.size + b.size;
-  const left = Math.max(min, Math.min(pair - min, a.size + delta));
+  // A pair narrower than two minimums splits evenly instead of driving one side negative.
+  const floor = Math.min(min, pair / 2);
+  const left = Math.max(floor, Math.min(pair - floor, a.size + delta));
   const groups = [...layout.groups];
   groups[index] = { ...a, size: left };
   groups[index + 1] = { ...b, size: pair - left };
@@ -279,25 +316,44 @@ export function serialize(layout: Layout): string {
   return JSON.stringify(stored);
 }
 
+type StoredGroup = { tabs: unknown[]; active: unknown; size: unknown };
+
+function storedGroup(g: unknown): StoredGroup | null {
+  if (typeof g !== "object" || g === null || !("tabs" in g) || !Array.isArray(g.tabs)) return null;
+  const tabs: unknown[] = g.tabs;
+  return { tabs, active: "active" in g ? g.active : undefined, size: "size" in g ? g.size : undefined };
+}
+
 /** Parses a stored layout; anything malformed, unknown or duplicated is dropped silently. */
 export function deserialize(raw: string | null): Layout | null {
   if (!raw) return null;
   try {
-    const data = JSON.parse(raw) as Partial<Stored>;
-    if (data.v !== 1 || !Array.isArray(data.groups)) return null;
-    const seen = new Set<string>();
+    const data: unknown = JSON.parse(raw);
+    if (typeof data !== "object" || data === null || !("v" in data) || data.v !== 1 || !("groups" in data) || !Array.isArray(data.groups)) return null;
+    const stored: unknown[] = data.groups;
+    const seen = new Set<TabId>();
     const groups: Group[] = [];
-    for (const g of data.groups.slice(0, MAX_GROUPS)) {
-      if (!g || !Array.isArray(g.tabs)) continue;
-      const tabs = g.tabs.filter((t): t is string => typeof t === "string" && parseTab(t) !== null && !seen.has(t));
-      for (const t of tabs) seen.add(t);
+    for (const entry of stored.slice(0, MAX_GROUPS)) {
+      const g = storedGroup(entry);
+      if (!g) continue;
+      const tabs: TabId[] = [];
+      for (const tab of g.tabs) {
+        const t = parseTabId(typeof tab === "string" ? tab : null);
+        // First occurrence wins, within a group as well as across groups.
+        if (t === null || seen.has(t)) continue;
+        seen.add(t);
+        tabs.push(t);
+      }
       const size = typeof g.size === "number" && g.size > 0 && g.size <= 1 ? g.size : 0;
-      groups.push({ id: newGroupId(), tabs, active: typeof g.active === "string" ? g.active : "", size });
+      groups.push({ id: newGroupId(), tabs, active: parseTabId(typeof g.active === "string" ? g.active : null) ?? tabs[0] ?? CHAT, size });
     }
-    const focusedIndex = typeof data.focused === "number" ? data.focused : 0;
+    const focusedIndex = "focused" in data && typeof data.focused === "number" ? data.focused : 0;
     const focused = groups[focusedIndex]?.id ?? groups[0]?.id ?? "";
     return normalize({ groups, focused });
   } catch {
     return null;
   }
 }
+
+/** The stored layout (`octo.layout.{projectId}`); nothing usable stored reads as Chat alone. */
+export const layoutCodec: Codec<Layout> = { parse: (raw) => deserialize(raw) ?? initialLayout(), stringify: serialize };

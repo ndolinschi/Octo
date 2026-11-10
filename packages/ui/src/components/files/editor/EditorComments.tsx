@@ -1,11 +1,12 @@
 import { Plus } from "lucide-react";
 import { Glyph } from "../../primitives/Glyph";
 import type * as Monaco from "monaco-editor";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useComments } from "../../../state/comments";
 import type { EditorBuffers, MonacoApi } from "../buffers";
 import { CommentZone, type ZoneProps } from "./CommentBox";
+import { useLatest } from "../../../lib/hooks";
 
 type Draft = { start: number; end: number; editing: string | null };
 
@@ -60,10 +61,9 @@ export function EditorComments(props: {
   const zones = useRef(new Map<string, Zone>());
   const ranges = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null);
   const rangeIds = useRef<string[]>([]);
-  const live = useRef({ comments, store, draft });
-  useLayoutEffect(() => {
-    live.current = { comments, store, draft };
-  });
+  const commentsRef = useLatest(comments);
+  const storeRef = useLatest(store);
+  const draftRef = useLatest(draft);
 
   const open = useCallback((start: number, end: number, editing: string | null = null) => setDraft({ start, end, editing }), []);
 
@@ -143,12 +143,13 @@ export function EditorComments(props: {
       linesDecorationsClassName: "octo-comment-rail",
       stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
     };
-    const { comments: list, draft: d } = live.current;
+    const list = commentsRef.current;
+    const d = draftRef.current;
     const next: Monaco.editor.IModelDeltaDecoration[] = list.map((c) => ({ range: lineRange(monaco, model, c.start, c.end), options: mark }));
     if (d && !d.editing) next.push({ range: lineRange(monaco, model, d.start, d.end), options: mark });
     ranges.current ??= editor.createDecorationsCollection();
     rangeIds.current = ranges.current.set(next);
-  }, [editor, monaco]);
+  }, [editor, monaco, commentsRef, draftRef]);
   useEffect(applyRanges, [applyRanges, rangeKey, draftKey]);
 
   useEffect(() => {
@@ -161,7 +162,9 @@ export function EditorComments(props: {
         frame = requestAnimationFrame(applyRanges);
         return;
       }
-      const { comments: list, store: s, draft: d } = live.current;
+      const list = commentsRef.current;
+      const s = storeRef.current;
+      const d = draftRef.current;
       list.forEach((c, i) => {
         const r = model.getDecorationRange(rangeIds.current[i] ?? "");
         if (r && (r.startLineNumber !== c.start || r.endLineNumber !== c.end)) s.move(c.id, r.startLineNumber, Math.max(r.startLineNumber, r.endLineNumber));
@@ -173,7 +176,7 @@ export function EditorComments(props: {
       cancelAnimationFrame(frame);
       sub.dispose();
     };
-  }, [editor, buffers, applyRanges]);
+  }, [editor, buffers, applyRanges, commentsRef, storeRef, draftRef]);
 
   useEffect(
     () => () => {

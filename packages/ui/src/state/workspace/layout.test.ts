@@ -1,3 +1,4 @@
+import { fileKey } from "../../lib/files";
 import { must } from "../../lib/must";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -23,6 +24,7 @@ import {
   open,
   otherSide,
   parseTab,
+  parseTabId,
   prune,
   replace,
   resize,
@@ -31,11 +33,16 @@ import {
   split,
   type Group,
   type Layout,
+  toolTab,
   type TabId,
 } from "./layout";
 
-const f = (name: string) => fileTab(`proj\u0000${name}`);
-const group = (id: string, tabs: TabId[], size: number, active = tabs[0] ?? ""): Group => ({ id, tabs, active, size });
+const FILES = toolTab("files");
+const NOTES = toolTab("notes");
+const AGENTS = toolTab("agents");
+const DETAILS = toolTab("details");
+const f = (name: string) => fileTab(fileKey("proj", name));
+const group = (id: string, tabs: TabId[], size: number, active = tabs[0] ?? CHAT): Group => ({ id, tabs, active, size });
 const layoutOf = (groups: Group[], focused = groups[0]?.id ?? ""): Layout => ({ groups, focused });
 
 /** Every promise `normalize` makes, checked after any operation. */
@@ -69,14 +76,26 @@ function prng(seed: number) {
   };
 }
 
+test("tab ids: constructors and parseTabId round trip; foreign strings are rejected", () => {
+  const all = [CHAT, FILES, NOTES, AGENTS, DETAILS, agentTab("a1"), f("src/a.ts"), f("")];
+  for (const id of all) assert.equal(parseTabId(id), id, id);
+  assert.equal(parseTabId(agentTab("x")), "agent:x");
+  for (const foreign of ["", "chat ", "Chat", "tools", "agent:", "agent", "file:", "file:nosep", "file:a/b", "x", "files:", "details2"]) {
+    assert.equal(parseTabId(foreign), null, JSON.stringify(foreign));
+  }
+  assert.equal(parseTabId(null), null);
+  assert.equal(parseTabId(undefined), null);
+  assert.deepEqual(parseTab(f("a.ts")), { kind: "file", key: fileKey("proj", "a.ts") });
+});
+
 test("tab ids: parse, build and the Chat rule", () => {
   assert.deepEqual(parseTab(CHAT), { kind: "chat" });
   assert.deepEqual(parseTab("files"), { kind: "tool", tool: "files" });
   assert.deepEqual(parseTab(agentTab("a1")), { kind: "agent", agentId: "a1" });
-  assert.deepEqual(parseTab(f("src/a.ts")), { kind: "file", key: "proj\u0000src/a.ts" });
+  assert.deepEqual(parseTab(f("src/a.ts")), { kind: "file", key: fileKey("proj", "src/a.ts") });
   for (const bad of ["", "agent:", "file:no-nul", "tools", "Chat", "agent"]) assert.equal(parseTab(bad), null, bad);
   assert.equal(closable(CHAT), false);
-  assert.equal(closable("files"), true);
+  assert.equal(closable(FILES), true);
 });
 
 test("a fresh layout is one Chat group", () => {
@@ -89,125 +108,125 @@ test("a fresh layout is one Chat group", () => {
 test("open adds a tab after the active one and focuses it; an open tab is only focused", () => {
   let l = initialLayout();
   const g = must(l.groups[0]).id;
-  l = open(l, "files", { group: g });
-  l = open(l, "notes", { group: g });
-  assert.deepEqual(must(l.groups[0]).tabs, [CHAT, "files", "notes"]);
-  assert.equal(must(l.groups[0]).active, "notes");
+  l = open(l, FILES, { group: g });
+  l = open(l, NOTES, { group: g });
+  assert.deepEqual(must(l.groups[0]).tabs, [CHAT, FILES, NOTES]);
+  assert.equal(must(l.groups[0]).active, NOTES);
   l = activate(l, CHAT);
-  l = open(l, "agents", { group: g });
-  assert.deepEqual(must(l.groups[0]).tabs, [CHAT, "agents", "files", "notes"], "inserted right after the active tab");
-  const again = open(l, "files", { newAfter: g, size: 0.5 });
+  l = open(l, AGENTS, { group: g });
+  assert.deepEqual(must(l.groups[0]).tabs, [CHAT, AGENTS, FILES, NOTES], "inserted right after the active tab");
+  const again = open(l, FILES, { newAfter: g, size: 0.5 });
   assert.equal(again.groups.length, 1, "already open: no new group");
-  assert.equal(must(again.groups[0]).active, "files");
+  assert.equal(must(again.groups[0]).active, FILES);
   check(again, "reopen");
 });
 
 test("open at an unknown group falls back to the focused one", () => {
-  const l = open(initialLayout(), "files", { group: "nope" });
-  assert.deepEqual(must(l.groups[0]).tabs, [CHAT, "files"]);
+  const l = open(initialLayout(), FILES, { group: "nope" });
+  assert.deepEqual(must(l.groups[0]).tabs, [CHAT, FILES]);
 });
 
 test("open into a new group takes the asked share, capped at 80% of the anchor", () => {
   const l0 = initialLayout();
-  const l1 = open(l0, "files", { newAfter: must(l0.groups[0]).id, size: 0.4 });
+  const l1 = open(l0, FILES, { newAfter: must(l0.groups[0]).id, size: 0.4 });
   assert.equal(l1.groups.length, 2);
-  assert.deepEqual(must(l1.groups[1]).tabs, ["files"]);
+  assert.deepEqual(must(l1.groups[1]).tabs, [FILES]);
   assert.ok(Math.abs(must(l1.groups[1]).size - 0.4) < 1e-9);
   assert.equal(l1.focused, must(l1.groups[1]).id);
-  const l2 = open(l0, "files", { newAfter: must(l0.groups[0]).id, size: 5 });
+  const l2 = open(l0, FILES, { newAfter: must(l0.groups[0]).id, size: 5 });
   assert.ok(Math.abs(must(l2.groups[1]).size - 0.8) < 1e-9);
   check(l2, "capped");
 });
 
 test("the group cap: a fifth group is refused and nothing changes", () => {
   let l = initialLayout();
-  const tools = ["files", "notes", "agents", "details"];
+  const tools = [FILES, NOTES, AGENTS, DETAILS];
   for (const t of tools.slice(0, 3)) l = open(l, t, { newAfter: must(l.groups[l.groups.length - 1]).id, size: 0.2 });
   assert.equal(l.groups.length, MAX_GROUPS);
-  const refused = open(l, "details", { newAfter: must(l.groups[0]).id, size: 0.2 });
+  const refused = open(l, DETAILS, { newAfter: must(l.groups[0]).id, size: 0.2 });
   assert.equal(refused, l);
 });
 
 test("canSplit: a lone tab cannot split from its own group; leaving a group empty frees a slot", () => {
   const a = group("a", [CHAT], 0.5);
-  const b = group("b", ["files"], 0.5);
+  const b = group("b", [FILES], 0.5);
   const l = layoutOf([a, b]);
   assert.equal(canSplit(l, CHAT, "a"), false);
-  assert.equal(canSplit(l, "files", "a"), true);
-  assert.equal(canSplit(l, "missing", "a"), false);
-  const full = layoutOf([group("a", [CHAT, "x1"], 0.25), group("b", ["files"], 0.25), group("c", ["notes"], 0.25), group("d", ["agents"], 0.25)]);
-  assert.equal(canSplit(full, "x1", "a"), false, "4 groups, source keeps its group: over the cap");
-  assert.equal(canSplit(full, "files", "a"), true, "source group disappears: still 4");
+  assert.equal(canSplit(l, FILES, "a"), true);
+  assert.equal(canSplit(l, agentTab("missing"), "a"), false);
+  const full = layoutOf([group("a", [CHAT, agentTab("x1")], 0.25), group("b", [FILES], 0.25), group("c", [NOTES], 0.25), group("d", [AGENTS], 0.25)]);
+  assert.equal(canSplit(full, agentTab("x1"), "a"), false, "4 groups, source keeps its group: over the cap");
+  assert.equal(canSplit(full, FILES, "a"), true, "source group disappears: still 4");
 });
 
 test("close: Chat never closes, neighbour on the right becomes active, emptied groups vanish", () => {
-  let l = layoutOf([group("a", [CHAT, "files", "notes", "details"], 0.6, "notes"), group("b", ["agents"], 0.4)], "a");
+  let l = layoutOf([group("a", [CHAT, FILES, NOTES, DETAILS], 0.6, NOTES), group("b", [AGENTS], 0.4)], "a");
   assert.equal(must(close(l, [CHAT]).groups[0]).tabs.includes(CHAT), true);
-  l = close(l, ["notes"]);
-  assert.equal(must(l.groups[0]).active, "details", "right neighbour");
-  l = close(l, ["details"]);
-  assert.equal(must(l.groups[0]).active, "files", "falls back to the left neighbour");
-  l = close(l, ["agents"]);
+  l = close(l, [NOTES]);
+  assert.equal(must(l.groups[0]).active, DETAILS, "right neighbour");
+  l = close(l, [DETAILS]);
+  assert.equal(must(l.groups[0]).active, FILES, "falls back to the left neighbour");
+  l = close(l, [AGENTS]);
   assert.equal(l.groups.length, 1);
   assert.ok(Math.abs(must(l.groups[0]).size - 1) < 1e-9, "its width goes to the neighbour");
   check(l, "closed");
 });
 
 test("closing the focused group's last tab moves focus to its left neighbour", () => {
-  const l = layoutOf([group("a", [CHAT], 0.3), group("b", ["files"], 0.3), group("c", ["notes"], 0.4)], "b");
-  const next = close(l, ["files"]);
+  const l = layoutOf([group("a", [CHAT], 0.3), group("b", [FILES], 0.3), group("c", [NOTES], 0.4)], "b");
+  const next = close(l, [FILES]);
   assert.equal(next.focused, "a");
   assert.deepEqual(
     next.groups.map((g) => g.id),
     ["a", "c"],
   );
   assert.ok(Math.abs(must(next.groups[0]).size - 0.6) < 1e-9, "the emptied width goes left");
-  const first = layoutOf([group("a", ["files"], 0.5), group("b", [CHAT], 0.5)], "a");
-  assert.equal(close(first, ["files"]).focused, "b");
+  const first = layoutOf([group("a", [FILES], 0.5), group("b", [CHAT], 0.5)], "a");
+  assert.equal(close(first, [FILES]).focused, "b");
 });
 
 test("closing an unknown tab changes nothing but stays valid", () => {
   const l = initialLayout();
-  check(close(l, ["ghost"]), "ghost");
-  assert.deepEqual(allTabs(close(l, ["ghost"])), [CHAT]);
+  check(close(l, [agentTab("ghost")]), "ghost");
+  assert.deepEqual(allTabs(close(l, [agentTab("ghost")])), [CHAT]);
 });
 
 test("move: across groups (default after active, or at an index), within a group, to a missing group", () => {
-  const l = layoutOf([group("a", [CHAT, "files", "notes"], 0.5, "files"), group("b", ["agents", "details"], 0.5)], "a");
-  const m = move(l, "notes", "b", 0);
-  assert.deepEqual(must(m.groups[1]).tabs, ["notes", "agents", "details"]);
+  const l = layoutOf([group("a", [CHAT, FILES, NOTES], 0.5, FILES), group("b", [AGENTS, DETAILS], 0.5)], "a");
+  const m = move(l, NOTES, "b", 0);
+  assert.deepEqual(must(m.groups[1]).tabs, [NOTES, AGENTS, DETAILS]);
   assert.equal(m.focused, "b");
-  const after = move(l, "notes", "b");
-  assert.deepEqual(must(after.groups[1]).tabs, ["agents", "notes", "details"]);
+  const after = move(l, NOTES, "b");
+  assert.deepEqual(must(after.groups[1]).tabs, [AGENTS, NOTES, DETAILS]);
   const within = move(l, CHAT, "a", 3);
-  assert.deepEqual(must(within.groups[0]).tabs, ["files", "notes", CHAT]);
-  const inPlace = move(l, "notes", "a", 3);
-  assert.deepEqual(must(inPlace.groups[0]).tabs, [CHAT, "files", "notes"]);
-  assert.equal(move(l, "notes", "zzz"), l);
-  assert.equal(move(l, "ghost", "a"), l);
+  assert.deepEqual(must(within.groups[0]).tabs, [FILES, NOTES, CHAT]);
+  const inPlace = move(l, NOTES, "a", 3);
+  assert.deepEqual(must(inPlace.groups[0]).tabs, [CHAT, FILES, NOTES]);
+  assert.equal(move(l, NOTES, "zzz"), l);
+  assert.equal(move(l, agentTab("ghost"), "a"), l);
   check(m, "move");
 });
 
 test("moving the only tab out of a group removes the group", () => {
-  const l = layoutOf([group("a", [CHAT, "files"], 0.5), group("b", ["notes"], 0.5)], "a");
-  const m = move(l, "notes", "a");
+  const l = layoutOf([group("a", [CHAT, FILES], 0.5), group("b", [NOTES], 0.5)], "a");
+  const m = move(l, NOTES, "a");
   assert.equal(m.groups.length, 1);
-  assert.deepEqual(must(m.groups[0]).tabs, [CHAT, "notes", "files"]);
+  assert.deepEqual(must(m.groups[0]).tabs, [CHAT, NOTES, FILES]);
   check(m, "emptied source");
 });
 
 test("split puts the tab in a new group on the chosen side of the target", () => {
-  const l = layoutOf([group("a", [CHAT, "files"], 1)], "a");
-  const right = split(l, "files", "a", "right");
+  const l = layoutOf([group("a", [CHAT, FILES], 1)], "a");
+  const right = split(l, FILES, "a", "right");
   assert.deepEqual(
     right.groups.map((g) => g.tabs),
-    [[CHAT], ["files"]],
+    [[CHAT], [FILES]],
   );
   assert.ok(Math.abs(must(right.groups[0]).size - 0.5) < 1e-9, "default: half of the anchor");
-  const left = split(l, "files", "a", "left", 0.3);
+  const left = split(l, FILES, "a", "left", 0.3);
   assert.deepEqual(
     left.groups.map((g) => g.tabs),
-    [["files"], [CHAT]],
+    [[FILES], [CHAT]],
   );
   assert.ok(Math.abs(must(left.groups[0]).size - 0.3) < 1e-9);
   assert.equal(left.focused, must(left.groups[0]).id);
@@ -217,57 +236,57 @@ test("split puts the tab in a new group on the chosen side of the target", () =>
 });
 
 test("otherSide and moveToOtherSide", () => {
-  const solo = layoutOf([group("a", [CHAT, "files"], 1)]);
+  const solo = layoutOf([group("a", [CHAT, FILES], 1)]);
   assert.deepEqual(otherSide(solo, "a"), { newAfter: "a", size: 0.5 });
   assert.equal(otherSide(solo, "nope"), null);
-  const two = layoutOf([group("a", [CHAT, "files"], 0.5), group("b", ["notes"], 0.5)]);
+  const two = layoutOf([group("a", [CHAT, FILES], 0.5), group("b", [NOTES], 0.5)]);
   assert.deepEqual(otherSide(two, "a"), { group: "b" });
   assert.deepEqual(otherSide(two, "b"), { group: "a" }, "the last group's other side is the previous one");
-  const moved = moveToOtherSide(solo, "files");
+  const moved = moveToOtherSide(solo, FILES);
   assert.deepEqual(
     moved.groups.map((g) => g.tabs),
-    [[CHAT], ["files"]],
+    [[CHAT], [FILES]],
   );
   assert.equal(moveToOtherSide(layoutOf([group("a", [CHAT], 1)]), CHAT).groups.length, 1, "a lone tab stays");
-  assert.deepEqual(must(moveToOtherSide(two, "notes").groups[0]).tabs, [CHAT, "notes", "files"], "lands after the active tab");
-  assert.equal(moveToOtherSide(two, "ghost"), two);
+  assert.deepEqual(must(moveToOtherSide(two, NOTES).groups[0]).tabs, [CHAT, NOTES, FILES], "lands after the active tab");
+  assert.equal(moveToOtherSide(two, agentTab("ghost")), two);
 });
 
 test("sideGroup: beside Chat, right first", () => {
   assert.equal(sideGroup(initialLayout()), null);
-  const l = layoutOf([group("a", ["files"], 0.3), group("b", [CHAT], 0.4), group("c", ["notes"], 0.3)]);
+  const l = layoutOf([group("a", [FILES], 0.3), group("b", [CHAT], 0.4), group("c", [NOTES], 0.3)]);
   assert.equal(sideGroup(l)?.id, "c");
-  assert.equal(sideGroup(layoutOf([group("a", ["files"], 0.5), group("b", [CHAT], 0.5)]))?.id, "a");
+  assert.equal(sideGroup(layoutOf([group("a", [FILES], 0.5), group("b", [CHAT], 0.5)]))?.id, "a");
 });
 
 test("activate and focusGroup ignore what does not exist and keep identity when nothing changes", () => {
-  const l = layoutOf([group("a", [CHAT, "files"], 0.5, CHAT), group("b", ["notes"], 0.5)], "a");
+  const l = layoutOf([group("a", [CHAT, FILES], 0.5, CHAT), group("b", [NOTES], 0.5)], "a");
   assert.equal(activate(l, CHAT), l);
-  assert.equal(activate(l, "ghost"), l);
-  assert.equal(activate(l, "notes").focused, "b");
+  assert.equal(activate(l, agentTab("ghost")), l);
+  assert.equal(activate(l, NOTES).focused, "b");
   assert.equal(focusGroup(l, "a"), l);
   assert.equal(focusGroup(l, "ghost"), l);
   assert.equal(focusGroup(l, "b").focused, "b");
 });
 
 test("replace swaps a tab in place; Chat is never replaced; an open target just closes the old", () => {
-  const l = layoutOf([group("a", [CHAT, "files", "notes"], 0.5, "files"), group("b", ["details"], 0.5)], "a");
-  const r = replace(l, "files", f("x.ts"));
-  assert.deepEqual(must(r.groups[0]).tabs, [CHAT, f("x.ts"), "notes"]);
+  const l = layoutOf([group("a", [CHAT, FILES, NOTES], 0.5, FILES), group("b", [DETAILS], 0.5)], "a");
+  const r = replace(l, FILES, f("x.ts"));
+  assert.deepEqual(must(r.groups[0]).tabs, [CHAT, f("x.ts"), NOTES]);
   assert.equal(must(r.groups[0]).active, f("x.ts"));
-  const toOpen = replace(l, "files", "details");
-  assert.deepEqual(allTabs(toOpen), [CHAT, "notes", "details"]);
-  assert.equal(must(toOpen.groups[1]).active, "details");
-  const chat = replace(l, CHAT, "agents");
+  const toOpen = replace(l, FILES, DETAILS);
+  assert.deepEqual(allTabs(toOpen), [CHAT, NOTES, DETAILS]);
+  assert.equal(must(toOpen.groups[1]).active, DETAILS);
+  const chat = replace(l, CHAT, AGENTS);
   assert.ok(must(chat.groups[0]).tabs.includes(CHAT));
-  assert.ok(allTabs(chat).includes("agents"));
+  assert.ok(allTabs(chat).includes(AGENTS));
   check(r, "replace");
   check(toOpen, "replace open");
   check(chat, "replace chat");
 });
 
 test("resize moves one divider, keeps the pair's total and both sides at least min", () => {
-  const l = layoutOf([group("a", [CHAT], 0.5), group("b", ["files"], 0.3), group("c", ["notes"], 0.2)]);
+  const l = layoutOf([group("a", [CHAT], 0.5), group("b", [FILES], 0.3), group("c", [NOTES], 0.2)]);
   const r = resize(l, 0, 0.1, 0.1);
   assert.ok(Math.abs(must(r.groups[0]).size - 0.6) < 1e-9);
   assert.ok(Math.abs(must(r.groups[1]).size - 0.2) < 1e-9);
@@ -281,8 +300,20 @@ test("resize moves one divider, keeps the pair's total and both sides at least m
   check(r, "resize");
 });
 
+test("resize on a pair narrower than two minimums splits it evenly, never a negative size", () => {
+  const l = layoutOf([group("a", [CHAT], 0.04), group("b", [FILES], 0.06), group("c", [NOTES], 0.9)]);
+  for (const delta of [-1, -0.01, 0, 0.02, 1]) {
+    const r = resize(l, 0, delta, 0.1);
+    const [a, b] = [must(r.groups[0]).size, must(r.groups[1]).size];
+    assert.ok(a > 0 && b > 0, `delta ${delta}: both sides positive (${a}, ${b})`);
+    assert.ok(Math.abs(a + b - 0.1) < 1e-9, "the pair keeps its total");
+    assert.ok(Math.abs(a - 0.05) < 1e-9, "an impossible minimum degrades to an even split");
+    check(r, `narrow pair, delta ${delta}`);
+  }
+});
+
 test("ensureSize grows a group at the others' expense, proportionally", () => {
-  const l = layoutOf([group("a", [CHAT], 0.6), group("b", ["files"], 0.3), group("c", ["notes"], 0.1)]);
+  const l = layoutOf([group("a", [CHAT], 0.6), group("b", [FILES], 0.3), group("c", [NOTES], 0.1)]);
   const e = ensureSize(l, "c", 0.4);
   assert.ok(Math.abs(must(e.groups[2]).size - 0.4) < 1e-9);
   assert.ok(Math.abs(must(e.groups[0]).size / must(e.groups[1]).size - 2) < 1e-9, "the others keep their ratio");
@@ -294,7 +325,7 @@ test("ensureSize grows a group at the others' expense, proportionally", () => {
 });
 
 test("equalize gives every group the same share", () => {
-  const l = equalize(layoutOf([group("a", [CHAT], 0.7), group("b", ["files"], 0.2), group("c", ["notes"], 0.1)]));
+  const l = equalize(layoutOf([group("a", [CHAT], 0.7), group("b", [FILES], 0.2), group("c", [NOTES], 0.1)]));
   for (const g of l.groups) assert.ok(Math.abs(g.size - 1 / 3) < 1e-9);
   check(l, "equalize");
 });
@@ -312,14 +343,14 @@ test("prune closes stale tabs only, never Chat, and returns the same layout when
 });
 
 test("serialize / deserialize round trip keeps tabs, active, focus and (rounded) sizes", () => {
-  const l = layoutOf([group("a", [CHAT, "files"], 0.3333333, "files"), group("b", [agentTab("x"), f("y.ts")], 0.6666667, f("y.ts"))], "b");
+  const l = layoutOf([group("a", [CHAT, FILES], 0.3333333, FILES), group("b", [agentTab("x"), f("y.ts")], 0.6666667, f("y.ts"))], "b");
   const back = deserialize(serialize(l));
   assert.ok(back);
   check(back, "round trip");
   assert.deepEqual(
     back.groups.map((g) => [g.tabs, g.active]),
     [
-      [[CHAT, "files"], "files"],
+      [[CHAT, FILES], FILES],
       [[agentTab("x"), f("y.ts")], f("y.ts")],
     ],
   );
@@ -348,33 +379,62 @@ test("deserialize drops unknown and duplicate tabs, caps groups, and puts Chat b
   const l = deserialize(raw);
   assert.ok(l);
   check(l, "deserialized");
-  assert.equal(allTabs(l).filter((t) => t === "files").length, 1, "duplicate dropped");
-  assert.ok(!allTabs(l).includes("bogus"));
+  assert.equal(allTabs(l).filter((t) => t === FILES).length, 1, "duplicate dropped");
+  assert.ok(!allTabs(l).some((t) => t === "bogus"));
   assert.ok(!allTabs(l).includes(f("beyond-the-cap")), "only the first four groups are read");
-  assert.deepEqual(must(l.groups[0]).tabs.slice(0, 2), [CHAT, "files"], "Chat is restored at the head of the first group");
-  assert.equal(must(l.groups[0]).active, "files", "a stale active falls back to the first stored tab");
+  assert.deepEqual(must(l.groups[0]).tabs.slice(0, 2), [CHAT, FILES], "Chat is restored at the head of the first group");
+  assert.equal(must(l.groups[0]).active, FILES, "a stale active falls back to the first stored tab");
 });
 
-test(
-  "deserialize drops a tab repeated inside one group",
-  { todo: "deserialize(): the `seen` set is filled after the group's filter, so a repeat within the same group survives (layout.ts deserialize)" },
-  () => {
-    const l = deserialize(JSON.stringify({ v: 1, groups: [{ tabs: [CHAT, "files", "files"], active: CHAT, size: 1 }], focused: 0 }));
-    assert.ok(l);
-    check(l, "repeat in one group");
-  },
-);
+test("deserialize drops a tab repeated inside one group; the first occurrence wins", () => {
+  const l = deserialize(JSON.stringify({ v: 1, groups: [{ tabs: [CHAT, "files", "notes", "files"], active: CHAT, size: 1 }], focused: 0 }));
+  assert.ok(l);
+  check(l, "repeat in one group");
+  assert.deepEqual(must(l.groups[0]).tabs, [CHAT, FILES, NOTES], "order of first occurrences kept");
+  const across = deserialize(
+    JSON.stringify({
+      v: 1,
+      groups: [
+        { tabs: ["files", "files"], active: "files", size: 0.5 },
+        { tabs: ["files", "notes", "notes"], active: "notes", size: 0.5 },
+      ],
+      focused: 1,
+    }),
+  );
+  assert.ok(across);
+  check(across, "repeat across and within groups");
+  assert.deepEqual(
+    across.groups.map((g) => g.tabs),
+    [[CHAT, FILES], [NOTES]],
+  );
+});
 
-test(
-  "splitting Chat out of a group that has other tabs leaves Chat exactly once",
-  {
-    todo: "insertGroup(): removeTab + normalize re-adds Chat to the first group, then the new group also holds Chat (layout.ts insertGroup, reached by split(CHAT, ...) and by moveToOtherSide when Chat's group is alone with other tabs)",
-  },
-  () => {
-    const l = layoutOf([group("a", [CHAT, "files"], 1)]);
-    check(split(l, CHAT, "a", "right"), "split chat");
-  },
-);
+test("splitting Chat out of a group that has other tabs leaves Chat exactly once", () => {
+  const l = layoutOf([group("a", [CHAT, FILES], 1)]);
+  for (const side of ["left", "right"] as const) {
+    const out = split(l, CHAT, "a", side);
+    check(out, `split chat ${side}`);
+    assert.deepEqual(
+      out.groups.map((g) => g.tabs),
+      side === "right" ? [[FILES], [CHAT]] : [[CHAT], [FILES]],
+      "Chat moved into the new group, the rest stayed",
+    );
+    assert.equal(focusedGroup(out).active, CHAT);
+  }
+  const two = layoutOf([group("a", [CHAT, FILES], 0.5), group("b", [NOTES], 0.5)]);
+  check(split(two, CHAT, "b", "right"), "split chat beside another group");
+  check(split(two, CHAT, "a", "left"), "split chat beside its own group");
+});
+
+test("moving Chat to the other side keeps it in exactly one group", () => {
+  const solo = layoutOf([group("a", [CHAT, FILES, NOTES], 1)]);
+  const moved = moveToOtherSide(solo, CHAT);
+  check(moved, "solo");
+  assert.equal(moved.groups.length, 2);
+  const two = layoutOf([group("a", [CHAT, FILES], 0.5), group("b", [NOTES], 0.5)]);
+  check(moveToOtherSide(two, CHAT), "two groups");
+  check(move(two, CHAT, "b", 0), "move into another group");
+});
 
 test("deserialize: a stored Chat twice keeps one; a layout without any tab becomes Chat alone", () => {
   const twice = deserialize(
@@ -382,7 +442,7 @@ test("deserialize: a stored Chat twice keeps one; a layout without any tab becom
       v: 1,
       groups: [
         { tabs: [CHAT], active: CHAT, size: 0.5 },
-        { tabs: [CHAT, "files"], active: CHAT, size: 0.5 },
+        { tabs: [CHAT, FILES], active: CHAT, size: 0.5 },
       ],
       focused: 1,
     }),
@@ -431,27 +491,43 @@ test("an emptied stored group hands its width to the neighbour on its left", () 
   assert.ok(Math.abs(must(l.groups[0]).size - 0.75) < 1e-9);
 });
 
-test(
-  "stored sizes that are partly invalid still normalise to a whole row",
-  { todo: "normalize(): an invalid size gets 1/n but valid ones are divided by their own total, so the row sums to more than 1 (layout.ts normalize)" },
-  () => {
+test("stored sizes that are partly invalid still normalise to a whole row (all groups are equalised)", () => {
+  for (const bad of ["wide", 0, -1, null, 2, Number.NaN]) {
     const l = deserialize(
       JSON.stringify({
         v: 1,
         groups: [
           { tabs: [CHAT], active: CHAT, size: 0.5 },
-          { tabs: ["files"], active: "files", size: "wide" },
+          { tabs: ["files"], active: "files", size: bad },
+          { tabs: ["notes"], active: "notes", size: 0.25 },
         ],
         focused: 0,
       }),
     );
     assert.ok(l);
-    check(l, "partly invalid sizes");
-  },
-);
+    check(l, `invalid size ${String(bad)}`);
+    for (const g of l.groups) assert.ok(Math.abs(g.size - 1 / 3) < 1e-9, `equal share, got ${g.size}`);
+  }
+});
+
+test("all-valid sizes are scaled to sum to 1, keeping their proportions", () => {
+  const l = deserialize(
+    JSON.stringify({
+      v: 1,
+      groups: [
+        { tabs: [CHAT], active: CHAT, size: 0.3 },
+        { tabs: ["files"], active: "files", size: 0.1 },
+      ],
+      focused: 0,
+    }),
+  );
+  assert.ok(l);
+  check(l, "scaled");
+  assert.ok(Math.abs(must(l.groups[0]).size - 0.75) < 1e-9);
+});
 
 test("randomised operation sequences keep every invariant (seeded)", () => {
-  const pool: TabId[] = [CHAT, "agents", "notes", "files", "details", agentTab("a"), agentTab("b"), agentTab("c"), f("1"), f("2"), f("3"), f("4")];
+  const pool: TabId[] = [CHAT, AGENTS, NOTES, FILES, DETAILS, agentTab("a"), agentTab("b"), agentTab("c"), f("1"), f("2"), f("3"), f("4")];
   for (let seed = 1; seed <= 60; seed++) {
     const rnd = prng(seed);
     const pick = <T>(xs: T[]): T => must(xs[Math.floor(rnd() * xs.length)]);
@@ -460,8 +536,6 @@ test("randomised operation sequences keep every invariant (seeded)", () => {
     for (let step = 0; step < 80; step++) {
       const tab = pick(pool);
       const g = pick(l.groups).id;
-      // Splitting Chat into a new group duplicates it (see the todo test above): not part of the sequence.
-      const chatShared = (groupOf(l, CHAT)?.tabs.length ?? 0) > 1;
       const op = Math.floor(rnd() * 13);
       log.push(`${op}:${tab}`);
       switch (op) {
@@ -478,10 +552,10 @@ test("randomised operation sequences keep every invariant (seeded)", () => {
           l = move(l, tab, g, rnd() < 0.5 ? undefined : Math.floor(rnd() * 6) - 1);
           break;
         case 4:
-          if (tab !== CHAT) l = split(l, tab, g, rnd() < 0.5 ? "left" : "right", rnd() < 0.5 ? undefined : rnd());
+          l = split(l, tab, g, rnd() < 0.5 ? "left" : "right", rnd() < 0.5 ? undefined : rnd());
           break;
         case 5:
-          if (tab !== CHAT || !chatShared) l = moveToOtherSide(l, tab);
+          l = moveToOtherSide(l, tab);
           break;
         case 6:
           l = activate(l, tab);

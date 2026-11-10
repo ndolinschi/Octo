@@ -1,21 +1,25 @@
 import { focusSoon } from "../../lib/focus";
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useMediaQuery } from "../../lib/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { readPref, writePref } from "../../lib/storage";
+import { PREFS, usePersistentState } from "../../lib/storage";
 import { useNav, type WorkspaceApi, type WorkspaceCommand } from "../nav";
 import { useProject } from "../project";
 import * as L from "./layout";
 import type { Layout, TabId, ToolTab } from "./layout";
-
-/** Narrowest a group may get; below the sum of these the dock shows one strip. */
-export const MIN_GROUP = 280;
-/** Gap between groups = the window gutter (also the divider's hit area). */
-export const GAP = 8;
-/** Width a newly opened side group takes for a tool (Agents, Notes, Files). */
-const TOOL_WIDTH = 360;
-/** Below this window width the dock always shows a single strip. */
-const DOCKED_QUERY = "(min-width: 1100px)";
+import {
+  DOCKED_QUERY,
+  MIN_GROUP,
+  GROUP_GAP,
+  TOOL_WIDTH,
+  TOOL_GROUP_MAX_FRACTION,
+  TOOL_GROUP_UNMEASURED_FRACTION,
+  FILE_GROUP_MIN_FRACTION,
+  PERSIST_LAYOUT_MS,
+} from "../../lib/constants";
+import { createRequiredContext } from "../../lib/context";
+import { TabMemory } from "./tabMemory";
+import { type FileKey, keyFolder } from "../../lib/files";
 
 /** Modifier as shown in shortcut hints. */
 export const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
@@ -26,11 +30,11 @@ export type DropTarget =
 
 /** What the workspace needs from the open-files state (attached by a component inside CodeProvider). */
 export type CodeLink = {
-  modified(key: string): boolean;
-  name(key: string): string;
-  close(key: string): void;
-  restore(key: string): void;
-  select(key: string): void;
+  modified(key: FileKey): boolean;
+  name(key: FileKey): string;
+  close(key: FileKey): void;
+  restore(key: FileKey): void;
+  select(key: FileKey): void;
 };
 
 type Closing = { tabs: TabId[]; files: string[] };
@@ -47,7 +51,7 @@ export type WorkspaceValue = {
   /** A tab whose button should take focus (after a keyboard move or close). */
   focusRequest: { tab: TabId; n: number } | null;
   /** Per-tab view memory (scroll positions, composer draft) that survives remounts. */
-  memory: Map<string, unknown>;
+  memory: TabMemory;
   closing: Closing | null;
   /** Opens the project settings dialog (e.g. from the Files tab's empty state). */
   openSettings(): void;
@@ -59,7 +63,7 @@ export type WorkspaceValue = {
   openAgent(agentId: string, options?: { otherSide?: boolean }): void;
   openTool(tool: ToolTab): void;
   /** Opens a file's tab: in `where.group` (in place of `where.replace`) when given, else in the side group. */
-  openFileTab(key: string, where?: { group: string; replace?: TabId }): void;
+  openFileTab(key: FileKey, where?: { group: string; replace?: TabId }): void;
   /** Opens (or focuses) a tab in a given group. */
   openIn(tab: TabId, groupId: string): void;
   /** Removes a tab without asking (a restored file that no longer exists). */
@@ -81,10 +85,16 @@ export type WorkspaceValue = {
   attachCode(link: CodeLink | null): void;
 };
 
-const WorkspaceContext = createContext<WorkspaceValue | null>(null);
+export const {
+  Provider: WorkspaceContextProvider,
+  useRequired: useWorkspace,
+  useOptional: useOptionalWorkspace,
+} = createRequiredContext<WorkspaceValue>("useWorkspace");
 
-function initial(projectId: string): Layout {
-  return L.deserialize(readPref(`layout.${projectId}`)) ?? L.initialLayout();
+/** A keyboard action on a focused tab keeps focus on that tab wherever it lands; this finds it. */
+function focusedTab(): TabId | null {
+  const el = document.activeElement;
+  return el instanceof HTMLElement && el.getAttribute("role") === "tab" ? L.parseTabId(el.dataset.tabId) : null;
 }
 
 function conversationOf(tab: TabId): string | null | undefined {
@@ -101,25 +111,21 @@ function conversationOf(tab: TabId): string | null | undefined {
 export function WorkspaceProvider({ routeAgentId, onSettings, children }: { routeAgentId: string | null; onSettings(): void; children: ReactNode }) {
   const nav = useNav();
   const { projectId, project, state } = useProject();
-  const [layout, setLayout] = useState<Layout>(() => initial(projectId));
+  const [layout, setLayout] = usePersistentState(PREFS.layout(projectId), L.layoutCodec, { debounceMs: PERSIST_LAYOUT_MS });
   const layoutRef = useRef(layout);
   const [dockWidth, setDockWidth] = useState(0);
   const docked = useMediaQuery(DOCKED_QUERY);
   const [lastConversation, setLastConversation] = useState<TabId>(L.CHAT);
   const [focusRequest, setFocusRequest] = useState<{ tab: TabId; n: number } | null>(null);
   const [closing, setClosing] = useState<Closing | null>(null);
-  const [memory] = useState(() => new Map<string, unknown>());
+  const [memory] = useState(() => new TabMemory());
   const code = useRef<CodeLink | null>(null);
   const selfNav = useRef<string | null>(null);
 
   const n = layout.groups.length;
-  const narrow = !docked || (n > 1 && dockWidth > 0 && dockWidth < n * MIN_GROUP + (n - 1) * GAP);
-  const narrowRef = useRef(narrow);
-  const widthRef = useRef(dockWidth);
-  useLayoutEffect(() => {
-    narrowRef.current = narrow;
-    widthRef.current = dockWidth;
-  });
+  const narrow = !docked || (n > 1 && dockWidth > 0 && dockWidth < n * MIN_GROUP + (n - 1) * GROUP_GAP);
+  const narrowRef = useLatest(narrow);
+  const widthRef = useLatest(dockWidth);
 
   /** Applies a layout; when the focused tab is a conversation its route goes into the URL. */
   const commit = useCallback(
@@ -127,7 +133,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       if (next === layoutRef.current && !options.focusTab) return;
       layoutRef.current = next;
       setLayout(next);
-      if (options.focusTab) setFocusRequest((r) => ({ tab: options.focusTab!, n: (r?.n ?? 0) + 1 }));
+      const { focusTab } = options;
+      if (focusTab) setFocusRequest((r) => ({ tab: focusTab, n: (r?.n ?? 0) + 1 }));
       const active = L.focusedGroup(next).active;
       const agent = conversationOf(active);
       if (agent === undefined) return;
@@ -139,31 +146,29 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         window.location.hash = hash;
       }
     },
-    [projectId],
+    [projectId, setLayout],
   );
-
-  // A keyboard action on a focused tab keeps focus on that tab wherever it lands.
-  const keepFocus = () => {
-    const el = document.activeElement as HTMLElement | null;
-    return el?.getAttribute("role") === "tab" ? el.dataset.tabId : undefined;
-  };
 
   /** Opens a tab in the side group, creating it right of Chat's group (`fraction` of the row) when there is none. */
   const openSide = useCallback(
     (tab: TabId, fraction?: number) => {
       const current = layoutRef.current;
       const side = L.sideGroup(current);
-      const target: L.Target = side ? { group: side.id } : { newAfter: L.groupOf(current, L.CHAT)!.id, size: fraction ?? L.groupOf(current, L.CHAT)!.size / 2 };
+      const home = L.chatGroupOf(current);
+      const target: L.Target = side ? { group: side.id } : { newAfter: home.id, size: fraction ?? home.size / 2 };
       commit(L.open(current, tab, target));
     },
     [commit],
   );
 
-  const toolFraction = () => (widthRef.current > 0 ? Math.min(0.5, (TOOL_WIDTH + GAP) / widthRef.current) : 0.3);
+  const toolFraction = useCallback(
+    () => (widthRef.current > 0 ? Math.min(TOOL_GROUP_MAX_FRACTION, (TOOL_WIDTH + GROUP_GAP) / widthRef.current) : TOOL_GROUP_UNMEASURED_FRACTION),
+    [widthRef],
+  );
 
   const doClose = useCallback(
     (tabs: TabId[]) => {
-      const hadFocus = keepFocus() !== undefined;
+      const hadFocus = focusedTab() !== null;
       for (const t of tabs) {
         const ref = L.parseTab(t);
         if (ref?.kind === "file") code.current?.close(ref.key);
@@ -192,7 +197,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     (agentId: string, options: { otherSide?: boolean; route?: boolean } = {}) => {
       const current = layoutRef.current;
       const tab = L.agentTab(agentId);
-      const home = L.groupOf(current, L.CHAT)!;
+      const home = L.chatGroupOf(current);
       const target = options.otherSide && !L.groupOf(current, tab) ? L.otherSide(current, home.id) : null;
       commit(L.open(current, tab, target ?? { group: home.id }), options.route === undefined ? {} : { route: options.route });
     },
@@ -231,10 +236,11 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       openAgent,
       // The Files tab is a file view (editor + tree column): it opens at half the row like a file.
       openTool: (tool) => {
-        openSide(tool, tool === "files" ? undefined : toolFraction());
+        const tab = L.toolTab(tool);
+        openSide(tab, tool === "files" ? undefined : toolFraction());
         if (tool === "files") {
-          const g = L.groupOf(layoutRef.current, tool);
-          if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, 0.45), { route: false });
+          const g = L.groupOf(layoutRef.current, tab);
+          if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
         }
       },
       // A file needs room: a side group sized for a tool widens to half the row.
@@ -246,7 +252,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         }
         openSide(L.fileTab(key));
         const g = L.groupOf(layoutRef.current, L.fileTab(key));
-        if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, 0.45), { route: false });
+        if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
       },
       openIn: (tab, groupId) => commit(L.open(layoutRef.current, tab, { group: groupId })),
       dropTab: (tab) => commit(L.close(layoutRef.current, [tab])),
@@ -268,16 +274,16 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
       moveToOtherSide: (tab) => {
         if (narrowRef.current) return;
-        commit(L.moveToOtherSide(layoutRef.current, tab), keepFocus() ? { focusTab: tab } : {});
+        commit(L.moveToOtherSide(layoutRef.current, tab), focusedTab() ? { focusTab: tab } : {});
       },
       canSplitRight: (tab) => {
         const g = L.groupOf(layout, tab);
-        return !narrow && !!g && L.canSplit(layout, tab, g.id) && dockWidth >= (n + 1) * MIN_GROUP + n * GAP;
+        return !narrow && !!g && L.canSplit(layout, tab, g.id) && dockWidth >= (n + 1) * MIN_GROUP + n * GROUP_GAP;
       },
       splitRight: (tab) => {
         const g = L.groupOf(layoutRef.current, tab);
         if (!g || narrowRef.current) return;
-        commit(L.split(layoutRef.current, tab, g.id, "right"), keepFocus() ? { focusTab: tab } : {});
+        commit(L.split(layoutRef.current, tab, g.id, "right"), focusedTab() ? { focusTab: tab } : {});
       },
       canDrop: (tab, target) => {
         const from = L.groupOf(layout, tab);
@@ -285,7 +291,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         if (target.kind === "into") return target.group !== from.id;
         if (target.kind === "strip") return true;
         return (
-          L.canSplit(layout, tab, target.group) && (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= (n + 1) * MIN_GROUP + n * GAP)
+          L.canSplit(layout, tab, target.group) &&
+          (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= (n + 1) * MIN_GROUP + n * GROUP_GAP)
         );
       },
       drop: (tab, target) => {
@@ -295,7 +302,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         else commit(L.split(current, tab, target.group, target.side));
       },
       resize: (index, px) => {
-        const inner = widthRef.current - (layoutRef.current.groups.length - 1) * GAP;
+        const inner = widthRef.current - (layoutRef.current.groups.length - 1) * GROUP_GAP;
         if (inner <= 0) return;
         commit(L.resize(layoutRef.current, index, px / inner, MIN_GROUP / inner));
       },
@@ -305,7 +312,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         const tabs = narrowRef.current ? L.allTabs(current) : L.focusedGroup(current).tabs;
         const i = tabs.indexOf(L.focusedGroup(current).active);
         const next = tabs[(i + delta + tabs.length) % tabs.length];
-        if (next) commit(L.activate(current, next), keepFocus() ? { focusTab: next } : {});
+        if (next) commit(L.activate(current, next), focusedTab() ? { focusTab: next } : {});
       },
       attachCode: (link) => {
         code.current = link;
@@ -328,6 +335,9 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     openSide,
     requestClose,
     doClose,
+    narrowRef,
+    toolFraction,
+    widthRef,
   ]);
 
   /* ---------- routing ---------- */
@@ -361,32 +371,21 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     const next = L.prune(layoutRef.current, (tab) => {
       const ref = L.parseTab(tab);
       if (ref?.kind === "agent") return Boolean(state.agents[ref.agentId]);
-      if (ref?.kind === "file") return folders.has(ref.key.slice(0, ref.key.indexOf("\u0000")));
+      if (ref?.kind === "file") return folders.has(keyFolder(ref.key));
       return true;
     });
     if (next !== layoutRef.current) commit(next, { route: false });
   }, [agentsLoaded, project, state.agents, commit]);
 
-  /* ---------- persistence ---------- */
-
-  useEffect(() => {
-    const id = window.setTimeout(() => writePref(`layout.${projectId}`, L.serialize(layout)), 250);
-    return () => window.clearTimeout(id);
-  }, [layout, projectId]);
-
   /* ---------- keyboard ---------- */
 
-  const valueRef = useRef(value);
-  useLayoutEffect(() => {
-    valueRef.current = value;
-  });
+  const valueRef = useLatest(value);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || document.querySelector('[aria-modal="true"], [role="menu"]')) return;
       const ws = valueRef.current;
       // A focused tab button is the tab the shortcut means; otherwise the focused group's active tab.
-      const el = document.activeElement as HTMLElement | null;
-      const active = (el?.getAttribute("role") === "tab" && el.dataset.tabId) || L.focusedGroup(layoutRef.current).active;
+      const active = focusedTab() ?? L.focusedGroup(layoutRef.current).active;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && !e.altKey && !e.shiftKey && e.key === "\\") {
         e.preventDefault();
@@ -401,7 +400,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  }, [valueRef]);
 
   /* ---------- palette ---------- */
 
@@ -445,18 +444,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     };
     nav.setWorkspace(api);
     return () => nav.setWorkspace(null);
-  }, [nav]);
+  }, [nav, valueRef]);
 
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
-}
-
-export function useWorkspace(): WorkspaceValue {
-  const ctx = useContext(WorkspaceContext);
-  if (!ctx) throw new Error("useWorkspace outside WorkspaceProvider");
-  return ctx;
-}
-
-/** Null outside a project workspace (e.g. a transcript embedded elsewhere). */
-export function useOptionalWorkspace(): WorkspaceValue | null {
-  return useContext(WorkspaceContext);
+  return <WorkspaceContextProvider value={value}>{children}</WorkspaceContextProvider>;
 }

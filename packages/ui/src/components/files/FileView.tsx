@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelRight } from "lucid
 import { Glyph } from "../primitives/Glyph";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { fileKey as fileKeyOf, splitKey } from "../../lib/files";
+import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
 import { useCopy, useDelayedLoading } from "../../lib/hooks";
 import { useApp } from "../../state/app";
@@ -24,13 +24,15 @@ import { EditorStatus } from "./EditorStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { TreeColumn } from "./TreeColumn";
+import { FILE_VIEW_OVERLAY_BELOW } from "../../lib/constants";
+import { slot } from "../../state/workspace/tabMemory";
+import { useTabMemory } from "../../state/workspace/useTabMemory";
 
-/** Below this width the tree column floats over the editor instead of taking its own column. */
-const OVERLAY_BELOW = 560;
 /** Gap between the floating composer and the last line it must not cover (contract v6 decision 8). */
 const FLOAT_ROOM = 16;
 
 type Mode = "preview" | "source";
+const MD_MODE = slot("md", (v): v is Mode => v === "preview" || v === "source");
 
 /**
  * A file view: every File tab, and the Files tab while no file is open. One 40px breadcrumb row
@@ -39,7 +41,7 @@ type Mode = "preview" | "source";
  * width and open state shared by every file view of the project). When no Chat tab is visible, the
  * focused file view shows the floating composer over its editor area (never over the tree).
  */
-export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null }) {
+export function FileView({ tab, fileKey }: { tab: TabId; fileKey: FileKey | null }) {
   const code = useCode();
   const ws = useWorkspace();
   const fv = useFileView();
@@ -49,11 +51,7 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
   const file = fileKey ? code.file(fileKey) : undefined;
   const { folder, path } = fileKey ? splitKey(fileKey) : { folder: "", path: "" };
   const markdown = fileKey !== null && isMarkdown(path);
-  const [mode, setModeState] = useState<Mode>(() => (ws.memory.get(`${tab}:md`) as Mode | undefined) ?? "preview");
-  const setMode = (m: Mode) => {
-    ws.memory.set(`${tab}:md`, m);
-    setModeState(m);
-  };
+  const [mode, setMode] = useTabMemory(tab, MD_MODE, "preview");
   const floating = useFloatingHere(tab);
   const [floatHeight, setFloatHeight] = useState(0);
   const bottomRoom = floating && floatHeight > 0 ? floatHeight + FLOAT_ROOM : 0;
@@ -72,7 +70,7 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const overlay = width > 0 && width < OVERLAY_BELOW;
+  const overlay = width > 0 && width < FILE_VIEW_OVERLAY_BELOW;
   // A narrow view keeps the editor visible: there the tree floats over it, starts closed (open in the
   // empty Files view), and closes
   // once a file is picked (the shared column preference is left alone).
@@ -126,8 +124,8 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
       close(true);
     };
     const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (tree()?.contains(t) || toggle.current?.contains(t)) return;
+      const t = e.target;
+      if (!(t instanceof Node) || tree()?.contains(t) || toggle.current?.contains(t)) return;
       close(tree()?.contains(document.activeElement) ?? false);
     };
     document.addEventListener("keydown", onKey);

@@ -7,6 +7,7 @@ import type { EditorIntel, Problem, ProblemSeverity } from "../../lsp/hub";
 import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
+import { type FileKey } from "../../lib/files";
 
 const STATE_TEXT = { starting: "starting…", ready: "ready", failed: "failed", stopped: "stopped" } as const;
 
@@ -30,7 +31,7 @@ export function EditorStatus({
   compact = false,
 }: {
   intel: EditorIntel;
-  fileKey: string;
+  fileKey: FileKey;
   onJump(problem: Problem): void;
   /** Narrow row: the server as a state dot, its name in the tooltip. */ compact?: boolean;
 }) {

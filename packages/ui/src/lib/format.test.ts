@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   agentDuration,
   basename,
+  errorMessage,
   excerpt,
   formatDuration,
   formatRelative,
@@ -114,10 +115,27 @@ test("token counts read quietly", () => {
   assert.equal(formatTokens(1_200_000), "1.2M");
 });
 
-test(
-  "token counts just under a million round up to 1.0M, not 1000k",
-  { todo: "formatTokens(): 999_999 rounds to '1000k' (format.ts formatTokens, the n < 1_000_000 branch)" },
-  () => {
-    assert.equal(formatTokens(999_999), "1M");
-  },
-);
+test("token counts roll over to the next unit instead of showing 1000 of the last", () => {
+  assert.equal(formatTokens(999), "999");
+  assert.equal(formatTokens(9_999), "10k");
+  assert.equal(formatTokens(999_499), "999k");
+  assert.equal(formatTokens(999_500), "1M");
+  assert.equal(formatTokens(999_999), "1M");
+  assert.equal(formatTokens(1_000_000), "1M");
+  assert.equal(formatTokens(24_500_000), "24.5M");
+  assert.equal(formatTokens(999_949_999), "999.9M");
+  assert.equal(formatTokens(999_950_000), "1B");
+  assert.equal(formatTokens(999_999_999), "1B");
+  assert.equal(formatTokens(2_500_000_000), "2.5B");
+  for (const n of [0, 1, 999, 1000, 9_999, 10_000, 99_999, 999_999, 1e6, 999_999_999, 1e9]) assert.doesNotMatch(formatTokens(n), /^1000/, String(n));
+});
+
+test("errorMessage: an Error's message, anything else by its string form", () => {
+  assert.equal(errorMessage(new Error("boom")), "boom");
+  assert.equal(errorMessage(new TypeError("bad")), "bad");
+  assert.equal(errorMessage("plain"), "plain");
+  assert.equal(errorMessage(404), "404");
+  assert.equal(errorMessage(null), "null");
+  assert.equal(errorMessage(undefined), "undefined");
+  assert.equal(errorMessage({ message: "not an Error" }), "[object Object]");
+});

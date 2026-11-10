@@ -16,6 +16,7 @@ import { INFO_ROW, INFO_ROW_BUTTON, InfoSection, MoreRow, SkeletonRows } from ".
 import { modelLabel, StatusIcon } from "../primitives/Status";
 import { groupWrites, useWrittenFiles } from "./useWrittenFiles";
 import { Server } from "lucide-react";
+import { CLOCK_MINUTE_MS } from "../../lib/constants";
 
 /** Rows shown before "Show all" / "Show more" (contract v6 decision 17). */
 const PAGE = 8;
@@ -202,7 +203,7 @@ function Activity() {
   const { state } = useProject();
   const ws = useWorkspace();
   const [all, setAll] = useState(false);
-  const now = useNow(true, 60_000);
+  const now = useNow(true, CLOCK_MINUTE_MS);
   const agents = useMemo(
     () =>
       state.agentOrder
@@ -241,7 +242,7 @@ function Activity() {
 function FilesWritten() {
   const writes = useWrittenFiles();
   const code = useCode();
-  const now = useNow(true, 60_000);
+  const now = useNow(true, CLOCK_MINUTE_MS);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const groups = useMemo(() => (writes ? groupWrites(writes, now) : null), [writes, now]);
   const slow = useDelayedLoading(writes === null);

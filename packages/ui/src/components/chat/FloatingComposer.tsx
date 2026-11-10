@@ -1,9 +1,9 @@
 import { Check, CircleX } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { formatDuration } from "../../lib/format";
-import { useNow } from "../../lib/hooks";
+import { useNow, useLatest } from "../../lib/hooks";
 import { buildTurns, requestSummaries } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { CHAT, focusedGroup, type TabId } from "../../state/workspace/layout";
@@ -32,7 +32,7 @@ const CHIP =
 export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) {
   const ws = useWorkspace();
   const { project, state, running, ensureMessages } = useProject();
-  const composer = useOrchestratorComposer(`${CHAT}:draft`);
+  const composer = useOrchestratorComposer(CHAT);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const orchestratorId = project?.orchestrator_agent_id;
@@ -43,18 +43,18 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
     if (orchestratorId) ensureMessages(orchestratorId);
   }, [orchestratorId, ensureMessages]);
 
-  const onHeightRef = useRef(onHeight);
-  onHeightRef.current = onHeight;
+  const onHeightRef = useLatest(onHeight);
+  const report = useCallback((px: number) => onHeightRef.current?.(px), [onHeightRef]);
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => onHeightRef.current?.(Math.round(el.getBoundingClientRect().height)));
+    const ro = new ResizeObserver(() => report(Math.round(el.getBoundingClientRect().height)));
     ro.observe(el);
     return () => {
       ro.disconnect();
-      onHeightRef.current?.(0);
+      report(0);
     };
-  }, []);
+  }, [report]);
 
   const last = useMemo(() => {
     if (!messages) return null;

@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCode } from "../../state/code";
 import { parseTab, type Group, type TabId } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { createRequiredContext } from "../../lib/context";
 
 export type GroupValue = {
   groupId: string;
@@ -12,7 +13,8 @@ export type GroupValue = {
   forward(): void;
 };
 
-const GroupContext = createContext<GroupValue | null>(null);
+/** Null outside a dock group. */
+export const { Provider: GroupContextProvider, useOptional: useGroup } = createRequiredContext<GroupValue>("useGroup");
 
 type History = { stack: TabId[]; index: number };
 
@@ -67,9 +69,5 @@ export function GroupProvider({ group, children }: { group: Group; children: Rea
     }),
     [group.id, history, go],
   );
-  return <GroupContext.Provider value={value}>{children}</GroupContext.Provider>;
-}
-
-export function useGroup(): GroupValue | null {
-  return useContext(GroupContext);
+  return <GroupContextProvider value={value}>{children}</GroupContextProvider>;
 }

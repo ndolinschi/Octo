@@ -200,6 +200,60 @@ Fifth batch (F: a start screen with a dithered light streak behind the composer 
     only when `prefers-reduced-motion` is not set and the tab is visible; otherwise static. Fades in 240ms. Used on
     Home, the empty project and the no-projects hero — nowhere else. `aria-hidden`, pointer-events none. Text on
     it keeps ≥ 4.5:1 at the brightest pixel (measured; add a local scrim under the title if needed).
+    **21b — streak, second version (owner: "the gradient looks weak, not cool, not like the references").**
+    The first version was too timid: one thin blue band at ≤ 55% alpha with a fine 2px grain reads as a faint
+    texture, and in light it nearly disappears. What makes the reference work is (1) energy — a hot core and a
+    cool halo, so the band has temperature contrast, not one hue; (2) scale — the band is a third of the window
+    and crosses the whole surface corner to corner; (3) grain you can see — chunky ordered-dither pixels and a
+    sparse noise field over the whole background, not only inside the band; (4) surfaces sit *in* the light —
+    cards pick up its colour through translucency. Version two:
+    - **Shape:** a diagonal band from the top-left to the bottom-right edge of the panel, core width ≈ 18% of the
+      panel's shorter side, halo ≈ 45%; two or three overlapping lobes with slightly different angles so the edge
+      is irregular; a second, fainter echo band offset below.
+    - **Colour (our own ramp, not the reference's):** core `#ff7a3d` → `#ff3d6e` (amber to hot pink) → mid
+      `#7a5cff` (violet) → halo `--octo-accent` blue → `#1b2a5e` falloff; a thin near-white (`#eaf2ff`) highlight
+      along the upper edge of the core. Dark: core alpha up to 95%, halo 60%. Light: the same ramp at 55% / 35%
+      over the white panel, with the falloff toward `#dfe8ff` instead of navy.
+    - **Dither:** 4×4 Bayer at **3 CSS px** cells (4 px at ≥ 1920 wide), quantised to 5 levels per channel so the
+      steps are visible; plus a static sparse noise field (≈ 3% of cells lit at 6–10% alpha in the ramp's hues)
+      over the whole start-screen background.
+    - **Surfaces over it:** cards and the project list use `panel` at 72% (dark) / 80% (light) with
+      `backdrop-filter: blur(16px) saturate(1.2)`, a 1px `line-strong` edge and a 1px inner top highlight, so the
+      band tints them; opaque fallback when backdrop filters are unsupported or under forced colours. The title
+      sits on the band with a soft local scrim only if its contrast would drop below 4.5:1; every text run on a
+      translucent surface is measured at the brightest pixel behind it and must stay ≥ 4.5:1 (raise the surface
+      opacity locally before dimming the band).
+    - **Where:** Home, the empty project (mounted behind the tab strip and chat header so there is no hard cut),
+      the no-projects hero. Nowhere with a transcript, code or lists.
+    - **Motion:** static by default; the optional drift stays as specified (off under reduced motion).
+    - **Performance:** draw at half resolution of the dither grid (one sample per cell), ≤ 4 ms at 1440×900.
+    - Verified by side-by-side screenshots against references 18–20 at 1440 and 1920, dark and light.
+23. **The UI must read as "a project's orchestrator at work", not as a list of chat sessions** (owner: "the UI
+    shows sessions, but our point is that the project orchestrator works"). Today the sidebar nests request
+    titles under each project exactly like session lists in chat tools, Home lists "recent requests", and the chat
+    header is `project / request` — all of which say "pick a conversation". The product is the opposite: one
+    long-lived orchestrator per project that plans, delegates and remembers. Changes:
+    - **Sidebar = projects only.** No nested request rows, no chevrons. Each project row is 40px with two lines:
+      name, and the orchestrator's state in `fg-3` — "Working · 3 agents" (accent dot/spinner), "Needs you"
+      (when a turn failed or, later, an approval is pending), "Idle · 2h" — plus the unseen dot. Requests stay
+      reachable where they belong: the turn rail in the conversation and the palette ("Requests").
+    - **Chat header = the orchestrator.** `Project name` as the title; under/next to it the orchestrator's live
+      line: state, the model, running agents as a compact stack ("Dependency auditor, Test runner +1") that opens
+      the Agents tab, total tokens. The request title is not a breadcrumb; the request in view is shown only by the
+      rail and the pinned prompt.
+    - **Tab label** "Chat" → "Orchestrator".
+    - **A live "team" strip** above the composer while a turn runs: one chip per running sub-agent (role,
+      activity verb, duration), click opens its tab; collapses to "N agents working" when narrow. It replaces the
+      plain "Working… 12s" line as the main sign of life (the line stays for the orchestrator's own thinking).
+    - **Home = projects and their orchestrators**, not requests: the list shows each project with its state and
+      what the orchestrator is doing or last did (first line of its latest reply, not the user's prompt); the
+      "Recent requests" card becomes **"Orchestrators at work"** — running agents across projects (project, role,
+      activity, duration), empty state "Nothing is running"; the other cards stay.
+    - **Empty project** copy speaks about the orchestrator ("Give {project}'s orchestrator its first task"), and
+      shows what it has: folders, models per tier, available agents — as three quiet facts under the composer
+      instead of generic starter prompts only.
+    - **Words:** never "session", "thread", "chat" or "conversation" in UI copy; "request" for what the user asked,
+      "run" for a sub-agent's work, "orchestrator" for the project's agent.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
@@ -557,6 +611,14 @@ bundle grew 180.89 → 188.94 kB gzip.
   enabled with comments and no text. `prepare()` quotes the lines as they are now (open buffer, else disk) and appends
   the fenced `octo-comments` block (≤ 6 quoted lines, then `> …`; the fence grows past any backtick run in the text);
   `commit()` clears exactly those comments after the send succeeds.
+- **Wire format and escaping** (code-quality pass Q3): an entry is a header line `{folder}/{path}:{start}[-{end}]`,
+  the quoted lines (`> ` prefix, ≤ 6, then `> …`), then the comment text up to the next header. A header is a line of
+  that shape that starts the block or follows a blank line, so text containing such a line would split. To keep parsing
+  unambiguous for any text, `formatComments` puts U+200B (zero-width space) in front of a text line that is shaped like a
+  header, of a first text line that starts with `>` (it would read as a quote), and of a line that already starts with
+  U+200B; `splitComments` strips one leading U+200B from each text line. Text without such lines is written exactly as
+  before, and blocks written before the escape existed contain no escaped lines, so they parse unchanged. The model sees
+  a zero-width space in front of the rare escaped line; it carries no meaning.
 - **Transcript**: `splitComments` renders the prose, then cards (path + lines link → opens the file with the range
   selected; quoted lines in mono, 3 then "Show N more lines"; the comment). Sidebar, palette and pinned prompt use
   `requestTitle`: the prose, else "N comments on {file}".

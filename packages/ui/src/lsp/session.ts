@@ -1,6 +1,7 @@
 import type { Bridge, LanguageServerInfo, LanguageServerSession } from "@octo/agent-client";
 import type { LspState } from "./hub";
 import { Rpc, type Cancellation } from "./rpc";
+import { errorMessage } from "../lib/format";
 
 /** Full-document sync: one `didChange` with the whole text after typing pauses this long. */
 const CHANGE_DEBOUNCE_MS = 250;
@@ -30,7 +31,7 @@ const CAPABILITIES = {
 };
 
 function message(e: unknown): string {
-  return (e instanceof Error ? e.message : String(e)).replace(/\.$/, "");
+  return errorMessage(e).replace(/\.$/, "");
 }
 
 /**
@@ -129,7 +130,7 @@ export class LspSession {
   /** Sends a pending change now (before a request that must see the latest text). */
   flush(uri: string): void {
     const doc = this.docs.get(uri);
-    if (!doc || !doc.timer) return;
+    if (!doc?.timer) return;
     window.clearTimeout(doc.timer);
     doc.timer = 0;
     if (!this.ready || !doc.opened) return;

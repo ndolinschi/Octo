@@ -1,5 +1,6 @@
 import type { Agent, ContentBlock, Message, Note, Tier } from "@octo/agent-client";
 import { agentById, clone, emit, newId, orchestratorOf, writeDemoFile, type ProjectRecord } from "./store";
+import { errorMessage } from "../lib/format";
 
 /**
  * Scripted agent runtime. Each script "thread" carries its own clock `t`: steps whose
@@ -206,7 +207,7 @@ export async function delegate(ctx: Ctx, parentId: string, children: ChildSpec[]
         outcome = { content: result, error: false };
       } catch (e) {
         if (e === CANCELLED) throw e;
-        const message = e instanceof Error ? e.message : String(e);
+        const message = errorMessage(e);
         updateAgent(child, agent.id, { status: "failed", error: message, finished_at: iso(child) });
         outcome = { content: `Sub-agent failed: ${message}`, error: true };
       }
@@ -240,7 +241,7 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
     await body(ctx, orch.id);
   } catch (e) {
     status = e === CANCELLED ? "cancelled" : "failed";
-    error = e === CANCELLED ? null : e instanceof Error ? e.message : String(e);
+    error = e === CANCELLED ? null : errorMessage(e);
     ctx.t = Math.max(ctx.t, Date.now());
     for (const a of rec.agents) {
       if (a.status === "running" && a.parent_id !== null) {

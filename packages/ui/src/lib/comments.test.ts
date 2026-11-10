@@ -116,14 +116,69 @@ test("an empty message and a block with no entries do not throw", () => {
   assert.deepEqual(splitComments("```octo-comments\n\n```"), { prose: "", comments: [] });
 });
 
-test(
-  "a comment whose text has a blank line then something shaped like a header stays one comment",
-  { todo: "parseEntries(): a line `x/y:3` after a blank line starts a new entry, so such text splits the comment (comments.ts parseEntries)" },
-  () => {
-    const { comments } = splitComments(formatComments([c({ text: "compare with\n\nsrc/other.ts:3" })]));
-    assert.equal(comments.length, 1);
-  },
-);
+const roundTrip = (comments: ReturnType<typeof c>[]) => splitComments(formatComments(comments)).comments;
+
+test("a comment whose text has a blank line then something shaped like a header stays one comment", () => {
+  const { comments } = splitComments(formatComments([c({ text: "compare with\n\nsrc/other.ts:3" })]));
+  assert.equal(comments.length, 1);
+  assert.equal(comments[0]?.text, "compare with\n\nsrc/other.ts:3");
+});
+
+test("everything prepare() can emit parses back to what was sent (hostile text included)", () => {
+  const texts = [
+    "plain",
+    "two\n\nparagraphs",
+    "compare with\n\nsrc/other.ts:3",
+    "src/other.ts:3 first line looks like a header",
+    "x/y:3-9\n\nx/y:4",
+    "a\n\n\n\nweb/src/a.ts:12-14\n> not a quote\nz/z:1",
+    "> starts like a quote",
+    ">",
+    "> \u2026",
+    "\u200bzero-width first",
+    "ok\n\n\u200bsrc/a.ts:1",
+    "ok\n\n\u200b\u200bsrc/a.ts:1",
+    "```js\ncode\n```\n\nsrc/b.ts:2",
+    "````\nfour ticks\n````",
+    "trailing colon: a/b:",
+    "a/b:3 \n\nc/d:4 ",
+    "line with CRLF\r\n\r\nsrc/c.ts:7",
+    "日本語/ファイル:12\n\n日本語/ファイル:13",
+  ];
+  for (const text of texts) {
+    for (const lines of [[], ["only"], ["a", "", "b"], ["x/y:3", "> nested", ""], Array.from({ length: 9 }, (_, i) => `l${i}`)]) {
+      const sent = [c({ text, lines, start: 5, end: 5 + Math.max(lines.length - 1, 0) }), c({ path: "z.ts", text: "next" })];
+      const got = roundTrip(sent);
+      assert.equal(got.length, 2, `two comments for ${JSON.stringify(text)} / ${lines.length} lines`);
+      assert.equal(got[0]?.text, text.trim(), JSON.stringify(text));
+      assert.equal(got[0]?.path, "src/auth/refresh.ts");
+      assert.equal(got[1]?.text, "next");
+      assert.equal(got[1]?.path, "z.ts");
+      assert.deepEqual(
+        got[0]?.quote,
+        lines.slice(0, 6).map((l) => l.trimEnd()),
+        "quote untouched",
+      );
+    }
+  }
+});
+
+test("text that needs no escape is written exactly the way it was before the escape existed", () => {
+  assert.ok(!formatComments([c({ text: "ordinary words\n\nsecond paragraph: see line 3" })]).includes("\u200b"));
+  assert.ok(!formatComments([c({ text: "a/b is a path but not a header" })]).includes("\u200b"));
+});
+
+test("blocks written before the escape existed still parse", () => {
+  const old = ["```octo-comments", "api/src/a.ts:3", "> let x = 1;", "Why?", "", "More.", "", "web/b.ts:9-10", "> y", "> z", "Second", "```"].join("\n");
+  const { comments } = splitComments(old);
+  assert.deepEqual(
+    comments.map((x) => [x.folder, x.path, x.start, x.end, x.text]),
+    [
+      ["api", "src/a.ts", 3, 3, "Why?\n\nMore."],
+      ["web", "b.ts", 9, 10, "Second"],
+    ],
+  );
+});
 
 test("requestTitle: prose first, else a summary of the comments, else the text", () => {
   // The count is joined to its noun by a no-break space so the summary never wraps between them.

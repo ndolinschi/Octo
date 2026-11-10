@@ -23,8 +23,13 @@ declare module "node:assert/strict" {
     match(actual: string, expected: RegExp, message?: string): void;
     doesNotMatch(actual: string, expected: RegExp, message?: string): void;
     throws(fn: () => unknown, check?: ErrorCheck | RegExp): void;
+    doesNotThrow(fn: () => unknown): void;
     notDeepEqual(actual: unknown, expected: unknown, message?: string): void;
     rejects(promise: Promise<unknown>, check?: ErrorCheck): Promise<void>;
   };
   export default assert;
+}
+
+declare module "node:fs" {
+  export function readFileSync(path: URL | string, encoding: "utf8"): string;
 }

@@ -1,6 +1,7 @@
 import type { Agent, Bridge, Message, ProjectSummary } from "@octo/agent-client";
-import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useApp } from "./app";
+import { createRequiredContext } from "../lib/context";
 
 /** At most this many bridge reads in flight for the overview data (Details files, Home). */
 const MAX_IN_FLIGHT = 4;
@@ -104,18 +105,12 @@ export class ActivityStore {
   }
 }
 
-const ActivityContext = createContext<ActivityStore | null>(null);
+export const { Provider: ActivityContextProvider, useRequired: useActivity } = createRequiredContext<ActivityStore>("useActivity");
 
 export function ActivityProvider({ children }: { children: ReactNode }) {
   const { bridge } = useApp();
   const store = useMemo(() => new ActivityStore(bridge), [bridge]);
-  return <ActivityContext.Provider value={store}>{children}</ActivityContext.Provider>;
-}
-
-export function useActivity(): ActivityStore {
-  const ctx = useContext(ActivityContext);
-  if (!ctx) throw new Error("useActivity outside ActivityProvider");
-  return ctx;
+  return <ActivityContextProvider value={store}>{children}</ActivityContextProvider>;
 }
 
 /** Re-renders when the store says something was invalidated. */

@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { usePresence } from "./Presence";
+import { useLatest } from "../../lib/hooks";
 
 const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
@@ -10,14 +11,11 @@ const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input
  */
 export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => void) {
   const open = usePresence() === "open";
-  const close = useRef(onClose);
+  const close = useLatest(onClose);
   const previous = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    close.current = onClose;
-  });
 
   useEffect(() => {
-    previous.current = document.activeElement as HTMLElement | null;
+    previous.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const el = panel.current;
     const first = el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>(FOCUSABLE);
     first?.focus();
@@ -61,7 +59,7 @@ export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => vo
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [panel, open]);
+  }, [panel, open, close]);
 
   return open;
 }

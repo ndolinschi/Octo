@@ -26,6 +26,7 @@ const MONACO_MSG = "Value imports of monaco-editor live only in components/files
 const MONACO_PATH = { name: "monaco-editor", allowTypeImports: true, message: MONACO_MSG };
 const MONACO_DEEP = { group: ["monaco-editor/*"], allowTypeImports: true, message: MONACO_MSG };
 const NO_UP_FROM_LIB = forbid(["lsp", "state", "app", "demo", "components"], "lib imports nothing above it.");
+const NUL_MESSAGE = "The NUL separator belongs to lib/files.ts: build keys with fileKey(), read them with splitKey() / parseFileKey() / keyFolder() / keyInFolder() / isRootKey().";
 const AGENT_CLIENT = {
   paths: ["react", "react-dom", "@octo/ui"].map((name) => ({ name, message: "agent-client has no React, DOM or UI dependency." })),
   patterns: [{ group: ["react/*", "react-dom/*", "@octo/ui/*", "@tauri-apps/*"], message: "agent-client is platform-free." }],
@@ -152,6 +153,19 @@ export default tseslint.config(
   {
     files: ["packages/agent-client/src/**/*.ts"],
     rules: { "@typescript-eslint/no-restricted-imports": ["error", AGENT_CLIENT] },
+  },
+
+  // ---- Ids: the NUL separator of file keys (and so of file tab ids) is private to lib/files.ts ----
+  {
+    files: [`${UI}/**/*.{ts,tsx}`],
+    ignores: [`${UI}/lib/files.ts`],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        { selector: "Literal[raw=/\\\\(u0000|x00)/]", message: NUL_MESSAGE },
+        { selector: "TemplateElement[value.raw=/\\\\(u0000|x00)/]", message: NUL_MESSAGE },
+      ],
+    },
   },
 
   // ---- Import boundaries: warnings (debt) ----

@@ -22,14 +22,11 @@ test("known configuration names win; dotfiles and extensionless names are generi
   assert.equal(fileIcon(""), File);
 });
 
-test(
-  "an extension named like an object property is not an icon",
-  { todo: "fileIcon(): BY_EXT and BY_NAME are plain objects, so 'x.constructor' returns Object as the icon component (fileIcons.ts fileIcon)" },
-  () => {
-    assert.equal(fileIcon("x.constructor"), File);
-    assert.equal(fileIcon("x.toString"), File);
-  },
-);
+test("an extension or name spelled like an object property is not an icon", () => {
+  for (const name of ["x.constructor", "x.toString", "x.__proto__", "x.hasOwnProperty", "x.valueOf"]) assert.equal(fileIcon(name), File, name);
+  for (const name of ["constructor", "toString", "__proto__", "hasOwnProperty"]) assert.equal(fileIcon(name), File, name);
+  assert.equal(fileIcon("x.ts"), CodeXml, "real extensions still resolve");
+});
 
 test("only .md and .markdown open in the preview", () => {
   assert.equal(isMarkdown("docs/a.md"), true);

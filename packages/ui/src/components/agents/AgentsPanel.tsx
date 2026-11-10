@@ -9,6 +9,9 @@ import { useProject } from "../../state/project";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { StatusIcon } from "../primitives/Status";
 import { FloatRoom } from "../primitives/floatRoom";
+import { slot, isBooleanRecord, isNumber } from "../../state/workspace/tabMemory";
+import { useTabMemory } from "../../state/workspace/useTabMemory";
+import { toolTab } from "../../state/workspace/layout";
 
 type Row = { agent: Agent; level: number; hasChildren: boolean; expanded: boolean; hidden: number };
 
@@ -33,6 +36,11 @@ function flatten(state: ProjectState, root: Agent, overrides: Record<string, boo
 }
 
 /** The Agents tab: the whole agent tree; selecting a row opens that agent's tab (Alt: on the other side). */
+const AGENTS_TAB = toolTab("agents");
+const EXPANDED = slot("expanded", isBooleanRecord);
+const SCROLL = slot("scroll", isNumber);
+const NONE_EXPANDED: Record<string, boolean> = {};
+
 export function AgentsPanel() {
   const { state, project } = useProject();
   const ws = useWorkspace();
@@ -40,17 +48,11 @@ export function AgentsPanel() {
   // Expansion and scroll live in the workspace's tab memory, so moving this tab to another group
   // (which remounts it) keeps them.
   const memory = ws.memory;
-  const [overrides, setOverridesState] = useState<Record<string, boolean>>(() => (memory.get("agents:expanded") as Record<string, boolean> | undefined) ?? {});
-  const setOverrides = (update: (o: Record<string, boolean>) => Record<string, boolean>) =>
-    setOverridesState((o) => {
-      const next = update(o);
-      memory.set("agents:expanded", next);
-      return next;
-    });
+  const [overrides, setOverrides] = useTabMemory(AGENTS_TAB, EXPANDED, NONE_EXPANDED);
   const scroller = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = scroller.current;
-    const top = memory.get("agents:scroll") as number | undefined;
+    const top = memory.get(AGENTS_TAB, SCROLL);
     if (el && top) el.scrollTop = top;
   }, [memory]);
 
@@ -71,7 +73,7 @@ export function AgentsPanel() {
     setFocusId(id);
     refs.current.get(id)?.focus();
   };
-  const setExpanded = (id: string, value: boolean) => setOverrides((o) => ({ ...o, [id]: value }));
+  const setExpanded = (id: string, value: boolean) => setOverrides({ ...overrides, [id]: value });
   const open = (a: Agent, otherSide = false) => (a.parent_id === null ? ws.focusChat() : ws.openAgent(a.id, { otherSide }));
 
   const onKeyDown = (e: KeyboardEvent, i: number) => {
@@ -106,7 +108,7 @@ export function AgentsPanel() {
       ref={scroller}
       role="tree"
       aria-label="Agent tree"
-      onScroll={(e) => memory.set("agents:scroll", e.currentTarget.scrollTop)}
+      onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}
       className="h-full min-h-0 overflow-y-auto overscroll-contain px-pane pt-pane pb-4"
     >
       {rows.map((row, i) => {

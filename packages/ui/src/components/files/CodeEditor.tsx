@@ -1,10 +1,12 @@
 import type * as Monaco from "monaco-editor";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
-import { useDelayedLoading } from "../../lib/hooks";
+import { useDelayedLoading, useLatest } from "../../lib/hooks";
 import { Spinner } from "../primitives/Status";
 import type { EditorBuffers, MonacoApi } from "./buffers";
+import { errorMessage } from "../../lib/format";
+import { type FileKey } from "../../lib/files";
 
 type MonacoModule = typeof import("./monaco");
 
@@ -66,26 +68,21 @@ export function CodeEditor(props: {
 }) {
   const { file, buffers } = props;
   const [editor, setEditor] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const onMonaco = useRef(props.onMonaco);
   const host = useRef<HTMLDivElement>(null);
   const [mod, setMod] = useState<MonacoModule | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const loadingShown = useDelayedLoading(!mod && !failed);
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const shownKey = useRef<string | null>(null);
-  const onSave = useRef(props.onSave);
-  const bottomPadding = useRef(props.bottomPadding ?? 8);
-  bottomPadding.current = props.bottomPadding ?? 8;
-  useLayoutEffect(() => {
-    onSave.current = props.onSave;
-    onMonaco.current = props.onMonaco;
-  });
+  const shownKey = useRef<FileKey | null>(null);
+  const onSave = useLatest(props.onSave);
+  const onMonaco = useLatest(props.onMonaco);
+  const bottomPadding = useLatest(props.bottomPadding ?? 8);
 
   useEffect(() => {
     let alive = true;
     loadMonaco().then(
       (m) => alive && setMod(m),
-      (e: unknown) => alive && setFailed(e instanceof Error ? e.message : String(e)),
+      (e: unknown) => alive && setFailed(errorMessage(e)),
     );
     return () => {
       alive = false;
@@ -168,7 +165,7 @@ export function CodeEditor(props: {
       editorRef.current = null;
     };
     // Theme changes are applied below without recreating the editor.
-  }, [mod, buffers]);
+  }, [mod, buffers, bottomPadding, onMonaco, onSave]);
 
   useEffect(() => {
     if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme));

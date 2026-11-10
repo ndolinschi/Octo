@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ancestors, fileKey, fileName, normalizePath, parentPath, resolveFolder, splitKey } from "./files";
+import { ancestors, fileKey, fileName, isRootKey, keyFolder, keyInFolder, normalizePath, parentPath, parseFileKey, resolveFolder, splitKey } from "./files";
 
 test("file keys round trip, including the folder root and odd characters", () => {
   for (const [folder, path] of [
@@ -48,4 +48,30 @@ test("resolveFolder defaults to the first folder; an unknown label is null", () 
   assert.equal(resolveFolder(folders, "nope"), null);
   assert.equal(resolveFolder([], undefined), null);
   assert.equal(resolveFolder([], "web"), null);
+});
+
+test("parseFileKey accepts only strings built by fileKey; foreign strings are rejected", () => {
+  for (const [folder, path] of [
+    ["web", "src/a.ts"],
+    ["web", ""],
+    ["日本", "a b/c#d"],
+  ] as const) {
+    const key = fileKey(folder, path);
+    assert.equal(parseFileKey(key), key, "round trip");
+    assert.deepEqual(splitKey(key), { folder, path });
+  }
+  for (const foreign of ["", "web/src/a.ts", "web:src", "chat", "file:web", "web\\src"]) assert.equal(parseFileKey(foreign), null, JSON.stringify(foreign));
+});
+
+test("key helpers: folder, root, membership", () => {
+  const a = fileKey("web", "src/a.ts");
+  const root = fileKey("web", "");
+  assert.equal(keyFolder(a), "web");
+  assert.equal(isRootKey(root), true);
+  assert.equal(isRootKey(a), false);
+  assert.equal(keyInFolder(a, "web"), true);
+  assert.equal(keyInFolder(root, "web"), true, "the root belongs to its folder");
+  assert.equal(keyInFolder(a, "we"), false, "a folder name that is a prefix of another does not match");
+  assert.equal(keyInFolder(fileKey("web2", "x"), "web"), false);
+  assert.equal(keyInFolder(a, "api"), false);
 });

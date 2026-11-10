@@ -2,7 +2,7 @@ import type { Agent, Message } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
 import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
-import { formatDuration, formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
+import { formatDuration, formatSeparator, needsSeparator, timeAgo, errorMessage } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
 import { buildTurns, promptText, type Turn } from "../../lib/transcript";
@@ -212,7 +212,7 @@ function TurnBanner(props: { status: "failed" | "cancelled"; error: string | nul
     try {
       await send(props.retryText);
     } catch (e) {
-      setRetryError(e instanceof Error ? e.message : String(e));
+      setRetryError(errorMessage(e));
       setBusy(false);
     }
   };

@@ -1,12 +1,14 @@
 import type { Bridge, BridgeConfig, ProjectSummary, ShellKind } from "@octo/agent-client";
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHost } from "./host";
 import { useMediaQuery } from "../lib/hooks";
-import { readPref, writePref } from "../lib/storage";
+import { PREFS, usePersistentState } from "../lib/storage";
+import { themeCodec, type Theme, type ThemePref } from "./themePref";
+import { HEALTH_POLL_ONLINE_MS, HEALTH_POLL_OFFLINE_MS, PROJECTS_POLL_BUSY_MS, PROJECTS_POLL_IDLE_MS } from "../lib/constants";
+import { createRequiredContext } from "../lib/context";
 
 export type Health = "checking" | "online" | "offline";
-export type Theme = "dark" | "light";
-export type ThemePref = "system" | Theme;
+export type { Theme, ThemePref };
 
 type AppValue = {
   bridge: Bridge;
@@ -28,12 +30,7 @@ type AppValue = {
   setThemePref(pref: ThemePref): void;
 };
 
-const AppContext = createContext<AppValue | null>(null);
-
-function savedThemePref(): ThemePref {
-  const saved = readPref("theme");
-  return saved === "dark" || saved === "light" ? saved : "system";
-}
+export const { Provider: AppContextProvider, useRequired: useApp } = createRequiredContext<AppValue>("useApp");
 
 export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: ShellKind; demo: boolean; children: ReactNode }) {
   const { bridge } = props;
@@ -42,7 +39,8 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [config, setConfig] = useState<BridgeConfig | null>(null);
   const host = useHost();
-  const [themePref, setThemePrefState] = useState<ThemePref>(savedThemePref);
+  // Nothing is written until the user chooses: a first run leaves storage empty.
+  const [themePref, setThemePref] = usePersistentState(PREFS.theme, themeCodec, { persistInitial: false });
   const systemLight = useMediaQuery("(prefers-color-scheme: light)");
   const theme: Theme = host.theme ?? (themePref === "system" ? (systemLight ? "light" : "dark") : themePref);
   const [attempt, setAttempt] = useState(0);
@@ -87,7 +85,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
         healthRef.current = "offline";
         setHealth("offline");
       }
-      timer = window.setTimeout(check, healthRef.current === "online" ? 15_000 : 5_000);
+      timer = window.setTimeout(check, healthRef.current === "online" ? HEALTH_POLL_ONLINE_MS : HEALTH_POLL_OFFLINE_MS);
     };
     void check();
     return () => {
@@ -99,7 +97,7 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
   const anyRunning = projects?.some((p) => p.status === "running") ?? false;
   useEffect(() => {
     if (health !== "online") return;
-    const id = window.setInterval(() => void refreshProjects(), anyRunning ? 3_000 : 12_000);
+    const id = window.setInterval(() => void refreshProjects(), anyRunning ? PROJECTS_POLL_BUSY_MS : PROJECTS_POLL_IDLE_MS);
     return () => window.clearInterval(id);
   }, [health, anyRunning, refreshProjects]);
 
@@ -122,19 +120,10 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
       theme,
       themePref,
       canChooseTheme: !host.theme,
-      setThemePref: (pref) => {
-        setThemePrefState(pref);
-        writePref("theme", pref);
-      },
+      setThemePref: (pref) => setThemePref(pref),
     }),
-    [bridge, props.bridgeUrl, props.shell, props.demo, health, version, projects, config, refreshProjects, theme, themePref, host.theme],
+    [bridge, props.bridgeUrl, props.shell, props.demo, health, version, projects, config, refreshProjects, theme, themePref, setThemePref, host.theme],
   );
 
-  return <AppContext.Provider value={value}>{props.children}</AppContext.Provider>;
-}
-
-export function useApp(): AppValue {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useApp outside AppProvider");
-  return ctx;
+  return <AppContextProvider value={value}>{props.children}</AppContextProvider>;
 }
