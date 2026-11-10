@@ -1,7 +1,7 @@
 # Octo on VS Code — Agents window design
 
 **Date:** 2026-11-10
-**Status:** approved (decisions made by the orchestrating agent on the owner's behalf)
+**Status:** shelved — the owner chose an own app with an embedded editor instead ([`2026-11-10-code-pane-design.md`](./2026-11-10-code-pane-design.md)). Kept for its findings; the extension and fork recipe were not completed.
 **Builds on:** [`2026-11-10-project-harness-design.md`](./2026-11-10-project-harness-design.md) (harness + bridge API), [`2026-11-10-project-harness-ui.md`](./2026-11-10-project-harness-ui.md) (UI)
 
 ## Intent
