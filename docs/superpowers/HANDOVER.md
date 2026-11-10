@@ -1,0 +1,201 @@
+# Handover — project harness, UI and workspace
+
+**Date:** 2026-11-10
+**Branch:** `claude/project-harness-ui-redesign-qdnem2` (no pull request opened)
+**Last commit of the batch:** `wip(ui): spacing tokens, flipped surfaces, chat header and model selector`
+
+This file is for whoever continues the work in a new session. It says what exists,
+how to run it, what was and was not verified, what is unfinished, and how the work
+was orchestrated.
+
+## 1. What exists
+
+| Area | Path | State |
+| --- | --- | --- |
+| Harness (Go) | `apps/harness` | `harness serve`: projects, per-project SQLite, orchestrator + nested sub-agents, notes, confined file API, plugin registry, ACP sub-agents, language-server relay, scripted mock model and fake ACP agent |
+| Bridge client (TS) | `packages/agent-client` | HTTP + SSE client, project state reducer, message-port bridge, file / plugin / LSP session methods |
+| UI (React + Tailwind 4) | `packages/ui` | Two-level sidebar, tab workspace (dock), chat, delegation cards, read-only agent tabs, Monaco editor with code comments and an LSP client, command palette, settings with plugins |
+| Browser / Tauri host | `apps/desktop` | Vite host for the UI; `?demo=1` runs on in-memory demo data |
+| Router | `apps/router` | Untouched |
+
+Design documents (`docs/superpowers/specs/`):
+
+- `2026-11-10-project-harness-design.md` — projects, bridge API contract.
+- `2026-11-10-project-harness-ui.md` — UI design, tokens, workspace, motion and craft rules.
+- `2026-11-10-code-pane-design.md` — file API and editor.
+- `2026-11-10-workspace-plugins-acp-design.md` — tabs, code comments, plugins, LSP, ACP, acceptance criteria.
+- `2026-11-10-vscode-agents-window-design.md` — **shelved** VS Code fork direction, kept for its findings.
+
+Design skills are vendored at `.cursor/skills/interfaces` (submodule).
+
+## 2. How to run
+
+```bash
+git submodule update --init --recursive
+pnpm install
+
+# UI only, on demo data
+pnpm --filter @octo/desktop dev            # http://localhost:1420/?demo=1
+
+# Full stack without an API key (three terminals)
+cd apps/harness && go run ./examples/mockllm
+cd apps/harness && ANTHROPIC_API_KEY=mock go run ./cmd/harness serve \
+  --base-url http://127.0.0.1:8791 --plugins-dir ./plugins-examples/go-tools
+pnpm --filter @octo/desktop dev            # http://localhost:1420
+```
+
+Mock-model triggers in the user message: `quick` (answer without delegating),
+`[write]` (a sub-agent writes `octo-demo-note.md`), `[acp]` (delegate to the first
+plugin ACP agent; build `./examples/fakeacp` and use `plugins-examples/fake-acp`).
+Demo-mode knobs: `?demo=one`, `?demo=many`, `?lsp=fail-once|slow|exit`, `?plugins=none`.
+
+Gates:
+
+```bash
+cd apps/harness && gofmt -l . && go vet ./... && go test -race ./...
+pnpm --filter @octo/agent-client test
+pnpm --filter @octo/ui lint
+pnpm --filter @octo/desktop build
+```
+
+All four passed on the last commit (Go suite last run at `710ed98`; no Go changes since).
+
+## 3. Verified and not verified
+
+Verified by the orchestrator directly:
+
+- Go: formatting, vet, race tests in every package; the real `gopls` test
+  (`TestGoplsDiagnosticsAndHover`) runs and passes.
+- Live stack with the mock model (before the tab workspace): delegation tree, file
+  edit → saved on disk, conflict refusal, agent write refreshing an open tab,
+  tool-row file links.
+- Type-check, build and client tests after every UI pass; selected screenshots read.
+
+Reported by sub-agents, not re-run by the orchestrator:
+
+- UI scripted suites (workspace: 57 of 58; comments/LSP: 75 of 75), contrast tables,
+  frame-sequence motion checks.
+
+Not verified at all:
+
+- Anything against a real model (no API key in the environment).
+- ACP with a real agent (Claude Code, Gemini CLI, Codex) — only the scripted fake.
+  The commands in `plugins-examples/acp-agents` come from secondary sources.
+- The UI's LSP client against a real language server — only the demo fake. `gopls`
+  is proven at the harness level only.
+- The tab workspace, comments and LSP UI on the live harness (only on demo data).
+- The Tauri shell (`cargo check` not run); Windows paths and process handling.
+- Independent review of the UI after the workspace, comments and v6 passes.
+
+## 4. Unfinished: the v6 pass (stopped midway)
+
+The last commit is a partial pass. It builds and renders, but it is not reviewed.
+
+Done in it: spacing-scale tokens, flipped surfaces (near-black window, lighter
+panels), chat header (project / request, working state, token total), composer with
+an orchestrator model selector, sidebar Search row.
+
+Not done (the full brief is section 6 below plus the owner's references):
+
+1. **Spacing audit.** A script that fails on off-scale paddings/gaps, row heights
+   outside the defined set, unequal insets and misaligned shared edges; run before
+   and after, to zero violations. Measured problems before the pass: insets of
+   5/6/7/8/9px, chat panel flush against the sidebar, 32px and 28px rows mixed,
+   Chat tab label hugging its right edge, different selected-row shapes.
+2. **Turn rail** (`components/chat/TurnRail.tsx` exists; check wiring): a marker per
+   request with a hover card (first lines, status) and click-to-scroll.
+3. **File view like the owner's reference:** breadcrumb row with back/forward and
+   view controls, editor edge to edge, file tree as a collapsible column on the
+   right of the file view (replacing the separate Files tab), file-type icons.
+4. **"Filter files"** field in the tree.
+5. **Markdown preview** with a Preview / Source toggle, centred measure.
+6. **Floating composer** with status chips when the Chat tab is not visible.
+7. **Design doc** section for v6 (scale, semantic tokens, row anatomy, new contrast
+   table) — not written.
+
+Defects visible in the partial build's screenshots:
+
+- No gap between the status glyph and the role name in delegation rows.
+- "Jump to latest" overlaps transcript text.
+- The read-only bar wraps to two lines in a narrow group.
+- The chat header overlaps the first transcript line when scrolled.
+
+Earlier known limitations still open: no drag-and-drop in the narrow single-strip
+mode; comment boxes are not reachable with Tab from inside the editor; the problems
+popover can extend over the next panel; Ctrl/Cmd+K is captured before Monaco;
+back/forward stay enabled on WebKit; ACP token counts are approximate; ACP agents
+run unsandboxed with auto-approved permissions.
+
+## 5. Suggested next steps, in order
+
+1. Finish v6 (section 4), then run an **independent review** of the result.
+2. **Live verification** on the real harness: workspace, comments (sent block
+   reaches the orchestrator), LSP with real `gopls` through the UI, an `[acp]` turn.
+3. Fix what the review and the live run find; re-shoot screenshots for the owner.
+4. Update `AGENTS.md` for the current structure; add CI for the new Go packages if
+   the workflow needs it (the Go workflow already runs `go test ./...`).
+5. Decide the fate of `apps/desktop/src-tauri` (never exercised in this work).
+6. Follow-ups from the specs: orchestrator context compaction; a "Changes" view for
+   agent edits; permission prompts for ACP agents.
+
+## 6. Owner's direction and references
+
+- Feel: a premium desktop agent tool; earlier versions were rejected as "AI slop".
+  The owner's latest notes: comments in code must be exact; paddings and margins
+  must be balanced; the code view should work like the referenced agent IDE (file
+  tabs, breadcrumb, tree on the right, floating composer).
+- References were screenshots supplied in chat (two desktop agent tools and an
+  open-source agent app). They lived in the session's temporary directory and are
+  **gone** — ask the owner to attach them again. Use them for structure, proportion
+  and finish only; do not copy another product's name, logo, icons or assets, and do
+  not add features the product does not have.
+- Decisions already made by the owner: own app (not a VS Code fork) with an embedded
+  Monaco editor; one orchestrator conversation per project; projects span several
+  folders; sub-agent transcripts are read-only.
+
+## 7. How the work was orchestrated
+
+Hub and spoke: one orchestrator session makes decisions, writes contracts, verifies
+and commits; sub-agents do bounded pieces of work in the shared working tree.
+
+| Role | Model | Used for |
+| --- | --- | --- |
+| Orchestrator | the session's own model | Specs, acceptance criteria, briefs, independent verification, commits, user updates |
+| Design + UI build | Opus | Anything in `packages/ui` where visual judgment matters |
+| Code + tests | Sonnet | Go packages, `packages/agent-client`, mechanical UI seams |
+| Research | Haiku | Web research with sources; never touches files |
+| Independent review | Opus (the owner asked for the orchestrator's own model next time) | Read-only review with the `better-interface` skill |
+
+The loop for each feature:
+
+1. **Look** — read the code and the owner's references; measure instead of guessing
+   (pixel samples, `getBoundingClientRect`).
+2. **Decide and write a contract** — a spec with exact API shapes and numbered
+   acceptance criteria, committed before any code.
+3. **Dispatch in parallel only on disjoint paths** — one agent per directory
+   (`apps/harness`, `packages/agent-client`, `packages/ui`). Agents never run git
+   write commands; each gets its own dev-server port.
+4. **Brief like a peer** — goal, files to read first, exact scope, constraints,
+   mandatory verification (commands, scripted checks, screenshots), and a short
+   final report format that separates "ran" from "did not run".
+5. **Verify independently** — re-run the gates, read key screenshots, run the live
+   stack for behaviour claims. Report sub-agent self-checks as theirs.
+6. **Commit per finished piece** — only when its gates pass; never mid-flight.
+7. **Review as a separate agent** — read-only, evidence-based, ranked findings; feed
+   them into the next build pass.
+8. **Show the owner** — screenshots plus what is still wrong or unproven.
+
+Practical notes:
+
+- A stop hook asks to commit whenever the tree is dirty. While an agent is mid-edit
+  the tree does not build; commit when the agent finishes.
+- Changing the shared `Bridge` interface breaks the UI type-check until the UI's demo
+  bridge implements the new methods. Sequence: client change → UI change.
+- UI agents regenerate and wipe their screenshot folders; copy what you want to keep
+  before sending it.
+- Late owner feedback can be forwarded to a running agent as a numbered addendum
+  instead of starting a new pass.
+- Sub-agents run long (20–70 minutes for UI passes). Keep the owner updated and send
+  interim screenshots from the agent's dev server.
+- The container is ephemeral: anything not pushed is lost, including the scratchpad
+  (screenshots, review reports, the shelved VS Code extension and fork recipe).

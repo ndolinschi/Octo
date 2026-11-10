@@ -5,10 +5,12 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
 | App / package | Path | Stack | Notes |
 | --- | --- | --- | --- |
 | **router** (Octo) | [`apps/router/`](./apps/router/) | Rust (crate `octo`) | HTTP proxy + autoroute |
-| **harness** | [`apps/harness/`](./apps/harness/) | Go 1.26+ | Project-based agent harness: `harness serve` bridge, orchestrator + sub-agents, per-project SQLite |
-| **desktop** | [`apps/desktop/`](./apps/desktop/) | Tauri 2 + React + Tailwind 4 | Shell for shared UI (talks to `harness serve`) |
-| **ui** | [`packages/ui/`](./packages/ui/) | React | Shell-agnostic screens (`@octo/ui`) |
-| **agent-client** | [`packages/agent-client/`](./packages/agent-client/) | TypeScript | Bridge HTTP + SSE client and project state reducer (`@octo/agent-client`) |
+| **harness** | [`apps/harness/`](./apps/harness/) | Go 1.26+ | Project-based agent harness: `harness serve` bridge, orchestrator + sub-agents, per-project SQLite, file API, plugins (language servers, ACP agents, tool servers) |
+| **desktop** | [`apps/desktop/`](./apps/desktop/) | Vite + React + Tailwind 4 (Tauri 2 shell) | Host for the shared UI (talks to `harness serve`; `?demo=1` for demo data) |
+| **ui** | [`packages/ui/`](./packages/ui/) | React | Shell-agnostic UI (`@octo/ui`): sidebar, tab workspace, chat, Monaco editor with comments and LSP |
+| **agent-client** | [`packages/agent-client/`](./packages/agent-client/) | TypeScript | Bridge HTTP + SSE client, state reducer, message-port bridge, file/plugin/LSP methods (`@octo/agent-client`) |
+
+**Current state and next steps:** [`docs/superpowers/HANDOVER.md`](./docs/superpowers/HANDOVER.md).
 
 Future **web** host: [`apps/web/`](./apps/web/) (stub). Do not invent other shared packages until something is actually shared twice.
 
