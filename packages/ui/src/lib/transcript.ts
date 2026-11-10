@@ -1,0 +1,60 @@
+import type { ContentBlock, Message } from "@octo/agent-client";
+import { SPAWN_TOOL } from "./tools";
+
+export type ToolUse = Extract<ContentBlock, { type: "tool_use" }>;
+
+export type TranscriptItem =
+  | { kind: "text"; key: string; text: string }
+  | { kind: "tools"; key: string; uses: ToolUse[] }
+  | { kind: "delegations"; key: string; uses: ToolUse[] };
+
+export type Turn = {
+  key: string;
+  prompt: Message | null;
+  items: TranscriptItem[];
+};
+
+function userText(message: Message): string | null {
+  const parts = message.content.flatMap((b) => (b.type === "text" ? [b.text] : []));
+  return parts.length ? parts.join("\n\n") : null;
+}
+
+export function promptText(message: Message): string {
+  return userText(message) ?? "";
+}
+
+export function buildTurns(messages: Message[]): Turn[] {
+  const turns: Turn[] = [];
+  let current: Turn | null = null;
+
+  for (const message of messages) {
+    if (message.role === "user") {
+      if (userText(message) === null) continue;
+      current = { key: `t${message.id}`, prompt: message, items: [] };
+      turns.push(current);
+      continue;
+    }
+    if (!current) {
+      current = { key: `t0-${message.id}`, prompt: null, items: [] };
+      turns.push(current);
+    }
+    const items = current.items;
+    message.content.forEach((block, i) => {
+      const key = `${message.id}.${i}`;
+      if (block.type === "text") {
+        if (block.text.trim()) items.push({ kind: "text", key, text: block.text });
+        return;
+      }
+      if (block.type !== "tool_use") return;
+      const kind = block.name === SPAWN_TOOL ? "delegations" : "tools";
+      const last = items[items.length - 1];
+      const sameMessageGroup = last?.kind === "delegations" && last.key.startsWith(`${message.id}.`);
+      if (last && last.kind === kind && (kind === "tools" || sameMessageGroup)) {
+        last.uses.push(block);
+      } else {
+        items.push({ kind, key, uses: [block] });
+      }
+    });
+  }
+  return turns;
+}

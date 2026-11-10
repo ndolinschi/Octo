@@ -1,8 +1,2 @@
-:root {
-  color: #e8e6e3;
-  background-color: #121110;
-}
-
-body {
-  margin: 0;
-}
+@import "tailwindcss";
+@import "../../../packages/ui/src/styles.css";

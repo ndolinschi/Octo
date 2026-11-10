@@ -1,62 +1,351 @@
-.octo-app {
-  font-family:
-    system-ui,
-  -apple-system,
-    Segoe UI,
-    Roboto,
-    sans-serif;
-  max-width: 40rem;
-  margin: 2rem auto;
-  padding: 0 1.5rem;
-  color: #e8e6e3;
+/* Octo design tokens. Hosts must `@import "tailwindcss"` before this file. */
+@source "./";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --octo-bg: #111113;
+  --octo-sidebar: #0b0b0d;
+  --octo-raised: #18181b;
+  --octo-overlay: #1c1c20;
+  --octo-inset: #0d0d0f;
+  --octo-hover: rgb(255 255 255 / 0.045);
+  --octo-active: rgb(255 255 255 / 0.075);
+  --octo-line: rgb(255 255 255 / 0.075);
+  --octo-line-strong: rgb(255 255 255 / 0.13);
+  --octo-fg: #ededf0;
+  --octo-fg-2: #a5a5ae;
+  --octo-fg-3: #7f7f89;
+  --octo-accent: oklch(0.74 0.14 285);
+  --octo-accent-strong: oklch(0.66 0.17 285);
+  --octo-accent-fg: #0d0b16;
+  --octo-accent-soft: oklch(0.74 0.14 285 / 0.14);
+  --octo-ok: oklch(0.76 0.13 155);
+  --octo-err: oklch(0.72 0.15 25);
+  --octo-err-soft: oklch(0.72 0.15 25 / 0.1);
+  --octo-warn: oklch(0.8 0.12 80);
+  --octo-tier-fast: oklch(0.76 0.09 225);
+  --octo-tier-balanced: oklch(0.8 0.09 78);
+  --octo-tier-deep: oklch(0.74 0.1 350);
+  --octo-user-bubble: #222227;
+  --octo-code-bg: #0c0c0e;
+  --octo-scrim: rgb(0 0 0 / 0.55);
+  --octo-shadow-pop: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px -8px rgb(0 0 0 / 0.6),
+    0 2px 6px rgb(0 0 0 / 0.35);
 }
 
-.octo-app h1 {
-  font-size: 1.75rem;
+:root[data-theme="light"] {
+  color-scheme: light;
+  --octo-bg: #fbfbfa;
+  --octo-sidebar: #f3f3f1;
+  --octo-raised: #ffffff;
+  --octo-overlay: #ffffff;
+  --octo-inset: #f5f5f3;
+  --octo-hover: rgb(0 0 0 / 0.04);
+  --octo-active: rgb(0 0 0 / 0.065);
+  --octo-line: rgb(0 0 0 / 0.08);
+  --octo-line-strong: rgb(0 0 0 / 0.14);
+  --octo-fg: #18181b;
+  --octo-fg-2: #52525b;
+  --octo-fg-3: #6b6b75;
+  --octo-accent: oklch(0.52 0.19 285);
+  --octo-accent-strong: oklch(0.46 0.2 285);
+  --octo-accent-fg: #ffffff;
+  --octo-accent-soft: oklch(0.52 0.19 285 / 0.1);
+  --octo-ok: oklch(0.52 0.13 155);
+  --octo-err: oklch(0.53 0.18 25);
+  --octo-err-soft: oklch(0.53 0.18 25 / 0.07);
+  --octo-warn: oklch(0.58 0.13 70);
+  --octo-tier-fast: oklch(0.5 0.11 235);
+  --octo-tier-balanced: oklch(0.54 0.11 65);
+  --octo-tier-deep: oklch(0.5 0.13 350);
+  --octo-user-bubble: #efefec;
+  --octo-code-bg: #f6f6f4;
+  --octo-scrim: rgb(20 20 24 / 0.32);
+  --octo-shadow-pop: 0 12px 32px -10px rgb(0 0 0 / 0.18), 0 2px 6px rgb(0 0 0 / 0.06);
+}
+
+@theme inline {
+  --color-bg: var(--octo-bg);
+  --color-sidebar: var(--octo-sidebar);
+  --color-raised: var(--octo-raised);
+  --color-overlay: var(--octo-overlay);
+  --color-inset: var(--octo-inset);
+  --color-hover: var(--octo-hover);
+  --color-active: var(--octo-active);
+  --color-line: var(--octo-line);
+  --color-line-strong: var(--octo-line-strong);
+  --color-fg: var(--octo-fg);
+  --color-fg-2: var(--octo-fg-2);
+  --color-fg-3: var(--octo-fg-3);
+  --color-accent: var(--octo-accent);
+  --color-accent-strong: var(--octo-accent-strong);
+  --color-accent-fg: var(--octo-accent-fg);
+  --color-accent-soft: var(--octo-accent-soft);
+  --color-ok: var(--octo-ok);
+  --color-err: var(--octo-err);
+  --color-err-soft: var(--octo-err-soft);
+  --color-warn: var(--octo-warn);
+  --color-tier-fast: var(--octo-tier-fast);
+  --color-tier-balanced: var(--octo-tier-balanced);
+  --color-tier-deep: var(--octo-tier-deep);
+  --color-user-bubble: var(--octo-user-bubble);
+  --color-code-bg: var(--octo-code-bg);
+  --color-scrim: var(--octo-scrim);
+  --shadow-pop: var(--octo-shadow-pop);
+}
+
+@theme {
+  --font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14.5px;
+  --text-base--line-height: 24px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --spacing-measure: 720px;
+  --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-caret: caret 1s steps(2, start) infinite;
+  --animate-fade-in: fade-in 140ms ease-out;
+  --animate-pop-in: pop-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in oklch, var(--octo-accent) 55%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 4px color-mix(in oklch, var(--octo-accent) 0%, transparent);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes caret {
+    to {
+      visibility: hidden;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.985);
+    }
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--octo-bg);
+    color: var(--octo-fg);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 20px;
+    font-feature-settings: "cv11", "ss01", "ss03";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--octo-accent) 32%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--octo-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button {
+    cursor: default;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--octo-line-strong) transparent;
+  }
+}
+
+@utility shimmer-text {
+  background-image: linear-gradient(
+    90deg,
+    var(--octo-fg-2) 0%,
+    var(--octo-fg-2) 40%,
+    var(--octo-fg) 50%,
+    var(--octo-fg-2) 60%,
+    var(--octo-fg-2) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: var(--animate-shimmer);
+}
+
+@utility scroll-quiet {
+  scrollbar-gutter: stable;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .shimmer-text {
+    animation: none;
+    color: var(--octo-fg-2);
+    background: none;
+  }
+}
+
+/* Prose (assistant markdown) */
+.octo-prose {
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: var(--octo-fg);
+  overflow-wrap: anywhere;
+}
+.octo-prose > :first-child {
+  margin-top: 0;
+}
+.octo-prose > :last-child {
+  margin-bottom: 0;
+}
+.octo-prose p,
+.octo-prose ul,
+.octo-prose ol,
+.octo-prose table,
+.octo-prose blockquote {
+  margin: 0 0 0.85em;
+}
+.octo-prose h1,
+.octo-prose h2,
+.octo-prose h3,
+.octo-prose h4 {
   font-weight: 600;
-  margin: 0 0 0.25rem;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  margin: 1.4em 0 0.5em;
+}
+.octo-prose h1 {
+  font-size: 1.3em;
+}
+.octo-prose h2 {
+  font-size: 1.15em;
+}
+.octo-prose h3,
+.octo-prose h4 {
+  font-size: 1em;
+}
+.octo-prose ul,
+.octo-prose ol {
+  padding-left: 1.35em;
+}
+.octo-prose ul {
+  list-style: disc;
+}
+.octo-prose ol {
+  list-style: decimal;
+}
+.octo-prose li {
+  margin: 0.2em 0;
+  padding-left: 0.15em;
+}
+.octo-prose li::marker {
+  color: var(--octo-fg-3);
+}
+.octo-prose strong {
+  font-weight: 600;
+}
+.octo-prose a {
+  color: var(--octo-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--octo-accent) 40%, transparent);
+  text-underline-offset: 2px;
+}
+.octo-prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 0.12em 0.36em;
+  border-radius: 4px;
+  background: var(--octo-hover);
+  border: 1px solid var(--octo-line);
+}
+.octo-prose blockquote {
+  border-left: 2px solid var(--octo-line-strong);
+  padding-left: 0.9em;
+  color: var(--octo-fg-2);
+}
+.octo-prose hr {
+  border: 0;
+  border-top: 1px solid var(--octo-line);
+  margin: 1.4em 0;
+}
+.octo-prose table {
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+.octo-prose th,
+.octo-prose td {
+  text-align: left;
+  padding: 7px 14px 7px 0;
+  border-bottom: 1px solid var(--octo-line);
+  vertical-align: top;
+}
+.octo-prose th {
+  font-weight: 500;
+  color: var(--octo-fg-2);
+  font-size: 12px;
+  border-bottom-color: var(--octo-line-strong);
+}
+.octo-prose tr:last-child td {
+  border-bottom: 0;
 }
 
-.octo-tagline {
-  margin: 0 0 1.5rem;
-  color: #9a9590;
-}
-
-.octo-panel {
-  background: #1c1b1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-}
-
-.octo-panel dl {
-  margin: 0 0 1rem;
-}
-
-.octo-panel dl > div {
-  display: grid;
-  grid-template-columns: 7rem 1fr;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.octo-panel dt {
-  color: #9a9590;
-  margin: 0;
-}
-
-.octo-panel dd {
-  margin: 0;
-}
-
-.octo-panel code {
-  font-size: 0.9rem;
-  word-break: break-all;
-}
-
-.octo-hint {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #b8b4af;
-  line-height: 1.45;
+.octo-prose[data-streaming] > :last-child:not(ul, ol, pre, table, div)::after,
+.octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--octo-accent);
+  animation: var(--animate-caret);
 }
