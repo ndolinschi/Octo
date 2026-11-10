@@ -102,7 +102,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	baseCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
 	srv := &http.Server{
-		Handler:           bridge.New(svc, notes),
+		Handler:           bridge.New(svc, notes, project.NewFiles(store, hub)),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}

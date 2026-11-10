@@ -21,14 +21,16 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": msg}})
 }
 
-// writeErr maps service errors to the API's 400 / 404 / 409 / 500 shape.
+// writeErr maps service errors to the API's 400 / 404 / 409 / 413 / 415 / 500 shape.
 func writeErr(w http.ResponseWriter, err error) {
 	var pe *project.Error
 	if errors.As(err, &pe) {
 		status := map[project.Kind]int{
-			project.KindInvalid:  http.StatusBadRequest,
-			project.KindNotFound: http.StatusNotFound,
-			project.KindConflict: http.StatusConflict,
+			project.KindInvalid:     http.StatusBadRequest,
+			project.KindNotFound:    http.StatusNotFound,
+			project.KindConflict:    http.StatusConflict,
+			project.KindTooLarge:    http.StatusRequestEntityTooLarge,
+			project.KindUnsupported: http.StatusUnsupportedMediaType,
 		}[pe.Kind]
 		writeError(w, status, pe.Code, pe.Message)
 		return

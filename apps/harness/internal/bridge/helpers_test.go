@@ -60,7 +60,7 @@ func newEnv(t *testing.T, gate chan struct{}) *env {
 		_ = orch.Shutdown(ctx)
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: config.DefaultMaxDepth})
-	srv := httptest.NewServer(bridge.New(svc, notes))
+	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub)))
 	t.Cleanup(srv.Close)
 	return &env{url: srv.URL, gate: gate}
 }

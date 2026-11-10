@@ -14,8 +14,15 @@ const (
 	ToolStarted    = "tool.started"
 	ToolFinished   = "tool.finished"
 	NoteChanged    = "note.changed"
+	FileChanged    = "file.changed"
 	ProjectUpdated = "project.updated"
 	TurnFinished   = "turn.finished"
+)
+
+// Sources of a file.changed event.
+const (
+	SourceUser  = "user"
+	SourceAgent = "agent"
 )
 
 const subBuffer = 2048

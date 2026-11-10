@@ -18,11 +18,12 @@ const (
 type Server struct {
 	svc   *project.Service
 	notes *project.Notes
+	files *project.Files
 	ping  time.Duration
 }
 
-func New(svc *project.Service, notes *project.Notes) http.Handler {
-	s := &Server{svc: svc, notes: notes, ping: pingInterval}
+func New(svc *project.Service, notes *project.Notes, files *project.Files) http.Handler {
+	s := &Server{svc: svc, notes: notes, files: files, ping: pingInterval}
 	return cors(s.routes())
 }
 
@@ -44,6 +45,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/projects/{pid}/notes", s.createNote)
 	mux.HandleFunc("PATCH /v1/projects/{pid}/notes/{nid}", s.updateNote)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/notes/{nid}", s.deleteNote)
+	mux.HandleFunc("GET /v1/projects/{pid}/files", s.listFiles)
+	mux.HandleFunc("GET /v1/projects/{pid}/files/content", s.readFile)
+	mux.HandleFunc("PUT /v1/projects/{pid}/files/content", s.writeFile)
 	mux.HandleFunc("GET /v1/projects/{pid}/events", s.events)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such route")
@@ -59,7 +63,7 @@ func cors(next http.Handler) http.Handler {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Add("Vary", "Origin")
-			h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			h.Set("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID")
 			h.Set("Access-Control-Max-Age", "600")
 		}

@@ -54,6 +54,10 @@ func TestScriptSteps(t *testing.T) {
 			`{"role":"user","content":"[nested] look"},{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"list_dir","input":{}}]},` +
 			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"a","content":"x.go"}]}]}`,
 			[]string{"read_file"}, "tool_use"},
+		{"marked sub-agent writes second", `{"model":"m","system":"Role: Code explorer","tools":[{"name":"list_dir"},{"name":"read_file"},{"name":"write_file"}],"messages":[` +
+			`{"role":"user","content":"go [write]"},{"role":"assistant","content":[{"type":"tool_use","id":"a","name":"list_dir","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"a","content":"x.go"}]}]}`,
+			[]string{"write_file"}, "tool_use"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			msg := post(t, tc.body)

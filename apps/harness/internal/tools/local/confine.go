@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+// Resolve returns the absolute path of rel under root, rejecting absolute
+// paths, traversal and symlink escape. An empty rel is an error.
+func Resolve(root, rel string) (string, error) { return resolveUnderWorkspace(root, rel) }
+
 func resolveUnderWorkspace(workspace, rel string) (string, error) {
 	if rel == "" {
 		return "", fmt.Errorf("path required")

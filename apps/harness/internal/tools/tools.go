@@ -84,3 +84,11 @@ func (r *Registry) All() []Def {
 	slices.SortFunc(out, func(a, b Def) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
+
+// Decorate replaces the named tool's handler with wrap(handler); unknown names are ignored.
+func (r *Registry) Decorate(name string, wrap func(Handler) Handler) {
+	if d, ok := r.byName[name]; ok {
+		d.Handle = wrap(d.Handle)
+		r.byName[name] = d
+	}
+}

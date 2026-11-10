@@ -57,7 +57,17 @@ func subAgentReply(r *request) reply {
 		})
 	}
 	nested := len(r.Messages) > 0 && strings.Contains(r.Messages[0].text(), "[nested]")
+	marked := len(r.Messages) > 0 && strings.Contains(r.Messages[0].text(), "[write]")
 	switch {
+	case marked && r.hasTool("write_file"):
+		steps = append(steps, func() reply {
+			return reply{
+				Text: "I will leave a short note in the project folder.",
+				Calls: []call{{Name: "write_file", Input: map[string]any{
+					"path": "octo-demo-note.md", "content": "# Note from the " + role + "\n\nWritten by the mock model.\n",
+				}}},
+			}
+		})
 	case role == "Systems architect" && r.hasTool("spawn_agent") && !nested:
 		steps = append(steps, func() reply {
 			return reply{

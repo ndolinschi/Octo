@@ -8,6 +8,8 @@ const (
 	KindInvalid Kind = iota + 1
 	KindNotFound
 	KindConflict
+	KindTooLarge
+	KindUnsupported
 )
 
 // Error is a caller-visible failure with a stable machine code.
@@ -29,4 +31,16 @@ func notFound(what string) *Error {
 
 func turnInProgress(msg string) *Error {
 	return &Error{Kind: KindConflict, Code: "turn_in_progress", Message: msg}
+}
+
+func fileChanged() *Error {
+	return &Error{Kind: KindConflict, Code: "file_changed", Message: "file changed on disk"}
+}
+
+func fileTooLarge(msg string) *Error {
+	return &Error{Kind: KindTooLarge, Code: "file_too_large", Message: msg}
+}
+
+func binaryFile() *Error {
+	return &Error{Kind: KindUnsupported, Code: "binary_file", Message: "file is not UTF-8 text"}
 }
