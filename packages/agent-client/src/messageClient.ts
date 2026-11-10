@@ -95,6 +95,9 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     createNote: (id, input) => call("createNote", [id, input]),
     updateNote: (id, noteId, patch) => call("updateNote", [id, noteId, patch]),
     deleteNote: (id, noteId) => call("deleteNote", [id, noteId]),
+    listFiles: (id, folder, path) => call("listFiles", [id, folder, path]),
+    readFile: (id, folder, path) => call("readFile", [id, folder, path]),
+    writeFile: (id, input) => call("writeFile", [id, input]),
     subscribe,
   };
 

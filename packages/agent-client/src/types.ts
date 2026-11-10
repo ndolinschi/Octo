@@ -112,6 +112,24 @@ export type TurnFinishedEvent = {
   error: string | null;
 };
 
+export type FileEntry = { name: string; path: string; type: "file" | "dir"; size: number };
+export type FileStat = { folder: string; path: string; size: number; mtime: string };
+export type FileContent = FileStat & { content: string };
+export type WriteFileInput = {
+  folder: string;
+  path: string;
+  content: string;
+  expected_mtime?: string;
+};
+
+export type FileChangedEvent = {
+  type: "file.changed";
+  seq: number;
+  folder: string;
+  path: string;
+  source: "user" | "agent";
+};
+
 export type BridgeEvent =
   | AgentCreatedEvent
   | AgentUpdatedEvent
@@ -121,6 +139,7 @@ export type BridgeEvent =
   | ToolFinishedEvent
   | NoteChangedEvent
   | ProjectUpdatedEvent
+  | FileChangedEvent
   | TurnFinishedEvent;
 
 export type BridgeEventType = BridgeEvent["type"];

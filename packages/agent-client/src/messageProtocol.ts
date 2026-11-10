@@ -44,6 +44,9 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "createNote",
   "updateNote",
   "deleteNote",
+  "listFiles",
+  "readFile",
+  "writeFile",
 ];
 
 type Rec = Record<string, unknown>;

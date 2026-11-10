@@ -45,7 +45,7 @@ function fakeBridge(): FakeBridge {
   const names = [
     "health", "getConfig", "listProjects", "createProject", "getProject", "updateProject",
     "deleteProject", "listAgents", "getAgent", "listMessages", "sendMessage", "cancelTurn",
-    "listNotes", "createNote", "updateNote", "deleteNote",
+    "listNotes", "createNote", "updateNote", "deleteNote", "listFiles", "readFile", "writeFile",
   ];
   for (const name of names) {
     (self as unknown as Record<string, unknown>)[name] = async (...args: unknown[]) => {
@@ -95,6 +95,9 @@ test("every Bridge method round-trips args and return value", async () => {
     ["createNote", b.createNote("p", { title: "t", content: "c" }), ["p", { title: "t", content: "c" }]],
     ["updateNote", b.updateNote("p", "n", { title: "t" }), ["p", "n", { title: "t" }]],
     ["deleteNote", b.deleteNote("p", "n"), ["p", "n"]],
+    ["listFiles", b.listFiles("p", "f", "a/b"), ["p", "f", "a/b"]],
+    ["readFile", b.readFile("p", "f", "a/b"), ["p", "f", "a/b"]],
+    ["writeFile", b.writeFile("p", { folder: "f", path: "a", content: "c", expected_mtime: "t" }), ["p", { folder: "f", path: "a", content: "c", expected_mtime: "t" }]],
   ];
   for (const [name, promise, args] of calls) {
     assert.deepEqual(await promise, { name, args });

@@ -108,6 +108,12 @@ test("turn.finished sets lastTurn and clears transient state", () => {
   assert.deepEqual(s.lastTurn, { status: "failed", error: "boom" });
 });
 
+test("file.changed only advances lastSeq", () => {
+  const s0 = emptyProjectState();
+  const s1 = applyEvent(s0, { type: "file.changed", seq: 7, folder: "f", path: "a", source: "user" });
+  assert.deepEqual(s1, { ...s0, lastSeq: 7 });
+});
+
 test("project.updated only advances lastSeq; lastSeq never decreases", () => {
   let s = emptyProjectState();
   s = applyEvent(s, { type: "turn.finished", seq: 10, status: "completed", error: null });

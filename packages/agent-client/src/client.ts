@@ -3,11 +3,15 @@ import type {
   BridgeConfig,
   BridgeEvent,
   BridgeEventType,
+  FileContent,
+  FileEntry,
+  FileStat,
   Message,
   Note,
   Project,
   ProjectInput,
   ProjectSummary,
+  WriteFileInput,
 } from "./types";
 
 export class BridgeError extends Error {
@@ -71,6 +75,9 @@ export interface Bridge {
     patch: { title?: string; content?: string },
   ): Promise<Note>;
   deleteNote(projectId: string, noteId: string): Promise<void>;
+  listFiles(projectId: string, folder: string, path: string): Promise<FileEntry[]>;
+  readFile(projectId: string, folder: string, path: string): Promise<FileContent>;
+  writeFile(projectId: string, input: WriteFileInput): Promise<FileStat>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
 
@@ -89,6 +96,7 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "tool.finished",
   "note.changed",
   "project.updated",
+  "file.changed",
   "turn.finished",
 ];
 
@@ -170,6 +178,8 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
   }
 
   const p = (id: string) => `/v1/projects/${encodeURIComponent(id)}`;
+  const fileQuery = (folder: string, path: string) =>
+    `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}`;
 
   return {
     health: () => request("GET", "/health") as Promise<HealthResponse>,
@@ -201,6 +211,12 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
     deleteNote: async (id, noteId) => {
       await request("DELETE", `${p(id)}/notes/${encodeURIComponent(noteId)}`);
     },
+    listFiles: (id, folder, path) =>
+      unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path)}`), "entries"),
+    readFile: (id, folder, path) =>
+      request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
+    writeFile: (id, input) =>
+      request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
     subscribe(id, handlers) {
       const Ctor = options.EventSource ?? globalEventSource();
       const source = new Ctor(`${base}${p(id)}/events`);

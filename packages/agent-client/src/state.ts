@@ -108,6 +108,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         lastTurn: { status: event.status, error: event.error },
       };
     case "project.updated":
+    case "file.changed":
       return state;
   }
 }

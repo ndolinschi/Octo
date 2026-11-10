@@ -52,6 +52,10 @@ test("request shapes and envelope unwrapping", async () => {
     { run: (b) => b.createNote("p", { title: "t", content: "c" }), reply: '{"id":"n"}', status: 201, method: "POST", path: "/v1/projects/p/notes", body: { title: "t", content: "c" }, result: { id: "n" } },
     { run: (b) => b.updateNote("p", "n", { title: "t2" }), reply: '{"id":"n"}', method: "PATCH", path: "/v1/projects/p/notes/n", body: { title: "t2" }, result: { id: "n" } },
     { run: (b) => b.deleteNote("p", "n"), reply: "", status: 204, method: "DELETE", path: "/v1/projects/p/notes/n", result: undefined },
+    { run: (b) => b.listFiles("p", "src dir", "a b/c.txt"), reply: '{"entries":[{"name":"c.txt"}]}', method: "GET", path: "/v1/projects/p/files?folder=src%20dir&path=a%20b%2Fc.txt", result: [{ name: "c.txt" }] },
+    { run: (b) => b.listFiles("p", "src", ""), reply: '{"entries":[]}', method: "GET", path: "/v1/projects/p/files?folder=src&path=", result: [] },
+    { run: (b) => b.readFile("p", "src", "x/y z.ts"), reply: '{"content":"hi","mtime":"t"}', method: "GET", path: "/v1/projects/p/files/content?folder=src&path=x%2Fy%20z.ts", result: { content: "hi", mtime: "t" } },
+    { run: (b) => b.writeFile("p", { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }), reply: '{"size":1,"mtime":"t2"}', method: "PUT", path: "/v1/projects/p/files/content", body: { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }, result: { size: 1, mtime: "t2" } },
   ];
   for (const c of cases) {
     const { bridge, calls } = bridgeWith(c.status ?? 200, c.reply);
@@ -71,6 +75,16 @@ test("error body maps to BridgeError", async () => {
     assert.equal(e.status, 409);
     assert.equal(e.code, "turn_in_progress");
     assert.equal(e.message, "busy");
+    return true;
+  });
+});
+
+test("writeFile 409 maps to BridgeError file_changed", async () => {
+  const { bridge } = bridgeWith(409, '{"error":{"code":"file_changed","message":"changed on disk"}}');
+  await assert.rejects(bridge.writeFile("p", { folder: "f", path: "a", content: "x", expected_mtime: "t" }), (e: unknown) => {
+    assert.ok(e instanceof BridgeError);
+    assert.equal(e.status, 409);
+    assert.equal(e.code, "file_changed");
     return true;
   });
 });
@@ -153,5 +167,17 @@ test("subscribe dispatches named events, ignores malformed, unsubscribes", () =>
 test("subscribe registers every event type", () => {
   const bridge = createHttpBridge({ baseUrl: "http://h", EventSource: FakeEventSource });
   bridge.subscribe("p", { onEvent: () => {} });
-  assert.equal(FakeEventSource.last.listeners.size, 9);
+  assert.equal(FakeEventSource.last.listeners.size, 10);
+});
+
+test("subscribe delivers file.changed", () => {
+  const bridge = createHttpBridge({ baseUrl: "http://h", EventSource: FakeEventSource });
+  const events: BridgeEvent[] = [];
+  bridge.subscribe("p", { onEvent: (e) => events.push(e) });
+  FakeEventSource.last.listeners.get("file.changed")?.({
+    data: '{"type":"file.changed","seq":4,"folder":"src","path":"a.ts","source":"agent"}',
+  });
+  assert.deepEqual(events, [
+    { type: "file.changed", seq: 4, folder: "src", path: "a.ts", source: "agent" },
+  ]);
 });
