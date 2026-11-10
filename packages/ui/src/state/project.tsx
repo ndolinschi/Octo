@@ -64,6 +64,8 @@ type ProjectValue = {
   createNote(input: { title: string; content: string }): Promise<void>;
   updateNote(id: string, patch: { title?: string; content?: string }): Promise<void>;
   deleteNote(id: string): Promise<void>;
+  /** Observe raw bridge events on this project's existing subscription (no extra connection). */
+  onEvent(listener: (event: BridgeEvent) => void): () => void;
 };
 
 const ProjectContext = createContext<ProjectValue | null>(null);
@@ -75,6 +77,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
   const [loadError, setLoadError] = useState<string | null>(null);
   const [live, setLive] = useState<LiveStatus>("connecting");
   const loaded = useRef(new Set<string>());
+  const observers = useRef(new Set<(event: BridgeEvent) => void>());
 
   const fetchMessages = useCallback(
     async (agentId: string) => {
@@ -119,6 +122,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         dispatch({ type: "event", event });
         if (event.type === "project.updated") setProject(event.project);
         if (event.type === "turn.finished" || event.type === "project.updated") void refreshProjects();
+        for (const observe of observers.current) observe(event);
       },
     });
     void syncAll();
@@ -164,6 +168,12 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       deleteNote: async (id) => {
         await bridge.deleteNote(projectId, id);
         dispatch({ type: "notes", notes: state.notes.filter((n) => n.id !== id) });
+      },
+      onEvent: (listener) => {
+        observers.current.add(listener);
+        return () => {
+          observers.current.delete(listener);
+        };
       },
     }),
     [projectId, project, loadError, state, live, running, syncAll, fetchMessages, bridge, refreshProjects],

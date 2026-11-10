@@ -1,3 +1,4 @@
+import { ORBIT_WRITES } from "./writes";
 import { act, delegate, say, turn, type Ctx } from "./runtime";
 
 const AUDIT = `**Breaking changes that affect Orbit (0.76 → 0.80):**
@@ -79,8 +80,8 @@ export async function orbitLive(ctx: Ctx): Promise<void> {
           task: "Upgrade react-native to 0.80.x with the upgrade helper diff. Raise Android minSdk to 24, migrate metro.config.js, and pin react-native-maps to 1.20. Keep the old-architecture interop for @orbit/native-camera. Build both platforms and run the suite.",
           run: async (cc, id) => {
             await act(cc, id, [{ name: "bash", input: { command: "npx react-native upgrade 0.80.1" }, result: "Applied 41 file changes", ms: 9000 }]);
-            await act(cc, id, [{ name: "write_file", input: { path: "android/build.gradle" }, result: "updated minSdkVersion → 24", ms: 1500 }]);
-            await act(cc, id, [{ name: "write_file", input: { path: "metro.config.js" }, result: "rewrote with @react-native/metro-config", ms: 1500 }]);
+            await act(cc, id, [{ name: "write_file", input: { path: "android/build.gradle" }, result: "updated minSdkVersion → 24", ms: 1500, content: ORBIT_WRITES.gradle }]);
+            await act(cc, id, [{ name: "write_file", input: { path: "metro.config.js" }, result: "rewrote with @react-native/metro-config", ms: 1500, content: ORBIT_WRITES.metro }]);
             await act(cc, id, [{ name: "bash", input: { command: "cd ios && pod install" }, result: "Pod installation complete! 87 dependencies", ms: 14000 }]);
             await act(cc, id, [{ name: "bash", input: { command: "yarn jest --ci --silent" }, result: "Tests: 9 failed, 412 passed", ms: 16000 }]);
             const r = "Upgraded to 0.80.1; both platforms build. Test results are unchanged from baseline (same 9 pre-existing failures).";

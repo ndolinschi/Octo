@@ -85,9 +85,9 @@ Radius: `xs 4` inline code · `sm 6` buttons, rows, tabs · `md 8` user message,
   `model · tier · duration · status` muted on the right (wraps beneath on narrow). Failed agents
   show the error in `err` plus "Ask the orchestrator to retry it." "Task brief" collapsed.
   Bottom: bordered `raised` read-only bar with "Back to orchestrator".
-- **Right pane.** Tab strip with "Agents" and "Notes" (small leading icon, active = `raised`
+- **Right pane.** Tab strip with "Agents", "Notes" and "Files" (small leading icon, active = `raised`
   fill, no close buttons). Agents tree: one line per agent; the root shows a glyph only when not idle.
-  Notes: quiet list with inline add/edit/delete.
+  Notes: quiet list with inline add/edit/delete. Files: see *Code pane* below.
 - **Composer.** One `raised` row: textarea, muted model name, round send button (stop square while
   running). Placeholder "Message the orchestrator" when empty, "Send follow-up" once there are
   messages; the accessible name is always "Message the orchestrator". Focus = `focus` edge.
@@ -100,6 +100,38 @@ Radius: `xs 4` inline code · `sm 6` buttons, rows, tabs · `md 8` user message,
 - **Empty project.** Project name, one line, three plain suggestion rows, top-aligned.
 - **Motion.** Spinner and streaming caret only; both stop under `prefers-reduced-motion`, and
   jump-to-latest scrolls instantly then.
+
+### Code pane (Files tab)
+
+Spec: [`2026-11-10-code-pane-design.md`](./2026-11-10-code-pane-design.md). Code: `components/files/`,
+`state/code.tsx` (open files, tree cache, save/conflict/live refresh), `lib/files.ts`.
+
+- **Resizable pane.** Docked pane has a 6px separator on its left edge (`role="separator"`, arrows ±16px,
+  Shift ±64, Home/End = min/max, double-click resets). Min 280px; the conversation keeps ≥400px.
+  Width persists (`octo.paneWidth`); unset + a file open on the Files tab = half the window.
+  Overlay (<1100px) stays as before: 320px, or `min(100%, 640px)` with a file open; not resizable.
+- **Tree.** One collapsible root per project folder (label, medium weight, `title` = absolute path; roots
+  start expanded), directories load on expand. Rows exactly like the agents tree: 28px, 14px indent per level,
+  12px chevron, 14px `fg-3` file/folder icon, truncating name with `title` = `folder/path`, selected = `active`.
+  Loading / "Couldn't load … Retry" / "Empty folder" rows in 12px `fg-3`. ARIA tree: arrows, ←/→ collapse/expand,
+  Home/End, Enter opens or toggles.
+- **Editor area.** Shown once a file is open. 40px tab strip with a bottom hairline: leading tree toggle,
+  then 28px tabs like the panel tabs (active = `raised`): name, 8px `fg-2` dot when modified, 12px close
+  (visible on the active tab, on hover elsewhere; the dot yields to it on hover). Middle-click closes,
+  ←/→/Home/End move, Delete closes, `title` = full path. Pane ≥600px wide: tree (220px, hairline right)
+  beside the editor, collapsible (`octo.filesTree`); narrower: tree and editor switch inside the editor area.
+  Closing a modified tab asks first (Dialog: Cancel / Discard changes).
+- **Notices.** One hairline-bounded line under the tab strip: "Changed on disk since you opened it."
+  + Reload from disk / Overwrite (409 on save); "Changed on disk." + Reload / keep (agent changed a modified
+  file); "Couldn't save: …" in `err` + Retry. Too-large / binary / open error: one line in place of the editor.
+- **Monaco.** Loaded only via `import()` (`components/files/monaco.ts`), workers bundled with `?worker`,
+  no CDN. 13/20 mono from the token stack, no minimap/rulers/sticky scroll/bracket colours, padding top 8.
+  Themes `octo-{dark,light}-{docked,overlay}`: background = pane surface, grey gutter/selection/guides,
+  syntax = grey ramp + three muted hues (keyword blue-grey, string sage, number sand), italic comments
+  (≥4.5:1). `Ctrl/Cmd+S` saves.
+- **Links.** read_file / write_file paths in tool details open the file (list_dir reveals the folder) in the
+  Files tab, opening the pane; omitted `folder` = first folder. Host `openFile` wins. No link without folders.
+- **Empty.** "No folders attached. Add one in project settings." + Project settings button.
 
 ## Principles
 
@@ -147,6 +179,7 @@ closes on navigation and Esc, and opening it closes the pane overlay so the two 
 | `chat` | ConversationView, Transcript (+UserPrompt, AssistantTurn, TurnFooter, TurnBanner), Markdown (+CodeBlock copy), ToolGroup, DelegationGroup/DelegationRow, Composer, ObserverBar, AgentHeader/Breadcrumb, StarterPrompts |
 | `agents` | AgentsPanel (ARIA tree) |
 | `notes` | NotesPanel (+NoteItem, NoteEditor) |
+| `files` | FilesPanel (+TabStrip, EditorBody, Notice), FileTree (ARIA tree), CodeEditor (Monaco wrapper), `buffers.ts` (models per file), `monaco.ts` (lazy chunk: Monaco, workers, themes) |
 | `project` | ProjectHeader, ProjectDialog (create + settings + delete), NoProjectsHero |
 
 `app/` holds `OctoApp` (props: `bridge`, `bridgeUrl`, `shell`, `demo?`), `AppShell` (sidebar
@@ -196,4 +229,6 @@ Routing: `lib/route.ts` — `#/p/{projectId}` and `#/p/{projectId}/a/{agentId}`.
 
 `?demo=1` → `createDemoBridge()` (in-memory `Bridge`): a finished project (parallel + nested
 delegations, tools, notes, table/code answer), a live project replaying a scripted turn, and an
-empty project. `?demo=empty` starts with no projects. Sending a message in demo runs a short scripted turn.
+empty project. Each folder has a small in-memory file tree (TS, Go, JSON, Markdown, CSS, one binary and
+one >2 MiB file; sample content is imported lazily); saves emit `file.changed`, and the live Orbit run's
+`write_file` calls change `android/build.gradle` and `metro.config.js` (agent `file.changed`). `?demo=empty` starts with no projects. Sending a message in demo runs a short scripted turn.

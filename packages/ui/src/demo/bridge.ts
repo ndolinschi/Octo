@@ -10,6 +10,7 @@ import {
 } from "@octo/agent-client";
 import { basename } from "../lib/format";
 import { atlasHistory } from "./atlas";
+import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
 import { genericTurn } from "./generic";
 import { orbitLive } from "./orbit";
 import type { Ctx } from "./runtime";
@@ -51,7 +52,7 @@ function makeProject(input: ProjectInput, createdAt: number): ProjectRecord {
     finished_at: null,
   };
   const folders = dedupeFolders(input.folders ?? []);
-  return {
+  const rec: ProjectRecord = {
     project: {
       id,
       name: input.name,
@@ -76,7 +77,10 @@ function makeProject(input: ProjectInput, createdAt: number): ProjectRecord {
     seq: 0,
     nextMessageId: 1,
     turn: null,
+    files: new Map(),
+    seeded: new Set(),
   };
+  return rec;
 }
 
 function dedupeFolders(folders: { path: string; label?: string }[]): Project["folders"] {
@@ -242,6 +246,21 @@ export function createDemoBridge(options: { seed?: DemoSeed } = {}): Bridge {
       const rec = get(id);
       rec.notes = rec.notes.filter((n) => n.id !== noteId);
       emit(rec, { type: "note.changed", note: null, note_id: noteId });
+    },
+    listFiles: async (id, folder, path) => {
+      await delay();
+      await ensureSeeded(get(id));
+      return listDemoFiles(get(id), folder, path);
+    },
+    readFile: async (id, folder, path) => {
+      await delay();
+      await ensureSeeded(get(id));
+      return readDemoFile(get(id), folder, path);
+    },
+    writeFile: async (id, input) => {
+      await delay();
+      await ensureSeeded(get(id));
+      return writeDemo(get(id), input);
     },
     subscribe(id, handlers) {
       const rec = records.get(id);

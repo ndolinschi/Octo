@@ -1,6 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { resolveFolder } from "../../lib/files";
+import { useOptionalCode } from "../../state/code";
 import { useHost } from "../../state/host";
 import { toolMeta, toolPath } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
@@ -116,31 +118,45 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
 
 function ToolDetail({ use }: { use: ToolUse }) {
   const ctx = useTranscript();
-  const { openFile } = useHost();
   const result = ctx.results.get(use.id);
-  const path = toolPath(use.name, use.input);
-  const folder = toolMeta(use.name, use.input).folder;
   return (
     <div className="overflow-hidden rounded-md bg-code-bg text-xs">
-      <ToolSection
-        label="Input"
-        body={formatInput(use)}
-        action={
-          openFile &&
-          path && (
-            <button
-              type="button"
-              aria-label={`Open ${path} in editor`}
-              onClick={() => openFile(path, folder || undefined)}
-              className="min-w-0 truncate rounded-sm font-mono text-fg-2 hover:underline focus-visible:underline"
-            >
-              {path}
-            </button>
-          )
-        }
-      />
+      <ToolSection label="Input" body={formatInput(use)} action={<PathLink use={use} />} />
       {result && <ToolSection label={result.is_error ? "Error" : "Result"} body={result.content} error={result.is_error} />}
     </div>
+  );
+}
+
+/**
+ * The path of a file tool call as a link: an embedding host's `openFile` wins; otherwise it
+ * opens the file (or, for list_dir, reveals the folder) in the Files tab. Only shown when
+ * there is somewhere to open it.
+ */
+function PathLink({ use }: { use: ToolUse }) {
+  const { openFile } = useHost();
+  const code = useOptionalCode();
+  const path = toolPath(use.name, use.input);
+  const folder = toolMeta(use.name, use.input).folder;
+  if (!path) return null;
+  const target = code ? resolveFolder(code.folders, folder || undefined) : null;
+  if (!openFile && !target) return null;
+  const dir = use.name === "list_dir";
+  const open = () => {
+    if (openFile) return openFile(path, folder || undefined);
+    if (!code || !target) return;
+    if (dir) code.revealDir(target, path);
+    else code.openFile(target, path);
+  };
+  return (
+    <button
+      type="button"
+      aria-label={dir && !openFile ? `Show ${path} in files` : `Open ${path} in editor`}
+      title={target ? `${target}/${path.replace(/^\.\/?/, "")}` : path}
+      onClick={open}
+      className="min-w-0 truncate rounded-sm font-mono text-fg-2 underline-offset-2 hover:text-fg hover:underline focus-visible:underline"
+    >
+      {path}
+    </button>
   );
 }
 

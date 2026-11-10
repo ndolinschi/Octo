@@ -1,12 +1,14 @@
-import { NotebookText, Workflow } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { FolderTree, NotebookText, Workflow } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { cn } from "../lib/cn";
 import { useEscape, useMediaQuery } from "../lib/hooks";
 import { navigate } from "../lib/route";
 import { readPref, writePref } from "../lib/storage";
 import { useApp } from "../state/app";
+import { CodeProvider, useCode } from "../state/code";
 import { useProject } from "../state/project";
 import { AgentsPanel } from "../components/agents/AgentsPanel";
+import { FilesPanel } from "../components/files/FilesPanel";
 import { ConversationView } from "../components/chat/ConversationView";
 import { NotesPanel } from "../components/notes/NotesPanel";
 import { Button } from "../components/primitives/Button";
@@ -17,8 +19,30 @@ import { ProjectHeader, type PanelTab } from "../components/project/ProjectHeade
 /** At this width the side panel sits beside the conversation; below it, it overlays it. */
 const DOCK_QUERY = "(min-width: 1100px)";
 
+/** Docked pane width limits; the conversation keeps at least MIN_MAIN. */
+const PANE_MIN = 280;
+const PANE_DEFAULT = 320;
+const MIN_MAIN = 400;
+const SIDEBAR = 260;
+
 function savedTab(): PanelTab {
-  return readPref("panel") === "notes" ? "notes" : "agents";
+  const v = readPref("panel");
+  return v === "notes" || v === "files" ? v : "agents";
+}
+
+function savedWidth(): number | null {
+  const n = Number(readPref("paneWidth"));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function useWindowWidth(): number {
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return width;
 }
 
 /** Opens by default only where it has room (docked) and the user hasn't closed it there. */
@@ -98,33 +122,25 @@ export function ProjectWorkspace(props: {
   const agentId = props.agentId ?? project?.orchestrator_agent_id ?? null;
 
   const paneBody = agentId && (
-    <aside
-      ref={pane}
-      aria-label="Agents and notes"
-      className={cn(
-        "flex w-pane max-w-full shrink-0 flex-col border-l border-line",
-        overlay ? "absolute inset-y-0 right-0 z-20 bg-overlay shadow-pop" : "bg-bg",
-      )}
-    >
-      <div className="flex h-10 shrink-0 items-center px-2">
-        <Tabs<PanelTab>
-          label="Side panel"
-          idPrefix="panel"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "agents", label: "Agents", icon: Workflow },
-            { value: "notes", label: "Notes", icon: NotebookText },
-          ]}
-        />
-      </div>
-      <div role="tabpanel" id={`panel-panel-${tab}`} aria-labelledby={`panel-tab-${tab}`} className="min-h-0 flex-1">
-        {tab === "agents" ? <AgentsPanel currentAgentId={agentId} /> : <NotesPanel />}
-      </div>
-    </aside>
+    <SidePane
+      paneRef={pane}
+      overlay={overlay}
+      tab={tab}
+      onTab={setTab}
+      agentId={agentId}
+      sidebarWidth={props.sidebarOpen && !props.sidebarIsDrawer ? SIDEBAR : 0}
+      onSettings={() => setSettings(true)}
+    />
   );
 
+  const reveal = () => {
+    setPaneOpen(true);
+    setTabState("files");
+    remember(true, "files");
+  };
+
   return (
+    <CodeProvider onReveal={reveal}>
     <div className="flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
         {header}
@@ -154,6 +170,135 @@ export function ProjectWorkspace(props: {
         />
       )}
     </div>
+    </CodeProvider>
+  );
+}
+
+function SidePane(props: {
+  paneRef: RefObject<HTMLElement | null>;
+  overlay: boolean;
+  tab: PanelTab;
+  onTab(tab: PanelTab): void;
+  agentId: string;
+  sidebarWidth: number;
+  onSettings(): void;
+}) {
+  const { overlay, tab } = props;
+  const hasFiles = useCode().files.length > 0;
+  const windowWidth = useWindowWidth();
+  const [userWidth, setUserWidth] = useState(savedWidth);
+  const [dragging, setDragging] = useState(false);
+  const max = Math.max(PANE_MIN, windowWidth - props.sidebarWidth - MIN_MAIN);
+  const clamp = (w: number) => Math.round(Math.min(max, Math.max(PANE_MIN, w)));
+  // With a file open the pane defaults to about half the window, until the user picks a width.
+  const width = clamp(userWidth ?? (hasFiles && tab === "files" ? windowWidth / 2 : PANE_DEFAULT));
+  const wide = hasFiles && tab === "files";
+
+  const commit = (w: number | null) => {
+    setUserWidth(w);
+    writePref("paneWidth", w === null ? "" : String(w));
+  };
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const startX = e.clientX;
+    const start = width;
+    let latest = width;
+    handle.setPointerCapture(e.pointerId);
+    setDragging(true);
+    const body = document.body.style;
+    body.cursor = "col-resize";
+    body.userSelect = "none";
+    const move = (ev: globalThis.PointerEvent) => {
+      latest = clamp(start + startX - ev.clientX);
+      setUserWidth(latest);
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      body.cursor = "";
+      body.userSelect = "";
+      setDragging(false);
+      commit(latest);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    const step = e.shiftKey ? 64 : 16;
+    const keys: Record<string, () => number> = {
+      ArrowLeft: () => width + step,
+      ArrowRight: () => width - step,
+      Home: () => PANE_MIN,
+      End: () => max,
+    };
+    const fn = keys[e.key];
+    if (!fn) return;
+    e.preventDefault();
+    commit(clamp(fn()));
+  };
+
+  return (
+    <aside
+      ref={props.paneRef}
+      aria-label="Side panel"
+      style={overlay ? (wide ? { width: "min(100%, 640px)" } : undefined) : { width }}
+      className={cn(
+        "relative flex max-w-full shrink-0 flex-col border-l border-line",
+        overlay ? "absolute inset-y-0 right-0 z-20 bg-overlay shadow-pop" : "bg-bg",
+        overlay && !wide && "w-pane",
+      )}
+    >
+      {!overlay && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize side panel"
+          aria-valuemin={PANE_MIN}
+          aria-valuemax={max}
+          aria-valuenow={width}
+          tabIndex={0}
+          title="Drag to resize; double-click to reset"
+          data-dragging={dragging || undefined}
+          onPointerDown={onPointerDown}
+          onKeyDown={onKeyDown}
+          onDoubleClick={() => commit(null)}
+          className="group absolute inset-y-0 -left-[3px] z-30 w-[6px] cursor-col-resize outline-none"
+        >
+          <span
+            aria-hidden
+            className="absolute inset-y-0 left-[2px] w-[2px] transition-[background-color] duration-100 group-hover:bg-line-strong group-focus-visible:bg-focus group-data-[dragging]:bg-focus"
+          />
+        </div>
+      )}
+      <div className="flex h-10 shrink-0 items-center px-2">
+        <Tabs<PanelTab>
+          label="Side panel"
+          idPrefix="panel"
+          value={tab}
+          onChange={props.onTab}
+          options={[
+            { value: "agents", label: "Agents", icon: Workflow },
+            { value: "notes", label: "Notes", icon: NotebookText },
+            { value: "files", label: "Files", icon: FolderTree },
+          ]}
+        />
+      </div>
+      <div role="tabpanel" id={`panel-panel-${tab}`} aria-labelledby={`panel-tab-${tab}`} className="min-h-0 flex-1">
+        {tab === "agents" ? (
+          <AgentsPanel currentAgentId={props.agentId} />
+        ) : tab === "notes" ? (
+          <NotesPanel />
+        ) : (
+          <FilesPanel surface={overlay ? "overlay" : "docked"} onSettings={props.onSettings} />
+        )}
+      </div>
+    </aside>
   );
 }
 

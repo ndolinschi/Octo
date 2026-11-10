@@ -1,5 +1,5 @@
 import type { Agent, ContentBlock, Message, Note, Tier } from "@octo/agent-client";
-import { agentById, clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store";
+import { agentById, clone, emit, newId, orchestratorOf, writeDemoFile, type ProjectRecord } from "./store";
 
 /**
  * Scripted agent runtime. Each script "thread" carries its own clock `t`: steps whose
@@ -8,7 +8,8 @@ import { agentById, clone, emit, newId, orchestratorOf, type ProjectRecord } fro
  */
 export type Ctx = { rec: ProjectRecord; t: number; signal: { cancelled: boolean } };
 
-export type ToolSpec = { name: string; input: Record<string, unknown>; result: string; ms?: number; error?: boolean };
+/** `content` (write_file only) is what the demo file system receives when the call succeeds. */
+export type ToolSpec = { name: string; input: Record<string, unknown>; result: string; ms?: number; error?: boolean; content?: string };
 
 export type ChildSpec = {
   role: string;
@@ -109,6 +110,7 @@ export async function act(ctx: Ctx, agentId: string, tools: ToolSpec[], text?: s
     ctx.rec.activeTools.delete(u.id);
     emit(ctx.rec, { type: "tool.finished", agent_id: agentId, tool_use_id: u.id, is_error: Boolean(u.spec.error) });
     if (u.spec.name === "save_note" && !u.spec.error) saveNote(ctx, String(u.spec.input.title), String(u.spec.input.content));
+    if (u.spec.name === "write_file" && !u.spec.error && u.spec.content !== undefined) agentWrite(ctx, u.spec);
   }
   addMessage(
     ctx,
@@ -116,6 +118,12 @@ export async function act(ctx: Ctx, agentId: string, tools: ToolSpec[], text?: s
     "user",
     uses.map((u) => ({ type: "tool_result" as const, tool_use_id: u.id, content: u.spec.result, is_error: Boolean(u.spec.error) })),
   );
+}
+
+function agentWrite(ctx: Ctx, spec: ToolSpec) {
+  const folder = typeof spec.input.folder === "string" ? spec.input.folder : ctx.rec.project.folders[0]?.label;
+  const path = String(spec.input.path ?? "").replace(/^\.\//, "");
+  if (folder && ctx.rec.project.folders.some((f) => f.label === folder)) writeDemoFile(ctx.rec, folder, path, spec.content ?? "", "agent", ctx.t);
 }
 
 export function saveNote(ctx: Ctx, title: string, content: string, author: Note["author"] = "orchestrator"): void {

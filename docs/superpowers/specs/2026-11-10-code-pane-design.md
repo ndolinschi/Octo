@@ -70,6 +70,11 @@ the three methods are added to the message-bridge allow-list; the reducer ignore
   pane if needed). An embedding host may still override this through `host.openFile`.
 - Projects without folders show a short empty state in the Files tab.
 
+Implemented in `packages/ui` (2026-11-10); visual and interaction detail in the UI doc's
+*Code pane* section ([`2026-11-10-project-harness-ui.md`](./2026-11-10-project-harness-ui.md)).
+Live file events reach the pane through `useProject().onEvent` (an observer on the project's
+existing SSE subscription), not a second connection.
+
 ## Acceptance criteria
 
 1. **Confinement.** File endpoints cannot read or write outside a project's folders

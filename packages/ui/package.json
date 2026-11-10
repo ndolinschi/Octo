@@ -17,6 +17,7 @@
     "@octo/agent-client": "workspace:*",
     "clsx": "^2.1.1",
     "lucide-react": "^1.71.0",
+    "monaco-editor": "0.57.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },

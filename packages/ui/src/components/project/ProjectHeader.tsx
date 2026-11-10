@@ -5,7 +5,7 @@ import { useProject } from "../../state/project";
 import { IconButton } from "../primitives/Button";
 import { TopBar } from "../shell/TopBar";
 
-export type PanelTab = "agents" | "notes";
+export type PanelTab = "agents" | "notes" | "files";
 
 /** Project title bar. The forwarded ref is the side-panel toggle, so focus can return to it. */
 export const ProjectHeader = forwardRef<
@@ -40,7 +40,7 @@ export const ProjectHeader = forwardRef<
             <IconButton
               ref={paneToggle}
               icon={PanelRight}
-              label="Agents and notes panel"
+              label="Side panel"
               pressed={props.paneOpen}
               onClick={props.onTogglePane}
             />

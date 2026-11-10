@@ -1,3 +1,4 @@
+import { ATLAS_CONCURRENT_TEST } from "./writes";
 import { act, delegate, say, sleep, turn, type Ctx } from "./runtime";
 
 const REFRESH_TS = `import { db } from "../db";
@@ -155,7 +156,7 @@ export async function atlasHistory(ctx: Ctx): Promise<void> {
                         },
                       },
                     ]);
-                    await act(tc, tid, [{ name: "write_file", input: { folder: "atlas-api", path: "test/auth/refresh.concurrent.test.ts" }, result: "wrote 38 lines", ms: 500 }]);
+                    await act(tc, tid, [{ name: "write_file", input: { folder: "atlas-api", path: "test/auth/refresh.concurrent.test.ts" }, result: "wrote 16 lines", ms: 500, content: ATLAS_CONCURRENT_TEST }]);
                     await act(tc, tid, [{ name: "bash", input: { folder: "atlas-api", command: "pnpm vitest run test/auth/refresh.concurrent.test.ts" }, result: " × concurrent refresh keeps the session (10 runs)\n   → 7 of 10 runs: second call returned 401 refresh_revoked", ms: 3100 }]);
                     const r = "Added `test/auth/refresh.concurrent.test.ts`. It fails on main: 7/10 runs return `401 refresh_revoked` for the second call. Staging logs show the same pattern in production traffic.";
                     await say(tc, tid, r);
