@@ -40,7 +40,9 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
         <span className="text-fg-2">{caption}</span>
         <span className={cn("ml-auto text-xs tabular-nums", failed && status.endsWith("failed") ? "text-err" : "text-fg-3")}>{status}</span>
       </div>
-      <ul className="grid grid-cols-[12px_fit-content(36%)_minmax(0,1fr)_auto] gap-x-2 px-1 pb-1 @max-[440px]:grid-cols-[12px_fit-content(44%)_minmax(0,1fr)_auto]">
+      {/* Zero-width edge tracks + the 8px column gap are the rows' inside padding (a subgrid's own
+          padding would eat into its first and last tracks): glyph on the caption's 12px line (4 + 8). */}
+      <ul className="grid grid-cols-[0px_16px_fit-content(36%)_minmax(0,1fr)_auto_0px] gap-x-2 px-1 pb-1 @max-[440px]:grid-cols-[0px_16px_fit-content(44%)_minmax(0,1fr)_auto_0px]">
         {uses.map((u, i) => (
           <li key={u.id} className="col-span-full grid grid-cols-subgrid">
             <DelegationRow use={u} agent={agents[i]} />
@@ -83,7 +85,7 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
 
   const body = (
     <>
-      <span className="grid h-8 place-items-center">{agent ? <StatusIcon status={agent.status} /> : <RunningDot />}</span>
+      <span className="col-start-2 grid h-8 place-items-center">{agent ? <StatusIcon status={agent.status} /> : <RunningDot />}</span>
       <span className="flex h-8 min-w-0 items-center gap-1 text-fg">
         <span className="min-w-0 truncate">{role}</span>
         {nested > 0 && (
@@ -94,14 +96,22 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
       </span>
       <span className="block min-w-0 truncate py-1.5 leading-5 text-fg-2">{title}</span>
       <span className="flex h-8 max-w-[24ch] min-w-0 items-center justify-end gap-2 text-xs text-fg-3 @max-[440px]:max-w-[12ch]">{right}</span>
-      {error && <span className="col-span-3 col-start-2 -mt-1 truncate pb-1.5 text-xs text-err">{error}</span>}
     </>
   );
+  // The error line sits under the row (outside it, so the row keeps its 32px), from the role column on.
+  const errorLine = error && <span className="col-span-3 col-start-3 -mt-1 truncate pb-2 text-xs text-err">{error}</span>;
 
-  // Radius 4 = card radius (8) − its inset (4); 8px row padding puts the glyph on the caption's 12px line.
-  const row = "col-span-full grid grid-cols-subgrid items-center rounded-xs px-2 text-sm";
-  if (!agent) return <div className={row}>{body}</div>;
+  // Radius 4 = card radius (8) − its inset (4).
+  const row = "col-span-full grid grid-cols-subgrid items-center rounded-xs text-sm";
+  if (!agent)
+    return (
+      <>
+        <div className={row}>{body}</div>
+        {errorLine}
+      </>
+    );
   return (
+    <>
     <a
       href={hrefFor(projectId, agent.id)}
       aria-label={`Open ${role}: ${title} (${status})`}
@@ -116,6 +126,8 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
     >
       {body}
     </a>
+    {errorLine}
+    </>
   );
 }
 

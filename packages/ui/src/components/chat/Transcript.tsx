@@ -92,7 +92,7 @@ export const Transcript = memo(function Transcript(props: {
   );
 });
 
-/** Prompts longer than twelve lines collapse, with a toggle to read them in full; code comments show as cards. */
+/** Prompts longer than eight lines collapse, with a toggle to read them in full; code comments show as cards. */
 const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { text: string; author: string; external: boolean }) {
   const { prose: text, comments } = useMemo(() => splitComments(raw), [raw]);
   const box = useRef<HTMLDivElement>(null);
@@ -118,7 +118,7 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
         <span className="sr-only">{author}: </span>
       )}
       {text && (
-        <div ref={box} id={id} className={cn("whitespace-pre-wrap wrap-anywhere", !expanded && "line-clamp-12")}>
+        <div ref={box} id={id} className={cn("whitespace-pre-wrap wrap-anywhere", !expanded && "line-clamp-8")}>
           {text}
         </div>
       )}

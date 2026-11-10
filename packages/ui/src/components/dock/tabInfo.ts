@@ -1,7 +1,9 @@
-import { Bot, File, FolderTree, MessagesSquare, NotebookText, Workflow, type LucideIcon } from "lucide-react";
+import { File, type LucideIcon } from "lucide-react";
+import { GLYPH } from "../primitives/glyphs";
 import type { ProjectState } from "@octo/agent-client";
 import type { OpenFile } from "../../state/code";
 import { middleTruncate } from "../../lib/format";
+import { fileIcon } from "../files/fileIcons";
 import { parseTab, type TabId } from "../../state/workspace/layout";
 
 export type TabInfo = {
@@ -19,9 +21,9 @@ export type TabInfo = {
 };
 
 const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> = {
-  agents: { label: "Agents", icon: Workflow, title: "Agents in this project" },
-  notes: { label: "Notes", icon: NotebookText, title: "Project notes" },
-  files: { label: "Files", icon: FolderTree, title: "Project files" },
+  agents: { label: "Agents", icon: GLYPH.agents, title: "Agents in this project" },
+  notes: { label: "Notes", icon: GLYPH.notes, title: "Project notes" },
+  files: { label: "Files", icon: GLYPH.files, title: "Project files: select a file to open it here" },
 };
 
 export function tabInfo(
@@ -32,7 +34,7 @@ export function tabInfo(
   if (!ref) return { label: tab, title: tab, icon: File, status: null, comments: 0 };
   if (ref.kind === "chat") {
     const running = ctx.orchestratorId ? ctx.state.agents[ctx.orchestratorId]?.status === "running" : false;
-    return { label: "Chat", title: "Chat with the orchestrator", icon: MessagesSquare, status: running ? "running" : null, comments: 0 };
+    return { label: "Chat", title: "Chat with the orchestrator", icon: GLYPH.chat, status: running ? "running" : null, comments: 0 };
   }
   if (ref.kind === "tool") return { ...TOOLS[ref.tool], status: null, comments: 0 };
   if (ref.kind === "agent") {
@@ -41,7 +43,7 @@ export function tabInfo(
     return {
       label,
       title: agent?.title ? `${label}: ${agent.title}` : label,
-      icon: Bot,
+      icon: GLYPH.agent,
       status: agent?.status === "running" ? "running" : null,
       comments: 0,
     };
@@ -55,7 +57,7 @@ export function tabInfo(
     label: middleTruncate(name, 28),
     name,
     title: middleTruncate(`${ref.key.slice(0, i)}/${path}`, 96),
-    icon: File,
+    icon: fileIcon(name),
     status: f?.modified ? "modified" : null,
     comments: ctx.comments(ref.key),
   };

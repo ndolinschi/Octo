@@ -126,7 +126,7 @@ export function Tooltips() {
       className="pointer-events-none fixed z-[80] flex max-w-[360px] items-center gap-2 rounded-sm border border-transparent bg-overlay px-2 py-1 text-xs text-fg shadow-pop"
     >
       <span className="min-w-0 wrap-anywhere">{tip.text}</span>
-      {tip.shortcut && <kbd className="shrink-0 rounded-xs bg-active px-1 font-sans text-xs text-fg-2">{tip.shortcut}</kbd>}
+      {tip.shortcut && <kbd className="shrink-0 rounded-2xs bg-active px-1 font-sans text-xs text-fg-2">{tip.shortcut}</kbd>}
     </div>,
     document.body,
   );

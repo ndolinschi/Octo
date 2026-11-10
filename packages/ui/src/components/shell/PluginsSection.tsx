@@ -1,5 +1,6 @@
 import type { Plugin } from "@octo/agent-client";
-import { CircleX } from "lucide-react";
+import { CircleX, Puzzle } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooks";
@@ -83,10 +84,16 @@ function PluginItem({ plugin: p }: { plugin: Plugin }) {
     ...p.tool_servers.map((t) => ({ kind: "Tool server", name: t.url, available: null, mono: true })),
   ];
   return (
-    <li className="px-3 py-2.5" aria-label={`${p.name} ${p.version}`}>
-      <div className="flex items-baseline gap-2">
-        <span className="min-w-0 truncate font-mono text-sm text-fg">{p.name}</span>
+    // Row anatomy: [32px icon tile] 12 [name + version / description / parts] … [state].
+    <li className="flex gap-3 p-3" aria-label={`${p.name} ${p.version}`}>
+      <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-hover text-fg-2">
+        <Glyph icon={Puzzle} size={16} />
+      </span>
+      <div className="min-w-0 flex-1">
+      <div className="flex h-5 items-center gap-2">
+        <span className="min-w-0 truncate text-sm font-medium text-fg">{p.name}</span>
         <span className="shrink-0 text-xs text-fg-3 tabular-nums">{p.version}</span>
+        <PluginState plugin={p} />
       </div>
       {p.description && <p className="mt-0.5 text-xs text-fg-3">{p.description}</p>}
       {parts.length > 0 && (
@@ -107,14 +114,24 @@ function PluginItem({ plugin: p }: { plugin: Plugin }) {
         <ul className="mt-2 flex flex-col gap-1" aria-label="Manifest problems">
           {p.errors.map((e, i) => (
             <li key={i} className="flex items-start gap-1.5 text-xs text-err">
-              <CircleX size={12} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="mt-0.5 shrink-0" />
+              <span className="grid h-4 shrink-0 place-items-center">
+                <Glyph icon={CircleX} size={14} />
+              </span>
               <span className="min-w-0 wrap-anywhere">{e}</span>
             </li>
           ))}
         </ul>
       )}
+      </div>
     </li>
   );
+}
+
+/** One summary on the name line's right: problems first, then whether every command was found. */
+function PluginState({ plugin: p }: { plugin: Plugin }) {
+  const missing = [...p.language_servers, ...p.agents].filter((x) => !x.available).length;
+  const text = p.errors.length ? `${p.errors.length}\u00a0${p.errors.length === 1 ? "problem" : "problems"}` : missing ? "Partly available" : "Ready";
+  return <span className={cn("ml-auto shrink-0 text-xs", p.errors.length ? "text-err" : missing ? "text-fg-2" : "text-fg-3")}>{text}</span>;
 }
 
 function Availability({ available }: { available: boolean }) {

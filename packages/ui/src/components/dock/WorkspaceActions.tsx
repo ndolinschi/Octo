@@ -1,14 +1,16 @@
-import { FolderTree, NotebookText, Settings2, SquareArrowOutUpRight, Workflow } from "lucide-react";
+import { Settings2, SquareArrowOutUpRight } from "lucide-react";
+import { GLYPH } from "../primitives/glyphs";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
 import type { ToolTab } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
+import { useShowFiles } from "../files/useShowFiles";
 
-const TOOLS: { tool: ToolTab; label: string; icon: typeof Workflow }[] = [
-  { tool: "agents", label: "Show agents", icon: Workflow },
-  { tool: "notes", label: "Show notes", icon: NotebookText },
-  { tool: "files", label: "Show files", icon: FolderTree },
+const TOOLS: { tool: ToolTab; label: string; icon: typeof Settings2 }[] = [
+  { tool: "agents", label: "Show agents", icon: GLYPH.agents },
+  { tool: "notes", label: "Show notes", icon: GLYPH.notes },
+  { tool: "files", label: "Show files", icon: GLYPH.files },
 ];
 
 /**
@@ -20,12 +22,17 @@ export function WorkspaceActions() {
   const { project } = useProject();
   const ws = useWorkspace();
   const { openProjectInEditor } = useHost();
+  const files = useShowFiles();
   if (!project) return null;
   return (
     <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
-      {TOOLS.map((t) => (
-        <IconButton key={t.tool} icon={t.icon} label={t.label} pressed={ws.isVisible(t.tool)} onClick={() => ws.openTool(t.tool)} />
-      ))}
+      {TOOLS.map((t) =>
+        t.tool === "files" ? (
+          <IconButton key={t.tool} icon={t.icon} label={t.label} pressed={files.shown} onClick={files.show} />
+        ) : (
+          <IconButton key={t.tool} icon={t.icon} label={t.label} pressed={ws.isVisible(t.tool)} onClick={() => ws.openTool(t.tool)} />
+        ),
+      )}
       <span aria-hidden className="mx-1 h-4 w-px bg-line-strong" />
       {openProjectInEditor && (
         <IconButton

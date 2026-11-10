@@ -50,7 +50,10 @@ export type WorkspaceValue = {
   focusChat(): void;
   openAgent(agentId: string, options?: { otherSide?: boolean }): void;
   openTool(tool: ToolTab): void;
-  openFileTab(key: string): void;
+  /** Opens a file's tab: in `where.group` (in place of `where.replace`) when given, else in the side group. */
+  openFileTab(key: string, where?: { group: string; replace?: TabId }): void;
+  /** Opens (or focuses) a tab in a given group. */
+  openIn(tab: TabId, groupId: string): void;
   /** Removes a tab without asking (a restored file that no longer exists). */
   dropTab(tab: TabId): void;
   requestClose(tabs: TabId[]): void;
@@ -214,13 +217,26 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
       focusChat: () => commit(L.activate(layoutRef.current, L.CHAT)),
       openAgent,
-      openTool: (tool) => openSide(tool, toolFraction()),
+      // The Files tab is a file view (editor + tree column): it opens at half the row like a file.
+      openTool: (tool) => {
+        openSide(tool, tool === "files" ? undefined : toolFraction());
+        if (tool === "files") {
+          const g = L.groupOf(layoutRef.current, tool);
+          if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, 0.45), { route: false });
+        }
+      },
       // A file needs room: a side group sized for a tool widens to half the row.
-      openFileTab: (key) => {
+      openFileTab: (key, where) => {
+        if (where) {
+          const current = layoutRef.current;
+          if (where.replace && L.groupOf(current, where.replace)) return commit(L.replace(current, where.replace, L.fileTab(key)));
+          return commit(L.open(current, L.fileTab(key), { group: where.group }));
+        }
         openSide(L.fileTab(key));
         const g = L.groupOf(layoutRef.current, L.fileTab(key));
         if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, 0.45), { route: false });
       },
+      openIn: (tab, groupId) => commit(L.open(layoutRef.current, tab, { group: groupId })),
       dropTab: (tab) => commit(L.close(layoutRef.current, [tab])),
       requestClose,
       confirmClose: () => {

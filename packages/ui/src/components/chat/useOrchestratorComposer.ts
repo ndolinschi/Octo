@@ -6,6 +6,17 @@ import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import type { ComposerProps } from "./Composer";
 
+/** Composers sharing a draft key (the Chat tab's and the floating one) hear each other's edits. */
+function listeners(memory: Map<string, unknown>, key: string): Set<(text: string) => void> {
+  const k = `${key}:listeners`;
+  let set = memory.get(k) as Set<(text: string) => void> | undefined;
+  if (!set) {
+    set = new Set();
+    memory.set(k, set);
+  }
+  return set;
+}
+
 /**
  * Everything a composer that talks to the orchestrator needs (the Chat tab's and the floating one
  * over files): send with pending code comments, stop, offline reason, the draft kept in the tab
@@ -55,6 +66,20 @@ export function useOrchestratorComposer(draftKey: string): Omit<ComposerProps, "
       prepared?.commit();
     },
     onCancel: cancel,
-    draft: memory ? { initial: (memory.get(draftKey) as string | undefined) ?? "", save: (text) => memory.set(draftKey, text) } : undefined,
+    draft: memory
+      ? {
+          initial: (memory.get(draftKey) as string | undefined) ?? "",
+          save: (text) => {
+            if (memory.get(draftKey) === text) return;
+            memory.set(draftKey, text);
+            listeners(memory, draftKey).forEach((l) => l(text));
+          },
+          subscribe: (cb) => {
+            const set = listeners(memory, draftKey);
+            set.add(cb);
+            return () => void set.delete(cb);
+          },
+        }
+      : undefined,
   };
 }

@@ -3,6 +3,8 @@ import { navigate } from "../lib/route";
 import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";
 import { CommentsProvider } from "../state/comments";
+import { FileViewProvider } from "../state/fileView";
+import { useShowFiles } from "../components/files/useShowFiles";
 import { useProject } from "../state/project";
 import { allTabs, fileTab, focusedGroup, parseTab } from "../state/workspace/layout";
 import { useWorkspace, WorkspaceProvider } from "../state/workspace/WorkspaceProvider";
@@ -18,13 +20,16 @@ import { PanelBar } from "../components/shell/SidebarToggle";
 export function ProjectWorkspace(props: { agentId: string | null }) {
   const [settings, setSettings] = useState(false);
   const openSettings = useCallback(() => setSettings(true), []);
+  const { projectId } = useProject();
   return (
     <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
-      <Files>
-        <Body />
-        <SettingsDialog show={settings} onClose={() => setSettings(false)} />
-        <CloseDialog />
-      </Files>
+      <FileViewProvider projectId={projectId}>
+        <Files>
+          <Body />
+          <SettingsDialog show={settings} onClose={() => setSettings(false)} />
+          <CloseDialog />
+        </Files>
+      </FileViewProvider>
     </WorkspaceProvider>
   );
 }
@@ -32,8 +37,9 @@ export function ProjectWorkspace(props: { agentId: string | null }) {
 /** Open files live under the workspace; it opens their tabs and they report back. */
 function Files({ children }: { children: ReactNode }) {
   const ws = useWorkspace();
+  const files = useShowFiles();
   return (
-    <CodeProvider onOpen={(key) => ws.openFileTab(key)} onReveal={() => ws.openTool("files")} onGone={(key) => ws.dropTab(fileTab(key))}>
+    <CodeProvider onOpen={(key, where) => ws.openFileTab(key, where)} onReveal={files.show} onGone={(key) => ws.dropTab(fileTab(key))}>
       <CodeLink />
       <CommentsProvider>{children}</CommentsProvider>
     </CodeProvider>

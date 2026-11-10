@@ -54,6 +54,8 @@ export function CodeEditor(props: {
   file: OpenFile;
   buffers: EditorBuffers;
   theme: "dark" | "light";
+  /** Room below the last line (8, or the floating composer's height + 16 so the last line stays reachable). */
+  bottomPadding?: number;
   onSave(): void;
   /** Monaco is in: start the editor services that need it (the language-server client). */
   onMonaco(mod: MonacoModule): void;
@@ -68,6 +70,8 @@ export function CodeEditor(props: {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const shownKey = useRef<string | null>(null);
   const onSave = useRef(props.onSave);
+  const bottomPadding = useRef(props.bottomPadding ?? 8);
+  bottomPadding.current = props.bottomPadding ?? 8;
   useLayoutEffect(() => {
     onSave.current = props.onSave;
     onMonaco.current = props.onMonaco;
@@ -103,7 +107,7 @@ export function CodeEditor(props: {
       scrollBeyondLastLine: false,
       // No horizontal scrollbar unless a line really is wider than the editor.
       scrollBeyondLastColumn: 0,
-      padding: { top: 8, bottom: 8 },
+      padding: { top: 8, bottom: bottomPadding.current },
       wordWrap: "off",
       detectIndentation: true,
       lineNumbersMinChars: 3,
@@ -122,7 +126,8 @@ export function CodeEditor(props: {
       // scroll or hover (styles.css widens and darkens it on hover/drag); none when content fits.
       scrollbar: {
         vertical: "auto",
-        horizontal: "auto",
+        // Always shown when a line is wider than the editor (a cut line needs a visible way to it).
+        horizontal: "visible",
         verticalScrollbarSize: 10,
         horizontalScrollbarSize: 10,
         verticalSliderSize: 6,
@@ -156,6 +161,21 @@ export function CodeEditor(props: {
   useEffect(() => {
     if (mod) mod.monaco.editor.setTheme(mod.themeName(props.theme));
   }, [mod, props.theme]);
+
+  // Room for the floating composer. Monaco's reveal (arrows, Ctrl/Cmd+End, typing) ignores the bottom
+  // padding, so a caret moved under the composer is scrolled back above it.
+  useEffect(() => {
+    if (!editor) return;
+    const bottom = props.bottomPadding ?? 8;
+    editor.updateOptions({ padding: { top: 8, bottom } });
+    if (bottom <= 8) return;
+    const sub = editor.onDidChangeCursorPosition((e) => {
+      const lineBottom = editor.getBottomForLineNumber(e.position.lineNumber) - editor.getScrollTop();
+      const limit = editor.getLayoutInfo().height - bottom;
+      if (lineBottom > limit) editor.setScrollTop(editor.getScrollTop() + lineBottom - limit);
+    });
+    return () => sub.dispose();
+  }, [editor, props.bottomPadding]);
 
   // Show the active file's model, saving the previous tab's view state.
   useEffect(() => {

@@ -1,5 +1,6 @@
 import type { Agent } from "@octo/agent-client";
 import { Search } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
@@ -172,8 +173,9 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
 
   let index = -1;
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 pt-[10vh] sm:pt-[14vh]" inert={state === "closed"}>
+    <div className="fixed inset-0 z-50 flex flex-col items-center p-3" inert={state === "closed"}>
       <div className="octo-scrim fixed inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
+      <div aria-hidden className="h-[10vh] shrink-0 sm:h-[14vh]" />
       <div
         ref={panel}
         role="dialog"
@@ -182,8 +184,8 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
         data-state={state}
         className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay shadow-pop"
       >
-        <div className="flex h-11 shrink-0 items-center gap-2.5 border-b border-line px-3.5">
-          <Search size={16} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0 text-fg-3" />
+        <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
+          <Glyph icon={Search} size={16} className="shrink-0 text-fg-3" />
           <input
             data-autofocus
             role="combobox"
@@ -202,10 +204,10 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
             className="h-full min-w-0 flex-1 bg-transparent text-base text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
           />
         </div>
-        <div ref={list} id={`${baseId}-list`} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
+        <div ref={list} id={`${baseId}-list`} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
           {groups.map((g) => (
             <div key={g.title} role="group" aria-labelledby={`${baseId}-${g.title}`} className="pb-1">
-              <div id={`${baseId}-${g.title}`} className="flex h-7 items-center px-2 text-xs text-fg-3">
+              <div id={`${baseId}-${g.title}`} className="flex h-row items-center px-2 text-xs text-fg-3">
                 {g.title}
               </div>
               {g.items.map((item) => {
@@ -221,8 +223,8 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={item.run}
                     className={cn(
-                      // Radius = panel radius (10) − list padding (6).
-                      "press-row flex h-8 items-center gap-3 rounded-xs px-2 text-sm",
+                      // Radius 6 = palette radius (10) − list padding (4).
+                      "press-row flex h-row-nav items-center gap-3 rounded-sm px-2 text-sm",
                       isSelected ? "bg-active text-fg" : "text-fg hover:bg-hover",
                     )}
                   >

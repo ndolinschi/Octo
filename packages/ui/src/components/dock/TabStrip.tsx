@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "../files/CommentCount";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
@@ -17,9 +18,12 @@ import { SidebarToggle } from "../shell/SidebarToggle";
 import { WorkspaceActions } from "./WorkspaceActions";
 
 /**
- * One group's tab strip (or, when narrow, every tab in one strip), 8px from the panel's top and sides
- * (the pane inset). Compact 28px text tabs: [16px icon slot] 8 [label] [trailing state], 8px padding,
- * radius 4 (panel 12 − inset 8). Overflow scrolls sideways with faded edges. The first strip starts
+ * One group's tab strip (or, when narrow, every tab in one strip): 36px, the tabs 8px from the panel's
+ * top and sides (the pane inset), 4 apart. Tab anatomy (28px, radius 6, 96–200px wide):
+ * 8 [16px icon slot] 8 [label] 8 … [16px trailing slot] 8 — the same 8px at both ends, and every tab
+ * reserves the trailing slot (close, unsaved or working dot; empty on an idle Chat tab), so a short label
+ * never hugs an edge and all tabs share one anatomy. Overflow scrolls
+ * sideways with faded edges. The first strip starts
  * with "Show sidebar" while the sidebar is hidden; the last ends with the project's global actions.
  * Roving focus: ←/→/Home/End move and select, Delete closes, Shift+F10 or the context-menu key opens
  * the tab menu. Middle-click closes.
@@ -118,7 +122,8 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
           const selected = tab === props.active;
           const canClose = closable(tab);
           const Icon = info.icon;
-          const trailing = canClose || info.status !== null;
+          // Every tab reserves the trailing slot (close / state), so all tabs share one anatomy.
+          const trailing = true;
           return (
             <div
               key={tab}
@@ -142,7 +147,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 openMenuAt(tab, e.clientX, e.clientY);
               }}
               className={cn(
-                "group/tab press-row relative flex h-row max-w-[220px] min-w-0 shrink-0 items-center rounded-xs",
+                "group/tab press-row relative flex h-row w-max max-w-[200px] min-w-24 shrink-0 items-center rounded-sm",
                 selected ? (props.focused ? "bg-active text-fg" : "bg-hover text-fg") : "text-fg-3 hover:bg-hover hover:text-fg-2",
                 drag?.tab === tab && "opacity-50",
               )}
@@ -159,10 +164,10 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 title={info.title}
                 aria-description={commentsDescription(info.comments)}
                 onKeyDown={(e) => onKeyDown(e, i)}
-                className={cn("flex h-full min-w-0 items-center gap-2 rounded-xs pl-2 text-sm focus-inset", trailing ? "pr-1" : "pr-2")}
+                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-sm focus-inset"
               >
                 <span aria-hidden className="grid size-4 shrink-0 place-items-center">
-                  <Icon size={14} strokeWidth={1.5} absoluteStrokeWidth />
+                  <Glyph icon={Icon} size={14} />
                 </span>
                 <span className="min-w-0 truncate" aria-hidden={info.name ? true : undefined}>
                   {info.label}
@@ -172,8 +177,8 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                 {info.status === "modified" && <span className="sr-only"> (unsaved)</span>}
                 {info.status === "running" && <span className="sr-only"> (working)</span>}
               </button>
-              {/* Trailing slot: 16px box, 6px from the edge (its 12px glyph sits 8px in, like the leading icon). */}
-              {trailing && <span className="relative mr-1.5 grid size-4 shrink-0 place-items-center">
+              {/* Trailing slot: a 16px box 8px from the edge, mirroring the leading icon slot. */}
+              {trailing && <span className="relative mr-2 grid size-4 shrink-0 place-items-center">
                 {info.status && (
                   <span
                     aria-hidden
@@ -196,11 +201,11 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
                     onClick={() => ws.requestClose([tab])}
                     className={cn(
                       // 16px glyph box, 24px hit area (the ::before overhangs by 4px).
-                      "absolute inset-0 grid place-items-center rounded-xs text-fg-3 before:absolute before:-inset-1 before:content-[''] hover:bg-hover hover:text-fg",
+                      "absolute inset-0 grid place-items-center rounded-sm text-fg-3 before:absolute before:-inset-1 before:content-[''] hover:bg-hover hover:text-fg",
                       selected && !info.status ? "" : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
                     )}
                   >
-                    <X size={12} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
+                    <Glyph icon={X} size={14} />
                   </button>
                 )}
               </span>}

@@ -47,7 +47,7 @@ function CommentCard({ comment: c }: { comment: SentComment }) {
             onClick={open}
             aria-label={`Open ${full} at ${where}`}
             title={full}
-            className="min-w-0 truncate rounded-xs text-left font-mono text-fg-2 underline-offset-2 hover:text-fg hover:underline focus-visible:underline"
+            className="min-w-0 truncate rounded-sm text-left font-mono text-fg-2 underline-offset-2 hover:text-fg hover:underline focus-visible:underline"
           >
             {c.path}
           </button>
@@ -77,7 +77,7 @@ function CommentCard({ comment: c }: { comment: SentComment }) {
               aria-expanded={expanded}
               aria-controls={quoteId}
               onClick={() => setExpanded((x) => !x)}
-              className="press mb-1 ml-1.5 inline-flex h-6 items-center rounded-xs px-1.5 text-xs text-fg-3 hover:bg-hover hover:text-fg"
+              className="press mb-1 ml-1.5 inline-flex h-6 items-center rounded-sm px-1.5 text-xs text-fg-3 hover:bg-hover hover:text-fg"
             >
               {expanded ? "Show less" : `Show ${hidden} more ${hidden === 1 ? "line" : "lines"}`}
             </button>

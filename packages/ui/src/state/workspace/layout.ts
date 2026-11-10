@@ -127,6 +127,17 @@ export function open(layout: Layout, tab: TabId, target: Target): Layout {
   return insertGroup(layout, tab, target.newAfter, "right", target.size);
 }
 
+/**
+ * Puts `tab` where `old` is (same group, same slot) and focuses it: the empty file view turning into
+ * the file it opened. An already open `tab` is focused where it is and `old` closes.
+ */
+export function replace(layout: Layout, old: TabId, tab: TabId): Layout {
+  const g = groupOf(layout, old);
+  if (!g || old === CHAT) return open(layout, tab, { group: layout.focused });
+  if (groupOf(layout, tab)) return activate(close(layout, [old]), tab);
+  return { ...withGroup(layout, g.id, (x) => ({ ...x, tabs: x.tabs.map((t) => (t === old ? tab : t)), active: tab })), focused: g.id };
+}
+
 /** Closes tabs (Chat never closes); empty groups disappear. */
 export function close(layout: Layout, tabs: TabId[]): Layout {
   let next = layout;

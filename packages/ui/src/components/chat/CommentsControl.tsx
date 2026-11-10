@@ -1,4 +1,5 @@
 import { MessageSquare, X } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useRef, useState } from "react";
 import { linesLabel, type CodeComment } from "../../lib/comments";
 import { fileName } from "../../lib/files";
@@ -20,12 +21,20 @@ function byFile(comments: CodeComment[]): { key: string; folder: string; path: s
 }
 
 /**
- * "N comments" in the composer footer: the pending code comments that go out with the next
- * message. Opens a compact list grouped by file (jump to the lines, remove one, remove all).
+ * "N comments": the pending code comments that go out with the next message — in the composer footer,
+ * or as a status chip over a file (`variant="chip"`). Opens a compact list grouped by file (jump to the
+ * lines, remove one, remove all). `open` / `onOpenChange` let the composer's "+" menu open it.
  */
-export function CommentsControl() {
+export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boolean): void; variant?: "footer" | "chip" }) {
   const store = useComments();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = props.open ?? ownOpen;
+  const setOpen = (next: boolean | ((x: boolean) => boolean)) => {
+    const value = typeof next === "function" ? next(open) : next;
+    setOwnOpen(value);
+    props.onOpenChange?.(value);
+  };
+  const chip = props.variant === "chip";
   const anchor = useRef<HTMLButtonElement>(null);
   const n = store.comments.length;
   if (!n) return null;
@@ -41,29 +50,31 @@ export function CommentsControl() {
         title="Pending comments, sent with your next message"
         onClick={() => setOpen((x) => !x)}
         className={cn(
-          "press flex h-row shrink-0 items-center gap-1 rounded-sm px-2 text-xs tabular-nums hover:bg-hover hover:text-fg",
-          open ? "bg-active text-fg" : "text-fg-2",
+          chip
+            ? "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs tabular-nums shadow-float hover:text-fg"
+            : "press flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-2 text-xs tabular-nums hover:bg-hover hover:text-fg",
+          open ? (chip ? "text-fg" : "bg-active text-fg") : "text-fg-2",
         )}
       >
-        <MessageSquare size={12} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
+        <Glyph icon={MessageSquare} size={14} />
         {label}
       </button>
       <Presence show={open}>
         <Popover
           anchor={anchor}
-          edge={() => anchor.current?.closest<HTMLElement>("[data-composer]") ?? null}
+          edge={() => anchor.current?.closest<HTMLElement>("[data-composer], [data-floating-composer]") ?? null}
           label="Pending comments"
           side="top"
           onClose={() => setOpen(false)} className="w-[min(380px,calc(100vw-16px))]">
-          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line pr-1.5 pl-3">
-            <p className="min-w-0 flex-1 truncate text-xs text-fg-3">Sent with your next message</p>
+          <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-2">
+            <p className="min-w-0 flex-1 truncate px-2 text-xs text-fg-3">Sent with your next message</p>
             <button
               type="button"
               onClick={() => {
                 store.removeAll();
                 setOpen(false);
               }}
-              className="press h-6 shrink-0 rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg"
+              className="press h-6 shrink-0 rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg"
             >
               Remove all
             </button>
@@ -71,7 +82,7 @@ export function CommentsControl() {
           <div className="overflow-y-auto overscroll-contain p-1">
             {byFile(store.comments).map((g) => (
               <section key={g.key} aria-label={`${g.folder}/${g.path}`} className="not-first:mt-1">
-                <h3 className="flex h-7 items-center gap-2 px-2 text-xs" title={`${g.folder}/${g.path}`}>
+                <h3 className="flex h-row items-center gap-2 px-2 text-xs" title={`${g.folder}/${g.path}`}>
                   <span className="shrink-0 font-mono text-fg">{fileName(g.path)}</span>
                   <span className="min-w-0 truncate font-mono text-fg-3" dir="rtl">
                     {/* RTL truncation keeps the end of the path (nearest the file) visible. */}
@@ -88,19 +99,21 @@ export function CommentsControl() {
                           store.reveal(c);
                         }}
                         aria-label={`Go to ${linesLabel(c.start, c.end)} of ${fileName(c.path)}: ${c.text}`}
-                        className="press-row flex h-8 w-full items-center gap-3 rounded-xs pr-9 pl-2 text-left hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
+                        className="press-row flex h-row-nav w-full items-center gap-3 rounded-sm px-2 text-left hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
                       >
                         <span className="w-[72px] shrink-0 text-xs whitespace-nowrap text-fg-3 tabular-nums">{linesLabel(c.start, c.end).replace(/^l/, "L")}</span>
                         <span className="min-w-0 flex-1 truncate text-sm text-fg">{c.text.split("\n", 1)[0]}</span>
+                        {/* Room for the remove button that sits over the row's end. */}
+                        <span aria-hidden className="w-6 shrink-0" />
                       </button>
                       <button
                         type="button"
                         aria-label={`Remove comment on ${linesLabel(c.start, c.end)} of ${fileName(c.path)}`}
                         title="Remove comment"
                         onClick={() => store.remove(c.id)}
-                        className="press absolute top-1 right-1 grid size-6 place-items-center rounded-xs text-fg-3 opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                        className="press absolute top-1 right-1 grid size-6 place-items-center rounded-sm text-fg-3 opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                       >
-                        <X size={12} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
+                        <Glyph icon={X} size={14} />
                       </button>
                     </li>
                   ))}

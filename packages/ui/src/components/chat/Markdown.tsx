@@ -1,4 +1,5 @@
 import { Check, Copy } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { memo, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -32,7 +33,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
           onClick={() => copy(code)}
           className="press -my-0.5 -mr-2 ml-auto inline-flex h-6 items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
         >
-          {copied ? <Check size={12} aria-hidden /> : <Copy size={12} aria-hidden />}
+          {copied ? <Glyph icon={Check} size={14} /> : <Glyph icon={Copy} size={14} />}
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
@@ -52,11 +53,11 @@ const COMPONENTS: Components = {
   ),
 };
 
-export const Markdown = memo(function Markdown(props: { text: string; className?: string; streaming?: boolean }) {
+export const Markdown = memo(function Markdown(props: { text: string; className?: string; streaming?: boolean; /** Overrides (the file preview's links and images). */ components?: Components }) {
   const { text, className } = props;
   return (
     <div className={className ?? "octo-prose"} data-streaming={props.streaming ? "" : undefined}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={props.components ? { ...COMPONENTS, ...props.components } : COMPONENTS}>
         {text}
       </ReactMarkdown>
     </div>

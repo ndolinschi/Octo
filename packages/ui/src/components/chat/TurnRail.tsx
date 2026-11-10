@@ -80,7 +80,7 @@ export function TurnRail({ requests, projectId, now }: { requests: RequestSummar
                 role="tooltip"
                 className="pointer-events-none absolute top-1/2 left-full z-30 ml-2 w-[min(320px,60vw)] -translate-y-1/2 rounded-md bg-overlay p-3 text-sm shadow-pop"
               >
-                <p className="line-clamp-3 whitespace-pre-wrap wrap-anywhere text-fg">{requestTitle(r.text)}</p>
+                <p className="line-clamp-3 whitespace-pre-wrap wrap-anywhere text-fg">{requestTitle(r.text).replace(/\n\s*\n+/g, "\n")}</p>
                 <p className={cn("mt-1 flex gap-2 text-xs tabular-nums", r.state === "failed" ? "text-err" : "text-fg-3")}>
                   <span>{STATE_TEXT[r.state]}</span>
                   {duration !== null && duration >= 1000 && <span className="text-fg-3">{formatDuration(duration)}</span>}

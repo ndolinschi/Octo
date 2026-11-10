@@ -29,6 +29,7 @@ export class EditorBuffers {
   private watchers = new Set<BufferWatcher>();
   private reveals = new Map<string, FilePosition>();
   private revealListeners = new Set<(key: string) => void>();
+  private changeListeners = new Set<(key: string) => void>();
   /** True while disk content replaces a buffer (comment ranges keep their line numbers then). */
   replacing = false;
 
@@ -58,8 +59,12 @@ export class EditorBuffers {
     const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(content, undefined, uri);
     if (model.getValue() !== content) model.setValue(content);
     const buffer: Buffer = { model, savedVersion: model.getAlternativeVersionId(), modified: false, view: null, sub: { dispose() {} } };
-    buffer.sub = model.onDidChangeContent(() => this.check(key, buffer));
+    buffer.sub = model.onDidChangeContent(() => {
+      this.check(key, buffer);
+      this.changeListeners.forEach((l) => l(key));
+    });
     this.buffers.set(key, buffer);
+    this.changeListeners.forEach((l) => l(key));
     this.watchers.forEach((w) => w.opened(key, model));
     return model;
   }
@@ -86,6 +91,12 @@ export class EditorBuffers {
   onReveal(listener: (key: string) => void): () => void {
     this.revealListeners.add(listener);
     return () => void this.revealListeners.delete(listener);
+  }
+
+  /** Told when a buffer's text changes (or its model is created): the Markdown preview follows edits. */
+  onChange(listener: (key: string) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => void this.changeListeners.delete(listener);
   }
 
   has(key: string): boolean {

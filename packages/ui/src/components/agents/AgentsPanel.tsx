@@ -1,5 +1,6 @@
 import { childrenOf, descendantCount, type Agent, type ProjectState } from "@octo/agent-client";
 import { ChevronRight } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration } from "../../lib/format";
@@ -126,11 +127,12 @@ export function AgentsPanel() {
             onKeyDown={(e) => onKeyDown(e, i)}
             onClick={(e) => open(a, e.altKey)}
             className={cn(
-              "press-row flex h-7 items-center gap-1 rounded-sm pr-2 text-sm focus-inset",
+              // The file tree's anatomy: 16px per level (a spacer), [24px chevron] 4 [16px status slot] 8 [role].
+              "press-row flex h-row items-center rounded-sm px-1 text-sm focus-inset",
               current ? "bg-active" : "hover:bg-hover",
             )}
-            style={{ paddingLeft: (row.level - 1) * 14 }}
           >
+            {row.level > 1 && <span aria-hidden className="shrink-0" style={{ width: (row.level - 1) * 16 }} />}
             {/* A 24px target that only toggles: it never opens the agent (keyboard: ←/→ on the row). */}
             <button
               type="button"
@@ -141,14 +143,16 @@ export function AgentsPanel() {
                 e.stopPropagation();
                 setExpanded(a.id, !row.expanded);
               }}
-              className={cn("grid size-6 shrink-0 place-items-center rounded-xs text-fg-3 hover:bg-hover hover:text-fg", !row.hasChildren && "invisible")}
+              className={cn("grid size-6 shrink-0 place-items-center rounded-sm text-fg-3 hover:bg-hover hover:text-fg", !row.hasChildren && "invisible")}
             >
-              <ChevronRight size={12} strokeWidth={1.5} absoluteStrokeWidth className={cn("transition-[rotate] duration-150", row.expanded && "rotate-90")} />
+              <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", row.expanded && "rotate-90")} />
             </button>
-            {!(isRoot && a.status === "idle") && <StatusIcon status={a.status} />}
-            <span className="min-w-0 truncate text-fg">{isRoot ? "Orchestrator" : a.role}</span>
+            <span className="ml-1 grid size-4 shrink-0 place-items-center">
+              {!(isRoot && a.status === "idle") && <StatusIcon status={a.status} />}
+            </span>
+            <span className="ml-2 min-w-0 truncate text-fg">{isRoot ? "Orchestrator" : a.role}</span>
             {row.hidden > 0 && (
-              <span className={cn("shrink-0 text-xs tabular-nums", current ? "text-fg-2" : "text-fg-3")} title={`${row.hidden} nested agents hidden`}>
+              <span className={cn("ml-2 shrink-0 text-xs tabular-nums", current ? "text-fg-2" : "text-fg-3")} title={`${row.hidden} nested agents hidden`}>
                 +{row.hidden}
               </span>
             )}

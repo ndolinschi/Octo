@@ -1,4 +1,5 @@
-import { ArrowLeft, ArrowRight, FolderPlus, PanelLeftClose, Plus, Search, Settings, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, PanelLeft, Plus, Search, Settings, type LucideIcon } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useHistoryAvailability } from "../../lib/history";
@@ -13,7 +14,7 @@ import { ProjectItem } from "./ProjectItem";
  * Row anatomy shared by every sidebar row: [16px leading slot] 8 [label] flex [trailing], 8px padding,
  * radius 4. Top-level rows (nav, projects) are 32px; nested request rows 28px.
  */
-export const NAV_ROW = "press-row flex h-row-nav w-full items-center gap-2 rounded-xs px-2 text-sm text-fg hover:bg-hover";
+export const NAV_ROW = "press-row flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-sm text-fg hover:bg-hover";
 
 function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disabled?: boolean; trailing?: ReactNode; shortcut?: { hint: string; keys: string } }) {
   const Icon = props.icon;
@@ -25,7 +26,7 @@ function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disab
       aria-keyshortcuts={props.shortcut?.keys}
       className={cn(NAV_ROW, "disabled:text-fg-3 disabled:hover:bg-transparent")}
     >
-      <Icon size={16} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0 text-fg-2" />
+      <Glyph icon={Icon} size={16} className="shrink-0 text-fg-2" />
       <span className="min-w-0 flex-1 truncate text-left">{props.label}</span>
       {props.shortcut && (
         <kbd aria-hidden className="shrink-0 font-sans text-xs text-fg-3">
@@ -71,7 +72,7 @@ export function Sidebar(props: {
       <div className="flex min-h-0 flex-1 flex-col p-pane">
         {/* 2px side padding: the toggle's glyph centres on the rows' leading slot, the last button's on their trailing edge. */}
         <div className="flex h-row shrink-0 items-center gap-1 px-0.5">
-          <IconButton icon={PanelLeftClose} label="Hide sidebar" aria-expanded onClick={props.onToggle} />
+          <IconButton icon={PanelLeft} label="Hide sidebar" aria-expanded onClick={props.onToggle} />
           <span className="flex-1" />
           <IconButton icon={ArrowLeft} label="Back" onClick={() => window.history.back()} disabled={!history.back} />
           <IconButton icon={ArrowRight} label="Forward" onClick={() => window.history.forward()} disabled={!history.forward} />
@@ -79,7 +80,7 @@ export function Sidebar(props: {
 
         <div className="mt-2 flex shrink-0 flex-col">
           <NavRow icon={Search} label="Search" onClick={props.onSearch} shortcut={{ hint: `${MOD}K`, keys: "Control+K Meta+K" }} />
-          <NavRow icon={FolderPlus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />
+          <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />
         </div>
 
         {(projects ? projects.length > 0 : health !== "offline") && (

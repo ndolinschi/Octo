@@ -1,4 +1,5 @@
 import { CircleAlert, CircleX, Info } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooks";
@@ -20,8 +21,9 @@ const ICON: Record<ProblemSeverity, { icon: typeof CircleX; className: string; l
  * The right side of a File tab's header when a language server serves the file: a problems count
  * (opens a compact list; a row jumps to its line) and the server's name and state. Quiet: muted
  * text, no state shown for the first 200ms of starting (no flash), Retry after a failure or exit.
+ * `compact` (a narrow breadcrumb row) shows the server as a dot only, so it never competes with the crumbs.
  */
-export function EditorStatus({ intel, fileKey, onJump }: { intel: EditorIntel; fileKey: string; onJump(problem: Problem): void }) {
+export function EditorStatus({ intel, fileKey, onJump, compact = false }: { intel: EditorIntel; fileKey: string; onJump(problem: Problem): void; /** Narrow row: the server as a state dot, its name in the tooltip. */ compact?: boolean }) {
   const info = useSyncExternalStore(intel.subscribe, () => intel.get(fileKey));
   const { status, problems, notice } = info;
   const starting = useDelayedLoading(status?.state === "starting");
@@ -32,7 +34,7 @@ export function EditorStatus({ intel, fileKey, onJump }: { intel: EditorIntel; f
   return (
     <>
       {notice && (
-        <span role="status" className="min-w-0 truncate text-fg-3">
+        <span role="status" title={notice} className="min-w-0 truncate text-fg-3">
           {notice}
         </span>
       )}
@@ -46,14 +48,15 @@ export function EditorStatus({ intel, fileKey, onJump }: { intel: EditorIntel; f
         >
           {shownState === "starting" && <Spinner size={10} />}
           {broken && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-err" />}
-          <span aria-hidden className="max-w-[180px] truncate">
+          {compact && shownState === "ready" && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-fg-3" />}
+          <span aria-hidden className={cn("max-w-[180px] truncate", compact && "hidden")}>
             {status.label}
             {shownState && shownState !== "ready" && <span className={cn(broken && "text-err")}> {STATE_TEXT[shownState]}</span>}
           </span>
         </span>
       )}
       {status && broken && (
-        <button type="button" onClick={() => intel.retry(fileKey)} className="press -ml-1 h-6 shrink-0 rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg">
+        <button type="button" onClick={() => intel.retry(fileKey)} className="press h-6 shrink-0 rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg">
           Retry
         </button>
       )}
@@ -81,9 +84,9 @@ function ProblemsButton({ problems, onJump }: { problems: Problem[]; onJump(prob
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((x) => !x)}
-        className={cn("press -my-1 flex h-6 shrink-0 items-center gap-1 rounded-sm px-1.5 tabular-nums hover:bg-hover hover:text-fg", open ? "bg-active text-fg" : "text-fg-2")}
+        className={cn("press flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-2 tabular-nums hover:bg-hover hover:text-fg", open ? "bg-active text-fg" : "text-fg-2")}
       >
-        <Icon size={12} strokeWidth={1.75} absoluteStrokeWidth aria-hidden className={top.className} />
+        <Glyph icon={Icon} size={14} className={top.className} />
         {n}&nbsp;{n === 1 ? "problem" : "problems"}
       </button>
       <Presence show={open}>
@@ -100,11 +103,13 @@ function ProblemsButton({ problems, onJump }: { problems: Problem[]; onJump(prob
                       setOpen(false);
                       onJump(p);
                     }}
-                    className="press-row flex w-full items-start gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
+                    className="press-row flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
                   >
-                    <PIcon size={14} strokeWidth={1.5} absoluteStrokeWidth aria-label={s.label} className={cn("mt-[3px] shrink-0", s.className)} />
+                    <span className="grid h-5 shrink-0 place-items-center">
+                      <Glyph icon={PIcon} size={14} aria-label={s.label} className={s.className} />
+                    </span>
                     <span className="line-clamp-2 min-w-0 flex-1 text-sm text-fg">{p.message}</span>
-                    <span className="mt-0.5 shrink-0 text-xs text-fg-3 tabular-nums">
+                    <span className="flex h-5 shrink-0 items-center text-xs text-fg-3 tabular-nums">
                       {p.source && <span className="mr-2">{p.source}</span>}
                       Ln&nbsp;{p.line}, Col&nbsp;{p.column}
                     </span>

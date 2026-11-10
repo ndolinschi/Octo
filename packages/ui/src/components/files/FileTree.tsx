@@ -1,10 +1,12 @@
-import { ChevronRight, File, Folder, FolderOpen } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronRight } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { fileKey, parentPath } from "../../lib/files";
+import { ancestors, fileKey, parentPath } from "../../lib/files";
 import { useCode, type DirState } from "../../state/code";
 import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "./CommentCount";
+import { fileIcon, folderIcon } from "./fileIcons";
 import { useDelayedLoading } from "../../lib/hooks";
 import { Spinner } from "../primitives/Status";
 
@@ -14,46 +16,101 @@ type Row = NodeRow | StateRow;
 
 const isNode = (row: Row): row is NodeRow => row.kind === "dir" || row.kind === "file";
 
+/** Indent per level; the 24px chevron box of level n starts at (n − 1) × 16. */
+const INDENT = 16;
+
 function flatten(
   folders: { label: string; path: string }[],
   dirs: Record<string, DirState>,
   isExpanded: (key: string) => boolean,
+  /** While filtering: only these keys are shown (matches and their ancestors), every shown directory open. */
+  only: Set<string> | null,
 ): Row[] {
   const rows: Row[] = [];
   const walk = (folder: string, path: string, level: number) => {
     const key = fileKey(folder, path);
     const dir = dirs[key];
     if (!dir || (dir.status === "loading" && !dir.entries.length)) {
-      rows.push({ id: `${key}\u0001loading`, kind: "loading", folder, path, level, error: null });
+      if (!only) rows.push({ id: `${key}\u0001loading`, kind: "loading", folder, path, level, error: null });
       return;
     }
     if (dir.status === "error") {
-      rows.push({ id: `${key}\u0001error`, kind: "error", folder, path, level, error: dir.error });
+      if (!only) rows.push({ id: `${key}\u0001error`, kind: "error", folder, path, level, error: dir.error });
       return;
     }
-    if (!dir.entries.length) rows.push({ id: `${key}\u0001empty`, kind: "empty", folder, path, level, error: null });
+    if (!dir.entries.length && !only) rows.push({ id: `${key}\u0001empty`, kind: "empty", folder, path, level, error: null });
     for (const e of dir.entries) {
       const id = fileKey(folder, e.path);
-      const expanded = e.type === "dir" && isExpanded(id);
+      if (only && !only.has(id)) continue;
+      const expanded = e.type === "dir" && (only ? true : isExpanded(id));
       rows.push({ id, kind: e.type, folder, path: e.path, name: e.name, level, expanded, title: `${folder}/${e.path}` });
       if (expanded) walk(folder, e.path, level + 1);
     }
   };
   for (const f of folders) {
     const id = fileKey(f.label, "");
-    const expanded = isExpanded(id);
+    if (only && !only.has(id)) continue;
+    const expanded = only ? true : isExpanded(id);
     rows.push({ id, kind: "dir", folder: f.label, path: "", name: f.label, level: 1, expanded, title: f.path });
     if (expanded) walk(f.label, "", 2);
   }
   return rows;
 }
 
-/** ARIA tree of the project's folders; directories load when expanded. */
-export function FileTree({ folders }: { folders: { label: string; path: string }[] }) {
+/** Nesting depth as a spacer (a width, not padding: indents are structure, not spacing). */
+function Indent({ px }: { px: number }) {
+  return px > 0 ? <span aria-hidden className="shrink-0" style={{ width: px }} /> : null;
+}
+
+/** The matched part of a name in `fg` on the `hover` tint (no weight change). */
+export function Highlight({ text, query }: { text: string; query: string }): ReactNode {
+  const q = query.trim().toLowerCase();
+  const i = q ? text.toLowerCase().indexOf(q) : -1;
+  if (i < 0) return text;
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark className="rounded-2xs bg-hover text-fg">{text.slice(i, i + q.length)}</mark>
+      {text.slice(i + q.length)}
+    </>
+  );
+}
+
+export type FileTreeHandle = { focusFirst(): void };
+
+/**
+ * ARIA tree of the project's folders; directories load when expanded. With `filter`, only files whose
+ * folder-relative path contains it (case-insensitive) are shown, with their ancestors expanded; the
+ * caller loads the folders first (`indexFiles`). Rows: 28px, radius 6, 16px per level,
+ * [24px chevron box] 4 [16px icon slot] 8 [name] … 8 — one anatomy for roots (medium weight),
+ * folders and files (files keep the chevron box empty).
+ */
+export const FileTree = forwardRef<FileTreeHandle, {
+  folders: { label: string; path: string }[];
+  filter?: string;
+  /** Opens a file (default: `code.openFile`, which shows it in the side group). */
+  onOpenFile?(folder: string, path: string): void;
+  /** ↑ from the first row (back to the filter input). */
+  onExitTop?(): void;
+  label?: string;
+}>(function FileTree({ folders, filter = "", onOpenFile, onExitTop, label = "Project files" }, handle) {
   const code = useCode();
   const counts = useOptionalComments()?.counts;
-  const { dirs, isExpanded, ensureDir, selectedKey, revealTick } = code;
-  const allRows = useMemo(() => flatten(folders, dirs, isExpanded), [folders, dirs, isExpanded]);
+  const { dirs, isExpanded, ensureDir, selectedKey, revealTick, loadedFiles } = code;
+  const query = filter.trim().toLowerCase();
+
+  const only = useMemo(() => {
+    if (!query) return null;
+    const keys = new Set<string>();
+    for (const f of loadedFiles) {
+      if (!`${f.path}`.toLowerCase().includes(query)) continue;
+      keys.add(fileKey(f.folder, f.path));
+      for (const a of ancestors(f.path)) keys.add(fileKey(f.folder, a));
+    }
+    return keys;
+  }, [query, loadedFiles]);
+
+  const allRows = useMemo(() => flatten(folders, dirs, isExpanded, only), [folders, dirs, isExpanded, only]);
   // Loading rows appear only for slow folders (after 200ms) and then stay ≥300ms.
   const slow = useDelayedLoading(allRows.some((r) => r.kind === "loading"));
   const rows = useMemo(() => (slow ? allRows : allRows.filter((r) => r.kind !== "loading")), [allRows, slow]);
@@ -64,6 +121,28 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
   useEffect(() => {
     for (const r of allRows) if (r.kind === "loading") ensureDir(r.folder, r.path);
   }, [allRows, ensureDir]);
+
+  // The path tooltip only where it adds something: a cut-off name (roots: their absolute path, always).
+  // Measured after layout and on resize, so the tooltip layer reads the right `title` on hover.
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const apply = () => {
+      for (const row of el.querySelectorAll<HTMLElement>("[data-path]")) {
+        const label = row.querySelector<HTMLElement>("[data-label]");
+        const cut = row.dataset.root !== undefined || (label !== null && label.scrollWidth > label.clientWidth + 1);
+        if (cut) row.title = row.dataset.path!;
+        else row.removeAttribute("title");
+        if (!cut) delete row.dataset.tip;
+        else if (row.dataset.tip !== undefined) row.dataset.tip = row.dataset.path;
+      }
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [rows]);
 
   // Scroll the row a link revealed into view.
   useEffect(() => {
@@ -79,10 +158,16 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
     refs.current.get(id)?.focus();
   };
 
+  useImperativeHandle(handle, () => ({
+    // While filtering, the first match (not its folder) is where ↓ from the input lands.
+    focusFirst: () => focus((query ? rows.find((r) => r.kind === "file")?.id : undefined) ?? ids[0]),
+  }));
+
   const activate = (row: Row) => {
-    if (row.kind === "file") code.openFile(row.folder, row.path);
-    else if (row.kind === "dir") code.setExpanded(row.folder, row.path, !row.expanded);
-    else if (row.kind === "error") code.reloadDir(row.folder, row.path);
+    if (row.kind === "file") (onOpenFile ?? code.openFile)(row.folder, row.path);
+    else if (row.kind === "dir") {
+      if (!query) code.setExpanded(row.folder, row.path, !row.expanded);
+    } else if (row.kind === "error") code.reloadDir(row.folder, row.path);
   };
 
   const onKeyDown = (e: KeyboardEvent, row: Row) => {
@@ -93,7 +178,7 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
     };
     const moves: Record<string, () => void> = {
       ArrowDown: () => focus(ids[i + 1]),
-      ArrowUp: () => focus(ids[i - 1]),
+      ArrowUp: () => (i === 0 && onExitTop ? onExitTop() : focus(ids[i - 1])),
       Home: () => focus(ids[0]),
       End: () => focus(ids[ids.length - 1]),
       ArrowRight: () => {
@@ -102,7 +187,7 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
         else focus(ids[i + 1]);
       },
       ArrowLeft: () => {
-        if (row.kind === "dir" && row.expanded) code.setExpanded(row.folder, row.path, false);
+        if (row.kind === "dir" && row.expanded && !query) code.setExpanded(row.folder, row.path, false);
         else focus(parentId());
       },
       Enter: () => activate(row),
@@ -116,12 +201,13 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
   };
 
   return (
-    <div role="tree" aria-label="Project files" className="h-full min-h-0 overflow-y-auto overscroll-contain px-2 pt-1 pb-4">
+    <div ref={root} role="tree" aria-label={label} className="flex flex-col">
       {rows.map((row) => {
-        const pad = { paddingLeft: (row.level - 1) * 14 };
+        const indent = (row.level - 1) * INDENT;
         if (row.kind === "empty") {
           return (
-            <div key={row.id} role="none" className="flex h-7 items-center text-xs text-fg-3" style={{ paddingLeft: pad.paddingLeft + 28 }}>
+            <div key={row.id} role="none" className="flex h-row shrink-0 items-center text-xs text-fg-3">
+              <Indent px={indent + 24 + 4 + 16 + 8} />
               Empty folder
             </div>
           );
@@ -136,7 +222,6 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
           tabIndex: row.id === tabId ? 0 : -1,
           onFocus: () => setFocusId(row.id),
           onKeyDown: (e: KeyboardEvent) => onKeyDown(e, row),
-          style: pad,
         } as const;
         if (!isNode(row)) {
           return (
@@ -145,8 +230,9 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
               {...common}
               aria-disabled={row.kind === "loading" || undefined}
               aria-busy={row.kind === "loading" || undefined}
-              className="flex h-7 items-center gap-1 rounded-sm pr-1 text-xs text-fg-3 focus-inset"
+              className="flex h-row shrink-0 items-center gap-1 rounded-sm pr-1 text-xs text-fg-3 focus-inset"
             >
+              <Indent px={indent} />
               <span className="grid size-6 shrink-0 place-items-center">{row.kind === "loading" && <Spinner size={10} />}</span>
               {row.kind === "loading" ? (
                 "Loading…"
@@ -159,7 +245,7 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
                     type="button"
                     tabIndex={-1}
                     onClick={() => code.reloadDir(row.folder, row.path)}
-                    className="press ml-auto h-6 shrink-0 rounded-sm px-1.5 text-fg-2 hover:bg-hover hover:text-fg"
+                    className="press ml-auto h-6 shrink-0 rounded-sm px-2 text-fg-2 hover:bg-hover hover:text-fg"
                   >
                     Retry
                   </button>
@@ -170,39 +256,43 @@ export function FileTree({ folders }: { folders: { label: string; path: string }
         }
         const selected = row.id === selectedKey;
         const isRoot = row.kind === "dir" && row.path === "";
-        const Icon = row.kind === "file" ? File : row.expanded ? FolderOpen : Folder;
+        const Icon = row.kind === "file" ? fileIcon(row.name) : folderIcon(row.expanded);
+        const comments = row.kind === "file" ? (counts?.get(row.id) ?? 0) : 0;
         return (
           <div
             key={row.id}
             {...common}
             aria-expanded={row.kind === "dir" ? row.expanded : undefined}
             aria-selected={selected}
-            aria-description={row.kind === "file" ? commentsDescription(counts?.get(row.id) ?? 0) : undefined}
-            title={row.title}
+            aria-description={row.kind === "file" ? commentsDescription(comments) : undefined}
+            data-path={row.title}
+            data-root={isRoot || undefined}
             onClick={() => activate(row)}
             className={cn(
-              "press-row flex h-7 items-center gap-1 rounded-sm pr-2 text-sm focus-inset",
+              "press-row flex h-row shrink-0 items-center rounded-sm px-1 text-sm focus-inset",
               selected ? "bg-active" : "hover:bg-hover",
             )}
           >
+            <Indent px={indent} />
             <span aria-hidden className={cn("grid size-6 shrink-0 place-items-center text-fg-3", row.kind !== "dir" && "invisible")}>
-              <ChevronRight
-                size={12}
-                strokeWidth={1.5}
-                absoluteStrokeWidth
-                className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")}
-              />
+              <Glyph icon={ChevronRight} size={14}
+                className={cn("transition-[rotate] duration-150", row.kind === "dir" && row.expanded && "rotate-90")}/>
             </span>
-            {!isRoot && <Icon size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="mr-0.5 shrink-0 text-fg-3" />}
-            <span className={cn("min-w-0 truncate", isRoot ? "font-medium text-fg" : "text-fg")}>{row.name}</span>
-            {row.kind === "file" && (counts?.get(row.id) ?? 0) > 0 && (
-              <span className="ml-auto pl-2">
-                <CommentCount count={counts!.get(row.id)!} />
+            <span aria-hidden className="ml-1 grid size-4 shrink-0 place-items-center text-fg-3">
+              <Glyph icon={Icon} size={14} />
+            </span>
+            <span data-label className={cn("ml-2 min-w-0 truncate text-fg", isRoot && "font-medium")}>
+              {query && row.kind === "file" ? <Highlight text={row.name} query={query} /> : row.name}
+            </span>
+            {comments > 0 && (
+              <span className="ml-auto pr-1 pl-2">
+                <CommentCount count={comments} />
               </span>
             )}
           </div>
         );
       })}
+      {query && rows.length === 0 && <p className="flex h-row items-center px-2 text-xs text-fg-3">No files match</p>}
     </div>
   );
-}
+});

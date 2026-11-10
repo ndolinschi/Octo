@@ -1,4 +1,5 @@
 import { MessageSquare } from "lucide-react";
+import { Glyph } from "../../primitives/Glyph";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../../lib/cn";
 import { linesLabel } from "../../../lib/comments";
@@ -102,7 +103,7 @@ function Card(props: Extract<ZoneProps, { kind: "card" }>) {
   return (
     <article aria-label={`Pending comment on ${label}`} className={cn(BOX, "group/card px-3 pt-1.5 pb-2")}>
       <header className="flex h-6 items-center gap-1.5 text-xs text-fg-3">
-        <MessageSquare size={12} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0" />
+        <Glyph icon={MessageSquare} size={14} className="shrink-0" />
         <span className="min-w-0 truncate tabular-nums">{label.replace(/^l/, "L")}</span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100">
           <button type="button" onClick={props.onEdit} className="press h-6 rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg">

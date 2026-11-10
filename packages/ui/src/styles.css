@@ -138,31 +138,37 @@
   --text-input-touch: 16px;
   --text-input-touch--line-height: 20px;
   /* Radius scale. Concentric: a child at inset i inside radius R takes R − i.
-     2xs 2 delegation rows (8 − 6 → see card) · xs 4 rows, tabs, menu items, palette results, inline code
-     (panel 12 − 8, menu 8 − 4, palette 12 − 8) · sm 6 controls · md 8 cards, inputs, menus, popovers,
-     code blocks · xl 12 panels, dialogs, palette, composer. Nothing rounder. */
+     2xs 2 kbd hints · xs 4 inline code, delegation rows (card 8 − 4) · sm 6 every selectable row (sidebar,
+     tree, tabs, palette, menus, "+" menu), controls, buttons · md 8 cards, inputs, code blocks ·
+     lg 10 overlays holding rows at a 4px inset (menus, popovers, palette, dialogs) · xl 12 panels, composer.
+     Nothing rounder. */
   --radius-2xs: 2px;
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
+  --radius-lg: 10px;
   --radius-xl: 12px;
   /* Semantic spacing (all on the scale). */
-  --spacing-gutter: 8px; /* window edge → panel, panel → panel, sidebar card → panel */
+  --spacing-gutter: 8px; /* window edge → panel, panel → panel, sidebar → panel: one value everywhere */
   --spacing-pane: 8px; /* panel or sidebar edge → its tab strip, rows, bars (one inset rule) */
   --spacing-card: 12px; /* card edge → content (prompt box, delegation card, code block, comment card) */
   --spacing-dialog: 20px; /* dialog edge → content (16 under 640px) */
   --spacing-pad: 24px; /* conversation side padding (16 when the conversation is under 560px) */
-  /* Semantic sizes. Rows: 28 for every list row (tabs, requests, tree, agents, menus, popovers, filter);
-     32 for top-level rows (sidebar nav and project rows, palette results). Controls: 24 / 28 / 32. */
+  /* Row heights, by role (nothing else): 24 compact controls and chips · 28 tabs, tree rows, menu rows,
+     request rows, filter input · 32 sidebar nav and project rows, delegation rows, palette results,
+     dialog inputs · 36 group tab strip · 40 header rows (chat header, file breadcrumb row, one-line
+     composer). */
+  --spacing-chip: 24px;
   --spacing-row: 28px;
   --spacing-row-nav: 32px;
-  --spacing-slot: 16px; /* leading slot of every row (icon, chevron or status), centred 16px in */
-  --spacing-bar: 36px; /* slim bars: file breadcrumb row */
-  /* Content width of the conversation column (transcript, header, pinned prompt, composer share both edges). */
+  --spacing-strip: 36px;
+  --spacing-bar: 40px;
+  --spacing-slot: 16px; /* leading slot of every row (icon, chevron or status) */
+  /* Content width of the conversation column (transcript, header, pinned prompt, composer share both
+     edges) and of the Markdown preview. */
   --spacing-measure: 720px;
   --spacing-sidebar: 260px;
-  --spacing-preview: 760px;
-  --spacing-float: 704px;
+  --spacing-float: 640px; /* floating composer, max width */
   --ease-out-quint: cubic-bezier(0.2, 0, 0, 1);
   --animate-caret: caret 1s steps(2, start) infinite;
 
@@ -462,7 +468,7 @@
 .octo-prose :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 0.86em;
-  padding: 0.1em 0.3em;
+  padding: 2px 4px;
   border-radius: 4px;
   background: var(--octo-active);
   overflow-wrap: anywhere;
@@ -609,4 +615,35 @@
 }
 :root .monaco-editor .peekview-widget .head {
   font-family: var(--font-sans);
+}
+
+/* Glow (contract v6 decision 12): one static radial wash of `accent` behind the centred composer of an
+   empty project and behind the no-projects hero — the place to start. Multi-stop falloff (no banding),
+   0 by the ellipse's edge (480px from the centre horizontally); fades in once and never moves. Not
+   used on any screen with a transcript, code or lists. */
+:root,
+:root[data-theme="dark"] {
+  --octo-glow: rgb(92 157 255 / 0.14);
+}
+:root[data-theme="light"] {
+  --octo-glow: rgb(10 102 224 / 0.08);
+}
+.octo-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 960px;
+  height: 560px;
+  translate: -50% -50%;
+  pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    var(--octo-glow) 0%,
+    color-mix(in srgb, var(--octo-glow) 82%, transparent) 20%,
+    color-mix(in srgb, var(--octo-glow) 55%, transparent) 42%,
+    color-mix(in srgb, var(--octo-glow) 28%, transparent) 64%,
+    color-mix(in srgb, var(--octo-glow) 9%, transparent) 84%,
+    transparent 100%
+  );
+  animation: octo-fade-in 240ms ease-out both;
 }

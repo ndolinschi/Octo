@@ -1,5 +1,6 @@
 import type { AgentStatus, Tier } from "@octo/agent-client";
-import { Check, X } from "lucide-react";
+import { Check, CircleX } from "lucide-react";
+import { Glyph } from "./Glyph";
 import { cn } from "../../lib/cn";
 
 const LABEL: Record<AgentStatus, string> = {
@@ -45,11 +46,11 @@ export function RunningDot({ box = 12, className }: { box?: number; className?: 
   );
 }
 
-/** One glyph per status: accent dot (running), green check, red cross, grey dot. */
-export function StatusIcon({ status, size = 12 }: { status: AgentStatus; size?: number }) {
+/** One glyph per status: accent dot (running), green check, red circled cross (the error glyph), grey dot. */
+export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: 14 | 16 }) {
   if (status === "running") return <RunningDot box={size} />;
-  if (status === "completed") return <Check size={size} strokeWidth={2} absoluteStrokeWidth className="shrink-0 text-ok" aria-hidden />;
-  if (status === "failed") return <X size={size} strokeWidth={2} absoluteStrokeWidth className="shrink-0 text-err" aria-hidden />;
+  if (status === "completed") return <Glyph icon={Check} size={size} className="shrink-0 text-ok" />;
+  if (status === "failed") return <Glyph icon={CircleX} size={size} className="shrink-0 text-err" />;
   return (
     <span aria-hidden className="grid shrink-0 place-items-center" style={{ width: size, height: size }}>
       <span className="size-[5px] rounded-full bg-fg-3" />

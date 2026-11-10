@@ -1,5 +1,6 @@
 import type { ProjectSummary } from "@octo/agent-client";
 import { ChevronRight } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useId, useState } from "react";
 import { cn } from "../../lib/cn";
 import { formatRelative } from "../../lib/format";
@@ -14,6 +15,8 @@ const PREVIEW = 5;
 
 /** Request rows: an empty 16px leading slot, so their text starts on the project name's line (8 + 16 + 8). */
 const INSET = "pl-8";
+/** The same inset for rows with a fill: 8px padding on both sides plus a 24px leading spacer (balanced insets). */
+const Lead = () => <span aria-hidden className="w-6 shrink-0" />;
 
 export function ProjectItem(props: {
   project: ProjectSummary;
@@ -36,7 +39,7 @@ export function ProjectItem(props: {
   return (
     <li>
       {/* One row shape (radius 4 on all corners); the chevron's 24px target is centred on the 16px leading slot. */}
-      <div className={cn("press-row flex h-row-nav items-center rounded-xs pr-2 pl-1", active && !viewingShown ? "bg-active" : "hover:bg-hover")}>
+      <div className={cn("press-row flex h-row-nav items-center rounded-sm pr-2 pl-1", active && !viewingShown ? "bg-active" : "hover:bg-hover")}>
         <button
           type="button"
           aria-expanded={expanded}
@@ -44,15 +47,15 @@ export function ProjectItem(props: {
           aria-label={`Show requests in ${project.name}`}
           title={`Show requests in ${project.name}`}
           onClick={() => props.onExpanded(!expanded)}
-          className="grid size-6 shrink-0 place-items-center rounded-xs text-fg-3 transition-[color] duration-100 hover:text-fg focus-inset"
+          className="grid size-6 shrink-0 place-items-center rounded-sm text-fg-3 transition-[color] duration-100 hover:text-fg focus-inset"
         >
-          <ChevronRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className={cn("transition-[rotate] duration-150", expanded && "rotate-90")} />
+          <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", expanded && "rotate-90")} />
         </button>
         <a
           href={hrefFor(project.id)}
           aria-current={active ? "page" : undefined}
           title={project.name}
-          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-xs pl-1 text-sm text-fg focus-inset"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-sm pl-1 text-sm text-fg focus-inset"
         >
           <span className="min-w-0 flex-1 truncate">{project.name}</span>
           <ProjectState project={project} running={running} unseen={props.unseen} active={active && !viewingShown} now={props.now} />
@@ -164,12 +167,12 @@ function RequestList(props: {
                 open(r);
               }}
               className={cn(
-                "press-row flex h-row items-center gap-2 rounded-xs pr-2 text-sm focus-inset",
-                INSET,
+                "press-row flex h-row items-center rounded-sm px-2 text-sm focus-inset",
                 current ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
               )}
             >
-              <span className="min-w-0 flex-1 truncate">{firstLine(r.text)}</span>
+              <Lead />
+              <span className="mr-2 min-w-0 flex-1 truncate">{firstLine(r.text)}</span>
               {live ? (
                 <span data-meta className="grid size-4 shrink-0 place-items-center" title="Working">
                   <RunningDot />
@@ -190,8 +193,9 @@ function RequestList(props: {
             type="button"
             aria-expanded={all}
             onClick={() => setAll((a) => !a)}
-            className={cn("press-row flex h-row w-full items-center rounded-xs pr-2 text-xs text-fg-3 hover:bg-hover hover:text-fg-2", INSET)}
+            className="press-row flex h-row w-full items-center rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg-2"
           >
+            <Lead />
             {all ? "Show fewer" : `Show all (${requests.length})`}
           </button>
         </li>

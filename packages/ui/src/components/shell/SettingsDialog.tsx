@@ -85,7 +85,7 @@ function BridgeStatus({ demo }: { demo: boolean }) {
   return (
     <section>
       <h3 className="text-sm text-fg-2">Bridge</h3>
-      <div className="mt-1.5 flex min-h-9 items-center gap-2.5 rounded-md border border-line bg-panel py-1 pr-1 pl-3">
+      <div className="mt-1.5 flex min-h-9 items-center gap-2 rounded-md border border-line bg-panel py-1 pr-1 pl-3">
         <span aria-hidden className="grid size-3 shrink-0 place-items-center">
           {health === "checking" ? <Spinner size={10} /> : <span className={cn("size-1.5 rounded-full", health === "online" ? "bg-ok" : "bg-err")} />}
         </span>

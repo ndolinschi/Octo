@@ -1,5 +1,6 @@
 import type { Models, Project, ProjectInput } from "@octo/agent-client";
 import { ChevronRight, Plus, X } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
 import { basename } from "../../lib/format";
@@ -242,7 +243,7 @@ export function ProjectDialog(props: {
             className="-ml-2 inline-flex h-7 items-center gap-1 rounded-sm px-2 text-sm text-fg-2 hover:bg-hover hover:text-fg"
           >
             Models and delegation
-            <ChevronRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className={cn("text-fg-3", advanced && "rotate-90")} />
+            <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", advanced && "rotate-90")} />
           </button>
           {advanced && (
             <div className="mt-3 grid gap-3">

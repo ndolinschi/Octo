@@ -1,5 +1,7 @@
 import { ArrowDown } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Glyph } from "../primitives/Glyph";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { cn } from "../../lib/cn";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
@@ -21,14 +23,19 @@ import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
 
 type ScrollMemory = { top: number; atBottom: boolean };
 
+/** A row outside the scroll area with the scroll area's gutters and side padding (see the doc comment). */
+export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
+
 /** The turn rail appears from this many requests on. */
 const RAIL_MIN_REQUESTS = 3;
 
 /**
  * A conversation (the orchestrator's Chat tab or a sub-agent's Agent tab). The header, transcript
- * column, pinned prompt, jump button and composer / read-only bar share both edges exactly: the scroll
- * area reserves its scrollbar gutter on both sides (`scroll-quiet`) and the rows outside it add the same
- * gutter (`--sg`) to the same padding (`--pad`). Rhythm: turns 32 apart, prompt → reply 16, blocks 12.
+ * column, pinned prompt, rail, jump button and composer / read-only bar share both edges exactly: the
+ * scroll area reserves its scrollbar gutter on both sides (`scroll-quiet`), and every row outside it
+ * reserves the same gutter the same way (`EDGES`: `overflow: hidden` + the same `scrollbar-gutter`),
+ * then all of them pad by `--pad` (24, or 16 under 560px). Rhythm: turns 32 apart, prompt → reply 16,
+ * blocks 12.
  */
 export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: string }) {
   const ws = useOptionalWorkspace();
@@ -47,7 +54,6 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
     [messages, streaming, agent?.status, agentId],
     saved ? saved.atBottom : isOrchestrator || agent?.status === "running",
   );
-  const [gutter, setGutter] = useState(0);
 
   const stuck = useStuckTurn(scroll.ref);
   const promptCount = useMemo(() => messages?.filter((m) => m.role === "user").length ?? 0, [messages]);
@@ -71,17 +77,6 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   useEffect(() => {
     ensureMessages(agentId);
   }, [agentId, ensureMessages]);
-
-  // Half of the reserved scrollbar space: the same inset for the rows outside the scroll area.
-  useLayoutEffect(() => {
-    const el = scroll.ref.current;
-    if (!el) return;
-    const measure = () => setGutter(Math.max(0, (el.offsetWidth - el.clientWidth) / 2));
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [scroll.ref, agent]);
 
   // Moving a tab remounts it: put the reader back where they were.
   const restored = useRef(false);
@@ -121,11 +116,41 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   const stuckPrompt = stuck.stuckId !== null ? messages?.find((m) => m.id === stuck.stuckId) : undefined;
   const watched = ws ? ws.watched === tab : true;
 
+  if (showStarters) {
+    // Empty project (contract v6 decision 13): one centred block over the glow — title, one line, the
+    // composer, starter rows. The first message switches to the normal layout (no transition).
+    return (
+      <div className="@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]">
+        <ChatHeader requests={requests} />
+        <div data-empty-project className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-(--pad)">
+          <div className="m-auto w-full max-w-float py-8">
+            <div className="relative">
+              <div aria-hidden className="octo-glow" />
+              <h1 className="relative text-center text-title text-fg">{project.name}</h1>
+              <p className="relative mt-2 text-center text-sm text-fg-2">Ask the orchestrator. It plans, delegates to sub-agents and keeps notes.</p>
+              <div className="relative mt-6">
+                <Composer
+                  ref={composer}
+                  {...composerProps}
+                  comments={
+                    composerProps.commentCount
+                      ? { count: composerProps.commentCount, render: (open, setOpen) => <CommentsControl open={open} onOpenChange={setOpen} /> }
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+              <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]"
-      style={{ "--sg": `${gutter}px` } as CSSProperties}
-    >
+    <div className="@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]">
       {isOrchestrator && <ChatHeader requests={requests} />}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {stuckPrompt && (
@@ -137,8 +162,9 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
           />
         )}
         {requests.length >= RAIL_MIN_REQUESTS && (
-          // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16.
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-[calc(var(--pad)+var(--sg))] @max-[560px]/conv:hidden">
+          // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16. The
+          // layer covers the whole scroll area (it clips like the transcript) but takes no pointer events.
+          <div className={cn(EDGES, "pointer-events-none absolute inset-0 z-20 @max-[560px]/conv:hidden")}>
             <div className="relative mx-auto max-w-measure">
               <div className="pointer-events-auto absolute top-2 right-full mr-1">
                 <TurnRail requests={requests} projectId={projectId} now={now} />
@@ -157,10 +183,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
           <div className="px-(--pad)">
             <div data-column className="mx-auto w-full max-w-measure pt-2 pb-8">
               {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
-              {showStarters ? (
-                <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
-              ) : (
-                <Transcript
+              <Transcript
                   agent={agent}
                   messages={messages ?? []}
                   now={now}
@@ -169,35 +192,41 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
                   promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
                   hideFirstPrompt={!isOrchestrator}
                 />
-              )}
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="relative shrink-0 px-[calc(var(--pad)+var(--sg))] pb-3">
         {!scroll.atBottom && (
-          <>
-            {/* Content fades out under the button (stopping short of the scrollbar), so the button never
-                reads as part of whatever it sits over. */}
-            <div aria-hidden className="octo-fade pointer-events-none absolute -top-14 right-[calc(var(--sg)*2)] left-0 h-14 bg-linear-to-t from-panel from-30% to-transparent" />
+          // Scrolled up, the view ends 40px higher: the button gets its own room below the transcript
+          // (4 + 32 + 4), so it never sits on text, and the last 12px of text fade out above that room.
+          // The content does not move (the scroll position is kept); at the bottom the room goes again.
+          <div data-jump-room className="relative flex h-10 shrink-0 items-center justify-center">
+            <div aria-hidden className="octo-fade scroll-quiet pointer-events-none absolute inset-x-0 -top-3 h-3 overflow-hidden">
+              <div className="h-full bg-linear-to-t from-panel to-transparent" />
+            </div>
             <button
               type="button"
               onClick={() => scroll.scrollToBottom(true)}
               aria-label="Jump to latest"
               title="Jump to latest"
-              className="press octo-fade absolute -top-11 left-1/2 z-10 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
+              className="press octo-fade grid size-8 place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
             >
-              <ArrowDown size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
+              <Glyph icon={ArrowDown} size={14} />
             </button>
-          </>
+          </div>
         )}
+      </div>
+
+      <div className={cn(EDGES, "shrink-0 pb-3")}>
         <div data-column-edge className="mx-auto w-full max-w-measure">
           {isOrchestrator ? (
             <Composer
               ref={composer}
               {...composerProps}
-              comments={composerProps.commentCount ? { count: composerProps.commentCount, control: <CommentsControl /> } : undefined}
+              comments={
+                composerProps.commentCount
+                  ? { count: composerProps.commentCount, render: (open, setOpen) => <CommentsControl open={open} onOpenChange={setOpen} /> }
+                  : undefined
+              }
             />
           ) : (
             <ObserverBar />

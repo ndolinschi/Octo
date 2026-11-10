@@ -91,6 +91,33 @@ Two references: an agent IDE window (A) and a desktop assistant's code view (B).
     upload, no MCP picker.
 11. **Long prompts** in the transcript clamp at 8 lines with "Show more" / "Show less" (`aria-expanded`).
 
+Second batch of references (owner: "icons are not pretty; analyse these, do not copy blindly; maybe add a glow"):
+an agent app with a customisations page (C) and an assistant's start page with a glow behind the input (D).
+
+| Pattern | Verdict | What we do |
+| --- | --- | --- |
+| D: soft radial glow behind the centred input on the start page | Good as a single "start here" cue; bad if it leaks into working screens (noise behind text, banding, contrast loss) | Decision 12: glow only on empty states |
+| C/D: start page = greeting + centred composer, nothing else | Good: one obvious action | Decision 13 |
+| C: thin, consistent line icons; very few of them; plain "+" as the action | Good. Ours mix stroke weights and use busy file glyphs (file-with-badge) and unclear tool glyphs | Decision 14 |
+| C: customisations as a two-column list: icon tile, name, one-line description, state/action on the right; Marketplace / Installed | Layout good. Marketplace is a non-goal (plugins are local files by design) | Settings → Plugins rows take that anatomy (tile, name, description, state); no marketplace, no Add |
+| C: project selector chip above the composer | Not applicable: one conversation per project, chosen in the sidebar | Not built |
+| C: pure-black window with barely lighter panel | Mixed: elegant, but panels lose their edge | Keep our measured window/panel pair |
+
+12. **Glow** (`--octo-glow`): one static radial gradient of `accent` (dark ≤ 14% alpha at the centre, light ≤ 8%,
+    fading to 0 by ~480px, no banding: multi-stop easing) behind the centred composer of an empty project and
+    behind the no-projects hero. It fades in once (240ms, opacity) and never animates otherwise; it is not used on
+    any screen with a transcript, code or lists. Text over it keeps ≥ 4.5:1 (measured against the brightest
+    point). This is the one deliberate exception to "colour means state": it marks the place to start.
+13. **Empty project**: vertically centred block — project name as title, one muted line, the composer (same
+    component, 640px max), starter prompts as quiet rows under it. After the first message the composer is in its
+    normal bottom position (no animation between the two layouts; the transcript simply appears).
+14. **Icon system**: one `Icon` wrapper — lucide, stroke 1.5, `currentColor`, sizes 16 (rows, buttons, tabs) and 14
+    (tree, chips, meta) only; optical centring in a fixed square slot. Review every glyph for meaning and
+    family resemblance: tools (Agents, Notes, Files) get plain unambiguous glyphs; file types reduce to: folder /
+    folder-open, generic file, code (`<>`-style braces file is fine but one glyph for all code), text/Markdown,
+    image, config (one glyph for json/toml/yaml/lock/dotfiles). No two different glyphs for the same meaning, no
+    glyph reused for two meanings; send = arrow-up, stop = square.
+
 ### Acceptance criteria (v6)
 
 1. `spacing-audit.mjs` exits 0 on every listed state and width; its before/after counts are recorded below.
@@ -105,6 +132,77 @@ Two references: an agent IDE window (A) and a desktop assistant's code view (B).
 8. The "+" menu opens by button, `/` and `@`; a file pick inserts its path; with `?plugins=none` there is no
    Agents group; a 20-line prompt is clamped and expands.
 9. Gates: agent-client tests, UI lint/type-check, desktop build; no console errors; initial bundle growth recorded.
+
+### As built (v6)
+
+**Semantic spacing tokens** (`packages/ui/src/styles.css`, every value on the 2 4 6 8 12 16 20 24 32 40 scale):
+`gutter` 8 (window edge → panel, panel → panel, sidebar → panel; also the dock divider) · `pane` 8 (panel edge →
+strip, rows, bars) · `card` 12 · `dialog` 20 · `pad` 24 (16 under a 560px conversation) · prose: blocks 12,
+headings 24 / 8, list items 4. Row heights by role: `chip` 24 · `row` 28 · `row-nav` 32 · `strip` 36 · `bar` 40.
+Widths: `measure` 720 (conversation, Markdown preview), `float` 640 (floating composer, empty-project block).
+Radii: `2xs` 2 kbd · `xs` 4 inline code, delegation rows · `sm` 6 every selectable row and control · `md` 8 cards,
+inputs, code · `lg` 10 overlays that hold rows at a 4px inset (menus, popovers, palette, dialogs, "+" menu) ·
+`xl` 12 panels, composer.
+
+**Row anatomy.**
+
+| Row | Anatomy (left → right) |
+| --- | --- |
+| Tab (28, 96–200 wide) | 8 · 16 icon slot · 8 · label · 8 · … · 16 trailing slot (close / unsaved / working; reserved on every tab, empty on an idle Chat) · 8 |
+| Sidebar nav / project (32) | 8 · 16 slot · 8 · label · … · meta · 8 (project: 4 · 24 chevron · 4 · label) |
+| Request (28) | 8 · 24 lead spacer · label · 8 · meta · 8 (text on the project name's 32px line, balanced padding) |
+| Tree row — files and agents (28) | 4 · indent spacer 16/level · 24 chevron box · 4 · 16 icon slot · 8 · label · … · 4 (roots included) |
+| Menu / palette / "+" menu option (28 / 32 / 28) | 8 · (16 icon · 8) · label · … · hint or kbd · 8, inside a 4px list inset, radius 6 |
+| Delegation row (32) | card 4 inset · 0-width edge track + 8 gap · 16 glyph slot · 8 · role · 8 · title · 8 · meta (error line under the row, outside it) |
+| Breadcrumb row (40) | 8 · back 28 · 4 · forward 28 · 8 · crumbs · … · status · Preview\|Source (24) · `…` 28 · tree toggle 28 · 8 |
+| Composer (40 one-line) | 6 · "+" 28 · 8 · text (14/24, 2px block padding) · 8 · [model, floating only] · send 28 · 6; edge = 1px outline (takes no room) |
+
+**Decided differently from the contract, and why.**
+
+- Conversation edges: the rows outside the scroll area (header, pinned prompt, rail layer, composer, jump room)
+  reserve the scroll area's gutters the same way it does (`overflow: hidden` + `scrollbar-gutter: stable
+  both-edges`), so every padding is the literal 24 instead of `24 + half the scrollbar` (was 34px, off-scale).
+- Jump to latest: instead of an overlay fade, scrolling up adds a 40px room under the transcript (the scroll
+  position is kept, nothing moves) that holds the button; the last 12px of text fade above it. The button can
+  never sit on text, which an overlay could not guarantee.
+- Tree indentation, the request-row lead and the Markdown preview's floating-composer room are spacer widths /
+  heights, not padding: they are structure, and padding-based indents produced off-scale values (48, 64…).
+- Composer hint: "↵ send", "⇧↵ new line", "/ insert" laid out with 12px gaps, not joined with "·" (craft rule);
+  shown while the box is empty and focused. The Chat composer's model sits in the footer (contract B); the floating
+  composer has no footer, so its model sits inside the box before send.
+- Floating composer hosts: file views (File tabs and the Files tab) and the Agents / Notes tools; an Agent tab
+  keeps its read-only bar instead (two bottom bars would stack).
+- Narrow file views (< 560px): the tree floats over the editor, starts closed there and closes on a pick; the
+  shared column preference is not touched. The column is capped at 40% of the view (min 200) so code keeps room.
+  The language-server label collapses to a state dot (name in the tooltip) under 640px. At a 1100px window the
+  side group is ~370px, so there the tree is always the overlay (the empty Files view opens with it shown).
+- Floating composer room: Monaco's bottom padding is the composer block's height + 16, and because Monaco's own
+  reveal (arrows, Ctrl/Cmd+End, typing) ignores that padding, a caret moved under the composer is scrolled back
+  above it (measured: last line bottom = composer top on a 56-line file).
+- Read-only bar: one 40px line at every width (note truncates with a tooltip); under 360px the link shows only
+  its arrow (accessible name unchanged).
+- Files button: opens the tree of a visible file view and focuses its filter; otherwise opens the Files tab (now
+  half the row, like a file, since it is a file view).
+- Status glyphs: failed is `CircleX` (the error glyph) — `X` means close/clear only. Stop is a filled `Square` at 14.
+- Glow: `color-mix` multi-stop falloff (6 stops, closest-side ellipse 960×560) rather than a single 2-stop gradient.
+
+**Glow contrast** (WCAG 2, `accent` composited on `panel` at the centre — the brightest point): dark `#212a37`:
+fg 12.70 · fg-2 8.47 · fg-3 5.67; light `#ebf3fd`: fg 15.56 · fg-2 8.98 · fg-3 5.80. Measured peak pixel in the screenshots (DPR 2): dark `#1f2836` → fg 13.02 · fg-2 8.69;
+light `#ecf3fd` → fg 15.59 · fg-2 9.00. No other surface token changed
+in v6 (the v4 table below still holds); `--octo-glow` is the only new colour token.
+
+**Icons** (decision 14): one wrapper `primitives/Glyph.tsx` (lucide, absolute 1.5px stroke, 16 or 14 only); meanings
+used in several places live in `primitives/glyphs.ts` (Chat `MessagesSquare`, Agent `Bot`, Agents `Network`, Notes
+`NotebookText`, Files `Folder`); file types reduce to `File`, `FileCode`, `FileBraces` (all config incl. JSON),
+`FileText`, `FileImage` (`files/fileIcons.ts`). New project uses the same `Plus` as every add action; the sidebar
+toggle is `PanelLeft` in both states.
+
+**Bundle** (`pnpm --filter @octo/desktop build`, initial `index-*.js` gzip): 191.21 kB before → 201.22 kB after
+(+10.01 kB: file view, tree column, filter/index loader, Markdown preview wiring, floating composer, "+" menu, turn
+rail wiring, glyph set). Monaco chunk unchanged (336.7 kB gzip, lazy).
+
+**Spacing audit** (`packages/ui/scripts/spacing-audit.mjs`, all states, 1440/1100/960/390): 866 violations before
+the pass (orchestrator's run on the partial build), 263 midway, **0 after** (allow-list empty).
 
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 

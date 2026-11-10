@@ -4,10 +4,11 @@ import { STICK_TOP } from "./turnTracking";
 
 /**
  * The prompt of the turn being read, pinned over the top of the scroll area once its own copy has
- * scrolled out entirely (never two boxes at once). Opaque, with a short fade below; long prompts clamp (three lines, one on short
+ * scrolled out entirely (never two boxes at once). Opaque, with a 24px fade below (12 on short viewports: content reads as passing under it, never hard-cut); long prompts clamp (three lines, one on short
  * viewports) and expand on click. It overlays the transcript (not in flow), so pinning never shifts
- * the content. It spans the scroll area minus the scrollbar and uses the conversation's `--pad` /
- * `--sg` insets, so its edges match the transcript column.
+ * the content. It reserves the scroll area's gutters the same way (`scroll-quiet` + `overflow: hidden`)
+ * and pads by the conversation's `--pad`, so its edges match the transcript column and it never covers
+ * the scrollbar.
  */
 export function StickyPrompt(props: { text: string; author: string | null; onHeight(px: number): void }) {
   const box = useRef<HTMLSpanElement>(null);
@@ -58,8 +59,8 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
   const boxClass = "block w-full rounded-md border border-line bg-raised p-card text-left text-base text-fg";
 
   return (
-    <div ref={root} data-pinned className="pointer-events-none absolute top-0 left-0 z-10 right-(--sg)">
-      <div className="bg-panel pr-(--pad) pl-[calc(var(--pad)+var(--sg))]" style={{ paddingTop: STICK_TOP }}>
+    <div ref={root} data-pinned className="scroll-quiet pointer-events-none absolute inset-x-0 top-0 z-10 overflow-hidden">
+      <div className="bg-panel px-(--pad)" style={{ paddingTop: STICK_TOP }}>
         <div data-pinned-box className="pointer-events-auto mx-auto w-full max-w-measure">
           {clamped || expanded ? (
             <button
@@ -78,7 +79,7 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
           )}
         </div>
       </div>
-      <div aria-hidden className="h-3 bg-linear-to-b from-panel to-transparent [@media(max-height:640px)]:h-2" />
+      <div aria-hidden className="h-6 bg-linear-to-b from-panel from-25% to-transparent [@media(max-height:640px)]:h-3" />
     </div>
   );
 }

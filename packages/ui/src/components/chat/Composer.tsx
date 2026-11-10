@@ -1,8 +1,11 @@
 import type { Folder } from "@octo/agent-client";
-import { ArrowUp, Square } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ArrowUp, Plus, Square } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
+import { Presence } from "../primitives/Presence";
+import { ComposerMenu, type ComposerMenuHandle, type MenuPick } from "./ComposerMenu";
 import { ModelSelect } from "./ModelSelect";
 
 export type ComposerHandle = { focus(): void; fill(text: string): void };
@@ -17,20 +20,28 @@ export type ComposerProps = {
   model: { value: string; options: string[]; choose(model: string): Promise<void> } | null;
   onSend(text: string): Promise<void>;
   onCancel(): Promise<void>;
-  /** Keeps an unsent draft across remounts (moving the Chat tab to another group). */
-  draft?: { initial: string; save(text: string): void };
+  /** Keeps an unsent draft across remounts and shares it with the other composer on the same key. */
+  draft?: { initial: string; save(text: string): void; subscribe?(cb: (text: string) => void): () => void };
   /** Pending code comments go out with the next message (which may then have no text). */
-  comments?: { count: number; control: ReactNode };
-  /** Floating over a file view: a shadow instead of the hairline, no folder line. */
+  comments?: { count: number; render(open: boolean, setOpen: (open: boolean) => void): ReactNode };
+  /** Opens the pending-comments list from the "+" menu when it lives elsewhere (the floating composer's chip). */
+  onOpenComments?(): void;
+  /** Floating over a file view: a shadow instead of the hairline, the model inside the box, no footer. */
   floating?: boolean;
 };
 
 const MAX_HEIGHT_VH = 0.4;
+/** `/` or `@` at the start of a word, up to the caret: the "+" menu's inline query. */
+const TRIGGER = /(^|\s)([/@])([^\s/@]*)$/;
+
+type MenuState = { mode: "button" } | { mode: "inline"; start: number; query: string };
 
 /**
- * A tall rounded box (radius 12, 8px inset): the text area on top, a control row inside at the bottom
- * (left: pending comments, the orchestrator model; right: send / stop). Text and control labels start
- * on one line 16px in (box 8 + control 8). Folder names follow as one quiet line below the box.
+ * One rounded box (radius 12, 6px inset, a 1px edge drawn as an outline so it takes no room): 40px tall
+ * with one line — [28px "+"] 8 [text] 8 [28px send / stop] — and growing with the text (controls stay
+ * on the last line). Below it (not when floating) a 24px footer: the orchestrator model and the
+ * folders on the left; on the right, while the box is empty and focused, the key hint. The "+" menu
+ * (button, or `/` / `@` at a word start) inserts file paths and agent hints, or runs an action.
  */
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(props, handle) {
   const [text, setText] = useState(() => props.draft?.initial ?? "");
@@ -38,10 +49,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   useEffect(() => {
     saveDraft?.(text);
   }, [text, saveDraft]);
+  const subscribe = props.draft?.subscribe;
+  useEffect(() => subscribe?.((t) => setText((cur) => (cur === t ? cur : t))), [subscribe]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelError, setModelError] = useState<{ model: string; message: string } | null>(null);
+  const [focused, setFocused] = useState(false);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [activeOption, setActiveOption] = useState<string | null>(null);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLFormElement>(null);
+  const menuRef = useRef<ComposerMenuHandle>(null);
+  const listId = useId();
 
   useImperativeHandle(handle, () => ({
     focus: () => area.current?.focus(),
@@ -95,7 +115,52 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   };
 
+  /** Re-reads the word at the caret: opens, updates or closes the inline menu. */
+  const syncTrigger = (value: string, caret: number) => {
+    const m = TRIGGER.exec(value.slice(0, caret));
+    if (m) setMenu({ mode: "inline", start: caret - m[3].length - 1, query: m[3] });
+    else setMenu((cur) => (cur?.mode === "inline" ? null : cur));
+  };
+
+  // Closing the button-opened menu (Esc, a pick) gives focus back to the text.
+  const closeMenu = useCallback(() => {
+    setMenu((cur) => {
+      if (cur?.mode === "button") requestAnimationFrame(() => area.current?.focus());
+      return null;
+    });
+  }, []);
+  const onOpenComments = props.onOpenComments;
+  const openComments = useCallback(() => (onOpenComments ? onOpenComments() : setCommentsOpen(true)), [onOpenComments]);
+
+  const pick = (p: MenuPick) => {
+    const el = area.current;
+    const current = menu;
+    setMenu(null);
+    if ("run" in p) {
+      // Inline: the trigger and its query were only a way into the menu.
+      if (current?.mode === "inline" && el) setText(text.slice(0, current.start) + text.slice(el.selectionStart));
+      p.run();
+      return;
+    }
+    const caret = el?.selectionStart ?? text.length;
+    const from = current?.mode === "inline" ? current.start : caret;
+    const to = current?.mode === "inline" ? caret : (el?.selectionEnd ?? caret);
+    const before = text.slice(0, from);
+    const lead = before && !/\s$/.test(before) ? " " : "";
+    const next = before + lead + p.insert + text.slice(to);
+    setText(next);
+    const at = (before + lead + p.insert).length;
+    requestAnimationFrame(() => {
+      area.current?.focus();
+      area.current?.setSelectionRange(at, at);
+    });
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menu?.mode === "inline" && menuRef.current?.onKeyDown(e)) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       void submit();
@@ -116,6 +181,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setModelError(null);
     model.choose(next).catch((e: unknown) => setModelError({ model: next, message: e instanceof Error ? e.message : String(e) }));
   };
+  const modelSelect = model && <ModelSelect value={model.value} options={model.options} onChoose={chooseModel} disabled={disabled} />;
+  const control = "press grid size-7 shrink-0 place-items-center rounded-sm";
+  const inlineOpen = menu?.mode === "inline";
 
   return (
     <div data-composer>
@@ -141,14 +209,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </div>
       )}
       <form
+        ref={box}
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
         className={cn(
-          "flex flex-col rounded-xl border bg-raised p-2 transition-[border-color] duration-100",
-          props.floating ? "border-transparent shadow-float" : "border-line",
-          !disabled && "focus-within:border-focus",
+          "flex items-end gap-2 rounded-xl bg-raised p-1.5 outline -outline-offset-1 transition-[outline-color] duration-100",
+          props.floating ? "shadow-float outline-transparent" : "outline-line",
+          !disabled && "focus-within:outline-focus",
         )}
         onMouseDown={(e) => {
           // Clicking the padding around the textarea still puts the caret in it.
@@ -158,6 +227,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           }
         }}
       >
+        <button
+          type="button"
+          aria-label="Insert a file, agent or action"
+          title="Insert a file, agent or action"
+          data-shortcut="/"
+          aria-haspopup="listbox"
+          aria-expanded={menu?.mode === "button"}
+          disabled={disabled}
+          onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
+          className={cn(control, "text-fg-3 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40", menu?.mode === "button" && "bg-active text-fg")}
+        >
+          <Glyph icon={Plus} size={16} />
+        </button>
         <label htmlFor={props.floating ? "octo-composer-float" : "octo-composer"} className="sr-only">
           Message the orchestrator
         </label>
@@ -167,44 +249,78 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           rows={1}
           value={text}
           disabled={disabled}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            syncTrigger(e.target.value, e.target.selectionStart);
+          }}
+          onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            setFocused(false);
+            if (inlineOpen) setMenu(null);
+          }}
           placeholder={placeholder}
-          className="block max-h-[40vh] min-w-0 resize-none overscroll-contain bg-transparent px-2 py-1.5 text-base wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
+          aria-autocomplete="list"
+          aria-expanded={inlineOpen}
+          aria-controls={inlineOpen ? listId : undefined}
+          aria-activedescendant={inlineOpen && activeOption ? activeOption : undefined}
+          aria-describedby={props.floating ? undefined : `${listId}-hint`}
+          className="block max-h-[40vh] min-w-0 flex-1 resize-none self-center overscroll-contain bg-transparent py-0.5 text-base leading-6 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
         />
-        <div className="mt-1 flex h-row items-center gap-1">
-          {pendingComments > 0 && props.comments?.control}
-          {model && <ModelSelect value={model.value} options={model.options} onChoose={chooseModel} disabled={disabled} />}
-          <span className="flex-1" />
-          {props.running ? (
-            <button
-              type="button"
-              onClick={() => void props.onCancel()}
-              aria-label="Stop the current turn"
-              title="Stop"
-              // Radius 4 = box 12 − inset 8.
-              className="press grid size-7 shrink-0 place-items-center rounded-xs bg-primary text-primary-fg hover:opacity-90"
-            >
-              <Square size={10} fill="currentColor" strokeWidth={0} aria-hidden />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!canSend}
-              aria-label="Send message"
-              title="Send"
-              className="press grid size-7 shrink-0 place-items-center rounded-xs bg-primary text-primary-fg hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100"
-            >
-              <ArrowUp size={16} strokeWidth={2} absoluteStrokeWidth aria-hidden />
-            </button>
-          )}
-        </div>
+        {props.floating && modelSelect && <span className="flex h-7 shrink-0 items-center">{modelSelect}</span>}
+        {props.running ? (
+          <button type="button" onClick={() => void props.onCancel()} aria-label="Stop the current turn" title="Stop" className={cn(control, "bg-primary text-primary-fg hover:opacity-90")}>
+            <Glyph icon={Square} size={14} fill="currentColor" />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!canSend}
+            aria-label="Send message"
+            title="Send"
+            className={cn(control, "bg-primary text-primary-fg hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100")}
+          >
+            <Glyph icon={ArrowUp} size={16} />
+          </button>
+        )}
       </form>
       {!props.floating && (
-        <p className="mt-2 h-4 truncate px-4 text-xs text-fg-3" title={props.folders.map((f) => f.path).join("\n") || undefined}>
-          {folders || "No folders attached"}
-        </p>
+        // Footer, 24px: controls start on the box's inner edge (6) and the hint ends on it.
+        <div className="mt-1 flex h-6 min-w-0 items-center gap-1 px-1.5 text-xs">
+          {modelSelect}
+          {pendingComments > 0 && props.comments?.render(commentsOpen, setCommentsOpen)}
+          <p className="min-w-0 truncate px-2 text-fg-3" title={props.folders.map((f) => f.path).join("\n") || undefined}>
+            {folders || "No folders attached"}
+          </p>
+          <p id={`${listId}-hint`} className={cn("ml-auto flex shrink-0 items-center gap-3 pl-2 text-fg-3 max-sm:hidden", !(focused && !text) && "hidden")}>
+            <span>
+              <kbd className="font-sans">↵</kbd> send
+            </span>
+            <span>
+              <kbd className="font-sans">⇧↵</kbd> new line
+            </span>
+            <span>
+              <kbd className="font-sans">/</kbd> insert
+            </span>
+          </p>
+        </div>
       )}
+      <Presence show={menu !== null} exitMs={0}>
+        {menu && (
+          <ComposerMenu
+            ref={menuRef}
+            anchor={box}
+            query={menu.mode === "inline" ? menu.query : null}
+            listId={listId}
+            onActive={setActiveOption}
+            pendingComments={pendingComments}
+            onOpenComments={openComments}
+            onPick={pick}
+            onClose={closeMenu}
+          />
+        )}
+      </Presence>
     </div>
   );
 });

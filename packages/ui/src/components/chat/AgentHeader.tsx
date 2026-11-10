@@ -1,5 +1,6 @@
 import { ancestorsOf, descendantCount, type Agent } from "@octo/agent-client";
 import { ChevronRight } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useId, useState } from "react";
 import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration } from "../../lib/format";
@@ -37,7 +38,7 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
                 if (a.parent_id === null) ws.focusChat();
                 else ws.openAgent(a.id, { otherSide: e.altKey });
               }}
-              className="inline-block h-6 max-w-[200px] truncate rounded-xs py-0.5 leading-5 hover:text-fg"
+              className="inline-block h-6 max-w-[200px] truncate rounded-sm py-0.5 leading-5 hover:text-fg"
             >
               {roleName(a)}
             </a>
@@ -97,7 +98,7 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
             className="press -ml-1.5 inline-flex h-6 items-center gap-1 rounded-sm px-1.5 text-sm text-fg-3 hover:bg-hover hover:text-fg-2"
           >
             Task brief
-            <ChevronRight size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className={cn("transition-[rotate] duration-150", briefOpen && "rotate-90")} />
+            <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", briefOpen && "rotate-90")} />
           </button>
           {briefOpen && (
             <div id={briefId} className="mt-1 border-l border-line-strong pl-3">

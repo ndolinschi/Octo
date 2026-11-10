@@ -1,4 +1,5 @@
 import { ChevronDown } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { Menu } from "../primitives/Menu";
@@ -29,12 +30,12 @@ export function ModelSelect(props: { value: string; options: string[]; onChoose(
         disabled={props.disabled}
         onClick={() => (menu ? setMenu(null) : open())}
         className={cn(
-          "press flex h-row min-w-0 shrink items-center gap-1 rounded-sm px-2 text-xs hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:text-fg-3",
+          "press flex h-6 shrink-0 items-center gap-1 rounded-sm px-2 text-xs hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:text-fg-3",
           menu ? "bg-active text-fg" : "text-fg-2",
         )}
       >
         <span className="truncate">{modelLabel(props.value)}</span>
-        <ChevronDown size={12} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0" />
+        <Glyph icon={ChevronDown} size={14} className="shrink-0" />
       </button>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (

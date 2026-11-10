@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { Glyph } from "./Glyph";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
@@ -20,7 +21,7 @@ const ITEM = '[data-menu-item]:not([aria-disabled="true"])';
  * type-ahead move; Enter/Space runs; Esc, Tab, a click outside or scrolling closes. Focus moves into the
  * menu on open and back to the opener when it starts closing.
  */
-export function Menu(props: { label: string; x: number; y: number; items: MenuItem[]; onClose(): void; above?: boolean }) {
+export function Menu(props: { label: string; x: number; y: number; items: MenuItem[]; onClose(): void; above?: boolean; /** Opens leftwards from x (its right edge on x). */ alignEnd?: boolean }) {
   const { onClose } = props;
   const ref = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -35,13 +36,13 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
     const el = ref.current;
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
-    const flipX = props.x + width + EDGE > window.innerWidth;
+    const flipX = props.alignEnd || props.x + width + EDGE > window.innerWidth;
     const flipY = props.above || props.y + height + EDGE > window.innerHeight;
     setPos({
       left: Math.max(EDGE, flipX ? props.x - width : props.x),
       top: Math.max(EDGE, flipY ? props.y - height : props.y),
     });
-  }, [props.x, props.y, props.above]);
+  }, [props.x, props.y, props.above, props.alignEnd]);
 
   useEffect(() => {
     opener.current = document.activeElement as HTMLElement | null;
@@ -122,7 +123,7 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
       onKeyDown={onKeyDown}
       onContextMenu={(e) => e.preventDefault()}
       style={{ left: pos.left, top: pos.top }}
-      className="fixed z-[60] min-w-[200px] overscroll-contain rounded-md border border-transparent bg-overlay p-1 text-sm shadow-pop"
+      className="fixed z-[60] min-w-[200px] overscroll-contain rounded-lg border border-transparent bg-overlay p-1 text-sm shadow-pop"
     >
       {props.items.map((item) =>
         isAction(item) ? (
@@ -146,8 +147,8 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
               if (!item.disabled) e.currentTarget.focus();
             }}
             className={cn(
-              // Radius = menu radius (8) − its padding (4).
-              "flex h-row items-center gap-6 rounded-xs px-2 outline-none focus-visible:shadow-none",
+              // Radius 6 = menu radius (10) − its padding (4).
+              "flex h-row items-center gap-6 rounded-sm px-2 outline-none focus-visible:shadow-none",
               item.disabled ? "text-fg-3" : "text-fg focus:bg-active",
             )}
           >
@@ -155,7 +156,7 @@ export function Menu(props: { label: string; x: number; y: number; items: MenuIt
             {item.shortcut && <kbd className="shrink-0 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
             {item.checked !== undefined && (
               <span aria-hidden className="grid size-4 shrink-0 place-items-center">
-                {item.checked && <Check size={14} strokeWidth={1.5} absoluteStrokeWidth />}
+                {item.checked && <Glyph icon={Check} size={14} />}
               </span>
             )}
           </div>

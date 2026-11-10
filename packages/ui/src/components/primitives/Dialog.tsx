@@ -27,8 +27,10 @@ export function Dialog(props: {
   useModal(panel, onClose);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 pt-[6vh] sm:p-6 sm:pt-[9vh]" inert={state === "closed"}>
+    <div className="fixed inset-0 z-50 flex flex-col items-center overflow-y-auto p-3 sm:p-6" inert={state === "closed"}>
       <div className="octo-scrim fixed inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
+      {/* Optical placement above centre: a spacer, so every padding stays on the scale. */}
+      <div aria-hidden className="h-[6vh] shrink-0 sm:h-[9vh]" />
       <div
         ref={panel}
         role="dialog"
@@ -37,7 +39,7 @@ export function Dialog(props: {
         aria-describedby={props.description ? descId : undefined}
         data-state={state}
         className={cn(
-          "octo-overlay relative flex max-h-[88vh] w-full flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
+          "octo-overlay relative flex max-h-[88vh] w-full shrink-0 flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
           props.width === "sm" ? "max-w-[400px]" : "max-w-[520px]",
         )}
       >

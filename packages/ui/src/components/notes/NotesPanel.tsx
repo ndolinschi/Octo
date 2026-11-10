@@ -90,7 +90,7 @@ function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): 
         type="button"
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
-        className="mt-1 block w-full rounded-xs text-left"
+        className="mt-1 block w-full rounded-sm text-left"
       >
         {expanded ? (
           <Markdown text={note.content} className="octo-prose octo-prose-sm" />

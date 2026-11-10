@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { Glyph } from "./Glyph";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
 
@@ -13,7 +14,7 @@ const VARIANT: Record<Variant, string> = {
 };
 
 const SIZE: Record<Size, string> = {
-  sm: "h-7 px-2.5 text-sm gap-1.5 rounded-sm",
+  sm: "h-7 px-3 text-sm gap-1.5 rounded-sm",
   md: "h-8 px-3 text-sm gap-1.5 rounded-sm",
 };
 
@@ -39,7 +40,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       )}
       {...rest}
     >
-      {Icon && <Icon size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />}
+      {Icon && <Glyph icon={Icon} size={14} />}
       {children}
     </button>
   );
@@ -71,7 +72,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       )}
       {...rest}
     >
-      <Icon size={size === "sm" ? 14 : 16} strokeWidth={1.5} absoluteStrokeWidth aria-hidden />
+      <Glyph icon={Icon} size={size === "sm" ? 14 : 16} />
     </button>
   );
 });

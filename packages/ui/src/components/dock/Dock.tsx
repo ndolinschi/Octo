@@ -5,6 +5,7 @@ import { MIN_GROUP, useWorkspace } from "../../state/workspace/WorkspaceProvider
 import { panelClass } from "../shell/Panel";
 import { Divider } from "./Divider";
 import { DragLayer } from "./DragLayer";
+import { GroupProvider } from "./group";
 import { domId } from "./ids";
 import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";
@@ -75,6 +76,7 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
       onFocusCapture={() => ws.focusGroup(group.id)}
       className={cn(panelClass, narrow && "flex-1")}
     >
+      <GroupProvider group={group}>
       <TabStrip label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`} tabs={strip.tabs} active={strip.active} focused={focused} first={first} last={last} />
       <div data-dock-body className="relative min-h-0 flex-1">
         {group.tabs
@@ -92,6 +94,7 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
             </div>
           ))}
       </div>
+      </GroupProvider>
     </section>
   );
 }

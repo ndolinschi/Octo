@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { Glyph } from "../../primitives/Glyph";
 import type * as Monaco from "monaco-editor";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -333,7 +334,7 @@ export function EditorComments(props: { editor: Monaco.editor.IStandaloneCodeEdi
       onClick={onPlus}
       className="press absolute z-[5] grid place-items-center rounded-xs bg-primary text-primary-fg shadow-panel before:absolute before:-inset-[3px] before:content-[''] hover:opacity-90"
     >
-      <Plus size={12} strokeWidth={2.25} absoluteStrokeWidth aria-hidden />
+      <Glyph icon={Plus} size={14} />
     </button>
   );
 }

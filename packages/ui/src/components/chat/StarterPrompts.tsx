@@ -1,5 +1,6 @@
 import type { Project } from "@octo/agent-client";
 import { ListChecks, Map as MapIcon, ShieldAlert, type LucideIcon } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 
 type Starter = { title: string; text: string; icon: LucideIcon };
 
@@ -24,32 +25,29 @@ function prompts(project: Project): Starter[] {
   ];
 }
 
-/** Empty project: its name, one line, and three quiet bordered rows that fill the composer. */
+/**
+ * Starter prompts under the empty project's composer: quiet 32px rows (no box), [16px icon] 8 [title]
+ * 8 [the prompt, muted, truncated]; picking one fills the composer. The list's 4px inset plus the rows'
+ * 8px padding puts the icons on the line of the composer's "+" glyph (box inset 6 + 6 inside its button).
+ */
 export function StarterPrompts({ project, onPick }: { project: Project; onPick(text: string): void }) {
   return (
-    <section aria-labelledby="starter-title" className="pt-4">
-      <h1 id="starter-title" className="text-title text-fg">
-        {project.name}
-      </h1>
-      <p className="mt-1 text-sm text-fg-2">Ask the orchestrator. It plans, delegates to sub-agents and keeps notes.</p>
-      <ul className="mt-4 flex flex-col gap-2">
-        {prompts(project).map((p) => (
-          <li key={p.title}>
-            <button
-              type="button"
-              onClick={() => onPick(p.text)}
-              title={p.text}
-              className="press-row flex w-full items-start gap-3 rounded-md border border-line p-card text-left hover:border-line-strong hover:bg-hover"
-            >
-              <p.icon size={16} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="mt-0.5 shrink-0 text-fg-3" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-fg">{p.title}</span>
-                <span className="block truncate text-xs text-fg-3">{p.text}</span>
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <ul aria-label="Starter prompts" className="flex flex-col px-1">
+      {prompts(project).map((p) => (
+        <li key={p.title}>
+          <button
+            type="button"
+            data-row
+            onClick={() => onPick(p.text)}
+            title={p.text}
+            className="press-row flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover:bg-hover"
+          >
+            <Glyph icon={p.icon} size={16} className="shrink-0 text-fg-3" />
+            <span className="shrink-0 text-fg">{p.title}</span>
+            <span className="min-w-0 flex-1 truncate text-fg-3">{p.text}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

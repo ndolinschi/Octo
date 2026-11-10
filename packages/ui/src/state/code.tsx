@@ -41,6 +41,13 @@ export type OpenFile = {
 
 export type DirState = { status: "loading" | "ready" | "error"; entries: FileEntry[]; error: string | null };
 
+/** Breadth-first walk of every folder for Filter files and the composer's file search. */
+export type FileIndex = { status: "idle" | "loading" | "done"; /** Stopped at a limit: only loaded folders were searched. */ partial: boolean };
+
+/** Limits of the walk (contract v6 decision 6). */
+const INDEX_MAX_DIRS = 200;
+const INDEX_MAX_ENTRIES = 5000;
+
 type CodeValue = {
   /** The project's folders (label + absolute path), one tree root each. */
   folders: { label: string; path: string }[];
@@ -52,6 +59,11 @@ type CodeValue = {
   /** Starts the language-server client once Monaco is loaded (the factory comes from the editor chunk). */
   startIntel(create: (options: Omit<LspManagerOptions, "monaco">) => IntelClient): void;
   dirs: Record<string, DirState>;
+  /** Loads directories breadth-first (up to the limits) so every loaded file can be searched. */
+  indexFiles(): void;
+  fileIndex: FileIndex;
+  /** Every file in the loaded directories, folder by folder, paths sorted. */
+  loadedFiles: { folder: string; path: string }[];
   isExpanded(key: string): boolean;
   setExpanded(folder: string, path: string, expanded: boolean): void;
   ensureDir(folder: string, path: string): void;
@@ -59,8 +71,11 @@ type CodeValue = {
   /** Tree row that reflects the latest open/reveal/focused file; bumps `revealTick` to scroll it into view. */
   selectedKey: string | null;
   revealTick: number;
-  /** Opens a file (loading it once) and asks the workspace to show its tab, optionally at a position. */
-  openFile(folder: string, path: string, at?: FilePosition): void;
+  /**
+   * Opens a file (loading it once) and asks the workspace to show its tab, optionally at a position;
+   * `where` puts the tab in a given group (the file view's own tree), optionally in place of a tab.
+   */
+  openFile(folder: string, path: string, at?: FilePosition, where?: OpenWhere): void;
   /** Loads a file restored with the layout, without showing it; a file gone from disk is reported via `onGone`. */
   restore(key: string): void;
   /** Marks the file whose tab has focus in the tree. */
@@ -82,9 +97,12 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** A group to open a file tab in, optionally replacing one of its tabs (the empty file view). */
+export type OpenWhere = { group: string; replace?: string };
+
 type Callbacks = {
   /** Show the tab of a file the user opened. */
-  onOpen(key: string): void;
+  onOpen(key: string, where?: OpenWhere): void;
   /** Show the Files tab (a folder was revealed). */
   onReveal(): void;
   /** A restored file no longer exists; drop its tab silently. */
@@ -144,19 +162,64 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   /* ---------- tree ---------- */
 
   const loadDir = useCallback(
-    async (folder: string, path: string, quiet = false) => {
+    async (folder: string, path: string, quiet = false): Promise<FileEntry[] | null> => {
       const key = fileKey(folder, path);
       if (!quiet) setDirs((d) => ({ ...d, [key]: { status: "loading", entries: d[key]?.entries ?? [], error: null } }));
       try {
         const entries = await bridge.listFiles(projectId, folder, path);
+        dirsRef.current = { ...dirsRef.current, [key]: { status: "ready", entries, error: null } };
         setDirs((d) => ({ ...d, [key]: { status: "ready", entries, error: null } }));
+        return entries;
       } catch (e) {
-        if (quiet && dirsRef.current[key]?.status === "ready") return;
+        if (quiet && dirsRef.current[key]?.status === "ready") return dirsRef.current[key].entries;
         setDirs((d) => ({ ...d, [key]: { status: "error", entries: [], error: errorMessage(e) } }));
+        return null;
       }
     },
     [bridge, projectId],
   );
+
+  const [fileIndex, setFileIndex] = useState<FileIndex>({ status: "idle", partial: false });
+  const indexing = useRef(false);
+  const indexFiles = useCallback(() => {
+    if (indexing.current) return;
+    indexing.current = true;
+    setFileIndex({ status: "loading", partial: false });
+    void (async () => {
+      const queue: [string, string][] = (foldersRef.current ?? []).map((f) => [f.label, ""]);
+      let seenDirs = 0;
+      let seenEntries = 0;
+      let partial = false;
+      while (queue.length) {
+        if (seenDirs >= INDEX_MAX_DIRS || seenEntries >= INDEX_MAX_ENTRIES) {
+          partial = true;
+          break;
+        }
+        const [folder, path] = queue.shift()!;
+        const known = dirsRef.current[fileKey(folder, path)];
+        const entries = known?.status === "ready" ? known.entries : await loadDir(folder, path, true);
+        seenDirs += 1;
+        if (!entries) continue;
+        seenEntries += entries.length;
+        for (const e of entries) if (e.type === "dir") queue.push([folder, e.path]);
+      }
+      setFileIndex({ status: "done", partial });
+      // A later call (folders changed, files added) walks again, reusing what is loaded.
+      indexing.current = false;
+    })();
+  }, [loadDir]);
+
+  const loadedFiles = useMemo(() => {
+    const out: { folder: string; path: string }[] = [];
+    for (const f of folders ?? []) {
+      const prefix = `${f.label}\u0000`;
+      for (const [key, dir] of Object.entries(dirs)) {
+        if (!key.startsWith(prefix) || dir.status !== "ready") continue;
+        for (const e of dir.entries) if (e.type === "file") out.push({ folder: f.label, path: e.path });
+      }
+    }
+    return out.sort((a, b) => (a.folder === b.folder ? a.path.localeCompare(b.path) : 0));
+  }, [dirs, folders]);
 
   const isExpanded = useCallback((key: string) => expanded[key] ?? key.endsWith("\u0000"), [expanded]);
 
@@ -224,7 +287,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
   );
 
   const openFile = useCallback(
-    (folder: string, rawPath: string, at?: FilePosition) => {
+    (folder: string, rawPath: string, at?: FilePosition, where?: OpenWhere) => {
       const path = normalizePath(rawPath);
       if (!path) return;
       const key = ensure(folder, path);
@@ -232,7 +295,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       setSelectedKey(key);
       setRevealTick((n) => n + 1);
       expandTo(folder, ancestors(path));
-      cb.current.onOpen(key);
+      cb.current.onOpen(key, where);
     },
     [ensure, expandTo, buffers],
   );
@@ -396,6 +459,9 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
           }),
         ),
       dirs,
+      indexFiles,
+      fileIndex,
+      loadedFiles,
       isExpanded,
       setExpanded: (folder, path, value) => {
         const key = fileKey(folder, path);
@@ -421,7 +487,7 @@ export function CodeProvider({ children, ...callbacks }: Callbacks & { children:
       retryOpen,
       dismissNotice: (key) => patch(key, { notice: null }),
     }),
-    [folders, files, buffers, intel, bridge, projectId, dirs, isExpanded, ensureDir, loadDir, selectedKey, revealTick, openFile, restore, revealDir, close, save, reloadFromDisk, retryOpen, patch],
+    [folders, files, buffers, intel, bridge, projectId, dirs, indexFiles, fileIndex, loadedFiles, isExpanded, ensureDir, loadDir, selectedKey, revealTick, openFile, restore, revealDir, close, save, reloadFromDisk, retryOpen, patch],
   );
 
   return <CodeContext.Provider value={value}>{children}</CodeContext.Provider>;

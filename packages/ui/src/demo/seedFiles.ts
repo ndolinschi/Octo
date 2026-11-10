@@ -241,6 +241,62 @@ func isApplied(ctx context.Context, conn *pgx.Conn, name string) (bool, error) {
 	return n > 0, err
 }
 `,
+  "docs/architecture.md": `# Architecture
+
+How a request moves through **atlas-api**, from the edge to Postgres. Read [the security notes](security.md)
+first if you are changing anything under \`src/auth/\`.
+
+![Request flow](./diagrams/request-flow.png)
+
+## Layers
+
+| Layer | Where | Owns |
+| --- | --- | --- |
+| HTTP | \`src/http/\` | Routing, CORS, cookies, the auth middleware |
+| Auth | \`src/auth/\` | Login, token issue and rotation, refresh |
+| Data | \`src/db/\` | The Postgres pool and typed queries |
+| Tools | \`tools/migrate/\` | Schema migrations (Go) |
+
+## Requests
+
+1. The edge terminates TLS and forwards to Fastify on port 8080.
+2. [\`requireAuth\`](../src/http/middleware/auth.ts) checks the access token on every route except \`/auth/*\`.
+3. Handlers call into \`src/auth\` or \`src/db\`; nothing else touches the pool.
+
+### Tokens
+
+- Access tokens are JWTs, valid for **15 minutes**.
+- Refresh tokens are opaque, stored hashed, valid for **30 days**, and rotate on every use.
+- A reused refresh token revokes the whole family (see [refresh.ts](../src/auth/refresh.ts)).
+
+\`\`\`ts
+export const ACCESS_TTL = 15 * 60; // seconds
+export const REFRESH_TTL = 30 * 24 * 3600;
+\`\`\`
+
+## Errors
+
+Every error is \`{ code, message }\` with a stable \`code\`. Clients branch on the code, never on the message.
+
+> A \`401\` from \`/auth/refresh\` with \`refresh_reused\` means the session is gone; any other \`401\` there is
+> worth one retry.
+
+## Testing
+
+Unit tests live next to the code they cover; integration tests under \`test/\` start a real server with
+[the test helper](../test/helpers/server.ts) against a throwaway database.
+
+## Deploying
+
+1. Merge to \`main\`; CI runs the tests and builds the image.
+2. The migration job runs before the new pods take traffic.
+3. Roll back by redeploying the previous image; migrations are always backwards compatible for one release.
+
+## Open questions
+
+- Should refresh rotation get a grace window for concurrent tabs?
+- Do we move cookies to \`SameSite=strict\` once the web app is on the same site?
+`,
   "docs/security.md": `# Threat model
 
 | Asset | Threat | Mitigation |
