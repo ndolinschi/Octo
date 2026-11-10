@@ -1,5 +1,6 @@
 import { BRIDGE_EVENT_TYPES, type Bridge } from "./client";
-import type { BridgeEvent } from "./types";
+import { isExitInfo } from "./lspChannel";
+import type { BridgeEvent, LanguageServerFolder } from "./types";
 
 export type MessagePortLike = {
   postMessage(msg: unknown): void;
@@ -7,14 +8,28 @@ export type MessagePortLike = {
 };
 
 export type Theme = "dark" | "light";
-export type BridgeMethod = Exclude<keyof Bridge, "subscribe">;
+export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer">;
 export type WireError = { status: number; code: string; message: string };
 
 export type ClientMessage =
   | { kind: "call"; id: number; method: string; args: unknown[] }
   | { kind: "subscribe"; sub: number; projectId: string }
   | { kind: "unsubscribe"; sub: number }
-  | { kind: "host"; id: number; action: string; args: unknown[] };
+  | { kind: "host"; id: number; action: string; args: unknown[] }
+  | { kind: "lsp-open"; id: number; projectId: string; serverId: string }
+  | { kind: "lsp-send"; session: number; message: unknown }
+  | { kind: "lsp-close"; session: number };
+
+export type LspOpenedMessage =
+  | {
+      kind: "lsp-opened";
+      id: number;
+      ok: true;
+      session: number;
+      rootUri: string;
+      workspaceFolders: LanguageServerFolder[];
+    }
+  | { kind: "lsp-opened"; id: number; ok: false; error: WireError };
 
 export type ResultMessage =
   | { kind: "result"; id: number; ok: true; value: unknown }
@@ -25,7 +40,10 @@ export type HostMessage =
   | { kind: "event"; sub: number; event: BridgeEvent }
   | { kind: "open"; sub: number }
   | { kind: "error"; sub: number; message: string }
-  | { kind: "theme"; theme: Theme };
+  | { kind: "theme"; theme: Theme }
+  | LspOpenedMessage
+  | { kind: "lsp-message"; session: number; message: unknown }
+  | { kind: "lsp-exit"; session: number; code: number; reason?: string };
 
 export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "health",
@@ -47,6 +65,8 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "listFiles",
   "readFile",
   "writeFile",
+  "listPlugins",
+  "listLanguageServers",
 ];
 
 type Rec = Record<string, unknown>;
@@ -80,6 +100,10 @@ function isWireError(v: unknown): v is WireError {
   );
 }
 
+function isFolder(v: unknown): v is LanguageServerFolder {
+  return isRec(v) && typeof v.uri === "string" && typeof v.name === "string";
+}
+
 export function isTheme(v: unknown): v is Theme {
   return v === "dark" || v === "light";
 }
@@ -95,6 +119,12 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
       return isNum(msg.sub);
     case "host":
       return isNum(msg.id) && typeof msg.action === "string" && Array.isArray(msg.args);
+    case "lsp-open":
+      return isNum(msg.id) && typeof msg.projectId === "string" && typeof msg.serverId === "string";
+    case "lsp-send":
+      return isNum(msg.session) && "message" in msg;
+    case "lsp-close":
+      return isNum(msg.session);
     default:
       return false;
   }
@@ -113,6 +143,20 @@ export function isHostMessage(msg: unknown): msg is HostMessage {
       return isNum(msg.sub) && typeof msg.message === "string";
     case "theme":
       return isTheme(msg.theme);
+    case "lsp-opened":
+      if (!isNum(msg.id)) return false;
+      if (msg.ok === false) return isWireError(msg.error);
+      return (
+        msg.ok === true &&
+        isNum(msg.session) &&
+        typeof msg.rootUri === "string" &&
+        Array.isArray(msg.workspaceFolders) &&
+        msg.workspaceFolders.every(isFolder)
+      );
+    case "lsp-message":
+      return isNum(msg.session) && "message" in msg;
+    case "lsp-exit":
+      return isNum(msg.session) && isExitInfo({ code: msg.code, reason: msg.reason });
     default:
       return false;
   }

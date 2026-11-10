@@ -1,6 +1,8 @@
 import { BridgeError, type Bridge, type SubscribeHandlers } from "./client";
+import { createLspChannel, type LspChannel } from "./lspChannel";
 import {
   isHostMessage,
+  type LspOpenedMessage,
   type BridgeMethod,
   type ClientMessage,
   type HostMessage,
@@ -8,6 +10,7 @@ import {
   type ResultMessage,
   type Theme,
 } from "./messageProtocol";
+import type { LanguageServerSession } from "./types";
 
 export type MessageClient = {
   bridge: Bridge;
@@ -21,6 +24,8 @@ type Pending = { resolve(value: unknown): void; reject(err: unknown): void };
 export function createMessageClient(port: MessagePortLike): MessageClient {
   const pending = new Map<number, Pending>();
   const subs = new Map<number, SubscribeHandlers>();
+  const lspOpens = new Map<number, Pending>();
+  const lspSessions = new Map<number, LspChannel>();
   const themeListeners = new Set<(theme: Theme) => void>();
   let nextId = 1;
   let nextSub = 1;
@@ -37,6 +42,36 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     else p.reject(new BridgeError(msg.error.status, msg.error.code, msg.error.message));
   }
 
+  function openedSession(msg: Extract<LspOpenedMessage, { ok: true }>): LanguageServerSession {
+    const { session } = msg;
+    const channel = createLspChannel();
+    lspSessions.set(session, channel);
+    return {
+      rootUri: msg.rootUri,
+      workspaceFolders: msg.workspaceFolders,
+      send: async (message) => send({ kind: "lsp-send", session, message }),
+      onMessage: channel.onMessage,
+      onExit: channel.onExit,
+      close: async () => {
+        if (lspSessions.delete(session)) send({ kind: "lsp-close", session });
+      },
+    };
+  }
+
+  function settleOpen(msg: LspOpenedMessage): void {
+    const p = lspOpens.get(msg.id);
+    if (!p) return;
+    lspOpens.delete(msg.id);
+    if (msg.ok) p.resolve(openedSession(msg));
+    else p.reject(new BridgeError(msg.error.status, msg.error.code, msg.error.message));
+  }
+
+  function exitSession(msg: Extract<HostMessage, { kind: "lsp-exit" }>): void {
+    const channel = lspSessions.get(msg.session);
+    lspSessions.delete(msg.session);
+    channel?.exit(msg.reason === undefined ? { code: msg.code } : { code: msg.code, reason: msg.reason });
+  }
+
   function route(msg: HostMessage): void {
     switch (msg.kind) {
       case "result":
@@ -49,6 +84,12 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
         return subs.get(msg.sub)?.onError?.(new Error(msg.message));
       case "theme":
         return themeListeners.forEach((cb) => cb(msg.theme));
+      case "lsp-opened":
+        return settleOpen(msg);
+      case "lsp-message":
+        return lspSessions.get(msg.session)?.push(msg.message);
+      case "lsp-exit":
+        return exitSession(msg);
     }
   }
 
@@ -98,6 +139,15 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     listFiles: (id, folder, path) => call("listFiles", [id, folder, path]),
     readFile: (id, folder, path) => call("readFile", [id, folder, path]),
     writeFile: (id, input) => call("writeFile", [id, input]),
+    listPlugins: () => call("listPlugins", []),
+    listLanguageServers: (id) => call("listLanguageServers", [id]),
+    openLanguageServer: (projectId, serverId) => {
+      const id = nextId++;
+      return new Promise<LanguageServerSession>((resolve, reject) => {
+        lspOpens.set(id, { resolve: (v) => resolve(v as LanguageServerSession), reject });
+        send({ kind: "lsp-open", id, projectId, serverId });
+      });
+    },
     subscribe,
   };
 
@@ -108,6 +158,9 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     const err = () => new BridgeError(0, "disposed", "message client disposed");
     for (const p of pending.values()) p.reject(err());
     pending.clear();
+    for (const p of lspOpens.values()) p.reject(err());
+    lspOpens.clear();
+    lspSessions.clear();
   }
 
   return {

@@ -1,8 +1,10 @@
 import { BridgeError, type Bridge } from "./client";
+import type { LanguageServerSession } from "./types";
 import {
   isClientMessage,
   type ClientMessage,
   type HostMessage,
+  type BridgeMethod,
   type MessagePortLike,
   type ResultMessage,
   type Theme,
@@ -36,7 +38,7 @@ async function settle(id: number, run: () => unknown): Promise<ResultMessage> {
   }
 }
 
-function invoke(bridge: Bridge, method: Exclude<keyof Bridge, "subscribe">, args: unknown[]): unknown {
+function invoke(bridge: Bridge, method: BridgeMethod, args: unknown[]): unknown {
   const fn = bridge[method] as (...a: unknown[]) => unknown;
   return fn.apply(bridge, args);
 }
@@ -47,6 +49,8 @@ export function serveBridge(
   options: ServeBridgeOptions = {},
 ): BridgeServer {
   const subs = new Map<number, () => void>();
+  const lsp = new Map<number, LanguageServerSession>();
+  let nextSession = 1;
   let disposed = false;
 
   function post(msg: HostMessage): void {
@@ -89,6 +93,43 @@ export function serveBridge(
     unsubscribe?.();
   }
 
+  function handleLspOpen(id: number, projectId: string, serverId: string): void {
+    bridge.openLanguageServer(projectId, serverId).then(
+      (sess) => {
+        if (disposed) {
+          void sess.close().catch(() => undefined);
+          return;
+        }
+        const session = nextSession++;
+        lsp.set(session, sess);
+        post({
+          kind: "lsp-opened",
+          id,
+          ok: true,
+          session,
+          rootUri: sess.rootUri,
+          workspaceFolders: sess.workspaceFolders,
+        });
+        sess.onMessage((message) => post({ kind: "lsp-message", session, message }));
+        sess.onExit((info) => {
+          lsp.delete(session);
+          post(
+            info.reason === undefined
+              ? { kind: "lsp-exit", session, code: info.code }
+              : { kind: "lsp-exit", session, code: info.code, reason: info.reason },
+          );
+        });
+      },
+      (err) => post({ kind: "lsp-opened", id, ok: false, error: toWireError(err) }),
+    );
+  }
+
+  function handleLspClose(session: number): void {
+    const sess = lsp.get(session);
+    lsp.delete(session);
+    void sess?.close().catch(() => undefined);
+  }
+
   function dispatch(msg: ClientMessage): void {
     switch (msg.kind) {
       case "call":
@@ -97,6 +138,13 @@ export function serveBridge(
       case "host":
         void handleHost(msg.id, msg.action, msg.args);
         return;
+      case "lsp-open":
+        return handleLspOpen(msg.id, msg.projectId, msg.serverId);
+      case "lsp-send":
+        void lsp.get(msg.session)?.send(msg.message).catch(() => undefined);
+        return;
+      case "lsp-close":
+        return handleLspClose(msg.session);
       case "subscribe":
         return handleSubscribe(msg.sub, msg.projectId);
       case "unsubscribe":
@@ -115,6 +163,8 @@ export function serveBridge(
       detach();
       for (const unsubscribe of subs.values()) unsubscribe();
       subs.clear();
+      for (const sess of lsp.values()) void sess.close().catch(() => undefined);
+      lsp.clear();
       disposed = true;
     },
   };

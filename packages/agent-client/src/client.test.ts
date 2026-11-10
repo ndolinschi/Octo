@@ -56,6 +56,8 @@ test("request shapes and envelope unwrapping", async () => {
     { run: (b) => b.listFiles("p", "src", ""), reply: '{"entries":[]}', method: "GET", path: "/v1/projects/p/files?folder=src&path=", result: [] },
     { run: (b) => b.readFile("p", "src", "x/y z.ts"), reply: '{"content":"hi","mtime":"t"}', method: "GET", path: "/v1/projects/p/files/content?folder=src&path=x%2Fy%20z.ts", result: { content: "hi", mtime: "t" } },
     { run: (b) => b.writeFile("p", { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }), reply: '{"size":1,"mtime":"t2"}', method: "PUT", path: "/v1/projects/p/files/content", body: { folder: "src", path: "a b.ts", content: "c", expected_mtime: "t" }, result: { size: 1, mtime: "t2" } },
+    { run: (b) => b.listPlugins(), reply: '{"plugins":[{"name":"go-tools"}]}', method: "GET", path: "/v1/plugins", result: [{ name: "go-tools" }] },
+    { run: (b) => b.listLanguageServers("a/b"), reply: '{"servers":[{"id":"gopls"}]}', method: "GET", path: "/v1/projects/a%2Fb/lsp", result: [{ id: "gopls" }] },
   ];
   for (const c of cases) {
     const { bridge, calls } = bridgeWith(c.status ?? 200, c.reply);

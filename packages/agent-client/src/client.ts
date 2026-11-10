@@ -6,13 +6,17 @@ import type {
   FileContent,
   FileEntry,
   FileStat,
+  LanguageServerInfo,
+  LanguageServerSession,
   Message,
   Note,
+  Plugin,
   Project,
   ProjectInput,
   ProjectSummary,
   WriteFileInput,
 } from "./types";
+import { openLspSession } from "./lspSession";
 
 export class BridgeError extends Error {
   readonly status: number;
@@ -78,6 +82,9 @@ export interface Bridge {
   listFiles(projectId: string, folder: string, path: string): Promise<FileEntry[]>;
   readFile(projectId: string, folder: string, path: string): Promise<FileContent>;
   writeFile(projectId: string, input: WriteFileInput): Promise<FileStat>;
+  listPlugins(): Promise<Plugin[]>;
+  listLanguageServers(projectId: string): Promise<LanguageServerInfo[]>;
+  openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
 
@@ -217,6 +224,18 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
       request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
     writeFile: (id, input) =>
       request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
+    listPlugins: () => unwrap<Plugin[]>(request("GET", "/v1/plugins"), "plugins"),
+    listLanguageServers: (id) =>
+      unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
+    openLanguageServer: (id, serverId) =>
+      openLspSession(
+        {
+          request,
+          openStream: (path) => new (options.EventSource ?? globalEventSource())(`${base}${path}`),
+        },
+        p(id),
+        serverId,
+      ),
     subscribe(id, handlers) {
       const Ctor = options.EventSource ?? globalEventSource();
       const source = new Ctor(`${base}${p(id)}/events`);

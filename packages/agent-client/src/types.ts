@@ -145,3 +145,41 @@ export type BridgeEvent =
 export type BridgeEventType = BridgeEvent["type"];
 
 export type BridgeConfig = { default_models: Models; default_max_depth: number };
+
+export type PluginLanguageServer = {
+  id: string;
+  label: string;
+  languages: string[];
+  available: boolean;
+};
+export type PluginAgent = { id: string; label: string; available: boolean };
+export type PluginToolServer = { url: string };
+
+export type Plugin = {
+  name: string;
+  version: string;
+  description: string;
+  language_servers: PluginLanguageServer[];
+  agents: PluginAgent[];
+  tool_servers: PluginToolServer[];
+  errors: string[];
+};
+
+export type LanguageServerInfo = {
+  id: string;
+  label: string;
+  languages: string[];
+  available: boolean;
+};
+
+export type LanguageServerExit = { code: number; reason?: string };
+export type LanguageServerFolder = { uri: string; name: string };
+
+export type LanguageServerSession = {
+  rootUri: string;
+  workspaceFolders: LanguageServerFolder[];
+  send(message: unknown): Promise<void>;
+  onMessage(cb: (message: unknown) => void): () => void;
+  onExit(cb: (info: LanguageServerExit) => void): () => void;
+  close(): Promise<void>;
+};
