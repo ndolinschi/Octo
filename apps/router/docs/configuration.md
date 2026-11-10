@@ -32,7 +32,12 @@ Helpers (not loaded as Config fragments): `claude-code.env.example`, `experiment
 | `escalate_turns` | `3` | Hold higher after stall |
 | `down_confirm` | `2` | Consecutive downs before sticky drop |
 | `high_allow` | `[]` | Empty = ignore client high preference |
-| `session_budget_usd` | `0` | `0` disables spend cap |
+| `session_budget_usd` | `0` | **`0` disables the spend cap entirely** (nothing is downgraded or refused). Set it to enable the budget |
+| `session_budget_action` | `downgrade` | Over budget: `downgrade` routes to the cheapest tier by `prices.toml`; `reject` returns 402 `billing_error` naming budget and spend |
+| `classifier_failure_tier` | `mid` | `low` \| `mid` \| `high`; tier used (and remembered) when the JEV call fails on a new session |
+| `default_max_tokens` | `8192` | `max_tokens` sent upstream when the client omits it; capped by the model maximum; invalid at `0` |
+| `retry_after_max_secs` | `10` | Upper bound on the `Retry-After` wait before the single retry |
+| `compact_cooldown_requests` | `0` | After an unapplied compaction: `0` re-arms only when the context shrinks below the fill threshold; `N > 0` also re-arms after `N` requests |
 | `housekeeping_keep_messages` | `6` | Trim retention |
 | `provider_order` | `[]` | Empty = no OpenRouter pin |
 | `allow_fallbacks` | `true` | Provider fallbacks |
@@ -41,6 +46,12 @@ Helpers (not loaded as Config fragments): `claude-code.env.example`, `experiment
 | `background_model_patterns` | `["haiku"]` | Observe `bg_signal` |
 | `background_by_client_model` | `false` | Opt-in routing like housekeeping |
 | `server_tool_mode` | `passthrough` | `passthrough` \| `online_suffix` \| `reject` |
+
+Invalid `classifier_failure_tier`, `session_budget_action`, or `default_max_tokens = 0` fail config load.
+
+Request header `x-octo-budget-key: <key>` (autoroute routes, 1-128 printable ASCII characters) tracks spend under that key instead of the session id, so several agent sessions share one `session_budget_usd`. The header is removed before the request goes upstream. It needs a session id in `metadata.user_id`; spend under a key lives in memory (1 hour idle expiry) and is not restored from the database.
+
+`prices.toml` rates were verified against the OpenRouter catalogue on 2026-11-10: [ladder-cost-check.md](./ladder-cost-check.md). At startup Octo logs a warning when the ladder is not monotonic in price (a higher tier cheaper than a lower one for a 30k in / 500 out request) and when a ladder model has no usable price entry.
 
 ## Environment
 

@@ -21,14 +21,16 @@ mod payload;
 pub use call::{CallObserve, DecisionRow, FinishedCall};
 pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
-pub use cost::{resolve_cost, CostSource, ModelPrice, PriceTable, ResolvedCost};
+pub use cost::{
+    blended_cost_micros, resolve_cost, CostSource, ModelPrice, PriceTable, ResolvedCost,
+};
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
 pub use outcomes::{parse_test_summary, parse_tool_results_outcome, SessionOutcome};
 pub use payload::cost_micros_from_json;
 pub use payload::{
-    describe_input, is_subagent, request_payload, response_payload, token_from_headers,
-    usage_from_output, usage_from_parts, ParsedUsage,
+    complete_dropped_usage, describe_input, is_subagent, request_payload, response_payload,
+    token_from_headers, usage_from_output, usage_from_parts, DroppedStream, ParsedUsage,
 };
 
 type HmacSha256 = Hmac<Sha256>;

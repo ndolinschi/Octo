@@ -16,8 +16,14 @@ down_confirm = 2
 # Client model is honoured on High only when its slug (tilde-insensitive) is listed here.
 # Empty means always use the configured high slug.
 high_allow = []
-# Session spend cap in USD (0 = disabled). Counts JEV + LLM cost_micros for the session key.
+# Session spend cap in USD. 0 = DISABLED (default): no spend limit applies and nothing is ever
+# downgraded or refused, so cost is bounded only by the client. Counts JEV + LLM cost_micros
+# for the session key (or the x-octo-budget-key header value when the client sends one).
 session_budget_usd = 0
+# What happens once spend >= session_budget_usd: "downgrade" routes every request to the
+# CHEAPEST ladder tier by prices.toml (blended estimate for the request shape); "reject"
+# answers 402 (Anthropic error shape, type billing_error) naming the budget and the spend.
+session_budget_action = "downgrade"
 # Keep this many recent messages when trimming housekeeping turns (system + tools always kept).
 housekeeping_keep_messages = 6
 allow_fallbacks = true
@@ -35,5 +41,17 @@ background_model_patterns = ["haiku"]
 # When true, bg_signal requests (except permission_check) route like housekeeping with
 # trigger background_model. Default false = no routing change.
 background_by_client_model = false
+# Tier used when the JEV classifier call fails on a new session: low | mid | high. The choice is
+# remembered for the session and classification is retried on the next user turn.
+classifier_failure_tier = "mid"
+# max_tokens sent upstream when the client omits it (capped by the model maximum). An explicit
+# client value is respected, still capped by the model maximum.
+default_max_tokens = 8192
+# Upper bound in seconds for honouring an upstream Retry-After before the single retry.
+retry_after_max_secs = 10
+# After a compaction call the client did not apply, compaction stays off for the session until
+# the request shrinks below the fill threshold again. A value N > 0 also re-arms it after N
+# further requests. 0 = re-arm only when the context shrinks.
+compact_cooldown_requests = 0
 # Server tools (web_search / web_fetch / code_execution): passthrough | online_suffix | reject.
 server_tool_mode = "passthrough"

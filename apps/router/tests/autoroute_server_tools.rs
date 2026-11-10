@@ -8,7 +8,7 @@ use octo::auto::Tiers;
 use octo::routes;
 use octo::state::AppState;
 use serde_json::{json, Value};
-use support::{sample_config, spawn_status_sequence_server};
+use support::{sample_config, spawn_scripted_server, spawn_status_sequence_server, Scripted};
 use tower::ServiceExt;
 
 fn server_tool_body() -> Value {
@@ -85,7 +85,15 @@ async fn server_tool_online_suffix_appends_to_outgoing_model() {
 
 #[tokio::test]
 async fn server_tool_online_suffix_survives_tier_retry() {
-    let (addr, bodies) = spawn_status_sequence_server("/v1/messages", vec![429, 200]).await;
+    let (addr, captured_rows) = spawn_scripted_server(
+        "/v1/messages",
+        vec![
+            Scripted::status(503)
+                .with_body("No available model provider meets your routing requirements"),
+            Scripted::ok(),
+        ],
+    )
+    .await;
     let mut config = sample_config(64 * 1024);
     config.openrouter_messages_url = format!("http://{addr}/v1/messages");
     config.openrouter_decisions_url = format!("http://{addr}/v1/decisions");
@@ -110,11 +118,16 @@ async fn server_tool_online_suffix_survives_tier_retry() {
         .unwrap();
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let captured = bodies.lock().unwrap().clone();
+    let captured: Vec<String> = captured_rows
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|row| row.body.clone())
+        .collect();
     assert_eq!(
         captured.len(),
         2,
-        "expected retry after 429 with online_suffix"
+        "expected tier retry after model-unavailable with online_suffix"
     );
     let first: Value = serde_json::from_str(&captured[0]).unwrap();
     let second: Value = serde_json::from_str(&captured[1]).unwrap();

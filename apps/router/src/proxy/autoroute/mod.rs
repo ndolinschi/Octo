@@ -1,14 +1,16 @@
 mod compact;
+pub mod retry;
 mod status;
 
 pub use status::status;
 
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use axum::{
     body::{to_bytes, Body, Bytes},
     extract::{Request, State},
-    http::StatusCode,
+    http::{header, StatusCode},
     response::Response,
 };
 use serde_json::Value;
@@ -20,6 +22,10 @@ use crate::auto::{
 use crate::history::{token_from_headers, CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
+
+const FAILURE_BODY_LIMIT: usize = 64 * 1024;
+const BUDGET_KEY_HEADER: &str = "x-octo-budget-key";
+const BUDGET_KEY_MAX_LEN: usize = 128;
 
 #[derive(Clone, Debug, Default)]
 struct ClientSignals {
@@ -57,13 +63,17 @@ pub async fn chat(State(state): State<AppState>, request: Request) -> Result<Res
 
 async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response, ProxyError> {
     let max_body = state.config.max_body_bytes;
-    let (parts, body) = request.into_parts();
+    let (mut parts, body) = request.into_parts();
     let body_bytes = to_bytes(body, max_body)
         .await
         .map_err(ProxyError::from_read_body)?;
     let api_key = token_from_headers(&parts.headers);
+    let budget_key = take_budget_key(&mut parts.headers);
     let value: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
     let session = session_key(&value);
+    if let (Some(session), Some(budget_key)) = (session.as_deref(), budget_key.as_deref()) {
+        state.auto.bind_budget_key(session, budget_key);
+    }
     let signals = client_signals(&value, &state.config.autoroute_background_model_patterns);
     let server_tools = server_tool_types(&value);
     if let Some(tool) = server_tools.first() {
@@ -112,9 +122,26 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
             })
             .await
         }
+        Turn::Reject(reject) => Err(ProxyError::anthropic(
+            StatusCode::PAYMENT_REQUIRED,
+            "billing_error",
+            reject.message(),
+        )),
         Turn::Compact(row) if chat => chat_compact(state, parts, row).await,
         Turn::Compact(row) => compact::upstream(state, &parts, &row).await,
     }
+}
+
+fn take_budget_key(headers: &mut axum::http::HeaderMap) -> Option<String> {
+    let value = headers.remove(BUDGET_KEY_HEADER)?;
+    let key = value.to_str().ok()?.trim();
+    if key.is_empty()
+        || key.len() > BUDGET_KEY_MAX_LEN
+        || !key.chars().all(|c| c.is_ascii_graphic())
+    {
+        return None;
+    }
+    Some(key.to_string())
 }
 
 fn apply_server_tool_mode(forward: &mut crate::auto::Forward, _tool: &str, mode: &str) {
@@ -162,44 +189,55 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
         server_tool: server_tool.clone(),
     })
     .await;
-    match first {
+    let (response, failure) = match first {
         Ok(response) if !chat && retryable_status(response.status()) => {
-            if let Some(retried) = retry_next_tier(RetryNext {
-                state,
-                parts: retry_parts,
-                forward: retry_forward,
-                session,
-                chat,
-                signals: signals.clone(),
-                server_tool: server_tool.clone(),
-            })
-            .await
-            {
-                return retried;
-            }
-            Ok(response)
+            let (response, failure) = buffer_failure(response, state).await;
+            (Ok(response), failure)
         }
-        Err(err) if !chat && retryable_error(&err) => {
-            if let Some(retried) = retry_next_tier(RetryNext {
-                state,
-                parts: retry_parts,
-                forward: retry_forward,
-                session,
-                chat,
-                signals,
-                server_tool,
-            })
-            .await
-            {
-                return retried;
-            }
-            Err(err)
-        }
-        other => other,
-    }
+        Err(err) if !chat && retryable_error(&err) => (Err(err), Failure::default()),
+        other => return other,
+    };
+    let retried = retry_once(RetryOnce {
+        state,
+        parts: retry_parts,
+        forward: retry_forward,
+        session,
+        chat,
+        signals,
+        server_tool,
+        failure,
+    })
+    .await;
+    retried.unwrap_or(response)
 }
 
-struct RetryNext<'a> {
+#[derive(Default)]
+struct Failure {
+    delay: Option<Duration>,
+    model_unavailable: bool,
+}
+
+async fn buffer_failure(response: Response, state: &AppState) -> (Response, Failure) {
+    let (parts, body) = response.into_parts();
+    let bytes = to_bytes(body, FAILURE_BODY_LIMIT).await.unwrap_or_default();
+    let max = Duration::from_secs(state.auto.tiers().retry_after_max_secs);
+    let delay = parts
+        .headers
+        .get(header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| retry::retry_after_delay(value, SystemTime::now(), max));
+    let model_unavailable =
+        retry::model_unavailable(parts.status.as_u16(), &String::from_utf8_lossy(&bytes));
+    (
+        Response::from_parts(parts, Body::from(bytes)),
+        Failure {
+            delay,
+            model_unavailable,
+        },
+    )
+}
+
+struct RetryOnce<'a> {
     state: &'a AppState,
     parts: axum::http::request::Parts,
     forward: crate::auto::Forward,
@@ -207,55 +245,32 @@ struct RetryNext<'a> {
     chat: bool,
     signals: ClientSignals,
     server_tool: Option<String>,
+    failure: Failure,
 }
 
-async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyError>> {
+async fn retry_once(plan: RetryOnce<'_>) -> Option<Result<Response, ProxyError>> {
     let payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
     let current = payload.get("model").and_then(Value::as_str)?.to_string();
-    let next = plan.state.auto.tiers().next_up(&current)?;
-    let budget = plan.state.auto.tiers().session_budget_micros;
-    if budget > 0 {
-        let spent = plan
-            .session
-            .as_deref()
-            .map(|id| plan.state.auto.session_cost_micros(id))
-            .unwrap_or(0);
-        if spent >= budget
-            && crate::auto::band_rank(plan.state.auto.tiers().band(&next))
-                > crate::auto::band_rank("mid")
-        {
+    let forward = if plan.failure.model_unavailable {
+        let next = plan.state.auto.tiers().next_up(&current)?;
+        if escalation_blocked(plan.state, plan.session.as_deref(), &next) {
             return None;
         }
-    }
-    let models = plan.state.auto.cached_models().await;
-    let mut shaped = crate::auto::shape(crate::auto::ShapePlan {
-        body: &payload,
-        model: &next,
-        previous_model: Some(current.as_str()),
-        models: models.as_ref(),
-        provider_order: &plan.state.auto.tiers().provider_order,
-        allow_fallbacks: plan.state.auto.tiers().allow_fallbacks,
-        strip_fields: &plan.state.auto.tiers().strip_fields,
-        require_parameters: plan.state.auto.tiers().require_parameters,
-    });
-    if plan.server_tool.is_some() && plan.state.config.autoroute_server_tool_mode == "online_suffix"
-    {
-        shaped.body = crate::auto::with_online_suffix(&shaped.body);
-    }
-    let body = serde_json::to_vec(&shaped.body).ok()?;
-    let tier_after = plan.state.auto.tiers().band(&next).to_string();
-    let meta = RouteMeta {
-        tier_before: plan.forward.meta.tier_after.clone(),
-        tier_after,
-        trigger: "retry".to_string(),
-        stripped: None,
-    }
-    .with_stripped(&shaped.stripped);
-    let forward = crate::auto::Forward {
-        body,
-        meta,
-        trimmed_from_tokens: None,
+        escalated_forward(&plan, &payload, &current, &next).await?
+    } else {
+        let mut forward = plan.forward.clone();
+        forward.meta = RouteMeta {
+            tier_before: plan.forward.meta.tier_after.clone(),
+            tier_after: plan.forward.meta.tier_after.clone(),
+            trigger: "retry".to_string(),
+            stripped: plan.forward.meta.stripped.clone(),
+        };
+        forward.trimmed_from_tokens = None;
+        forward
     };
+    if let Some(delay) = plan.failure.delay.filter(|delay| !delay.is_zero()) {
+        tokio::time::sleep(delay).await;
+    }
     Some(
         dispatch_forward(DispatchForward {
             state: plan.state,
@@ -268,6 +283,62 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
         })
         .await,
     )
+}
+
+fn escalation_blocked(state: &AppState, session: Option<&str>, next: &str) -> bool {
+    let tiers = state.auto.tiers();
+    let budget = tiers.session_budget_micros;
+    if budget == 0 {
+        return false;
+    }
+    let spent = session
+        .map(|id| state.auto.session_cost_micros(id))
+        .unwrap_or(0);
+    if spent < budget {
+        return false;
+    }
+    match tiers.cheapest_band(crate::auto::RequestShape::default()) {
+        Some(cheapest) => tiers.band(next) != cheapest,
+        None => crate::auto::band_rank(tiers.band(next)) > crate::auto::band_rank("mid"),
+    }
+}
+
+async fn escalated_forward(
+    plan: &RetryOnce<'_>,
+    payload: &Value,
+    current: &str,
+    next: &str,
+) -> Option<crate::auto::Forward> {
+    let tiers = plan.state.auto.tiers();
+    let models = plan.state.auto.cached_models().await;
+    let mut shaped = crate::auto::shape(crate::auto::ShapePlan {
+        body: payload,
+        model: next,
+        previous_model: Some(current),
+        models: models.as_ref(),
+        provider_order: &tiers.provider_order,
+        allow_fallbacks: tiers.allow_fallbacks,
+        strip_fields: &tiers.strip_fields,
+        require_parameters: tiers.require_parameters,
+        default_max_tokens: tiers.default_max_tokens,
+    });
+    if plan.server_tool.is_some() && plan.state.config.autoroute_server_tool_mode == "online_suffix"
+    {
+        shaped.body = crate::auto::with_online_suffix(&shaped.body);
+    }
+    let body = serde_json::to_vec(&shaped.body).ok()?;
+    let meta = RouteMeta {
+        tier_before: plan.forward.meta.tier_after.clone(),
+        tier_after: tiers.band(next).to_string(),
+        trigger: "retry".to_string(),
+        stripped: None,
+    }
+    .with_stripped(&shaped.stripped);
+    Some(crate::auto::Forward {
+        body,
+        meta,
+        trimmed_from_tokens: None,
+    })
 }
 
 struct DispatchForward<'a> {

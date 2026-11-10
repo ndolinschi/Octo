@@ -2,50 +2,53 @@
 # Estimate is used only when ALL four rates (input, cache_read, cache_write, output)
 # are present AND at least one rate is > 0. All-zero rows skip estimate and fall through
 # to upstream / OpenRouter / none. Partial rows also fall through.
+# Rates verified against https://openrouter.ai/api/v1/models on 2026-11-10 (see docs/ladder-cost-check.md).
+# cache_write stays 0.0 where the catalogue publishes no cache-write price.
 # billed_as maps Octo/OpenRouter slug -> provider invoice name for reconcile_costs.py.
 
 [prices."mistralai/mistral-nemo"]
-input = 0.0
+input = 0.029
 cache_read = 0.0
 cache_write = 0.0
-output = 0.0
+output = 0.03
 # billed_as = "mistral-nemo"
 
 [prices."mistralai/ministral-8b-2512"]
-input = 0.0
-cache_read = 0.0
+input = 0.15
+cache_read = 0.015
 cache_write = 0.0
-output = 0.0
+output = 0.15
 # billed_as = "ministral-8b-2512"
 
 [prices."mistralai/mistral-small-3.1-24b-instruct"]
-input = 0.0
+input = 0.351
 cache_read = 0.0
 cache_write = 0.0
-output = 0.0
+output = 0.555
 # billed_as = "mistral-small-3.1-24b-instruct"
 
 [prices."mistralai/mistral-small-3.2-24b-instruct"]
-input = 0.0
-cache_read = 0.0
+input = 0.1
+cache_read = 0.01
 cache_write = 0.0
-output = 0.0
+output = 0.3
 # billed_as = "mistral-small-3.2-24b-instruct"
 
 [prices."deepseek/deepseek-v4-flash"]
-input = 0.0
-cache_read = 0.0
+input = 0.091
+cache_read = 0.0182
 cache_write = 0.0
-output = 0.0
+output = 0.182
 # billed_as = "deepseek-v4-flash"
 
 [prices."deepseek/deepseek-v4.1-flash"]
-input = 0.051
-cache_read = 0.018
+input = 0.3
+cache_read = 0.006
 cache_write = 0.0
-output = 0.567
+output = 1.2
 # billed_as = "deepseek-v4.1-flash"
 
+# Catalogue lists 0.075/0.30 off-peak (UTC 15:00-01:00) and 0.15/0.60 peak; the peak rate is kept as the conservative estimate.
 [prices."minimax/minimax-m3.1-flash"]
 input = 0.15
 cache_read = 0.015
@@ -60,8 +63,8 @@ output = 0.50
 # billed_as = "deepseek-v4.1-flash-1017"
 
 [prices."mistralai/devstral-2512"]
-input = 0.0
-cache_read = 0.0
+input = 0.4
+cache_read = 0.04
 cache_write = 0.0
-output = 0.0
+output = 2.0
 # billed_as = "mistral-medium-3-5"

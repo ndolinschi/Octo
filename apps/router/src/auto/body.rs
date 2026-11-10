@@ -87,12 +87,28 @@ pub fn question_text(body: &Value) -> String {
     strip_question_noise(&last_user_text(body))
 }
 
+const DECISION_TEXT_MAX_CHARS: usize = 2000;
+
 pub fn cap_decision_text(text: &str) -> String {
-    const MAX_CHARS: usize = 2000;
-    if text.chars().count() <= MAX_CHARS {
+    if text.chars().count() <= DECISION_TEXT_MAX_CHARS {
         return text.to_string();
     }
-    text.chars().take(MAX_CHARS).collect()
+    text.chars().take(DECISION_TEXT_MAX_CHARS).collect()
+}
+
+pub fn cap_classifier_text(text: &str) -> String {
+    let total = text.chars().count();
+    if total <= DECISION_TEXT_MAX_CHARS {
+        return text.to_string();
+    }
+    let widest_marker = format!("\n[... {total} chars omitted ...]\n");
+    let budget = DECISION_TEXT_MAX_CHARS.saturating_sub(widest_marker.chars().count());
+    let head_len = budget / 2;
+    let tail_len = budget - head_len;
+    let omitted = total - head_len - tail_len;
+    let head: String = text.chars().take(head_len).collect();
+    let tail: String = text.chars().skip(total - tail_len).collect();
+    format!("{head}\n[... {omitted} chars omitted ...]\n{tail}")
 }
 
 fn strip_question_noise(text: &str) -> String {
@@ -523,6 +539,8 @@ pub fn compaction_body(body: &Value, model: &str) -> Value {
     copy
 }
 
+pub const DEFAULT_MAX_TOKENS: u64 = 8192;
+
 pub const PROTECTED_STRIP_FIELDS: &[&str] = &[
     "tools",
     "tool_choice",
@@ -542,6 +560,7 @@ pub struct ShapePlan<'a> {
     pub allow_fallbacks: bool,
     pub strip_fields: &'a [String],
     pub require_parameters: RequireParameters,
+    pub default_max_tokens: u64,
 }
 
 pub struct ShapeResult {
@@ -570,6 +589,7 @@ impl<'a> ShapePlan<'a> {
             allow_fallbacks: true,
             strip_fields: default_strip_fields_ref(),
             require_parameters: RequireParameters::Always,
+            default_max_tokens: DEFAULT_MAX_TOKENS,
         }
     }
 }
@@ -583,7 +603,7 @@ pub fn shape(plan: ShapePlan<'_>) -> ShapeResult {
     if model_changed {
         strip_thinking_blocks(&mut copy);
     }
-    clamp_max_tokens(&mut copy, plan.models, plan.model);
+    clamp_max_tokens(&mut copy, plan.models, plan.model, plan.default_max_tokens);
     drop_unsupported_thinking(&mut copy, plan.models, plan.model);
     let stripped = strip_configured_fields(&mut copy, plan.strip_fields);
     apply_require_parameters(&mut copy, plan.require_parameters);
@@ -735,18 +755,24 @@ fn strip_thinking_blocks(body: &mut Value) {
     }
 }
 
-fn clamp_max_tokens(body: &mut Value, models: Option<&OpenRouterModels>, model: &str) {
-    let Some(limit) = catalog::max_completion_tokens(models, model) else {
-        return;
-    };
+fn clamp_max_tokens(
+    body: &mut Value,
+    models: Option<&OpenRouterModels>,
+    model: &str,
+    default_max_tokens: u64,
+) {
     let Some(object) = body.as_object_mut() else {
         return;
     };
-    let current = object
+    let requested = object
         .get("max_tokens")
         .and_then(Value::as_u64)
-        .unwrap_or(limit);
-    object.insert("max_tokens".to_string(), json!(current.min(limit)));
+        .unwrap_or(default_max_tokens);
+    let value = match catalog::max_completion_tokens(models, model) {
+        Some(limit) => requested.min(limit),
+        None => requested,
+    };
+    object.insert("max_tokens".to_string(), json!(value));
 }
 
 fn drop_unsupported_thinking(body: &mut Value, models: Option<&OpenRouterModels>, model: &str) {

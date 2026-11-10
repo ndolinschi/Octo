@@ -6,12 +6,13 @@ use crate::providers::openrouter::OpenRouterModels;
 
 use super::super::action::{Compact, Forward, Turn};
 use super::super::body::{self, compaction_body, ShapePlan};
+use super::super::catalog::RequestShape;
 use super::super::catalog::{self, LargerFit};
 use super::super::metrics::{self, context_estimate};
 use super::super::routing::RouteMeta;
 use super::super::session::SessionChoice;
 use super::models::counted_bytes;
-use super::sticky::{cap_for_budget, StickyOutcome};
+use super::sticky::{cap_for_budget_shaped, StickyOutcome};
 use super::Auto;
 
 pub(super) struct RoutePlan {
@@ -87,6 +88,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
         strip_fields: &ctx.auto.tiers.strip_fields,
         require_parameters: ctx.auto.tiers.require_parameters,
+        default_max_tokens: ctx.auto.tiers.default_max_tokens,
     });
     let mut outgoing = shaped_out.body;
     if let Some(window) = catalog::context_length(ctx.models, &plan.model) {
@@ -96,6 +98,11 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             fill = estimate.fill,
             "autoroute"
         );
+        if estimate.fill < metrics::FILL_THRESHOLD && estimate.usable >= 1024 {
+            if let Some(id) = body::session_key(&ctx.body) {
+                ctx.auto.rearm_compaction(&id);
+            }
+        }
         if estimate.usable < 1024 {
             return finish_overflow(OverflowCtx {
                 auto: ctx.auto,
@@ -139,7 +146,15 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                     down_count: plan.down_count,
                     reason: Some("upgrade".to_string()),
                 };
-                cap_for_budget(&mut upgraded, &ctx.auto.tiers, plan.spent_micros);
+                cap_for_budget_shaped(
+                    &mut upgraded,
+                    &ctx.auto.tiers,
+                    plan.spent_micros,
+                    RequestShape {
+                        input_tokens: estimate.input_tokens_est,
+                        output_tokens: plan.reserve.min(1024),
+                    },
+                );
                 plan.model = upgraded.model;
                 plan.sticky_band = upgraded.sticky_band;
                 plan.reason = upgraded.reason;
@@ -165,6 +180,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                     allow_fallbacks: ctx.auto.tiers.allow_fallbacks,
                     strip_fields: &ctx.auto.tiers.strip_fields,
                     require_parameters: ctx.auto.tiers.require_parameters,
+                    default_max_tokens: ctx.auto.tiers.default_max_tokens,
                 });
                 outgoing = shaped_out.body.clone();
                 if let Some(next_window) = catalog::context_length(ctx.models, &plan.model) {
@@ -303,6 +319,7 @@ pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
         allow_fallbacks: plan.auto.tiers.allow_fallbacks,
         strip_fields: &plan.auto.tiers.strip_fields,
         require_parameters: plan.auto.tiers.require_parameters,
+        default_max_tokens: plan.auto.tiers.default_max_tokens,
     });
     let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref())
         .with_stripped(&shaped_out.stripped);
@@ -326,6 +343,7 @@ pub(super) fn passthrough(plan: Passthrough<'_>) -> Turn {
         allow_fallbacks: plan.auto.tiers.allow_fallbacks,
         strip_fields: &plan.auto.tiers.strip_fields,
         require_parameters: plan.auto.tiers.require_parameters,
+        default_max_tokens: plan.auto.tiers.default_max_tokens,
     });
     let meta = RouteMeta::from_plan("unset".to_string(), "unset".to_string(), None)
         .with_stripped(&shaped_out.stripped);
@@ -374,6 +392,7 @@ struct ShapeArgs<'a> {
     allow_fallbacks: bool,
     strip_fields: &'a [String],
     require_parameters: catalog::RequireParameters,
+    default_max_tokens: u64,
 }
 
 fn shaped(plan: ShapeArgs<'_>) -> body::ShapeResult {
@@ -386,6 +405,7 @@ fn shaped(plan: ShapeArgs<'_>) -> body::ShapeResult {
         allow_fallbacks: plan.allow_fallbacks,
         strip_fields: plan.strip_fields,
         require_parameters: plan.require_parameters,
+        default_max_tokens: plan.default_max_tokens,
     })
 }
 
@@ -396,7 +416,13 @@ fn remember(plan: RememberPlan<'_>) {
     let Ok(mut sessions) = plan.auto.sessions.lock() else {
         return;
     };
-    let cost_micros = sessions.get(&id).map(|row| row.cost_micros).unwrap_or(0);
+    let existing = sessions.get(&id);
+    let cost_micros = existing.as_ref().map(|row| row.cost_micros).unwrap_or(0);
+    let compact_suppressed = existing.as_ref().is_some_and(|row| row.compact_suppressed);
+    let compact_suppressed_requests = existing
+        .as_ref()
+        .map(|row| row.compact_suppressed_requests)
+        .unwrap_or(0);
     sessions.insert(
         id,
         SessionChoice {
@@ -404,6 +430,9 @@ fn remember(plan: RememberPlan<'_>) {
             tools: plan.tools.to_vec(),
             prev_input_tokens_est: plan.prev_input_tokens_est,
             awaiting_compact: plan.awaiting_compact,
+            compact_issued: plan.awaiting_compact,
+            compact_suppressed,
+            compact_suppressed_requests,
             seen: Instant::now(),
             sticky_band: plan.sticky_band.to_string(),
             escalate_remaining: plan.escalate_remaining,

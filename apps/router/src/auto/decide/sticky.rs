@@ -1,4 +1,4 @@
-use super::super::catalog::{self, Tiers};
+use super::super::catalog::{self, RequestShape, Tiers};
 use super::super::jev::Complexity;
 use super::super::session::SessionChoice;
 use super::super::stall::StallTrigger;
@@ -157,20 +157,42 @@ pub fn apply(plan: StickyPlan<'_>) -> StickyOutcome {
 }
 
 pub fn cap_for_budget(out: &mut StickyOutcome, tiers: &Tiers, spent_micros: u64) {
+    cap_for_budget_shaped(out, tiers, spent_micros, RequestShape::default());
+}
+
+pub fn cap_for_budget_shaped(
+    out: &mut StickyOutcome,
+    tiers: &Tiers,
+    spent_micros: u64,
+    shape: RequestShape,
+) {
     if tiers.session_budget_micros == 0 || spent_micros < tiers.session_budget_micros {
         return;
     }
-    let mid_rank = catalog::band_rank("mid");
-    if catalog::band_rank(&out.sticky_band) > mid_rank {
-        out.sticky_band = "mid".to_string();
-        out.model = tiers.slug("mid");
-        out.reason = Some("budget_cap".to_string());
+    let target = tiers.cheapest_band(shape).unwrap_or("mid");
+    let rank = catalog::band_rank(target);
+    let tiers_by_price = tiers.cheapest_band(shape).is_some();
+    let model_band = tiers.band(&out.model);
+    let model_over = if tiers_by_price {
+        model_band != target
+    } else {
+        catalog::band_rank(model_band) > rank
+    };
+    let sticky_over = if tiers_by_price {
+        out.sticky_band != target
+    } else {
+        catalog::band_rank(&out.sticky_band) > rank
+    };
+    if !model_over && !sticky_over {
         return;
     }
-    if catalog::band_rank(tiers.band(&out.model)) > mid_rank {
-        out.model = tiers.slug("mid");
-        out.reason = Some("budget_cap".to_string());
+    if sticky_over {
+        out.sticky_band = target.to_string();
     }
+    if model_over || sticky_over {
+        out.model = tiers.slug(target);
+    }
+    out.reason = Some("budget_cap".to_string());
 }
 
 fn higher_band<'a>(left: &'a str, right: &'a str) -> &'a str {

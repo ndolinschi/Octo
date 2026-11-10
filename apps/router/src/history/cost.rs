@@ -81,13 +81,12 @@ pub fn resolve_cost(usage: &ParsedUsage, model: Option<&str>, prices: &PriceTabl
         .and_then(|slug| prices.get(slug))
         .and_then(|price| estimate_cost(usage, price));
 
-    // first non-zero: estimate → upstream → openrouter; zero estimate still recorded in estimated_cost
-    let (cost, source) = if let Some(est) = estimated_cost.filter(|c| c.0 > 0) {
-        (Some(est), CostSource::Estimate)
-    } else if let Some(up) = upstream_cost.filter(|c| c.0 > 0) {
+    let (cost, source) = if let Some(up) = upstream_cost.filter(|c| c.0 > 0) {
         (Some(up), CostSource::Upstream)
     } else if let Some(or) = or_cost.filter(|c| c.0 > 0) {
         (Some(or), CostSource::OpenRouter)
+    } else if let Some(est) = estimated_cost.filter(|c| c.0 > 0) {
+        (Some(est), CostSource::Estimate)
     } else {
         (None, CostSource::None)
     };
@@ -101,6 +100,10 @@ pub fn resolve_cost(usage: &ParsedUsage, model: Option<&str>, prices: &PriceTabl
         is_byok: usage.is_byok,
         upstream_provider: usage.upstream_provider.clone(),
     }
+}
+
+pub fn blended_cost_micros(price: &ModelPrice, input_tokens: u64, output_tokens: u64) -> u128 {
+    token_micros(input_tokens, price.input) + token_micros(output_tokens, price.output)
 }
 
 fn token_micros(tokens: u64, rate_usd_per_mtok: f64) -> u128 {
@@ -122,7 +125,11 @@ fn estimate_cost(usage: &ParsedUsage, price: &ModelPrice) -> Option<CostMicros> 
     let cache_read = usage.cache_read_tokens.map(|t| t.0).unwrap_or(0);
     let cache_write = usage.cache_write_tokens.map(|t| t.0).unwrap_or(0);
     let output = usage.output_tokens.map(|t| t.0).unwrap_or(0);
-    let uncached = input.saturating_sub(cache_read);
+    let uncached = if usage.input_includes_cache {
+        input.saturating_sub(cache_read)
+    } else {
+        input
+    };
     let micros = token_micros(uncached, price.input)
         + token_micros(cache_read, price.cache_read)
         + token_micros(cache_write, price.cache_write)

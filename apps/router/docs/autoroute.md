@@ -91,7 +91,11 @@ Protected keys (`tools`, `tool_choice`, `system`, `messages`, `max_tokens`, `sto
 | --- | --- |
 | Sticky band | Session remembers low/mid/high; down-tier needs `down_confirm` consecutive lower classifications |
 | Stall | Looks at last `stall_window` non-HK assistant turns; escalates and holds `escalate_turns` |
-| Session budget | When `session_budget_usd > 0`, `cap_for_budget` clamps tier by spend; **default is 0 (off)** |
+| Session budget | **Default `session_budget_usd = 0` means OFF: no cap, no refusal.** When `> 0` and spend reaches it: `session_budget_action = "downgrade"` (default) routes to the **cheapest** tier by `prices.toml` (blended estimate for the request's input and `max_tokens`; legacy "mid" cap if the ladder is not fully priced); `"reject"` returns HTTP 402 `billing_error` (Anthropic error shape) with the budget and spend, before any upstream or classifier call |
+| Budget key | Header `x-octo-budget-key` makes spend (and the budget) shared across every session sending the same key; stripped before upstream; needs `metadata.user_id` session id |
+| Classifier failure | New session and the JEV call fails: use `classifier_failure_tier` (default `mid`), remember it like any decision (trigger `classifier_failure`), retry classification on the next user turn. A missing API key still passes through unclassified |
+| Classifier input | Last user text sent to JEV is capped at 2000 characters (head + tail with an omission marker) |
+| `max_tokens` | Missing client value becomes `default_max_tokens` (default 8192), capped by the model maximum; explicit values are respected, also capped by the model maximum |
 | high_allow | Client preferred model on High only if allowlisted (empty = always use configured high slug) |
 
 Caveats: [status.md](./status.md).
@@ -100,21 +104,28 @@ Caveats: [status.md](./status.md).
 
 ```mermaid
 flowchart TD
-  overflow{context too large / stop reason?}
-  compact[POST compact-2026-09-04]
+  overflow{fill >= 0.75 or stop reason?}
+  compact[POST compact-2026-09-04 once]
   ok[Stream to client]
+  unapplied{next request shrunk?}
+  fwd[Forward normally, suppress compaction, trigger compact_not_applied]
   fail{429 / 5xx / connect?}
-  up[Retry once with next_up tier]
+  same[Wait Retry-After, retry same tier once]
+  up[Model unavailable: retry next tier once]
   err[Error to client]
 
-  overflow -->|messages + allow_compact| compact --> ok
+  overflow -->|messages + allow_compact| compact --> unapplied
+  unapplied -->|yes| ok
+  unapplied -->|no| fwd
   overflow -->|chat| ok
-  fail -->|before client bytes| up --> ok
+  fail -->|before client bytes| same --> ok
+  fail -->|model unavailable| up --> ok
   fail -->|exhausted| err
 ```
 
-- Messages autoroute: real OpenRouter compaction; one tier-up retry before the client sees failure.
-- Chat autoroute: `allow_compact=false` for overflow decide; if a Compact turn still appears, `chat_compact` strips compaction and forwards as normal chat.
+- Messages autoroute: OpenRouter compaction, **at most one compaction call per threshold crossing**. If the next request from that session has not shrunk (the client did not apply the summary), Octo logs a warning, forwards the request normally with trigger `compact_not_applied` in history, and does not compact that session again until its request falls below the fill threshold and rises again (or after `compact_cooldown_requests` further requests when set). Toolless requests carry no session state, so they are not tracked.
+- Retry (messages route, before any client bytes): 429, 5xx, and connect/timeout errors get **one** retry. The wait honours `Retry-After` (seconds or an IMF-fixdate HTTP date), bounded by `retry_after_max_secs` (default 10). The retry goes to the **same tier**; it goes to the next tier up only when the error body says the model/provider is unavailable (`No available model provider`, `No endpoints found`, `model_not_available`, `model is (not available|unavailable)` on a 429/5xx) and the budget allows that tier. Other 4xx are never retried. There is never a second retry.
+- Chat autoroute: `allow_compact=false` for overflow decide; if a Compact turn still appears, `chat_compact` strips compaction and forwards as normal chat. No retry on chat.
 
 ## Session identity
 

@@ -52,6 +52,11 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_background_model_patterns: vec!["haiku".to_string()],
         autoroute_background_by_client_model: false,
         autoroute_server_tool_mode: "passthrough".to_string(),
+        autoroute_compact_cooldown_requests: 0,
+        autoroute_classifier_failure_tier: "mid".to_string(),
+        autoroute_default_max_tokens: 8192,
+        autoroute_retry_after_max_secs: 10,
+        autoroute_session_budget_action: "downgrade".to_string(),
         prices: octo::history::PriceTable::default(),
     }
 }
@@ -157,6 +162,130 @@ pub async fn spawn_header_capture_server(
                         .map(str::to_string);
                     *captured_task.lock().unwrap() = value;
                     StatusCode::OK
+                }
+            }),
+        );
+        axum::serve(listener, app).await.unwrap();
+    });
+    ready_rx.await.unwrap();
+    (addr, captured)
+}
+
+#[derive(Clone)]
+pub struct Scripted {
+    pub status: u16,
+    pub headers: Vec<(&'static str, String)>,
+    pub body: String,
+}
+
+impl Scripted {
+    pub fn ok() -> Self {
+        Self {
+            status: 200,
+            headers: Vec::new(),
+            body: r#"{"type":"message","role":"assistant","content":[]}"#.to_string(),
+        }
+    }
+
+    pub fn status(status: u16) -> Self {
+        Self {
+            status,
+            ..Self::ok()
+        }
+    }
+
+    pub fn with_header(mut self, name: &'static str, value: impl Into<String>) -> Self {
+        self.headers.push((name, value.into()));
+        self
+    }
+
+    pub fn with_body(mut self, body: impl Into<String>) -> Self {
+        self.body = body.into();
+        self
+    }
+}
+
+pub type CapturedRows = Arc<Mutex<Vec<Captured>>>;
+
+#[derive(Clone)]
+pub struct Captured {
+    pub body: String,
+    pub headers: Vec<(String, String)>,
+    pub at: std::time::Instant,
+}
+
+impl Captured {
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn json(&self) -> serde_json::Value {
+        serde_json::from_str(&self.body).unwrap()
+    }
+}
+
+pub async fn spawn_scripted_server(
+    route: &str,
+    script: Vec<Scripted>,
+) -> (SocketAddr, Arc<Mutex<Vec<Captured>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let captured = Arc::new(Mutex::new(Vec::<Captured>::new()));
+    let captured_task = captured.clone();
+    let script = Arc::new(Mutex::new(script));
+    let route = route.to_string();
+    let (ready_tx, ready_rx) = oneshot::channel();
+    tokio::spawn(async move {
+        let _ = ready_tx.send(());
+        let app = Router::new().route(
+            route.as_str(),
+            post(move |request: Request<axum::body::Body>| {
+                let captured_task = captured_task.clone();
+                let script = script.clone();
+                async move {
+                    let headers = request
+                        .headers()
+                        .iter()
+                        .map(|(name, value)| {
+                            (
+                                name.as_str().to_string(),
+                                value.to_str().unwrap_or_default().to_string(),
+                            )
+                        })
+                        .collect();
+                    let bytes = axum::body::to_bytes(request.into_body(), usize::MAX)
+                        .await
+                        .unwrap_or_default();
+                    captured_task.lock().unwrap().push(Captured {
+                        body: String::from_utf8_lossy(&bytes).into_owned(),
+                        headers,
+                        at: std::time::Instant::now(),
+                    });
+                    let next = {
+                        let mut rows = script.lock().unwrap();
+                        if rows.is_empty() {
+                            Scripted::ok()
+                        } else {
+                            rows.remove(0)
+                        }
+                    };
+                    let mut response =
+                        axum::response::Response::new(axum::body::Body::from(next.body));
+                    *response.status_mut() =
+                        StatusCode::from_u16(next.status).unwrap_or(StatusCode::OK);
+                    response.headers_mut().insert(
+                        axum::http::header::CONTENT_TYPE,
+                        axum::http::HeaderValue::from_static("application/json"),
+                    );
+                    for (name, value) in next.headers {
+                        if let Ok(value) = axum::http::HeaderValue::from_str(&value) {
+                            response.headers_mut().insert(name, value);
+                        }
+                    }
+                    response
                 }
             }),
         );

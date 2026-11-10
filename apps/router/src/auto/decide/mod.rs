@@ -16,21 +16,24 @@ use serde_json::Value;
 
 use crate::history::History;
 
-use super::action::Turn;
+use super::action::{Reject, Turn};
 use super::body;
 use super::catalog::{self, CatalogCache, Tiers};
 use super::jev::Complexity;
 use super::metrics;
 use super::stall;
 
+use super::catalog::{BudgetAction, RequestShape};
 use super::session::SessionChoice;
 use classify::{ClassifyCtx, ClassifyTurn};
 use gate::SessionGate;
 use route::{RepeatCompact, RouteCtx, RoutePlan};
-use sticky::{apply as apply_sticky, cap_for_budget, StickyOutcome, StickyPlan};
+use sticky::{apply as apply_sticky, cap_for_budget_shaped, StickyOutcome, StickyPlan};
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
 const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
+const CLASSIFIER_FAILURE_REASON: &str = "classifier_failure";
+const COMPACT_NOT_APPLIED_REASON: &str = "compact_not_applied";
 
 #[derive(Clone)]
 pub struct Auto {
@@ -38,6 +41,7 @@ pub struct Auto {
     sessions: Arc<SyncMutex<super::session::Sessions>>,
     catalog: Arc<Mutex<CatalogCache>>,
     gates: Arc<SyncMutex<HashMap<String, Arc<Mutex<()>>>>>,
+    ledger: Arc<SyncMutex<super::ledger::BudgetLedger>>,
 }
 
 impl Auto {
@@ -47,6 +51,9 @@ impl Auto {
             sessions: Arc::new(SyncMutex::new(super::session::Sessions::new(SESSION_TTL))),
             catalog: Arc::new(Mutex::new(CatalogCache::new(CATALOG_TTL))),
             gates: Arc::new(SyncMutex::new(HashMap::new())),
+            ledger: Arc::new(SyncMutex::new(super::ledger::BudgetLedger::new(
+                SESSION_TTL,
+            ))),
         }
     }
 
@@ -71,6 +78,77 @@ impl Auto {
             choice.seen = Instant::now();
             sessions.insert(session_id.to_string(), choice);
         }
+    }
+
+    pub fn mark_compact_issued(&self, session_id: &str) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        if let Some(mut choice) = sessions.get(session_id) {
+            choice.awaiting_compact = true;
+            choice.compact_issued = true;
+            choice.seen = Instant::now();
+            sessions.insert(session_id.to_string(), choice);
+        }
+    }
+
+    pub fn mark_compaction_unapplied(&self, session_id: &str) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        if let Some(mut choice) = sessions.get(session_id) {
+            choice.awaiting_compact = false;
+            choice.compact_issued = false;
+            choice.compact_suppressed = true;
+            choice.compact_suppressed_requests = 0;
+            choice.seen = Instant::now();
+            sessions.insert(session_id.to_string(), choice);
+        }
+    }
+
+    pub fn rearm_compaction(&self, session_id: &str) {
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        if let Some(mut choice) = sessions.get(session_id) {
+            if choice.compact_suppressed {
+                choice.compact_suppressed = false;
+                choice.compact_suppressed_requests = 0;
+                choice.seen = Instant::now();
+                sessions.insert(session_id.to_string(), choice);
+            }
+        }
+    }
+
+    pub fn tick_compaction_cooldown(&self, session_id: &str, cooldown_requests: u32) {
+        if cooldown_requests == 0 {
+            return;
+        }
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        if let Some(mut choice) = sessions.get(session_id) {
+            if !choice.compact_suppressed {
+                return;
+            }
+            choice.compact_suppressed_requests =
+                choice.compact_suppressed_requests.saturating_add(1);
+            if choice.compact_suppressed_requests >= cooldown_requests {
+                choice.compact_suppressed = false;
+                choice.compact_suppressed_requests = 0;
+            }
+            sessions.insert(session_id.to_string(), choice);
+        }
+    }
+
+    pub fn bind_budget_key(&self, session_key: &str, budget_key: &str) {
+        if let Ok(mut ledger) = self.ledger.lock() {
+            ledger.bind(session_key, budget_key);
+        }
+    }
+
+    pub fn budget_key_of(&self, session_key: &str) -> Option<String> {
+        self.ledger.lock().ok()?.key_for(session_key)
     }
 
     pub fn mark_text_tool_call_escalate(&self, session_id: &str) {
@@ -110,17 +188,37 @@ impl Auto {
     }
 
     pub fn session_cost_micros(&self, session_key: &str) -> u64 {
+        if let Some(budget_key) = self.budget_key_of(session_key) {
+            return self
+                .ledger
+                .lock()
+                .map(|mut ledger| ledger.spent(&budget_key))
+                .unwrap_or(0);
+        }
+        let restored = self
+            .ledger
+            .lock()
+            .ok()
+            .and_then(|mut ledger| ledger.restored(session_key))
+            .unwrap_or(0);
         let Ok(mut sessions) = self.sessions.lock() else {
-            return 0;
+            return restored;
         };
         sessions
             .get(session_key)
             .map(|row| row.cost_micros)
             .unwrap_or(0)
+            .saturating_add(restored)
     }
 
     pub fn add_session_cost(&self, session_key: &str, micros: u64) {
         if micros == 0 {
+            return;
+        }
+        if let Some(budget_key) = self.budget_key_of(session_key) {
+            if let Ok(mut ledger) = self.ledger.lock() {
+                ledger.add(&budget_key, micros);
+            }
             return;
         }
         let Ok(mut sessions) = self.sessions.lock() else {
@@ -138,28 +236,28 @@ impl Auto {
     }
 
     pub fn sync_session_cost_floor(&self, session_key: &str, floor_micros: u64) {
-        if floor_micros == 0 {
+        if floor_micros == 0 || self.budget_key_of(session_key).is_some() {
             return;
         }
         let Ok(mut sessions) = self.sessions.lock() else {
             return;
         };
-        let mut row = sessions.get(session_key).unwrap_or_else(|| {
-            SessionChoice::fresh(self.tiers.mid.clone(), Vec::new(), "unset".to_string())
-        });
-        let mut dirty = false;
-        if row.model.is_empty() {
-            row.model = self.tiers.mid.clone();
-            dirty = true;
-        }
+        let Some(mut row) = sessions.peek(session_key) else {
+            drop(sessions);
+            if let Ok(mut ledger) = self.ledger.lock() {
+                ledger.restore(session_key, floor_micros);
+            }
+            return;
+        };
         if floor_micros > row.cost_micros {
             row.cost_micros = floor_micros;
-            dirty = true;
-        }
-        if dirty {
             row.seen = Instant::now();
             sessions.insert(session_key.to_string(), row);
         }
+    }
+
+    pub fn session_has_spend(&self, session_key: &str) -> bool {
+        self.budget_key_of(session_key).is_some() || self.session_cost_micros(session_key) > 0
     }
 
     pub fn seed_session(&self, session_key: &str, choice: SessionChoice) {
@@ -205,7 +303,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
     let client_tokens = metrics::estimate_tokens(models::counted_bytes(&req.body));
     let actor = body::session_key(&req.body);
     if let Some(id) = actor.clone() {
-        if req.auto.tiers().session_budget_micros > 0 && req.history.enabled() {
+        if req.history.enabled() && !req.auto.session_has_spend(&id) {
             if let Ok(floor) = req.history.session_cost_micros(&id).await {
                 req.auto.sync_session_cost_floor(&id, floor);
             }
@@ -225,6 +323,20 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             .and_then(|mut sessions| sessions.get(&id)),
         None => None,
     };
+    let cooldown = req.auto.tiers.compact_cooldown_requests;
+    if let (Some(id), Some(row)) = (actor.as_ref(), choice.as_mut()) {
+        if row.compact_suppressed && cooldown > 0 {
+            req.auto.tick_compaction_cooldown(id, cooldown);
+            row.compact_suppressed_requests = row.compact_suppressed_requests.saturating_add(1);
+            if row.compact_suppressed_requests >= cooldown {
+                row.compact_suppressed = false;
+                row.compact_suppressed_requests = 0;
+            }
+        }
+    }
+    let mut allow_compact =
+        req.allow_compact && !choice.as_ref().is_some_and(|row| row.compact_suppressed);
+    let mut compact_event: Option<&'static str> = None;
     let raw_text = body::last_user_text(&req.body);
     let question = body::question_text(&req.body);
     let persist = !all_tools.is_empty();
@@ -237,6 +349,20 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .as_ref()
         .map(|id| req.auto.session_cost_micros(id))
         .unwrap_or(0);
+
+    let budget = req.auto.tiers.session_budget_micros;
+    if budget > 0 && spent >= budget && req.auto.tiers.session_budget_action == BudgetAction::Reject
+    {
+        return Turn::Reject(Reject {
+            budget_micros: budget,
+            spent_micros: spent,
+            budget_key: actor.as_deref().and_then(|id| req.auto.budget_key_of(id)),
+        });
+    }
+    let budget_shape = RequestShape {
+        input_tokens: client_tokens,
+        output_tokens: reserve.min(1024),
+    };
 
     if body::is_permission_check(&raw_text) {
         let row = choice.as_ref();
@@ -258,7 +384,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 reason: Some("permission_check".to_string()),
                 tier_before,
                 reserve,
-                allow_compact: req.allow_compact,
+                allow_compact,
                 persist: false,
                 sticky_band: row
                     .map(|row| row.sticky_band.clone())
@@ -284,7 +410,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             all_tools: &all_tools,
             tier_before,
             reserve,
-            allow_compact: req.allow_compact,
+            allow_compact,
             reason_base: "housekeeping",
             trim: true,
             persist: false,
@@ -307,7 +433,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             all_tools: &all_tools,
             tier_before,
             reserve,
-            allow_compact: req.allow_compact,
+            allow_compact,
             reason_base: "background_model",
             trim: true,
             persist: false,
@@ -321,7 +447,19 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             if metrics::dropped(row.prev_input_tokens_est, client_tokens) {
                 choice = None;
                 forced_reason = Some("reclassify".to_string());
-            } else if req.allow_compact {
+            } else if row.compact_issued {
+                tracing::warn!(
+                    session_id = actor.as_deref().unwrap_or(""),
+                    input_tokens_est = client_tokens,
+                    previous_input_tokens_est = row.prev_input_tokens_est,
+                    "autoroute compaction was not applied by the client; forwarding normally and suppressing further compaction until the context shrinks"
+                );
+                if let Some(id) = actor.as_ref() {
+                    req.auto.mark_compaction_unapplied(id);
+                }
+                compact_event = Some(COMPACT_NOT_APPLIED_REASON);
+                allow_compact = false;
+            } else if allow_compact {
                 let outgoing = body::shape(body::ShapePlan {
                     body: &req.body,
                     model: &row.model,
@@ -331,9 +469,13 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                     allow_fallbacks: req.auto.tiers.allow_fallbacks,
                     strip_fields: &req.auto.tiers.strip_fields,
                     require_parameters: req.auto.tiers.require_parameters,
+                    default_max_tokens: req.auto.tiers.default_max_tokens,
                 })
                 .body;
-                tracing::debug!(input_tokens_est = client_tokens, "autoroute compact repeat");
+                tracing::debug!(input_tokens_est = client_tokens, "autoroute compact");
+                if let Some(id) = actor.as_ref() {
+                    req.auto.mark_compact_issued(id);
+                }
                 return route::repeat_compact(RepeatCompact {
                     auto: req.auto,
                     body: &outgoing,
@@ -379,12 +521,13 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             plan: session_plan_budget(SessionPlanBudget {
                 row: &row,
                 tier_before,
-                reason: None,
+                reason: compact_event.map(str::to_string),
                 reserve,
-                allow_compact: req.allow_compact,
+                allow_compact,
                 persist,
                 spent,
                 tiers: &req.auto.tiers,
+                shape: budget_shape,
             }),
         });
     }
@@ -406,7 +549,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             all_tools: &all_tools,
             tier_before,
             reserve,
-            allow_compact: req.allow_compact,
+            allow_compact,
             reason_base: "subagent_default",
             trim: false,
             persist,
@@ -414,6 +557,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         });
     }
 
+    let mut classifier_failed = false;
     let picked = if choice.is_some() {
         if question.trim().is_empty() {
             None
@@ -447,12 +591,21 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                         req.auto.clear_awaiting_compact(&id);
                     }
                 }
-                if stall.is_none() {
-                    return route::passthrough(route::Passthrough {
-                        auto: req.auto,
-                        body: &req.body,
-                        models: loaded.as_ref(),
-                    });
+                if req.api_key.is_empty() {
+                    if stall.is_none() {
+                        return route::passthrough(route::Passthrough {
+                            auto: req.auto,
+                            body: &req.body,
+                            models: loaded.as_ref(),
+                        });
+                    }
+                } else {
+                    tracing::warn!(
+                        session_id = actor.as_deref().unwrap_or(""),
+                        tier = %req.auto.tiers.classifier_failure_tier,
+                        "autoroute classifier failed; using classifier_failure_tier"
+                    );
+                    classifier_failed = true;
                 }
                 None
             }
@@ -476,6 +629,11 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
         ),
         (None, Some(row)) => (band_complexity(&row.sticky_band), row.tools.clone(), None),
+        (None, None) if classifier_failed => (
+            band_complexity(&req.auto.tiers.classifier_failure_tier),
+            all_tools.clone(),
+            Some(CLASSIFIER_FAILURE_REASON.to_string()),
+        ),
         (None, None) => (
             if stall.is_some() {
                 Complexity::Low
@@ -495,9 +653,12 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         stall,
         tool_results_only,
     });
-    cap_for_budget(&mut sticky, &req.auto.tiers, spent);
+    cap_for_budget_shaped(&mut sticky, &req.auto.tiers, spent, budget_shape);
     let previous_model = choice.as_ref().map(|row| row.model.clone());
-    let reason = sticky.reason.or(classify_reason);
+    let reason = sticky
+        .reason
+        .or(classify_reason)
+        .or_else(|| compact_event.map(str::to_string));
     route::run(RouteCtx {
         auto: req.auto,
         body: req.body,
@@ -509,7 +670,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             reason,
             tier_before,
             reserve,
-            allow_compact: req.allow_compact,
+            allow_compact,
             persist,
             sticky_band: sticky.sticky_band,
             escalate_remaining: sticky.escalate_remaining,
@@ -624,7 +785,7 @@ fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
         down_count: plan.row.down_count,
         reason: plan.reason,
     };
-    cap_for_budget(&mut sticky, plan.tiers, plan.spent);
+    cap_for_budget_shaped(&mut sticky, plan.tiers, plan.spent, plan.shape);
     RoutePlan {
         model: sticky.model,
         tools: plan.row.tools.clone(),
@@ -653,6 +814,7 @@ struct SessionPlanBudget<'a> {
     persist: bool,
     spent: u64,
     tiers: &'a Tiers,
+    shape: RequestShape,
 }
 
 fn band_complexity(band: &str) -> Complexity {

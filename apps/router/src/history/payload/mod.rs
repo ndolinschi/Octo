@@ -21,6 +21,7 @@ pub struct ParsedUsage {
     pub cache_read_tokens: Option<super::TokenCount>,
     pub cache_write_tokens: Option<super::TokenCount>,
     pub generation_id: Option<String>,
+    pub input_includes_cache: bool,
 }
 
 impl ParsedUsage {
@@ -35,6 +36,7 @@ impl ParsedUsage {
         cache_read_tokens: None,
         cache_write_tokens: None,
         generation_id: None,
+        input_includes_cache: false,
     };
 }
 
@@ -73,6 +75,17 @@ pub fn usage_from_output(output: &str) -> ParsedUsage {
 
 pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> ParsedUsage {
     common::usage_from_parts(prefix, tail, response_bytes)
+}
+
+pub struct DroppedStream<'a> {
+    pub request_bytes: usize,
+    pub prefix: &'a str,
+    pub tail: &'a str,
+    pub response_bytes: usize,
+}
+
+pub fn complete_dropped_usage(usage: ParsedUsage, stream: DroppedStream<'_>) -> ParsedUsage {
+    common::complete_dropped_usage(usage, stream)
 }
 
 pub fn cost_micros_from_json(value: &serde_json::Value) -> Option<super::CostMicros> {

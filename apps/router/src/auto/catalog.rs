@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use crate::history::{blended_cost_micros, PriceTable};
 use crate::providers::openrouter::OpenRouterModels;
 
 use super::jev::Complexity;
@@ -27,6 +28,48 @@ impl RequireParameters {
             Self::Always => "always",
             Self::ToolsOnly => "tools_only",
             Self::Never => "never",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BudgetAction {
+    Downgrade,
+    Reject,
+}
+
+impl BudgetAction {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "downgrade" => Some(Self::Downgrade),
+            "reject" => Some(Self::Reject),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Downgrade => "downgrade",
+            Self::Reject => "reject",
+        }
+    }
+}
+
+pub fn is_band(raw: &str) -> bool {
+    matches!(raw, "low" | "mid" | "high")
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RequestShape {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+impl Default for RequestShape {
+    fn default() -> Self {
+        Self {
+            input_tokens: 30_000,
+            output_tokens: 500,
         }
     }
 }
@@ -59,6 +102,12 @@ pub struct Tiers {
     pub background_by_client_model: bool,
     pub background_model_patterns: Vec<String>,
     pub server_tool_mode: String,
+    pub compact_cooldown_requests: u32,
+    pub classifier_failure_tier: String,
+    pub default_max_tokens: u64,
+    pub retry_after_max_secs: u64,
+    pub session_budget_action: BudgetAction,
+    pub prices: PriceTable,
 }
 
 impl Tiers {
@@ -82,7 +131,37 @@ impl Tiers {
             background_by_client_model: false,
             background_model_patterns: vec!["haiku".to_string()],
             server_tool_mode: "passthrough".to_string(),
+            compact_cooldown_requests: 0,
+            classifier_failure_tier: "mid".to_string(),
+            default_max_tokens: 8192,
+            retry_after_max_secs: 10,
+            session_budget_action: BudgetAction::Downgrade,
+            prices: PriceTable::default(),
         }
+    }
+
+    pub fn blended_cost_micros(&self, band: &str, shape: RequestShape) -> Option<u128> {
+        let price = self.prices.get(&self.slug(band))?;
+        if price.input <= 0.0 && price.output <= 0.0 {
+            return None;
+        }
+        Some(blended_cost_micros(
+            price,
+            shape.input_tokens,
+            shape.output_tokens,
+        ))
+    }
+
+    pub fn cheapest_band(&self, shape: RequestShape) -> Option<&'static str> {
+        let costs = [
+            ("low", self.blended_cost_micros("low", shape)?),
+            ("mid", self.blended_cost_micros("mid", shape)?),
+            ("high", self.blended_cost_micros("high", shape)?),
+        ];
+        costs
+            .into_iter()
+            .min_by_key(|(_, cost)| *cost)
+            .map(|(band, _)| band)
     }
 
     pub fn candidates(&self) -> [&str; 3] {

@@ -53,11 +53,12 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
     }
     let user_text = body::question_text(plan.ctx.body);
     let facts = jev::inspect(plan.ctx.body, &user_text);
+    let classifier_text = body::cap_classifier_text(&user_text);
     let asked = jev::classify(jev::ClassifyRequest {
         client: plan.ctx.client,
         decisions_url: plan.ctx.decisions_url,
         api_key: plan.ctx.api_key,
-        user_text: &user_text,
+        user_text: &classifier_text,
         tool_names: plan.ctx.all_tools,
         current_tools: plan.current,
         facts: &facts,
