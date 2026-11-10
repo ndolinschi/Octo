@@ -1,12 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { readPref, writePref } from "../lib/storage";
+import { TREE_DEFAULT, TREE_MAX, TREE_MIN, clamp, parseTreePref, type Stored } from "./fileViewPrefs";
 
-/** The file view's tree column: 280px by default, resizable 200–480 (contract v6 decision 4). */
-export const TREE_DEFAULT = 280;
-export const TREE_MIN = 200;
-export const TREE_MAX = 480;
-
-type Stored = { open: boolean; width: number };
+export { TREE_DEFAULT, TREE_MAX, TREE_MIN };
 
 type FileViewValue = {
   /** Whether the tree column is shown; shared by every file view of the project. */
@@ -23,18 +19,8 @@ type FileViewValue = {
 
 const FileViewContext = createContext<FileViewValue | null>(null);
 
-const clamp = (w: number) => Math.round(Math.min(TREE_MAX, Math.max(TREE_MIN, w)));
-
 function load(projectId: string): Stored {
-  try {
-    const raw = JSON.parse(readPref(`fileTree.${projectId}`) ?? "null") as Partial<Stored> | null;
-    return {
-      open: typeof raw?.open === "boolean" ? raw.open : true,
-      width: typeof raw?.width === "number" && Number.isFinite(raw.width) ? clamp(raw.width) : TREE_DEFAULT,
-    };
-  } catch {
-    return { open: true, width: TREE_DEFAULT };
-  }
+  return parseTreePref(readPref(`fileTree.${projectId}`));
 }
 
 /** Per-project file-view preferences, persisted in `localStorage["octo.fileTree.{projectId}"]` (guarded). */

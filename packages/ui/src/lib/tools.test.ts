@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { acpCall, locateInProject, toolMeta, writtenFiles } from "./tools";
+import { SPAWN_TOOL, acpCall, locateInProject, spawnInput, toolMeta, toolPath, writtenFiles } from "./tools";
 
 const folders = [
   { label: "infra", path: "/Users/maya/code/infra" },
@@ -42,4 +42,85 @@ test("written files: write_file and ACP edits that did not fail", () => {
     writtenFiles(msgs, folders).map((w) => `${w.folder}/${w.path}`),
     ["infra/src/a.ts", "web/b.ts", "infra/c.md"],
   );
+});
+
+test("built-in tool rows: verb, main argument and folder", () => {
+  assert.deepEqual(toolMeta("list_dir", {}), { verb: "Listed", arg: ".", folder: "" });
+  assert.deepEqual(toolMeta("list_dir", { path: "src", folder: "web" }), { verb: "Listed", arg: "src", folder: "web" });
+  assert.deepEqual(toolMeta("write_file", { path: "a.ts", folder: "api" }), { verb: "Wrote", arg: "a.ts", folder: "api" });
+  assert.equal(toolMeta("bash", { command: "ls -la\necho hi" }).arg, "ls -la", "only the first line of a command");
+  assert.deepEqual(toolMeta("save_note", { title: "Plan" }), { verb: "Saved note", arg: "Plan", folder: "" });
+  assert.equal(toolMeta("delete_note", { id: "n1" }).arg, "n1", "falls back to the id");
+  assert.equal(toolMeta("read_file", { path: 42 }).arg, "", "a non-string argument is not shown");
+  assert.equal(toolMeta("read_file", null).verb, "Read");
+});
+
+test("an unknown tool reads as 'Called name' with its first string input", () => {
+  assert.deepEqual(toolMeta("lookup", { n: 1, q: "term" }), { verb: "Called lookup", arg: "term", folder: "" });
+  assert.deepEqual(toolMeta("lookup", undefined), { verb: "Called lookup", arg: "", folder: "" });
+});
+
+test("ACP titles: a leading verb is split off; a one-word or empty title stays whole", () => {
+  assert.deepEqual(toolMeta("execute", { title: "Run npm test -- --watch" }), { verb: "Run", arg: "npm test -- --watch", folder: "" });
+  assert.deepEqual(toolMeta("think", { title: "  Thinking  " }), { verb: "Thinking", arg: "", folder: "" });
+  assert.deepEqual(toolMeta("other", { title: "" }), { verb: "Tool call", arg: "", folder: "" });
+  assert.equal(toolMeta("read", { path: "a.ts" }).verb, "Called read", "an ACP kind without a title is not an ACP call");
+});
+
+test("acpCall: only ACP kinds with a title; bad locations are dropped", () => {
+  assert.equal(acpCall("write_file", { title: "x" }), null);
+  assert.equal(acpCall("read", "text"), null);
+  assert.equal(acpCall("read", null), null);
+  assert.deepEqual(acpCall("read", { title: "t", locations: "nope" }), { title: "t", locations: [] });
+  assert.deepEqual(acpCall("read", { title: "t", locations: [null, { path: 3 }, { path: "/a", line: "x" }] })?.locations, [{ path: "/a" }]);
+});
+
+test("locateInProject: relative paths go to the first folder, Windows paths and trailing slashes work", () => {
+  const f = [{ label: "win", path: "C:\\code\\app\\" }];
+  assert.deepEqual(locateInProject(f, "./src/a.ts"), { folder: "win", path: "src/a.ts" });
+  assert.deepEqual(locateInProject(f, "C:\\code\\app\\src\\a.ts"), { folder: "win", path: "src/a.ts" });
+  assert.equal(locateInProject(f, "C:/code/app"), null, "the folder root itself is not a file");
+  assert.equal(locateInProject(f, "C:/code/apple/x.ts"), null, "a sibling that shares a prefix is outside");
+  assert.equal(locateInProject([], "a.ts"), null);
+});
+
+test("written files: a result for another tool call does not cancel a write, errors only cancel their own", () => {
+  const msgs = [
+    {
+      agent_id: "a",
+      role: "assistant",
+      created_at: "2026-11-10T10:00:00Z",
+      content: [
+        { type: "tool_use", id: "w1", name: "write_file", input: { path: "ok.ts" } },
+        { type: "tool_use", id: "w2", name: "write_file", input: { path: "bad.ts" } },
+        { type: "tool_use", id: "w3", name: "write_file", input: { folder: "ghost", path: "x.ts" } },
+        { type: "tool_use", id: "w4", name: "write_file", input: { path: "" } },
+      ],
+    },
+    {
+      agent_id: "a",
+      role: "user",
+      created_at: "2026-11-10T10:00:01Z",
+      content: [
+        { type: "tool_result", tool_use_id: "w1", content: "ok", is_error: false },
+        { type: "tool_result", tool_use_id: "w2", content: "no", is_error: true },
+      ],
+    },
+  ];
+  assert.deepEqual(
+    writtenFiles(msgs, folders).map((w) => w.path),
+    ["ok.ts"],
+    "unknown folder and empty path are ignored",
+  );
+  assert.deepEqual(writtenFiles([], folders), []);
+  assert.deepEqual(writtenFiles(msgs, []), []);
+});
+
+test("toolPath and spawnInput tolerate odd input", () => {
+  assert.equal(toolPath("read_file", { path: "a.ts" }), "a.ts");
+  assert.equal(toolPath("bash", { path: "a.ts" }), "");
+  assert.equal(toolPath("read_file", null), "");
+  assert.deepEqual(spawnInput({ role: "coder", title: "T", task: "do", tier: "fast", extra: 1 }), { role: "coder", title: "T", task: "do", tier: "fast" });
+  assert.deepEqual(spawnInput("junk"), { role: "", title: "", task: "", tier: "" });
+  assert.equal(SPAWN_TOOL, "spawn_agent");
 });

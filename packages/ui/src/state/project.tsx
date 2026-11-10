@@ -1,41 +1,7 @@
-import {
-  applyEvent,
-  emptyProjectState,
-  withAgents,
-  withMessages,
-  withNotes,
-  type Agent,
-  type BridgeEvent,
-  type Message,
-  type Note,
-  type Project,
-  type ProjectInput,
-  type ProjectState,
-} from "@octo/agent-client";
+import { emptyProjectState, type BridgeEvent, type Project, type ProjectInput, type ProjectState } from "@octo/agent-client";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./app";
-
-type Action =
-  | { type: "event"; event: BridgeEvent }
-  | { type: "agents"; agents: Agent[] }
-  | { type: "messages"; agentId: string; messages: Message[] }
-  | { type: "notes"; notes: Note[] }
-  | { type: "clearTurn" };
-
-function reducer(state: ProjectState, action: Action): ProjectState {
-  switch (action.type) {
-    case "event":
-      return applyEvent(state, action.event);
-    case "agents":
-      return withAgents(state, action.agents);
-    case "messages":
-      return withMessages(state, action.agentId, action.messages);
-    case "notes":
-      return withNotes(state, action.notes);
-    case "clearTurn":
-      return { ...state, lastTurn: null };
-  }
-}
+import { projectReducer } from "./projectReducer";
 
 export type LiveStatus = "connecting" | "live" | "reconnecting";
 
@@ -62,7 +28,7 @@ const ProjectContext = createContext<ProjectValue | null>(null);
 
 export function ProjectProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
   const { bridge, refreshProjects } = useApp();
-  const [state, dispatch] = useReducer(reducer, undefined, emptyProjectState);
+  const [state, dispatch] = useReducer(projectReducer, undefined, emptyProjectState);
   const [project, setProject] = useState<Project | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [live, setLive] = useState<LiveStatus>("connecting");
