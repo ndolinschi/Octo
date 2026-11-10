@@ -131,8 +131,12 @@ func TestSpawnDepthLimit(t *testing.T) {
 }
 
 type fakeReq struct {
-	Tools []struct{ Name string } `json:"tools"`
-	Msgs  []json.RawMessage       `json:"messages"`
+	Tools []struct {
+		Name        string          `json:"name"`
+		InputSchema json.RawMessage `json:"input_schema"`
+	} `json:"tools"`
+	Msgs   []json.RawMessage `json:"messages"`
+	System json.RawMessage   `json:"system"`
 }
 
 func (f fakeReq) isOrchestrator() bool {

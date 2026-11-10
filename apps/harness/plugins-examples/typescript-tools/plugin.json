@@ -1,0 +1,15 @@
+{
+  "name": "typescript-tools",
+  "version": "1.0.0",
+  "description": "TypeScript and JavaScript language server",
+  "languageServers": [
+    {
+      "id": "typescript-language-server",
+      "label": "TypeScript",
+      "languages": ["typescript", "javascript"],
+      "command": "typescript-language-server",
+      "args": ["--stdio"],
+      "env": {}
+    }
+  ]
+}

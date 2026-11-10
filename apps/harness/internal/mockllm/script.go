@@ -28,6 +28,9 @@ func orchestratorReply(r *request) reply {
 		return reply{Text: "Hello! Tell me what you would like to do in this project."}
 	}
 	ask := r.Messages[anchor].text()
+	if agents := r.spawnAgentChoices(); len(agents) > 0 && strings.Contains(ask, acpMarker) {
+		return acpReply(r, anchor, ask, agents[0])
+	}
 	if strings.Contains(strings.ToLower(ask), "quick") {
 		return reply{Text: quickAnswer(ask)}
 	}

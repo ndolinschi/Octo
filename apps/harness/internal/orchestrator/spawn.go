@@ -3,12 +3,14 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
@@ -18,29 +20,27 @@ const ToolSpawnAgent = "spawn_agent"
 const spawnDescription = "Delegate a task to a new sub-agent with a fresh context. It runs to completion and " +
 	"its final report is returned as this tool's result. Calls made in the same message run in parallel."
 
-var spawnSchema = json.RawMessage(`{"type":"object","properties":{` +
-	`"role":{"type":"string","description":"Specialist role, e.g. Code explorer"},` +
-	`"title":{"type":"string","description":"Short task title"},` +
-	`"task":{"type":"string","description":"Self-contained brief including the expected report format"},` +
-	`"tier":{"type":"string","enum":["fast","balanced","deep"],"description":"Model tier by task difficulty"}},` +
-	`"required":["role","title","task","tier"]}`)
-
 type spawnInput struct {
 	Role  string `json:"role"`
 	Title string `json:"title"`
 	Task  string `json:"task"`
 	Tier  string `json:"tier"`
+	Agent string `json:"agent"`
 }
 
-func (rt *runtime) spawnDef(parent projectstore.Agent) tools.Def {
+func (rt *runtime) spawnDef(parent projectstore.Agent) (tools.Def, error) {
+	schema, err := spawnSchema(rt.acpAgents())
+	if err != nil {
+		return tools.Def{}, fmt.Errorf("spawn_agent schema: %w", err)
+	}
 	return tools.Def{
 		Name:        ToolSpawnAgent,
 		Description: spawnDescription,
-		InputSchema: spawnSchema,
+		InputSchema: schema,
 		Handle: func(ctx context.Context, input json.RawMessage) (string, bool, error) {
 			return rt.spawn(ctx, parent, input)
 		},
-	}
+	}, nil
 }
 
 // spawn creates a child agent, runs it to completion and returns its report.
@@ -55,11 +55,20 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	if in.Role == "" || in.Title == "" || in.Task == "" || !tier.Valid() {
 		return "spawn_agent requires role, title, task and tier (fast|balanced|deep)", true, nil
 	}
+	var ext *plugins.Agent
+	model := rt.models.ForTier(in.Tier)
+	if in.Agent != "" {
+		ag, msg := rt.pickACPAgent(in.Agent)
+		if msg != "" {
+			return msg, true, nil
+		}
+		ext, model = &ag, ACPModelPrefix+ag.ID
+	}
 	toolUseID := tools.ToolUseID(ctx)
 	c, cancel := dbCtx(ctx)
 	child, err := rt.db.CreateAgent(c, projectstore.NewAgent{
 		ParentID: &parent.ID, Depth: parent.Depth + 1, Role: in.Role, Title: in.Title, Task: in.Task,
-		Model: rt.models.ForTier(in.Tier), Tier: &tier, Status: projectstore.StatusRunning,
+		Model: model, Tier: &tier, Status: projectstore.StatusRunning,
 		SpawnToolUseID: &toolUseID, Started: true,
 	})
 	cancel()
@@ -74,19 +83,28 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
 		return "sub-agent failed: " + err.Error(), true, nil
 	}
-	res, err := rt.runAgent(ctx, child, []anthropic.MessageParam{task})
+	text, err := rt.runChild(ctx, child, task, ext)
 	switch {
 	case err == nil:
-		rt.settle(ctx, child.ID, projectstore.StatusCompleted, res.Text, "")
-		if res.Text == "" {
+		rt.settle(ctx, child.ID, projectstore.StatusCompleted, text, "")
+		if text == "" {
 			return "(sub-agent returned no report)", false, nil
 		}
-		return tools.CapString(res.Text), false, nil
-	case ctx.Err() != nil:
+		return tools.CapString(text), false, nil
+	case ctx.Err() != nil || errors.Is(err, errAgentCancelled):
 		rt.settle(ctx, child.ID, projectstore.StatusCancelled, "", "")
 		return "sub-agent cancelled", true, nil
 	default:
 		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
 		return "sub-agent failed: " + err.Error(), true, nil
 	}
+}
+
+// runChild runs the child through the built-in loop, or through ext when set.
+func (rt *runtime) runChild(ctx context.Context, child projectstore.Agent, task anthropic.MessageParam, ext *plugins.Agent) (string, error) {
+	if ext != nil {
+		return rt.runACP(ctx, child, *ext)
+	}
+	res, err := rt.runAgent(ctx, child, []anthropic.MessageParam{task})
+	return res.Text, err
 }

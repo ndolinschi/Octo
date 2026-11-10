@@ -39,6 +39,8 @@ func cmdServe(args []string) error {
 	maxTurns := fs.Int("max-turns", 0, "Max loop iterations per agent (0 = config default)")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable; sub-agents only)")
+	var pluginDirs multiFlag
+	fs.Var(&pluginDirs, "plugins-dir", "Extra plugins directory (repeatable; also HARNESS_PLUGINS_DIR); a plugin dir or a dir of plugin dirs")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -57,6 +59,7 @@ func cmdServe(args []string) error {
 	if len(remoteBases) > 0 {
 		cfg.RemoteBases = remoteBases
 	}
+	cfg.PluginDirs = append(cfg.PluginDirs, pluginDirs...)
 	if cfg.APIKey == "" {
 		return fmt.Errorf("ANTHROPIC_API_KEY is required")
 	}
@@ -82,6 +85,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		return err
 	}
 
+	pluginReg := loadPlugins(ctx, cfg, remoteReg)
+
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
@@ -89,6 +94,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		MaxTurns: cfg.MaxTurns,
 		Stream:   cfg.Stream,
 		Remote:   remoteReg.All(),
+		Agents:   pluginReg.Agents(),
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth})
 	if err := svc.Recover(ctx); err != nil {
@@ -102,7 +108,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	baseCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
 	srv := &http.Server{
-		Handler:           bridge.New(svc, notes, project.NewFiles(store, hub)),
+		Handler:           bridge.New(svc, notes, project.NewFiles(store, hub), bridge.WithPlugins(pluginReg)),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}

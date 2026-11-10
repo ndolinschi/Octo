@@ -7,11 +7,16 @@ import (
 )
 
 type request struct {
-	Model    string                  `json:"model"`
-	Stream   bool                    `json:"stream"`
-	System   json.RawMessage         `json:"system"`
-	Tools    []struct{ Name string } `json:"tools"`
-	Messages []message               `json:"messages"`
+	Model    string          `json:"model"`
+	Stream   bool            `json:"stream"`
+	System   json.RawMessage `json:"system"`
+	Tools    []tool          `json:"tools"`
+	Messages []message       `json:"messages"`
+}
+
+type tool struct {
+	Name        string          `json:"name"`
+	InputSchema json.RawMessage `json:"input_schema"`
 }
 
 type message struct {
@@ -122,4 +127,25 @@ func (r *request) lastUserTextIndex() int {
 		}
 	}
 	return -1
+}
+
+// spawnAgentChoices returns the enum of the spawn_agent `agent` parameter,
+// empty when the tool does not offer one.
+func (r *request) spawnAgentChoices() []string {
+	for _, t := range r.Tools {
+		if t.Name != "spawn_agent" {
+			continue
+		}
+		var schema struct {
+			Properties struct {
+				Agent struct {
+					Enum []string `json:"enum"`
+				} `json:"agent"`
+			} `json:"properties"`
+		}
+		if json.Unmarshal(t.InputSchema, &schema) == nil {
+			return schema.Properties.Agent.Enum
+		}
+	}
+	return nil
 }

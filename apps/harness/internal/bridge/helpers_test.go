@@ -18,6 +18,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mockllm"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -29,7 +30,10 @@ type env struct {
 
 // newEnv wires the full stack against the scripted mock Messages server. While
 // gate is open (non-nil and not closed) every LLM request blocks.
-func newEnv(t *testing.T, gate chan struct{}) *env {
+func newEnv(t *testing.T, gate chan struct{}) *env { return newEnvWith(t, gate, nil) }
+
+// newEnvWith is newEnv with a plugin registry (nil = none).
+func newEnvWith(t *testing.T, gate chan struct{}, reg *plugins.Registry) *env {
 	t.Helper()
 	llm := mockllm.New(0)
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +56,7 @@ func newEnv(t *testing.T, gate chan struct{}) *env {
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
-		Client: anthropicclient.New("k", llmSrv.URL, ""), MaxTurns: 12, Stream: true,
+		Client: anthropicclient.New("k", llmSrv.URL, ""), MaxTurns: 12, Stream: true, Agents: reg.Agents(),
 	})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -60,7 +64,7 @@ func newEnv(t *testing.T, gate chan struct{}) *env {
 		_ = orch.Shutdown(ctx)
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: config.DefaultMaxDepth})
-	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub)))
+	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub), bridge.WithPlugins(reg)))
 	t.Cleanup(srv.Close)
 	return &env{url: srv.URL, gate: gate}
 }

@@ -59,6 +59,7 @@ How you work:
 - Record durable intent, decisions and facts with save_note (upserts by title); delete stale notes with delete_note. Keep notes short.
 - Answer the user concisely in markdown from the sub-agent reports: what was found or changed, and what remains.
 `)
+	b.WriteString(rt.acpPrompt())
 	return b.String()
 }
 

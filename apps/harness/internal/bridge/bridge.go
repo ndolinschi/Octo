@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 )
 
@@ -16,14 +17,29 @@ const (
 
 // Server is the HTTP + SSE face of the project service.
 type Server struct {
-	svc   *project.Service
-	notes *project.Notes
-	files *project.Files
-	ping  time.Duration
+	svc     *project.Service
+	notes   *project.Notes
+	files   *project.Files
+	plugins PluginSource
+	ping    time.Duration
 }
 
-func New(svc *project.Service, notes *project.Notes, files *project.Files) http.Handler {
+// PluginSource is the read-only plugin view GET /v1/plugins serves.
+type PluginSource interface {
+	Plugins() []plugins.Plugin
+}
+
+// Option customizes the server.
+type Option func(*Server)
+
+// WithPlugins serves the registry at GET /v1/plugins (empty list otherwise).
+func WithPlugins(src PluginSource) Option { return func(s *Server) { s.plugins = src } }
+
+func New(svc *project.Service, notes *project.Notes, files *project.Files, opts ...Option) http.Handler {
 	s := &Server{svc: svc, notes: notes, files: files, ping: pingInterval}
+	for _, o := range opts {
+		o(s)
+	}
 	return cors(s.routes())
 }
 
@@ -31,6 +47,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /v1/config", s.config)
+	mux.HandleFunc("GET /v1/plugins", s.listPlugins)
 	mux.HandleFunc("GET /v1/projects", s.listProjects)
 	mux.HandleFunc("POST /v1/projects", s.createProject)
 	mux.HandleFunc("GET /v1/projects/{pid}", s.getProject)

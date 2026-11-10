@@ -82,7 +82,11 @@ func (rt *runtime) registry(a projectstore.Agent) (*tools.Registry, error) {
 	}
 	rt.announceWrites(reg)
 	if a.Depth < rt.info.MaxDepth {
-		if err := reg.Register(rt.spawnDef(a)); err != nil {
+		def, err := rt.spawnDef(a)
+		if err != nil {
+			return nil, err
+		}
+		if err := reg.Register(def); err != nil {
 			return nil, err
 		}
 	}

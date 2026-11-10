@@ -33,7 +33,24 @@ ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:87
 
 Then `curl -XPOST localhost:8790/v1/projects -d '{"name":"Demo","folders":[{"path":"'$PWD'"}]}'`, post a message to `/v1/projects/{id}/messages`, follow `/v1/projects/{id}/events`, and browse or edit project files via `/v1/projects/{id}/files` (see [`docs/architecture.md`](docs/architecture.md#file-api)). API contract: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../docs/superpowers/specs/2026-11-10-project-harness-design.md). Against a real endpoint, drop `--base-url` (or point it at Octo) and set a real key.
 
-`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--max-turns`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Say "quick" in a message to make mockllm answer without delegating.
+`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--plugins-dir` (repeatable), `--max-turns`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Say "quick" in a message to make mockllm answer without delegating.
+
+## Plugins and ACP agents
+
+Plugins are local directories with a `plugin.json` naming language servers, [Agent Client Protocol](https://agentclientprotocol.com) agents and tool servers. They are read at startup from `{data-dir}/plugins/*/plugin.json` and from `--plugins-dir` (repeatable) / `HARNESS_PLUGINS_DIR`; `GET /v1/plugins` lists them with `available` flags and manifest `errors`. There is no endpoint to add a plugin.
+
+With an available ACP agent, `spawn_agent` gains an `agent` parameter and the orchestrator can delegate a task to that external agent; its text, tool calls and file edits appear in the normal sub-agent transcript. Demo without any model or agent install:
+
+```bash
+go build -o plugins-examples/fake-acp/bin/fakeacp ./examples/fakeacp
+go run ./examples/mockllm                                # 127.0.0.1:8791
+ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:8791 --plugins-dir plugins-examples/fake-acp
+# create a project on a folder with a README.md, then post: "[acp] summarize this repo"
+```
+
+Manifest format and more examples (gopls, TypeScript, Claude Code, Gemini CLI): [`plugins-examples/README.md`](plugins-examples/README.md).
+
+**Trust:** an ACP agent is a separate program that runs with your user's privileges. The harness **auto-approves** its permission requests and serves its file requests only inside the project's folders; the agent process itself is not sandboxed, and a plugin manifest is a list of commands the harness will run. Only install plugins you trust.
 
 ## Run (direct Messages through Octo)
 

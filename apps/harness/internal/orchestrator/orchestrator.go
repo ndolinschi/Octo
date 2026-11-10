@@ -10,6 +10,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
@@ -31,6 +32,8 @@ type Options struct {
 	Stream   bool
 	// Remote tools are offered to sub-agents only.
 	Remote []tools.Def
+	// Agents are the plugin-provided ACP agents; only available ones are offered.
+	Agents []plugins.Agent
 }
 
 // Orchestrator runs project turns: one at a time per project, each a tree of agents.

@@ -1,0 +1,8 @@
+{
+  "name": "go-tools",
+  "version": "1.0.0",
+  "description": "Go language server",
+  "languageServers": [
+    { "id": "gopls", "label": "gopls", "languages": ["go"], "command": "gopls", "args": [], "env": {} }
+  ]
+}

@@ -40,6 +40,9 @@ flowchart TB
 | `internal/files` | Confined list / read / atomic write of files under a folder root (reuses `tools/local` path confinement) |
 | `internal/project` | Service layer: validation, defaults, notes, files, error kinds the bridge maps to HTTP |
 | `internal/bridge` | `net/http` handlers (Go 1.22 `ServeMux` patterns), SSE, CORS, JSON errors |
+| `internal/plugins` | Loads `plugin.json` manifests (language servers, ACP agents, tool servers) into an immutable `Registry`; resolves commands and `available`; never executes anything |
+| `internal/acp` | Agent Client Protocol client: process lifecycle, ndjson JSON-RPC connection, typed protocol structs, `Client.Run` with a `Handler` the orchestrator implements; no project/orchestrator imports |
+| `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`) |
 | `internal/mockllm` | Scripted Anthropic-compatible Messages server (used by tests and `examples/mockllm`) |
 | `internal/tools` | Registry → Anthropic tool defs; `ToolUseID(ctx)` for handlers |
 | `internal/tools/local` | `bash`, `read_file`, `write_file`, `list_dir` over one or more labelled roots |
@@ -47,6 +50,8 @@ flowchart TB
 | `internal/cache` | On-disk cache for remote manifests (fallback when GET fails) |
 | `examples/remotetool` | Minimal remote tool server |
 | `examples/mockllm` | Thin `main` around `internal/mockllm` |
+| `examples/fakeacp` | Thin `main` around `internal/fakeacp` |
+| `plugins-examples` | Example manifests (not loaded automatically) |
 
 ## Conventions
 
@@ -79,6 +84,30 @@ flowchart LR
 - Orchestrator row: `idle` between turns, `running` during one. A failed turn still ends `idle`; the failure is in its `error` field and in `turn.finished`.
 - Startup recovery: agents left `running` become `failed` ("interrupted"); the orchestrator becomes `idle`.
 - Stored message content is the SDK `content` array; the API returns normalized `text` / `tool_use` / `tool_result` blocks (empty text skipped, tool_result content flattened to a string).
+
+### Plugins and ACP agents
+
+Specs: [`2026-11-10-workspace-plugins-acp-design.md`](../../../docs/superpowers/specs/2026-11-10-workspace-plugins-acp-design.md) §1-2. Examples and the manifest reference: [`plugins-examples/README.md`](../plugins-examples/README.md).
+
+Manifests are read once at startup from `{data-dir}/plugins/*/plugin.json` and every `--plugins-dir` / `HARNESS_PLUGINS_DIR` entry (a plugin directory, or a directory of them). `plugins.Load` validates names, required fields and ids (first plugin wins; later duplicates are listed in that plugin's `errors`), resolves commands (absolute as is, path separator = relative to the plugin dir, else `PATH`) and sets `available`. A broken manifest becomes an entry with `errors` and no capabilities. `toolServers` are registered on the shared remote registry (sub-agents only); a failure is logged and recorded in `errors`. `GET /v1/plugins` returns `{"plugins": [...]}` (commands, args and env are never exposed); there is no write endpoint. `languageServers` are parsed and exposed (`Registry.LanguageServers`, `LanguageServer(id)`); nothing starts them yet.
+
+`spawn_agent` gains an optional `agent` (enum of available ACP agent ids; omitted from the schema when there are none). The sub-agent row is created as usual with `model = "acp:<id>"`, then `acp.Start` runs the command in the project's first folder (`initialize` with protocol version 1, fs capabilities on, terminal off), `session/new` (`mcpServers: []`) and one `session/prompt` carrying the task. The orchestrator system prompt names the available agents.
+
+| ACP | Harness |
+| --- | --- |
+| `agent_message_chunk` (text) | `message.delta`; accumulated, flushed as a persisted assistant text message before each tool call and at the end |
+| `agent_thought_chunk`, plans, unknown variants | ignored |
+| `tool_call` | persisted assistant `tool_use` (`id` = toolCallId, `name` = kind or `tool`, `input` = `{title, raw_input?, locations?}`); `tool.started` |
+| `tool_call_update` completed/failed (or a `tool_call` already terminal) | persisted user `tool_result` (text content and diffs flattened to text, `is_error` when failed); `tool.finished`. Tool calls still open at the end get an error result |
+| `usage_update` | ACP reports tokens in context (`used`), not input/output: growth of `used` is added to `input_tokens`; output tokens stay 0 |
+| `session/request_permission` | `selected` with the first `allow_once` (else first `allow_always`); logged with the tool title; `cancelled` once cancellation started |
+| `fs/read_text_file`, `fs/write_text_file` | absolute path must lie in a project folder (symlinks resolved via `internal/files`), else a JSON-RPC error; `line`/`limit` honoured; writes are atomic, create missing parent directories and publish `file.changed` (`source: "agent"`) |
+| other requests | JSON-RPC `-32601` |
+| stopReason | `end_turn` completed (final text = last assistant text segment after the last tool call, else all text joined); `cancelled` cancelled; others failed with the reason |
+
+Messages are stored as SDK-shaped content arrays exactly like the built-in loop's, so `GET .../agents/{aid}/messages` and normalization need no special case. Turn cancel or server shutdown cancels the run context: `session/cancel` is sent, the agent gets about 3 s to answer, then its process group is killed; the process is always reaped when the run ends. A crash, protocol error or failed `initialize` fails that sub-agent (stderr tail included in the error) and returns an error result to the parent, which continues.
+
+**Trust:** ACP agents run with the user's privileges and are auto-approved for tool permissions. File requests through the client are confined to the project folders, but the agent process itself is not sandboxed. Plugins can only be installed by writing files locally.
 
 ### Project storage
 

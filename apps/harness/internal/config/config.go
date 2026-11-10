@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -63,6 +64,7 @@ type Config struct {
 	DataDir     string
 	Workspace   string
 	RemoteBases []string
+	PluginDirs  []string
 	MaxTurns    int
 	Stream      bool
 	Models      Models
@@ -77,6 +79,11 @@ func Load() (Config, error) {
 		MaxTurns: defaultMaxTurns,
 		Stream:   true,
 		Models:   defaultModels(),
+	}
+	for _, d := range filepath.SplitList(os.Getenv("HARNESS_PLUGINS_DIR")) {
+		if d != "" {
+			cfg.PluginDirs = append(cfg.PluginDirs, d)
+		}
 	}
 	if v := os.Getenv("HARNESS_DATA_DIR"); v != "" {
 		cfg.DataDir = v
