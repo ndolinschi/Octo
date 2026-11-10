@@ -3,6 +3,77 @@
 **Date:** 2026-11-10 · **Parent:** [`2026-11-10-project-harness-design.md`](./2026-11-10-project-harness-design.md)
 **Code:** `packages/ui` (`@octo/ui`), hosted by `apps/desktop`.
 
+## v6 — spacing system, file view, floating composer (2026-11-10, contract)
+
+Owner direction: paddings and margins balanced and exact; the code view works like the owner's reference agent
+IDE (breadcrumb row, editor edge to edge, tree column on the right, floating composer with status chips). Match
+structure, proportion and finish only — no other product's name, icons or assets, no features we do not have
+(no "Changes"/diff view, no browser tab, no ports).
+
+### Decisions
+
+1. **Spacing scale** 2 4 6 8 12 16 20 24 32 40 (px) for every padding, margin, gap and inset in our DOM. Row heights
+   come from one set: **24** (compact controls, chips), **28** (tabs, tree rows, menu rows, request rows, filter
+   input), **32** (sidebar action/project rows, delegation rows, dialog inputs), **36** (group tab strip), **40**
+   (header rows: chat header, file breadcrumb row, composer one-line). Window gutters are one value on all sides
+   and between panels. Icon → label gap inside a row is 8 (6 in 24px chips). Exceptions must be listed in the
+   audit's allow-list with a reason (Monaco internals are out of scope; text optical offsets are not exceptions).
+2. **Spacing audit** `packages/ui/scripts/spacing-audit.mjs` (Playwright, against a running dev server on demo
+   data): walks visible elements under the app root and fails (exit 1, JSON report) on off-scale
+   padding/margin/gap/`top|right|bottom|left` of positioned elements, row heights outside the set for elements
+   marked as rows (`role` row/tab/treeitem/menuitem/option, buttons in lists, `[data-row]`), unequal window
+   gutters, transcript / header / composer left and right edges that differ by > 0.5px, icon–label gaps < 6 in
+   rows, and overlaps between named pairs (chat header vs transcript content, Jump to latest vs text, floating
+   composer vs editor text). States: chat idle and running, delegation card, file view with tree, markdown
+   preview, palette, settings, narrow (960 and 390). Widths 1440 and 1100. Run before and after; target 0.
+3. **Turn rail**: one marker per request in the conversation's left padding (hidden when that padding is < 24px);
+   hover/focus card (first lines, state, relative time); click/Enter scrolls to the request; the request in view is
+   emphasised. Never overlaps the column.
+4. **File view** replaces the Files tab's tree-only view. Every File tab (and the `files` tab when no file is
+   open) renders: a **40px breadcrumb row** — back / forward (walk the files viewed in this group, reopening a
+   closed one), crumbs `folder › dir › file` (a dir crumb reveals it in the tree), then on the right: language
+   server status / problems, Preview|Source (Markdown only), a `…` menu (Copy path, Copy relative path, Reveal
+   in tree, Move to the other side) and the tree-column toggle; the **editor edge to edge** below it (no inner
+   margins; Monaco padding top 8); the **tree column** on the right: hairline on its left edge, 280px default,
+   resizable 200–480, collapsible; width and open state persist per project and are shared by every file view.
+   The tree column's header holds the **Filter files** input (28px). The `files` tab with no file shows the same
+   row (crumb = project name) and "Select a file" centred in the editor area; opening a file from it turns that tab
+   into the File tab in place. The header's Files button opens/focuses that view.
+5. **File-type icons**: lucide icons by extension, all `fg-3` (no per-language colours): code, JSON/config
+   (json, toml, yaml, ini, lock), Markdown/text, image, stylesheet, folder / folder-open. Used in the tree, file
+   tabs and crumbs.
+6. **Filter files**: substring (case-insensitive) over relative paths; while active, directories are loaded
+   breadth-first up to 200 directories / 5,000 entries (then a quiet "Showing matches in loaded folders" line);
+   matches show their ancestors expanded, matched text in `fg` weight-neutral highlight (`hover` background);
+   Esc clears; ↓ from the input enters the tree; empty result = "No files match".
+7. **Markdown preview**: `.md`/`.markdown` open in Preview; the toggle switches to Source (Monaco, comments
+   available) and is remembered per tab. Preview = the chat Markdown renderer, `measure` width centred, 32px top
+   and bottom padding, live with the buffer (edits in Source show in Preview), relative links to project files open
+   them, images are not loaded from the network.
+8. **Floating composer**: when no Chat tab is visible (any group), the focused group shows a floating composer
+   centred at its bottom (max 640px, 16px from the bottom and sides, `shadow-float`, radius 12) over the editor
+   area (never over the tree column). Above it, 24px status chips: the turn state (spinner + "Working… 12s", or
+   "Worked for 23s" / "Turn failed"), "N agents running" when any, "N comments" when pending; a chip click
+   focuses Chat (comments chip opens its popover). It shares the Chat composer's draft, model and send path. The
+   editor reserves room for it (Monaco bottom padding = its height + 16) so the last line is reachable.
+9. **Defects to fix**: status glyph → role gap in delegation rows (8px); Jump to latest never covers text (reserve
+   room / fade); read-only bar on one line down to a 280px group (truncate, then icon-only button); chat header is
+   opaque and the transcript starts below it (no overlap when scrolled); Chat tab label padding symmetric; one
+   selected-row shape (radius 6, same insets) across sidebar, trees, palette, menus.
+
+### Acceptance criteria (v6)
+
+1. `spacing-audit.mjs` exits 0 on every listed state and width; its before/after counts are recorded below.
+2. A request marker click scrolls to that request; the hover card shows its first line and state; keyboard works.
+3. Opening a file shows the breadcrumb row, the editor edge to edge and the tree column on the right; collapsing,
+   resizing and reloading keep the column's state; back/forward walk the viewed files.
+4. Typing in Filter files narrows the tree to matches with ancestors, including files in folders not yet expanded.
+5. A Markdown file opens in Preview; Source shows Monaco; edits in Source appear in Preview.
+6. With only a file view visible, the floating composer sends to the orchestrator; chips show the live turn;
+   the editor's last line is reachable above it.
+7. The four listed defects are gone (screenshots at 1440 and 1100, dark and light).
+8. Gates: agent-client tests, UI lint/type-check, desktop build; no console errors; initial bundle growth recorded.
+
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)
