@@ -1,8 +1,11 @@
 import type { Agent, Message } from "@octo/agent-client";
-import { Fragment, useMemo } from "react";
-import { formatDuration } from "../../lib/format";
+import { Check, Copy } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { formatDuration, timeAgo } from "../../lib/format";
+import { useCopy } from "../../lib/hooks";
 import { buildTurns, promptText, type Turn } from "../../lib/transcript";
 import { useProject } from "../../state/project";
+import { Button, IconButton } from "../primitives/Button";
 import { Spinner } from "../primitives/Status";
 import { DelegationGroup } from "./DelegationGroup";
 import { Markdown } from "./Markdown";
@@ -31,6 +34,7 @@ export function Transcript(props: {
 
   const isOrchestrator = agent.parent_id === null;
   const lastTurn = isOrchestrator ? state.lastTurn : null;
+  const lastPrompt = turns[turns.length - 1]?.prompt ?? null;
 
   return (
     <TranscriptContext.Provider value={ctx}>
@@ -51,6 +55,7 @@ export function Transcript(props: {
                 streaming={last ? streaming : ""}
                 startedAt={started}
                 now={now}
+                footer={isOrchestrator}
               />
             </Fragment>
           );
@@ -65,27 +70,27 @@ export function Transcript(props: {
             now={now}
           />
         )}
-        {lastTurn && lastTurn.status !== "completed" && !running && <TurnBanner status={lastTurn.status} error={lastTurn.error} />}
+        {lastTurn && lastTurn.status !== "completed" && !running && (
+          <TurnBanner
+            status={lastTurn.status}
+            error={lastTurn.error}
+            retryText={lastPrompt ? promptText(lastPrompt) : null}
+          />
+        )}
       </div>
     </TranscriptContext.Provider>
   );
 }
 
 function UserPrompt({ text, author, external }: { text: string; author: string; external: boolean }) {
-  if (external) {
-    return (
-      <div className="rounded-lg border border-line px-3.5 py-2.5">
-        <div className="mb-0.5 text-xs text-fg-3">From {author}</div>
-        <div className="text-sm whitespace-pre-wrap text-fg-2">{text}</div>
-      </div>
-    );
-  }
   return (
-    <div className="flex justify-end pl-12">
-      <div className="max-w-[85%] rounded-lg bg-raised px-3.5 py-2 text-base whitespace-pre-wrap text-fg">
+    <div className="rounded-md border border-line bg-raised px-3.5 py-2.5 text-base whitespace-pre-wrap text-fg">
+      {external ? (
+        <div className="mb-0.5 text-xs text-fg-3">From {author}</div>
+      ) : (
         <span className="sr-only">{author}: </span>
-        {text}
-      </div>
+      )}
+      {text}
     </div>
   );
 }
@@ -97,6 +102,7 @@ function AssistantTurn(props: {
   streaming: string;
   startedAt: string | null;
   now: number;
+  footer?: boolean;
 }) {
   const { turn, live, streaming } = props;
   const empty = turn.items.length === 0 && !streaming;
@@ -104,9 +110,10 @@ function AssistantTurn(props: {
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
   const end = turn.lastAt ? Date.parse(turn.lastAt) : null;
   const worked = !live && start !== null && end !== null && end - start >= 1000 ? end - start : null;
+  const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
   return (
     <article aria-label={`${props.speaker} response`} className="flex flex-col">
-      {worked !== null && <p className="mb-1.5 text-sm text-fg-3 tabular-nums">Worked for {formatDuration(worked)}</p>}
+      {worked !== null && <p className="mb-1.5 text-base text-fg-3 tabular-nums">Worked for {formatDuration(worked)}</p>}
       {turn.items.map((item) => {
         if (item.kind === "text") return <Markdown key={item.key} text={item.text} className="octo-prose my-1.5" />;
         if (item.kind === "tools") return <ToolGroup key={item.key} uses={item.uses} />;
@@ -119,16 +126,58 @@ function AssistantTurn(props: {
           Working…{start !== null && <span>{formatDuration(props.now - start)}</span>}
         </p>
       )}
+      {props.footer && !live && reply && turn.lastAt && <TurnFooter reply={reply} at={turn.lastAt} now={props.now} />}
     </article>
   );
 }
 
-function TurnBanner({ status, error }: { status: "failed" | "cancelled"; error: string | null }) {
-  const failed = status === "failed";
+/** Muted row under a finished orchestrator reply: copy it, and when it finished. */
+function TurnFooter({ reply, at, now }: { reply: string; at: string; now: number }) {
+  const [copied, copy] = useCopy();
   return (
-    <p role="status" className="text-sm text-fg-2">
-      <span className={failed ? "text-err" : "text-fg"}>{failed ? "Turn failed." : "Turn stopped."}</span>{" "}
-      {error ?? (failed ? "No error details were reported." : "Running agents were cancelled. Send a message to continue.")}
-    </p>
+    <div className="mt-2 -ml-1 flex h-6 items-center gap-1.5 text-sm text-fg-3">
+      <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : "Copy reply"} size="sm" onClick={() => copy(reply)} />
+      <time dateTime={at} title={new Date(at).toLocaleString()} className="tabular-nums">
+        {timeAgo(at, now)}
+      </time>
+    </div>
+  );
+}
+
+function TurnBanner(props: { status: "failed" | "cancelled"; error: string | null; retryText: string | null }) {
+  const { send, running } = useProject();
+  const [busy, setBusy] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const failed = props.status === "failed";
+  const canRetry = failed && props.retryText !== null;
+
+  const retry = async () => {
+    if (!props.retryText) return;
+    setBusy(true);
+    setRetryError(null);
+    try {
+      await send(props.retryText);
+    } catch (e) {
+      setRetryError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  const detail = failed
+    ? `${(props.error ?? "No error details were reported").replace(/\.$/, "")}. ${canRetry ? "Retry the last message, or send a new one." : "Send a message to try again."}`
+    : "Running agents were cancelled. Send a message to continue.";
+
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+      <p className="min-w-0 flex-1 text-fg-2">
+        <span className={failed ? "text-err" : "text-fg"}>{failed ? "Turn failed." : "Turn stopped."}</span> {detail}
+        {retryError && <span className="text-err"> Retry failed: {retryError}</span>}
+      </p>
+      {canRetry && (
+        <Button size="sm" onClick={() => void retry()} disabled={busy || running}>
+          {busy ? "Retrying…" : "Retry"}
+        </Button>
+      )}
+    </div>
   );
 }

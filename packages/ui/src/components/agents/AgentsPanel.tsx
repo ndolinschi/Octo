@@ -97,7 +97,7 @@ export function AgentsPanel({ currentAgentId }: { currentAgentId: string }) {
             aria-expanded={row.hasChildren ? row.expanded : undefined}
             aria-selected={current}
             tabIndex={a.id === activeId ? 0 : -1}
-            title={isRoot ? undefined : a.title}
+            title={isRoot ? undefined : a.status === "failed" && a.error ? `${a.title} — failed: ${a.error}` : a.title}
             onFocus={() => setFocusId(a.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
             onClick={() => open(a)}
@@ -119,14 +119,14 @@ export function AgentsPanel({ currentAgentId }: { currentAgentId: string }) {
             >
               <ChevronRight size={12} strokeWidth={1.5} absoluteStrokeWidth className={cn(row.expanded && "rotate-90")} />
             </button>
-            <StatusIcon status={a.status} />
+            {!(isRoot && a.status === "idle") && <StatusIcon status={a.status} />}
             <span className="min-w-0 truncate text-fg">{isRoot ? "Orchestrator" : a.role}</span>
             {row.hidden > 0 && (
-              <span className="shrink-0 text-xs text-fg-3 tabular-nums" title={`${row.hidden} nested agents hidden`}>
+              <span className={cn("shrink-0 text-xs tabular-nums", current ? "text-fg-2" : "text-fg-3")} title={`${row.hidden} nested agents hidden`}>
                 +{row.hidden}
               </span>
             )}
-            <span className={cn("ml-auto shrink-0 pl-2 text-xs text-fg-3", !isRoot && "tabular-nums")}>
+            <span className={cn("ml-auto shrink-0 pl-2 text-xs", current ? "text-fg-2" : "text-fg-3", !isRoot && "tabular-nums")}>
               {isRoot ? shortModel(a.model) : duration !== null ? formatDuration(duration) : ""}
             </span>
           </div>

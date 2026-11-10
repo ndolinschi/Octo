@@ -28,6 +28,13 @@ export function formatRelative(iso: string, now: number): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/** "2h ago", "just now", or a date for anything older than a week. */
+export function timeAgo(iso: string, now: number): string {
+  const rel = formatRelative(iso, now);
+  if (rel === "now") return "just now";
+  return /^\d+[mhd]$/.test(rel) ? `${rel} ago` : rel;
+}
+
 export function excerpt(markdown: string, max = 220): string {
   const plain = markdown
     .replace(/```[\s\S]*?```/g, " ")

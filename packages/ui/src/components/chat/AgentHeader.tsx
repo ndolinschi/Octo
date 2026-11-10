@@ -21,7 +21,7 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
     </span>
   );
   return (
-    <nav aria-label="Breadcrumb" className="mb-4">
+    <nav aria-label="Breadcrumb" className="mb-2">
       <ol className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-fg-3">
         <li className="max-w-[180px] truncate">{project?.name}</li>
         {chain.map((a) => (
@@ -57,16 +57,22 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
   ].filter(Boolean);
 
   return (
-    <header className="mb-6">
+    <header className="mb-5">
       <Breadcrumb agent={agent} />
-      <h1 className="text-lg font-semibold text-fg">{agent.role}</h1>
-      {agent.title && <p className="text-base text-fg-2">{agent.title}</p>}
-      <p className="mt-1 text-xs text-fg-3">
-        {meta.join(" · ")} ·{" "}
-        <span className={cn(agent.status === "failed" && "text-err")}>{statusLabel(agent.status)}</span>
-      </p>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <h1 className="shrink-0 text-base font-semibold text-fg">{agent.role}</h1>
+        {agent.title && <p className="min-w-0 flex-1 truncate text-base text-fg-2">{agent.title}</p>}
+        <p className="ml-auto shrink-0 text-xs text-fg-3">
+          {meta.join(" · ")} · <span className={cn(agent.status === "failed" && "text-err")}>{statusLabel(agent.status)}</span>
+        </p>
+      </div>
+      {agent.status === "failed" && (
+        <p role="note" className="mt-1.5 text-sm text-fg-2">
+          <span className="text-err">{(agent.error || "No error details were reported").replace(/\.$/, "")}.</span> Ask the orchestrator to retry it.
+        </p>
+      )}
       {agent.task && (
-        <div className="mt-3">
+        <div className="mt-2">
           <button
             type="button"
             aria-expanded={briefOpen}

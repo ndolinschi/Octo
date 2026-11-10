@@ -7,54 +7,53 @@
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --octo-sidebar: #141414;
-  --octo-bg: #181818;
+  --octo-bg: #161616;
   --octo-raised: #212121;
   --octo-overlay: #1f1f1f;
-  --octo-code-bg: #1e1e1e;
+  --octo-code-bg: #1c1c1c;
   --octo-hover: rgb(255 255 255 / 0.05);
   --octo-active: rgb(255 255 255 / 0.08);
-  --octo-line: rgb(255 255 255 / 0.08);
+  --octo-line: rgb(255 255 255 / 0.09);
   --octo-line-strong: rgb(255 255 255 / 0.14);
+  --octo-input-border: #6e6e6e;
   --octo-fg: #e6e6e6;
-  --octo-fg-2: #a1a1a1;
-  --octo-fg-3: #8a8a8a;
+  --octo-fg-2: #a3a3a3;
+  --octo-fg-3: #939393;
   --octo-link: #6fa8ff;
   --octo-ok: #5fbf7f;
   --octo-err: #f0726b;
   --octo-primary: #e6e6e6;
-  --octo-primary-fg: #141414;
-  --octo-focus: rgb(255 255 255 / 0.55);
+  --octo-primary-fg: #161616;
+  --octo-focus: rgb(255 255 255 / 0.6);
   --octo-scrim: rgb(0 0 0 / 0.5);
   --octo-shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.08), 0 16px 40px -12px rgb(0 0 0 / 0.6);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --octo-sidebar: #f4f4f4;
   --octo-bg: #fbfbfb;
-  --octo-raised: #efefef;
+  --octo-raised: #f0f0f0;
   --octo-overlay: #ffffff;
-  --octo-code-bg: #f4f4f4;
+  --octo-code-bg: #f3f3f3;
   --octo-hover: rgb(0 0 0 / 0.04);
   --octo-active: rgb(0 0 0 / 0.07);
-  --octo-line: rgb(0 0 0 / 0.08);
+  --octo-line: rgb(0 0 0 / 0.09);
   --octo-line-strong: rgb(0 0 0 / 0.14);
+  --octo-input-border: #8a8a8a;
   --octo-fg: #1a1a1a;
   --octo-fg-2: #5c5c5c;
-  --octo-fg-3: #6b6b6b;
+  --octo-fg-3: #666666;
   --octo-link: #0a5fd1;
   --octo-ok: #1a7f45;
   --octo-err: #c4312a;
   --octo-primary: #1a1a1a;
   --octo-primary-fg: #fbfbfb;
-  --octo-focus: rgb(0 0 0 / 0.5);
+  --octo-focus: rgb(0 0 0 / 0.55);
   --octo-scrim: rgb(0 0 0 / 0.2);
   --octo-shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.04), 0 16px 40px -12px rgb(0 0 0 / 0.18);
 }
 
 @theme inline {
-  --color-sidebar: var(--octo-sidebar);
   --color-bg: var(--octo-bg);
   --color-raised: var(--octo-raised);
   --color-overlay: var(--octo-overlay);
@@ -63,6 +62,8 @@
   --color-active: var(--octo-active);
   --color-line: var(--octo-line);
   --color-line-strong: var(--octo-line-strong);
+  --color-input-border: var(--octo-input-border);
+  --color-focus: var(--octo-focus);
   --color-fg: var(--octo-fg);
   --color-fg-2: var(--octo-fg-2);
   --color-fg-3: var(--octo-fg-3);
@@ -83,14 +84,16 @@
   --text-sm: 13px;
   --text-sm--line-height: 20px;
   --text-base: 14px;
-  --text-base--line-height: 1.55;
+  --text-base--line-height: 1.6;
   --text-lg: 16px;
   --text-lg--line-height: 1.3;
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --spacing-measure: 700px;
+  --spacing-measure: 760px;
+  --spacing-sidebar: 260px;
+  --spacing-pane: 320px;
   --animate-caret: caret 1s steps(2, start) infinite;
 
   @keyframes caret {
@@ -149,7 +152,7 @@
 /* Prose (assistant markdown) */
 .octo-prose {
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--octo-fg);
   overflow-wrap: anywhere;
   text-wrap: pretty;
@@ -217,6 +220,7 @@
   padding: 0.1em 0.3em;
   border-radius: 4px;
   background: var(--octo-active);
+  overflow-wrap: anywhere;
 }
 .octo-prose blockquote {
   border-left: 2px solid var(--octo-line-strong);
@@ -231,7 +235,7 @@
 .octo-prose table {
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   display: block;
   overflow-x: auto;
@@ -243,9 +247,14 @@
 .octo-prose th,
 .octo-prose td {
   text-align: left;
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--octo-line);
   vertical-align: top;
+  overflow-wrap: normal;
+  min-width: 4em;
+}
+.octo-prose td code {
+  white-space: nowrap;
 }
 .octo-prose th + th,
 .octo-prose td + td {

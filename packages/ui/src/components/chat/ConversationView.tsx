@@ -52,7 +52,7 @@ export function ConversationView({ agentId }: { agentId: string }) {
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <div ref={scroll.ref} onScroll={scroll.onScroll} className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-measure px-6 pt-6 pb-8 max-[1000px]:px-5">
+        <div className="mx-auto w-full max-w-measure px-6 pt-3 pb-8 max-[1000px]:px-4">
           {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
           {showStarters ? (
             <StarterPrompts project={project} onPick={(text) => composer.current?.fill(text)} />
@@ -69,7 +69,7 @@ export function ConversationView({ agentId }: { agentId: string }) {
         </div>
       </div>
 
-      <div className="relative shrink-0 px-6 max-[1000px]:px-5">
+      <div className="relative shrink-0 px-6 max-[1000px]:px-4">
         {!scroll.atBottom && (
           <button
             type="button"
@@ -86,6 +86,7 @@ export function ConversationView({ agentId }: { agentId: string }) {
             ref={composer}
             running={running}
             disabledReason={offlineReason}
+            followUp={(messages?.length ?? 0) > 0}
             folders={project.folders}
             model={project.models.orchestrator}
             onSend={send}

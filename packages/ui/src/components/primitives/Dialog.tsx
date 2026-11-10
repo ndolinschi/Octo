@@ -55,7 +55,7 @@ export function Dialog(props: {
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-6 pt-[9vh]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 pt-[6vh] sm:p-6 sm:pt-[9vh]">
       <div className="fixed inset-0 bg-scrim" onMouseDown={onClose} aria-hidden />
       <div
         ref={panel}
@@ -64,11 +64,11 @@ export function Dialog(props: {
         aria-labelledby={titleId}
         aria-describedby={props.description ? descId : undefined}
         className={cn(
-          "relative flex max-h-[82vh] w-full flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
+          "relative flex max-h-[88vh] w-full flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
           props.width === "sm" ? "max-w-[400px]" : "max-w-[520px]",
         )}
       >
-        <header className="flex items-center gap-3 px-5 pt-4 pb-3">
+        <header className="flex items-center gap-3 px-4 pt-4 pb-3 sm:px-5">
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-[14px] leading-5 font-semibold">
               {props.title}
@@ -81,9 +81,9 @@ export function Dialog(props: {
           </div>
           <IconButton icon={X} label="Close" onClick={onClose} className="-mr-1.5" />
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4">{props.children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-5">{props.children}</div>
         {props.footer && (
-          <footer className="flex items-center gap-2 px-5 pt-1 pb-4">{props.footer}</footer>
+          <footer className="flex flex-wrap items-center justify-end gap-2 px-4 pt-1 pb-4 sm:px-5">{props.footer}</footer>
         )}
       </div>
     </div>,

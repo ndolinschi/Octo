@@ -1,6 +1,6 @@
 import type { Note } from "@octo/agent-client";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { excerpt, formatRelative } from "../../lib/format";
 import { useProject } from "../../state/project";
 import { Button, IconButton } from "../primitives/Button";
@@ -94,13 +94,15 @@ function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): 
         )}
       </button>
       {confirming && (
-        <div role="alertdialog" aria-label="Confirm delete" className="mt-2 flex items-center gap-2 text-sm">
-          <span className="flex-1 text-fg-2">Delete this note?</span>
+        <div role="alertdialog" aria-label={`Delete ${note.title}`} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          <span className="min-w-0 flex-1 text-fg-2">
+            Delete <span className="text-fg">{note.title}</span>?
+          </span>
           <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
             Cancel
           </Button>
           <Button size="sm" variant="danger" onClick={() => void props.onDelete()} autoFocus>
-            Delete
+            Delete note
           </Button>
         </div>
       )}
@@ -116,22 +118,31 @@ function NoteEditor(props: {
   const [title, setTitle] = useState(props.note?.title ?? "");
   const [content, setContent] = useState(props.note?.content ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
-  const valid = title.trim() && content.trim();
+  const titleRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+  const id = useId();
+  const titleError = submitted && !title.trim() ? "Give the note a title." : null;
+  const contentError = submitted && !content.trim() ? "Write what the orchestrator should remember." : null;
 
   const save = async () => {
-    if (!valid) return;
+    setSubmitted(true);
+    if (!title.trim()) return titleRef.current?.focus();
+    if (!content.trim()) return contentRef.current?.focus();
     setBusy(true);
+    setError(null);
     try {
       await props.onSave({ title: title.trim(), content: content.trim() });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(`Couldn't save the note: ${e instanceof Error ? e.message : String(e)}. Try again.`);
       setBusy(false);
     }
   };
 
   return (
     <form
+      noValidate
       className="mb-2 flex flex-col gap-2 px-2 pt-1 pb-2"
       onSubmit={(e) => {
         e.preventDefault();
@@ -145,14 +156,46 @@ function NoteEditor(props: {
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
       }}
     >
-      <Input aria-label="Note title" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      <Textarea aria-label="Note content" placeholder="What should the orchestrator remember?" rows={4} value={content} onChange={(e) => setContent(e.target.value)} />
-      {error && <p className="text-xs text-err">{error}</p>}
+      <Input
+        ref={titleRef}
+        aria-label="Note title"
+        placeholder="Title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        aria-invalid={titleError ? true : undefined}
+        aria-describedby={titleError ? `${id}-title-error` : undefined}
+        autoFocus
+      />
+      {titleError && (
+        <p id={`${id}-title-error`} className="-mt-1 text-xs text-err">
+          {titleError}
+        </p>
+      )}
+      <Textarea
+        ref={contentRef}
+        aria-label="Note content"
+        placeholder="What should the orchestrator remember?"
+        rows={4}
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        aria-invalid={contentError ? true : undefined}
+        aria-describedby={contentError ? `${id}-content-error` : undefined}
+      />
+      {contentError && (
+        <p id={`${id}-content-error`} className="-mt-1 text-xs text-err">
+          {contentError}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-err">
+          {error}
+        </p>
+      )}
       <div className="flex items-center justify-end gap-1.5">
         <Button size="sm" variant="ghost" onClick={props.onCancel}>
           Cancel
         </Button>
-        <Button size="sm" variant="primary" type="submit" disabled={!valid || busy}>
+        <Button size="sm" variant="primary" type="submit" disabled={busy}>
           {props.note ? "Save" : "Add note"}
         </Button>
       </div>

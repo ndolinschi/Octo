@@ -56,6 +56,7 @@ type ProjectValue = {
   state: ProjectState;
   live: LiveStatus;
   running: boolean;
+  reload(): Promise<void>;
   ensureMessages(agentId: string): void;
   send(text: string): Promise<void>;
   cancel(): Promise<void>;
@@ -135,6 +136,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       state,
       live,
       running,
+      reload: syncAll,
       ensureMessages: (agentId) => {
         if (!loaded.current.has(agentId)) void fetchMessages(agentId);
       },
@@ -164,7 +166,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         dispatch({ type: "notes", notes: state.notes.filter((n) => n.id !== id) });
       },
     }),
-    [projectId, project, loadError, state, live, running, fetchMessages, bridge, refreshProjects],
+    [projectId, project, loadError, state, live, running, syncAll, fetchMessages, bridge, refreshProjects],
   );
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

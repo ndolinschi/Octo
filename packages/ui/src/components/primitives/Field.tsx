@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTML
 import { cn } from "../../lib/cn";
 
 const CONTROL =
-  "w-full rounded-md border border-line-strong bg-raised px-2.5 text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-100 focus:border-fg-3 focus:outline-none focus-visible:outline-none aria-invalid:border-err";
+  "w-full rounded-md border border-input-border bg-raised px-2.5 text-sm text-fg placeholder:text-fg-3 transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:outline-none aria-invalid:border-err";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...rest },
@@ -21,6 +21,9 @@ export function Field(props: {
   label: string;
   htmlFor?: string;
   hint?: ReactNode;
+  /** Shown in the err colour; give it `errorId` and point the control's aria-describedby at it. */
+  error?: string | null;
+  errorId?: string;
   optional?: boolean;
   children: ReactNode;
   className?: string;
@@ -33,6 +36,11 @@ export function Field(props: {
       </label>
       {props.children}
       {props.hint && <p className="text-xs text-fg-3">{props.hint}</p>}
+      {props.error && (
+        <p id={props.errorId} className="text-xs text-err">
+          {props.error}
+        </p>
+      )}
     </div>
   );
 }

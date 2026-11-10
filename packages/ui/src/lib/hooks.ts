@@ -41,7 +41,8 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   const scrollToBottom = useCallback((smooth = false) => {
     const el = ref.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    const animate = smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: animate ? "smooth" : "auto" });
     atBottomRef.current = true;
     setAtBottom(true);
   }, []);
@@ -68,4 +69,20 @@ export function useCopy(timeoutMs = 1400): [boolean, (text: string) => void] {
     [timeoutMs],
   );
   return [copied, copy];
+}
+
+/** Calls `onEscape` for Escape presses that nothing inside the page already handled. */
+export function useEscape(active: boolean, onEscape: () => void) {
+  const handler = useRef(onEscape);
+  useLayoutEffect(() => {
+    handler.current = onEscape;
+  });
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) handler.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [active]);
 }

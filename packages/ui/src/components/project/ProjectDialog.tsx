@@ -45,18 +45,34 @@ export function ProjectDialog(props: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const id = useId();
 
   const filled = folders.filter((f) => f.path.trim());
   const badPath = filled.find((f) => !isAbsolute(f.path.trim()));
-  const valid = name.trim().length > 0 && !badPath && maxDepth >= 1 && maxDepth <= 8;
+  const depthOk = Number.isInteger(maxDepth) && maxDepth >= 1 && maxDepth <= 8;
+  const nameError = submitted && !name.trim() ? "Enter a project name." : null;
+  const folderError = badPath ? "Use an absolute path, like /Users/you/code/repo." : null;
+  const depthError = submitted && !depthOk ? "Enter a whole number from 1 to 8." : null;
 
   const updateFolder = (key: number, patch: Partial<FolderRow>) =>
     setFolders((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!valid) return;
+    setSubmitted(true);
+    const firstInvalid = !name.trim()
+      ? `${id}-name`
+      : badPath
+        ? `${id}-folder-${badPath.key}`
+        : !depthOk
+          ? `${id}-depth`
+          : null;
+    if (firstInvalid) {
+      if (firstInvalid === `${id}-depth`) setAdvanced(true);
+      requestAnimationFrame(() => document.getElementById(firstInvalid)?.focus());
+      return;
+    }
     setBusy(true);
     setError(null);
     const changedModels = Object.fromEntries(
@@ -97,7 +113,7 @@ export function ProjectDialog(props: {
       footer={
         confirmDelete ? (
           <>
-            <p className="flex-1 text-sm text-fg-2">
+            <p className="basis-full text-sm text-fg-2 sm:basis-0 sm:flex-1">
               Delete <span className="text-fg">{props.project?.name}</span> and its history? This can't be undone.
             </p>
             <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
@@ -110,31 +126,32 @@ export function ProjectDialog(props: {
         ) : (
           <>
             {props.onDelete && (
-              <Button variant="ghost" className="-ml-3 text-err! hover:text-err!" onClick={() => setConfirmDelete(true)}>
+              <Button variant="ghost" className="mr-auto -ml-3 text-err! hover:text-err!" onClick={() => setConfirmDelete(true)}>
                 Delete project
               </Button>
             )}
-            <span className="flex-1" />
             <Button variant="ghost" onClick={props.onClose}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" form={id} disabled={!valid || busy}>
+            <Button variant="primary" type="submit" form={id} disabled={busy}>
               {editing ? "Save changes" : "Create project"}
             </Button>
           </>
         )
       }
     >
-      <form id={id} onSubmit={submit} className="flex flex-col gap-5">
+      <form id={id} onSubmit={submit} noValidate className="flex flex-col gap-5">
         <div className="grid gap-3.5">
-          <Field label="Name" htmlFor={`${id}-name`}>
+          <Field label="Name" htmlFor={`${id}-name`} error={nameError} errorId={`${id}-name-error`}>
             <Input
               id={`${id}-name`}
               data-autofocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Billing service"
-              required
+              aria-required
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? `${id}-name-error` : undefined}
             />
           </Field>
           <Field label="Description" htmlFor={`${id}-desc`} optional>
@@ -165,8 +182,10 @@ export function ProjectDialog(props: {
             return (
               <div key={f.key} className="flex items-center gap-2">
                 <Input
+                  id={`${id}-folder-${f.key}`}
                   aria-label={`Folder ${i + 1} path`}
-                  aria-invalid={invalid}
+                  aria-invalid={invalid || undefined}
+                  aria-describedby={invalid ? `${id}-folder-error` : undefined}
                   value={f.path}
                   onChange={(e) => updateFolder(f.key, { path: e.target.value })}
                   placeholder="/Users/you/code/repo"
@@ -187,7 +206,11 @@ export function ProjectDialog(props: {
               </div>
             );
           })}
-          {badPath && <p className="text-xs text-err">Use an absolute path, like /Users/you/code/repo.</p>}
+          {folderError && (
+            <p id={`${id}-folder-error`} className="text-xs text-err">
+              {folderError}
+            </p>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -211,7 +234,7 @@ export function ProjectDialog(props: {
           </button>
           {advanced && (
             <div className="mt-3 grid gap-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {MODEL_FIELDS.map((m) => (
                   <Field key={m.key} label={m.label} htmlFor={`${id}-m-${m.key}`}>
                     <Input
@@ -223,12 +246,20 @@ export function ProjectDialog(props: {
                   </Field>
                 ))}
               </div>
-              <Field label="Max delegation depth" htmlFor={`${id}-depth`} hint="Levels of sub-agents that may spawn their own, 1–8.">
+              <Field
+                label="Max delegation depth"
+                htmlFor={`${id}-depth`}
+                hint="Levels of sub-agents that may spawn their own, 1–8."
+                error={depthError}
+                errorId={`${id}-depth-error`}
+              >
                 <Input
                   id={`${id}-depth`}
                   type="number"
                   min={1}
                   max={8}
+                  aria-invalid={depthError ? true : undefined}
+                  aria-describedby={depthError ? `${id}-depth-error` : undefined}
                   value={maxDepth}
                   onChange={(e) => setMaxDepth(Number(e.target.value))}
                   className="w-24 tabular-nums"

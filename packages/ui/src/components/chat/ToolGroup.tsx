@@ -22,6 +22,7 @@ function Summary({ uses }: { uses: ToolUse[] }) {
     <span className="flex min-w-0 items-baseline gap-1.5">
       <span className="shrink-0">{meta.verb}</span>
       {meta.arg && <span className="min-w-0 truncate font-mono text-xs">{meta.arg}</span>}
+      {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
     </span>
   );
 }
@@ -94,8 +95,9 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
         onClick={() => setOpen((o) => !o)}
         className="-mx-1.5 flex h-6 w-[calc(100%+12px)] min-w-0 items-center gap-2 rounded-sm px-1.5 text-left font-mono text-xs transition-[background-color] duration-100 hover:bg-hover"
       >
-        <span className="shrink-0 text-fg-2">{meta.verb}</span>
+        <span className="shrink-0 font-sans text-fg-2">{meta.verb}</span>
         {meta.arg && <span className="min-w-0 truncate text-fg-3">{meta.arg}</span>}
+        {meta.folder && <span className="shrink-0 font-sans text-fg-3">in {meta.folder}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2 font-sans">
           {state === "running" && <Spinner size={10} />}
           {state === "error" && <span className="text-err">failed</span>}

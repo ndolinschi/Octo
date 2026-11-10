@@ -1,10 +1,11 @@
+import type { LucideIcon } from "lucide-react";
 import { useRef, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 
 export function Tabs<T extends string>(props: {
   label: string;
   value: T;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; icon?: LucideIcon }[];
   onChange(value: T): void;
   idPrefix: string;
 }) {
@@ -38,10 +39,11 @@ export function Tabs<T extends string>(props: {
             tabIndex={selected ? 0 : -1}
             onClick={() => props.onChange(o.value)}
             className={cn(
-              "inline-flex h-7 items-center rounded-sm px-2.5 text-sm transition-[background-color,color] duration-100",
-              selected ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg-2",
+              "inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-sm transition-[background-color,color] duration-100",
+              selected ? "bg-raised text-fg" : "text-fg-3 hover:bg-hover hover:text-fg-2",
             )}
           >
+            {o.icon && <o.icon size={14} strokeWidth={1.5} absoluteStrokeWidth aria-hidden className="shrink-0" />}
             {o.label}
           </button>
         );
