@@ -3,9 +3,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 export type Route = { projectId: string | null; agentId: string | null };
 
 export function parseHash(hash: string): Route {
-  const m = /^#\/p\/([^/]+)(?:\/a\/([^/]+))?/.exec(hash);
-  if (!m) return { projectId: null, agentId: null };
-  return { projectId: decodeURIComponent(m[1]), agentId: m[2] ? decodeURIComponent(m[2]) : null };
+  const [, projectId, agentId] = /^#\/p\/([^/]+)(?:\/a\/([^/]+))?/.exec(hash) ?? [];
+  if (projectId === undefined) return { projectId: null, agentId: null };
+  return { projectId: decodeURIComponent(projectId), agentId: agentId ? decodeURIComponent(agentId) : null };
 }
 
 export function hrefFor(projectId: string, agentId?: string | null): string {

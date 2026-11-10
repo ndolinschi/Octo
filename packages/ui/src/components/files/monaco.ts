@@ -70,7 +70,8 @@ const LIGHT = CODE_LIGHT;
 
 function theme(base: "vs" | "vs-dark", p: Palette, background: string): monaco.editor.IStandaloneThemeData {
   const c = (hex: string) => hex.slice(1);
-  const rule = (token: string, color: string, fontStyle?: string) => ({ token, foreground: c(color), fontStyle });
+  const rule = (token: string, color: string, fontStyle?: string): monaco.editor.ITokenThemeRule =>
+    fontStyle === undefined ? { token, foreground: c(color) } : { token, foreground: c(color), fontStyle };
   return {
     base,
     inherit: true,

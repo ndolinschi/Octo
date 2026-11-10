@@ -90,6 +90,7 @@ function ThemeChoice() {
     if (!delta) return;
     e.preventDefault();
     const next = THEMES[(index + delta + THEMES.length) % THEMES.length];
+    if (!next) return;
     setThemePref(next.value);
     e.currentTarget.querySelector<HTMLElement>(`[data-value="${next.value}"]`)?.focus();
   };

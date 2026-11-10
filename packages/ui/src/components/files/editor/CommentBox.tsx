@@ -24,15 +24,7 @@ export function CommentZone({ onLayout, ...props }: ZoneProps & { onLayout?: () 
     layout.current?.();
   }, []);
   // Aligned to the code column (the box's left is the code's left), 12px clear of the right edge, 4px above and below.
-  return (
-    <div className="py-1 pr-3">
-      {props.kind === "composer" ? (
-        <Composer {...(props as Extract<ZoneProps, { kind: "composer" }>)} />
-      ) : (
-        <Card {...(props as Extract<ZoneProps, { kind: "card" }>)} />
-      )}
-    </div>
-  );
+  return <div className="py-1 pr-3">{props.kind === "composer" ? <Composer {...props} /> : <Card {...props} />}</div>;
 }
 
 function Composer(props: Extract<ZoneProps, { kind: "composer" }>) {

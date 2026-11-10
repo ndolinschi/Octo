@@ -97,7 +97,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   return (
     <Dialog
       title={editing ? "Project settings" : "New project"}
-      description={editing ? "Changes apply from the next turn." : undefined}
+      {...(editing ? { description: "Changes apply from the next turn." } : {})}
       onClose={props.onClose}
       footer={
         confirmDelete ? (

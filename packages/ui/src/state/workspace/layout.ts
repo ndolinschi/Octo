@@ -31,8 +31,12 @@ export const closable = (id: TabId) => id !== CHAT;
 let counter = 0;
 const newGroupId = () => `g${(counter += 1).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+function chatGroup(): Group {
+  return { id: newGroupId(), tabs: [CHAT], active: CHAT, size: 1 };
+}
+
 export function initialLayout(): Layout {
-  const g: Group = { id: newGroupId(), tabs: [CHAT], active: CHAT, size: 1 };
+  const g = chatGroup();
   return { groups: [g], focused: g.id };
 }
 
@@ -45,7 +49,8 @@ export function indexOfGroup(layout: Layout, groupId: string): number {
 }
 
 export function focusedGroup(layout: Layout): Group {
-  return layout.groups.find((g) => g.id === layout.focused) ?? layout.groups[0];
+  // A layout always has a group; a fresh Chat group stands in for a malformed one instead of returning undefined.
+  return layout.groups.find((g) => g.id === layout.focused) ?? layout.groups[0] ?? chatGroup();
 }
 
 export function allTabs(layout: Layout): TabId[] {
@@ -57,24 +62,27 @@ function normalize(layout: Layout): Layout {
   const groups: Group[] = [];
   let carry = 0;
   for (const g of layout.groups) {
-    if (!g.tabs.length) {
-      if (groups.length) groups[groups.length - 1] = { ...groups[groups.length - 1], size: groups[groups.length - 1].size + g.size };
+    const [firstTab] = g.tabs;
+    if (firstTab === undefined) {
+      const last = groups[groups.length - 1];
+      if (last) groups[groups.length - 1] = { ...last, size: last.size + g.size };
       else carry += g.size;
       continue;
     }
-    groups.push({ ...g, size: g.size + carry, active: g.tabs.includes(g.active) ? g.active : g.tabs[0] });
+    groups.push({ ...g, size: g.size + carry, active: g.tabs.includes(g.active) ? g.active : firstTab });
     carry = 0;
   }
   if (!groups.some((g) => g.tabs.includes(CHAT))) {
-    if (groups.length) groups[0] = { ...groups[0], tabs: [CHAT, ...groups[0].tabs] };
-    else groups.push({ id: newGroupId(), tabs: [CHAT], active: CHAT, size: 1 });
+    const head = groups[0];
+    if (head) groups[0] = { ...head, tabs: [CHAT, ...head.tabs] };
+    else groups.push(chatGroup());
   }
   const total = groups.reduce((n, g) => n + (Number.isFinite(g.size) && g.size > 0 ? g.size : 0), 0);
   const sized = groups.map((g) => ({
     ...g,
     size: total > 0 && Number.isFinite(g.size) && g.size > 0 ? g.size / total : 1 / groups.length,
   }));
-  const focused = sized.some((g) => g.id === layout.focused) ? layout.focused : sized[0].id;
+  const focused = sized.some((g) => g.id === layout.focused) ? layout.focused : (sized[0]?.id ?? layout.focused);
   return { groups: sized, focused };
 }
 
@@ -144,7 +152,8 @@ export function close(layout: Layout, tabs: TabId[]): Layout {
   for (const t of tabs) if (closable(t)) next = removeTab(next, t);
   // When the focused group empties, focus moves to its left neighbour (or the right one).
   const i = indexOfGroup(next, next.focused);
-  if (i >= 0 && !next.groups[i].tabs.length) {
+  const emptied = next.groups[i];
+  if (emptied && !emptied.tabs.length) {
     const neighbour = [...next.groups.slice(0, i)].reverse().find((g) => g.tabs.length) ?? next.groups.slice(i + 1).find((g) => g.tabs.length);
     if (neighbour) next = { ...next, focused: neighbour.id };
   }
@@ -191,6 +200,7 @@ function insertGroup(layout: Layout, tab: TabId, groupId: string, side: "left" |
   const at = indexOfGroup(removed, groupId);
   if (at < 0 || removed.groups.length >= MAX_GROUPS) return layout;
   const anchor = removed.groups[at];
+  if (!anchor) return layout;
   const take = Math.min(size ?? anchor.size / 2, anchor.size * 0.8);
   const group: Group = { id: newGroupId(), tabs: [tab], active: tab, size: take };
   const groups = [...removed.groups];
@@ -203,9 +213,10 @@ function insertGroup(layout: Layout, tab: TabId, groupId: string, side: "left" |
 export function otherSide(layout: Layout, groupId: string): Target | null {
   const i = indexOfGroup(layout, groupId);
   if (i < 0) return null;
-  if (layout.groups.length === 1) return { newAfter: groupId, size: layout.groups[0].size / 2 };
-  const j = i + 1 < layout.groups.length ? i + 1 : i - 1;
-  return { group: layout.groups[j].id };
+  const [only] = layout.groups;
+  if (layout.groups.length === 1 && only) return { newAfter: groupId, size: only.size / 2 };
+  const target = layout.groups[i + 1 < layout.groups.length ? i + 1 : i - 1];
+  return target ? { group: target.id } : null;
 }
 
 export function moveToOtherSide(layout: Layout, tab: TabId): Layout {

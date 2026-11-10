@@ -61,7 +61,7 @@ export async function pastHistory(ctx: Ctx, spec: HistorySpec): Promise<void> {
         const role = spec.roles[(i + k) % spec.roles.length] ?? "Implementer";
         return {
           role,
-          title: `${prompt.split(" ").slice(0, 5).join(" ")}`,
+          title: prompt.split(" ").slice(0, 5).join(" "),
           tier: k === 0 ? "balanced" : "fast",
           task: `${prompt} Work on \`${file}\` and report what changed.`,
           run: async (cc, id) => {

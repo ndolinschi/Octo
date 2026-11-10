@@ -30,6 +30,7 @@ and the specs that extend it (code pane, workspace/plugins/ACP, usage). Types he
 
 ```bash
 pnpm --filter @octo/agent-client test
-pnpm --filter @octo/agent-client lint
+pnpm --filter @octo/agent-client lint          # tsc --noEmit (no DOM lib) && eslint . (no react / @octo/ui / @tauri-apps imports)
+pnpm --filter @octo/agent-client format:check
 pnpm --filter @octo/ui lint            # catches a Bridge change the demo bridge does not implement
 ```

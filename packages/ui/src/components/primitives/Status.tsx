@@ -65,7 +65,7 @@ export function modelLabel(model: string): string {
   // An ACP agent from a plugin: its id, marked as such.
   if (model.startsWith("acp:")) return `${model.slice(4)} (ACP)`;
   const id = model.replace(/^claude-/, "").replace(/-\d{8}$/, "");
-  const m = /^([a-z]+)-(\d+)(?:-(\d+))?$/.exec(id);
-  if (!m) return id;
-  return `${m[1].charAt(0).toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
+  const [, family, major, minor] = /^([a-z]+)-(\d+)(?:-(\d+))?$/.exec(id) ?? [];
+  if (family === undefined || major === undefined) return id;
+  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${major}${minor ? `.${minor}` : ""}`;
 }

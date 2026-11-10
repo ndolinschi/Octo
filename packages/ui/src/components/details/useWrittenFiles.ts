@@ -20,14 +20,15 @@ export function groupWrites(writes: WrittenFile[], now: number): FileGroup[] {
     if (hit) hit.count += 1;
     else byPath.set(key, { ...w, count: 1 });
   }
-  const groups: FileGroup[] = [
+  const [todayGroup, weekGroup, earlierGroup]: [FileGroup, FileGroup, FileGroup] = [
     { label: "Today", files: [] },
     { label: "This week", files: [] },
     { label: "Earlier", files: [] },
   ];
+  const groups = [todayGroup, weekGroup, earlierGroup];
   for (const f of byPath.values()) {
     const t = Date.parse(f.at);
-    (t >= today ? groups[0] : t >= today - 6 * DAY ? groups[1] : groups[2]).files.push(f);
+    (t >= today ? todayGroup : t >= today - 6 * DAY ? weekGroup : earlierGroup).files.push(f);
   }
   return groups.filter((g) => g.files.length);
 }

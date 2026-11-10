@@ -37,7 +37,10 @@ export function tabInfo(
     const running = ctx.orchestratorId ? ctx.state.agents[ctx.orchestratorId]?.status === "running" : false;
     return { label: "Chat", title: "Chat with the orchestrator", icon: GLYPH.chat, status: running ? "running" : null, comments: 0 };
   }
-  if (ref.kind === "tool") return { ...TOOLS[ref.tool], status: null, comments: 0 };
+  if (ref.kind === "tool") {
+    const tool = TOOLS[ref.tool];
+    return tool ? { ...tool, status: null, comments: 0 } : { label: tab, title: tab, icon: File, status: null, comments: 0 };
+  }
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];
     const label = agent?.role || "Agent";

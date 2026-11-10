@@ -20,7 +20,9 @@ Keep logic out of components: selection logic (query parameters → bridge optio
 ```bash
 pnpm install
 pnpm --filter @octo/desktop dev        # http://localhost:1420 (add ?demo=1 for demo data)
+pnpm --filter @octo/desktop lint       # tsc --noEmit && eslint . (also type-checks the UI sources it imports)
 pnpm --filter @octo/desktop build
+node scripts/check-bundle-size.mjs     # from the repo root, after the build
 cd apps/desktop/src-tauri && cargo check
 pnpm --filter @octo/desktop tauri dev  # needs the OS prerequisites for Tauri
 ```

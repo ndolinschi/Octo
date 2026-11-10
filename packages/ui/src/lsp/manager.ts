@@ -172,7 +172,7 @@ export class LspManager implements IntelClient {
     const contents = toHoverContents(result?.contents);
     if (!contents.length) return null;
     const range = toLocations([{ uri: doc.uri, range: result?.range }])[0]?.range;
-    return { contents, range: range ? toMonacoRange(range) : undefined };
+    return { contents, ...(range ? { range: toMonacoRange(range) } : {}) };
   }
 
   async completion(doc: Doc, position: Monaco.Position, token: Monaco.CancellationToken): Promise<Monaco.languages.CompletionList | null> {
@@ -188,19 +188,20 @@ export class LspManager implements IntelClient {
       if (typeof item !== "object" || item === null || typeof item.label !== "string") return [];
       const edit = item.textEdit as { newText?: unknown; range?: unknown } | undefined;
       const editRange = edit && toLocations([{ uri: "", range: edit.range }])[0]?.range;
-      return [
-        {
-          label: item.label,
-          kind: completionKind(monaco, item.kind),
-          detail: typeof item.detail === "string" ? item.detail : undefined,
-          documentation: documentation(item.documentation),
-          sortText: typeof item.sortText === "string" ? item.sortText : undefined,
-          filterText: typeof item.filterText === "string" ? item.filterText : undefined,
-          insertText: typeof edit?.newText === "string" ? edit.newText : typeof item.insertText === "string" ? item.insertText : item.label,
-          range: editRange ? toMonacoRange(editRange) : fallback,
-          tags: item.deprecated === true ? [monaco.languages.CompletionItemTag.Deprecated] : undefined,
-        },
-      ];
+      const suggestion: Monaco.languages.CompletionItem = {
+        label: item.label,
+        kind: completionKind(monaco, item.kind),
+        insertText: typeof edit?.newText === "string" ? edit.newText : typeof item.insertText === "string" ? item.insertText : item.label,
+        range: editRange ? toMonacoRange(editRange) : fallback,
+      };
+      // Optional fields are set only when the server sent them (exactOptionalPropertyTypes).
+      if (typeof item.detail === "string") suggestion.detail = item.detail;
+      const docs = documentation(item.documentation);
+      if (docs !== undefined) suggestion.documentation = docs;
+      if (typeof item.sortText === "string") suggestion.sortText = item.sortText;
+      if (typeof item.filterText === "string") suggestion.filterText = item.filterText;
+      if (item.deprecated === true) suggestion.tags = [monaco.languages.CompletionItemTag.Deprecated];
+      return [suggestion];
     });
     return { suggestions, incomplete: (result as { isIncomplete?: unknown } | null)?.isIncomplete === true };
   }
@@ -255,6 +256,7 @@ export class LspManager implements IntelClient {
 
   private isBuffer(model: Monaco.editor.ITextModel): boolean {
     const [, folder, ...rest] = model.uri.path.split("/");
+    if (folder === undefined) return false;
     return this.o.buffers.has(fileKey(folder, rest.join("/")));
   }
 }

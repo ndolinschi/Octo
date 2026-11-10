@@ -53,7 +53,7 @@ test("agent.created/updated upsert and keep order", () => {
   s = applyEvent(s, { type: "agent.created", seq: 2, agent: agent("a", "o") });
   s = applyEvent(s, { type: "agent.updated", seq: 3, agent: agent("o", null, { status: "running" }) });
   assert.deepEqual(s.agentOrder, ["o", "a"]);
-  assert.equal(s.agents.o.status, "running");
+  assert.equal(s.agents.o?.status, "running");
   assert.equal(s.lastSeq, 3);
 });
 
@@ -75,7 +75,7 @@ test("message.created appends once, dedups, clears streaming for assistant only"
   s = applyEvent(s, { type: "message.created", seq: 5, message: msg(2, "a") });
   assert.equal("a" in s.streaming, false);
   assert.deepEqual(
-    s.messages.a.map((m) => m.id),
+    s.messages.a?.map((m) => m.id),
     [1, 2],
   );
 });
@@ -137,12 +137,12 @@ test("withMessages merges out of order, keeps newer live messages", () => {
   s = applyEvent(s, { type: "message.created", seq: 1, message: msg(5, "a") });
   s = withMessages(s, "a", [msg(3, "a"), msg(1, "a"), msg(5, "a")]);
   assert.deepEqual(
-    s.messages.a.map((m) => m.id),
+    s.messages.a?.map((m) => m.id),
     [1, 3, 5],
   );
   s = withMessages(s, "a", [msg(2, "a")]);
   assert.deepEqual(
-    s.messages.a.map((m) => m.id),
+    s.messages.a?.map((m) => m.id),
     [1, 2, 3, 5],
   );
 });

@@ -46,11 +46,10 @@ type Entry = SentComment & { textLines: string[] };
 function parseEntries(body: string): SentComment[] {
   const out: Entry[] = [];
   const all = body.split("\n");
-  for (let i = 0; i < all.length; i++) {
-    const line = all[i];
+  for (const [i, line] of all.entries()) {
     const header = HEADER.exec(line);
-    if (header && line.includes("/") && (i === 0 || all[i - 1].trim() === "")) {
-      const full = header[1];
+    const full = header?.[1];
+    if (header && full !== undefined && line.includes("/") && (i === 0 || all[i - 1]?.trim() === "")) {
       const slash = full.indexOf("/");
       out.push({
         folder: full.slice(0, slash),

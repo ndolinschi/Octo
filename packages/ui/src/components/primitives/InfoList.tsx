@@ -40,7 +40,7 @@ export function SkeletonRows({ count, widths = [64, 48, 72, 40] }: { count: numb
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className={INFO_ROW}>
           <span className="size-4 shrink-0" />
-          <span className="h-2 rounded-full bg-hover" style={{ width: `${widths[i % widths.length]}%` }} />
+          <span className="h-2 rounded-full bg-hover" style={{ width: `${widths[i % widths.length] ?? 100}%` }} />
         </div>
       ))}
     </div>

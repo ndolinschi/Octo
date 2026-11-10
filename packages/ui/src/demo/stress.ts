@@ -17,7 +17,7 @@ const STEPS = [
 /** ≈4,000 characters over 60 lines, plus one 400-character unbroken token. */
 export function longPrompt(): string {
   const lines: string[] = ["Before we ship the release, run through this checklist and report back per step:"];
-  for (let i = 1; i <= 58; i++) lines.push(`Step ${i}: ${STEPS[i % STEPS.length]}.`);
+  for (let i = 1; i <= 58; i++) lines.push(`Step ${i}: ${STEPS[i % STEPS.length] ?? ""}.`);
   lines.push(`Trace id: ${"a1b2c3d4e5".repeat(40)}`);
   return lines.join("\n");
 }
@@ -27,7 +27,7 @@ function longAnswer(): string {
   const rows = Array.from({ length: 58 }, (_, i) => {
     const n = i + 1;
     const status = n === 14 || n === 41 ? "Needs follow-up" : "OK";
-    return `| ${n} | ${STEPS[n % STEPS.length]} | ${status} |`;
+    return `| ${n} | ${STEPS[n % STEPS.length] ?? ""} | ${status} |`;
   });
   return [
     "Went through all 58 steps. Two need follow-up: step 14 (cursor pagination) and step 41 (clock reads); everything else checks out.",
@@ -82,5 +82,8 @@ const NAMES = [
 
 /** 30 project names cycling through one-word, typical and 120+ character names. */
 export function manyProjectNames(): string[] {
-  return Array.from({ length: 30 }, (_, i) => (i < NAMES.length ? NAMES[i] : `${NAMES[i % NAMES.length]} ${Math.floor(i / NAMES.length) + 1}`));
+  return Array.from({ length: 30 }, (_, i) => {
+    const name = NAMES[i % NAMES.length] ?? "";
+    return i < NAMES.length ? name : `${name} ${Math.floor(i / NAMES.length) + 1}`;
+  });
 }

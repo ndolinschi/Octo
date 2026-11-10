@@ -184,6 +184,7 @@ export function useDelayedLoading(loading: boolean): boolean {
       const id = window.setTimeout(() => setShown(false), Math.max(0, since.current + MIN_SHOWN - Date.now()));
       return () => window.clearTimeout(id);
     }
+    return undefined;
   }, [loading, shown]);
   return shown;
 }

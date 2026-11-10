@@ -31,7 +31,7 @@ export function newId(prefix: string): string {
 
 export function emit(rec: ProjectRecord, body: EventBody): void {
   rec.seq += 1;
-  const event = { ...body, seq: rec.seq } as BridgeEvent;
+  const event = { ...body, seq: rec.seq };
   for (const l of rec.listeners) l.onEvent(event);
 }
 

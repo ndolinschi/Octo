@@ -10,7 +10,7 @@ import { domId } from "./ids";
 import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";
 
-const SIDES = ["Left", "Middle", "Right"];
+const SIDES: readonly [string, string, string] = ["Left", "Middle", "Right"];
 
 function groupName(index: number, count: number): string {
   if (count === 1) return "Workspace";
@@ -27,7 +27,9 @@ export function Dock() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setDockWidth(Math.round(entry.contentRect.width)));
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) setDockWidth(Math.round(entry.contentRect.width));
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [setDockWidth]);
@@ -35,12 +37,15 @@ export function Dock() {
   const { groups } = ws.layout;
   return (
     <div ref={ref} className="flex min-h-0 min-w-0 flex-1">
-      {groups.map((g, i) => (
-        <Fragment key={g.id}>
-          {i > 0 && !ws.narrow && <Divider index={i - 1} value={groups[i - 1].size} />}
-          <GroupView group={g} name={groupName(i, groups.length)} first={i === 0 || ws.narrow} last={i === groups.length - 1 || ws.narrow} />
-        </Fragment>
-      ))}
+      {groups.map((g, i) => {
+        const before = groups[i - 1];
+        return (
+          <Fragment key={g.id}>
+            {before && !ws.narrow && <Divider index={i - 1} value={before.size} />}
+            <GroupView group={g} name={groupName(i, groups.length)} first={i === 0 || ws.narrow} last={i === groups.length - 1 || ws.narrow} />
+          </Fragment>
+        );
+      })}
       <DragLayer />
     </div>
   );

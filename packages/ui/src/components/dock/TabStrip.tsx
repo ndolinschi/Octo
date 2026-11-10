@@ -64,8 +64,10 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
 
   const onKeyDown = (e: KeyboardEvent, i: number) => {
     const tab = props.tabs[i];
+    if (tab === undefined) return;
     const go = (j: number) => {
       const next = props.tabs[(j + props.tabs.length) % props.tabs.length];
+      if (next === undefined) return;
       ws.activate(next);
       button(next)?.focus();
     };

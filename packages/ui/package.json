@@ -11,9 +11,11 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && eslint .",
     "audit:spacing": "node scripts/spacing-audit.mjs",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "format:check": "prettier --check --ignore-path ../../.prettierignore \"src/**/*.{ts,tsx,css}\" \"*.json\"",
+    "format": "prettier --write --ignore-path ../../.prettierignore \"src/**/*.{ts,tsx,css}\" \"*.json\""
   },
   "dependencies": {
     "@octo/agent-client": "workspace:*",

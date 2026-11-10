@@ -26,7 +26,7 @@ function decodedSegments(uri: string): string[] | null {
   const rest = uri.slice("file://".length);
   if (!rest.startsWith("/")) return null;
   try {
-    return segments(rest.split(/[?#]/, 1)[0]).map(decodeURIComponent);
+    return segments(rest.split(/[?#]/, 1)[0] ?? rest).map(decodeURIComponent);
   } catch {
     return null;
   }
@@ -41,7 +41,14 @@ export function fromFileUri(uri: string, folders: { label: string; path: string 
   let best: { folder: string; path: string; depth: number } | null = null;
   for (const f of folders) {
     const base = segments(f.path);
-    if (base.length > target.length || !base.every((s, i) => norm(s, i === 0) === norm(target[i], i === 0))) continue;
+    if (
+      base.length > target.length ||
+      !base.every((s, i) => {
+        const t = target[i];
+        return t !== undefined && norm(s, i === 0) === norm(t, i === 0);
+      })
+    )
+      continue;
     if (!best || base.length > best.depth) best = { folder: f.label, path: target.slice(base.length).join("/"), depth: base.length };
   }
   return best && best.path ? { folder: best.folder, path: best.path } : null;

@@ -6,6 +6,27 @@ on:
     branches: [main]
 
 jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # tsc --noEmit && eslint in @octo/agent-client, @octo/ui and @octo/desktop
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm --filter @octo/agent-client test
+      - run: pnpm --filter @octo/ui test
+      - run: pnpm --filter @octo/desktop build
+      # Initial JS (gzip) must stay within the budget recorded in the script.
+      - run: node scripts/check-bundle-size.mjs
+
   ui:
     runs-on: ubuntu-latest
     steps:
@@ -18,8 +39,7 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @octo/agent-client test
-      - run: pnpm --filter @octo/ui lint
+      # The Tauri shell embeds the built frontend; the checks themselves run in the `frontend` job.
       - run: pnpm --filter @octo/desktop build
       - name: Install Tauri Linux dependencies
         run: |

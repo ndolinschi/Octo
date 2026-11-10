@@ -121,7 +121,12 @@ export function withAgents(state: ProjectState, agents: Agent[]): ProjectState {
   return {
     ...state,
     agents: {
-      ...Object.fromEntries(extra.map((id) => [id, state.agents[id]])),
+      ...Object.fromEntries(
+        extra.flatMap((id) => {
+          const agent = state.agents[id];
+          return agent === undefined ? [] : [[id, agent]];
+        }),
+      ),
       ...Object.fromEntries(agents.map((a) => [a.id, a])),
     },
     agentOrder: [...agents.map((a) => a.id), ...extra],

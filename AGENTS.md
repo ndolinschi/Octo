@@ -70,9 +70,12 @@ Per-module instructions: [`packages/ui/AGENTS.md`](./packages/ui/AGENTS.md) (arc
 
 ```bash
 pnpm install
+pnpm lint                                  # tsc --noEmit + eslint in agent-client, ui, desktop (strict flags: tsconfig.base.json)
+pnpm format:check                          # prettier + Tailwind class order; `pnpm format` rewrites
 pnpm --filter @octo/agent-client test
-pnpm --filter @octo/ui lint
+pnpm --filter @octo/ui test
 pnpm --filter @octo/desktop build
+node scripts/check-bundle-size.mjs         # after the build: initial JS (gzip) within its budget
 cd apps/desktop/src-tauri && cargo check
 ```
 

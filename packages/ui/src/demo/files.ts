@@ -55,7 +55,7 @@ export function listDemoFiles(rec: ProjectRecord, folder: string, rawPath: strin
     if (!p.startsWith(prefix)) continue;
     const rest = p.slice(prefix.length);
     const name = rest.split("/")[0];
-    if (name === ".git" || entries.has(name)) continue;
+    if (name === undefined || name === ".git" || entries.has(name)) continue;
     const dir = rest.includes("/");
     entries.set(name, { name, path: prefix + name, type: dir ? "dir" : "file", size: dir ? 0 : size(file) });
   }

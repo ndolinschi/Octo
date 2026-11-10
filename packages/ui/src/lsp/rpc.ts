@@ -50,16 +50,17 @@ export class Rpc {
     const id = this.next++;
     return new Promise<T | null>((resolve, reject) => {
       const entry: Pending = {
-        resolve: resolve as (v: unknown) => void,
+        resolve,
         reject,
         timer: window.setTimeout(() => this.settle(id, new RpcError(TIMEOUT, `${method} timed out`)), options.timeoutMs ?? 5_000),
       };
       // A cancelled request resolves to nothing at once; the server is told so it can stop.
-      entry.cancel = token?.onCancellationRequested(() => {
+      const cancel = token?.onCancellationRequested(() => {
         if (!this.pending.has(id)) return;
         this.settle(id, null, true);
         this.notify("$/cancelRequest", { id });
       });
+      if (cancel) entry.cancel = cancel;
       this.pending.set(id, entry);
       this.session.send({ jsonrpc: "2.0", id, method, params }).catch((e: unknown) => this.settle(id, e));
     });

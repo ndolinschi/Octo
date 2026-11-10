@@ -49,9 +49,11 @@ async function open(extra: Record<string, [number, string]> = {}) {
 
 test("open creates the session and attaches the event stream", async () => {
   const { session, calls, es } = await open();
+  const [first] = calls;
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "http://h/v1/projects/p/lsp/gopls/sessions");
-  assert.equal(calls[0].method, "POST");
+  assert.ok(first);
+  assert.equal(first.url, "http://h/v1/projects/p/lsp/gopls/sessions");
+  assert.equal(first.method, "POST");
   assert.equal(es.url, "http://h/v1/projects/p/lsp/sessions/s%201/events");
   assert.equal(session.rootUri, "file:///w");
   assert.deepEqual(session.workspaceFolders, [{ uri: "file:///w", name: "w" }]);
@@ -81,7 +83,8 @@ test("send posts one JSON-RPC message", async () => {
     "POST http://h/v1/projects/p/lsp/sessions/s%201/messages": [202, ""],
   });
   await session.send({ jsonrpc: "2.0", id: 1, method: "initialize" });
-  const last = calls[calls.length - 1];
+  const last = calls.at(-1);
+  assert.ok(last);
   assert.equal(last.url, "http://h/v1/projects/p/lsp/sessions/s%201/messages");
   assert.equal(last.method, "POST");
   assert.equal(last.body, '{"jsonrpc":"2.0","id":1,"method":"initialize"}');

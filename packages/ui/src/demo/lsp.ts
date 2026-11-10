@@ -36,6 +36,7 @@ function declarations(folder: string, path: string, text: string): Decl[] {
       : /^(?:export\s+)?(?:async\s+)?(function|const|let|class|interface|type)\s+([A-Za-z_$][\w$]*)/.exec(line);
     if (!m) return;
     const name = go ? m[1] : m[2];
+    if (name === undefined) return;
     const kind: Decl["kind"] = go
       ? "function"
       : m[1] === "function"
@@ -84,28 +85,33 @@ function diagnostics(path: string, text: string) {
     if (go) {
       const m = /^\s*"([^"]+)"\s*$/.exec(line);
       if (!m) return;
-      const parts = m[1].split("/");
-      const name = /^v\d+$/.test(parts[parts.length - 1]) ? parts[parts.length - 2] : parts[parts.length - 1];
+      const quoted = m[1];
+      if (quoted === undefined) return;
+      const parts = quoted.split("/");
+      const last = parts[parts.length - 1] ?? "";
+      const name = /^v\d+$/.test(last) ? (parts[parts.length - 2] ?? last) : last;
       if (count(new RegExp(`\\b${name}\\.`, "g")) === 0) {
         const at = line.indexOf('"');
         out.push({
-          range: { start: { line: i, character: at }, end: { line: i, character: at + m[1].length + 2 } },
+          range: { start: { line: i, character: at }, end: { line: i, character: at + quoted.length + 2 } },
           severity: 1,
           source: "compiler",
           code: "UnusedImport",
-          message: `"${m[1]}" imported and not used`,
+          message: `"${quoted}" imported and not used`,
         });
       }
       return;
     }
     const m = /^import\s+(?:type\s+)?\{([^}]+)\}\s+from/.exec(line);
-    if (!m) return;
-    for (const raw of m[1].split(",")) {
-      const name = raw
-        .replace(/^\s*type\s+/, "")
-        .split(/\s+as\s+/)
-        .pop()!
-        .trim();
+    const specifiers = m?.[1];
+    if (specifiers === undefined) return;
+    for (const raw of specifiers.split(",")) {
+      const name = (
+        raw
+          .replace(/^\s*type\s+/, "")
+          .split(/\s+as\s+/)
+          .pop() ?? ""
+      ).trim();
       if (!name || count(new RegExp(`\\b${name.replace(/\$/g, "\\$")}\\b`, "g")) > 1) continue;
       const at = line.indexOf(name);
       out.push({
@@ -262,7 +268,8 @@ export function createDemoServer(rec: ProjectRecord, opts: DemoServerOptions): L
       case "textDocument/didChange": {
         const uri = (params.textDocument as { uri: string }).uri;
         const changes = params.contentChanges as { text: string }[];
-        if (changes.length) docs.set(uri, changes[changes.length - 1].text);
+        const latest = changes[changes.length - 1];
+        if (latest) docs.set(uri, latest.text);
         return publish(uri);
       }
       case "textDocument/didClose": {

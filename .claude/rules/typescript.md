@@ -65,9 +65,9 @@ motion) are in `docs/superpowers/specs/2026-11-10-project-harness-ui.md` and are
 17. No non-null `!` unless the line carries a comment stating the invariant. Prefer a helper that cannot fail.
 18. Ids are branded types (`TabId`, `FileKey`, `ProjectId`, `AgentId`) built and parsed only by their owning
     module (`lib/files.ts`, `state/workspace/layout.ts`). The `\u0000` separator never appears anywhere else.
-19. Write code that passes `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` even where the package has
-    not turned them on yet: handle the `undefined` of an indexed read; do not assign `undefined` to an optional
-    property — omit it.
+19. The packages compile with `strict`, `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` (`tsconfig.base.json`):
+    handle the `undefined` of an indexed read; do not assign `undefined` to an optional property — omit it (or build the
+    object with a conditional spread).
 
 ## Errors, comments, tests
 
@@ -82,9 +82,12 @@ motion) are in `docs/superpowers/specs/2026-11-10-project-harness-ui.md` and are
 ## Before you finish
 
 ```bash
+pnpm lint                                  # tsc --noEmit + eslint for agent-client, ui, desktop: zero errors, no new warnings
+pnpm format:check                          # `pnpm format` fixes
 pnpm --filter @octo/agent-client test
-pnpm --filter @octo/ui lint
+pnpm --filter @octo/ui test
 pnpm --filter @octo/desktop build
+node scripts/check-bundle-size.mjs         # initial JS (gzip) within budget
 node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420   # with the dev server running; must print total=0
 ```
 

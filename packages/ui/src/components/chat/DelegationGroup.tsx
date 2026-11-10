@@ -142,6 +142,7 @@ function activity(state: ProjectState, agentId: string): string {
   const working = childrenOf(state, agentId).filter((c) => c.status === "running");
   if (working.length) return `Waiting on ${working.map((c) => c.role).join(", ")}…`;
   const tools = Object.values(state.activeTools[agentId] ?? {});
-  if (tools.length) return ACTIVITY[tools[0].name] ?? `Using ${tools[0].name}…`;
+  const tool = tools[0];
+  if (tool) return ACTIVITY[tool.name] ?? `Using ${tool.name}…`;
   return state.streaming[agentId] ? "Writing…" : "Thinking…";
 }

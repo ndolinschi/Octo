@@ -45,9 +45,9 @@ export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => vo
       }
       if (e.key !== "Tab" || !panel.current) return;
       const nodes = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((n) => n.offsetParent !== null);
-      if (!nodes.length) return e.preventDefault();
       const first = nodes[0];
       const last = nodes[nodes.length - 1];
+      if (!first || !last) return e.preventDefault();
       if (!panel.current.contains(document.activeElement)) {
         e.preventDefault();
         first.focus();

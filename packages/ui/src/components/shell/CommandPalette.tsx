@@ -15,7 +15,7 @@ import { useModal } from "../primitives/useModal";
 
 export type PaletteAction = { id: string; label: string; hint?: string; shortcut?: string; run(): void };
 
-type Item = { id: string; label: string; detail?: string; shortcut?: string; run(): void };
+type Item = { id: string; label: string; detail?: string | undefined; shortcut?: string | undefined; run(): void };
 type Group = { title: string; items: Item[] };
 
 /** Rows per group with an empty query, and when filtering. */
@@ -105,7 +105,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
           ? rank(
               (requests ?? []).map((r) => ({
                 id: `r:${r.id}`,
-                label: r.text.split("\n", 1)[0],
+                label: r.text.split("\n", 1)[0] ?? r.text,
                 detail: formatRelative(r.created_at, now),
                 run: go(() => {
                   nav.requestTurn({ projectId: pid, messageId: r.id });
@@ -167,9 +167,10 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
       PageDown: () => Math.min(flat.length - 1, current + 5),
       PageUp: () => Math.max(0, current - 5),
     };
-    if (moves[e.key]) {
+    const move = moves[e.key];
+    if (move) {
       e.preventDefault();
-      setSelected(moves[e.key]());
+      setSelected(move());
     } else if (e.key === "Enter" && !e.nativeEvent.isComposing) {
       e.preventDefault();
       flat[current]?.run();

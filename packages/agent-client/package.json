@@ -10,8 +10,10 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "lint": "tsc --noEmit",
-    "test": "node --import tsx --test src/*.test.ts"
+    "lint": "tsc --noEmit && eslint .",
+    "test": "node --import tsx --test src/*.test.ts",
+    "format:check": "prettier --check --ignore-path ../../.prettierignore \"src/**/*.ts\" \"*.json\"",
+    "format": "prettier --write --ignore-path ../../.prettierignore \"src/**/*.ts\" \"*.json\""
   },
   "devDependencies": {
     "tsx": "^4.20.5",

@@ -8,7 +8,7 @@ export function matchScore(query: string, text: string): number {
   const t = text.toLowerCase();
   const at = t.indexOf(q);
   if (at >= 0) {
-    const wordStart = at === 0 || /[\s\-_/.:(]/.test(t[at - 1]);
+    const wordStart = at === 0 || /[\s\-_/.:(]/.test(t.charAt(at - 1));
     return 1000 - Math.min(at, 500) + (wordStart ? 200 : 0);
   }
   let pos = 0;

@@ -29,11 +29,13 @@ const MODEL: Record<Tier, string> = {
 };
 
 export async function sleep(ctx: Ctx, ms: number): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/only-throw-error -- CANCELLED is a sentinel the runner compares by identity
   if (ctx.signal.cancelled) throw CANCELLED;
   const target = ctx.t + ms;
   if (target > Date.now()) {
     while (Date.now() < target) {
       await new Promise((r) => setTimeout(r, Math.min(250, target - Date.now())));
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- sentinel, see above
       if (ctx.signal.cancelled) throw CANCELLED;
     }
     ctx.t = Date.now();
@@ -125,7 +127,7 @@ export async function act(ctx: Ctx, agentId: string, tools: ToolSpec[], text?: s
 
 function agentWrite(ctx: Ctx, spec: ToolSpec) {
   const folder = typeof spec.input.folder === "string" ? spec.input.folder : ctx.rec.project.folders[0]?.label;
-  const path = String(spec.input.path ?? "").replace(/^\.\//, "");
+  const path = (typeof spec.input.path === "string" ? spec.input.path : "").replace(/^\.\//, "");
   if (folder && ctx.rec.project.folders.some((f) => f.label === folder)) writeDemoFile(ctx.rec, folder, path, spec.content ?? "", "agent", ctx.t);
 }
 

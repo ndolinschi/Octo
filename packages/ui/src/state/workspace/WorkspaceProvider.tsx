@@ -194,7 +194,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       const tab = L.agentTab(agentId);
       const home = L.groupOf(current, L.CHAT)!;
       const target = options.otherSide && !L.groupOf(current, tab) ? L.otherSide(current, home.id) : null;
-      commit(L.open(current, tab, target ?? { group: home.id }), { route: options.route });
+      commit(L.open(current, tab, target ?? { group: home.id }), options.route === undefined ? {} : { route: options.route });
     },
     [commit],
   );
@@ -268,7 +268,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
       moveToOtherSide: (tab) => {
         if (narrowRef.current) return;
-        commit(L.moveToOtherSide(layoutRef.current, tab), { focusTab: keepFocus() ? tab : undefined });
+        commit(L.moveToOtherSide(layoutRef.current, tab), keepFocus() ? { focusTab: tab } : {});
       },
       canSplitRight: (tab) => {
         const g = L.groupOf(layout, tab);
@@ -277,7 +277,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       splitRight: (tab) => {
         const g = L.groupOf(layoutRef.current, tab);
         if (!g || narrowRef.current) return;
-        commit(L.split(layoutRef.current, tab, g.id, "right"), { focusTab: keepFocus() ? tab : undefined });
+        commit(L.split(layoutRef.current, tab, g.id, "right"), keepFocus() ? { focusTab: tab } : {});
       },
       canDrop: (tab, target) => {
         const from = L.groupOf(layout, tab);
@@ -305,7 +305,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         const tabs = narrowRef.current ? L.allTabs(current) : L.focusedGroup(current).tabs;
         const i = tabs.indexOf(L.focusedGroup(current).active);
         const next = tabs[(i + delta + tabs.length) % tabs.length];
-        if (next) commit(L.activate(current, next), { focusTab: keepFocus() ? next : undefined });
+        if (next) commit(L.activate(current, next), keepFocus() ? { focusTab: next } : {});
       },
       attachCode: (link) => {
         code.current = link;
@@ -432,7 +432,15 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       tabs: () => {
         const groups = layoutRef.current.groups;
         const side = (i: number) => (groups.length === 1 ? undefined : i === 0 ? "left" : i === groups.length - 1 ? "right" : "middle");
-        return groups.flatMap((g, i) => g.tabs.map((t) => ({ id: `tab:${t}`, label: label(t), detail: side(i), run: () => valueRef.current.activate(t) })));
+        return groups.flatMap((g, i) => {
+          const where = side(i);
+          return g.tabs.map((t) => ({
+            id: `tab:${t}`,
+            label: label(t),
+            ...(where === undefined ? {} : { detail: where }),
+            run: () => valueRef.current.activate(t),
+          }));
+        });
       },
     };
     nav.setWorkspace(api);

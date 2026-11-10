@@ -76,14 +76,16 @@ export function AgentsPanel() {
 
   const onKeyDown = (e: KeyboardEvent, i: number) => {
     const row = rows[i];
+    if (!row) return;
+    const [first, prev, next, last] = [rows[0], rows[i - 1], rows[i + 1], rows[rows.length - 1]];
     const moves: Record<string, () => void> = {
-      ArrowDown: () => rows[i + 1] && focus(rows[i + 1].agent.id),
-      ArrowUp: () => rows[i - 1] && focus(rows[i - 1].agent.id),
-      Home: () => focus(rows[0].agent.id),
-      End: () => focus(rows[rows.length - 1].agent.id),
+      ArrowDown: () => next && focus(next.agent.id),
+      ArrowUp: () => prev && focus(prev.agent.id),
+      Home: () => first && focus(first.agent.id),
+      End: () => last && focus(last.agent.id),
       ArrowRight: () => {
         if (row.hasChildren && !row.expanded) setExpanded(row.agent.id, true);
-        else if (row.hasChildren && rows[i + 1]) focus(rows[i + 1].agent.id);
+        else if (row.hasChildren && next) focus(next.agent.id);
       },
       ArrowLeft: () => {
         if (row.hasChildren && row.expanded) setExpanded(row.agent.id, false);

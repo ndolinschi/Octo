@@ -28,9 +28,10 @@ export function useUnseen(projects: ProjectSummary[] | null, openId: string | nu
 
   useEffect(() => {
     if (!open || seen.projects[open.id] === open.updated_at) return;
-    const next = { ...seen, projects: { ...seen.projects, [open.id]: open.updated_at } };
+    const marked = { ...seen.projects, [open.id]: open.updated_at };
     // Forget deleted projects while we are writing anyway.
-    if (projects) for (const id of Object.keys(next.projects)) if (!projects.some((p) => p.id === id)) delete next.projects[id];
+    const kept = projects ? Object.fromEntries(Object.entries(marked).filter(([id]) => projects.some((p) => p.id === id))) : marked;
+    const next = { ...seen, projects: kept };
     writePref("seen", JSON.stringify(next));
     setSeen(next);
   }, [open, seen, projects]);

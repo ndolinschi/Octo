@@ -52,8 +52,8 @@ export function toMarkers(monaco: MonacoApi, problems: ReturnType<typeof toProbl
     ...toMonacoRange(p.range),
     severity: severity[p.severity],
     message: p.message,
-    source: p.source ?? undefined,
-    code: p.code ?? undefined,
+    ...(p.source === null ? {} : { source: p.source }),
+    ...(p.code === null ? {} : { code: p.code }),
     tags: p.tags.flatMap((t) => (t === 1 ? [monaco.MarkerTag.Unnecessary] : t === 2 ? [monaco.MarkerTag.Deprecated] : [])),
   }));
 }

@@ -48,7 +48,7 @@ export function MarkdownPreview({ file, bottomRoom, onOpen }: { file: OpenFile; 
             target?.scrollIntoView({ block: "start" });
             return;
           }
-          const clean = href.split(/[?#]/, 1)[0];
+          const clean = href.split(/[?#]/, 1)[0] ?? href;
           const path = normalizePath(clean.startsWith("/") ? clean : `${dir}/${clean}`);
           if (path) onOpen(file.folder, path);
         };

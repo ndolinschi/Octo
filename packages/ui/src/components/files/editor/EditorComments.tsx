@@ -108,7 +108,7 @@ export function EditorComments(props: {
       }),
       editor.onMouseLeave((e) => {
         // Travelling from the line onto the button keeps it.
-        const to = (e.event.browserEvent as MouseEvent).relatedTarget as Element | null;
+        const to = e.event.browserEvent.relatedTarget as Element | null;
         if (!to?.closest?.("[data-comment-plus]")) setHover(null);
       }),
       editor.onDidScrollChange((e) => {
@@ -290,7 +290,7 @@ export function EditorComments(props: {
       wanted.set(c.id, {
         line: Math.min(c.end, lines),
         props: editing
-          ? { kind: "composer", start: c.start, end: c.end, initial: c.text, editing: true, onSubmit: (t) => submit(draft!, t), onCancel: cancel }
+          ? { kind: "composer", start: c.start, end: c.end, initial: c.text, editing: true, onSubmit: (t) => submit(draft, t), onCancel: cancel }
           : { kind: "card", start: c.start, end: c.end, text: c.text, onEdit: () => open(c.start, c.end, c.id), onRemove: () => store.remove(c.id) },
       });
     }

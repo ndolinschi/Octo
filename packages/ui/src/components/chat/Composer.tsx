@@ -22,9 +22,9 @@ export type ComposerProps = {
   onSend(text: string): Promise<void>;
   onCancel(): Promise<void>;
   /** Keeps an unsent draft across remounts and shares it with the other composer on the same key. */
-  draft?: { initial: string; save(text: string): void; subscribe?(cb: (text: string) => void): () => void };
+  draft?: { initial: string; save(text: string): void; subscribe?(cb: (text: string) => void): () => void } | undefined;
   /** Pending code comments go out with the next message (which may then have no text). */
-  comments?: { count: number; render(open: boolean, setOpen: (open: boolean) => void): ReactNode };
+  comments?: { count: number; render(open: boolean, setOpen: (open: boolean) => void): ReactNode } | undefined;
   /** Opens the pending-comments list from the "+" menu when it lives elsewhere (the floating composer's chip). */
   onOpenComments?(): void;
   /** Floating over a file view: a shadow instead of the hairline, the model inside the box, no footer. */
@@ -123,7 +123,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   /** Re-reads the word at the caret: opens, updates or closes the inline menu. */
   const syncTrigger = (value: string, caret: number) => {
     const m = TRIGGER.exec(value.slice(0, caret));
-    if (m) setMenu({ mode: "inline", start: caret - m[3].length - 1, query: m[3] });
+    const query = m?.[3];
+    if (query !== undefined) setMenu({ mode: "inline", start: caret - query.length - 1, query });
     else setMenu((cur) => (cur?.mode === "inline" ? null : cur));
   };
 

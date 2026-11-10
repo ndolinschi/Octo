@@ -72,6 +72,7 @@ test("full LSP session: open, both directions, exit, close", async () => {
   assert.deepEqual(session.workspaceFolders, [{ uri: "file:///w", name: "w" }]);
 
   const fake = fakes[0];
+  assert.ok(fake);
   fake.channel.push({ early: true });
   await tick();
   const got: unknown[] = [];
@@ -104,10 +105,12 @@ test("close reaches the real session once", async () => {
   await session.close();
   await session.close();
   await tick();
-  assert.equal(fakes[0].closed, 1);
+  const [fake] = fakes;
+  assert.ok(fake);
+  assert.equal(fake.closed, 1);
   const got: unknown[] = [];
   session.onMessage((m) => got.push(m));
-  fakes[0].channel.push({ late: 1 });
+  fake.channel.push({ late: 1 });
   await tick();
   assert.deepEqual(got, []);
 });

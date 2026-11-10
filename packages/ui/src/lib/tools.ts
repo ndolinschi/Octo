@@ -8,7 +8,7 @@ const META: Record<string, ToolMeta> = {
   list_dir: { verb: "Listed", arg: (i) => str(i.path) || "." },
   read_file: { verb: "Read", arg: (i) => str(i.path) },
   write_file: { verb: "Wrote", arg: (i) => str(i.path) },
-  bash: { verb: "Ran", arg: (i) => str(i.command).split("\n")[0] },
+  bash: { verb: "Ran", arg: (i) => str(i.command).split("\n")[0] ?? "" },
   save_note: { verb: "Saved note", arg: (i) => str(i.title) },
   delete_note: { verb: "Deleted note", arg: (i) => str(i.title) || str(i.id) },
 };
@@ -26,7 +26,8 @@ export function acpCall(name: string, input: unknown): { title: string; location
   const locations = Array.isArray(r.locations)
     ? r.locations.flatMap((l) => {
         const o = l as Record<string, unknown> | null;
-        return o && typeof o.path === "string" ? [{ path: o.path, line: typeof o.line === "number" ? o.line : undefined }] : [];
+        if (!o || typeof o.path !== "string") return [];
+        return [typeof o.line === "number" ? { path: o.path, line: o.line } : { path: o.path }];
       })
     : [];
   return { title: r.title, locations };
@@ -40,8 +41,8 @@ export function toolMeta(name: string, input: unknown): { verb: string; arg: str
   const record = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   const acp = acpCall(name, input);
   if (acp) {
-    const m = /^(\S+)\s+(.+)$/.exec(acp.title.trim());
-    return m ? { verb: m[1], arg: m[2], folder: "" } : { verb: acp.title.trim() || "Tool call", arg: "", folder: "" };
+    const [, verb, arg] = /^(\S+)\s+(.+)$/.exec(acp.title.trim()) ?? [];
+    return verb !== undefined && arg !== undefined ? { verb, arg, folder: "" } : { verb: acp.title.trim() || "Tool call", arg: "", folder: "" };
   }
   const meta = META[name];
   if (!meta) {

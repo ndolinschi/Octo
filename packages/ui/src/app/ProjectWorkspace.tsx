@@ -134,7 +134,7 @@ function CloseDialog() {
       {closing && (
         <Dialog
           width="sm"
-          title={many ? `Discard changes to ${closing.files.length}\u00a0files?` : `Discard changes to ${closing.files[0]}?`}
+          title={many ? `Discard changes to ${closing.files.length}\u00a0files?` : `Discard changes to ${closing.files[0] ?? "this file"}?`}
           description={many ? `${closing.files.join(", ")} have unsaved edits that will be lost.` : "Your edits haven't been saved and will be lost."}
           onClose={ws.cancelClose}
           footer={

@@ -205,5 +205,5 @@ function RequestList(props: {
 }
 
 function firstLine(text: string): string {
-  return text.split("\n", 1)[0];
+  return text.split("\n", 1)[0] ?? text;
 }

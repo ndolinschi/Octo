@@ -137,10 +137,12 @@ test("request shapes and envelope unwrapping", async () => {
   for (const c of cases) {
     const { bridge, calls } = bridgeWith(c.status ?? 200, c.reply);
     const result = await c.run(bridge);
+    const [call] = calls;
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, `http://h:1${c.path}`);
-    assert.equal(calls[0].method, c.method);
-    assert.equal(calls[0].body, c.body === undefined ? undefined : JSON.stringify(c.body));
+    assert.ok(call);
+    assert.equal(call.url, `http://h:1${c.path}`);
+    assert.equal(call.method, c.method);
+    assert.equal(call.body, c.body === undefined ? undefined : JSON.stringify(c.body));
     assert.deepEqual(result, c.result);
   }
 });

@@ -31,7 +31,7 @@ const ACP_PHRASES: Record<string, [string, string]> = {
 };
 
 /** The argument of a call: code-like text (a path, a command) in mono; an ACP title's prose stays in the UI face. */
-const isCodeLike = (text: string) => !/\s/.test(text.trim()) || /[/\\]/.test(text.split(" ")[0]);
+const isCodeLike = (text: string) => !/\s/.test(text.trim()) || /[/\\]/.test(text.split(" ")[0] ?? "");
 
 function Arg({ use, text, className }: { use: ToolUse; text: string; className?: string }) {
   // An ACP "execute" title is a command line: mono, like the built-in bash row.
@@ -40,12 +40,13 @@ function Arg({ use, text, className }: { use: ToolUse; text: string; className?:
 }
 
 function Summary({ uses }: { uses: ToolUse[] }) {
-  if (uses.length !== 1) return <span className="truncate">{summarize(uses)}</span>;
-  const meta = toolMeta(uses[0].name, uses[0].input);
+  const [use] = uses;
+  if (uses.length !== 1 || !use) return <span className="truncate">{summarize(uses)}</span>;
+  const meta = toolMeta(use.name, use.input);
   return (
     <span className="flex min-w-0 items-baseline gap-1.5">
       <span className="shrink-0">{meta.verb}</span>
-      {meta.arg && <Arg use={uses[0]} text={meta.arg} />}
+      {meta.arg && <Arg use={use} text={meta.arg} />}
       {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
     </span>
   );
@@ -59,8 +60,9 @@ function summarize(uses: ToolUse[]): string {
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const parts = [...counts].map(([key, n]) => {
-    if (key === "other") return `called ${n} tool${n === 1 ? "" : "s"}`;
-    const [verb, noun] = key.startsWith("acp:") ? ACP_PHRASES[key.slice(4)] : PHRASES[key];
+    const phrase = key.startsWith("acp:") ? ACP_PHRASES[key.slice(4)] : PHRASES[key];
+    if (key === "other" || !phrase) return `called ${n} tool${n === 1 ? "" : "s"}`;
+    const [verb, noun] = phrase;
     return `${verb} ${n} ${noun}${n === 1 ? "" : "s"}`;
   });
   const text = parts.join(", ");
@@ -70,11 +72,12 @@ function summarize(uses: ToolUse[]): string {
 /** One muted line per run of tool calls; collapsed by default. */
 export function ToolGroup({ uses }: { uses: ToolUse[] }) {
   const ctx = useTranscript();
-  const states = uses.map((u) => toolState(ctx, u.id));
-  const running = states.includes("running");
-  const errors = states.filter((s) => s === "error").length;
+  const rows = uses.map((use) => ({ use, state: toolState(ctx, use.id) }));
+  const running = rows.some((r) => r.state === "running");
+  const errors = rows.filter((r) => r.state === "error").length;
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const [only] = uses;
   const single = uses.length === 1;
 
   return (
@@ -93,7 +96,7 @@ export function ToolGroup({ uses }: { uses: ToolUse[] }) {
       </button>
       {open && (
         <div id={panelId} className="mt-1">
-          {single ? <ToolDetail use={uses[0]} /> : uses.map((u, i) => <ToolRow key={u.id} use={u} state={states[i]} />)}
+          {single && only ? <ToolDetail use={only} /> : rows.map((r) => <ToolRow key={r.use.id} use={r.use} state={r.state} />)}
         </div>
       )}
     </div>

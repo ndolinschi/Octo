@@ -13,7 +13,7 @@ import {
 } from "./messageProtocol";
 
 export type ServeBridgeOptions = {
-  onHost?(action: string, args: unknown[]): Promise<unknown> | unknown;
+  onHost?(action: string, args: unknown[]): unknown;
 };
 
 export type BridgeServer = { setTheme(theme: Theme): void; dispose(): void };
@@ -112,7 +112,7 @@ export function serveBridge(port: MessagePortLike, bridge: Bridge, options: Serv
           );
         });
       },
-      (err) => post({ kind: "lsp-opened", id, ok: false, error: toWireError(err) }),
+      (err: unknown) => post({ kind: "lsp-opened", id, ok: false, error: toWireError(err) }),
     );
   }
 

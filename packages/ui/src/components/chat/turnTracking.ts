@@ -64,7 +64,7 @@ export function useStuckTurn(root: RefObject<HTMLElement | null>): { stuckId: nu
     let hi = turns.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (turns[mid].getBoundingClientRect().bottom <= covered) lo = mid + 1;
+      if ((turns[mid]?.getBoundingClientRect().bottom ?? Infinity) <= covered) lo = mid + 1;
       else hi = mid;
     }
     const s = turns[lo];
@@ -110,7 +110,7 @@ export function useTurnRequests(opts: {
   loaded: boolean;
   release(): void;
   /** Brings this conversation's tab to the front first (it may be hidden behind another tab). */
-  reveal?: () => void;
+  reveal?: (() => void) | undefined;
 }) {
   const nav = useNav();
   const { root, projectId, enabled, loaded, release } = opts;

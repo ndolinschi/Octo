@@ -49,7 +49,7 @@ function useTokens(code: string, lang: string | undefined) {
 
 function CodeBlock({ children }: { children?: ReactNode }) {
   const [copied, copy] = useCopy();
-  const child = Array.isArray(children) ? children[0] : children;
+  const child: unknown = Array.isArray(children) ? children[0] : children;
   const className = child && typeof child === "object" && "props" in child ? ((child as { props: { className?: string } }).props.className ?? "") : "";
   const lang = /language-([\w+-]+)/.exec(className)?.[1];
   const code = textOf(children).replace(/\n$/, "");

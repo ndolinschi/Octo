@@ -148,7 +148,7 @@ export class LspSession {
   request<T>(method: string, params: { textDocument: { uri: string } } & Record<string, unknown>, token?: Cancellation): Promise<T | null> {
     if (!this.ready || !this.rpc) return Promise.resolve(null);
     this.flush(params.textDocument.uri);
-    return this.rpc.request<T>(method, params, { token });
+    return this.rpc.request<T>(method, params, token ? { token } : {});
   }
 
   dispose(): void {

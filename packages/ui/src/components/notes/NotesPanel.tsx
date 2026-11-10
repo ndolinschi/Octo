@@ -10,7 +10,7 @@ import { FloatRoom } from "../primitives/floatRoom";
 
 export function NotesPanel() {
   const { state, createNote, updateNote, deleteNote } = useProject();
-  const [editing, setEditing] = useState<string | "new" | null>(null);
+  const [editing, setEditing] = useState<string | null>(null); // a note id, or "new" for the draft row
   const notes = useMemo(() => [...state.notes].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)), [state.notes]);
   const now = Date.now();
 

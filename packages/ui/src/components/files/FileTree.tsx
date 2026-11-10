@@ -106,7 +106,7 @@ export const FileTree = forwardRef<
     if (!query) return null;
     const keys = new Set<string>();
     for (const f of loadedFiles) {
-      if (!`${f.path}`.toLowerCase().includes(query)) continue;
+      if (!f.path.toLowerCase().includes(query)) continue;
       keys.add(fileKey(f.folder, f.path));
       for (const a of ancestors(f.path)) keys.add(fileKey(f.folder, a));
     }

@@ -216,7 +216,7 @@ function TokensCard({
       total = usage.total.input_tokens + usage.total.output_tokens;
     } else if (usage === "unavailable" && agents) {
       const from = now - 30 * 86_400_000;
-      for (const a of agents.flatMap((p) => p.agents) as Agent[]) {
+      for (const a of agents.flatMap<Agent>((p) => p.agents)) {
         if (Date.parse(a.started_at ?? a.created_at) < from) continue;
         const n = a.input_tokens + a.output_tokens;
         total += n;

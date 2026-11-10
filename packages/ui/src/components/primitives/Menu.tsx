@@ -98,7 +98,7 @@ export function Menu(props: {
     if (!list.length) return;
     const i = list.indexOf(document.activeElement as HTMLElement);
     const next = delta === "first" ? 0 : delta === "last" ? list.length - 1 : (i + delta + list.length) % list.length;
-    list[next].focus();
+    list[next]?.focus();
   };
 
   const onKeyDown = (e: KeyboardEvent) => {

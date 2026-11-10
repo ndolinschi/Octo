@@ -1,6 +1,9 @@
 {
   "recommendations": [
     "rust-lang.rust-analyzer",
-    "golang.go"
+    "golang.go",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss"
   ]
 }

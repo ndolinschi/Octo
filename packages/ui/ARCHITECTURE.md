@@ -73,7 +73,8 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
   `lsp/hub.ts` is the small seam that stays in the main chunk.
 - Demo fixtures (`demo/seedFiles.ts`, `demo/lsp.ts`) and other heavy, optional code load with `import()`.
 
-There is no automatic check yet; verify with `pnpm --filter @octo/desktop build` and read the chunk sizes.
+`node scripts/check-bundle-size.mjs` (CI runs it after the desktop build) sums the gzip size of the entry chunk and its
+`modulepreload` chunks and fails above the budget recorded in the script (measured size + 3 kB); lazy chunks are not counted.
 
 ## Routing, persistence, side effects
 
@@ -93,8 +94,10 @@ There is no automatic check yet; verify with `pnpm --filter @octo/desktop build`
 
 ## Verification
 
-`pnpm --filter @octo/ui lint` is the type-check. There is no unit-test runner in this package yet; pure modules
-should get `node:test` tests as in `@octo/agent-client`. Visual and interaction behaviour is checked with
+`pnpm --filter @octo/ui lint` is `tsc --noEmit` (strict flags from the root `tsconfig.base.json`) plus ESLint
+(`eslint.config.mjs`: typescript-eslint type-checked, react-hooks, jsx-a11y, and the import boundaries of the table
+above — violations of the debt rows below are warnings until Q4). `pnpm --filter @octo/ui test` runs the `node:test`
+tests beside the pure modules. Visual and interaction behaviour is checked with
 Playwright scripts against the demo bridge (`?demo=1`, knobs `?demo=one|many|empty`, `?lsp=…`, `?plugins=none`)
 and with `scripts/spacing-audit.mjs`.
 
@@ -117,5 +120,5 @@ assertions; 0 `any`; 0 unit tests. Do not add to this list; reduce it when you t
 | Large components mixing loading, layout and keyboard | `files/FileView.tsx`, `files/editor/EditorComments.tsx`, `chat/Composer.tsx`, `files/FileTree.tsx`, `project/ProjectDialog.tsx` | Extract hooks |
 | Repeated long class strings; hard-coded breakpoints in CSS classes and JS | `chat/Composer*`, `shell/CommandPalette`, `files/TreeColumn`, `AppShell` | Row / MenuItem / OverlayPanel primitives; named constants |
 | List / listbox / menu keyboard handling written per overlay | `Menu`, `CommandPalette`, `ComposerMenu`, `TabStrip` | Shared hooks in `primitives` |
-| No ESLint, no formatter, no unit tests; `strict` only | package config | Shared `tsconfig.base.json` with `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` (≈150 fixes here), ESLint (typescript-eslint, react-hooks, import boundaries), `node:test` for pure modules |
+| ESLint warnings (121 at the end of Q1: 21 import-boundary, 17 `prefer-optional-chain`, 16 `no-unnecessary-condition`, 9 `!`, 8 `set-state-in-effect`, 7 `refs`, 7 `exhaustive-deps`, 35 jsx-a11y, rest React Compiler rules and deprecations); few unit tests | `eslint.config.mjs` (counts: `pnpm lint`) | Each step Q3–Q5 removes its warnings (boundaries Q4, hooks / a11y Q5) and turns the rule into an error; `node:test` coverage of the pure modules is Q2 |
 | Demo fixtures are exported from the package root | `src/index.ts` | A `@octo/ui/demo` subpath |

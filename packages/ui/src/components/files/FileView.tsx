@@ -66,7 +66,9 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWidth(Math.round(e.contentRect.width)));
+    const ro = new ResizeObserver(([e]) => {
+      if (e) setWidth(Math.round(e.contentRect.width));
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -93,7 +95,7 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: string | null 
   const openHere = useCallback(
     (f: string, p: string) => {
       setOverlayOpen(false);
-      code.openFile(f, p, undefined, groupId ? { group: groupId, replace: fileKey ? undefined : tab } : undefined);
+      code.openFile(f, p, undefined, groupId ? (fileKey ? { group: groupId } : { group: groupId, replace: tab }) : undefined);
       const panel = `${domId(fileTab(fileKeyOf(f, p)))}-panel`;
       focusSoon(
         () => {
@@ -391,7 +393,7 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
               {
                 id: "path",
                 label: "Copy path",
-                title: absolute ? `${absolute}/${path}` : undefined,
+                ...(absolute ? { title: `${absolute}/${path}` } : {}),
                 run: () => copy(absolute ? `${absolute.replace(/\/$/, "")}/${path}` : `${folder}/${path}`),
               },
               { id: "rel", label: "Copy relative path", title: `${folder}/${path}`, run: () => copy(`${folder}/${path}`) },
