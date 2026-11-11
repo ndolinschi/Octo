@@ -383,6 +383,44 @@ monochrome dithered illustration):
 31. **Streak appearance.** Settings → Appearance: **Start-screen backdrop** — Vivid (default, decision 21b), Mono
     (the same band in one hue: `accent` at 35% peak, same grain; reads as texture), Off. Stored in the preference
     registry; `prefers-reduced-transparency` and forced colours force Off.
+32. **Streak, third pass** (v6.2 review: "flat saturated slab with a staircase edge, no hot core"; owner: "weak,
+    not like the references"). The band is rebuilt from three layers drawn in one pass: a **hot core** — a line
+    2–4 device cells wide at near-white (`#fff4e0`, 95% dark / 70% light) running the band's axis; a **glow** that
+    falls off from the core with a long exponential tail (orange → magenta → violet → blue along the distance, not
+    along the length); and **grain everywhere** — ordered dither at 2px cells on windows ≤ 1600px wide and 3px
+    above, cell size taken from the *window* width, with blue-noise jitter so no staircase is visible on the edge.
+    No scrim blob behind the Home title (the title sits where the band is dark; if contrast < 4.5 the band is
+    shifted, never patched). Home cards get a 72% surface with backdrop blur 12px so the band reads through.
+    Draw budget: ≤ 4 ms median at 1440 and ≤ 8 ms at 1920 — drawn once to an offscreen canvas and redrawn only on
+    resize/theme change (no per-frame work when static).
+33. **Quiet right panel** (owner: "too garish"; review: 8 buttons before content). One rule: a panel shows **at
+    most one segmented control**, 24px high, text-only, the selected segment marked by `hover` fill — never a
+    filled accent. Usage: tabs Tokens / Cost / Limits stay as the one segmented control; range becomes a single
+    quiet menu button ("30 days ▾") and scope ("This project / All projects") moves into the same menu. The header
+    icon strip shows one selected state at a time (the open tool); the comment "+" and the composer send button are
+    `fg` on `hover` fill when idle and solid only when there is something to send. Segments never truncate: a
+    control that does not fit folds into a menu.
+34. **The team is always visible** (review: "idle project is a chat with a follow-up box"). The orchestrator
+    header carries a **team line** in every state: idle — "Orchestrator · last ran 3 agents · 1h ago" with the
+    last run's agents as quiet chips; working — live chips with state glyphs (decision 29); empty — the roles the
+    orchestrator can call on. A chip opens the agent in a **split to the right**, never over the orchestrator.
+    The composer placeholder speaks to the orchestrator ("Ask the orchestrator…", after a turn: "Next request…").
+    The request rail shows from the first request. The sidebar "Working" dot pulses (reduced motion: static ring).
+35. **Focus never falls to the page.** After closing a tab, a tool tab or a split, focus moves to the tab that
+    becomes active; "Show project details", "Split right" and opening a project from Home focus the new surface's
+    first focusable element (or its container with `tabindex="-1"`). An acceptance check walks the five paths
+    found by the review and asserts `document.activeElement !== document.body`.
+36. **Review clean-up.** Contrast ≥ 4.5 for the Home list's second line, the Limits stale block and the
+    Integrations chip count; 390px: the empty project's Models fact wraps by word, rail markers and tab close
+    targets are ≥ 24×24 hit areas; scroll memory attaches when the scroller appears (a project that started
+    empty); Limits polling and the clock stop while the tab is hidden; the spacing audit gains the states `home`,
+    `empty-project`, `usage`, `details-tab`, `integrations` and a `--help`.
+37. **Router in the UI** (integration I1). Orchestrator header: when the project has a budget, "$spent / $budget"
+    next to the model (amber from 80%, red at 100% with "Project budget reached"); Project dialog → Models gains
+    **Budget** (USD, optional) and **Routing** (Auto — the router may go lower or higher · Ceiling — never above
+    the chosen tier · Fixed), shown only when `config.router` is true; Usage → Tokens/Cost rows are the *served*
+    models; a quiet "History compacted" separator in the transcript where a compaction was applied (needs a
+    harness event — add `agent.compacted`).
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
