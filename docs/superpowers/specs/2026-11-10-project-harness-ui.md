@@ -497,6 +497,41 @@ monochrome dithered illustration):
     objects, ≤ 200 rows shown) use the same component inside the tool panel. Below 600px a table with more than
     three columns keeps the sideways scroll rather than stacking. Key–value results (≤ 8 pairs) render as a
     two-column definition list, not a table.
+45. **"The model is working" — aurora** (owner: "the gradient effect is nice; maybe a polar-light glow while the
+    model generates, as in Gemini; think what other effects fit"). One visual language for *work in progress*,
+    built from the streak's palette, used in exactly three places and nowhere else:
+    (a) **composer edge** — while the orchestrator of the open project works, the composer's 1px border becomes a
+    slowly rotating conic gradient (streak colours, one turn per 6 s) with a soft outer glow (a blurred copy,
+    opacity 0.35 dark / 0.22 light, 12px spread) that breathes ±15% over 3 s; on finish it settles in 400 ms to
+    the plain border; on failure it drains to `danger` once and stops;
+    (b) **streaming text** — the last line being written has a 24px fade-in mask at its end; "Worked for…" while
+    running uses a text shimmer (one pass per 1.8 s) instead of a spinner;
+    (c) **sidebar ring** of a working project — the existing ring gains the same gradient stroke, no glow.
+    Rules: the blurred layer is painted once and only its `opacity`/`transform` animate; the angle is a registered
+    `@property`; no `filter` animation, no layout properties; everything pauses when the window is hidden or the
+    element is off-screen; with `prefers-reduced-motion: reduce` there is no rotation or breathing — a static
+    gradient border and a steady text colour; Settings → Appearance has "Motion: full / reduced / off"
+    (default: follow the system). Budget: the effect may not cost a frame — a 5 s trace while streaming stays at
+    60 fps on the demo at 1440 and at 390, and idle CPU with no agent working is unchanged. Never animated: the
+    whole window edge, backgrounds behind text, anything during typing.
+46. **Other effects (small, each with a job).** Send: the message rises from the composer into the conversation
+    (160 ms, the composer does not jump). Tool row done: the row's glyph draws a check in 200 ms once. Sub-agent
+    spawned: its row in the team strip grows from the delegating row. Diff applied / reverted: changed lines
+    flash their add/remove tone for 600 ms and fade. Approval needed: the card's border pulses twice, then rests
+    (never loops). Copy: the glyph swaps to a check for 1.2 s. Tab drag: the tab lifts (shadow, 1.02 scale) and
+    neighbours slide. All ≤ 240 ms unless stated, one easing (`cubic-bezier(.2,.8,.2,1)`), all removed under
+    reduced motion except colour changes.
+47. **Borrowed behaviours** (from the reference study `../research/2026-11-11-editor-ui-references.md`; adapted,
+    not copied): header actions that do not fit collapse into a "⋯" menu instead of truncating text (fixes the cut
+    "Worked al…"); a shortcut sheet on `Ctrl/Cmd+/`; an OS notification when a project finishes or needs the user
+    while the window is unfocused (off by default until asked once); in the changes view, a line comment
+    (hover → "+") that is sent to the orchestrator with the next request; plan/approval cards can be commented
+    before they are approved; inline completion follows `2026-11-11-inline-completion-design.md` with a
+    status-line item and accept-word / accept-line keys.
+48. **Model names are one thing everywhere.** A model is shown by its display label (catalogue label, else the id
+    with the vendor prefix dropped and middle-truncated) in the header, the composer, Usage and the team strip; the
+    header shows the *served* model and, when it differs from the chosen one, "chosen → served" in the tooltip —
+    never one name in the header and another in the composer without explanation.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
