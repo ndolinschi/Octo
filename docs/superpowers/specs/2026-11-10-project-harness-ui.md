@@ -635,6 +635,60 @@ monochrome dithered illustration):
     `fg-4`, the current one 12px wide in `fg`; with more ticks than fit in 60% of the viewport height the rail
     scrolls itself to keep the current tick centred. Hover or focus on the rail shows the request's first line
     beside the tick; click or `Alt+↑/↓` jumps. It never takes layout width from the conversation.
+58. **An agent's model can be chosen** (owner, live: "I can use subscriptions but I can't set models there").
+    In every model picker an agent row with more than one model has a trailing "›": `→` or click opens its models
+    (the agent's default first, marked "default"; then the models from its manifest and those the agent advertised
+    in its last session), `←` goes back; choosing stores `acp:<agent>/<model>`. The chip then reads
+    "Claude Code · Opus". An agent with one or no known model has no "›". Search matches "copilot gpt" across
+    both levels. Harness: `/v1/providers` lists per agent `models` (manifest ∪ advertised, cached per agent with
+    the time seen) and `default_model`; a model the agent no longer advertises is flagged, not silently dropped.
+59. **Settings is a page, not a dialog** (owner: "the settings page looks very bad and should be Cursor-like";
+    reference: a full-window settings view). Route `#/settings/<section>`; the sidebar is replaced by the
+    settings navigation ("← Back", a search field that filters rows across all sections, then sections with a
+    16px glyph each); content is one centred column, max 780px. Anatomy: section title (20px medium), then groups —
+    a 12px `fg-3` group label above a card (panel surface, radius 10, hairline dividers between rows); each **row**
+    is title (14px) + one-line description (13px `fg-3`) on the left and exactly one control on the right
+    (switch, select, button, number field); rows are 56–64px; long explanations go behind a "?"; destructive
+    actions sit alone at the bottom of their section. Sections: **General** (startup, notifications, sound),
+    **Appearance** (theme, backdrop, motion, density), **Providers** (decision 53: each provider as a row with
+    its state and Connect / Reconnect / Remove; API keys folded under "API keys"), **Models** (which models
+    appear in pickers — a searchable list with switches; default orchestrator and tiers; the completion model),
+    **Agents** (subscription agents: state, install and login text, default model, test button), **Editor**
+    (inline completion on/off, per-language list, language servers), **Usage and budget**, **Memory** (context
+    mode, digest on/off), **Privacy and data** (data directory, trace switch, "Copy diagnostic report"),
+    **About**. Every change applies at once and says "Saved" inline; a change that needs a restart says so in
+    the row with a "Restart now" button. Below 760px the navigation becomes a top select and rows stack their
+    control under the text.
+60. **Opening something never makes the window jump** (owner: "when opening a file the window is jumping").
+    Opening a file, a tab, a side panel or a group may change only the area it opens into. Rules: the first
+    split uses the remembered ratio (default: conversation 420px, the rest to the editor) and both sides reach
+    their final size in one frame or one 160 ms transition — never an intermediate size; the conversation's
+    text does not re-wrap more than once; the file tree column has its width reserved before its content loads;
+    the editor shows a skeleton of the right size until Monaco is ready (no 0-height flash, no scroll jump); the
+    scroll position of the conversation is anchored to the message at the top of the viewport across the resize.
+    A test opens a file from a full-width conversation and asserts at most one layout shift of the conversation
+    column and none of the sidebar.
+61. **A narrow conversation is a compact conversation** (owner: "we need a mobile-like chat, because on small it
+    looks bad"). The conversation column adapts to **its own width** (container queries), not the window's:
+    below 480px — 12px gutters, the request rail and timestamps' separators hidden, user requests as
+    right-aligned bubbles (max 86%, radius 14), answers full width with no card, inline code allowed to break
+    anywhere, code blocks and tables scrolling sideways inside themselves, lists with 16px indent, the header
+    reduced to name + state + "⋯", the copy/time row shown on hover or tap only; below 360px the composer's chips
+    collapse to icons. Nothing is ever clipped or forced to one word per line; a path or identifier breaks with
+    a soft hyphenless wrap. Checked at column widths 320, 380, 480 and 720.
+62. **The composer is the most finished thing on the screen** (owner: "the prompt input looks very undone").
+    One container (radius 14, panel-raised surface, 1px hairline that brightens on focus; aurora per decision 45
+    while working). Inside, top to bottom: **attachments** (files, images, line comments as removable pills —
+    "1 comment" is a pill here, its popover lists and removes them); the **text area** (15px, 1 to 10 lines
+    auto-growing, then scrolls; placeholder "Ask anything, @ to mention a file" — never "(optional)"); the
+    **control row**: left — "+" (attach, mention, slash commands), the agent/model chip, the folder chip, the
+    tier chip; right — the context meter (a 16px ring, numbers on hover), and one 28px round button that is Send
+    (disabled and dim when empty), Stop while working, and Queue (clock glyph) when a turn is running and text is
+    present. Chips are borderless ghost buttons with a glyph and label, 28px high, 4px apart, and truncate their
+    label from the middle; when the row is too narrow chips drop their labels in this order: tier, folder, model.
+    Keys: `Enter` sends, `Shift+Enter` new line, `↑` in an empty field recalls the last request, `Esc` stops,
+    `Ctrl/Cmd+Enter` queues, `@` and `/` open their lists above the composer. Files can be dropped or pasted
+    onto it. Its height changes never move the conversation's last line (the scroller compensates).
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
