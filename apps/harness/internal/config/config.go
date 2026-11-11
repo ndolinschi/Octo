@@ -48,6 +48,10 @@ type Models struct {
 	TierPolicy string `json:"tier_policy"`
 	// Side optionally overrides the model of side questions; empty means Fast.
 	Side string `json:"side,omitempty"`
+	// Completion is the model of the editor's inline completion: a Messages API
+	// model id or a tier name (fast, balanced, deep). Empty means the feature is
+	// off. In a PATCH, "off" clears it. It cannot be an ACP agent.
+	Completion string `json:"completion,omitempty"`
 	// AutoCandidates optionally restricts and orders what spawn_agent tier
 	// "auto" may choose from: fast, balanced, deep or acp:<id>[/<model>].
 	// Empty means every API tier and every ready ACP agent.
@@ -72,6 +76,21 @@ func (m Models) SideModel() string {
 		return m.Side
 	}
 	return m.Fast
+}
+
+// CompletionOff is the PATCH value that clears Models.Completion.
+const CompletionOff = "off"
+
+// CompletionModel is the model inline completion runs on: Completion with a
+// tier name resolved; "" when the feature is off.
+func (m Models) CompletionModel() string {
+	switch m.Completion {
+	case "":
+		return ""
+	case "fast", "balanced", "deep":
+		return m.ForTier(m.Completion)
+	}
+	return m.Completion
 }
 
 // Policy returns TierPolicy, defaulting to auto.

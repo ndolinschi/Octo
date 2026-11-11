@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/ndolinschi/Octo/apps/harness/internal/completion"
 	"slices"
 	"strings"
 	"sync"
@@ -37,6 +38,8 @@ type Turns interface {
 	Running(projectID string) bool
 	Context(ctx context.Context, projectID, agentID string) (orchestrator.ContextReport, error)
 	Side(ctx context.Context, projectID, text string) (orchestrator.SideStart, error)
+	// Complete answers one inline-completion request (no turn, no transcript).
+	Complete(ctx context.Context, projectID string, req completion.Request) (completion.Result, string, error)
 	CancelSide(projectID string)
 	// CloseProject ends the project's ACP orchestrator process, if any.
 	CloseProject(projectID string)
@@ -115,6 +118,12 @@ func (s *Service) ValidateModels(m *config.Models) error {
 		if err := plugins.ValidateACPRef(v, agents); err != nil {
 			return invalid("models.%s: %s", field, err)
 		}
+	}
+	if plugins.IsACPRef(m.Completion) {
+		return invalid("models.completion: inline completion needs a fast Messages API model; an ACP agent answers in seconds, not milliseconds")
+	}
+	if len(m.Completion) > 200 || strings.ContainsAny(m.Completion, " \t\n") {
+		return invalid("models.completion must be a model id, fast, balanced, deep or off")
 	}
 	if plugins.IsACPRef(m.Side) {
 		return invalid("models.side: side questions use the Messages API and cannot run on an ACP agent")

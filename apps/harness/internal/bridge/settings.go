@@ -26,21 +26,32 @@ func WithSettings(store SettingsStore, loopbackBind bool) Option {
 	return func(s *Server) { s.settings, s.settingsLoopback = store, loopbackBind }
 }
 
+// WithLoopbackBind says the server listens on a loopback address only, which
+// the folder endpoints (/v1/fs/*) require. WithSettings sets it too.
+func WithLoopbackBind(loopbackBind bool) Option {
+	return func(s *Server) { s.settingsLoopback = loopbackBind }
+}
+
 // settingsGuard enforces the rules of the settings endpoints: a loopback bind,
 // a loopback peer, a loopback Host (against DNS rebinding) and, when the
 // request carries an Origin, one the bridge allows. It writes the 403 itself.
 func (s *Server) settingsGuard(w http.ResponseWriter, r *http.Request) bool {
+	return s.loopbackGuard(w, r, "settings")
+}
+
+// loopbackGuard is settingsGuard for any endpoint family; what names it in the 403.
+func (s *Server) loopbackGuard(w http.ResponseWriter, r *http.Request, what string) bool {
 	deny := func(msg string) bool {
 		writeError(w, http.StatusForbidden, "forbidden", msg)
 		return false
 	}
 	switch {
 	case !s.settingsLoopback:
-		return deny("settings are available only when the bridge listens on a loopback address")
+		return deny(what + " are available only when the bridge listens on a loopback address")
 	case !loopbackPeer(r.RemoteAddr):
-		return deny("settings are available to loopback clients only")
+		return deny(what + " are available to loopback clients only")
 	case !loopbackHost(r.Host):
-		return deny("settings are available only through a loopback host name")
+		return deny(what + " are available only through a loopback host name")
 	}
 	if o := r.Header.Get("Origin"); o != "" && !allowedOrigin.MatchString(o) {
 		return deny("origin not allowed")

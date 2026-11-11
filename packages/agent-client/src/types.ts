@@ -29,6 +29,11 @@ export type Models = {
   /** Model for side questions; absent means the fast tier. Cannot be cleared once set. */
   side?: string;
   /**
+   * Model of the editor's inline completion: a Messages API model id or a tier (`fast`, `balanced`, `deep`); absent
+   * means the feature is off. Send `"off"` in an update to clear it. Never an ACP agent (400).
+   */
+  completion?: string;
+  /**
    * Restricts and orders what a delegation with tier `auto` may choose from: `fast`, `balanced`, `deep` or
    * `acp:<id>[/<model>]`. Absent or empty: every API tier and every ready ACP agent. Send `[]` to clear.
    */
@@ -728,4 +733,33 @@ export type ContextReceipt = {
   /** Tool results replaced by stubs in this turn's requests. */
   cleared_calls: number;
   created_at: string;
+};
+
+/** Body of `POST .../complete`: the text around the cursor (prefix at most 6 000 chars, suffix 2 000; cut on lines). */
+export type CompletionRequest = {
+  path: string;
+  /** Folder label; absent means the first folder. Only used to look at the file's size. */
+  folder?: string;
+  language?: string;
+  prefix: string;
+  suffix?: string;
+  /** 1 to 20; the harness defaults to 8. */
+  max_lines?: number;
+  /** Up to three snippets (1 500 chars each) from other open files. */
+  snippets?: { path: string; text: string }[];
+};
+
+/** The 200 body of `POST .../complete`. A 204 (nothing to suggest, or a file that is never sent) is `null`. */
+export type CompletionResult = { text: string; model: string; ms: number };
+
+/** A directory in the folder picker. `git` is read from `.git/HEAD` (no git process): the branch, or a short commit id when detached. */
+export type FolderEntry = { name: string; path: string; git: { branch: string } | null };
+
+/** `GET /v1/fs/dirs`: child directories (never files) of `base` that match the typed prefix, at most 50. */
+export type DirListing = {
+  /** The directory that was listed (absolute). */
+  base: string;
+  entries: FolderEntry[];
+  /** Present, with empty `entries`, when the base is missing or cannot be read. */
+  error?: "not_found" | "not_readable";
 };

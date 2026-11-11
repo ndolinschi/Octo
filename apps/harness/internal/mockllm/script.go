@@ -19,6 +19,9 @@ func plan(r *request) reply {
 	if strings.Contains(r.system(), digestMarker) {
 		return digestReply(r)
 	}
+	if strings.Contains(r.system(), completionMarker) {
+		return completionReply(r)
+	}
 	if strings.Contains(r.system(), sideMarker) {
 		return sideReply(r)
 	}

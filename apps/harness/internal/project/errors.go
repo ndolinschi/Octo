@@ -15,6 +15,8 @@ const (
 	KindConflict
 	KindTooLarge
 	KindUnsupported
+	// KindUpstream: a model call failed (502).
+	KindUpstream
 )
 
 // Error is a caller-visible failure with a stable machine code.

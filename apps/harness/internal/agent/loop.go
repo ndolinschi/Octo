@@ -46,6 +46,10 @@ type Loop struct {
 	Hints  router.Hints
 	// Gate, when set, is checked before every request; its error stops the loop.
 	Gate func(ctx context.Context) error
+	// Temperature, when set, is sent as the request's temperature (the SDK
+	// version in use has no typed field for it). StopSequences end generation.
+	Temperature   *float64
+	StopSequences []string
 	// Clear, when set, replaces old tool results with stubs once a request is
 	// past its share of the window, before compaction is considered.
 	Clear *ClearPolicy
@@ -73,6 +77,7 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 	if l.System != "" {
 		params.System = []anthropic.TextBlockParam{{Text: l.System}}
 	}
+	params.StopSequences = l.StopSequences
 	if !l.NoPromptCaching {
 		markStaticPrefix(&params)
 	}

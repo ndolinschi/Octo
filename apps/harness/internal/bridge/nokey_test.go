@@ -107,3 +107,20 @@ func TestNoKeyACPTurnCompletesAndBuiltinWorkFailsCleanly(t *testing.T) {
 		t.Fatalf("%d upstream requests, want 0", n)
 	}
 }
+
+func TestNoKeyCompletionIsOffWithTheReasonAndNeverCallsUpstream(t *testing.T) {
+	e, calls := noKeyEnv(t)
+	var proj struct{ ID string }
+	e.into(t, "POST", "/v1/projects", map[string]any{"name": "p", "folders": []map[string]string{{"path": t.TempDir()}}}, http.StatusCreated, &proj)
+	e.into(t, "PATCH", "/v1/projects/"+proj.ID, map[string]any{"models": map[string]string{"completion": "fast"}}, http.StatusOK, nil)
+	var resp struct {
+		Error struct{ Code, Message string } `json:"error"`
+	}
+	e.into(t, "POST", "/v1/projects/"+proj.ID+"/complete", map[string]any{"path": "a.go", "prefix": "x"}, http.StatusConflict, &resp)
+	if resp.Error.Code != "completion_off" || resp.Error.Message != config.NoBuiltinLoopMessage {
+		t.Fatalf("error = %+v", resp.Error)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("upstream calls = %d", calls.Load())
+	}
+}

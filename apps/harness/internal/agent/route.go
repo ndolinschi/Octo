@@ -23,12 +23,20 @@ const callRecordTimeout = 3 * time.Second
 // a *router.BudgetError. A failed or cancelled request that the router already
 // handled still gets a usage row.
 func (l *Loop) request(ctx context.Context, params anthropic.MessageNewParams) (anthropic.Message, router.Result, error) {
+	var extra []option.RequestOption
+	if l.Temperature != nil {
+		extra = append(extra, option.WithJSONSet("temperature", *l.Temperature))
+	}
 	if !l.Router.Enabled() {
-		resp, err := l.call(ctx, params, nil, nil)
+		var opts []option.RequestOption
+		if len(extra) > 0 {
+			opts = extra
+		}
+		resp, err := l.call(ctx, params, opts, nil)
 		return resp, router.Result{}, err
 	}
 	var httpResp *http.Response
-	opts := []option.RequestOption{option.WithResponseInto(&httpResp)}
+	opts := append(extra, option.WithResponseInto(&httpResp))
 	for name, v := range l.Hints.Header() {
 		opts = append(opts, option.WithHeader(name, v[0]))
 	}

@@ -104,6 +104,8 @@ func (s *Server) routes() *http.ServeMux {
 	if s.diagnostics != nil {
 		mux.HandleFunc("GET /v1/diagnostics", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, s.diagnostics()) })
 	}
+	mux.HandleFunc("GET /v1/fs/dirs", s.fsDirs)
+	mux.HandleFunc("GET /v1/fs/recent", s.fsRecent)
 	mux.HandleFunc("GET /v1/usage", s.usage)
 	mux.HandleFunc("GET /v1/limits", s.listLimits)
 	mux.HandleFunc("GET /v1/projects", s.listProjects)
@@ -123,6 +125,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("DELETE /v1/projects/{pid}/queue/{qid}", s.removeQueued)
 	mux.HandleFunc("POST /v1/projects/{pid}/queue/{qid}/send-now", s.sendNow)
 	mux.HandleFunc("GET /v1/projects/{pid}/context", s.context)
+	mux.HandleFunc("POST /v1/projects/{pid}/complete", s.complete)
 	mux.HandleFunc("POST /v1/projects/{pid}/side", s.askSide)
 	mux.HandleFunc("GET /v1/projects/{pid}/side", s.listSide)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/side", s.clearSide)

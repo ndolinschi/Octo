@@ -182,7 +182,7 @@ func (rt *runtime) digest(ctx context.Context, orchID, taskID string, messageID 
 	loop := agent.Loop{
 		Client: rt.o.opts.Client, Registry: tools.NewRegistry(), Model: rt.models.SideModel(), System: memory.DigestPrompt,
 		MaxTurns: 1, Stream: false, SessionID: "digest:" + orchID,
-		Sink:            &digestSink{rt: rt, agentID: orchID},
+		Sink:            &digestSink{rt: rt, agentID: orchID, role: "digest"},
 		NoPromptCaching: rt.o.opts.NoPromptCaching, Limits: rt.o.opts.Limits, Router: rt.o.opts.Router,
 		Hints: rt.sideHints(), Gate: rt.loopGate(),
 	}
@@ -202,6 +202,8 @@ func (rt *runtime) digest(ctx context.Context, orchID, taskID string, messageID 
 type digestSink struct {
 	rt      *runtime
 	agentID string
+	// role labels the usage rows ("digest", "completion").
+	role string
 }
 
 func (s *digestSink) Message(context.Context, string, anthropic.MessageParam) error { return nil }
@@ -213,7 +215,7 @@ func (s *digestSink) Usage(u agent.Usage) {
 	c, cancel := dbCtx(context.Background())
 	defer cancel()
 	if _, err := s.rt.db.RecordUsage(c, projectstore.UsageRecord{
-		AgentID: s.agentID, Role: "digest", Model: u.Model, Source: projectstore.SourceAPI,
+		AgentID: s.agentID, Role: s.role, Model: u.Model, Source: projectstore.SourceAPI,
 		InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, CacheReadTokens: u.CacheReadTokens, CacheWriteTokens: u.CacheWriteTokens,
 		CostUSD: u.CostUSD, ServedModel: u.ServedModel, Tier: u.Tier, RouteTrigger: u.Trigger, RouterRequestID: u.RequestID,
 		CostEstimated: u.CostEstimated,

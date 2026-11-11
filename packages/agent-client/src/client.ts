@@ -34,6 +34,10 @@ import type {
   Project,
   ProjectInput,
   ProjectSummary,
+  CompletionRequest,
+  DirListing,
+  FolderEntry,
+  CompletionResult,
   SideMessage,
   SettingsUpdate,
   SettingsView,
@@ -63,7 +67,13 @@ export type FetchResponseLike = {
   text(): Promise<string>;
 };
 
-export type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<FetchResponseLike>;
+/** The part of AbortSignal the client passes on to fetch (this package builds without the DOM lib). */
+export type AbortSignalLike = { readonly aborted: boolean };
+
+export type FetchLike = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignalLike },
+) => Promise<FetchResponseLike>;
 
 export type EventSourceLike = {
   onopen: ((ev: unknown) => void) | null;
@@ -123,6 +133,15 @@ export interface Bridge {
   getSettings?(): Promise<SettingsView>;
   /** Validates the whole update, writes it atomically, applies what can apply at once. Secrets are write-only. */
   putSettings?(update: SettingsUpdate): Promise<SettingsView>;
+  /**
+   * Folder picker. `path` is a directory path or a prefix of one (`~` is the home directory, empty is home): the
+   * child directories of its directory whose names start with the last segment (case-insensitive, hidden ones only
+   * when that segment starts with a dot), at most 50. HTTP bridge only; the harness answers 403 unless it listens on
+   * loopback and the caller is loopback.
+   */
+  listDirs?(path: string): Promise<DirListing>;
+  /** The folders of existing projects, newest first, at most 8. */
+  recentFolders?(): Promise<FolderEntry[]>;
   /** R1: the diagnostics report (versions, PATH, per-agent resolution and login state, last 200 log lines). */
   getDiagnostics?(): Promise<Diagnostics>;
   /*
@@ -165,6 +184,14 @@ export interface Bridge {
   putMemoryFile?(projectId: string, path: string, content: string, summary?: string): Promise<MemoryFile>;
   deleteMemoryFile?(projectId: string, path: string): Promise<void>;
   searchMemory?(projectId: string, params: MemorySearchParams): Promise<MemorySearchResult>;
+  /*
+   * Inline completion. Optional: HTTP bridge only, and not on the message bridge (an AbortSignal cannot cross a port).
+   */
+  /**
+   * One fill-in-the-middle suggestion; `null` when there is nothing to suggest (204). 409 `completion_off` without
+   * `models.completion`, 409 `budget_reached`, 502 `completion_failed`. Aborting `signal` aborts the model call.
+   */
+  complete?(projectId: string, input: CompletionRequest, options?: { signal?: AbortSignalLike }): Promise<CompletionResult | null>;
   openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
@@ -252,9 +279,10 @@ export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSett
 export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
 
-  async function request(method: string, path: string, body?: unknown): Promise<unknown> {
+  async function request(method: string, path: string, body?: unknown, signal?: AbortSignalLike): Promise<unknown> {
     const doFetch = options.fetch ?? globalFetch();
-    const init: { method: string; headers?: Record<string, string>; body?: string } = { method };
+    const init: { method: string; headers?: Record<string, string>; body?: string; signal?: AbortSignalLike } = { method };
+    if (signal) init.signal = signal;
     if (body !== undefined) {
       init.headers = { "Content-Type": "application/json" };
       init.body = JSON.stringify(body);
@@ -328,6 +356,10 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     },
     getContext: (id, agentId) =>
       request("GET", `${p(id)}/context${agentId === undefined ? "" : `?agent=${encodeURIComponent(agentId)}`}`) as Promise<ContextBreakdown>,
+    complete: async (id, input, opts) => {
+      const body = await request("POST", `${p(id)}/complete`, input, opts?.signal);
+      return isRecord(body) && typeof body.text === "string" ? (body as CompletionResult) : null;
+    },
     askSide: (id, text) => request("POST", `${p(id)}/side`, { text }) as Promise<SideStarted>,
     listSide: (id) => unwrap<SideMessage[]>(request("GET", `${p(id)}/side`), "messages"),
     clearSide: async (id) => {
@@ -401,6 +433,8 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       if (params.limit !== undefined) q.push(`limit=${params.limit}`);
       return request("GET", `${p(id)}/memory/search?${q.join("&")}`) as Promise<MemorySearchResult>;
     },
+    listDirs: (path) => request("GET", `/v1/fs/dirs?path=${encodeURIComponent(path)}`) as Promise<DirListing>,
+    recentFolders: () => unwrap<FolderEntry[]>(request("GET", "/v1/fs/recent"), "entries"),
     getDiagnostics: () => request("GET", "/v1/diagnostics") as Promise<Diagnostics>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,

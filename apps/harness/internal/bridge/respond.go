@@ -31,6 +31,7 @@ func writeErr(w http.ResponseWriter, err error) {
 			project.KindConflict:    http.StatusConflict,
 			project.KindTooLarge:    http.StatusRequestEntityTooLarge,
 			project.KindUnsupported: http.StatusUnsupportedMediaType,
+			project.KindUpstream:    http.StatusBadGateway,
 		}[pe.Kind]
 		writeError(w, status, pe.Code, pe.Message)
 		return

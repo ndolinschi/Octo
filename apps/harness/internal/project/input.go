@@ -92,6 +92,13 @@ func mergeModels(base config.Models, over *config.Models) (config.Models, error)
 			*dst = src
 		}
 	}
+	switch over.Completion {
+	case "":
+	case config.CompletionOff:
+		base.Completion = ""
+	default:
+		base.Completion = over.Completion
+	}
 	if over.AutoCandidates != nil {
 		// An empty list clears the restriction.
 		base.AutoCandidates = slices.Clone(over.AutoCandidates)
