@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -39,6 +40,8 @@ type Project struct {
 	// Access is "supervised" (writes, commands and ACP permission requests
 	// wait for the user) or "full".
 	Access string `json:"access"`
+	// Memory is the memory setting: how the orchestrator's context is built.
+	Memory memory.Settings `json:"memory"`
 }
 
 func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error) {
@@ -65,7 +68,7 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 			CreatedAt: info.CreatedAt, UpdatedAt: info.UpdatedAt,
 		},
 		Instructions: info.Instructions, Folders: folders, Models: models, MaxDepth: info.MaxDepth,
-		BudgetUSD: info.BudgetUSD, Access: info.Access,
+		BudgetUSD: info.BudgetUSD, Access: info.Access, Memory: memory.ParseSettings(info.MemoryJSON),
 	}
 	p.PendingApprovals, p.PendingInputs = s.turns.Attention(info.ID)
 	p.NeedsYou = p.PendingApprovals+p.PendingInputs > 0

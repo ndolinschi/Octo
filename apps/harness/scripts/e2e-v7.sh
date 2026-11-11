@@ -174,6 +174,22 @@ post PUT "/v1/projects/$P6/memory/notes/arch.md" '{"content":"we use sqlite with
 curl -fsS -X DELETE "$BASE/v1/projects/$P6/memory/notes/arch.md" -o /dev/null
 [ "$(curl -fsS "$BASE/v1/projects/$P6/memory/search?q=fts5&in=files" | jget 'len(d["hits"])')" = 0 ] || fail "a deleted memory file is still indexed"
 
+echo "== context window (M2): setting, assembled request, receipt"
+[ "$(curl -fsS "$BASE/v1/projects/$P6" | jget 'd["memory"]["context"]')" = full ] || fail "the default memory context is not full"
+post PATCH "/v1/projects/$P6" '{"memory":{"context":"window","recent_exchanges":2}}' >/dev/null
+post POST "/v1/projects/$P6/messages" '{"text":"quick: after the switch"}' >/dev/null
+idle "$P6"
+orch6=$(curl -fsS "$BASE/v1/projects/$P6" | jget 'd["orchestrator_agent_id"]')
+tid=$(curl -fsS "$BASE/v1/projects/$P6/agents/$orch6/messages" | jget '[m["id"] for m in d["messages"] if m["role"]=="user" and m["content"] and m["content"][0].get("text","")=="quick: after the switch"][0]')
+curl -fsS "$BASE/v1/projects/$P6/turns/$tid/context" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+names=[b["name"] for b in r["blocks"]]
+assert r["mode"]=="window" and r["recent_exchanges"]==2 and names[0]=="memory_index" and names[-1]=="current_turn", r
+w=[b for b in r["blocks"] if b["name"]=="recent_window"][0]
+assert w["count"]==2, w' || fail "context receipt wrong"
+post PATCH "/v1/projects/$P6" '{"memory":{"context":"full"}}' >/dev/null
+
 echo "== no leftover processes"
 kill "${PIDS[@]}" 2>/dev/null || true
 sleep 1

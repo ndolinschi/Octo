@@ -50,6 +50,8 @@ type Turns interface {
 	Secrets(projectID string) ([]secrets.Info, error)
 	PutSecret(projectID, name, value string) error
 	DeleteSecret(projectID, name string) error
+	// TurnReceipt is the stored context receipt of a turn.
+	TurnReceipt(ctx context.Context, projectID string, turnID int64) (json.RawMessage, error)
 	// Memory is the project's memory service (tasks, memory files, search).
 	Memory(ctx context.Context, projectID string) (*memory.Service, error)
 	// Attention counts what waits for the user: approvals and open forms.
@@ -257,6 +259,13 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err := validAccess(in.Access); err != nil {
 		return Project{}, err
 	}
+	memJSON := ""
+	if in.Memory != nil {
+		if err := in.Memory.Validate(); err != nil {
+			return Project{}, invalid("%s", err.Error())
+		}
+		memJSON = memory.ParseSettings("").Merge(*in.Memory).JSON()
+	}
 	access := s.Defaults().Access
 	if in.Access != nil {
 		access = *in.Access
@@ -268,7 +277,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	db, err := s.store.Create(ctx, projectstore.NewProject{
 		Name: strings.TrimSpace(*in.Name), Description: deref(in.Description), Instructions: deref(in.Instructions),
 		ModelsJSON: string(modelsJSON), MaxDepth: depth, Folders: folders, OrchestratorModel: models.Orchestrator,
-		BudgetUSD: in.BudgetUSD.Value, Access: access,
+		BudgetUSD: in.BudgetUSD.Value, Access: access, MemoryJSON: memJSON,
 	})
 	if err != nil {
 		return Project{}, err
@@ -322,6 +331,13 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		return Project{}, err
 	}
 	patch.Access = in.Access
+	if in.Memory != nil {
+		if err := in.Memory.Validate(); err != nil {
+			return Project{}, invalid("%s", err.Error())
+		}
+		js := cur.Memory.Merge(*in.Memory).JSON()
+		patch.MemoryJSON = &js
+	}
 	var folders []projectstore.Folder
 	if in.Folders != nil {
 		if folders, err = resolveFolders(*in.Folders); err != nil {

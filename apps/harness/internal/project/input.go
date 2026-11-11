@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -30,6 +31,8 @@ type Input struct {
 	BudgetUSD OptionalFloat `json:"budget_usd"`
 	// Access is "supervised" or "full" (v7 approvals).
 	Access *string `json:"access"`
+	// Memory is the project's memory setting (context mode, window size).
+	Memory *memory.Settings `json:"memory"`
 }
 
 // OptionalFloat distinguishes an absent JSON field from an explicit null.

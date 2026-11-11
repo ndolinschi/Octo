@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS project (
 	updated_at TEXT NOT NULL,
 	budget_usd REAL,
 	access TEXT NOT NULL DEFAULT 'full',
-	queue_paused INTEGER NOT NULL DEFAULT 0
+	queue_paused INTEGER NOT NULL DEFAULT 0,
+	memory_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS folders (
 	id TEXT PRIMARY KEY,
@@ -160,6 +161,12 @@ CREATE TABLE IF NOT EXISTS search_docs (
 CREATE INDEX IF NOT EXISTS search_docs_ref ON search_docs (kind, ref);
 CREATE VIRTUAL TABLE IF NOT EXISTS search_u USING fts5(title, body, tokenize = 'unicode61 remove_diacritics 2');
 CREATE VIRTUAL TABLE IF NOT EXISTS search_t USING fts5(title, body, tokenize = 'trigram');
+CREATE TABLE IF NOT EXISTS context_receipts (
+	turn_id INTEGER PRIMARY KEY,
+	mode TEXT NOT NULL,
+	receipt_json TEXT NOT NULL,
+	created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS queue (
 	id TEXT PRIMARY KEY,
 	seq INTEGER NOT NULL,
@@ -196,9 +203,9 @@ func (d *DB) ID() string { return d.id }
 func (d *DB) init(ctx context.Context, in NewProject) error {
 	now := Now()
 	_, err := d.sql.ExecContext(ctx,
-		`INSERT INTO project (id, name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd, access)
-		 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		in.Name, in.Description, in.Instructions, in.ModelsJSON, in.MaxDepth, now, now, in.BudgetUSD, orFull(in.Access))
+		`INSERT INTO project (id, name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd, access, memory_json)
+		 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		in.Name, in.Description, in.Instructions, in.ModelsJSON, in.MaxDepth, now, now, in.BudgetUSD, orFull(in.Access), orEmptyJSON(in.MemoryJSON))
 	if err != nil {
 		return err
 	}
@@ -213,8 +220,8 @@ func (d *DB) Info(ctx context.Context) (Project, error) {
 	p := Project{ID: d.id}
 	var budget sql.NullFloat64
 	err := d.sql.QueryRowContext(ctx,
-		`SELECT name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd, access FROM project WHERE id = 1`,
-	).Scan(&p.Name, &p.Description, &p.Instructions, &p.ModelsJSON, &p.MaxDepth, &p.CreatedAt, &p.UpdatedAt, &budget, &p.Access)
+		`SELECT name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd, access, memory_json FROM project WHERE id = 1`,
+	).Scan(&p.Name, &p.Description, &p.Instructions, &p.ModelsJSON, &p.MaxDepth, &p.CreatedAt, &p.UpdatedAt, &budget, &p.Access, &p.MemoryJSON)
 	if err == sql.ErrNoRows {
 		return p, ErrNotFound
 	}
@@ -241,6 +248,7 @@ func (d *DB) UpdateInfo(ctx context.Context, patch InfoPatch) error {
 		set.add("budget_usd", v)
 	}
 	set.str("access", patch.Access)
+	set.str("memory_json", patch.MemoryJSON)
 	set.add("updated_at", Now())
 	return set.exec(ctx, d.sql, "project", "id = 1")
 }

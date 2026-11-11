@@ -133,3 +133,30 @@ Exact API, limits and behaviour: [`apps/harness/docs/memory.md`](../../../apps/h
 - **Digest**: after completed turns only, side model (fast tier unless `models.side`), no tools, usage role `digest`, failures only log; nothing without a side model beyond the 400-character fallback goal.
 - Redaction at write and index time, including the index of messages (installed before the first message of a turn is indexed); the transcript itself still holds a user's own text as typed.
 - Not built: everything in M2 and M3; the spec's acceptance items for M2 are open. The mock orchestrator does not search on its own: the tests drive the tools with request markers (`[search: …]`, `[recall: id]`, `[mem-create: …]`, `[task-update: …]`) and the mock digest with `[fact: …]`, `[goal: …]`, `[quote: …]`, `[decision: …]`.
+
+
+---
+
+## As built — M2 (harness)
+
+Details and the receipt format: [`apps/harness/docs/memory.md`](../../../apps/harness/docs/memory.md) ("Context assembly (M2)"). Client: optional `ProjectInput.memory`, `Project.memory`, `getTurnContext`, `ContextReceipt`. M3 (UI) is not built.
+
+**Built as specified:** the setting `memory: {context, recent_exchanges}` (default `full`); window assembly with the table's blocks and caps (1 500 / 3 000 / 12 000 / 1 500 tokens), stable blocks first; the window is exactly N exchanges; tool-result clearing at 60% of the window keeping the last 5 calls, with stubs like `[cleared: read_file src/x.go, 412 lines]`, in both modes and before compaction; the ACP recap of a new session uses the assembly; a live ACP session gets the open tasks changed since its last turn; a receipt per turn.
+
+**Decisions where the spec was silent:**
+- **Receipt API:** `GET /v1/projects/{pid}/turns/{turnId}/context` (table `context_receipts`, schema version 3), not a field of the message. It records the first request of the turn.
+- **Where the blocks go:** the index and task blocks are text blocks at the front of the first user message, the facts block at the front of the current user message; the window is real messages (user text, one assistant message per exchange with its tool calls reduced to lines). Open task blocks change every turn (each request opens a record), so the cache prefix of a window-mode request is shorter than in full mode; see the recommendation.
+- **Clearing applies to the orchestrator only** (sub-agents and side questions unchanged) and **assumes a 200 000-token window when none is configured** (the windows table is empty by design); stored messages are never rewritten.
+- In window mode an older compaction summary is not sent; ACP live sessions in `full` mode behave as before.
+- The mock orchestrator takes the request from the *last* text block of the user message (memory blocks come first), a change in `mockllm`.
+
+**Acceptance (mock):** 300 scripted exchanges plus 60 task records with 720 facts and 50 files: the request holds under the sum of the caps plus the current turn, and exactly five earlier exchanges (`TestWindowModeSendsExactlyNExchangesWithinTheCapsAndSearchFindsTurn12`); the scripted orchestrator answers about turn 12 by searching: turn 12 is absent from the first request, present in the second; a full-mode request on the same history is more than 5 times larger; receipts match (names, ids, counts, message count, block tokens against the request text, caps); switching full to window to full loses nothing and the transcript is sent whole again; sub-agent requests are identical in both modes; clearing happens in both modes and is recorded in the receipt; ACP recap and live-session task blocks. **Cache-read share on the mock over 12 scripted turns: full 47.6%, window 54.8%**: the criterion (no more than 10 points below full) holds, but that number says little about the real API, see below.
+
+**Recommendation: keep `full` as the default for now; do not flip it.** What the mock cannot show and why it matters:
+1. **Prompt cache on the real API.** The window slides by one exchange every turn and the open-task block changes every turn, so from the first changed block onward the cached prefix is lost each turn; only the system prompt and tool definitions stay cached across turns (within one turn, with several tool rounds, the assembled prefix is reused). In `full` mode the prefix grows append-only. The mock's cache model looks back a bounded number of blocks, which makes long `full` histories look worse than they would be there (that is why window beats full on the mock). Judge it on a real router run: the usage report's cache-read tokens per turn in both modes on the same project.
+2. **Whether real orchestrators search** when the answer is outside the window (the scripted one does what its markers say), and whether the digest's facts and task records are good enough to stand in for the history. Both are the owner's test; the receipt (`GET .../turns/{id}/context`) is how to judge what the model had.
+3. The digest runs on the side model; with a subscription-only setup there may be none, then task records hold only the harness's fallback goal and what the orchestrator writes itself.
+
+Criteria to flip the default: on the owner's long-running project, a week of `window` with receipts showing the model found older details by search when asked, cache-read share not clearly worse than `full`, and no case where it asked the user to repeat something said before. Until then `window` is an opt-in per project (`PATCH /v1/projects/{id}` `{"memory": {"context": "window"}}`).
+
+**Not shown:** quality of answers with a real model in either mode; real cache behaviour; behaviour with `recent_exchanges` above the cap of the window block on very long messages (they are cut, tested only structurally); clearing against a real window size (the test uses a configured 6 000-token window); the live-session task block on a real ACP agent.

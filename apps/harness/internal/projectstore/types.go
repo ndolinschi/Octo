@@ -52,6 +52,15 @@ type Project struct {
 	BudgetUSD *float64
 	// Access is "supervised" or "full" (see AccessSupervised).
 	Access string
+	// MemoryJSON is the project's memory settings (context mode, window size).
+	MemoryJSON string
+}
+
+func orEmptyJSON(s string) string {
+	if s == "" {
+		return "{}"
+	}
+	return s
 }
 
 // Access modes of a project (v7 approvals).
@@ -160,9 +169,10 @@ type InfoPatch struct {
 	ModelsJSON   *string
 	MaxDepth     *int
 	// SetBudget says BudgetUSD is provided; a nil BudgetUSD then clears the budget.
-	SetBudget bool
-	BudgetUSD *float64
-	Access    *string
+	SetBudget  bool
+	BudgetUSD  *float64
+	Access     *string
+	MemoryJSON *string
 }
 
 type NewProject struct {
@@ -175,6 +185,8 @@ type NewProject struct {
 	BudgetUSD    *float64
 	// Access is the new project's access mode ("" = full).
 	Access string
+	// MemoryJSON is the new project's memory settings ("" = defaults).
+	MemoryJSON string
 	// OrchestratorModel is recorded on the project's root agent row.
 	OrchestratorModel string
 }

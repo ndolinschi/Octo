@@ -46,6 +46,9 @@ type Loop struct {
 	Hints  router.Hints
 	// Gate, when set, is checked before every request; its error stops the loop.
 	Gate func(ctx context.Context) error
+	// Clear, when set, replaces old tool results with stubs once a request is
+	// past its share of the window, before compaction is considered.
+	Clear *ClearPolicy
 }
 
 // Run continues history (which must end with a user message already persisted
@@ -83,6 +86,21 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 		if l.Gate != nil {
 			if err := l.Gate(ctx); err != nil {
 				return res, err
+			}
+		}
+		if l.Clear != nil {
+			sys, tl := 0, 0
+			if len(params.System) > 0 {
+				sys = len(params.System[0].Text)
+			}
+			if raw, err := json.Marshal(params.Tools); err == nil {
+				tl = len(raw)
+			}
+			var n int
+			if messages, n = l.Clear.Apply(sys, tl, messages); n > 0 {
+				if obs, ok := l.Sink.(ClearObserver); ok {
+					obs.Cleared(n)
+				}
 			}
 		}
 		params.Messages = messages

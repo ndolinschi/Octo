@@ -47,7 +47,12 @@ export type ProjectInput = {
   budget_usd?: number | null;
   /** v7: `supervised` asks before writes, commands and ACP permission requests; `full` never asks. */
   access?: AccessMode;
+  /** M2: how the orchestrator's context is built; fields left out keep their value (PATCH merges). */
+  memory?: Partial<MemorySettings>;
 };
+
+/** Project memory setting (M2). `full` sends the whole transcript (the default); `window` assembles the context from blocks with caps. */
+export type MemorySettings = { context: "full" | "window"; recent_exchanges: number };
 
 /** Access mode of a project (v7 approvals). */
 export type AccessMode = "supervised" | "full";
@@ -79,6 +84,8 @@ export type Project = ProjectSummary & {
   spent_usd?: number | null;
   /** v7: the project's access mode (`full` for projects that predate approvals). */
   access?: AccessMode;
+  /** M2: the memory setting (`context: "full"`, 5 exchanges for projects that predate it). */
+  memory?: MemorySettings;
 };
 
 export type Agent = {
@@ -694,3 +701,31 @@ export type MemoryHit = {
 /** Up to 10 hits; with none, `message` is "nothing in memory matches". */
 export type MemorySearchResult = { hits: MemoryHit[]; message?: string };
 export type MemorySearchParams = { q: string; in?: MemorySearchKind[]; after?: string; before?: string; limit?: number };
+
+// --- M2: context receipts -------------------------------------------------------------------------------------
+
+/** One block of what the orchestrator's first request of a turn carried. */
+export type ReceiptBlock = {
+  /** memory_index, open_tasks, recent_window, facts, current_turn (window mode); history (full mode); changed_tasks (a live ACP session). */
+  name: string;
+  /** The harness's estimate (four characters a token). */
+  tokens: number;
+  /** The block's cap in tokens; 0 for none. */
+  cap: number;
+  count: number;
+  /** What was included: file paths, task ids, the first message id of each recent exchange, fact ids ("task/fact"), message ids. */
+  ids: string[];
+};
+/** `GET .../turns/{id}/context`: what the orchestrator had in front of it in a turn (id = its user message). */
+export type ContextReceipt = {
+  turn_id: number;
+  mode: "full" | "window";
+  recent_exchanges: number;
+  blocks: ReceiptBlock[];
+  total_tokens: number;
+  caps_total: number;
+  message_count: number;
+  /** Tool results replaced by stubs in this turn's requests. */
+  cleared_calls: number;
+  created_at: string;
+};

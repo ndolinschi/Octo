@@ -14,6 +14,7 @@ export type HttpOnlyMethod =
   | "putSettings"
   | "getDiagnostics"
   | "listTasks"
+  | "getTurnContext"
   | "listMemory"
   | "getMemoryFile"
   | "putMemoryFile"

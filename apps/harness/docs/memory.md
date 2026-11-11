@@ -1,6 +1,6 @@
 # Orchestrator memory (M1)
 
-Design: [`docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md`](../../../docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md). M1 is the store, the tools, the search and the API. **M2 (what goes into the orchestrator's context) is not built:** today the context is unchanged (the whole transcript, notes in full); the memory is only reachable through the tools below.
+Design: [`docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md`](../../../docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md). M1 is the store, the tools, the search and the API; M2 (below) is how the orchestrator's context is built from it, off by default (`memory.context: "full"`).
 
 Code: `internal/memory` (service: limits, redaction, tools, digest, search shaping), `internal/projectstore/{tasks,search,memory_testing}.go` (SQL, FTS5), `internal/orchestrator/memory_tools.go` (tools, post-turn digest), `internal/project/memory.go` and `internal/bridge/memory.go` (API).
 
@@ -54,6 +54,40 @@ Events: `task.updated {task}` (or `{task_id, deleted: true}` when a harness-open
 
 Everything that is stored or indexed passes the project's secret redactor first: task fields, facts, digest output, memory files (the tool and the API), the summaries, the search query, and the text of messages when they are indexed (the index holds `[secret]` where a stored secret value was). A test puts a secret value into a user request, task_update, a digest, a memory file and the API, then scans the task records, the file list and index, every file, every search result for several queries, and the raw index tables. **Not covered:** the transcript itself keeps the user's own message as typed (existing behaviour; a key typed into the composer is the UI's to catch), and a secret the agent re-encodes.
 
-## Not built (M2, M3)
+## Context assembly (M2)
 
-Context assembly with caps, the recent-window and the context receipts, the `memory.context` project setting, tool-result clearing, the UI view, embeddings, cross-project memory.
+Project setting `memory: {context: "full" | "window", recent_exchanges: 1..20 (default 5)}` (create and `PATCH`, partial updates merge; project JSON always has it, `full` and 5 for projects that predate it). **`full` is the default and is today's behaviour** (the whole transcript after the latest compaction summary). Switching in either direction changes only what the next request is built from; no message, task, fact or file is touched.
+
+**Window mode** (built-in orchestrator; sub-agents and side questions are never affected). The orchestrator's request is assembled, each block capped in tokens (four characters a token), stable blocks first:
+
+| Block (receipt name) | Cap | Content |
+| --- | --- | --- |
+| briefing, project brief, pinned notes | as today | the system prompt, unchanged |
+| `memory_index` | 1 500 | "only the recent exchanges are shown; use memory_search / recall_message" plus the memory files with their summaries |
+| `open_tasks` | 3 000 | open task records newest first (id, title, goal, constraints, acceptance, decisions, quotes with their message ids), then done tasks of the last 7 days as one line each |
+| `recent_window` | 12 000 | the last N user messages **verbatim** each with the orchestrator's replies, every tool call reduced to one line (`[called spawn_agent <title>: <first 120 characters of the result>]`); a message over its share of the cap is cut with `…[cut]`, so the window is always exactly N exchanges |
+| `facts` | 1 500 | current (not superseded) facts of open tasks, newest first, with dates |
+| `current_turn` | none | the current user message and everything after it, verbatim |
+
+Messages: the `memory_index` and `open_tasks` blocks are text blocks at the front of the first user message (merged into the first window message, so roles alternate); the `facts` block is a text block in front of the current user message. Older history is not sent at all; an earlier compaction summary is ignored in this mode (compaction by the router inside the running turn still works). Exchange = a user message with text plus everything until the next one.
+
+**Tool-result clearing, in both modes.** Before each request of the **orchestrator's** loop, when system + tools + messages are estimated above 60% of the model's window, tool results older than the last 5 are replaced, in the copy that is sent, by `[cleared: read_file src/x.go, 412 lines]` (tool name, its path/command/title/query, size in lines or bytes). Stored messages are never changed. It happens before any compaction is considered and is idempotent (a stub stays a stub). The window is the configured one (`HARNESS_CONTEXT_WINDOWS`); **the table is empty by default, so 200 000 tokens is assumed** for this purpose. Sub-agents do not clear.
+
+**ACP orchestrators.** A *new* session's first prompt (recap) uses the same assembly in window mode (rendered as text: memory, tasks, `## Recent exchanges`, facts), replacing the "last 40 texts" recap; `full` keeps the recap. A *live* session owns its context and is not rewritten: in window mode each request carries, in front of the user request, the open task records whose `updated_at` is after the session's last turn (except this request's own record). The session is told nothing when nothing changed.
+
+**Context receipt.** Each orchestrator turn stores a receipt, `GET /v1/projects/{pid}/turns/{turnId}/context` (turn id = the id of the user message that started it; `404` for turns from before receipts, which is what an upgraded project has for its old turns):
+
+```json
+{ "turn_id": 412, "mode": "window", "recent_exchanges": 5,
+  "blocks": [ {"name": "memory_index", "tokens": 120, "cap": 1500, "count": 3, "ids": ["notes/arch.md", "..."]},
+              {"name": "open_tasks", "tokens": 840, "cap": 3000, "count": 4, "ids": ["tsk_..."]},
+              {"name": "recent_window", "tokens": 5300, "cap": 12000, "count": 5, "ids": ["<first message id of each exchange>"]},
+              {"name": "facts", "tokens": 210, "cap": 1500, "count": 9, "ids": ["tsk_.../f2"]},
+              {"name": "current_turn", "tokens": 31, "cap": 0, "count": 1, "ids": ["412"]} ],
+  "total_tokens": 6501, "caps_total": 18000, "message_count": 13, "cleared_calls": 0, "created_at": "..." }
+```
+It describes the **first request of the turn** (tool rounds add to the current turn; `cleared_calls` is updated as requests clear results). `full` mode has one block, `history` (tokens, message count). A live ACP session's receipt has `changed_tasks` and `current_turn`. `GET /v1/projects/{pid}/context` (the size breakdown) shows the assembled window in window mode.
+
+## Not built (M3)
+
+The UI view, embeddings, cross-project memory.

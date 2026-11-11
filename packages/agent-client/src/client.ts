@@ -1,5 +1,6 @@
 import type {
   Agent,
+  ContextReceipt,
   MemoryFile,
   MemoryList,
   MemorySearchParams,
@@ -155,6 +156,8 @@ export interface Bridge {
   /*
    * M1 members (orchestrator memory). Optional like the v7 ones: HTTP bridge only.
    */
+  /** M2: the context receipt of a turn, by the id of its user message; 404 for a turn before receipts. */
+  getTurnContext?(projectId: string, turnId: number): Promise<ContextReceipt>;
   listTasks?(projectId: string): Promise<Task[]>;
   listMemory?(projectId: string): Promise<MemoryList>;
   getMemoryFile?(projectId: string, path: string): Promise<MemoryFile>;
@@ -381,6 +384,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     deleteSecret: async (id, name) => {
       await request("DELETE", `${p(id)}/secrets/${encodeURIComponent(name)}`);
     },
+    getTurnContext: (id, turnId) => request("GET", `${p(id)}/turns/${turnId}/context`) as Promise<ContextReceipt>,
     listTasks: (id) => unwrap<Task[]>(request("GET", `${p(id)}/tasks`), "tasks"),
     listMemory: (id) => request("GET", `${p(id)}/memory`) as Promise<MemoryList>,
     getMemoryFile: (id, path) => request("GET", `${p(id)}/memory/${memoryPath(path)}`) as Promise<MemoryFile>,

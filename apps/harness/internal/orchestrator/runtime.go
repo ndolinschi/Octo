@@ -20,6 +20,10 @@ import (
 // changeRetention is how long a recorded change keeps its diff.
 const changeRetention = 30 * 24 * time.Hour
 
+// defaultClearWindow is the context window assumed for tool-result clearing when
+// none is configured (HARNESS_CONTEXT_WINDOWS): the table is empty by design.
+const defaultClearWindow = 200_000
+
 // runtime is a snapshot of one project taken at turn start, plus helpers
 // shared by every agent in the turn's tree.
 type runtime struct {
@@ -34,6 +38,9 @@ type runtime struct {
 	// taskID is the task record of the turn's request ("" when none was opened).
 	taskID string
 	taskMu sync.Mutex
+	// rcpt is the context receipt of the turn (see window.go).
+	rcpt   *Receipt
+	rcptMu sync.Mutex
 }
 
 func (rt *runtime) currentTask() string {
@@ -138,7 +145,7 @@ func (rt *runtime) runOrchestrator(ctx context.Context, orch projectstore.Agent)
 	if rt.isACPOrchestrator() {
 		return rt.runACPOrchestrator(ctx, orch)
 	}
-	history, err := rt.loadHistory(ctx, orch.ID)
+	history, err := rt.orchestratorHistory(ctx, orch, true)
 	if err != nil {
 		return agent.Result{}, err
 	}
@@ -151,6 +158,7 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 	if err != nil {
 		return agent.Result{}, err
 	}
+	sink := &agentSink{rt: rt, agentID: a.ID}
 	loop := agent.Loop{
 		Client:    rt.o.opts.Client,
 		Registry:  reg,
@@ -159,13 +167,23 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		MaxTurns:  rt.o.opts.MaxTurns,
 		Stream:    rt.o.opts.Stream,
 		SessionID: a.ID,
-		Sink:      &agentSink{rt: rt, agentID: a.ID},
+		Sink:      sink,
 
 		NoPromptCaching: rt.o.opts.NoPromptCaching,
 		Limits:          rt.o.opts.Limits,
 		Router:          rt.o.opts.Router,
 		Hints:           rt.hints(a),
 		Gate:            rt.loopGate(),
+	}
+	if a.ParentID == nil {
+		// Old tool results become stubs once a request passes 60% of the window,
+		// in both memory modes, before compaction is considered.
+		w := int64(defaultClearWindow)
+		if p := rt.window("", a); p != nil {
+			w = *p
+		}
+		loop.Clear = &agent.ClearPolicy{WindowTokens: w}
+		sink.onCleared = rt.addCleared
 	}
 	return loop.Run(ctx, history)
 }

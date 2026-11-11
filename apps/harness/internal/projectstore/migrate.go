@@ -21,6 +21,7 @@ var columnsAdded = []struct {
 		{"budget_usd", "REAL"},
 		// Projects that predate approvals keep today's behaviour: full access.
 		{"access", "TEXT NOT NULL DEFAULT 'full'"}, {"queue_paused", "INTEGER NOT NULL DEFAULT 0"},
+		{"memory_json", "TEXT NOT NULL DEFAULT '{}'"},
 	}},
 	{"usage", []column{
 		{"served_model", "TEXT"}, {"tier", "TEXT"}, {"route_trigger", "TEXT"}, {"router_request_id", "TEXT"},
@@ -32,7 +33,7 @@ var columnsAdded = []struct {
 // SchemaVersion is the schema generation this binary writes and understands
 // (PRAGMA user_version). Databases without a stamp (0) are older and are
 // migrated forward; a higher number was written by a newer binary and is refused.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.

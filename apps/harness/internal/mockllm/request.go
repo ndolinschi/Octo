@@ -149,3 +149,15 @@ func (r *request) spawnAgentChoices() []string {
 	}
 	return nil
 }
+
+// askText is the user's request in a message: its last text block. The harness
+// may put memory blocks (index, tasks, facts) in front of it in the same message.
+func askText(m message) string {
+	last := ""
+	for _, b := range m.blocks() {
+		if b.Type == "text" && b.Text != "" {
+			last = b.Text
+		}
+	}
+	return last
+}

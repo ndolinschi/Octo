@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -109,4 +110,17 @@ func (s *Service) SearchMemory(ctx context.Context, pid string, q SearchMemoryQu
 	}
 	res, err := m.Search(ctx, p)
 	return res, memErr(err)
+}
+
+// TurnContext returns the context receipt of a turn (the id of the user
+// message that started it): what the orchestrator had in front of it.
+func (s *Service) TurnContext(ctx context.Context, pid string, turnID int64) (json.RawMessage, error) {
+	if _, err := s.db(ctx, pid); err != nil {
+		return nil, err
+	}
+	raw, err := s.turns.TurnReceipt(ctx, pid, turnID)
+	if errors.Is(err, projectstore.ErrNotFound) {
+		return nil, notFound("context receipt")
+	}
+	return raw, err
 }

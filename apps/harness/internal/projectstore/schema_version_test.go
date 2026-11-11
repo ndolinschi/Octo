@@ -199,7 +199,51 @@ func TestMigrateFromSchema1BuildsTheSearchIndex(t *testing.T) {
 	if _, err := db.CreateTask(ctx, Task{Title: "t", GoalBy: "harness"}); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := userVersion(ctx, db.sql); v != SchemaVersion || SchemaVersion != 2 {
+	if v, _ := userVersion(ctx, db.sql); v != SchemaVersion {
+		t.Fatalf("version = %d", v)
+	}
+}
+
+// Schema 2 (memory M1) has no memory settings and no receipts; opening it with
+// schema 3 adds them with the old behaviour as the default.
+func TestMigrateFromSchema2AddsMemorySettingsAndReceipts(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := s.Create(ctx, NewProject{Name: "p", ModelsJSON: "{}", MaxDepth: 1, OrchestratorModel: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := db.ID()
+	for _, q := range []string{`ALTER TABLE project DROP COLUMN memory_json`, `DROP TABLE context_receipts`, `PRAGMA user_version = 2`} {
+		if err := db.Exec_(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = s.Close()
+	s, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	db, err = s.Get(ctx, pid)
+	if err != nil {
+		t.Fatalf("schema 2 does not open: %v", err)
+	}
+	info, err := db.Info(ctx)
+	if err != nil || info.MemoryJSON != "{}" {
+		t.Fatalf("info = %+v %v", info, err)
+	}
+	if err := db.SaveReceipt(ctx, 7, "window", `{"x":1}`); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := db.Receipt(ctx, 7); err != nil || r != `{"x":1}` {
+		t.Fatalf("receipt = %q %v", r, err)
+	}
+	if v, _ := userVersion(ctx, db.sql); v != SchemaVersion {
 		t.Fatalf("version = %d", v)
 	}
 }

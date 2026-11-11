@@ -307,3 +307,13 @@ test("M1: task and memory events and request shapes", async () => {
     assert.deepEqual(got, c.result, c.path);
   }
 });
+
+test("M2: turn context receipt request", async () => {
+  const { bridge, calls } = bridgeWith(200, '{"turn_id":7,"mode":"window","blocks":[]}');
+  const got = await bridge.getTurnContext?.("p", 7);
+  assert.equal(calls[0]?.url, "http://h:1/v1/projects/p/turns/7/context");
+  assert.equal(got?.mode, "window");
+  const upd = bridgeWith(200, '{"id":"p"}');
+  await upd.bridge.updateProject("p", { memory: { context: "window" } });
+  assert.deepEqual(JSON.parse(upd.calls[0]?.body ?? "null"), { memory: { context: "window" } });
+});

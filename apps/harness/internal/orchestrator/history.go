@@ -8,6 +8,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
 const interruptedResult = "interrupted: the tool call did not complete"
@@ -31,20 +32,30 @@ func (rt *runtime) loadHistory(ctx context.Context, agentID string) ([]anthropic
 		if compacted && m.ID <= comp.UptoMessageID {
 			continue
 		}
-		var blocks []anthropic.ContentBlockParamUnion
-		if err := json.Unmarshal(m.Raw, &blocks); err != nil {
-			return nil, fmt.Errorf("message %d: %w", m.ID, err)
+		p, ok, err := messageParam(m)
+		if err != nil {
+			return nil, err
 		}
-		if len(blocks) == 0 {
-			continue
-		}
-		if m.Role == "assistant" {
-			history = append(history, anthropic.NewAssistantMessage(blocks...))
-		} else {
-			history = append(history, anthropic.NewUserMessage(blocks...))
+		if ok {
+			history = append(history, p)
 		}
 	}
 	return history, nil
+}
+
+// messageParam converts a stored message to the SDK's form; false for an empty one.
+func messageParam(m projectstore.Message) (anthropic.MessageParam, bool, error) {
+	var blocks []anthropic.ContentBlockParamUnion
+	if err := json.Unmarshal(m.Raw, &blocks); err != nil {
+		return anthropic.MessageParam{}, false, fmt.Errorf("message %d: %w", m.ID, err)
+	}
+	if len(blocks) == 0 {
+		return anthropic.MessageParam{}, false, nil
+	}
+	if m.Role == "assistant" {
+		return anthropic.NewAssistantMessage(blocks...), true, nil
+	}
+	return anthropic.NewUserMessage(blocks...), true, nil
 }
 
 // repairDangling closes a trailing assistant message whose tool calls never got

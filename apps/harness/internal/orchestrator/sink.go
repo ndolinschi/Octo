@@ -18,6 +18,15 @@ type agentSink struct {
 	agentID string
 	// source labels usage rows; empty means the Messages API.
 	source string
+	// onCleared, when set, is told how many tool results a request had cleared.
+	onCleared func(n int)
+}
+
+// Cleared implements agent.ClearObserver.
+func (s *agentSink) Cleared(n int) {
+	if s.onCleared != nil {
+		s.onCleared(n)
+	}
 }
 
 func (s *agentSink) Message(ctx context.Context, role string, msg anthropic.MessageParam) error {

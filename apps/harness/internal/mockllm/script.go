@@ -53,7 +53,7 @@ func orchestratorReply(r *request) reply {
 	if anchor < 0 {
 		return reply{Text: "Hello! Tell me what you would like to do in this project."}
 	}
-	ask := r.Messages[anchor].text()
+	ask := askText(r.Messages[anchor])
 	if agents := r.spawnAgentChoices(); len(agents) > 0 && strings.Contains(ask, acpMarker) {
 		return acpReply(r, anchor, ask, agents[0])
 	}

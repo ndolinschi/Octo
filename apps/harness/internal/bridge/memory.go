@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 )
@@ -67,4 +68,20 @@ func (s *Server) deleteMemoryFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) turnContext(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("tid"), 10, 64)
+	if err != nil || id < 1 {
+		writeError(w, http.StatusNotFound, "not_found", "context receipt not found")
+		return
+	}
+	raw, err := s.svc.TurnContext(r.Context(), r.PathValue("pid"), id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
 }

@@ -144,6 +144,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("PUT /v1/projects/{pid}/secrets/{name}", s.putSecret)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/secrets/{name}", s.deleteSecret)
 	mux.HandleFunc("GET /v1/projects/{pid}/tasks", s.listTasks)
+	mux.HandleFunc("GET /v1/projects/{pid}/turns/{tid}/context", s.turnContext)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory", s.listMemory)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory/search", s.searchMemory)
 	mux.HandleFunc("GET /v1/projects/{pid}/memory/{name...}", s.getMemoryFile)

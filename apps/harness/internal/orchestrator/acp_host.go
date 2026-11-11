@@ -65,6 +65,8 @@ type orchSession struct {
 	// costSeen and usedSeen are the agent's last cumulative usage counters.
 	costSeen float64
 	usedSeen int64
+	// tasksSeen is when a window-mode session last got task records ("" before its first turn).
+	tasksSeen string
 
 	busy     bool
 	lastUsed time.Time

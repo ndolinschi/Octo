@@ -17,6 +17,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
@@ -350,23 +351,53 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 	s.notesSent = notesHash
 	s.mu.Unlock()
 
+	st := memory.ParseSettings(rt.info.MemoryJSON)
+	windowed := st.Context == memory.ContextWindow
 	var b strings.Builder
 	switch {
 	case fresh:
 		b.WriteString(rt.acpBriefing())
 		b.WriteString(notes)
-		recap, err := rt.recap(ctx, orch.ID, msgs[:last])
-		if err != nil {
-			return "", err
-		}
-		if recap != "" {
-			b.WriteString("\nEarlier in this conversation (recap built by the harness; you have no other memory of it):\n")
-			b.WriteString(recap)
-			b.WriteString("\n")
+		if windowed {
+			// The same assembly the built-in orchestrator gets: memory index, open
+			// tasks, the last exchanges, the facts (replacing the "last 40 texts" recap).
+			as, err := rt.assembleWindow(ctx, orch, st)
+			if err != nil {
+				return "", err
+			}
+			if _, err := as.finish(); err != nil {
+				return "", err
+			}
+			b.WriteString("\nEarlier in this conversation (assembled by the harness; you have no other memory of it):\n")
+			b.WriteString(as.text())
+			rt.setReceipt(as.receipt)
+			s.mu.Lock()
+			s.tasksSeen = projectstore.Now()
+			s.mu.Unlock()
+		} else {
+			recap, err := rt.recap(ctx, orch.ID, msgs[:last])
+			if err != nil {
+				return "", err
+			}
+			if recap != "" {
+				b.WriteString("\nEarlier in this conversation (recap built by the harness; you have no other memory of it):\n")
+				b.WriteString(recap)
+				b.WriteString("\n")
+			}
 		}
 		b.WriteString("\nUser request:\n")
 	case seen != notesHash:
 		b.WriteString("[Project notes changed; current notes follow.]\n" + notes + "\nUser request:\n")
+	}
+	if windowed && !fresh {
+		// A live session owns its context; it is told which open tasks changed since its last turn.
+		if block, ids := rt.changedTasks(ctx, s); block != "" {
+			b.WriteString(block)
+			r := Receipt{TurnID: rt.turnID, Mode: memory.ContextWindow, RecentExchanges: st.RecentExchanges, CreatedAt: projectstore.Now()}
+			r.add(ReceiptBlock{Name: BlockChanged, Tokens: tokensOf(block), Count: len(ids), IDs: ids})
+			r.add(ReceiptBlock{Name: BlockCurrent, Tokens: tokensOf(request), Count: 1, IDs: []string{fmt.Sprint(msgs[last].ID)}})
+			rt.setReceipt(r)
+		}
 	}
 	if noMCP != "" && fresh {
 		b.WriteString("(Note: the harness tools are unavailable in this session.)\n")
@@ -581,4 +612,30 @@ func connectionEnded(c *acp.Client) bool {
 	case <-time.After(2 * time.Second):
 		return false
 	}
+}
+
+// changedTasks is the block of open task records that changed since the session
+// last heard from the harness (not the record of this very request).
+func (rt *runtime) changedTasks(ctx context.Context, s *orchSession) (string, []string) {
+	s.mu.Lock()
+	since := s.tasksSeen
+	s.tasksSeen = projectstore.Now()
+	s.mu.Unlock()
+	tasks, err := rt.memory().Tasks(ctx)
+	if err != nil || since == "" {
+		return "", nil
+	}
+	var lines, ids []string
+	for _, t := range tasks {
+		if t.Status != projectstore.TaskOpen || t.UpdatedAt <= since || (len(t.MessageIDs) == 1 && t.MessageIDs[0] == rt.turnID) {
+			continue
+		}
+		lines = append(lines, taskLine(t))
+		ids = append(ids, t.ID)
+	}
+	if len(lines) == 0 {
+		return "", nil
+	}
+	text, n := capLines("[Open task records that changed since your last turn]\n", lines, CapTasks)
+	return text + "\n", ids[:min(n, len(ids))]
 }

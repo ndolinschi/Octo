@@ -7,6 +7,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -61,7 +62,12 @@ func (o *Orchestrator) Context(ctx context.Context, projectID, agentID string) (
 	if err != nil {
 		return ContextReport{}, err
 	}
-	history, err := rt.loadHistory(ctx, a.ID)
+	var history []anthropic.MessageParam
+	if a.ParentID == nil {
+		history, err = rt.orchestratorHistory(ctx, a, false)
+	} else {
+		history, err = rt.loadHistory(ctx, a.ID)
+	}
 	if err != nil {
 		return ContextReport{}, err
 	}
@@ -82,6 +88,9 @@ func (o *Orchestrator) Context(ctx context.Context, projectID, agentID string) (
 	_, compacted, err := db.LatestCompaction(ctx, a.ID)
 	if err != nil {
 		return ContextReport{}, err
+	}
+	if a.ParentID == nil && memory.ParseSettings(rt.info.MemoryJSON).Context == memory.ContextWindow {
+		compacted = false // the window mode sends no summary
 	}
 	for i, m := range history {
 		if compacted && i == 0 {
