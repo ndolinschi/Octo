@@ -12,11 +12,17 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/fakeacp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/fakelsp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/mcprelay"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
 func TestMain(m *testing.M) {
+	// The stdio MCP relay is this test binary started as `mcp-relay ...`; it
+	// must win over the fake-agent mode its parent's environment is still in.
+	if len(os.Args) > 1 && os.Args[1] == "mcp-relay" {
+		os.Exit(mcprelay.Main(os.Args[2:]))
+	}
 	if fakeacp.ChildMode() {
 		os.Exit(fakeacp.Main())
 	}

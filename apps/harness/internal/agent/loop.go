@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -209,15 +210,28 @@ func collectAssistant(content []anthropic.ContentBlockUnion) (toolUses []anthrop
 }
 
 func dispatchTool(ctx context.Context, reg *tools.Registry, tu anthropic.ToolUseBlock, lim tools.Limits) (anthropic.ContentBlockParamUnion, bool, error) {
-	def, ok := reg.Get(tu.Name)
-	if !ok {
-		return anthropic.NewToolResultBlock(tu.ID, fmt.Sprintf("unknown tool %q", tu.Name), true), true, nil
-	}
-	output, isError, err := def.Handle(ctx, tu.Input)
+	output, isError, err := CallTool(ctx, reg, tu.Name, tu.Input, lim)
 	if err != nil {
 		return anthropic.ContentBlockParamUnion{}, false, err
 	}
-	return anthropic.NewToolResultBlock(tu.ID, lim.CapResult(output), isError), isError, nil
+	return anthropic.NewToolResultBlock(tu.ID, output, isError), isError, nil
+}
+
+// CallTool runs one registered tool the way the loop does: an unknown name is
+// an error result, the handler's output is capped by lim, and a non-nil error
+// (a failure that must stop the turn, such as a reached budget) is returned
+// as is. Tool calls that reach the harness some other way (an ACP agent over
+// MCP) go through this too, so they share the loop's handlers and limits.
+func CallTool(ctx context.Context, reg *tools.Registry, name string, input json.RawMessage, lim tools.Limits) (output string, isError bool, err error) {
+	def, ok := reg.Get(name)
+	if !ok {
+		return fmt.Sprintf("unknown tool %q", name), true, nil
+	}
+	output, isError, err = def.Handle(ctx, input)
+	if err != nil {
+		return "", false, err
+	}
+	return lim.CapResult(output), isError, nil
 }
 
 func cmpOr(v, def int64) int64 {

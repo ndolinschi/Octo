@@ -235,3 +235,70 @@ func TestStartFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionAPIAdvertisesCapabilitiesAndResumes(t *testing.T) {
+	dir := t.TempDir()
+	c, err := acp.Start(context.Background(), fakeSpec(dir, map[string]string{
+		fakeacp.EnvLoadSession: "1", fakeacp.EnvMCPHTTP: "1", fakeacp.EnvUniqueSessions: "1",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if caps := c.Capabilities(); !caps.LoadSession || !caps.MCPHTTP || caps.MCPSSE {
+		t.Fatalf("capabilities = %+v", caps)
+	}
+	http := acp.HTTPMCPServer("octo", "http://127.0.0.1:1/mcp", []acp.HTTPHeader{{Name: "Authorization", Value: "Bearer t"}})
+	stdio := acp.StdioMCPServer("octo", "/bin/true", []string{"--x"}, []acp.EnvVar{{Name: "T", Value: "v"}})
+	sess, err := c.NewSession(context.Background(), dir, []acp.MCPServer{http, stdio}, acp.RunOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newRec()
+	stop, err := c.Prompt(context.Background(), sess.ID, fakeacp.MarkerEcho+" hi", h)
+	if err != nil || stop != acp.StopEndTurn {
+		t.Fatalf("prompt = %v, %v", stop, err)
+	}
+	if !strings.Contains(h.text.String(), "session="+sess.ID) {
+		t.Errorf("text = %q, want the session id %s", h.text.String(), sess.ID)
+	}
+	// A second prompt on the same session, then a resume that replays history
+	// (dropped, not delivered to the handler).
+	h2 := newRec()
+	if _, err := c.Prompt(context.Background(), sess.ID, fakeacp.MarkerEcho+" again", h2); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.LoadSession(context.Background(), "resumed-1", dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	h3 := newRec()
+	if _, err := c.Prompt(context.Background(), "resumed-1", fakeacp.MarkerEcho+" back", h3); err != nil {
+		t.Fatal(err)
+	}
+	if got := h3.text.String(); !strings.Contains(got, "session=resumed-1 loaded=true") || strings.Contains(got, "replayed") {
+		t.Errorf("after load: %q", got)
+	}
+}
+
+func TestNewSessionRefusalUnwrapsToRPCError(t *testing.T) {
+	dir := t.TempDir()
+	c, err := acp.Start(context.Background(), fakeSpec(dir, map[string]string{fakeacp.EnvMCPReject: "1"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if caps := c.Capabilities(); caps.LoadSession || caps.MCPHTTP {
+		t.Fatalf("capabilities default to false: %+v", caps)
+	}
+	_, err = c.NewSession(context.Background(), dir, []acp.MCPServer{acp.StdioMCPServer("x", "/bin/true", nil, nil)}, acp.RunOptions{})
+	var rpcErr *acp.RPCError
+	if !errors.As(err, &rpcErr) {
+		t.Fatalf("err = %v, want an *acp.RPCError", err)
+	}
+	if _, err := c.NewSession(context.Background(), dir, nil, acp.RunOptions{}); err != nil {
+		t.Fatalf("without servers: %v", err)
+	}
+	if err := c.LoadSession(context.Background(), "s", dir, nil); err == nil {
+		t.Error("session/load must fail on an agent without loadSession")
+	}
+}

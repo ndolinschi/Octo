@@ -12,6 +12,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
@@ -25,6 +26,13 @@ type Turns interface {
 	Context(ctx context.Context, projectID, agentID string) (orchestrator.ContextReport, error)
 	Side(ctx context.Context, projectID, text string) (orchestrator.SideStart, error)
 	CancelSide(projectID string)
+	// CloseProject ends the project's ACP orchestrator process, if any.
+	CloseProject(projectID string)
+}
+
+// ACPAgents lists the loaded ACP agents, for validating `acp:` model settings.
+type ACPAgents interface {
+	Agents() []plugins.Agent
 }
 
 type Defaults struct {
@@ -40,6 +48,7 @@ type Service struct {
 	defaults Defaults
 	prices   prices.Table
 	router   *router.Router
+	acpAgent ACPAgents
 	now      func() time.Time
 }
 
@@ -51,6 +60,34 @@ func WithPrices(t prices.Table) ServiceOption { return func(s *Service) { s.pric
 
 // WithRouter lets project JSON include the spend an Octo router last reported.
 func WithRouter(r *router.Router) ServiceOption { return func(s *Service) { s.router = r } }
+
+// WithACPAgents validates `acp:<id>[/<model>]` model settings against the
+// loaded plugin agents. Without it such settings are rejected.
+func WithACPAgents(a ACPAgents) ServiceOption { return func(s *Service) { s.acpAgent = a } }
+
+// ValidateModels checks the `acp:` entries of a models overlay (non-empty
+// fields): the agent must be loaded and available, and the model allowed. Side
+// questions use the Messages API, so Side may not name an ACP agent.
+func (s *Service) ValidateModels(m *config.Models) error {
+	if m == nil {
+		return nil
+	}
+	var agents []plugins.Agent
+	if s.acpAgent != nil {
+		agents = s.acpAgent.Agents()
+	}
+	for field, v := range map[string]string{
+		"orchestrator": m.Orchestrator, "fast": m.Fast, "balanced": m.Balanced, "deep": m.Deep,
+	} {
+		if err := plugins.ValidateACPRef(v, agents); err != nil {
+			return invalid("models.%s: %s", field, err)
+		}
+	}
+	if plugins.IsACPRef(m.Side) {
+		return invalid("models.side: side questions use the Messages API and cannot run on an ACP agent")
+	}
+	return nil
+}
 
 func (s *Service) meter() budget.Meter { return budget.Meter{Prices: s.prices, Router: s.router} }
 
@@ -134,6 +171,9 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
+	if err := s.ValidateModels(in.Models); err != nil {
+		return Project{}, err
+	}
 	models, err := mergeModels(s.defaults.Models, in.Models)
 	if err != nil {
 		return Project{}, err
@@ -180,6 +220,9 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		patch.MaxDepth = in.MaxDepth
 	}
 	if in.Models != nil {
+		if err := s.ValidateModels(in.Models); err != nil {
+			return Project{}, err
+		}
 		merged, err := mergeModels(cur.Models, in.Models)
 		if err != nil {
 			return Project{}, err
@@ -242,6 +285,7 @@ func (s *Service) Delete(ctx context.Context, pid string) error {
 		return turnInProgress("project has a running turn; cancel it first")
 	}
 	s.turns.CancelSide(pid)
+	s.turns.CloseProject(pid)
 	if err := s.store.Delete(ctx, pid); err != nil {
 		return err
 	}

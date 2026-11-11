@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 )
@@ -25,6 +26,7 @@ type Server struct {
 	lsp     LSPSessions
 	limits  LimitSource
 	router  RouterInfo
+	mcp     http.Handler
 	ping    time.Duration
 }
 
@@ -47,6 +49,10 @@ type Option func(*Server)
 
 // WithPlugins serves the registry at GET /v1/plugins (empty list otherwise).
 func WithPlugins(src PluginSource) Option { return func(s *Server) { s.plugins = src } }
+
+// WithMCP mounts the harness's MCP server (for ACP orchestrators) at
+// mcp.PathPrefix. It authenticates by per-session bearer token itself.
+func WithMCP(h http.Handler) Option { return func(s *Server) { s.mcp = h } }
 
 // WithPingInterval overrides the SSE keep-alive period.
 func WithPingInterval(d time.Duration) Option { return func(s *Server) { s.ping = d } }
@@ -93,6 +99,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/projects/{pid}/lsp/sessions/{sid}/messages", s.postLSPMessage)
 	mux.HandleFunc("GET /v1/projects/{pid}/lsp/sessions/{sid}/events", s.lspEvents)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/lsp/sessions/{sid}", s.deleteLSPSession)
+	if s.mcp != nil {
+		mux.Handle(mcp.PathPrefix, s.mcp)
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such route")
 	})

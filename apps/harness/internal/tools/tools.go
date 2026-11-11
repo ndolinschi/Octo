@@ -92,3 +92,14 @@ func (r *Registry) Decorate(name string, wrap func(Handler) Handler) {
 		r.byName[name] = d
 	}
 }
+
+// Without returns a copy of the registry minus the named tools.
+func (r *Registry) Without(names ...string) *Registry {
+	out := NewRegistry()
+	for n, d := range r.byName {
+		if !slices.Contains(names, n) {
+			out.byName[n] = d
+		}
+	}
+	return out
+}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
@@ -48,6 +49,13 @@ type Options struct {
 	Prices prices.Table
 	// Windows are the configured per-model context sizes for GET .../context.
 	Windows config.ContextWindows
+	// ACPIdle is how long an ACP-run orchestrator's agent process may sit idle
+	// before it is shut down (zero: DefaultACPIdle).
+	ACPIdle time.Duration
+	// MCPRelay is the command (and leading arguments) of the stdio relay given
+	// to ACP agents without HTTP MCP support; the harness appends --url and
+	// --token-env. Empty: this executable with "mcp-relay".
+	MCPRelay []string
 }
 
 // Orchestrator runs project turns: one at a time per project, each a tree of agents.
@@ -61,17 +69,26 @@ type Orchestrator struct {
 	stop    context.CancelFunc
 	wg      sync.WaitGroup
 
-	mu    sync.Mutex
-	turns map[string]context.CancelFunc
-	sides map[string]*side
+	acp *acpHost
+
+	mu     sync.Mutex
+	turns  map[string]context.CancelFunc
+	sides  map[string]*side
+	bridge string
 }
 
 func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Options) *Orchestrator {
 	ctx, stop := context.WithCancel(context.Background())
-	return &Orchestrator{
-		store: store, hub: hub, notes: notes, opts: opts,
+	o := &Orchestrator{
+		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle),
 		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), sides: make(map[string]*side),
 	}
+	o.wg.Add(1)
+	go func() {
+		defer o.wg.Done()
+		o.acp.reap(ctx)
+	}()
+	return o
 }
 
 func (o *Orchestrator) Running(projectID string) bool {
@@ -92,8 +109,11 @@ func (o *Orchestrator) Cancel(projectID string) {
 }
 
 // Shutdown cancels every turn and waits for them to settle their rows.
+//
+// ACP agent processes are ended last, whether or not the turns settled in time.
 func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	o.stop()
+	defer o.acp.closeAll()
 	done := make(chan struct{})
 	go func() { o.wg.Wait(); close(done) }()
 	select {
@@ -172,7 +192,14 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 	}
 	rt.publish(events.MessageCreated, map[string]any{"message": msg})
 	running, now := projectstore.StatusRunning, projectstore.Now()
-	orch, err = db.UpdateAgent(ctx, orch.ID, projectstore.AgentPatch{Status: &running, Model: &rt.models.Orchestrator, StartedAt: &now, Reset: true})
+	model := rt.models.Orchestrator
+	if rt.isACPOrchestrator() {
+		// Show the model the agent will really use (the manifest default included).
+		if t, terr := rt.acpOrchestratorTarget(); terr == nil {
+			model = t.recorded()
+		}
+	}
+	orch, err = db.UpdateAgent(ctx, orch.ID, projectstore.AgentPatch{Status: &running, Model: &model, StartedAt: &now, Reset: true})
 	if err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
@@ -185,11 +212,17 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 	status, errText := projectstore.StatusCompleted, ""
 	switch {
 	case err == nil:
-	case ctx.Err() != nil:
+	case ctx.Err() != nil, errors.Is(err, errAgentCancelled):
 		status = projectstore.StatusCancelled
 	default:
 		status, errText = projectstore.StatusFailed, err.Error()
 		slog.Error("turn failed", "project", rt.pid(), "err", err)
+	}
+	if status == projectstore.StatusCompleted && rt.isACPOrchestrator() {
+		// A warning, not a failure: the session works without harness tools.
+		if w := o.acp.warning(rt.pid()); w != "" {
+			errText = "warning: " + w
+		}
 	}
 	rt.finishTurn(orch.ID, status, res.Text, errText)
 }

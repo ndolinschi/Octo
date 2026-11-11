@@ -31,7 +31,9 @@ func Main() int {
 	opts := optionsFromEnv(os.Args[1:])
 	a := &agent{in: os.Stdin, out: os.Stdout, log: os.Stderr, exit: os.Exit, pending: map[int64]chan reply{},
 		opts: opts, model: opts.initialModel()}
-	if err := a.serve(ctx); err != nil {
+	err := a.serve(ctx)
+	a.closeMCP()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "fakeacp:", err)
 		return 1
 	}
@@ -73,6 +75,22 @@ type agent struct {
 	opts     options
 	authed   bool
 	model    string
+
+	sess    string // current session id ("" until session/new or session/load)
+	nSess   int
+	loaded  bool
+	mcpSrvs []mcpEntry
+	mcpc    *mcpClient
+}
+
+// sid is the current session id.
+func (a *agent) sid() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.sess == "" {
+		return defaultSessionID
+	}
+	return a.sess
 }
 
 func (a *agent) serve(ctx context.Context) error {
@@ -110,6 +128,12 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 			version = v
 		}
 		caps := map[string]any{}
+		if a.opts.loadSession {
+			caps["loadSession"] = true
+		}
+		if a.opts.mcpHTTP {
+			caps["mcpCapabilities"] = map[string]any{"http": true, "sse": false}
+		}
 		if a.opts.any() {
 			caps["futureCapability"] = map[string]any{"enabled": true}
 			if err := a.notify("x/hello", map[string]string{"from": "fake-acp"}); err != nil {
@@ -127,7 +151,10 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 	case "session/set_model", "session/set_config_option":
 		a.handleSetModel(m)
 	case "session/new":
-		var p struct{ Cwd string }
+		var p struct {
+			Cwd        string
+			McpServers []mcpEntry
+		}
 		if err := json.Unmarshal(m.Params, &p); err != nil || p.Cwd == "" {
 			a.respondError(m.ID, -32602, "cwd required")
 			return
@@ -140,7 +167,55 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 			a.respondError(m.ID, -32000, "Authentication required")
 			return
 		}
+		if a.opts.mcpReject && len(p.McpServers) > 0 {
+			a.respondError(m.ID, -32602, "MCP servers are not supported by this agent")
+			return
+		}
+		if msg := a.checkMCPServers(p.McpServers); msg != "" {
+			a.respondError(m.ID, -32602, msg)
+			return
+		}
+		a.mu.Lock()
+		a.nSess++
+		a.sess = defaultSessionID
+		if a.opts.unique {
+			a.sess = fmt.Sprintf("fake-%d-%d", os.Getpid(), a.nSess)
+		}
+		a.loaded = false
+		a.mcpSrvs = p.McpServers
+		a.mu.Unlock()
+		a.closeMCP()
 		a.respond(m.ID, a.sessionResult())
+	case "session/load":
+		var p struct {
+			SessionID  string
+			Cwd        string
+			McpServers []mcpEntry
+		}
+		if !a.opts.loadSession {
+			a.respondError(m.ID, -32601, "method not found: session/load")
+			return
+		}
+		if err := json.Unmarshal(m.Params, &p); err != nil || p.Cwd == "" || p.SessionID == "" {
+			a.respondError(m.ID, -32602, "sessionId and cwd required")
+			return
+		}
+		if a.opts.mcpReject && len(p.McpServers) > 0 {
+			a.respondError(m.ID, -32602, "MCP servers are not supported by this agent")
+			return
+		}
+		if msg := a.checkMCPServers(p.McpServers); msg != "" {
+			a.respondError(m.ID, -32602, msg)
+			return
+		}
+		a.mu.Lock()
+		a.cwd, a.sess, a.loaded, a.mcpSrvs = p.Cwd, p.SessionID, true, p.McpServers
+		a.mu.Unlock()
+		a.closeMCP()
+		// A real agent replays the whole conversation here; the client must drop it.
+		a.update(map[string]any{"sessionUpdate": "user_message_chunk", "content": textBlock("replayed user message")})
+		a.update(map[string]any{"sessionUpdate": "agent_message_chunk", "content": textBlock("replayed agent message")})
+		a.respond(m.ID, map[string]any{})
 	case "session/prompt":
 		var p struct {
 			Prompt []struct{ Text string }

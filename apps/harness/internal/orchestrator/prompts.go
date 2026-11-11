@@ -64,15 +64,20 @@ How you work:
 	// stays byte-identical and the prompt-cache prefix (tools + static system)
 	// survives a note change.
 	static = b.String()
-	b.Reset()
+	return static, notesBlock(rt.notes)
+}
+
+// notesBlock renders the project notes section of the orchestrator prompt.
+func notesBlock(notes []projectstore.Note) string {
+	var b strings.Builder
 	b.WriteString("\nProject notes (durable memory, re-read every turn):\n")
-	if len(rt.notes) == 0 {
+	if len(notes) == 0 {
 		b.WriteString("(none yet)\n")
 	}
-	for _, n := range rt.notes {
+	for _, n := range notes {
 		fmt.Fprintf(&b, "### %s\n%s\n", n.Title, n.Content)
 	}
-	return static, b.String()
+	return b.String()
 }
 
 func (rt *runtime) subAgentPrompt(a projectstore.Agent) string {

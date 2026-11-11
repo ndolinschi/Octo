@@ -10,6 +10,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -68,6 +69,14 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		target, msg := rt.pickACPAgent(in.Agent, strings.TrimSpace(in.Model))
 		if msg != "" {
 			return msg, true, nil
+		}
+		ext, model = &target, target.recorded()
+	} else if plugins.IsACPRef(model) {
+		// The tier is mapped to an ACP agent (models.<tier> = acp:<id>[/<model>]).
+		id, m, _ := plugins.ParseACPRef(model)
+		target, msg := rt.pickACPAgent(id, m)
+		if msg != "" {
+			return fmt.Sprintf("tier %q is mapped to %q: %s", in.Tier, model, msg), true, nil
 		}
 		ext, model = &target, target.recorded()
 	}

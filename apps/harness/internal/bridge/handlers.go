@@ -3,6 +3,8 @@ package bridge
 import (
 	"net/http"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 )
 
@@ -19,6 +21,7 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"default_models": d.Models, "default_max_depth": d.MaxDepth,
 		"router": s.router != nil && s.router.Enabled(), "router_capabilities": caps,
+		"acp_orchestrators": s.acpOrchestrators(),
 	})
 }
 
@@ -185,4 +188,37 @@ func (s *Server) context(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rep)
+}
+
+// acpOrchestrator is one valid `acp:` setting for models.orchestrator or a tier.
+type acpOrchestrator struct {
+	// Value is the setting itself: "acp:<agent-id>".
+	Value        string   `json:"value"`
+	ID           string   `json:"id"`
+	Label        string   `json:"label"`
+	Models       []string `json:"models"`
+	DefaultModel string   `json:"default_model,omitempty"`
+}
+
+// acpOrchestrators lists the available plugin agents as orchestrator choices.
+func (s *Server) acpOrchestrators() []acpOrchestrator {
+	out := []acpOrchestrator{}
+	if s.plugins == nil {
+		return out
+	}
+	for _, p := range s.plugins.Plugins() {
+		for _, a := range p.Agents {
+			if !a.Available {
+				continue
+			}
+			models := a.Models
+			if models == nil {
+				models = []string{}
+			}
+			out = append(out, acpOrchestrator{
+				Value: plugins.ACPPrefix + a.ID, ID: a.ID, Label: a.Label, Models: models, DefaultModel: a.DefaultModel,
+			})
+		}
+	}
+	return out
 }

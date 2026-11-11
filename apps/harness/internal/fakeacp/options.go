@@ -33,6 +33,18 @@ const (
 	// EnvReportEnv is a comma-separated list of variable names; the final
 	// summary says for each whether the agent's environment has it set.
 	EnvReportEnv = "OCTO_FAKEACP_REPORT_ENV"
+	// EnvLoadSession=1 advertises agentCapabilities.loadSession and serves
+	// session/load (replaying a short history as session/update first).
+	EnvLoadSession = "OCTO_FAKEACP_LOAD_SESSION"
+	// EnvMCPHTTP=1 advertises agentCapabilities.mcpCapabilities.http, so the
+	// client passes an HTTP MCP server; without it only stdio is accepted.
+	EnvMCPHTTP = "OCTO_FAKEACP_MCP_HTTP"
+	// EnvMCPReject=1 makes session/new and session/load fail when they carry
+	// any MCP server (an agent that refuses client MCP servers).
+	EnvMCPReject = "OCTO_FAKEACP_MCP_REJECT"
+	// EnvUniqueSessions=1 gives every session/new a fresh id
+	// (fake-<pid>-<n>) instead of the fixed fake-session-1.
+	EnvUniqueSessions = "OCTO_FAKEACP_UNIQUE_SESSIONS"
 )
 
 // Auth method ids offered under EnvAuth.
@@ -52,12 +64,19 @@ type options struct {
 	authOK     []string
 	authLog    string
 	reportEnv  []string
+
+	loadSession bool
+	mcpHTTP     bool
+	mcpReject   bool
+	unique      bool
 }
 
 func optionsFromEnv(args []string) options {
 	o := options{
 		auth: os.Getenv(EnvAuth), loginFile: os.Getenv(EnvLoginFile),
 		viaConfig: os.Getenv(EnvModelsVia) == "config", refuseUnk: os.Getenv(EnvRefuseModel) == "1",
+		loadSession: os.Getenv(EnvLoadSession) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
+		mcpReject: os.Getenv(EnvMCPReject) == "1", unique: os.Getenv(EnvUniqueSessions) == "1",
 	}
 	for _, m := range strings.Split(os.Getenv(EnvModels), ",") {
 		if m = strings.TrimSpace(m); m != "" {

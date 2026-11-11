@@ -39,9 +39,12 @@ func (m AuthMethod) Unattended() bool {
 
 // newSession opens a session; when the agent refuses and has advertised
 // authentication methods, it authenticates once and retries.
-func (c *Client) newSession(ctx context.Context, cwd, hint string, policy AuthPolicy) (newSessionResult, error) {
+func (c *Client) newSession(ctx context.Context, cwd string, servers []MCPServer, hint string, policy AuthPolicy) (newSessionResult, error) {
 	var sess newSessionResult
-	params := newSessionParams{Cwd: cwd, MCPServers: []json.RawMessage{}}
+	if servers == nil {
+		servers = []MCPServer{}
+	}
+	params := newSessionParams{Cwd: cwd, MCPServers: servers}
 	err := c.conn.call(ctx, methodSessionNew, params, &sess)
 	var rpcErr *RPCError
 	if err != nil && errors.As(err, &rpcErr) && len(c.authMethods) > 0 {

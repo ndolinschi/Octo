@@ -125,6 +125,20 @@ OCTO_TEST_COPILOT=1 go test -tags subscription ./internal/orchestrator -run Test
 
 Without the `subscription` build tag, or without the `OCTO_TEST_*=1` switches, `go test ./...` never starts any of these CLIs.
 
+## Orchestrator on an ACP agent
+
+Besides sub-agents, a project's **orchestrator** can run on an ACP agent such as Claude Code (on its subscription, through the adapter in the `claude-code` entry of `plugins-examples/subscription-agents`): set `models.orchestrator` to `acp:<agent-id>` or `acp:<agent-id>/<model>` (validated against the loaded plugin agents, `400` otherwise; `GET /v1/config` lists the valid ones as `acp_orchestrators`). The tiers accept the same form, so `spawn_agent` with that tier starts that agent.
+
+```bash
+bash scripts/install-go-toolchain.sh   # once, see above
+go run ./cmd/harness serve --plugins-dir plugins-examples/subscription-agents   # needs a logged-in `claude` for real use
+curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/abs/path"}],"models":{"orchestrator":"acp:claude-code"}}'
+```
+
+One ACP session lives per project (started on the first request, kept between requests, restarted after a crash, resumed with `session/load` or, without it, with a harness-built recap of at most 8000 characters; shut down after `HARNESS_ACP_IDLE`, default 30 minutes, on project delete and on exit). The harness's tools (`spawn_agent`, notes, `list_dir`) reach the agent as an MCP server served by the harness on the bridge listener (HTTP when the agent supports it, else through `harness mcp-relay` over stdio), guarded by a per-session token. Details, limits and what is not covered: [`docs/acp-orchestrator.md`](docs/acp-orchestrator.md).
+
+**Not verified against real CLIs:** only the scripted agent has run this path (`go test ./...` and `scripts/e2e-acp-orchestrator.sh`); no real agent CLI was started.
+
 ## Run (direct Messages through Octo)
 
 Start Octo from the repo root (`cargo run`, default `127.0.0.1:8080`), then:
@@ -166,6 +180,7 @@ export ANTHROPIC_API_KEY="your-key"
 | `--max-turns` | `HARNESS_MAX_TURNS` or 25 | Cap tool-loop turns |
 | `--octo-key` | `HARNESS_OCTO_KEY` | Sent as `x-octo-key` when Octo `client_auth_key` is set |
 | `--stream` | `HARNESS_STREAM` or true | Stream assistant text deltas to stderr |
+| (env only) | `HARNESS_ACP_IDLE` | Idle time (Go duration, default `30m`) before an ACP-run orchestrator's agent process is shut down |
 | (env only) | `HARNESS_CHILD_ENV_ALLOW` | Extra variable names (`NAME,PREFIX_*`) passed to child processes and the `bash` tool; read once at start-up |
 
 When `--stream` is on, assistant text and `session: <id>` are written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.

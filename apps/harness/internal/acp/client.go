@@ -33,6 +33,7 @@ type Client struct {
 	name string
 
 	authMethods []AuthMethod
+	caps        Capabilities
 
 	mu         sync.Mutex
 	active     *run
@@ -84,6 +85,11 @@ func (c *Client) initialize(ctx context.Context) error {
 		return fmt.Errorf("acp initialize: %w", err)
 	}
 	c.authMethods = res.AuthMethods
+	c.caps = Capabilities{
+		LoadSession: res.AgentCapabilities.LoadSession,
+		MCPHTTP:     res.AgentCapabilities.MCPCapabilities.HTTP,
+		MCPSSE:      res.AgentCapabilities.MCPCapabilities.SSE,
+	}
 	if res.ProtocolVersion != ProtocolVersion {
 		return fmt.Errorf("acp initialize: agent speaks protocol version %d, this client supports %d",
 			res.ProtocolVersion, ProtocolVersion)
@@ -101,6 +107,13 @@ func (c *Client) childHas(name string) bool {
 	}
 	return false
 }
+
+// Capabilities reports what the agent advertised in initialize.
+func (c *Client) Capabilities() Capabilities { return c.caps }
+
+// Done is closed when the agent connection is gone (the process exited or
+// closed its output).
+func (c *Client) Done() <-chan struct{} { return c.conn.Done() }
 
 // PID is the agent process id.
 func (c *Client) PID() int { return c.proc.pid() }
@@ -124,13 +137,56 @@ func (c *Client) Run(ctx context.Context, cwd, prompt string, h Handler) (StopRe
 // the agent refuses the session and advertised auth methods, it logs in with
 // the first one that needs no interaction.
 func (c *Client) RunWith(ctx context.Context, cwd, prompt string, h Handler, opts RunOptions) (StopReason, error) {
-	sess, err := c.newSession(ctx, cwd, opts.AuthHint, opts.Auth)
+	sess, err := c.newSession(ctx, cwd, nil, opts.AuthHint, opts.Auth)
 	if err != nil {
 		return "", err
 	}
 	if err := c.selectModel(ctx, sess, opts); err != nil {
 		return "", err
 	}
+	return c.Prompt(ctx, sess.SessionID, prompt, h)
+}
+
+// Session is a session opened by NewSession.
+type Session struct {
+	ID string
+}
+
+// NewSession opens a session at cwd with the given MCP servers (nil: none),
+// authenticating once when the agent refuses and advertised auth methods. An
+// agent that rejects the servers answers with a JSON-RPC error that unwraps to
+// *RPCError. Use Prompt to talk to it.
+func (c *Client) NewSession(ctx context.Context, cwd string, servers []MCPServer, opts RunOptions) (Session, error) {
+	sess, err := c.newSession(ctx, cwd, servers, opts.AuthHint, opts.Auth)
+	if err != nil {
+		return Session{}, err
+	}
+	if err := c.selectModel(ctx, sess, opts); err != nil {
+		return Session{}, err
+	}
+	return Session{ID: sess.SessionID}, nil
+}
+
+// LoadSession resumes a stored session (session/load); only call it when
+// Capabilities().LoadSession is true. The agent replays the conversation as
+// session/update notifications, which are dropped: nothing is running yet.
+func (c *Client) LoadSession(ctx context.Context, sessionID, cwd string, servers []MCPServer) error {
+	if servers == nil {
+		servers = []MCPServer{}
+	}
+	err := c.conn.call(ctx, methodSessionLoad, loadSessionParams{SessionID: sessionID, Cwd: cwd, MCPServers: servers}, nil)
+	if err != nil {
+		return fmt.Errorf("acp session/load: %w", err)
+	}
+	return nil
+}
+
+// Prompt sends one text prompt on an open session and returns the stop
+// reason. When ctx ends it sends session/cancel and waits up to CancelGrace for
+// the agent to answer (the session stays usable); otherwise it kills the
+// process and returns ctx.Err(). A Client runs one prompt at a time.
+func (c *Client) Prompt(ctx context.Context, sessionID, prompt string, h Handler) (StopReason, error) {
+	sess := newSessionResult{SessionID: sessionID}
 	runCtx, endRun := context.WithCancel(context.WithoutCancel(ctx))
 	defer endRun()
 	c.mu.Lock()

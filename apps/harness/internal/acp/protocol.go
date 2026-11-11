@@ -15,6 +15,7 @@ const ProtocolVersion = 1
 const (
 	methodInitialize  = "initialize"
 	methodSessionNew  = "session/new"
+	methodSessionLoad = "session/load"
 	methodPrompt      = "session/prompt"
 	methodCancel      = "session/cancel"
 	methodAuth        = "authenticate"
@@ -95,12 +96,79 @@ type initializeParams struct {
 }
 
 type initializeResult struct {
-	ProtocolVersion int             `json:"protocolVersion"`
-	AgentInfo       *implementation `json:"agentInfo"`
-	AuthMethods     []AuthMethod    `json:"authMethods"`
+	ProtocolVersion   int               `json:"protocolVersion"`
+	AgentInfo         *implementation   `json:"agentInfo"`
+	AuthMethods       []AuthMethod      `json:"authMethods"`
+	AgentCapabilities agentCapabilities `json:"agentCapabilities"`
+}
+
+// agentCapabilities is the part of initialize's agentCapabilities this client
+// uses; every field defaults to false when absent (ACP schema).
+type agentCapabilities struct {
+	LoadSession     bool `json:"loadSession"`
+	MCPCapabilities struct {
+		HTTP bool `json:"http"`
+		SSE  bool `json:"sse"`
+	} `json:"mcpCapabilities"`
+}
+
+// Capabilities is what an agent advertised in initialize.
+type Capabilities struct {
+	// LoadSession: the agent supports session/load.
+	LoadSession bool
+	// MCPHTTP: the agent accepts HTTP MCP servers in session/new (stdio is
+	// mandatory for every agent).
+	MCPHTTP bool
+	// MCPSSE: the agent accepts SSE MCP servers (unused by this client).
+	MCPSSE bool
+}
+
+// MCPServer is one entry of session/new's (and session/load's) mcpServers, in
+// the wire shape of the ACP schema.
+type MCPServer = json.RawMessage
+
+// HTTPHeader is a name/value pair in an HTTP MCP server entry.
+type HTTPHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// EnvVar is a name/value pair in a stdio MCP server entry.
+type EnvVar struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// HTTPMCPServer builds {"type":"http","name","url","headers":[...]}; the agent
+// must have advertised mcpCapabilities.http.
+func HTTPMCPServer(name, url string, headers []HTTPHeader) MCPServer {
+	if headers == nil {
+		headers = []HTTPHeader{}
+	}
+	raw, _ := json.Marshal(map[string]any{"type": "http", "name": name, "url": url, "headers": headers})
+	return raw
+}
+
+// StdioMCPServer builds {"name","command","args":[...],"env":[...]}; command
+// must be an absolute path. Stdio has no "type" field in the schema.
+func StdioMCPServer(name, command string, args []string, env []EnvVar) MCPServer {
+	if args == nil {
+		args = []string{}
+	}
+	if env == nil {
+		env = []EnvVar{}
+	}
+	raw, _ := json.Marshal(map[string]any{"name": name, "command": command, "args": args, "env": env})
+	return raw
 }
 
 type newSessionParams struct {
+	Cwd        string            `json:"cwd"`
+	MCPServers []json.RawMessage `json:"mcpServers"`
+}
+
+type loadSessionParams struct {
+	SessionID  string            `json:"sessionId"`
 	Cwd        string            `json:"cwd"`
 	MCPServers []json.RawMessage `json:"mcpServers"`
 }

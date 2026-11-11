@@ -13,7 +13,7 @@ func (a *agent) currentModel() string {
 
 // sessionResult is the session/new answer, advertising models when configured.
 func (a *agent) sessionResult() map[string]any {
-	res := map[string]any{"sessionId": sessionID}
+	res := map[string]any{"sessionId": a.sid()}
 	if len(a.opts.models) == 0 {
 		return res
 	}

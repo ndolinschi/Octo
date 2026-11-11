@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -116,9 +117,14 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Router:          octo,
 		Prices:          priceTable,
 		Windows:         cfg.ContextWindows,
+		ACPIdle:         cfg.ACPIdle,
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth},
-		project.WithPrices(priceTable), project.WithRouter(octo))
+		project.WithPrices(priceTable), project.WithRouter(octo), project.WithACPAgents(pluginReg))
+	// A model setting that names an ACP agent must name a loaded, available one.
+	if err := svc.ValidateModels(&cfg.Models); err != nil {
+		return fmt.Errorf("default models: %w", err)
+	}
 	if err := svc.Recover(ctx); err != nil {
 		return fmt.Errorf("restart recovery: %w", err)
 	}
@@ -128,10 +134,12 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	if err != nil {
 		return err
 	}
+	orch.SetBridgeURL("http://" + net.JoinHostPort(loopbackHost(ln.Addr()), portOf(ln.Addr())))
 	baseCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
+			bridge.WithMCP(orch.MCPHandler(bridge.Version)),
 			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo)),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
@@ -160,4 +168,22 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		return err
 	}
 	return nil
+}
+
+// loopbackHost is the host an ACP agent on this machine uses to reach the
+// bridge: the listen address when it is a loopback IP, else 127.0.0.1 (the MCP
+// server itself accepts loopback peers only).
+func loopbackHost(a net.Addr) string {
+	if t, ok := a.(*net.TCPAddr); ok && t.IP != nil && t.IP.IsLoopback() {
+		return t.IP.String()
+	}
+	return "127.0.0.1"
+}
+
+func portOf(a net.Addr) string {
+	if t, ok := a.(*net.TCPAddr); ok {
+		return strconv.Itoa(t.Port)
+	}
+	_, p, _ := net.SplitHostPort(a.String())
+	return p
 }

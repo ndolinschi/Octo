@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
@@ -16,6 +17,7 @@ const (
 	DefaultMaxDepth = 3
 	MaxDepthLimit   = 8
 	DefaultAddr     = "127.0.0.1:8790"
+	DefaultACPIdle  = 30 * time.Minute
 )
 
 // Tier policies: how an Octo router treats the tier hint (see docs).
@@ -113,6 +115,10 @@ type Config struct {
 	// HARNESS_READ_FILE_LINES).
 	Limits tools.Limits
 	Models Models
+	// ACPIdle is how long an ACP-run orchestrator's agent process may sit idle
+	// before it is shut down (HARNESS_ACP_IDLE, a Go duration such as 90s or
+	// 30m; default 30m).
+	ACPIdle time.Duration
 	// ContextWindows are per-model context sizes in tokens
 	// (HARNESS_CONTEXT_WINDOWS="model=tokens,..."), on top of the built-in table.
 	ContextWindows ContextWindows
@@ -127,6 +133,7 @@ func Load() (Config, error) {
 		MaxTurns: defaultMaxTurns,
 		Stream:   true,
 		Models:   defaultModels(),
+		ACPIdle:  DefaultACPIdle,
 
 		PromptCaching: true,
 		Limits: tools.Limits{
@@ -154,6 +161,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("HARNESS_MAX_TURNS: want positive integer, got %q", v)
 		}
 		cfg.MaxTurns = n
+	}
+	if v := os.Getenv("HARNESS_ACP_IDLE"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return Config{}, fmt.Errorf("HARNESS_ACP_IDLE: want a positive duration such as 90s or 30m, got %q", v)
+		}
+		cfg.ACPIdle = d
 	}
 	if v := os.Getenv("HARNESS_STREAM"); v != "" {
 		b, err := strconv.ParseBool(v)

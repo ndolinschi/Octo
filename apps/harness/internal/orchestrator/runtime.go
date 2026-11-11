@@ -109,6 +109,9 @@ func (rt *runtime) registry(a projectstore.Agent) (*tools.Registry, error) {
 }
 
 func (rt *runtime) runOrchestrator(ctx context.Context, orch projectstore.Agent) (agent.Result, error) {
+	if rt.isACPOrchestrator() {
+		return rt.runACPOrchestrator(ctx, orch)
+	}
 	history, err := rt.loadHistory(ctx, orch.ID)
 	if err != nil {
 		return agent.Result{}, err

@@ -88,6 +88,13 @@ CREATE TABLE IF NOT EXISTS compactions (
 	usage_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS compactions_agent ON compactions (agent_id, id);
+CREATE TABLE IF NOT EXISTS acp_sessions (
+	agent_id TEXT PRIMARY KEY,
+	plugin_agent TEXT NOT NULL,
+	model TEXT NOT NULL,
+	session_id TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS side_messages (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	side_id TEXT NOT NULL,

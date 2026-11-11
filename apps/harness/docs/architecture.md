@@ -45,7 +45,10 @@ flowchart TB
 | `internal/acp` | Agent Client Protocol client: process lifecycle, ndjson JSON-RPC connection, typed protocol structs, `Client.Run` with a `Handler` the orchestrator implements; no project/orchestrator imports |
 | `internal/lsp` | Language-server relay, HTTP-agnostic: `Manager` of `Session`s (process + LSP `Content-Length` framing, bounded event buffer, idle reaping, process-group kill). Frames and validates JSON only; never interprets LSP |
 | `internal/fakelsp` | Scripted language server for tests (re-exec of the test binary) |
-| `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`); env switches advertise auth methods, models and refuse unknown models |
+| `internal/mcp` | Harness MCP server (Streamable HTTP, POST/JSON, loopback only) with per-session bearer tokens; tools come from a `Backend` |
+| `internal/mcprelay` | `harness mcp-relay`: stdio-to-HTTP relay for agents without HTTP MCP support |
+| `internal/permission` | `permission.Decide`, the one seam answering an ACP agent's permission requests (auto-approve today) |
+| `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`); env switches advertise auth methods, models, `loadSession` and HTTP MCP, refuse unknown models or MCP servers; markers drive MCP tool calls (`[mcp-spawn]`), echo the prompt (`[echo]`), crash (`[crash]`) and hang (`[hang]`) |
 | `internal/mockllm` | Scripted Anthropic-compatible Messages server (used by tests and `examples/mockllm`) |
 | `internal/tools` | Registry → Anthropic tool defs; `ToolUseID(ctx)` for handlers |
 | `internal/tools/local` | `bash`, `read_file`, `write_file`, `list_dir` over one or more labelled roots |

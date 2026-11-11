@@ -83,6 +83,30 @@ summary). Tiers may also map to ACP agents (`fast: acp:grok/…`), so a project 
 Open points: agents that refuse client MCP servers (Copilot CLI 1.0.105 was reported to reject stdio servers —
 *unverified*), history replay cost, per-agent quirks. This is the largest gap against comparable tools.
 
+### As built — S2 (2026-11-11; owner: "ACP support is very important, I will work through it")
+
+Built in `apps/harness` (`internal/mcp`, `internal/mcprelay`, `internal/permission`, `orchestrator/acp_*.go`; guide:
+`apps/harness/docs/acp-orchestrator.md`). Verified by the orchestrator: Go gates, `scripts/e2e-acp-orchestrator.sh`
+(tool calls over MCP, same process and session on the second request, recovery after `kill -9`, no process left
+after project delete and shutdown), `scripts/e2e-router.sh`. **Everything was run against the scripted agent only —
+no real CLI, no real MCP client.**
+
+- `models.orchestrator` and the tiers accept `acp:<id>[/<model>]` (validated; `models.side` may not);
+  `GET /v1/config` lists `acp_orchestrators`.
+- One ACP session per project orchestrator, started lazily, shut down after `HARNESS_ACP_IDLE` (30 min); the session
+  id is stored (`acp_sessions`) and resumed with `session/load` when advertised, else a new session gets a recap
+  (compaction summary, or the last ≤ 40 texts, ≤ 8000 chars).
+- Harness tools reach the agent through an MCP server inside `harness serve` (`POST /mcp/v1/projects/{pid}`,
+  stateless JSON, per-session bearer token, loopback and Origin checked): `spawn_agent`, `save_note`, `delete_note`,
+  `list_dir`, through the same handlers as the built-in loop. HTTP entry when the agent advertises it, otherwise a
+  stdio relay (`harness mcp-relay`, token in the child's env). An agent that refuses MCP servers still answers, with
+  a `warning:` on the turn.
+- The first prompt of a session carries the orchestrator briefing and notes (ACP `systemPrompt` is optional).
+- Permission requests pass through `permission.Decide` (auto-approve today; v7 approvals plug in here).
+- Open: linking an MCP `spawn_agent` call to the agent's tool-call row is a heuristic (title match within 300 ms);
+  thinking and plan updates are dropped (no place in the UI yet); the warning may render as an error in the UI; a
+  note edited by the user mid-turn is not announced to the agent.
+
 ## S3 — routing
 
 "Routing" for subscriptions means choosing **which agent and model** handles a task, not proxying HTTP.

@@ -11,7 +11,16 @@ export type Tier = "fast" | "balanced" | "deep";
 export type AgentStatus = "idle" | "running" | "completed" | "failed" | "cancelled";
 /** How an Octo router treats the tier hint: auto (may go lower or higher), ceiling (never above), fixed (the hint's tier). */
 export type TierPolicy = "auto" | "ceiling" | "fixed";
+/**
+ * A model setting that names an ACP agent instead of a Messages API model:
+ * `acp:<agent-id>` or `acp:<agent-id>/<model>`. Valid for `orchestrator` (the
+ * orchestrator then runs as an ACP session) and for the tiers (`spawn_agent`
+ * with that tier starts that agent). The harness answers 400 for an unknown or
+ * unavailable agent; the orchestrator agent's `model` reads the same form.
+ */
+export type AcpModelRef = `acp:${string}`;
 export type Models = {
+  /** A Messages API model id, or an {@link AcpModelRef}. */
   orchestrator: string;
   fast: string;
   balanced: string;
@@ -237,6 +246,19 @@ export type BridgeConfig = {
   router?: boolean;
   /** Capabilities the router announced (autoroute, route_hints, result_headers, budget_key). */
   router_capabilities?: string[];
+  /** ACP agents that can run a project's orchestrator (or a tier): the valid `acp:` settings. */
+  acp_orchestrators?: AcpOrchestratorChoice[];
+};
+
+export type AcpOrchestratorChoice = {
+  /** The setting itself, `acp:<id>`; append `/<model>` to pick a model. */
+  value: AcpModelRef;
+  /** The plugin agent id. */
+  id: string;
+  label: string;
+  /** Models the manifest lists; empty means any model id is accepted. */
+  models: string[];
+  default_model?: string;
 };
 
 export type PluginLanguageServer = {

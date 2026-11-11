@@ -3,14 +3,15 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/permission"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -24,6 +25,8 @@ type acpSession struct {
 	agentID string
 	label   string
 	model   string
+	// orchestrator marks the session of an ACP-run orchestrator.
+	orchestrator bool
 
 	mu       sync.Mutex
 	pending  strings.Builder
@@ -32,6 +35,11 @@ type acpSession struct {
 	open     map[string]bool
 	seen     map[string]bool
 	lastUsed int64
+	// order, titles and claimed let an MCP tool call find the ACP tool_call
+	// row the agent announced for it.
+	order    []string
+	titles   map[string]string
+	claimed  map[string]bool
 	lastCost float64
 	done     bool
 }
@@ -40,7 +48,7 @@ func newACPSession(rt *runtime, agentID, label, model string) *acpSession {
 	return &acpSession{
 		rt: rt, sink: &agentSink{rt: rt, agentID: agentID, source: projectstore.SourceACP},
 		agentID: agentID, label: label, model: model,
-		open: map[string]bool{}, seen: map[string]bool{},
+		open: map[string]bool{}, seen: map[string]bool{}, titles: map[string]string{}, claimed: map[string]bool{},
 	}
 }
 
@@ -116,16 +124,10 @@ func (s *acpSession) costDeltaLocked(c *acp.Cost) *float64 {
 	return &d
 }
 
-func (s *acpSession) RequestPermission(_ context.Context, req acp.PermissionRequest) string {
-	opt, ok := req.FirstOption(acp.AllowOnce, acp.AllowAlways)
-	if !ok {
-		slog.Warn("acp permission: no allow option offered; cancelling",
-			"project", s.rt.pid(), "agent", s.label, "tool", req.ToolCall.Title)
-		return ""
-	}
-	slog.Info("acp permission auto-approved",
-		"project", s.rt.pid(), "agent", s.label, "tool", req.ToolCall.Title, "option", opt.Name, "kind", opt.Kind)
-	return opt.ID
+func (s *acpSession) RequestPermission(ctx context.Context, req acp.PermissionRequest) string {
+	return permission.Decide(ctx, permission.Request{
+		ProjectID: s.rt.pid(), Agent: s.label, Orchestrator: s.orchestrator, ACP: req,
+	}).OptionID
 }
 
 // finish flushes trailing text and closes tool calls the agent left open.
@@ -180,6 +182,8 @@ func (s *acpSession) startLocked(ctx context.Context, call acp.ToolCall) {
 		input["locations"] = call.Locations
 	}
 	s.seen[call.ID] = true
+	s.order = append(s.order, call.ID)
+	s.titles[call.ID] = call.Title + " " + string(call.RawInput)
 	s.open[call.ID] = true
 	s.tail = ""
 	s.persist(ctx, "assistant", anthropic.NewAssistantMessage(anthropic.NewToolUseBlock(call.ID, input, name)))
@@ -204,4 +208,30 @@ func (s *acpSession) persist(ctx context.Context, role string, msg anthropic.Mes
 	if err := s.sink.Message(ctx, role, msg); err != nil {
 		s.rt.logErr("persist acp message", err)
 	}
+}
+
+// claimToolUse finds the open, not yet claimed tool call the agent announced
+// for an MCP call to the harness tool `name` (its title or raw input names the
+// tool) and claims it, so the sub-agent a spawn_agent call creates links to
+// that transcript row. The agent announces a call before it makes it, but the
+// two travel on different connections, so it retries briefly. "" means no row
+// matched; the call still runs.
+func (s *acpSession) claimToolUse(ctx context.Context, name string) string {
+	for attempt := 0; attempt < 30; attempt++ {
+		s.mu.Lock()
+		for _, id := range s.order {
+			if s.open[id] && !s.claimed[id] && strings.Contains(s.titles[id], name) {
+				s.claimed[id] = true
+				s.mu.Unlock()
+				return id
+			}
+		}
+		s.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ""
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return ""
 }
