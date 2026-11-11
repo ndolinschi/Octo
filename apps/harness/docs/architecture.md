@@ -4,6 +4,26 @@ Go module: `github.com/ndolinschi/Octo/apps/harness`. A thin **Anthropic Message
 
 ## Runtime shape
 
+Two shapes share the Messages loop. **`harness serve`** (the product) is a project server: the bridge (HTTP + SSE) in front of a service layer, an orchestrator that runs one turn per project, and the stores:
+
+```mermaid
+flowchart LR
+  ui[UI / desktop / curl] -->|HTTP + SSE| bridge[internal/bridge]
+  bridge --> svc[internal/project Service]
+  svc --> orch[internal/orchestrator]
+  svc --> pstore[(projectstore: project.sqlite per project)]
+  orch --> loop[internal/agent Loop]
+  orch --> acp[internal/acp: ACP agents]
+  orch --> mem[internal/memory, changes, approval, inputs, secrets]
+  mem --> pstore
+  loop --> llm[Messages API: Octo router or Anthropic]
+  orch --> hub[events.Hub]
+  hub --> bridge
+  acp -->|MCP over HTTP or relay| bridge
+```
+
+The **legacy one-shot CLI** (`harness run`, `sessions`, `show`) uses the loop directly with the `harness.sqlite` store:
+
 ```mermaid
 flowchart TB
   cli[cmd/harness]
@@ -29,7 +49,7 @@ flowchart TB
 
 | Path | Role |
 | --- | --- |
-| `cmd/harness` | CLI: `serve`, `run`, `sessions`, `show` (wiring only; `serve.go` is the one wiring site for the server) |
+| `cmd/harness` | CLI: `serve`, `doctor`, `run`, `sessions`, `show`, `mcp-relay` (wiring only; `serve.go` is the one wiring site for the server) |
 | `internal/settings` | Settings behind `GET`/`PUT /v1/settings`: the fixed list, validation, atomic `harness.env` writes, apply-now hooks, `restart_required`; see [settings.md](./settings.md) |
 | `internal/childenv` | Allow-list environment for every child process (bash tool, ACP agents, language servers, probes); `HARNESS_CHILD_ENV_ALLOW` adds names; see README "Child environment" |
 | `internal/config` | Env defaults (`ANTHROPIC_*`, `HARNESS_*`), model tiers |
@@ -50,7 +70,10 @@ flowchart TB
 | `internal/mcprelay` | `harness mcp-relay`: stdio-to-HTTP relay for agents without HTTP MCP support |
 | `internal/changes`, `internal/diff` | v7 change tracking: per-project tracker (index, pre-image copies, git-aware snapshot walk) and the line-diff counter; see [v7.md](./v7.md) |
 | `internal/approval`, `internal/inputs`, `internal/secrets` | v7 pending approvals and "allow for this turn" grants; open forms (`request_input`); the per-project 0600 secret store and its redactor; see [v7.md](./v7.md) |
-| `internal/memory` | M1 orchestrator memory service: task records, memory files, search shaping, digest merge, limits and secret redaction; see [memory.md](./memory.md) |
+| `internal/memory` | Orchestrator memory service (M1, M2): task records, memory files, search shaping, digest merge, the memory setting, limits and secret redaction; see [memory.md](./memory.md) |
+| `internal/acptrace` | Opt-in ACP wire trace: one redacted, size-capped JSON-lines file per agent process under `{data-dir}/traces/`; see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace) |
+| `internal/diag` | The diagnostics report (`harness doctor`, `GET /v1/diagnostics`): versions, PATH, per-agent resolution and login state, the scrubbed log ring (last 200 lines) |
+| `internal/limits` | Provider rate-limit headers remembered per model and limit kind (`GET /v1/limits`); in memory only |
 | `internal/permission` | `permission.Decide`, the one seam answering an ACP agent's permission requests (auto-approve today) |
 | `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`); env switches advertise auth methods, models, `loadSession` and HTTP MCP, refuse unknown models or MCP servers; markers drive MCP tool calls (`[mcp-spawn]`), echo the prompt (`[echo]`), crash (`[crash]`) and hang (`[hang]`) |
 | `internal/mockllm` | Scripted Anthropic-compatible Messages server (used by tests and `examples/mockllm`) |
@@ -101,7 +124,7 @@ Specs: [`2026-11-10-workspace-plugins-acp-design.md`](../../../docs/superpowers/
 
 Manifests are read once at startup from `{data-dir}/plugins/*/plugin.json` and every `--plugins-dir` / `HARNESS_PLUGINS_DIR` entry (a plugin directory, or a directory of them), then the embedded `subscription-agents` manifest (`plugins-examples/subscription-agents/embed.go`, `go:embed` of `plugin.json`; `Plugin.Builtin`, `"builtin": true`) unless `--no-builtin-plugins`: a directory plugin of the same name replaces it and an agent id already taken is skipped silently. `plugins.Load` validates names, required fields and ids (first plugin wins; later duplicates are listed in that plugin's `errors`), resolves commands (absolute as is, path separator = relative to the plugin dir, else `PATH`) and sets `available`. A broken manifest becomes an entry with `errors` and no capabilities. `toolServers` are registered on the shared remote registry (sub-agents only); a failure is logged and recorded in `errors`. `GET /v1/plugins` returns `{"plugins": [...]}` (commands, args and env are never exposed); there is no write endpoint. `languageServers` are parsed and exposed (`Registry.LanguageServers`, `LanguageServer(id)`); they are started by the language-server relay below.
 
-`spawn_agent` gains an optional `agent` (enum of available ACP agent ids; omitted from the schema when there are none). The sub-agent row is created as usual with `model = "acp:<id>"`, then `acp.Start` runs the command in the project's first folder (`initialize` with protocol version 1, fs capabilities on, terminal off), `session/new` (`mcpServers: []`) and one `session/prompt` carrying the task. The orchestrator system prompt names the available agents.
+`spawn_agent` gains an optional `agent` (enum of available ACP agent ids; omitted from the schema when there are none). The sub-agent row is created as usual with `model = "acp:<id>"`, then `acp.Start` runs the command in the project's first folder (`initialize` with protocol version 1, fs capabilities on, terminal off), `session/new` with `mcpServers: []` (an ACP **sub-agent** gets none of the harness's tools; only an ACP-run *orchestrator* gets the MCP server, see [acp-orchestrator.md](./acp-orchestrator.md)) and one `session/prompt` carrying the task. The orchestrator system prompt names the available agents.
 
 Subscription agents (Copilot, Grok, Codex; [`plugins-examples/subscription-agents`](../plugins-examples/subscription-agents/plugin.json)) added manifest fields `models`, `defaultModel`, `modelArg`, `auth {probe, hint}` and `${NAME}` env references (expanded by `Launch.ResolvedEnv` at spawn; an entry with an unset or empty variable is dropped). `spawn_agent` also accepts `model` for ACP agents: validated against the manifest list (else a free token matching `plugins.ModelPattern`), recorded as `acp:<id>/<model>` on the agent and its usage rows (`acp:<id>` when no model applies; the manifest default counts). `acp.Client.RunWith` takes `RunOptions`: when `session/new` is refused and `initialize` advertised `authMethods`, it calls `authenticate` with the first method of type `agent` (no interaction; `terminal`, `env_var` and unknown types are skipped) and retries once, else fails with `acp.ErrAuthRequired` plus the manifest hint. A requested model is selected through a model config option (`session/set_config_option`), else `session/set_model`, or `modelArg` at start-up; one the orchestrator asked for that cannot be selected fails the sub-agent, a manifest default is best effort. Unknown notifications, session updates and capabilities are ignored. `GET /v1/plugins` agents carry `logged_in`, `models`, `default_model`, `hint`: `Registry.StartProbes` enables the login probes, which run in goroutines when `Plugins()` is called (at most once a minute per agent, 5 s timeout, never awaited by the request).
 
@@ -119,7 +142,7 @@ Subscription agents (Copilot, Grok, Codex; [`plugins-examples/subscription-agent
 
 Messages are stored as SDK-shaped content arrays exactly like the built-in loop's, so `GET .../agents/{aid}/messages` and normalization need no special case. Turn cancel or server shutdown cancels the run context: `session/cancel` is sent, the agent gets about 3 s to answer, then its process group is killed; the process is always reaped when the run ends. A crash, protocol error or failed `initialize` fails that sub-agent (stderr tail included in the error) and returns an error result to the parent, which continues.
 
-**Trust:** ACP agents run with the user's privileges and are auto-approved for tool permissions. File requests through the client are confined to the project folders, but the agent process itself is not sandboxed. Plugins can only be installed by writing files locally.
+**Trust:** ACP agents run with the user's privileges. Their permission requests are auto-approved in a project with `access: "full"` and become approval cards in a `supervised` one ([v7.md](./v7.md)). File requests through the client are confined to the project folders, but the agent process itself is not sandboxed. Plugins can only be installed by writing files locally.
 
 ### Project storage
 

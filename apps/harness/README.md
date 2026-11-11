@@ -24,6 +24,8 @@ go test ./...
 go build -o octo-harness ./cmd/harness
 ```
 
+End-to-end scripts (each builds what it needs, uses its own ports and a temp dir, sets `HARNESS_NO_BUILTIN_PLUGINS=1`, and leaves no process behind): `bash scripts/e2e-acp-orchestrator.sh` (an ACP-run orchestrator on the scripted agent, three scenarios), `bash scripts/e2e-v7.sh` (changes and diffs, approvals, queue, forms and secrets, memory, context window; mock model and scripted agent), `bash scripts/e2e-router.sh` (needs a real router, see below). Docs for what they cover: [docs/v7.md](./docs/v7.md), [docs/memory.md](./docs/memory.md).
+
 ## Serve (projects, no API key needed with mockllm)
 
 ```bash
@@ -33,7 +35,7 @@ ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:87
 
 Then `curl -XPOST localhost:8790/v1/projects -d '{"name":"Demo","folders":[{"path":"'$PWD'"}]}'`, post a message to `/v1/projects/{id}/messages`, follow `/v1/projects/{id}/events`, and browse or edit project files via `/v1/projects/{id}/files` (see [`docs/architecture.md`](docs/architecture.md#file-api)). API contract: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../docs/superpowers/specs/2026-11-10-project-harness-design.md). Against a real endpoint, drop `--base-url` (or point it at Octo) and set a real key.
 
-`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--plugins-dir` (repeatable), `--no-builtin-plugins`, `--max-turns`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Defaults: orchestrator `claude-sonnet-5-5` (the balanced model; it was opus before 2026-11-10 because the longest-lived thread should not run on the dearest model; projects created earlier keep their stored models), fast `claude-haiku-5-5`, balanced `claude-sonnet-5-5`, deep `claude-opus-5-5`. Say "quick" in a message to make mockllm answer without delegating.
+`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--plugins-dir` (repeatable), `--no-builtin-plugins`, `--max-turns`, `--prompt-caching`, `--exit-on-stdin-close`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Defaults: orchestrator `claude-sonnet-5-5` (the balanced model; it was opus before 2026-11-10 because the longest-lived thread should not run on the dearest model; projects created earlier keep their stored models), fast `claude-haiku-5-5`, balanced `claude-sonnet-5-5`, deep `claude-opus-5-5`. Say "quick" in a message to make mockllm answer without delegating.
 
 ### Running without a key, and `harness.env`
 
@@ -93,13 +95,13 @@ Manifest format and more examples (gopls, TypeScript, Gemini CLI, the subscripti
 
 For Claude Code, Copilot, Grok, Codex and seven more agent CLIs on a subscription, see [Running on subscriptions](#running-on-subscriptions).
 
-**Trust:** an ACP agent is a separate program that runs with your user's privileges. The harness **auto-approves** its permission requests and serves its file requests only inside the project's folders; the agent process itself is not sandboxed, and a plugin manifest is a list of commands the harness will run. Only install plugins you trust.
+**Trust:** an ACP agent is a separate program that runs with your user's privileges. In a project with `access: "full"` (the default of `harness serve` for now, see `HARNESS_DEFAULT_ACCESS`) the harness **auto-approves** its permission requests; with `access: "supervised"` each one becomes an approval the user answers ([docs/v7.md](./docs/v7.md)). It serves the agent's file requests only inside the project's folders; the agent process itself is not sandboxed, and a plugin manifest is a list of commands the harness will run. Only install plugins you trust.
 
 ## Running on subscriptions
 
 The supported way to use a Claude, Copilot, Grok, ChatGPT/Codex or similar subscription is to run the vendor's own agent CLI, which the harness drives over ACP as a sub-agent (design: [`docs/superpowers/specs/2026-11-10-subscription-agents-design.md`](../../docs/superpowers/specs/2026-11-10-subscription-agents-design.md)). Nothing is proxied and the harness never reads a vendor's credential files: the CLI finds its own login, and the harness only runs the commands in the manifest.
 
-**Verification status: only the scripted fake agent has been run against this harness.** No vendor CLI has been started from this repository's tooling. The Copilot, Grok and Codex entries were checked against vendor docs; the commands for **cursor, opencode, antigravity, devin, droid, omp and pi** (and the Claude Code adapter's login probe) come from vendor docs, the [ACP registry](https://agentclientprotocol.com) and secondary sources, and are **unverified**: binary names, flags, probe exit codes and auth method ids may be wrong for your version. Treat each entry as a starting point and run `scripts/test-subscriptions.sh <id>` on a machine where you are logged in.
+**Verification status.** The harness's tests and scripts (`go test ./...`, `scripts/e2e-*.sh`) run only the scripted fake agent: no vendor CLI is started by anything in this repository, and the agents that wrote the code never ran one. **Who ran what:** the owner ran Claude Code over ACP (the `claude-code` entry, as a project's orchestrator and as a sub-agent) with a real router on their machine; the defects that run found (flat-rate cost counted as spend, budget disagreement with the router, silent start failures, raw MCP tool names in the transcript, a flaky test) are fixed and have tests against the scripted agent. Nobody has yet run Copilot or Grok (planned by the owner), nor Codex or any other entry. The Copilot, Grok and Codex entries were checked against vendor docs; the commands for **cursor, opencode, antigravity, devin, droid, omp and pi** (and the Claude Code adapter's login probe) come from vendor docs, the [ACP registry](https://agentclientprotocol.com) and secondary sources, and are **unverified**: binary names, flags, probe exit codes and auth method ids may be wrong for your version. Treat each entry as a starting point and run `scripts/test-subscriptions.sh <id>` on a machine where you are logged in.
 
 Plugin `subscription-agents` is built into the binary (nothing to load; `--no-builtin-plugins` turns it off) and ships these agents (the research report's ten, plus Copilot):
 
@@ -158,7 +160,7 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
 
 One ACP session lives per project (started on the first request, kept between requests, restarted after a crash, resumed with `session/load` or, without it, with a harness-built recap of at most 8000 characters; shut down after `HARNESS_ACP_IDLE`, default 30 minutes, on project delete and on exit). The harness's tools (`spawn_agent`, notes, `list_dir`) reach the agent as an MCP server served by the harness on the bridge listener (HTTP when the agent supports it, else through `harness mcp-relay` over stdio), guarded by a per-session token. Details, limits and what is not covered: [`docs/acp-orchestrator.md`](docs/acp-orchestrator.md).
 
-**Not verified against real CLIs:** only the scripted agent has run this path (`go test ./...` and `scripts/e2e-acp-orchestrator.sh`); no real agent CLI was started.
+**Not verified against real CLIs:** the repository's tests and `scripts/e2e-acp-orchestrator.sh` run only the scripted agent. Claude Code has been run by the owner (see "Verification status"); Copilot and Grok have not been run by anyone yet. When something fails with a real agent, run `harness doctor` and, if needed, switch on the ACP wire trace (below) and send both.
 
 ## Run (direct Messages through Octo)
 
@@ -203,9 +205,22 @@ export ANTHROPIC_API_KEY="your-key"
 | `--stream` | `HARNESS_STREAM` or true | Stream assistant text deltas to stderr |
 | (env only) | `HARNESS_ACP_IDLE` | Idle time (Go duration, default `30m`) before an ACP-run orchestrator's agent process is shut down |
 | (env only) | `HARNESS_ROUTE_TIMEOUT` | How long the router's route call for `tier: auto` may take (Go duration, default `2500ms`; keep it above the router's `classifier_timeout_ms`) |
-| (env only) | `HARNESS_CHILD_ENV_ALLOW` | Extra variable names (`NAME,PREFIX_*`) passed to child processes and the `bash` tool; read once at start-up |
+| (env only) | `HARNESS_CHILD_ENV_ALLOW` | Extra variable names (`NAME,PREFIX_*`) passed to child processes and the `bash` tool; read at start-up and swapped live by the settings API |
+| `--exit-on-stdin-close` | `HARNESS_EXIT_ON_STDIN_CLOSE=1` | `serve` only: shut down gracefully (the SIGTERM path, child processes included) when standard input reaches EOF, so a harness started by an app does not outlive it. Off by default |
+| (env only) | `HARNESS_DEFAULT_ACCESS` | `serve` only: access of projects created without one, `full` (default until the UI shows approval cards) or `supervised`; see [docs/v7.md](./docs/v7.md) |
+| (env only) | `HARNESS_APPROVAL_TIMEOUT` | `serve` only: an approval request nobody answers is denied after this (Go duration, default `30m`; `0` waits for ever) |
+| (env only) | `HARNESS_ACP_TRACE` | `1` writes a redacted, size-capped wire trace of every ACP session to `{data-dir}/traces/`; also the setting of the same name (`PUT /v1/settings`, applies to sessions started afterwards); see [docs/acp-orchestrator.md](./docs/acp-orchestrator.md#diagnostics-and-the-wire-trace) |
 
 When `--stream` is on, assistant text and `session: <id>` are written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.
+
+## Diagnostics: `harness doctor`
+
+```bash
+./octo-harness doctor            # versions, data dir, the PATH agents get, each agent: command found or not, required commands, login probe (run now), install and login hints, problems
+./octo-harness doctor --json     # the same as GET /v1/diagnostics, without the log tail
+```
+
+`GET /v1/diagnostics` serves the report of a running harness and adds the last 200 log lines (scrubbed) and the trace files. Neither shows a secret (environment variable *names* only, URLs without credentials; tested). Paste the report into a bug report. Details: [docs/acp-orchestrator.md](./docs/acp-orchestrator.md#diagnostics-and-the-wire-trace).
 
 ## Session inspection
 
@@ -290,7 +305,10 @@ Under `--data-dir` (default `./data/harness`):
 
 - `harness.sqlite` — legacy CLI sessions and message JSON
 - `registry.sqlite` — project index (`serve`)
-- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes
+- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes, usage, tasks, memory files, search indexes, changes, queue (schema version 3 via `PRAGMA user_version`; an older database migrates forward, a newer one is refused with a message)
+- `projects/{id}/secrets.json` — the project's secret store (mode 0600; see [docs/v7.md](./docs/v7.md))
+- `projects/{id}/shadow/` — pre-image copies for change tracking (rebuilt at every start)
+- `traces/` — ACP wire traces when `HARNESS_ACP_TRACE` is on
 - `cache/` — cached remote tool manifests
 - `prices.toml` — optional price table for usage cost estimates (you create it; the harness only reads it)
 
