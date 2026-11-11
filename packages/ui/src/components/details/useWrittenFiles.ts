@@ -1,6 +1,6 @@
 import type { Agent } from "@octo/agent-client";
 import { useEffect, useMemo, useState } from "react";
-import { writtenFiles, type WrittenFile } from "../../lib/tools";
+import { commandRuns, writtenFiles, type WrittenFile } from "../../lib/tools";
 import { useActivity, useActivityVersion } from "../../state/activity";
 import { useProject } from "../../state/project";
 
@@ -38,11 +38,13 @@ export function groupWrites(writes: WrittenFile[], now: number): FileGroup[] {
  * transcripts — one `listMessages` per agent, at most 4 in flight, cached per agent `finished_at` — and
  * read again when an agent changes a file. Null until the first pass is complete.
  */
-export function useWrittenFiles(): WrittenFile[] | null {
+export type Writes = { files: WrittenFile[]; /** When a command ran (its changes are not tracked as files). */ commands: string[] };
+
+export function useWrittenFiles(): Writes | null {
   const { project, state, projectId, onEvent } = useProject();
   const activity = useActivity();
   const version = useActivityVersion(activity);
-  const [writes, setWrites] = useState<WrittenFile[] | null>(null);
+  const [writes, setWrites] = useState<Writes | null>(null);
   const agents = useMemo(() => state.agentOrder.map((id) => state.agents[id]).filter((a): a is Agent => a !== undefined), [state.agentOrder, state.agents]);
   // Only what decides a re-read: the agents and when they finished.
   const stamp = agents.map((a) => `${a.id}:${a.finished_at ?? a.status}`).join(",");
@@ -56,7 +58,7 @@ export function useWrittenFiles(): WrittenFile[] | null {
     // An agent whose transcript cannot be read is left out of the list (it shows again on the next refresh).
     void Promise.all(agents.map((a) => activity.transcript(projectId, a).catch(() => []))).then((lists) => {
       if (cancelled) return;
-      setWrites(lists.flatMap((messages) => writtenFiles(messages, folders)));
+      setWrites({ files: lists.flatMap((messages) => writtenFiles(messages, folders)), commands: lists.flatMap((messages) => commandRuns(messages)) });
     });
     return () => {
       cancelled = true;

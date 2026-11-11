@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { costText, formatUsd, shareRows } from "../../lib/usage";
+import { costText, formatUsd, isFlatRate, paidCost, shareRows } from "../../lib/usage";
 import type { UsageView } from "../../lib/usageView";
 import { InfoSection } from "../primitives/InfoList";
-import { modelLabel } from "../primitives/Status";
+import { useModelNames } from "../../state/models";
 import { ShareRows, UsageState } from "./UsageTokens";
 import type { Load, UsageData } from "./useUsage";
 
@@ -11,8 +11,12 @@ import type { Load, UsageData } from "./useUsage";
  * without any price reads "no price" (never $0), and then one line says where prices come from.
  */
 export function UsageCost({ load, view }: { load: Load<UsageData>; view: UsageView }) {
+  const { name: modelLabel } = useModelNames();
   const data = load.status === "ok" ? load.value : null;
   const total = data?.models.total;
+  // Flat-rate rows (agents on a subscription) are an equivalent, not spend: never in the paid total.
+  const paid = data ? paidCost(data.models.total, data.models.buckets) : null;
+  const flat = data ? data.models.buckets.filter(isFlatRate).reduce((n, b) => n + (b.cost_usd ?? 0), 0) : 0;
   const rows = useMemo(
     () =>
       data
@@ -21,7 +25,7 @@ export function UsageCost({ load, view }: { load: Load<UsageData>; view: UsageVi
             (b) => b.cost_usd ?? 0,
           )
         : [],
-    [data],
+    [data, modelLabel],
   );
   const unpriced = data?.models.buckets.some((b) => b.cost_usd === null) ?? false;
   const empty = !data || data.models.buckets.length === 0;
@@ -30,17 +34,24 @@ export function UsageCost({ load, view }: { load: Load<UsageData>; view: UsageVi
       {total && (
         <section aria-label="Total cost" className="flex flex-col gap-1 px-2">
           <p className="flex items-baseline gap-2 text-figure text-fg tabular-nums">
-            {total.cost_usd === null ? <span className="text-fg-3">No price</span> : formatUsd(total.cost_usd)}
+            {paid === null ? <span className="text-fg-3">No price</span> : formatUsd(paid)}
             {total.cost_estimated && <span className="text-xs font-normal text-fg-3">estimated</span>}
           </p>
           <p className="text-xs text-fg-3">
-            Last {view.days} days, {view.scope === "project" ? "this project" : "all projects"}
-            {unpriced && total.cost_usd !== null ? ". Models without a price are not included." : ""}
+            {[
+              `Last ${view.days} days, ${view.scope === "project" ? "this project" : "all projects"}`,
+              unpriced && total.cost_usd !== null ? "Models without a price are not included" : null,
+              flat > 0 ? `Not counted: ≈ ${formatUsd(flat)} of agents on your subscription` : null,
+            ]
+              .filter(Boolean)
+              .join(". ")}
+            {"."}
           </p>
         </section>
       )}
       <InfoSection title="By model" labelId="usage-cost-models">
         <ShareRows
+          distinct
           rows={rows}
           value={(r) => (
             <>

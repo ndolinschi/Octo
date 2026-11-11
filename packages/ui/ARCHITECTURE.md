@@ -13,18 +13,20 @@ in `.claude/rules/typescript.md`). This file describes structure: what lives whe
 
 ```text
 app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host), AppShell, ProjectWorkspace
-components/<feature>/   chat · files · agents · notes · details · usage · home · project · shell   (screens and their parts)
+components/<feature>/   chat · files · agents · notes · details · usage · home · project · shell · side   (screens and their parts)
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
                         as a prop: the file view's floating composer)
 components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs (OrchestratorGlyph, fileIcons),
                         Highlight (matched text), InfoList rows, FloatRoom, Segmented, DayBars (day chart), backdrop
                         (group-level streak request), Streak (lazy canvas) + StreakLayer — import `lib` only
-components/shared/      pieces several features use that read app state: Markdown (prose, code highlight) and FileLink
-                        (InlineCode: a path in prose opens the file through `state/code`)
+components/shared/      pieces several features use that read app state: Markdown (prose, code highlight), FileLink
+                        (InlineCode: a path in prose opens the file through `state/code`), ModelPicker (button) + ModelPickerPanel
+                        (lazy list, decision 27), DataTable / TableFrame (decision 44, lazy)
 state/                  one provider per concern (see the tree below); state/workspace/layout.ts is pure; the dock group's
                         context (state/workspace/group.tsx) and useFloatingHere live here too
 lsp/                    language-server client (hub in the main chunk, the rest loads with Monaco)
-lib/                    pure helpers and small hooks: files, buffers (EditorBuffers: Monaco models, type-only import), format, match (+ group ranking), comments, transcript, tools, route,
+lib/                    pure helpers and small hooks: models (names, served model, budget, routing, middle truncation),
+                        modelPicker, picker, recap, triage, table, contextMeter, agentGroups, keys, files, buffers (EditorBuffers: Monaco models, type-only import), format, match (+ group ranking), comments, transcript, tools, route,
                         storage, fileLinks, codePalette, highlight (lazy), streak, focus, constants, context, orchestrator
                         (a project's orchestrator state), usage (report arithmetic, chart scale, limits), crumbs
                         (breadcrumb fit), frontMatter, languages, streakPresets (band geometry per start screen) — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
@@ -95,6 +97,11 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
   bundle 211.2 → 195.1 kB gzip). Inside the demo, `seedFiles.ts` and `lsp.ts` still load with `import()` as well.
 - Home, Details, Usage and Integrations are lazy chunks (`React.lazy` in `app/AppShell` and `dock/TabView`), as are the
   streak canvas (`primitives/Streak`) and the highlighter (`lib/highlight`).
+- v6.3 part 2 moved these out of the initial bundle too (initial 188.8 kB gzip): the file view (`files/FileView` and its
+  tree, crumbs, editor host), Agents, Notes, the side question, the "+" tab picker and the all-tabs list (`dock/TabPicker`,
+  `dock/AllTabsPicker`), the model picker's list, the composer's "+" menu, the comments control, the Markdown preview,
+  sent comments, the agent header, tool details (`chat/ToolDetail`) and the table frame. `AppShell` warms the file view,
+  the tab picker and the model picker 1.5 s after start; the composer's menu is prefetched when the composer takes focus.
 
 `node scripts/check-bundle-size.mjs` (CI runs it after the desktop build) sums the gzip size of the entry chunk and its
 `modulepreload` chunks and fails above the budget recorded in the script (measured size + 3 kB); lazy chunks are not counted.

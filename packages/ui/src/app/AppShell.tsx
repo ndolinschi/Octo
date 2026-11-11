@@ -87,6 +87,11 @@ function Shell() {
     const id = window.setTimeout(() => {
       void loadPalette().catch(() => undefined);
       void loadDialogs().catch(() => undefined);
+      // The chunks the first minutes most likely need (v6.3 part 2 moved them out of the initial bundle): warmed, so a
+      // file, the "+" picker or the model picker opens without a wait. A failure is retried by the first real open.
+      void import("../components/files/FileView").catch(() => undefined);
+      void import("../components/dock/TabPicker").catch(() => undefined);
+      void import("../components/shared/ModelPickerPanel").catch(() => undefined);
     }, 1500);
     return () => window.clearTimeout(id);
   }, []);
@@ -140,6 +145,7 @@ function Shell() {
     main = (
       <Suspense fallback={null}>
         <Home
+          unseen={unseen}
           onNewProject={newProject}
           onSearch={openPalette}
           onUsage={(projectId) => {

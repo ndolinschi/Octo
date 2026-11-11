@@ -83,7 +83,7 @@ function CodeLink() {
   return null;
 }
 
-/** The dock of tab groups; the project's global actions live in the strips (see `WorkspaceActions`). */
+/** The dock of tab groups; tools open from each strip's "+" (`TabPicker`), the palette and the orchestrator header's `…` menu. */
 function Body() {
   const { project, loadError, reload } = useProject();
   return (

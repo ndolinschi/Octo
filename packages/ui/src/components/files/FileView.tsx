@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
@@ -23,7 +23,8 @@ import { Spinner } from "../primitives/Status";
 import { CodeEditor } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
-import { MarkdownPreview } from "./MarkdownPreview";
+/** The Markdown preview loads with the first Markdown file (its own chunk). */
+const MarkdownPreview = lazy(() => import("./MarkdownPreview").then((m) => ({ default: m.MarkdownPreview })));
 import { TreeColumn } from "./TreeColumn";
 import { EDITOR_MIN_WIDTH, FILE_VIEW_OVERLAY_BELOW } from "../../lib/constants";
 import { slot } from "../../state/workspace/tabMemory";
@@ -157,7 +158,9 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   } else if (file?.status === "ready" && !opening) {
     body =
       markdown && mode === "preview" ? (
-        <MarkdownPreview file={file} bottomRoom={bottomRoom} onOpen={openHere} />
+        <Suspense fallback={null}>
+          <MarkdownPreview file={file} bottomRoom={bottomRoom} onOpen={openHere} />
+        </Suspense>
       ) : (
         <CodeEditor
           file={file}

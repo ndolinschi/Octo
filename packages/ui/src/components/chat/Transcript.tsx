@@ -1,17 +1,23 @@
 import type { Agent, Message } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
-import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { formatDuration, formatSeparator, needsSeparator, timeAgo, errorMessage } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
-import { buildTurns, promptText, type Turn } from "../../lib/transcript";
+import { buildTurns, compactionSlots, promptText, turnWarning, type Turn } from "../../lib/transcript";
+import { formatTokens } from "../../lib/format";
+import type { CompactionMarker } from "@octo/agent-client";
+import { Info } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { useProject } from "../../state/project";
+import { useActivity } from "../../state/activity";
 import { Button, IconButton } from "../primitives/Button";
 import { RunningDot, Spinner } from "../primitives/Status";
 import { DelegationGroup } from "./DelegationGroup";
 import { Markdown } from "../shared/Markdown";
-import { SentComments } from "./SentComments";
+/** Code comments sent with a prompt render with the first such prompt (their own chunk). */
+const SentComments = lazy(() => import("./SentComments").then((m) => ({ default: m.SentComments })));
 import { ToolGroup } from "./ToolGroup";
 import { TranscriptContext, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 
@@ -41,6 +47,27 @@ export const Transcript = memo(function Transcript(props: {
   const isOrchestrator = agent.parent_id === null;
   const lastTurn = isOrchestrator ? state.lastTurn : null;
   const lastPrompt = turns[turns.length - 1]?.prompt ?? null;
+  const markers = state.compactions[agent.id];
+  const slots = useMemo(
+    () =>
+      compactionSlots(
+        turns.map((t) => t.prompt?.id ?? null),
+        markers ?? [],
+      ),
+    [turns, markers],
+  );
+  // A completed turn can carry a `warning:` error (an ACP orchestrator that runs without harness tools): a quiet notice.
+  // A failed turn shows from the live event, or after a reload from the orchestrator's own state (failed, or an error
+  // that is not a warning: an ACP orchestrator that could not start). Its login hint comes along when the agent has one.
+  const failure =
+    lastTurn && lastTurn.status !== "completed"
+      ? { status: lastTurn.status, error: lastTurn.error }
+      : isOrchestrator && (agent.status === "failed" || (agent.error && !turnWarning(agent.error)))
+        ? { status: "failed" as const, error: agent.error }
+        : null;
+  const loginHint = useLoginHint(isOrchestrator && failure ? agent.model : null);
+  const warning =
+    isOrchestrator && !running ? turnWarning(lastTurn?.status === "completed" ? lastTurn.error : agent.status !== "failed" ? agent.error : null) : null;
   // Finished turns only show minutes-old times; a coarse clock lets them skip the per-second tick.
   const minute = Math.floor(now / 60_000) * 60_000;
 
@@ -56,6 +83,9 @@ export const Transcript = memo(function Transcript(props: {
             isOrchestrator && turn.prompt && needsSeparator(prev ? (prev.lastAt ?? prev.prompt?.created_at ?? null) : null, turn.prompt.created_at);
           return (
             <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-4">
+              {slots.get(i)?.map((m) => (
+                <CompactedMarker key={`c${m.upto_message_id}`} marker={m} />
+              ))}
               {separator && turn.prompt && <TimeSeparator at={turn.prompt.created_at} now={minute} />}
               {turn.prompt && !hidePrompt && <UserPrompt text={promptText(turn.prompt)} author={props.promptAuthor} external={!isOrchestrator} />}
               <AssistantTurn
@@ -82,8 +112,17 @@ export const Transcript = memo(function Transcript(props: {
             now={now}
           />
         )}
-        {lastTurn && lastTurn.status !== "completed" && !running && (
-          <TurnBanner status={lastTurn.status} error={lastTurn.error} retryText={lastPrompt ? promptText(lastPrompt) : null} />
+        {slots.get(turns.length)?.map((m) => (
+          <CompactedMarker key={`c${m.upto_message_id}`} marker={m} />
+        ))}
+        {warning && (
+          <p data-turn-warning role="status" className="-mt-4 flex items-center gap-2 text-sm text-fg-2">
+            <Glyph icon={Info} size={14} className="shrink-0 text-fg-3" />
+            <span className="min-w-0">{warning}</span>
+          </p>
+        )}
+        {failure && !running && (
+          <TurnBanner status={failure.status} error={failure.error} retryText={lastPrompt ? promptText(lastPrompt) : null} hint={loginHint} />
         )}
       </div>
     </TranscriptContext.Provider>
@@ -97,6 +136,27 @@ function TimeSeparator({ at, now }: { at: string; now: number }) {
       <time dateTime={at} title={new Date(at).toLocaleString()}>
         {formatSeparator(at, now)}
       </time>
+    </div>
+  );
+}
+
+/**
+ * Where the orchestrator's history was compacted (decision 37): everything above was replaced by a summary in its
+ * context. A centred 12px line between hairlines, like the time separator; the summary's size in the tooltip.
+ */
+function CompactedMarker({ marker }: { marker: CompactionMarker }) {
+  const size = marker.summary_tokens ? ` into a summary of about ${formatTokens(marker.summary_tokens)} tokens` : "";
+  return (
+    <div
+      data-compacted
+      role="separator"
+      aria-label="History compacted"
+      title={`Everything above was compacted${size} on ${new Date(marker.at).toLocaleString()}. The orchestrator works from that summary; the full text stays here.`}
+      className="flex h-4 items-center gap-3 text-xs text-fg-3"
+    >
+      <span aria-hidden className="h-px flex-1 bg-line" />
+      History compacted
+      <span aria-hidden className="h-px flex-1 bg-line" />
     </div>
   );
 }
@@ -140,7 +200,9 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
       )}
       {comments.length > 0 && (
         <div className={cn(text && "mt-3")}>
-          <SentComments comments={comments} />
+          <Suspense fallback={null}>
+            <SentComments comments={comments} />
+          </Suspense>
         </div>
       )}
     </div>
@@ -198,7 +260,29 @@ function TurnFooter({ reply, at, now }: { reply: string; at: string; now: number
   );
 }
 
-function TurnBanner(props: { status: "failed" | "cancelled"; error: string | null; retryText: string | null }) {
+/** The login hint of the ACP agent an `acp:` setting names, when the plugins report it logged out (or give a hint). */
+export function useLoginHint(model: string | null): string | null {
+  const activity = useActivity();
+  const id = model?.startsWith("acp:") ? model.slice(4).split("/")[0] : undefined;
+  const [hint, setHint] = useState<string | null>(null);
+  useEffect(() => {
+    if (!id) return;
+    let alive = true;
+    activity.plugins().then(
+      (plugins) => {
+        const a = plugins.flatMap((p) => p.agents).find((x) => x.id === id);
+        if (alive) setHint(a && a.logged_in !== true && a.hint ? a.hint : null);
+      },
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [activity, id]);
+  return id ? hint : null;
+}
+
+export function TurnBanner(props: { status: "failed" | "cancelled"; error: string | null; retryText: string | null; hint?: string | null }) {
   const { send, running } = useProject();
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -225,6 +309,7 @@ function TurnBanner(props: { status: "failed" | "cancelled"; error: string | nul
     <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
       <p className="min-w-0 flex-1 text-fg-2">
         <span className={failed ? "text-err" : "text-fg"}>{failed ? "Turn failed." : "Turn stopped."}</span> {detail}
+        {props.hint && <span className="block text-fg-3">{props.hint}</span>}
         {retryError && <span className="text-err"> Retry failed: {retryError}</span>}
       </p>
       {canRetry && (

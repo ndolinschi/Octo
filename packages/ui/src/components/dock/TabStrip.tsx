@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { cn } from "../../lib/cn";
 import { flushSync } from "react-dom";
 import { useOptionalComments } from "../../state/comments";
 import { useScrollFade } from "../../lib/hooks";
@@ -14,13 +15,18 @@ import { tabButton } from "../../state/workspace/ids";
 import { tabInfo } from "./tabInfo";
 import { Tab } from "./Tab";
 import { SidebarToggle } from "../shell/SidebarToggle";
-import { WorkspaceActions } from "./WorkspaceActions";
 import { type FileKey } from "../../lib/files";
-import { STRIP_TOOLS_FOLD_BELOW } from "../../lib/constants";
+import { ChevronDown, Plus } from "lucide-react";
+import { IconButton } from "../primitives/Button";
+import { Glyph } from "../primitives/Glyph";
+import { StateGlyph } from "../primitives/StateGlyph";
+/** The "+" picker and the all-tabs list load when first opened (their own chunks). */
+const TabPicker = lazy(() => import("./TabPicker").then((m) => ({ default: m.TabPicker })));
+const AllTabsPicker = lazy(() => import("./AllTabsPicker").then((m) => ({ default: m.AllTabsPicker })));
 
-/** Room the unfolded project tools take at the end of the strip (separator, 5 tools, divider, settings, insets) and a tab's minimum width. */
-const TOOLS_WIDTH = 258;
-const TAB_MIN_WIDTH = 96;
+/** Room the "+" takes after the tabs (28 + the 4px gap), and the "all tabs" button when the strip scrolls (24 + 4). */
+const PLUS_ROOM = 32;
+const ALL_TABS_ROOM = 28;
 /** Clear of the 20px edge fade, so the selected tab's label and close button are never under it. */
 const SCROLL_MARGIN = 24;
 
@@ -37,16 +43,17 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
   const code = useCode();
   const { state, project } = useProject();
   const list = useRef<HTMLDivElement>(null);
-  const strip = useRef<HTMLDivElement>(null);
-  const [widths, setWidths] = useState({ strip: 0, list: 0 });
+  const wrap = useRef<HTMLDivElement>(null);
+  const plus = useRef<HTMLButtonElement>(null);
+  const allButton = useRef<HTMLButtonElement>(null);
+  const [allOpen, setAllOpen] = useState(false);
+  const [room, setRoom] = useState(0);
   useLayoutEffect(() => {
-    const s = strip.current;
-    const l = list.current;
-    if (!s || !l) return;
-    const measure = () => setWidths({ strip: s.clientWidth, list: l.clientWidth });
+    const w = wrap.current;
+    if (!w) return;
+    const measure = () => setRoom(w.clientWidth);
     const ro = new ResizeObserver(measure);
-    ro.observe(s);
-    ro.observe(l);
+    ro.observe(w);
     measure();
     return () => ro.disconnect();
   }, []);
@@ -55,12 +62,14 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
   const counts = useOptionalComments()?.counts;
   const ctx = { state, orchestratorId: project?.orchestrator_agent_id, file: code.file, comments: (key: FileKey) => counts?.get(key) ?? 0 };
 
-  // A narrow last group folds the project's tools into one `…` menu, so its tabs keep room (v6.1 review P1-5).
-  const folded =
-    props.last && widths.strip > 0 && widths.strip < STRIP_TOOLS_FOLD_BELOW && (props.tabs.length > 1 || widths.strip - TOOLS_WIDTH < TAB_MIN_WIDTH);
   const activeIndex = props.tabs.indexOf(props.active);
-  // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer.
-  const size = tabSizing(widths.list, props.tabs.length, activeIndex);
+  // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer. The tabs get the
+  // strip minus the "+" (decision 25: it follows the last tab) and, once they scroll, the "all tabs" button.
+  const fits = tabSizing(room - PLUS_ROOM, props.tabs.length, activeIndex);
+  const overflow = room > 0 && fits.overflow;
+  const size = overflow ? tabSizing(room - PLUS_ROOM - ALL_TABS_ROOM, props.tabs.length, activeIndex) : fits;
+  const listWidth = room > 0 ? room - PLUS_ROOM - (overflow ? ALL_TABS_ROOM : 0) : 0;
+  const pickerHere = ws.picker !== null && ws.picker.group === props.groupId;
   const button = (tab: TabId) => (list.current ? tabButton(list.current, tab) : null);
 
   /* Overflow: fade whichever end has more tabs, and keep the selected tab in view. */
@@ -84,6 +93,10 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
         wrapper.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: settle.ms, easing: "cubic-bezier(0.2,0,0,1)" });
     }
   }, [props.active, props.tabs, updateFade, size.widths]);
+  // Ctrl/Cmd+T opens the picker on the focused group's "+": it must exist before the popover anchors to it.
+  useLayoutEffect(() => {
+    if (pickerHere) plus.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [pickerHere]);
   // After a keyboard move or close, the tab that now holds the selection takes focus.
   useEffect(() => {
     if (ws.focusRequest && props.tabs.includes(ws.focusRequest.tab)) button(ws.focusRequest.tab)?.focus();
@@ -151,46 +164,108 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
   };
 
   return (
-    <div ref={strip} data-strip className="relative flex shrink-0 items-center gap-1 px-pane pt-pane">
+    <div data-strip className="relative flex shrink-0 items-center gap-1 px-pane pt-pane">
       {props.first && <SidebarToggle />}
-      <div
-        ref={list}
-        role="tablist"
-        aria-label={props.label}
-        data-tab-list
-        onWheel={(e) => {
-          if (list.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) list.current.scrollLeft += e.deltaY;
-        }}
-        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto fade-x"
-      >
-        {props.tabs.map((tab, i) => {
-          const info = tabInfo(tab, ctx);
-          const iconOnly = (size.iconOnly[i] ?? false) && tab !== props.active;
-          return (
-            <Tab
-              key={tab}
-              tab={tab}
-              info={info}
-              selected={tab === props.active}
-              focusedGroup={props.focused}
-              width={widths.list > 0 ? (size.widths[i] ?? null) : null}
-              iconOnly={iconOnly}
-              shift={shiftOf(tab, i)}
-              dragging={!drag ? null : drag.tab === tab ? (drag.attached ? "self-attached" : "self-detached") : "other"}
-              onPress={(e) => {
-                if (e.button !== 0) return;
-                // Rendered before the drag measures anything: activating can widen an icon-only tab.
-                flushSync(() => ws.activate(tab));
-                pressTab(e, ws, tab, info.label);
-              }}
-              onClose={() => ws.requestClose([tab])}
-              onMenu={(x, y) => openMenuAt(tab, x, y)}
-              onKeyDown={(e) => onKeyDown(e, i)}
-            />
-          );
-        })}
+      <div ref={wrap} className="flex min-w-0 flex-1 items-center gap-1">
+        <div
+          ref={list}
+          role="tablist"
+          aria-label={props.label}
+          data-tab-list
+          onWheel={(e) => {
+            if (list.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) list.current.scrollLeft += e.deltaY;
+          }}
+          style={listWidth > 0 ? { maxWidth: listWidth } : undefined}
+          className="flex min-w-0 shrink items-center gap-1 overflow-x-auto fade-x"
+        >
+          {props.tabs.map((tab, i) => {
+            const info = tabInfo(tab, ctx);
+            const iconOnly = (size.iconOnly[i] ?? false) && tab !== props.active;
+            return (
+              <Tab
+                key={tab}
+                tab={tab}
+                info={info}
+                selected={tab === props.active}
+                focusedGroup={props.focused}
+                width={room > 0 ? (size.widths[i] ?? null) : null}
+                iconOnly={iconOnly}
+                shift={shiftOf(tab, i)}
+                dragging={!drag ? null : drag.tab === tab ? (drag.attached ? "self-attached" : "self-detached") : "other"}
+                onPress={(e) => {
+                  if (e.button !== 0) return;
+                  // Rendered before the drag measures anything: activating can widen an icon-only tab.
+                  flushSync(() => ws.activate(tab));
+                  pressTab(e, ws, tab, info.label);
+                }}
+                onClose={() => ws.requestClose([tab])}
+                onMenu={(x, y) => openMenuAt(tab, x, y)}
+                onKeyDown={(e) => onKeyDown(e, i)}
+              />
+            );
+          })}
+        </div>
+        <IconButton
+          ref={plus}
+          icon={Plus}
+          label="Open a tab"
+          title={`Open a tool, file or agent (${MOD}T)`}
+          data-tab-plus
+          aria-haspopup="dialog"
+          aria-expanded={pickerHere}
+          className={cn("shrink-0", pickerHere && "bg-active text-fg")}
+          onClick={() => (pickerHere ? ws.closePicker() : ws.openPicker(props.groupId))}
+        />
+        {overflow && (
+          <button
+            ref={allButton}
+            type="button"
+            data-all-tabs
+            aria-label={`All tabs (${props.tabs.length})`}
+            title={`All tabs (${props.tabs.length})`}
+            aria-haspopup="dialog"
+            aria-expanded={allOpen}
+            onClick={() => setAllOpen((o) => !o)}
+            className={cn(
+              "ml-auto grid h-chip w-6 shrink-0 press place-items-center rounded-sm text-fg-3 hover:bg-hover hover:text-fg",
+              allOpen && "bg-active text-fg",
+            )}
+          >
+            <Glyph icon={ChevronDown} size={14} />
+          </button>
+        )}
       </div>
-      {props.last && <WorkspaceActions folded={folded} />}
+      <Presence show={pickerHere} exitMs={0}>
+        {pickerHere && (
+          <Suspense fallback={null}>
+            <TabPicker key={ws.picker?.n} anchor={plus} onClose={ws.closePicker} />
+          </Suspense>
+        )}
+      </Presence>
+      <Presence show={allOpen} exitMs={0}>
+        {allOpen && (
+          <Suspense fallback={null}>
+            <AllTabsPicker
+              anchor={allButton}
+              onClose={() => setAllOpen(false)}
+              rows={props.tabs.map((t) => {
+                const info = tabInfo(t, ctx);
+                return {
+                  id: t,
+                  label: info.name ?? info.label,
+                  title: info.title,
+                  checked: t === props.active,
+                  lead: info.glyph ? <StateGlyph state={info.glyph} /> : <Glyph icon={info.icon} size={14} />,
+                  run: () => {
+                    ws.activate(t);
+                    requestAnimationFrame(() => button(t)?.focus());
+                  },
+                };
+              })}
+            />
+          </Suspense>
+        )}
+      </Presence>
       <Presence show={menu !== null} exitMs={0}>
         {menu && <Menu label="Tab actions" x={menu.x} y={menu.y} items={menuItems(menu.tab)} onClose={() => setMenu(null)} />}
       </Presence>

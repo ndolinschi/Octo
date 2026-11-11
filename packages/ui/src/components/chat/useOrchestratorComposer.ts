@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { withComments } from "../../lib/comments";
 import { useApp } from "../../state/app";
+import { modelIds, servedModel } from "../../lib/models";
 import { useOptionalComments } from "../../state/comments";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
@@ -30,23 +31,35 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const { health, config } = useApp();
   const { project, state, running, send, cancel, live, update } = useProject();
   const comments = useOptionalComments();
-  const memory = useOptionalWorkspace()?.memory;
+  const ws = useOptionalWorkspace();
+  const memory = ws?.memory;
   const [pending, setPending] = useState<string | null>(null);
   const orchestratorId = project?.orchestrator_agent_id;
   const messages = orchestratorId ? state.messages[orchestratorId] : undefined;
   const current = pending ?? project?.models.orchestrator ?? null;
 
   // The project's configured models, then the bridge's defaults; each once, in that order.
-  const options = useMemo(() => {
-    const ids = [
-      project?.models.orchestrator,
-      project?.models.deep,
-      project?.models.balanced,
-      project?.models.fast,
-      ...Object.values(config?.default_models ?? {}),
-    ];
-    return [...new Set(ids.filter((m): m is string => Boolean(m?.trim())))];
-  }, [project?.models, config]);
+  // Model ids only: `auto_candidates` (a list) and `tier_policy` are settings values but not models.
+  const known = useMemo(
+    () =>
+      modelIds(
+        project?.models.orchestrator,
+        project?.models.deep,
+        project?.models.balanced,
+        project?.models.fast,
+        ...Object.values(config?.default_models ?? {}),
+      ),
+    [project?.models, config],
+  );
+  const policy = project?.models.tier_policy ?? "auto";
+  const root = orchestratorId ? state.agents[orchestratorId] : undefined;
+  const served = current && root?.served_model ? servedModel({ model: current, served_model: root.served_model }, config?.acp_orchestrators ?? []) : null;
+  const servedTitle = served?.asked ? `${served.asked} → ${served.name} (chosen → served by the router)` : undefined;
+  // No API key and no router: the built-in loop cannot run, so a project on a Messages API model would fail (ACP agents
+  // still work). One quiet line says so and where to go — never a dead end.
+  const loop = config?.builtin_loop;
+  const noKey = loop?.available === false && !(current ?? "").startsWith("acp:");
+  const loopReason = loop?.reason;
 
   return {
     running,
@@ -54,10 +67,24 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
     followUp: (messages?.length ?? 0) > 0,
     folders: project?.folders ?? [],
     commentCount: comments?.comments.length ?? 0,
+    notice: noKey
+      ? {
+          text: "No API key set. Choose an agent on a subscription below, or give the harness a key.",
+          ...(loopReason ? { title: loopReason } : {}),
+        }
+      : null,
+    onFolders: ws ? ws.openSettings : undefined,
+    // Routing applies to Messages API models behind the router, not to an orchestrator that runs as an ACP agent.
+    policy:
+      config?.router && project && !(current ?? "").startsWith("acp:")
+        ? { value: policy, onChange: (p) => void update({ models: { tier_policy: p } }).catch(() => undefined) }
+        : null,
     model: current
       ? {
           value: current,
-          options,
+          known,
+          title: servedTitle,
+          tiers: project ? { fast: project.models.fast, balanced: project.models.balanced, deep: project.models.deep } : null,
           choose: async (model) => {
             if (!project || model === project.models.orchestrator) return;
             setPending(model);

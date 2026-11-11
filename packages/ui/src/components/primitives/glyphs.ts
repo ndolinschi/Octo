@@ -1,4 +1,4 @@
-import { Bot, ChartNoAxesColumn, Folder, Gauge, ListTree, Notebook, Settings, Workflow, type LucideIcon } from "lucide-react";
+import { Bot, ChartNoAxesColumn, Folder, Gauge, ListTree, MessageCircleQuestionMark, Notebook, Settings, Workflow, type LucideIcon } from "lucide-react";
 
 /**
  * Glyphs with a meaning used in more than one place (contract v6 decision 14): one glyph per meaning,
@@ -19,6 +19,8 @@ export const GLYPH = {
   details: ChartNoAxesColumn,
   /** Tokens, cost and limits (Usage tool, Home's Tokens card). */
   usage: Gauge,
+  /** A side question about the project that does not enter the orchestrator's history (decision 40). */
+  side: MessageCircleQuestionMark,
   /** Settings, app-wide and per project: one gear (the tooltip says which). */
   settings: Settings,
 } satisfies Record<string, LucideIcon>;

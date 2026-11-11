@@ -18,7 +18,7 @@ import {
   PERSIST_LAYOUT_MS,
 } from "../../lib/constants";
 import { createRequiredContext } from "../../lib/context";
-import { TabMemory, USAGE_VIEW } from "./tabMemory";
+import { SIDE_PINNED, TabMemory, USAGE_VIEW } from "./tabMemory";
 import { jumpIndex, mruOrder, mruTouch, pushClosed, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
 import { useTabKeys } from "./useTabKeys";
 import { domId, tabButton } from "./ids";
@@ -26,7 +26,8 @@ import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
 import { type FileKey, keyFolder } from "../../lib/files";
 
 /** Modifier as shown in shortcut hints. */
-export const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
+export { MOD_LABEL as MOD } from "../../lib/keys";
+import { MOD_LABEL } from "../../lib/keys";
 
 /** Where a dragged tab lands. */
 export type DropTarget =
@@ -66,6 +67,10 @@ export type WorkspaceValue = {
   focusChat(): void;
   openAgent(agentId: string, options?: { otherSide?: boolean }): void;
   openTool(tool: ToolTab): void;
+  /** The "+" tab picker (decision 25): open in `group`'s strip (default: the focused group), with a counter so a repeat re-opens. */
+  picker: { group: string; n: number } | null;
+  openPicker(group?: string): void;
+  closePicker(): void;
   /** Opens a file's tab: in `where.group` (in place of `where.replace`) when given, else in the side group. */
   openFileTab(key: FileKey, where?: { group: string; replace?: TabId }): void;
   /** Opens (or focuses) a tab in a given group. */
@@ -89,6 +94,7 @@ export type WorkspaceValue = {
   cycle(step: number, order: TabId[]): void;
   /** The focused group's tabs in most-recently-used order (taken when a Ctrl+Tab walk starts). */
   mruOrder(): TabId[];
+  walkGroup(): string;
   /** Ends a Ctrl+Tab walk: the tab it stopped on becomes the most recent. */
   endCycle(): void;
   /** Ctrl/Cmd+1…8 by position, 9 the last (decision 25). */
@@ -125,8 +131,8 @@ function focusFileSoon(key: FileKey) {
       const el = document.getElementById(panel);
       return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
     },
-    // Monaco loads lazily: wait for it a while (only while focus is still on nothing).
-    { onlyIfLost: true, timeout: 5000 },
+    // Monaco loads lazily: wait for it a while (only while focus is still on nothing, or on the new tab holding it).
+    { onlyIfLost: true, timeout: 5000, holder: () => tabButton(document, L.fileTab(key)) },
   );
 }
 
@@ -143,7 +149,7 @@ function conversationOf(tab: TabId): string | null | undefined {
  */
 export function WorkspaceProvider({ routeAgentId, onSettings, children }: { routeAgentId: string | null; onSettings(): void; children: ReactNode }) {
   const nav = useNav();
-  const { projectId, project, state } = useProject();
+  const { projectId, project, state, clearSide } = useProject();
   const [layout, setLayout] = usePersistentState(PREFS.layout(projectId), L.layoutCodec, { debounceMs: PERSIST_LAYOUT_MS });
   const layoutRef = useRef(layout);
   const [dockWidth, setDockWidth] = useState(0);
@@ -151,6 +157,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const [lastConversation, setLastConversation] = useState<TabId>(L.CHAT);
   const [focusRequest, setFocusRequest] = useState<{ tab: TabId; n: number } | null>(null);
   const [closing, setClosing] = useState<Closing | null>(null);
+  const [picker, setPicker] = useState<{ group: string; n: number } | null>(null);
   const [memory] = useState(() => new TabMemory());
   const code = useRef<CodeLink | null>(null);
   const mru = useRef<TabId[]>([]);
@@ -215,11 +222,13 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         if (ref?.kind === "file") code.current?.close(ref.key);
       }
       setClosedTabs((stack) => pushClosed(stack, entries));
+      // Decision 40: closing the side question clears it unless it was pinned ("Keep").
+      if (tabs.includes(L.toolTab("side")) && !memory.get(L.toolTab("side"), SIDE_PINNED)) void clearSide().catch(() => undefined);
       const next = L.close(current, tabs);
       // Decision 35: focus never falls to the page — the tab that becomes active takes it (also after a pointer close).
       commit(next, { focusTab: L.focusedGroup(next).active });
     },
-    [commit],
+    [commit, memory, clearSide],
   );
 
   const requestClose = useCallback(
@@ -268,6 +277,14 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       focusRequest,
       memory,
       closing,
+      picker,
+      openPicker: (group) => {
+        const current = layoutRef.current;
+        // Narrow: one strip shows every tab, so the picker opens there whatever group is focused.
+        const target = narrowRef.current ? (current.groups[0]?.id ?? current.focused) : (group ?? current.focused);
+        setPicker((p) => ({ group: target, n: (p?.n ?? 0) + 1 }));
+      },
+      closePicker: () => setPicker(null),
       openSettings: onSettings,
       isVisible,
       setDockWidth,
@@ -287,7 +304,9 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       openTool: (tool) => {
         const tab = L.toolTab(tool);
         // Decision 35: the opened tool takes focus (the header button that opened it may re-mount in another strip).
-        if (tool !== "files") focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
+        // The side question's input takes the caret (Ctrl/Cmd+; means "ask now").
+        if (tool === "side") focusSoon(() => document.getElementById("octo-side-input"), { timeout: 3000 });
+        else if (tool !== "files") focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
         openSide(tab, tool === "files" ? undefined : toolFraction());
         if (tool === "files") {
           const g = L.groupOf(layoutRef.current, tab);
@@ -297,6 +316,9 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       // A file needs room: a side group sized for a tool widens to half the row.
       openFileTab: (key, where) => {
         focusFileSoon(key);
+        // Decision 35: until the (lazy) file view and its editor are in, the new tab's button holds focus, so it never
+        // falls to the page when the row that opened the file goes away with its panel.
+        focusSoon(() => tabButton(document, L.fileTab(key)), { onlyIfLost: true, timeout: 1500 });
         if (where) {
           const current = layoutRef.current;
           if (where.replace && L.groupOf(current, where.replace)) return commit(L.replace(current, where.replace, L.fileTab(key)));
@@ -363,6 +385,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         commit(L.resize(layoutRef.current, index, px / inner, MIN_GROUP / inner));
       },
       equalize: () => commit(L.equalize(layoutRef.current)),
+      walkGroup: () => (narrowRef.current ? "all" : L.focusedGroup(layoutRef.current).id),
       mruOrder: () => {
         const current = layoutRef.current;
         return mruOrder(mru.current, narrowRef.current ? L.allTabs(current) : L.focusedGroup(current).tabs);
@@ -425,6 +448,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     focusRequest,
     memory,
     closing,
+    picker,
     closedTabs,
     onSettings,
     commit,
@@ -511,11 +535,13 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
           { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
           { id: "tool-usage", label: "Show usage", detail: "tokens, cost, limits", run: () => ws.openTool("usage") },
+          { id: "tool-side", label: "Ask a side question", detail: "not added to the orchestrator", shortcut: `${MOD_LABEL};`, run: () => ws.openTool("side") },
+          { id: "new-tab", label: "Open a tab…", detail: "tools, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },
         ];
         if (ws.canMoveToOtherSide(active))
-          out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD}\\`, run: () => ws.moveToOtherSide(active) });
+          out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD_LABEL}\\`, run: () => ws.moveToOtherSide(active) });
         if (ws.canSplitRight(active)) out.push({ id: "split", label: "Split right", detail: name, run: () => ws.splitRight(active) });
-        if (L.closable(active)) out.push({ id: "close", label: "Close tab", detail: name, shortcut: `${MOD}W`, run: () => ws.requestClose([active]) });
+        if (L.closable(active)) out.push({ id: "close", label: "Close tab", detail: name, shortcut: `${MOD_LABEL}W`, run: () => ws.requestClose([active]) });
         if (L.allTabs(layoutRef.current).length > 1)
           out.push({ id: "close-others", label: "Close other tabs", detail: name, run: () => ws.closeOthers(active) });
         if (layoutRef.current.groups.length > 1 && !ws.narrow) out.push({ id: "equalize", label: "Make groups equal width", run: () => ws.equalize() });

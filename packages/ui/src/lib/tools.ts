@@ -1,5 +1,16 @@
 export const SPAWN_TOOL = "spawn_agent";
 
+/** The harness tools an ACP orchestrator calls over MCP (`mcp__octo-harness__spawn_agent`, `octo-harness:save_note`). */
+const MCP_TOOL = /^(?:mcp__[\w.-]+__|[\w.-]+:)(spawn_agent|save_note|delete_note|list_dir)$/;
+
+/**
+ * A tool name as the UI treats it: a harness tool reached through MCP reads as the built-in one, so older transcripts
+ * still render the delegation card and the note rows (the harness normalises new rows itself).
+ */
+export function harnessTool(name: string): string {
+  return MCP_TOOL.exec(name)?.[1] ?? name;
+}
+
 type ToolMeta = { verb: string; arg: (input: Record<string, unknown>) => string };
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -37,14 +48,15 @@ export function acpCall(name: string, input: unknown): { title: string; location
  * Past-tense verb, the main argument, and the project folder it ran in (if any). An ACP call reads as
  * its title: a leading verb ("Read README.md") takes the verb's place, so the row keeps the built-in anatomy.
  */
-export function toolMeta(name: string, input: unknown): { verb: string; arg: string; folder: string } {
+export function toolMeta(rawName: string, input: unknown): { verb: string; arg: string; folder: string } {
+  const name = harnessTool(rawName);
   const record = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   const acp = acpCall(name, input);
   if (acp) {
     const [, verb, arg] = /^(\S+)\s+(.+)$/.exec(acp.title.trim()) ?? [];
     return verb !== undefined && arg !== undefined ? { verb, arg, folder: "" } : { verb: acp.title.trim() || "Tool call", arg: "", folder: "" };
   }
-  const meta = META[name];
+  const meta = META[harnessTool(name)];
   if (!meta) {
     const first = Object.values(record).find((v) => typeof v === "string");
     return { verb: `Called ${name}`, arg: str(first), folder: "" };
@@ -120,4 +132,17 @@ export function looksLikeDiff(text: string): boolean {
   const hunk = lines.some((l) => l.startsWith("@@ ") || l.startsWith("--- ") || l.startsWith("+++ ") || l.startsWith("diff --git"));
   const changes = lines.filter((l) => /^[+-](?![+-]{2} )/.test(l)).length;
   return hunk && changes > 0;
+}
+
+/** ACP tool kinds and built-in tools that run commands: what they change on disk is not tracked as a written file. */
+const COMMAND_TOOLS = new Set(["bash", "execute"]);
+
+/** When an agent ran a command (built-in `bash` or an ACP `execute` call), from its stored transcript. */
+export function commandRuns(messages: readonly { role: string; created_at: string; content: readonly { type: string; [k: string]: unknown }[] }[]): string[] {
+  const out: string[] = [];
+  for (const m of messages) {
+    if (m.role !== "assistant") continue;
+    for (const b of m.content) if (b.type === "tool_use" && COMMAND_TOOLS.has(String(b.name))) out.push(m.created_at);
+  }
+  return out;
 }

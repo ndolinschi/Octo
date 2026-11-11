@@ -1,10 +1,11 @@
 import { Check, Copy } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCopy } from "../../lib/hooks";
 import { InlineCode } from "./FileLink";
+import { NUMERIC_CELL } from "../../lib/table";
 
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -101,8 +102,6 @@ type HastNode = { type: string; tagName?: string; value?: string; properties?: R
 
 const hastText = (n: HastNode): string => (n.type === "text" ? (n.value ?? "") : (n.children ?? []).map(hastText).join(""));
 const elements = (n: HastNode, tag: string): HastNode[] => (n.children ?? []).filter((c) => c.type === "element" && c.tagName === tag);
-/** A cell that holds a number: 1,284 · €2,418,903.17 · 12% · 3.1k · −4 · 240ms (an empty cell or "—" passes). */
-const NUMERIC = /^(?:[-+−]?[$€£]?\s?\d[\d,.\s]*(?:%|k|K|M|B|ms|s|x|×)?|—|–|-|)$/;
 
 /**
  * Tables right-align numeric columns (every body cell a number) with tabular numerals: a rehype pass
@@ -118,7 +117,7 @@ function rehypeNumericColumns() {
         for (let col = 0; col < width; col++) {
           const cells = body.map((r) => elements(r, "td")[col]).filter((c): c is HastNode => c !== undefined);
           const texts = cells.map((c) => hastText(c).trim());
-          if (!texts.some((t) => /\d/.test(t)) || !texts.every((t) => NUMERIC.test(t))) continue;
+          if (!texts.some((t) => /\d/.test(t)) || !texts.every((t) => NUMERIC_CELL.test(t))) continue;
           for (const r of rows) {
             const cell = [...elements(r, "th"), ...elements(r, "td")][col];
             if (cell) cell.properties = { ...cell.properties, className: [...((cell.properties?.className as string[] | undefined) ?? []), "octo-num"] };
@@ -133,8 +132,24 @@ function rehypeNumericColumns() {
 }
 const REHYPE = [rehypeNumericColumns];
 
+const TableFrame = lazy(() => import("./DataTable").then((m) => ({ default: m.TableFrame })));
+
 const COMPONENTS: Components = {
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+  // Decision 44's frame loads with the first table (its own chunk); the same table renders plain until then.
+  table: ({ children }) => (
+    <Suspense
+      fallback={
+        <div className="octo-table-frame">
+          <div className="octo-table-scroll">
+            <table className="octo-table">{children}</table>
+          </div>
+        </div>
+      }
+    >
+      <TableFrame>{children}</TableFrame>
+    </Suspense>
+  ),
   a: ({ children, href }) => (
     <a href={href} target="_blank" rel="noreferrer">
       {children}

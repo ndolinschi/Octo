@@ -142,12 +142,12 @@ async function waitChat(page) {
   await settle(page, 500);
 }
 
+/** The tool rows of the strip's "+" picker (v6.3 part 2, decision 24: the tool buttons left the strip). */
+const TOOL_ROWS = { "Show agents": "agents", "Show notes": "notes", "Show files": "files", "Show project details": "details", "Show usage": "usage" };
+
 async function clickTool(page, label) {
-  const btn = page.getByRole("button", { name: label, exact: true }).first();
-  if (!(await btn.count())) skip(`button "${label}" not found`);
-  const pressed = await btn.getAttribute("aria-pressed");
-  if (pressed !== "true") await btn.click({ timeout: T });
-  await settle(page, 500);
+  if (label === "Show files" && (await page.getByRole("tree", { name: "Project files" }).first().isVisible().catch(() => false))) return;
+  await openTool(page, label);
 }
 
 /** Expand folders until a file matching `re` is visible; click it. */
@@ -191,16 +191,18 @@ async function openFileMatching(page, re, what) {
 }
 
 /** @type {{ id: string; viewports: {width:number;height:number}[]; run(page, ctx): Promise<void>; checks?: string[] }[]} */
-/** Opens a tool tab from the header strip, or through the folded "Project tools" menu in a narrow group. */
+/** Opens a tool tab through the last strip's "+" picker (decision 25). */
 async function openTool(page, label) {
-  const btn = page.getByRole("button", { name: label, exact: true }).first();
-  if ((await btn.count()) && (await btn.isVisible())) await btn.click({ timeout: T });
-  else {
-    const menu = page.getByRole("button", { name: "Project tools" }).last();
-    if (!(await menu.count())) skip(`button "${label}" not found`);
-    await menu.click({ timeout: T });
-    await page.getByRole("menuitem", { name: label }).click({ timeout: T });
+  const plus = page.locator("[data-tab-plus]:visible").last();
+  if (!(await plus.count())) skip('no "+" in the tab strip');
+  await plus.click({ timeout: T });
+  const row = page.locator(`[role=option][data-picker-row="tool:${TOOL_ROWS[label] ?? label}"]`).first();
+  try {
+    await row.waitFor({ timeout: T });
+  } catch {
+    skip(`"${label}" not in the "+" picker`);
   }
+  await row.click({ timeout: T });
   await settle(page, 900);
 }
 
@@ -372,6 +374,110 @@ const STATES = [
         skip("settings dialog did not open");
       }
       await settle(page, 400);
+    },
+  },
+  // v6.3 part 2: the new surfaces.
+  {
+    id: "tab-picker",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.locator("[data-tab-plus]:visible").last().click({ timeout: T });
+      try {
+        await page.getByRole("dialog", { name: "Open a tab" }).waitFor({ timeout: T });
+      } catch {
+        skip("the + picker did not open");
+      }
+      await settle(page, 300);
+    },
+  },
+  {
+    id: "model-picker",
+    viewports: HOME_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await waitChat(page);
+      await page.locator("[data-composer] [data-model-picker]").first().click({ timeout: T });
+      try {
+        await page.getByRole("dialog", { name: "Orchestrator model" }).waitFor({ timeout: T });
+      } catch {
+        skip("the model picker did not open");
+      }
+      await settle(page, 300);
+    },
+  },
+  {
+    id: "side-question",
+    viewports: HOME_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await waitChat(page);
+      await page.keyboard.press("Control+;");
+      try {
+        await page.locator("[data-side-exchange]").first().waitFor({ timeout: T });
+      } catch {
+        skip("the side question did not open");
+      }
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "home-filtered",
+    viewports: HOME_VPS,
+    async run(page) {
+      await page.evaluate(() => {
+        window.location.hash = "#/";
+      });
+      try {
+        await page.locator("[data-triage=working]").first().waitFor({ timeout: T });
+      } catch {
+        skip("Home triage did not render");
+      }
+      await page.locator("[data-triage=working]").first().click({ timeout: T });
+      await settle(page, 800);
+    },
+  },
+  {
+    id: "acp-orchestrator",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Release notes");
+      await waitChat(page);
+      await settle(page, 600);
+    },
+  },
+  {
+    id: "tool-tables",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Docs site");
+      await waitChat(page);
+      const group = page.getByRole("button", { name: /Ran 1 command, read 1 file/ }).first();
+      if (!(await group.count())) skip("no tabular tool call in Docs site");
+      await group.click({ timeout: T });
+      await page.locator("article button[aria-controls]", { hasText: "pnpm astro build" }).first().click({ timeout: T });
+      try {
+        await page.locator("[data-tool-table] table").first().waitFor({ timeout: T });
+      } catch {
+        skip("the tool result did not render as a table");
+      }
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "project-settings-models",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Docs site");
+      await waitChat(page);
+      await page.getByRole("button", { name: "Orchestrator actions" }).first().click({ timeout: T });
+      await page.getByRole("menuitem", { name: "Project settings" }).click({ timeout: T });
+      try {
+        await page.getByRole("button", { name: "Models and delegation" }).click({ timeout: T });
+      } catch {
+        skip("project settings did not open");
+      }
+      await settle(page, 500);
     },
   },
   {

@@ -80,15 +80,21 @@ export function Menu(props: {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const close = () => onClose();
+    // A scroll that moves the opener closes the menu; a live transcript scrolling elsewhere does not.
+    const scrolled = (e: Event) => {
+      const t = e.target;
+      const o = opener.current;
+      if (t === document || (t instanceof Node && !ref.current?.contains(t) && (!o || t.contains(o)))) onClose();
+    };
     document.addEventListener("pointerdown", outside, true);
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
-    document.addEventListener("scroll", close, true);
+    document.addEventListener("scroll", scrolled, true);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
       window.removeEventListener("blur", close);
       window.removeEventListener("resize", close);
-      document.removeEventListener("scroll", close, true);
+      document.removeEventListener("scroll", scrolled, true);
     };
   }, [open, onClose]);
 

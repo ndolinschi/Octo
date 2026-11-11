@@ -1,3 +1,4 @@
+import type { Agent } from "@octo/agent-client";
 import { ArrowDown } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -7,11 +8,16 @@ import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { CHAT, type TabId } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { AgentHeader, roleName } from "./AgentHeader";
+import { roleName } from "../../lib/orchestrator";
+import { turnWarning } from "../../lib/transcript";
+import { TurnBanner, useLoginHint } from "./Transcript";
+
+/** A sub-agent's header loads with the first Agent tab (its own chunk). */
+const AgentHeader = lazy(() => import("./AgentHeader").then((m) => ({ default: m.AgentHeader })));
 import { requestTitle } from "../../lib/comments";
 import { buildTurns, promptText, requestSummaries } from "../../lib/transcript";
 import { ChatHeader } from "./ChatHeader";
-import { CommentsControl } from "./CommentsControl";
+import { CommentsControl } from "./CommentsControlLazy";
 import { Composer, type ComposerHandle } from "./Composer";
 import { TurnRail } from "./TurnRail";
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
@@ -19,7 +25,6 @@ import { StreakLayer } from "../primitives/StreakLayer";
 import { STREAK_EMPTY } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
 import { ObserverBar } from "./ObserverBar";
-import { TeamStrip } from "./TeamStrip";
 import { useBackdrop } from "../primitives/backdrop";
 import { StickyPrompt } from "./StickyPrompt";
 import { Transcript } from "./Transcript";
@@ -53,7 +58,7 @@ const RAIL_MIN_REQUESTS = 1;
  */
 export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: TabId }) {
   const ws = useOptionalWorkspace();
-  const { theme } = useApp();
+  const { theme, backdrop: appBackdrop } = useApp();
   const { project, state, running, ensureMessages, projectId } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
@@ -191,10 +196,11 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
       {isOrchestrator && <ChatHeader transparent={empty} />}
       {empty ? (
         <div data-empty-project className="flex flex-[1_0_auto] flex-col justify-end px-(--pad) pt-8 pb-6">
-          {!backdrop && <StreakLayer preset={STREAK_EMPTY} theme={theme} />}
+          {!backdrop && appBackdrop !== "off" && <StreakLayer preset={STREAK_EMPTY} theme={theme} mono={appBackdrop === "mono"} />}
           <Suspense fallback={null}>
             <EmptyTitle project={project} />
           </Suspense>
+          <StartFailure agent={agent} />
         </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -227,7 +233,11 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
           >
             <div className="px-(--pad)">
               <div data-column className="mx-auto w-full max-w-measure pt-2 pb-8">
-                {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
+                {!isOrchestrator && (
+                  <Suspense fallback={<div className="mb-5 h-12" aria-hidden />}>
+                    <AgentHeader agent={agent} now={now} />
+                  </Suspense>
+                )}
                 <Transcript
                   agent={agent}
                   messages={messages ?? []}
@@ -264,7 +274,6 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
 
       <div className={cn(EDGES, "relative shrink-0", !empty && "pb-3")}>
         <div data-column-edge className={cn("mx-auto w-full", empty ? "max-w-float" : "max-w-measure")}>
-          {isOrchestrator && !empty && <TeamStrip />}
           {isOrchestrator ? <Composer ref={composer} {...composerProps} comments={commentsSlot} /> : <ObserverBar />}
         </div>
       </div>
@@ -279,6 +288,27 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
       <p aria-live="polite" className="sr-only">
         {agent.status === "running" ? `${roleName(agent)} is working` : ""}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The orchestrator failed before anything was stored (an ACP agent that is not logged in): the failed turn shows above
+ * the empty project's composer with its message and the agent's login hint — never a silent "Idle".
+ */
+function StartFailure({ agent }: { agent: Agent }) {
+  const { state } = useProject();
+  const failed =
+    state.lastTurn?.status === "failed"
+      ? state.lastTurn.error
+      : agent.status === "failed" || (agent.error && !turnWarning(agent.error))
+        ? agent.error
+        : undefined;
+  const hint = useLoginHint(failed !== undefined ? agent.model : null);
+  if (failed === undefined || agent.status === "running") return null;
+  return (
+    <div data-start-failure className="relative mx-auto mt-4 w-full max-w-float">
+      <TurnBanner status="failed" error={failed} retryText={null} hint={hint} />
     </div>
   );
 }

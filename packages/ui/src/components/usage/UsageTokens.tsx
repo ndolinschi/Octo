@@ -1,11 +1,13 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { truncateDistinct } from "../../lib/models";
 import { cn } from "../../lib/cn";
 import { formatTokens } from "../../lib/format";
 import { bucketTokens, daysWithData, fillDays, mergeBy, shareRows, type ShareRow } from "../../lib/usage";
 import type { UsageView } from "../../lib/usageView";
 import { DayBars } from "../primitives/DayBars";
 import { INFO_ROW, InfoSection, SkeletonRows } from "../primitives/InfoList";
-import { modelLabel } from "../primitives/Status";
+import { useModelNames } from "../../state/models";
+import { roleText } from "../../lib/orchestrator";
 import type { Load, UsageData } from "./useUsage";
 
 /** Height of the daily chart (px). */
@@ -35,19 +37,57 @@ export function UsageState({ load, empty, children }: { load: Load<UsageData>; e
 }
 
 /** Proportional breakdown rows: label, a 2px bar against the largest row, the value in tabular numerals. */
-export function ShareRows({ rows, value, title }: { rows: ShareRow[]; value(r: ShareRow): React.ReactNode; title(r: ShareRow): string }) {
+/** Average advance of a 13px UI glyph (px), to turn the label column's width into a character budget. */
+const CHAR_PX = 6.8;
+
+/**
+ * Breakdown rows on one grid (label, bar, value). `distinct` (model names, decision 37): labels that do not fit lose
+ * their middle, never the tail that tells two similar ids apart ("deepseek-v4.1-fl…sh-0905" vs "…sh-1120"); the full name
+ * is in the row's tooltip.
+ */
+export function ShareRows({
+  rows,
+  value,
+  title,
+  distinct = false,
+}: {
+  rows: ShareRow[];
+  value(r: ShareRow): React.ReactNode;
+  title(r: ShareRow): string;
+  distinct?: boolean;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || !distinct) return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    setWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, [distinct]);
+  const labels = useMemo(
+    () =>
+      distinct && width > 0
+        ? truncateDistinct(
+            rows.map((r) => r.label),
+            Math.max(8, Math.floor((width * 0.4 - 16) / CHAR_PX)),
+          )
+        : rows.map((r) => r.label),
+    [rows, distinct, width],
+  );
   return (
-    <>
-      {rows.map((r) => (
+    <div ref={box} className="flex flex-col">
+      {rows.map((r, i) => (
         <div key={r.key} className={INFO_ROW} title={title(r)}>
-          <span className="w-[40%] min-w-0 shrink-0 truncate text-fg-2">{r.label}</span>
+          <span className="w-[40%] min-w-0 shrink-0 truncate text-fg-2">{labels[i] ?? r.label}</span>
           <span aria-hidden className="h-0.5 min-w-0 flex-1 rounded-full bg-line">
             <span className="block h-full rounded-full bg-fg-3" style={{ width: `${Math.max(2, r.share * 100)}%` }} />
           </span>
           <span className="shrink-0 text-xs text-fg-2 tabular-nums">{value(r)}</span>
         </div>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -64,11 +104,12 @@ function Figure({ label, value, className }: { label: string; value: number; cla
 
 export function UsageTokens({ load, view, now }: { load: Load<UsageData>; view: UsageView; now: number }) {
   const data = load.status === "ok" ? load.value : null;
+  const { name: modelLabel } = useModelNames();
   const days = useMemo(() => fillDays(data?.days ?? null, view.days, now), [data, view.days, now]);
   const total = data ? bucketTokens(data.models.total) : 0;
-  const models = useMemo(() => (data ? shareRows(data.models.buckets.map((b) => ({ ...b, label: modelLabel(b.label || b.key) }))) : []), [data]);
+  const models = useMemo(() => (data ? shareRows(data.models.buckets.map((b) => ({ ...b, label: modelLabel(b.label || b.key) }))) : []), [data, modelLabel]);
   const breakdown = useMemo(
-    () => (data ? shareRows(view.scope === "project" ? mergeBy(data.breakdown.buckets, (b) => b.label || "Agent") : data.breakdown.buckets) : []),
+    () => (data ? shareRows(view.scope === "project" ? mergeBy(data.breakdown.buckets, (b) => roleText(b.label)) : data.breakdown.buckets) : []),
     [data, view.scope],
   );
   const t = data?.models.total;
@@ -113,7 +154,7 @@ export function UsageTokens({ load, view, now }: { load: Load<UsageData>; view: 
         )}
       </section>
       <InfoSection title="By model" labelId="usage-models">
-        <ShareRows rows={models} value={(r) => formatTokens(r.tokens)} title={(r) => `${r.key}: ${r.tokens.toLocaleString()} tokens`} />
+        <ShareRows distinct rows={models} value={(r) => formatTokens(r.tokens)} title={(r) => `${r.key}: ${r.tokens.toLocaleString()} tokens`} />
       </InfoSection>
       <InfoSection title={view.scope === "project" ? "By agent" : "By project"} labelId="usage-breakdown">
         <ShareRows

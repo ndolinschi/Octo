@@ -4,15 +4,27 @@ import { cn } from "../../lib/cn";
 import { useActivity } from "../../state/activity";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
-import { modelLabel } from "../primitives/Status";
+import { useModelNames } from "../../state/models";
+import { useApp } from "../../state/app";
 import { StarterPrompts } from "./StarterPrompts";
 
 /** The empty project's title block (above the composer). */
 export function EmptyTitle({ project }: { project: Project }) {
+  const { config } = useApp();
+  // ACP in the UI: without an API key the built-in loop cannot run; say so once, with the way forward (no dead end).
+  const noKey = config?.builtin_loop?.available === false && !project.models.orchestrator.startsWith("acp:");
   return (
     <div className="relative mx-auto w-full max-w-float text-center">
-      <h1 className="relative text-display text-fg">Give {project.name}&rsquo;s orchestrator its first task</h1>
+      {/* Decision 28: one sentence in two tones — the project as the muted lead-in, the statement in fg. */}
+      <h1 className="relative text-display text-fg">
+        <span className="octo-lead">{project.name}.</span> Give its orchestrator a first task.
+      </h1>
       <p className="relative mt-2 text-sm text-fg-2">It plans the work, delegates to sub-agents and keeps notes, in this project's folders.</p>
+      {noKey && (
+        <p data-nokey className="relative mt-2 text-sm text-fg-2" title={config.builtin_loop?.reason}>
+          No API key set. Choose an agent on a subscription in the model menu below, or give the harness a key.
+        </p>
+      )}
     </div>
   );
 }
@@ -49,6 +61,7 @@ export function EmptyFacts({ project, onPick }: { project: Project; onPick(text:
     };
   }, [activity]);
   const m = project.models;
+  const { name: modelLabel } = useModelNames();
   const tiers = [
     ["Orchestrator", m.orchestrator],
     ["Fast", m.fast],

@@ -75,7 +75,7 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
   const narrow = ws.narrow;
   const hidden = narrow && !focused;
   const strip = narrow ? { tabs: allTabs(ws.layout), active: focusedGroup(ws.layout).active } : { tabs: group.tabs, active: group.active };
-  const { theme } = useApp();
+  const { theme, backdrop: appBackdrop } = useApp();
   const [backdrops, setBackdrops] = useState<ReadonlySet<string>>(() => new Set());
   const backdrop = useMemo<Backdrop>(
     () => ({
@@ -103,7 +103,7 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
     >
       {backdrops.has(strip.active) && (
         <>
-          <StreakLayer preset={STREAK_EMPTY} theme={theme} />
+          {appBackdrop !== "off" && <StreakLayer preset={STREAK_EMPTY} theme={theme} mono={appBackdrop === "mono"} />}
           {/* Under the tab strip and the header the band fades behind a soft panel wash (no edge), so their text keeps
               ≥ 4.5:1 while the light still runs up to the panel's top edge. */}
           <div aria-hidden className="octo-streak-topfade pointer-events-none absolute inset-x-0 top-0" />

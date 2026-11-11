@@ -1,7 +1,7 @@
 import type { PluginAgent } from "@octo/agent-client";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { cn } from "../../lib/cn";
-import { lastTeam, teamLine, teamRoles, type OrchestratorState } from "../../lib/orchestrator";
+import { agentActivity, lastTeam, teamLine, teamRoles, type OrchestratorState } from "../../lib/orchestrator";
 import { agentGlyph } from "../../lib/stateGlyph";
 import { useActivity } from "../../state/activity";
 import { useProject } from "../../state/project";
@@ -18,22 +18,36 @@ const MORE_WIDTH = 40;
  * no request yet — the agents the orchestrator can call on. A chip opens the agent in a split to the right of the
  * orchestrator. Chips never truncate: as many as fit (measured) show, the rest fold into "+N" (opens Agents).
  */
-export function TeamLine({ orchestrator }: { orchestrator: OrchestratorState }) {
+export function TeamLine({
+  orchestrator,
+  onCollapsed,
+}: {
+  orchestrator: OrchestratorState;
+  /** Decision 47: text that did not fit (the header's "⋯" menu shows it). */ onCollapsed?(text: string | null): void;
+}) {
   const { state } = useProject();
   const ws = useOptionalWorkspace();
   const agents = state.agentOrder.flatMap((id) => (state.agents[id] ? [state.agents[id]] : []));
   const team = orchestrator.kind === "working" ? orchestrator.agents : orchestrator.kind === "new" ? [] : lastTeam(agents);
   const roles = teamRoles(team);
   const box = useRef<HTMLDivElement>(null);
-  const fit = useFitCount(box, roles.map((r) => `${r.role}${r.count}${r.status}`).join("|"));
+  const { count: fit, textFits } = useFitCount(box, roles.map((r) => `${r.role}${r.count}${r.status}`).join("|"));
+  const text = orchestrator.kind !== "working" && orchestrator.kind !== "new" ? teamLine(team.length, null, 0) : null;
+  const collapsed = text !== null && !textFits ? text : null;
+  useEffect(() => onCollapsed?.(collapsed), [collapsed, onCollapsed]);
   if (orchestrator.kind === "new") return <CanCallOn />;
   const shown = roles.slice(0, fit ?? roles.length);
   const rest = roles.slice(shown.length).reduce((n, r) => n + r.count, 0);
   return (
     <div ref={box} data-team-line role="group" aria-label="Team" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
       {orchestrator.kind !== "working" && (
-        <span data-fit-fixed className="shrink-0 pr-1 text-xs text-fg-3 @max-[520px]/conv:hidden">
-          {teamLine(team.length, null, 0)}
+        // Decision 47: never cut mid-word — when it does not fit it leaves the line (kept for measuring) for the "⋯" menu.
+        <span
+          data-fit-fixed
+          aria-hidden={!textFits || undefined}
+          className={cn("shrink-0 pr-1 text-xs whitespace-nowrap text-fg-3 @max-[520px]/conv:hidden", !textFits && "invisible absolute")}
+        >
+          {text}
         </span>
       )}
       {roles.map((r, i) => (
@@ -44,7 +58,7 @@ export function TeamLine({ orchestrator }: { orchestrator: OrchestratorState }) 
           aria-hidden={i >= shown.length || undefined}
           tabIndex={i >= shown.length ? -1 : undefined}
           onClick={() => ws?.openAgent(r.agent.id)}
-          title={`Open ${r.agent.role}${r.agent.title ? `: ${r.agent.title}` : ""} beside the orchestrator`}
+          title={`${r.agent.role}${r.agent.title ? `: ${r.agent.title}` : ""}${r.status === "running" ? ` — ${agentActivity(state, r.agent.id)}` : ""}\nOpens beside the orchestrator`}
           className={cn(CHIP, r.status === "running" ? "text-fg" : "text-fg-2", i >= shown.length && "invisible absolute", "@max-[480px]/conv:hidden")}
         >
           <StateGlyph state={agentGlyph(r.status)} />
@@ -80,14 +94,18 @@ export function TeamLine({ orchestrator }: { orchestrator: OrchestratorState }) 
 }
 
 /** How many chips fit the line beside its fixed text and a "+N" button; null until measured. */
-function useFitCount(box: RefObject<HTMLDivElement | null>, key: string): number | null {
+function useFitCount(box: RefObject<HTMLDivElement | null>, key: string): { count: number | null; textFits: boolean } {
   const [count, setCount] = useState<number | null>(null);
+  const [textFits, setTextFits] = useState(true);
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     const measure = () => {
       const chips = [...el.querySelectorAll<HTMLElement>("[data-team-chip]")];
-      const fixed = [...el.querySelectorAll<HTMLElement>("[data-fit-fixed]")].reduce((n, f) => n + f.offsetWidth + 4, 0);
+      const fixedWidth = [...el.querySelectorAll<HTMLElement>("[data-fit-fixed]")].reduce((n, f) => n + f.offsetWidth + 4, 0);
+      const fits = fixedWidth <= el.clientWidth;
+      setTextFits(fits);
+      const fixed = fits ? fixedWidth : 0;
       const widths = chips.map((c) => c.offsetWidth + 4);
       const total = widths.reduce((n, w) => n + w, 0);
       let room = el.clientWidth - fixed;
@@ -106,7 +124,7 @@ function useFitCount(box: RefObject<HTMLDivElement | null>, key: string): number
     ro.observe(el);
     return () => ro.disconnect();
   }, [box, key]);
-  return count;
+  return { count, textFits };
 }
 
 /** Before the first request: the helpers the orchestrator can delegate to (sub-agents, plus available external agents). */

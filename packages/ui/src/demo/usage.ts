@@ -21,7 +21,7 @@ function agentUsage(rec: ProjectRecord, a: Agent): Omit<UsageBucket, "key" | "la
   const calls = Math.max(1, rec.messages.filter((m) => m.agent_id === a.id && m.role === "assistant").length);
   const cacheRead = acp ? 0 : Math.round(a.input_tokens * 0.62);
   const cacheWrite = acp ? 0 : Math.round(a.input_tokens * 0.07);
-  const price = PRICES[a.model];
+  const price = PRICES[a.served_model ?? a.model];
   const cost = acp
     ? ((a.input_tokens + a.output_tokens) / 1000) * ACP_USD_PER_K
     : price
@@ -95,7 +95,15 @@ export function demoUsage(records: Iterable<ProjectRecord>, params: UsageParams 
       const share = scaled(u, 1 / times.length);
       for (const at of times) {
         if (at < from || at >= to) continue;
-        const key = group === "model" ? a.model : group === "project" ? rec.project.id : group === "agent" ? a.id : new Date(at).toISOString().slice(0, 10);
+        // Like the harness behind a router, usage is recorded under the model that answered (decision 37).
+        const key =
+          group === "model"
+            ? (a.served_model ?? a.model)
+            : group === "project"
+              ? rec.project.id
+              : group === "agent"
+                ? a.id
+                : new Date(at).toISOString().slice(0, 10);
         const label = group === "project" ? rec.project.name : group === "agent" ? (a.parent_id === null ? "Orchestrator" : a.role) : key;
         const b = buckets.get(key) ?? bucket(key, label);
         buckets.set(key, b);
@@ -105,6 +113,8 @@ export function demoUsage(records: Iterable<ProjectRecord>, params: UsageParams 
     }
   }
   for (const b of [...buckets.values(), total]) round(b);
+  // An ACP agent on a subscription: its rows are flat-rate (the cost is an equivalent, not spend), like the harness marks them.
+  if (group === "model") for (const b of buckets.values()) if (b.key.startsWith("acp:")) Object.assign(b, { flat_rate: true });
   return { from: new Date(from).toISOString(), to: new Date(to).toISOString(), group, buckets: [...buckets.values()], total };
 }
 

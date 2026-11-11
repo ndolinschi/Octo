@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyProjectState, type Agent } from "@octo/agent-client";
-import { agentActivity, agentStack, lastTeam, orchestratorState, runningAgents, stateLine, teamLine, teamRoles } from "./orchestrator";
+import { roleText, agentActivity, agentStack, lastTeam, orchestratorState, runningAgents, stateLine, teamLine, teamRoles } from "./orchestrator";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
 function agent(p: Partial<Agent> & { id: string }): Agent {
@@ -119,4 +119,36 @@ test("teamRoles groups by role with the most urgent status", () => {
       ["Debugger", 1, "completed", "2"],
     ],
   );
+});
+
+test("roleText: one spelling for the orchestrator", () => {
+  assert.equal(roleText("orchestrator"), "Orchestrator");
+  assert.equal(roleText("Orchestrator"), "Orchestrator");
+  assert.equal(roleText("Code explorer"), "Code explorer");
+  assert.equal(roleText(""), "Agent");
+  assert.equal(roleText(null), "Agent");
+});
+
+test("a failed orchestrator that never started still needs you; a warning does not", () => {
+  const base = {
+    id: "o",
+    project_id: "p",
+    parent_id: null,
+    depth: 0,
+    role: "orchestrator",
+    title: "",
+    task: "",
+    model: "acp:copilot",
+    tier: null,
+    result: null,
+    spawn_tool_use_id: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    created_at: "2026-11-11T10:00:00Z",
+    started_at: null,
+    finished_at: null,
+  } as const;
+  assert.equal(orchestratorState([{ ...base, status: "failed", error: "not logged in" }], "idle").kind, "needs");
+  assert.equal(orchestratorState([{ ...base, status: "idle", error: "ACP agent copilot could not start" }], "idle").kind, "needs");
+  assert.equal(orchestratorState([{ ...base, status: "idle", error: "warning: no MCP" }], "idle").kind, "new");
 });

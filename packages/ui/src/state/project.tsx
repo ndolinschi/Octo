@@ -23,6 +23,10 @@ type ProjectValue = {
   createNote(input: { title: string; content: string }): Promise<void>;
   updateNote(id: string, patch: { title?: string; content?: string }): Promise<void>;
   deleteNote(id: string): Promise<void>;
+  /** Side questions (decision 40): ask (the answer arrives as side.* events), load the stored ones, clear them. */
+  askSide(text: string): Promise<void>;
+  loadSide(): Promise<void>;
+  clearSide(): Promise<void>;
   /** Observe raw bridge events on this project's existing subscription (no extra connection). */
   onEvent(listener: (event: BridgeEvent) => void): () => void;
 };
@@ -42,8 +46,14 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
     async (agentId: string) => {
       loaded.current.add(agentId);
       try {
-        dispatch({ type: "messages", agentId, messages: await bridge.listMessages(projectId, agentId) });
+        // The transcript carries the compaction markers (decision 37); an older harness only has the message list.
+        const transcript = await bridge
+          .getTranscript(projectId, agentId)
+          .catch(async () => ({ messages: await bridge.listMessages(projectId, agentId), compactions: [] }));
+        dispatch({ type: "messages", agentId, messages: transcript.messages });
+        if (transcript.compactions.length) dispatch({ type: "compactions", agentId, markers: transcript.compactions });
       } catch {
+        // Not loaded: the transcript shows its empty state, and the next `ensureMessages` (or a reconnect) tries again.
         loaded.current.delete(agentId);
       }
     },
@@ -137,6 +147,16 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       deleteNote: async (id) => {
         await bridge.deleteNote(projectId, id);
         dispatch({ type: "notes", notes: state.notes.filter((n) => n.id !== id) });
+      },
+      askSide: async (text) => {
+        dispatch({ type: "sideAsked", started: await bridge.askSide(projectId, text) });
+      },
+      loadSide: async () => {
+        dispatch({ type: "side", messages: await bridge.listSide(projectId) });
+      },
+      clearSide: async () => {
+        await bridge.clearSide(projectId);
+        dispatch({ type: "sideCleared" });
       },
       onEvent: (listener) => {
         observers.current.add(listener);

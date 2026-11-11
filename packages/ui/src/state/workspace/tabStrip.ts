@@ -102,3 +102,27 @@ export function jumpIndex(digit: number, n: number): number | null {
   if (digit === 9) return n - 1;
   return digit - 1 < n ? digit - 1 : null;
 }
+
+/**
+ * Ctrl+Tab's walk (decision 25; live test: "pressed twice it behaves oddly when focus moves to another group"): the
+ * first press fixes the group and its MRU order; every press while Ctrl is held steps through that order only — even
+ * if activating a tab moves focus elsewhere — and the release commits the tab reached (it becomes the most recent).
+ */
+export type TabWalk<T> = { group: string; order: readonly T[]; step: number };
+
+export function walkPress<T>(
+  walk: TabWalk<T> | null,
+  start: { group: string; order: readonly T[] },
+  back: boolean,
+): { walk: TabWalk<T>; target: T | undefined } {
+  const w = walk ?? { group: start.group, order: start.order, step: 0 };
+  const step = w.step + (back ? -1 : 1);
+  const n = w.order.length;
+  return { walk: { ...w, step }, target: n ? w.order[((step % n) + n) % n] : undefined };
+}
+
+export function walkRelease<T>(walk: TabWalk<T> | null): T | undefined {
+  if (!walk) return undefined;
+  const n = walk.order.length;
+  return n ? walk.order[((walk.step % n) + n) % n] : undefined;
+}

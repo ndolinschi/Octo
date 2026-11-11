@@ -26,6 +26,10 @@ export const PREFS = {
   fileTree: (projectId: string) => key(`fileTree.${projectId}`),
   /** Pending code comments of one project (JSON list). */
   comments: (projectId: string) => key(`comments.${projectId}`),
+  /** Starred models and agents of the model picker (decision 27): a JSON list of setting strings. */
+  favouriteModels: key("favouriteModels"),
+  /** Start-screen backdrop (decision 31): `"vivid" | "mono" | "off"` as plain text. */
+  backdrop: key("backdrop"),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */

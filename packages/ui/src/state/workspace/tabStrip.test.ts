@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  walkPress,
+  walkRelease,
   CLOSED_MAX,
   TAB_ICON,
   TAB_MAX,
@@ -93,4 +95,17 @@ test("Ctrl+1…8 by position, 9 = the last", () => {
   assert.equal(jumpIndex(4, 3), null);
   assert.equal(jumpIndex(9, 3), 2);
   assert.equal(jumpIndex(9, 0), null);
+});
+
+test("Ctrl+Tab twice across a split stays in the first group and commits on release", () => {
+  // Side group MRU: Agents (active), Usage, Notes. The first press fixes it; the second press arrives after focus
+  // moved to the other group (its order is offered again) and must keep walking the first one.
+  const first = walkPress(null, { group: "side", order: ["Agents", "Usage", "Notes"] }, false);
+  assert.equal(first.target, "Usage");
+  const second = walkPress(first.walk, { group: "main", order: ["Orchestrator", "Reviewer"] }, false);
+  assert.equal(second.target, "Notes");
+  assert.equal(second.walk.group, "side");
+  assert.equal(walkRelease(second.walk), "Notes");
+  assert.equal(walkPress(second.walk, { group: "side", order: [] }, true).target, "Usage", "Shift steps back");
+  assert.equal(walkRelease(null), undefined);
 });

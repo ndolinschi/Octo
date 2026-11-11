@@ -171,7 +171,9 @@ export function pressTab(e: React.PointerEvent, ws: WorkspaceValue, tab: TabId, 
     if (over) {
       const mine = over.group === fromGroup;
       const shown = clampLeft(left, own.width, over.list.left, over.list.right);
-      const center = shown + own.width / 2;
+      // The slot follows the pointer, not the clamped drawing: the list now ends at its last tab (the "+" follows it,
+      // decision 25), so a clamped centre could never pass the last tab's centre.
+      const center = left + own.width / 2;
       // The pinned Orchestrator tab never leaves first place; nothing goes before it.
       const index = pinnedTab ? 0 : insertionIndex(over.slots, mine ? fromIndex : -1, center, over.pinned);
       const target: DropTarget = { kind: "strip", group: over.group, index: mine ? toMoveIndex(fromIndex, index) : index };

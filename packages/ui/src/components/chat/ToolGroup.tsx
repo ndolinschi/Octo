@@ -1,15 +1,22 @@
 import { ChevronRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { useId, useState, type ReactNode } from "react";
+import { lazy, Suspense, useId, useState } from "react";
+
 import { cn } from "../../lib/cn";
-import { resolveFolder } from "../../lib/files";
-import { useOptionalCode } from "../../state/code";
-import { useHost } from "../../state/host";
-import { acpCall, locateInProject, looksLikeDiff, toolMeta, toolPath } from "../../lib/tools";
-import { HighlightedCode } from "../shared/Markdown";
+import { acpCall, toolMeta } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
 import { RunningDot } from "../primitives/Status";
 import { toolState, useTranscript, type ToolState } from "./transcriptContext";
+
+/** A tool call's input and result load with the first one opened (their own chunk: links, tables, diff colours). */
+const ToolDetailLazy = lazy(() => import("./ToolDetail").then((m) => ({ default: m.ToolDetail })));
+function ToolDetail({ use }: { use: ToolUse }) {
+  return (
+    <Suspense fallback={<div className="h-row rounded-md bg-code-bg" aria-busy />}>
+      <ToolDetailLazy use={use} />
+    </Suspense>
+  );
+}
 
 const PHRASES: Record<string, [string, string]> = {
   read_file: ["read", "file"],
@@ -37,7 +44,12 @@ const isCodeLike = (text: string) => !/\s/.test(text.trim()) || /[/\\]/.test(tex
 function Arg({ use, text, className }: { use: ToolUse; text: string; className?: string }) {
   // An ACP "execute" title is a command line: mono, like the built-in bash row.
   const prose = acpCall(use.name, use.input) !== null && use.name !== "execute" && !isCodeLike(text);
-  return <span className={cn("min-w-0 truncate", prose ? "font-sans text-sm" : "font-mono text-xs", className)}>{text}</span>;
+  // The argument is content (a path, a command), shortened by design; the full text is in the row's tooltip.
+  return (
+    <span data-allow-truncate className={cn("min-w-0 truncate", prose ? "font-sans text-sm" : "font-mono text-xs", className)}>
+      {text}
+    </span>
+  );
 }
 
 function Summary({ uses }: { uses: ToolUse[] }) {
@@ -134,105 +146,4 @@ function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
       )}
     </div>
   );
-}
-
-function ToolDetail({ use }: { use: ToolUse }) {
-  const ctx = useTranscript();
-  const result = ctx.results.get(use.id);
-  return (
-    <div className="overflow-hidden rounded-md bg-code-bg text-xs">
-      <ToolSection label="Input" body={formatInput(use)} action={acpCall(use.name, use.input) ? <AcpLocations use={use} /> : <PathLink use={use} />} />
-      {result && <ToolSection label={result.is_error ? "Error" : "Result"} body={result.content} error={result.is_error} />}
-    </div>
-  );
-}
-
-/**
- * The path of a file tool call as a link: an embedding host's `openFile` wins; otherwise it
- * opens the file (or, for list_dir, reveals the folder) in the Files tab. Only shown when
- * there is somewhere to open it.
- */
-function PathLink({ use }: { use: ToolUse }) {
-  const { openFile } = useHost();
-  const code = useOptionalCode();
-  const path = toolPath(use.name, use.input);
-  const folder = toolMeta(use.name, use.input).folder;
-  if (!path) return null;
-  const target = code ? resolveFolder(code.folders, folder || undefined) : null;
-  if (!openFile && !target) return null;
-  const dir = use.name === "list_dir";
-  const open = () => {
-    if (openFile) return openFile(path, folder || undefined);
-    if (!code || !target) return;
-    if (dir) code.revealDir(target, path);
-    else code.openFile(target, path);
-  };
-  return (
-    <button
-      type="button"
-      aria-label={dir && !openFile ? `Show ${path} in files` : `Open ${path} in editor`}
-      title={target ? `${target}/${path.replace(/^\.\/?/, "")}` : path}
-      onClick={open}
-      className="min-w-0 truncate rounded-sm font-mono text-fg-2 underline-offset-2 hover:text-fg hover:underline focus-visible:underline"
-    >
-      {path}
-    </button>
-  );
-}
-
-/** An ACP call's file locations (absolute paths) as links into the project's files, with the line when given. */
-function AcpLocations({ use }: { use: ToolUse }) {
-  const { openFile } = useHost();
-  const code = useOptionalCode();
-  const acp = acpCall(use.name, use.input);
-  if (!acp?.locations.length) return null;
-  return (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
-      {acp.locations.map((l, i) => {
-        const hit = code ? locateInProject(code.folders, l.path) : null;
-        const label = hit ? `${hit.folder}/${hit.path}${l.line ? `:${l.line}` : ""}` : l.path;
-        if (!openFile && !hit)
-          return (
-            <span key={i} className="min-w-0 truncate font-mono text-fg-3">
-              {label}
-            </span>
-          );
-        return (
-          <button
-            key={i}
-            type="button"
-            aria-label={`Open ${label} in editor`}
-            title={l.path}
-            onClick={() => (openFile ? openFile(l.path) : hit && code?.openFile(hit.folder, hit.path, l.line ? { line: l.line } : undefined))}
-            className="min-w-0 truncate rounded-sm font-mono text-fg-2 underline-offset-2 hover:text-fg hover:underline focus-visible:underline"
-          >
-            {label}
-          </button>
-        );
-      })}
-    </span>
-  );
-}
-
-function ToolSection({ label, body, error, action }: { label: string; body: string; error?: boolean; action?: ReactNode }) {
-  return (
-    <div className="border-line not-first:border-t">
-      <div className={cn("flex items-baseline gap-2 px-3 pt-3", error ? "text-err" : "text-fg-3")}>
-        {label}
-        {action}
-      </div>
-      <pre className="max-h-64 overflow-auto px-3 pt-1 pb-3 font-mono text-xs leading-5 whitespace-pre-wrap text-fg-2">
-        {/* A diff (an ACP edit's result, a patch) gets the chat's diff colours. */}
-        {body ? <HighlightedCode code={body} lang={looksLikeDiff(body) ? "diff" : undefined} /> : "(empty)"}
-      </pre>
-    </div>
-  );
-}
-
-function formatInput(use: ToolUse): string {
-  const input = use.input as Record<string, unknown> | null;
-  // ACP: the title is the row; what the agent passed is `raw_input`.
-  if (acpCall(use.name, use.input)) return input?.raw_input === undefined ? use.name : JSON.stringify(input.raw_input, null, 2);
-  if (use.name === "bash" && input && typeof input.command === "string") return input.command;
-  return JSON.stringify(use.input, null, 2);
 }

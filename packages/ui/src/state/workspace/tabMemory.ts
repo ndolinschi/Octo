@@ -38,3 +38,6 @@ export const isBooleanRecord = (v: unknown): v is Record<string, boolean> =>
 
 /** The Usage tab's controls; also written by the workspace when Home asks for Usage over all projects. */
 export const USAGE_VIEW = slot("usage-view", isUsageView);
+
+/** The side question is kept when its tab closes (decision 40: cleared on close unless pinned). */
+export const SIDE_PINNED = slot("side-pinned", (v): v is boolean => typeof v === "boolean");

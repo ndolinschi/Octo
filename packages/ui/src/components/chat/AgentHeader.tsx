@@ -1,4 +1,5 @@
 import { ancestorsOf, descendantCount, type Agent } from "@octo/agent-client";
+import { roleName } from "../../lib/orchestrator";
 import { ChevronRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { useId, useState } from "react";
@@ -8,12 +9,10 @@ import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Markdown } from "../shared/Markdown";
-import { modelLabel, statusLabel, tierLabel } from "../primitives/Status";
+import { statusLabel, tierLabel } from "../primitives/Status";
+import { useAcpNames, useModelNames } from "../../state/models";
+import { routeLine } from "../../lib/models";
 import { contextText } from "../../lib/usageView";
-
-export function roleName(agent: Agent): string {
-  return agent.parent_id === null ? "Orchestrator" : agent.role;
-}
 
 export function Breadcrumb({ agent }: { agent: Agent }) {
   const { projectId, project, state } = useProject();
@@ -62,8 +61,12 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
   const briefId = useId();
   const duration = agentDuration(agent, now);
   const nested = descendantCount(state, agent.id);
+  const names = useModelNames();
+  const served = names.served(agent);
+  const route = routeLine(agent, useAcpNames());
   const meta = [
-    modelLabel(agent.model),
+    // Decision 37: the model that answered; the requested one too when a router chose another.
+    served.long,
     agent.tier ? tierLabel(agent.tier) : "",
     duration !== null ? formatDuration(duration) : "",
     nested > 0 ? `${nested} nested` : "",
@@ -75,9 +78,12 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
     <header className="mb-5">
       <Breadcrumb agent={agent} />
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <h1 className="shrink-0 text-heading text-fg">{agent.role}</h1>
+        <h1 className="shrink-0 text-heading text-fg">{roleName(agent)}</h1>
         {agent.title && <p className="min-w-0 flex-1 truncate text-base text-fg-2">{agent.title}</p>}
-        <p className="ml-auto shrink-0 text-xs text-fg-3 tabular-nums" title={agent.model}>
+        <p
+          className="ml-auto shrink-0 text-xs text-fg-3 tabular-nums"
+          title={served.asked ? `${served.asked} → ${served.name} (chosen → served)` : served.name}
+        >
           {meta.map((m) => (
             <span key={m} className="ml-3 first:ml-0">
               {m}
@@ -86,6 +92,11 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
           <span className={cn("ml-3", agent.status === "failed" ? "text-err" : "text-fg-2")}>{statusLabel(agent.status)}</span>
         </p>
       </div>
+      {route && (
+        <p data-route-line className="mt-1 text-xs text-fg-3">
+          {route}
+        </p>
+      )}
       {agent.status === "failed" && (
         <p role="note" className="mt-1.5 text-sm text-fg-2">
           <span className="text-err">{(agent.error || "No error details were reported").replace(/\.$/, "")}.</span> Ask the orchestrator to retry it.

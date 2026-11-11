@@ -1,4 +1,7 @@
-import type { Models, Project, ProjectInput } from "@octo/agent-client";
+import type { Models, Project, ProjectInput, TierPolicy } from "@octo/agent-client";
+import { budgetState, modelIds, parseBudget, TIER_POLICIES } from "../../lib/models";
+import { ModelPicker } from "../shared/ModelPicker";
+import { Segmented } from "../primitives/Segmented";
 import { ChevronRight, Plus, X } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { useId, useState, type FormEvent } from "react";
@@ -12,7 +15,7 @@ import { Field, Input, Textarea } from "../primitives/Field";
 
 type FolderRow = { key: number; path: string; label: string };
 
-const MODEL_FIELDS: { key: keyof Models; label: string }[] = [
+const MODEL_FIELDS: { key: "orchestrator" | "fast" | "balanced" | "deep"; label: string }[] = [
   { key: "orchestrator", label: "Orchestrator" },
   { key: "fast", label: "Fast tier" },
   { key: "balanced", label: "Balanced tier" },
@@ -39,6 +42,10 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   });
   const [models, setModels] = useState<Models>(initialModels);
   const [maxDepth, setMaxDepth] = useState(props.project?.max_depth ?? config?.default_max_depth ?? 3);
+  const [budget, setBudget] = useState(props.project?.budget_usd ? String(props.project.budget_usd) : "");
+  const [policy, setPolicy] = useState<TierPolicy>(props.project?.models.tier_policy ?? "auto");
+  const router = config?.router === true;
+  const known = modelIds(...Object.values(initialModels), ...Object.values(config?.default_models ?? {}));
   const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,21 +59,30 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const nameError = submitted && !name.trim() ? "Enter a project name." : null;
   const folderError = badPath ? "Use an absolute path, like /Users/you/code/repo." : null;
   const depthError = submitted && !depthOk ? "Enter a whole number from 1 to 8." : null;
+  const budgetValue = parseBudget(budget);
+  const budgetOk = budgetValue === null || !Number.isNaN(budgetValue);
+  const budgetError = !budgetOk ? "Enter an amount in US dollars, like 25 or 12.50." : null;
+  const spent = budgetState(props.project?.spent_usd, props.project?.budget_usd);
 
   const updateFolder = (key: number, patch: Partial<FolderRow>) => setFolders((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    const firstInvalid = !name.trim() ? `${id}-name` : badPath ? `${id}-folder-${badPath.key}` : !depthOk ? `${id}-depth` : null;
+    const firstInvalid = !name.trim() ? `${id}-name` : badPath ? `${id}-folder-${badPath.key}` : !depthOk ? `${id}-depth` : !budgetOk ? `${id}-budget` : null;
     if (firstInvalid) {
-      if (firstInvalid === `${id}-depth`) setAdvanced(true);
+      if (firstInvalid === `${id}-depth` || firstInvalid === `${id}-budget`) setAdvanced(true);
       requestAnimationFrame(() => document.getElementById(firstInvalid)?.focus());
       return;
     }
     setBusy(true);
     setError(null);
-    const changedModels = Object.fromEntries(Object.entries(models).flatMap(([k, v]) => (typeof v === "string" && v.trim() ? [[k, v.trim()]] : [])));
+    const changedModels: Partial<Models> = Object.fromEntries(
+      Object.entries(models).flatMap(([k, v]) => (k !== "tier_policy" && k !== "side" && typeof v === "string" && v.trim() ? [[k, v.trim()]] : [])),
+    );
+    if (router) changedModels.tier_policy = policy;
+    // A budget is set or changed; an emptied field removes it (PATCH only: a new project simply has none).
+    const budgetPatch = budgetValue !== null ? { budget_usd: budgetValue } : props.project?.budget_usd ? { budget_usd: null } : {};
     try {
       await props.onSubmit({
         name: name.trim(),
@@ -75,6 +91,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         folders: filled.map((f) => ({ path: f.path.trim(), ...(f.label.trim() ? { label: f.label.trim() } : {}) })),
         models: changedModels,
         max_depth: maxDepth,
+        ...budgetPatch,
       });
     } catch (err) {
       setError(errorMessage(err));
@@ -130,7 +147,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
       }
     >
       <form id={id} onSubmit={submit} noValidate className="flex flex-col gap-5">
-        <div className="grid gap-3.5">
+        <div className="grid gap-3">
           <Field label="Name" htmlFor={`${id}-name`} error={nameError} errorId={`${id}-name-error`}>
             <Input
               id={`${id}-name`}
@@ -209,7 +226,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             size="sm"
             variant="ghost"
             icon={Plus}
-            className="-ml-2.5 w-fit"
+            className="-ml-3 w-fit"
             onClick={() => setFolders((rows) => [...rows, { key: Math.max(...rows.map((r) => r.key)) + 1, path: "", label: "" }])}
           >
             Add folder
@@ -230,16 +247,53 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             <div className="mt-3 grid gap-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 {MODEL_FIELDS.map((m) => (
-                  <Field key={m.key} label={m.label} htmlFor={`${id}-m-${m.key}`}>
-                    <Input
-                      id={`${id}-m-${m.key}`}
+                  // Decision 27 / ACP in the UI: a model, a tier's model or an ACP agent on a subscription; any other id by typing it.
+                  <Field key={m.key} label={m.label}>
+                    <ModelPicker
+                      variant="field"
+                      custom
+                      label={`${m.label} model`}
                       value={models[m.key]}
-                      onChange={(e) => setModels((cur) => ({ ...cur, [m.key]: e.target.value }))}
-                      className="font-mono text-xs"
+                      known={known}
+                      {...(m.key === "orchestrator" ? { tiers: { fast: models.fast, balanced: models.balanced, deep: models.deep } } : {})}
+                      onChoose={(v) => setModels((cur) => ({ ...cur, [m.key]: v }))}
                     />
                   </Field>
                 ))}
               </div>
+              {router && (
+                <Field label="Routing" hint={TIER_POLICIES.find((p) => p.value === policy)?.detail}>
+                  <Segmented<TierPolicy>
+                    label="Routing policy"
+                    value={policy}
+                    onChange={setPolicy}
+                    options={TIER_POLICIES.map((p) => ({ id: p.value, label: p.label, title: p.detail }))}
+                  />
+                </Field>
+              )}
+              <Field
+                label="Budget"
+                optional
+                htmlFor={`${id}-budget`}
+                hint={
+                  spent
+                    ? `Spent ${spent.text}. Leave empty for no cap.`
+                    : "US dollars. The router stops the project's requests at this amount; leave empty for no cap."
+                }
+                error={budgetError}
+                errorId={`${id}-budget-error`}
+              >
+                <Input
+                  id={`${id}-budget`}
+                  inputMode="decimal"
+                  placeholder="No cap"
+                  value={budget}
+                  aria-invalid={budgetError ? true : undefined}
+                  aria-describedby={budgetError ? `${id}-budget-error` : undefined}
+                  onChange={(e) => setBudget(e.target.value)}
+                  className="w-32 tabular-nums"
+                />
+              </Field>
               <Field
                 label="Max delegation depth"
                 htmlFor={`${id}-depth`}

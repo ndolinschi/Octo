@@ -41,6 +41,14 @@
   --octo-drop-edge: rgb(92 157 255 / 0.45);
   --octo-selection: rgb(92 157 255 / 0.32);
   --octo-comment-line: rgb(92 157 255 / 0.08);
+  /* Context meter parts (decision 38): one hue per part, legend swatches and the 3px bar only. */
+  --octo-ctx-messages: #5c9dff;
+  --octo-ctx-tool_results: #9a8cff;
+  --octo-ctx-summary: #4fb8b0;
+  --octo-ctx-notes: #d8b07a;
+  --octo-ctx-tools: #8a8a8a;
+  --octo-ctx-system: #5e5e5e;
+  --octo-ctx-other: #474747;
 }
 
 :root[data-theme="light"] {
@@ -76,6 +84,13 @@
   --octo-drop-edge: rgb(10 102 224 / 0.4);
   --octo-selection: rgb(10 102 224 / 0.2);
   --octo-comment-line: rgb(10 102 224 / 0.06);
+  --octo-ctx-messages: #0a66e0;
+  --octo-ctx-tool_results: #6d4fd8;
+  --octo-ctx-summary: #12857c;
+  --octo-ctx-notes: #a8701c;
+  --octo-ctx-tools: #8c8c8c;
+  --octo-ctx-system: #b8b8b8;
+  --octo-ctx-other: #d4d4d4;
 }
 
 /* Spacing scale (px): 2 4 6 8 12 16 20 24 32 40 — nothing else. Tailwind steps 0.5 1 1.5 2 3 4 5 6 8 10
@@ -478,7 +493,6 @@
 .octo-prose p,
 .octo-prose ul,
 .octo-prose ol,
-.octo-prose table,
 .octo-prose blockquote {
   margin: 0 0 var(--octo-prose-gap);
 }
@@ -597,45 +611,74 @@
   border-top: 1px solid var(--octo-line);
   margin: var(--octo-prose-heading-top) 0;
 }
-.octo-prose table {
+/* Tables (decision 44): hairline rows, a medium fg-2 header, numeric columns right-aligned, 32px rows, the first column
+   sticky while the table scrolls sideways inside its own box. Used by answers and by tabular tool results. */
+.octo-table-frame {
+  --octo-table-bg: var(--octo-panel);
+  max-width: 100%;
+  width: fit-content;
+  min-width: min(100%, 240px);
+}
+.octo-table-frame.octo-table-code {
+  --octo-table-bg: var(--octo-code-bg);
+}
+.octo-prose .octo-table-frame {
+  margin: 0 0 var(--octo-prose-gap);
+}
+.octo-prose > .octo-table-frame:last-child {
+  margin-bottom: 0;
+}
+.octo-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+.octo-table {
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
-  display: block;
-  overflow-x: auto;
-  border: 1px solid var(--octo-line);
-  border-radius: 8px;
-  width: fit-content;
-  max-width: 100%;
+  color: var(--octo-fg);
 }
-.octo-prose th,
-.octo-prose td {
+.octo-table th,
+.octo-table td {
   text-align: left;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--octo-line);
+  /* 6 + 20 + 6 = 32px rows; the hairline is an inset shadow, so it takes no height and stays on the scale. */
+  padding: 6px 12px;
+  box-shadow: inset 0 -1px 0 var(--octo-line);
   vertical-align: top;
   overflow-wrap: normal;
   min-width: 4em;
+  max-width: 28em;
+  background: var(--octo-table-bg);
 }
-.octo-prose td code {
+.octo-table th:first-child,
+.octo-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-left: 0;
+}
+.octo-table th:last-child,
+.octo-table td:last-child {
+  padding-right: 0;
+}
+.octo-table th {
+  color: var(--octo-fg-2);
+  font-weight: 500;
+  box-shadow: inset 0 -1px 0 var(--octo-line-strong);
   white-space: nowrap;
 }
-.octo-prose th + th,
-.octo-prose td + td {
-  border-left: 1px solid var(--octo-line);
-}
-.octo-prose th {
-  font-weight: 600;
+.octo-table td code {
+  white-space: nowrap;
 }
 /* Numeric columns (every body cell a number): right-aligned, tabular numerals. */
-.octo-prose th.octo-num,
-.octo-prose td.octo-num {
+.octo-table .octo-num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.octo-prose tr:last-child td {
-  border-bottom: 0;
+.octo-table-frame[data-folded] tbody tr:nth-child(n + 13) {
+  display: none;
 }
 
 .octo-prose[data-streaming] > :last-child:not(ul, ol, pre, table, div)::after,
@@ -883,4 +926,42 @@
     color-mix(in srgb, var(--octo-panel) 24%, transparent) 102px,
     transparent 100%
   );
+}
+
+/* Context meter (decision 38): bar segments and legend swatches take the part's colour. */
+.octo-ctx-messages {
+  background: var(--octo-ctx-messages);
+}
+.octo-ctx-tool_results {
+  background: var(--octo-ctx-tool_results);
+}
+.octo-ctx-summary {
+  background: var(--octo-ctx-summary);
+}
+.octo-ctx-notes {
+  background: var(--octo-ctx-notes);
+}
+.octo-ctx-tools {
+  background: var(--octo-ctx-tools);
+}
+.octo-ctx-system {
+  background: var(--octo-ctx-system);
+}
+.octo-ctx-other {
+  background: var(--octo-ctx-other);
+}
+@media (forced-colors: active) {
+  [class*="octo-ctx-"] {
+    background: CanvasText;
+  }
+}
+
+/* Decision 28's two-tone titles: the lead-in. fg-3 in light; in dark one step lighter (#b4b4b4), because the titles sit
+   on the streak's grain and fg-3 measured 4.36:1 at its brightest speck (≥ 4.5 needed). */
+.octo-lead {
+  color: var(--octo-fg-3);
+}
+:root[data-theme="dark"] .octo-lead,
+:root:not([data-theme="light"]) .octo-lead {
+  color: #b4b4b4;
 }

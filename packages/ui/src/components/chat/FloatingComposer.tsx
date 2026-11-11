@@ -9,7 +9,7 @@ import { useProject } from "../../state/project";
 import { CHAT } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { RunningDot, Spinner } from "../primitives/Status";
-import { CommentsControl } from "./CommentsControl";
+import { CommentsControl } from "./CommentsControlLazy";
 import { Composer } from "./Composer";
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
 

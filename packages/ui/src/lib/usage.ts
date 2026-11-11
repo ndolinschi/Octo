@@ -85,7 +85,23 @@ export function formatUsd(n: number): string {
 
 /** A bucket's cost as shown: "no price" when the harness has none for it (never "$0"), else compact USD. */
 export function costText(b: Pick<UsageBucket, "cost_usd">): string {
+  if (b.cost_usd !== null && isFlatRate(b)) return `≈ ${formatUsd(b.cost_usd)} on your subscription`;
   return b.cost_usd === null ? "no price" : formatUsd(b.cost_usd);
+}
+
+/**
+ * A usage row the harness marks `flat_rate` (an agent on a subscription): its cost is what the tokens would have cost,
+ * not money spent. Read defensively — older harnesses do not send the field.
+ */
+export function isFlatRate(b: object): boolean {
+  return "flat_rate" in b && b.flat_rate === true;
+}
+
+/** What was paid: the total minus flat-rate rows (never added to the paid total); null when nothing has a price. */
+export function paidCost(total: Pick<UsageBucket, "cost_usd">, buckets: readonly Pick<UsageBucket, "cost_usd">[]): number | null {
+  if (total.cost_usd === null) return null;
+  const flat = buckets.filter(isFlatRate).reduce((n, b) => n + (b.cost_usd ?? 0), 0);
+  return Math.max(0, total.cost_usd - flat);
 }
 
 export type ShareRow = { key: string; label: string; tokens: number; share: number; bucket: UsageBucket };

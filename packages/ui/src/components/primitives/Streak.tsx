@@ -15,7 +15,19 @@ const RESIZE_SETTLE_MS = 120;
  * last frame stretches with the host (its CSS size is relative). `data-draws` counts draws, `data-draw-ms` /
  * `data-render-ms` time the last one. Loaded with `import()` on the start screens only; `aria-hidden`.
  */
-export default function Streak({ preset, theme }: { preset: StreakPreset; theme: "dark" | "light" }) {
+/** A theme colour as the engine resolves it: a hidden probe's computed background, else the raw custom property. */
+function resolveColor(host: HTMLElement, name: string) {
+  const probe = document.createElement("span");
+  probe.style.cssText = `position:absolute;width:0;height:0;visibility:hidden;background:var(${name})`;
+  host.appendChild(probe);
+  const bg = getComputedStyle(probe).backgroundColor;
+  // An unresolved variable computes to transparent ("rgba(0, 0, 0, 0)"), which is not black either.
+  const resolved = /^(transparent|rgba\(0, 0, 0, 0\))$/.test(bg) ? null : parseColor(bg);
+  probe.remove();
+  return resolved ?? parseColor(getComputedStyle(host).getPropertyValue(name));
+}
+
+export default function Streak({ preset, theme, mono = false }: { preset: StreakPreset; theme: "dark" | "light"; mono?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const { anchor, rise, echo, narrow } = preset;
   const { x: anchorX, y: anchorY } = anchor;
@@ -35,7 +47,7 @@ export default function Streak({ preset, theme }: { preset: StreakPreset; theme:
       const w = host.clientWidth;
       const h = host.clientHeight;
       const cell = streakCell(window.innerWidth);
-      const key = `${w}x${h}@${cell}`;
+      const key = `${w}x${h}@${cell}:${mono ? "mono" : "vivid"}`;
       if (w === 0 || h === 0 || key === drawn) return;
       drawn = key;
       const t0 = performance.now();
@@ -45,7 +57,15 @@ export default function Streak({ preset, theme }: { preset: StreakPreset; theme:
       el.height = rows;
       const ctx = el.getContext("2d");
       if (!ctx) return;
-      const css = getComputedStyle(host);
+      // The panel and accent as resolved colours (a probe's computed background is always rgb()); a custom property
+      // read raw can come back empty or in another syntax in some engines. Unreadable: leave the canvas undrawn
+      // (transparent over the panel) — never a black fallback.
+      const panel = resolveColor(host, "--octo-panel");
+      const accent = resolveColor(host, "--octo-accent");
+      if (!panel || !accent) {
+        drawn = "";
+        return;
+      }
       const img = ctx.createImageData(cols, rows);
       const t1 = performance.now();
       const peak = renderStreak(new Uint32Array(img.data.buffer), {
@@ -56,9 +76,10 @@ export default function Streak({ preset, theme }: { preset: StreakPreset; theme:
         // A narrow (portrait) host takes the preset's narrow geometry, so the band keeps clear of the text there too.
         ...(w < STREAK_NARROW_BELOW ? { anchor: { x: nX, y: nY }, rise: nRise } : { anchor: { x: anchorX, y: anchorY }, rise }),
         echo,
-        panel: parseColor(css.getPropertyValue("--octo-panel")),
-        accent: parseColor(css.getPropertyValue("--octo-accent")),
+        panel,
+        accent,
         theme,
+        mono,
       });
       const t2 = performance.now();
       ctx.putImageData(img, 0, 0);
@@ -93,7 +114,7 @@ export default function Streak({ preset, theme }: { preset: StreakPreset; theme:
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [anchorX, anchorY, rise, echo, nX, nY, nRise, theme]);
+  }, [anchorX, anchorY, rise, echo, nX, nY, nRise, theme, mono]);
 
-  return <canvas ref={canvas} aria-hidden data-streak className="octo-streak" />;
+  return <canvas ref={canvas} aria-hidden data-streak={mono ? "mono" : "vivid"} className="octo-streak" />;
 }

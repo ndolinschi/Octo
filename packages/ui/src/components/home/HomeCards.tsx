@@ -1,5 +1,6 @@
 import type { Agent, ProjectSummary, UsageReport } from "@octo/agent-client";
-import { CalendarDays, ChartLine, ChevronRight, type LucideIcon } from "lucide-react";
+import { roleText } from "../../lib/orchestrator";
+import { CalendarDays, ChevronRight, type LucideIcon } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration, formatTokens } from "../../lib/format";
@@ -12,7 +13,7 @@ import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
 import { INFO_ROW_BUTTON, SkeletonRows } from "../primitives/InfoList";
 import { modelLabel, RunningDot } from "../primitives/Status";
-import { dayStart, heatCounts, WEEKS, type Month, type ProjectAgents, type RecentRequest } from "./useOverview";
+import { dayStart, heatCounts, WEEKS, type ProjectAgents, type RecentRequest } from "./useOverview";
 
 const TEAM_ROWS = 5;
 /** Height of the Tokens card's day chart (px). */
@@ -82,7 +83,7 @@ function TeamRow({ project, agent, now }: { project: ProjectSummary; agent: Agen
       className={INFO_ROW_BUTTON}
     >
       <RunningDot box={16} />
-      <span className="max-w-[35%] shrink-0 truncate text-fg">{agent.role}</span>
+      <span className="max-w-[35%] shrink-0 truncate text-fg">{roleText(agent.role)}</span>
       <span className="min-w-0 flex-1 truncate text-fg-3">{agent.title}</span>
       <span className="max-w-[30%] shrink-0 truncate text-xs text-fg-3">{project.name}</span>
       {ms !== null && <span className="w-12 shrink-0 text-right text-xs text-fg-2 tabular-nums">{formatDuration(ms)}</span>}
@@ -178,9 +179,13 @@ export function ActivityCard({ agents, requests, now }: { agents: ProjectAgents[
 
 /* ---------- tokens ---------- */
 
+/** A model's family as the card groups it: "Sonnet" for Claude ids, the provider of a routed id ("deepseek/…" → "deepseek"). */
 function family(model: string): string {
   if (model.startsWith("acp:")) return "External agents";
-  return modelLabel(model).split(" ")[0] ?? model;
+  const label = modelLabel(model);
+  if (label !== model) return label.split(" ")[0] ?? model;
+  const slash = model.indexOf("/");
+  return slash > 0 ? model.slice(0, slash) : (model.split(/[-.:]/)[0] ?? model);
 }
 
 /** Families under 1% of the total are folded into "Other". */
@@ -264,54 +269,6 @@ export function TokensCard({
             </div>
           )}
         </>
-      )}
-    </Card>
-  );
-}
-
-/* ---------- this month ---------- */
-
-export function MonthCard({ month }: { month: Month | null }) {
-  const rows: [string, keyof Month["current"]][] = [
-    ["Requests", "requests"],
-    ["Agent runs", "runs"],
-    ["Files written", "files"],
-  ];
-  const empty = month && Object.values(month.current).every((n) => n === 0) && Object.values(month.previous).every((n) => n === 0);
-  const prevName = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toLocaleDateString(undefined, { month: "long" });
-  return (
-    <Card icon={ChartLine} title="This month" label="This month" aside={month && <span className="shrink-0 text-xs text-fg-3">vs {prevName}</span>}>
-      {!month ? (
-        <SkeletonRows count={3} />
-      ) : empty ? (
-        <Empty />
-      ) : (
-        <dl className="flex flex-col gap-3">
-          {rows.map(([label, key]) => {
-            const cur = month.current[key];
-            const prev = month.previous[key];
-            const delta = cur - prev;
-            const scale = Math.max(1, cur, prev);
-            return (
-              <div key={key} className="flex flex-col gap-1">
-                <div className="flex items-baseline gap-2 tabular-nums">
-                  <dt className="min-w-0 flex-1 truncate text-xs text-fg-3">{label}</dt>
-                  <dd className="text-figure text-fg">{cur.toLocaleString()}</dd>
-                  <dd
-                    className={cn("w-12 shrink-0 text-right text-xs", delta > 0 ? "text-ok" : delta < 0 ? "text-err" : "text-fg-3")}
-                    aria-label={delta === 0 ? "same as last month" : `${delta > 0 ? "up" : "down"} ${Math.abs(delta)} from last month`}
-                  >
-                    {delta === 0 ? "±0" : `${delta > 0 ? "+" : "−"}${Math.abs(delta).toLocaleString()}`}
-                  </dd>
-                </div>
-                <div aria-hidden className="flex flex-col gap-0.5">
-                  <span className="h-0.5 rounded-full bg-fg-3" style={{ width: `${(cur / scale) * 100}%` }} />
-                  <span className="h-0.5 rounded-full bg-line-strong" style={{ width: `${(prev / scale) * 100}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </dl>
       )}
     </Card>
   );

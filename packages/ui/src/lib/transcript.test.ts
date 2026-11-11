@@ -3,7 +3,7 @@ import type { ContentBlock, Message } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SPAWN_TOOL } from "./tools";
-import { buildTurns, latestReply, promptText, requestSummaries } from "./transcript";
+import { buildTurns, latestReply, promptText, requestSummaries, compactionSlots, turnWarning } from "./transcript";
 
 let nextId = 1;
 const msg = (role: "user" | "assistant", content: ContentBlock[], at: string): Message => ({ id: nextId++, agent_id: "a", role, content, created_at: at });
@@ -163,4 +163,35 @@ test("latest reply: the first prose line of the last reply with text; headings, 
   assert.equal(latestReply([msg(1, "assistant", "old"), msg(2, "assistant", "`new` reply")])?.text, "new reply");
   assert.equal(latestReply([msg(1, "assistant", "| a | b |\n|---|---|\n```ts\ncode\n```\n- first item")])?.text, "first item");
   assert.equal(latestReply([msg(1, "assistant", "earlier prose"), msg(2, "assistant", "## Only a heading")]), null, "the latest reply decides");
+});
+
+test("compactionSlots puts a marker before the first turn after it", () => {
+  const slots = compactionSlots([1, 5, 9], [{ upto_message_id: 6 }, { upto_message_id: 2 }, { upto_message_id: 12 }]);
+  assert.deepEqual(slots.get(2), [{ upto_message_id: 6 }]);
+  assert.deepEqual(slots.get(1), [{ upto_message_id: 2 }]);
+  assert.deepEqual(slots.get(3), [{ upto_message_id: 12 }]);
+  assert.equal(compactionSlots([null, 4], [{ upto_message_id: 1 }]).get(1)?.length, 1);
+});
+
+test("turnWarning reads only warning: errors", () => {
+  assert.equal(turnWarning("warning: ACP agent refused the MCP server"), "ACP agent refused the MCP server");
+  assert.equal(turnWarning("rate limited"), null);
+  assert.equal(turnWarning(null), null);
+  assert.equal(turnWarning("warning:"), null);
+});
+
+test("an MCP-prefixed spawn_agent call renders as a delegation", () => {
+  const msgs: Message[] = [
+    { id: 1, agent_id: "o", role: "user", created_at: "2026-11-11T10:00:00Z", content: [{ type: "text", text: "Go" }] },
+    {
+      id: 2,
+      agent_id: "o",
+      role: "assistant",
+      created_at: "2026-11-11T10:00:01Z",
+      content: [{ type: "tool_use", id: "t1", name: "mcp__octo-harness__spawn_agent", input: { role: "Explorer" } }],
+    },
+  ];
+  const item = buildTurns(msgs)[0]?.items[0];
+  assert.equal(item?.kind, "delegations");
+  assert.equal(item?.kind === "delegations" ? item.uses[0]?.name : null, "spawn_agent");
 });

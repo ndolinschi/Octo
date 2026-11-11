@@ -39,6 +39,8 @@ export type StreakOptions = {
   levels?: number;
   /** Share of background cells that carry a speck (default 0.35). */
   noise?: number;
+  /** Decision 31's Mono backdrop: the same band in the accent hue alone, at 35% peak. */
+  mono?: boolean;
 };
 
 /** A theme's look: core colour and alpha, glow peak alpha, the two sides' colour stops, the tails (× shorter side). */
@@ -111,6 +113,13 @@ const LIGHT: StreakLook = {
 
 export const STREAK_LOOK: Record<StreakTheme, StreakLook> = { dark: DARK, light: LIGHT };
 
+/** Decision 31 — Mono: the band's shape and grain in one hue (`accent`), peak 35%: it reads as texture, not light. */
+export function monoLook(accent: Rgb, theme: StreakTheme): StreakLook {
+  const base = STREAK_LOOK[theme];
+  const ramp = [accent, accent, accent, accent, accent] as const;
+  return { ...base, core: accent, coreAlpha: 0.35, glowAlpha: 0.35, warm: ramp, cool: ramp, speck: base.speck * 0.6 };
+}
+
 /** Core half-width in cells (a 2–4 cell line) and the glow's cut-off (exp(−3.9) ≈ 2%; the sparse grain beyond it is the speck field). */
 const CORE_CELLS = 1.15;
 const CUTOFF = 3.9;
@@ -155,7 +164,7 @@ export function quantize(a: number, levels: number, threshold: number): number {
 const TILE = 128;
 let tileCache: { key: string; tile: Uint32Array } | null = null;
 function speckTile(panel: Rgb, look: StreakLook, share: number): Uint32Array {
-  const key = `${panel.join(",")}:${look.speck}:${share}:${look.warm.length}`;
+  const key = `${panel.join(",")}:${look.speck}:${share}:${look.warm.map((c) => c.join(",")).join("|")}`;
   if (tileCache?.key === key) return tileCache.tile;
   const tile = new Uint32Array(TILE * TILE).fill(pack(panel[0], panel[1], panel[2]));
   for (let y = 0; y < TILE; y++)
@@ -222,7 +231,7 @@ function sideTables(stops: readonly Rgb[], tail: number, span: number, gamma: nu
 /** Fills `out` (RGBA as little-endian uint32, `cols × rows`) and returns the brightest strength drawn (0–1). */
 export function renderStreak(out: Uint32Array, o: StreakOptions): number {
   const { cols, rows, cell, overhang, panel, theme } = o;
-  const look = STREAK_LOOK[theme];
+  const look = o.mono ? monoLook(o.accent, theme) : STREAK_LOOK[theme];
   const levels = o.levels ?? 5;
   const w = cols * cell - 2 * overhang;
   const h = rows * cell - 2 * overhang;
@@ -285,9 +294,10 @@ export function renderStreak(out: Uint32Array, o: StreakOptions): number {
   // Every colour a cell can take, packed: per chroma variant (the grain's per-cell colour shift), distance and level.
   // A cell then costs its distance, one threshold and one read.
   const [pr, pg, pb] = panel;
-  const jitter = theme === "dark" ? 40 : 30;
+  // Mono stays one hue: no chromatic jitter in its grain.
+  const jitter = o.mono ? 0 : theme === "dark" ? 40 : 30;
   const L1 = levels + 1;
-  const colorKey = `${theme}:${panel.join(",")}:${span}:${cSpan}:${coreW}:${levels}:${short}`;
+  const colorKey = `${theme}:${o.mono ? `mono:${o.accent.join(",")}` : "vivid"}:${panel.join(",")}:${span}:${cSpan}:${coreW}:${levels}:${short}`;
   const fresh = colorCache?.key !== colorKey;
   const colors = fresh ? new Uint32Array(VARIANTS.length * span * L1) : (colorCache?.colors ?? new Uint32Array(0));
   for (let v = 0; fresh && v < VARIANTS.length; v++) {
@@ -342,13 +352,19 @@ export function streakCell(windowWidth: number): number {
 }
 
 /** "#rrggbb" or "rgb(r g b)" / "rgb(r, g, b)" → RGB; anything else is black. */
-export function parseColor(value: string): Rgb {
+export function parseColor(value: string): Rgb | null {
   const v = value.trim();
-  const hex = /^#([\da-f]{6})$/i.exec(v);
-  if (hex?.[1]) {
-    const n = parseInt(hex[1], 16);
+  const hex = /^#([\da-f]{3}|[\da-f]{6})$/i.exec(v)?.[1];
+  if (hex) {
+    const full = hex.length === 3 ? hex.replace(/./g, "$&$&") : hex;
+    const n = parseInt(full, 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
-  const rgb = /rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/.exec(v);
-  return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : [0, 0, 0];
+  const rgb = /rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)/.exec(v);
+  if (rgb) return [Math.round(Number(rgb[1])), Math.round(Number(rgb[2])), Math.round(Number(rgb[3]))];
+  // WebKit can serialise a resolved colour as `color(srgb r g b)` with channels 0–1.
+  const srgb = /color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/.exec(v);
+  if (srgb) return [Math.round(Number(srgb[1]) * 255), Math.round(Number(srgb[2]) * 255), Math.round(Number(srgb[3]) * 255)];
+  // Unreadable: the caller does not draw (never a black fallback: it painted the light theme's start screen black).
+  return null;
 }

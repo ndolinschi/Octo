@@ -3,17 +3,23 @@ import { useProject } from "../../state/project";
 import { FloatRoomContext } from "../primitives/floatRoom";
 import { parseTab, type TabId } from "../../state/workspace/layout";
 import { useFloatingHere } from "../../state/workspace/useFloatingHere";
-import { AgentsPanel } from "../agents/AgentsPanel";
 import { ConversationView } from "../chat/ConversationView";
 import { FloatingComposer } from "../chat/FloatingComposer";
-import { FileView, type FloatingSlot } from "../files/FileView";
-import { NotesPanel } from "../notes/NotesPanel";
+import type { FloatingSlot } from "../files/FileView";
+
+/** The file view (breadcrumbs, tree column, editor host) loads with the first file or Files tab: its own chunk. */
+const FileView = lazy(() => import("../files/FileView").then((m) => ({ default: m.FileView })));
 
 /** What a file view renders as its floating composer: the dock, not the file feature, knows about chat. */
 const renderFloatingComposer: FloatingSlot = (onHeight) => <FloatingComposer onHeight={onHeight} />;
 
 /** The Details tab loads when it is first opened (its own chunk). */
 const DetailsPanel = lazy(() => import("../details/DetailsPanel").then((m) => ({ default: m.DetailsPanel })));
+/** Agents and Notes load when first opened too (their own chunks). */
+const AgentsPanel = lazy(() => import("../agents/AgentsPanel").then((m) => ({ default: m.AgentsPanel })));
+const NotesPanel = lazy(() => import("../notes/NotesPanel").then((m) => ({ default: m.NotesPanel })));
+/** The side question (decision 40). */
+const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default: m.SidePanel })));
 /** The Usage tab too (v6.2). */
 const UsagePanel = lazy(() => import("../usage/UsagePanel").then((m) => ({ default: m.UsagePanel })));
 
@@ -28,18 +34,30 @@ export function TabView({ tab }: { tab: TabId }) {
     case "agent":
       return <ConversationView agentId={ref.agentId} tab={tab} />;
     case "file":
-      return <FileView tab={tab} fileKey={ref.key} floatingComposer={renderFloatingComposer} />;
+      return (
+        <Suspense fallback={null}>
+          <FileView tab={tab} fileKey={ref.key} floatingComposer={renderFloatingComposer} />
+        </Suspense>
+      );
     case "tool":
-      if (ref.tool === "files") return <FileView tab={tab} fileKey={null} floatingComposer={renderFloatingComposer} />;
+      if (ref.tool === "files")
+        return (
+          <Suspense fallback={null}>
+            <FileView tab={tab} fileKey={null} floatingComposer={renderFloatingComposer} />
+          </Suspense>
+        );
+      // Its own input: no floating composer over it (two inputs would compete).
+      if (ref.tool === "side")
+        return (
+          <Suspense fallback={null}>
+            <SidePanel />
+          </Suspense>
+        );
       return (
         <ToolView tab={tab}>
-          {ref.tool === "agents" ? (
-            <AgentsPanel />
-          ) : ref.tool === "notes" ? (
-            <NotesPanel />
-          ) : (
-            <Suspense fallback={null}>{ref.tool === "usage" ? <UsagePanel /> : <DetailsPanel />}</Suspense>
-          )}
+          <Suspense fallback={null}>
+            {ref.tool === "agents" ? <AgentsPanel /> : ref.tool === "notes" ? <NotesPanel /> : ref.tool === "usage" ? <UsagePanel /> : <DetailsPanel />}
+          </Suspense>
         </ToolView>
       );
   }

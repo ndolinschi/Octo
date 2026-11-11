@@ -1,6 +1,6 @@
 import { lazy, Suspense, useId, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
-import { useApp, type ThemePref } from "../../state/app";
+import { useApp, type Backdrop, type ThemePref } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Spinner } from "../primitives/Status";
@@ -67,6 +67,7 @@ export function SettingsDialog({ onClose, initialView = "general" }: { onClose()
         {view === "general" ? (
           <div className="flex flex-col gap-5">
             {canChooseTheme && <ThemeChoice />}
+            <BackdropChoice />
             <BridgeStatus demo={demo} />
           </div>
         ) : (
@@ -81,24 +82,57 @@ export function SettingsDialog({ onClose, initialView = "general" }: { onClose()
 
 function ThemeChoice() {
   const { themePref, setThemePref } = useApp();
-  const labelId = useId();
-  const index = THEMES.findIndex((t) => t.value === themePref);
+  return (
+    <RadioChoice label="Theme" options={THEMES} value={themePref} onChange={setThemePref} hint="System follows your operating system's appearance." autofocus />
+  );
+}
 
-  // Radio-group keys: arrows move and select.
+const BACKDROP_OPTIONS: { value: Backdrop; label: string }[] = [
+  { value: "vivid", label: "Vivid" },
+  { value: "mono", label: "Mono" },
+  { value: "off", label: "Off" },
+];
+
+/** Decision 31: the start screens' backdrop — Vivid (the streak), Mono (one hue, a texture), Off. */
+function BackdropChoice() {
+  const { backdropPref, setBackdropPref, backdrop } = useApp();
+  const forced = backdrop === "off" && backdropPref !== "off";
+  return (
+    <RadioChoice
+      label="Start-screen backdrop"
+      options={BACKDROP_OPTIONS}
+      value={backdropPref}
+      onChange={setBackdropPref}
+      hint={forced ? "Off while your system asks for reduced transparency or forced colours." : "Behind Home, an empty project and the first-run screen."}
+    />
+  );
+}
+
+/** A labelled radio group of 2–4 text options (arrows move and select). */
+function RadioChoice<T extends string>(props: {
+  label: string;
+  options: { value: T; label: string }[];
+  value: T;
+  onChange(v: T): void;
+  hint: string;
+  autofocus?: boolean;
+}) {
+  const labelId = useId();
+  const { options, value, onChange } = props;
+  const index = options.findIndex((t) => t.value === value);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const delta = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
     if (!delta) return;
     e.preventDefault();
-    const next = THEMES[(index + delta + THEMES.length) % THEMES.length];
+    const next = options[(index + delta + options.length) % options.length];
     if (!next) return;
-    setThemePref(next.value);
+    onChange(next.value);
     e.currentTarget.querySelector<HTMLElement>(`[data-value="${next.value}"]`)?.focus();
   };
-
   return (
     <section>
       <h3 id={labelId} className="text-sm text-fg-2">
-        Theme
+        {props.label}
       </h3>
       <div
         role="radiogroup"
@@ -106,8 +140,8 @@ function ThemeChoice() {
         onKeyDown={onKeyDown}
         className="mt-1.5 grid grid-cols-3 gap-0.5 rounded-md border border-line bg-panel p-0.5"
       >
-        {THEMES.map((t) => {
-          const checked = t.value === themePref;
+        {options.map((t) => {
+          const checked = t.value === value;
           return (
             <button
               key={t.value}
@@ -115,11 +149,11 @@ function ThemeChoice() {
               role="radio"
               aria-checked={checked}
               data-value={t.value}
-              data-autofocus={checked || undefined}
+              data-autofocus={(props.autofocus && checked) || undefined}
               tabIndex={checked ? 0 : -1}
-              onClick={() => setThemePref(t.value)}
+              onClick={() => onChange(t.value)}
               className={cn(
-                "h-7 rounded-sm text-sm transition-[background-color,color] duration-100",
+                "h-7 rounded-sm text-sm transition-[background-color,color] duration-100 max-sm:h-10",
                 checked ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
               )}
             >
@@ -128,7 +162,7 @@ function ThemeChoice() {
           );
         })}
       </div>
-      <p className="mt-1.5 text-xs text-fg-3">System follows your operating system's appearance.</p>
+      <p className="mt-1.5 text-xs text-fg-3">{props.hint}</p>
     </section>
   );
 }

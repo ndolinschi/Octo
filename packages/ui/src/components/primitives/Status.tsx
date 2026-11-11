@@ -1,6 +1,7 @@
 import type { AgentStatus, Tier } from "@octo/agent-client";
 import { agentGlyph, orchestratorGlyph } from "../../lib/stateGlyph";
 import { StateGlyph } from "./StateGlyph";
+import { modelName } from "../../lib/models";
 
 const LABEL: Record<AgentStatus, string> = {
   idle: "Idle",
@@ -50,12 +51,7 @@ export function isTier(v: unknown): v is Tier {
   return v === "fast" || v === "balanced" || v === "deep";
 }
 
-/** "claude-sonnet-5-5-20261001" → "Sonnet 5.5"; ids that don't follow that shape lose only the vendor prefix. */
+/** A model setting as people read it ("Sonnet 5.5", "Claude Code · Opus 5.5"): `lib/models.ts`, without agent labels. */
 export function modelLabel(model: string): string {
-  // An ACP agent from a plugin: its id, marked as such.
-  if (model.startsWith("acp:")) return `${model.slice(4)} (ACP)`;
-  const id = model.replace(/^claude-/, "").replace(/-\d{8}$/, "");
-  const [, family, major, minor] = /^([a-z]+)-(\d+)(?:-(\d+))?$/.exec(id) ?? [];
-  if (family === undefined || major === undefined) return id;
-  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${major}${minor ? `.${minor}` : ""}`;
+  return modelName(model);
 }

@@ -2,7 +2,7 @@ import type { Bridge, BridgeConfig, ProjectSummary, ShellKind } from "@octo/agen
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useHost } from "./host";
 import { useMediaQuery } from "../lib/hooks";
-import { PREFS, usePersistentState } from "../lib/storage";
+import { choiceCodec, PREFS, usePersistentState } from "../lib/storage";
 import { themeCodec, type Theme, type ThemePref } from "./themePref";
 import { HEALTH_POLL_ONLINE_MS, HEALTH_POLL_OFFLINE_MS, PROJECTS_POLL_BUSY_MS, PROJECTS_POLL_IDLE_MS } from "../lib/constants";
 import { createRequiredContext } from "../lib/context";
@@ -28,7 +28,16 @@ type AppValue = {
   /** False when the host dictates the theme. */
   canChooseTheme: boolean;
   setThemePref(pref: ThemePref): void;
+  /** The start screens' backdrop in effect (decision 31): the choice, forced Off by reduced transparency or forced colours. */
+  backdrop: Backdrop;
+  backdropPref: Backdrop;
+  setBackdropPref(pref: Backdrop): void;
 };
+
+/** Decision 31: Vivid (the streak), Mono (the same band in one hue), Off. */
+export type Backdrop = "vivid" | "mono" | "off";
+export const BACKDROPS: readonly Backdrop[] = ["vivid", "mono", "off"];
+const backdropCodec = choiceCodec(BACKDROPS, "vivid");
 
 export const { Provider: AppContextProvider, useRequired: useApp } = createRequiredContext<AppValue>("useApp");
 
@@ -42,6 +51,9 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
   // Nothing is written until the user chooses: a first run leaves storage empty.
   const [themePref, setThemePref] = usePersistentState(PREFS.theme, themeCodec, { persistInitial: false });
   const systemLight = useMediaQuery("(prefers-color-scheme: light)");
+  const [backdropPref, setBackdropPref] = usePersistentState(PREFS.backdrop, backdropCodec, { persistInitial: false });
+  const plain = useMediaQuery("(prefers-reduced-transparency: reduce), (forced-colors: active)");
+  const backdrop: Backdrop = plain ? "off" : backdropPref;
   const theme: Theme = host.theme ?? (themePref === "system" ? (systemLight ? "light" : "dark") : themePref);
   const [attempt, setAttempt] = useState(0);
   const healthRef = useRef<Health>("checking");
@@ -121,8 +133,28 @@ export function AppProvider(props: { bridge: Bridge; bridgeUrl: string; shell: S
       themePref,
       canChooseTheme: !host.theme,
       setThemePref: (pref) => setThemePref(pref),
+      backdrop,
+      backdropPref,
+      setBackdropPref: (pref) => setBackdropPref(pref),
     }),
-    [bridge, props.bridgeUrl, props.shell, props.demo, health, version, projects, config, refreshProjects, theme, themePref, setThemePref, host.theme],
+    [
+      bridge,
+      props.bridgeUrl,
+      props.shell,
+      props.demo,
+      health,
+      version,
+      projects,
+      config,
+      refreshProjects,
+      theme,
+      themePref,
+      setThemePref,
+      host.theme,
+      backdrop,
+      backdropPref,
+      setBackdropPref,
+    ],
   );
 
   return <AppContextProvider value={value}>{props.children}</AppContextProvider>;

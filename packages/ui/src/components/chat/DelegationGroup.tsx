@@ -1,4 +1,5 @@
 import { agentBySpawnToolUse, descendantCount, type Agent } from "@octo/agent-client";
+import { roleText } from "../../lib/orchestrator";
 import { agentActivity } from "../../lib/orchestrator";
 import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration } from "../../lib/format";
@@ -7,7 +8,8 @@ import { spawnInput } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { isTier, modelLabel, RunningDot, statusLabel, StatusIcon, tierLabel } from "../primitives/Status";
+import { isTier, RunningDot, statusLabel, StatusIcon, tierLabel } from "../primitives/Status";
+import { useModelNames } from "../../state/models";
 import { useTranscript } from "./transcriptContext";
 
 const FINISHED = new Set(["completed", "failed", "cancelled"]);
@@ -58,8 +60,9 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
   const { projectId, state } = useProject();
   const ws = useOptionalWorkspace();
   const { now } = useTranscript();
+  const names = useModelNames();
   const input = spawnInput(use.input);
-  const role = agent?.role || input.role || "Agent";
+  const role = roleText(agent?.role || input.role);
   const title = agent?.title || input.title;
   const tier = agent?.tier ?? (isTier(input.tier) ? input.tier : null);
   const status = agent?.status ?? "pending";
@@ -67,7 +70,9 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
   const duration = agent ? agentDuration(agent, now) : null;
   const running = agent?.status === "running";
   const error = status === "failed" ? agent?.error || "No error details were reported." : null;
-  const model = agent?.model ? modelLabel(agent.model) : tier ? tierLabel(tier) : "";
+  // A compact place: the served model's name alone (decision 37), the requested one in the row's tooltip.
+  const served = agent ? names.served(agent) : null;
+  const model = served ? served.name : tier ? tierLabel(tier) : "";
 
   const right = running ? (
     <>
@@ -79,7 +84,11 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
       {status === "pending" && <span>starting</span>}
       {status === "failed" && <span className="text-err">failed</span>}
       {status === "cancelled" && <span>{statusLabel("cancelled")}</span>}
-      {model && <span className="@max-[440px]:hidden">{model}</span>}
+      {model && (
+        <span className="min-w-0 truncate @max-[440px]:hidden" title={served?.asked ? `${served.asked} → ${served.name} (chosen → served)` : model}>
+          {model}
+        </span>
+      )}
       {duration !== null && <span className="min-w-[4ch] text-right text-fg-2 tabular-nums">{formatDuration(duration)}</span>}
     </>
   );

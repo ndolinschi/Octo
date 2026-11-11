@@ -15,10 +15,11 @@ export type StreakPreset = { anchor: StreakAnchor; rise: number; echo: number; n
 export const STREAK_NARROW_BELOW = 640;
 
 /**
- * Home: a shallow band across the lower part — behind the translucent cards and through the free space under them —
- * so the title row stays in the dark (decision 32: the band is moved, never patched with a scrim).
+ * Home (owner, live test: "strong only in the lower-left third, the cards cover it"): like references 18–20, the band
+ * enters at the top-left corner and descends across the whole width, so its core crosses open space at both ends — the
+ * free corner left of the title and the gutter right of the cards — while the title stays in the dark above it.
  */
-export const STREAK_HOME: StreakPreset = { anchor: { x: 0.5, y: 0.72 }, rise: 0.45, echo: 0.46 };
+export const STREAK_HOME: StreakPreset = { anchor: { x: 0.5, y: 0.5 }, rise: 0.9, echo: 0.46, narrow: { anchor: { x: 0.5, y: 0.18 }, rise: 0.25 } };
 /**
  * Empty project: from the top-left corner across the upper third to the right edge — the core passes ABOVE the
  * title / composer / facts block, which sits in the cool halo and the dark falloff; the echo runs below the block.

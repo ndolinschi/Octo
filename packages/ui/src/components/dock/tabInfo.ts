@@ -1,4 +1,5 @@
 import { File, type LucideIcon } from "lucide-react";
+import { roleText } from "../../lib/orchestrator";
 import { GLYPH } from "../primitives/glyphs";
 import type { ProjectState } from "@octo/agent-client";
 import type { OpenFile } from "../../state/code";
@@ -30,7 +31,11 @@ const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> 
   files: { label: "Files", icon: GLYPH.files, title: "Project files: select a file to open it here" },
   details: { label: "Details", icon: GLYPH.details, title: "Project details: folders, models, tokens, activity, files written" },
   usage: { label: "Usage", icon: GLYPH.usage, title: "Usage: tokens, cost and rate limits" },
+  side: { label: "Side question", icon: GLYPH.side, title: "Ask about this project without interrupting the orchestrator" },
 };
+
+/** The tool tabs as the "+" picker lists them (decision 25), in that order. */
+export const TOOL_TABS = TOOLS;
 
 export function tabInfo(
   tab: TabId,
@@ -56,7 +61,7 @@ export function tabInfo(
   }
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];
-    const label = agent?.role || "Agent";
+    const label = roleText(agent?.role);
     return {
       label,
       title: agent?.title ? `${label}: ${agent.title}` : label,

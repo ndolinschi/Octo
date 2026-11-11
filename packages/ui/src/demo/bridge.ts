@@ -19,6 +19,7 @@ import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
 import { orbitLive } from "./orbit";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
+import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
 import { act, say, sleep, turn, type Ctx } from "./runtime";
 import { clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store";
 
@@ -30,7 +31,8 @@ export type DemoSeed = "full" | "empty" | "one" | "many";
  *  slow (3s to start) · exit (crashes 4s after starting). */
 export type DemoLsp = "ok" | "fail-once" | "slow" | "exit";
 
-export type DemoOptions = { seed?: DemoSeed; lsp?: DemoLsp; plugins?: boolean };
+/** `nokey`: no API key and no router — the built-in loop is unavailable, only ACP agents can run (also `?nokey=1`). */
+export type DemoOptions = { seed?: DemoSeed; lsp?: DemoLsp; plugins?: boolean; nokey?: boolean };
 
 /** Demo-only trace of calls a scripted check wants to observe (console.debug, never shown). */
 function trace(event: string, detail: unknown): void {
@@ -87,6 +89,7 @@ function makeProject(input: ProjectInput, createdAt: number): ProjectRecord {
       models: { ...DEFAULT_MODELS, ...input.models },
       max_depth: input.max_depth ?? 3,
       orchestrator_agent_id: orchestrator.id,
+      ...(input.budget_usd ? { budget_usd: input.budget_usd, spent_usd: 0 } : {}),
     },
     agents: [orchestrator],
     messages: [],
@@ -165,7 +168,16 @@ function seed(): ProjectRecord[] {
     },
     now - 10 * HOUR,
   );
-  startScript(docs, now - 9 * HOUR, docsHistory);
+  // Behind a router (decision 37): a budget at 86% (amber), the Ceiling policy, and models served other than asked for.
+  docs.project.budget_usd = 25;
+  docs.project.spent_usd = 21.4;
+  docs.project.models.tier_policy = "ceiling";
+  startScript(docs, now - 9 * HOUR, async (ctx) => {
+    await docsHistory(ctx);
+    ctx.t = Math.max(ctx.t, now - 50 * 60_000);
+    await tablesTurn(ctx);
+    routeAgents(ctx.rec, "deepseek/deepseek-v4.1-flash");
+  });
 
   const payments = makeProject(
     {
@@ -196,6 +208,7 @@ function seed(): ProjectRecord[] {
     });
     ctx.t = Math.max(ctx.t, now - 26 * HOUR);
     await ledgerShowcase(ctx);
+    routeAgents(ctx.rec, "claude-opus-5-5");
     ctx.t = Math.max(ctx.t, now - 1_200);
     await backgroundTurn(
       "Re-run last night's settlement for the EU merchants and tell me if the totals match.",
@@ -274,6 +287,39 @@ function seed(): ProjectRecord[] {
     });
   });
 
+  // The budget is spent: the header turns red ("Project budget reached").
+  webhooks.project.budget_usd = 10;
+  webhooks.project.spent_usd = 10.42;
+
+  // An orchestrator that runs as an ACP agent (Claude Code on a subscription), with the harness's MCP warning.
+  const release = makeProject(
+    {
+      name: "Release notes",
+      description: "Changelog and release notes for the public API",
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
+      folders: [{ path: "/Users/maya/code/release", label: "release" }],
+    },
+    now - 3 * HOUR,
+  );
+  startScript(release, now - 2 * HOUR, acpOrchestratorHistory);
+
+  // An ACP orchestrator that could not start (GitHub Copilot is not logged in): nothing was stored, the turn failed.
+  // The UI must show the failure and the login hint, and the project "Needs you" (owner's live test).
+  const copilot = makeProject(
+    {
+      name: "Changelog bot",
+      description: "Drafts weekly changelog entries",
+      models: { orchestrator: "acp:copilot" },
+      folders: [{ path: "/Users/maya/code/changelog", label: "changelog" }],
+    },
+    now - 50 * 60_000,
+  );
+  Object.assign(orchestratorOf(copilot), {
+    status: "failed",
+    error: "ACP agent GitHub Copilot could not start: not logged in (exit status 1).",
+    finished_at: new Date(now - 40 * 60_000).toISOString(),
+  });
+
   const tokens = makeProject(
     {
       name: "Design system tokens",
@@ -291,7 +337,9 @@ function seed(): ProjectRecord[] {
     now - 40 * 24 * HOUR,
   );
   startScript(stress, now - 30 * HOUR, stressHistory);
-  return [orbit, atlas, docs, payments, infra, webhooks, tokens, stress];
+  payments.project.budget_usd = 120;
+  payments.project.spent_usd = 38.2;
+  return [orbit, atlas, docs, payments, infra, webhooks, release, copilot, tokens, stress];
 }
 
 function seedMany(): ProjectRecord[] {
@@ -314,8 +362,14 @@ const SEEDERS: Record<DemoSeed, () => ProjectRecord[]> = { full: seed, empty: ()
 
 const SIDE_ANSWER = "The orchestrator is between steps: it is waiting on its agents. Nothing you ask here is added to its conversation.";
 
+/** `?nokey=1` on the page: the hosts pass only seed / lsp / plugins, so the demo reads this knob itself. */
+function nokeyFromUrl(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("nokey") === "1";
+}
+
 export function createDemoBridge(options: DemoOptions = {}): Bridge {
   const lspMode = options.lsp ?? "ok";
+  const nokey = options.nokey ?? nokeyFromUrl();
   const pluginsOn = options.plugins ?? true;
   const failedOnce = new Set<string>();
   const records = new Map<string, ProjectRecord>();
@@ -323,6 +377,24 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
 
   const delay = () => new Promise((r) => setTimeout(r, LATENCY_MS));
   const sides: { project: string; message: SideMessage }[] = [];
+  // One earlier side question on Atlas API, so the pane opens with history (decision 40).
+  const atlasId = [...records.values()].find((r) => r.project.name.startsWith("Atlas"))?.project.id;
+  if (atlasId) {
+    const at = new Date(Date.now() - 20 * 60_000).toISOString();
+    sides.push(
+      { project: atlasId, message: { id: 1, side_id: "side_seed", role: "user", text: "Why did it pick the debugger for this?", created_at: at } },
+      {
+        project: atlasId,
+        message: {
+          id: 2,
+          side_id: "side_seed",
+          role: "assistant",
+          text: "The bug only shows under concurrency, so it asked for a **reproduction first**: the debugger writes a failing test before anyone changes code (your project instructions require that).",
+          created_at: at,
+        },
+      },
+    );
+  }
   // One compacted history, so the marker's state exists in the demo: Atlas API's orchestrator (the longest seeded
   // transcript; histories are played in, so the marker is computed when read) had its first exchange summarised.
   const compacted = [...records.values()].find((r) => r.project.name.startsWith("Atlas"))?.project.orchestrator_agent_id;
@@ -348,7 +420,29 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
 
   return {
     health: async () => (await delay(), { ok: true, version: "demo" }),
-    getConfig: async () => (await delay(), { default_models: { ...DEFAULT_MODELS }, default_max_depth: 3 }),
+    getConfig: async () => {
+      await delay();
+      const claude = {
+        value: "acp:claude-code" as const,
+        id: "claude-code",
+        label: "Claude Code",
+        models: ["claude-opus-5-5", "claude-sonnet-5-5"],
+        default_model: "claude-sonnet-5-5",
+      };
+      const copilot = { value: "acp:copilot" as const, id: "copilot", label: "GitHub Copilot", models: [] };
+      return {
+        default_models: { ...DEFAULT_MODELS },
+        default_max_depth: 3,
+        // An Octo router in front of the harness (decision 37), unless the no-key variant is asked for.
+        router: !nokey,
+        ...(nokey ? {} : { router_capabilities: ["autoroute", "route_hints", "result_headers", "budget_key"] }),
+        acp_orchestrators: pluginsOn ? [claude, copilot] : [],
+        builtin_loop: nokey
+          ? { available: false, reason: "No API key: set ANTHROPIC_API_KEY for the harness, or run it behind an Octo router." }
+          : { available: true },
+        default_orchestrator: nokey && pluginsOn ? "acp:claude-code" : DEFAULT_MODELS.orchestrator,
+      };
+    },
     listProjects: async () => {
       await delay();
       return [...records.values()].map((r) => summary(r.project)).sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
@@ -370,6 +464,16 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       if (patch.instructions !== undefined) p.instructions = patch.instructions;
       if (patch.max_depth !== undefined) p.max_depth = patch.max_depth;
       if (patch.models) p.models = { ...p.models, ...patch.models };
+      if (patch.budget_usd !== undefined) {
+        if (patch.budget_usd === null) delete p.budget_usd;
+        else p.budget_usd = patch.budget_usd;
+        p.spent_usd ??= 0;
+      }
+      if (patch.models?.orchestrator) {
+        const orch = orchestratorOf(rec);
+        orch.model = patch.models.orchestrator;
+        emit(rec, { type: "agent.updated", agent: clone(orch) });
+      }
       if (patch.folders) p.folders = dedupeFolders(patch.folders);
       p.folder_count = p.folders.length;
       p.updated_at = new Date().toISOString();
@@ -505,6 +609,8 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     },
     getLimits: async () => {
       await delay();
+      // Without a key nothing has answered yet: no rate-limit headers were seen (the Limits empty state).
+      if (nokey) return [];
       const { demoLimits } = await import("./usage");
       return demoLimits(Date.now());
     },

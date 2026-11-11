@@ -1,6 +1,5 @@
 import type { Agent, ProjectSummary, UsageReport } from "@octo/agent-client";
 import { useEffect, useMemo, useState } from "react";
-import { writtenFiles } from "../../lib/tools";
 import { useActivity } from "../../state/activity";
 import { useApp } from "../../state/app";
 import { useOrchestrators } from "../../state/orchestrators";
@@ -12,8 +11,6 @@ export const WEEKS = 26;
 
 export type ProjectAgents = { project: ProjectSummary; agents: Agent[] };
 export type RecentRequest = Request & { project: ProjectSummary };
-export type MonthFigures = { requests: number; runs: number; files: number };
-export type Month = { current: MonthFigures; previous: MonthFigures };
 
 /** Start of the local day / month that contains `t`. */
 export function dayStart(t: number): number {
@@ -77,7 +74,6 @@ export function useOverview() {
   const [agents, setAgents] = useState<ProjectAgents[] | null>(null);
   const [usage, setUsage] = useState<UsageReport | "unavailable" | null>(null);
   const [daily, setDaily] = useState<UsageReport | null>(null);
-  const [files, setFiles] = useState<{ current: number; previous: number } | null>(null);
   const requestsByProject = useAllRequests(projects);
   const orchestrators = useOrchestrators(projects);
   const stamp = (projects ?? []).map((p) => `${p.id}:${p.updated_at}`).join(",");
@@ -118,42 +114,6 @@ export function useOverview() {
     };
   }, [bridge, stamp]);
 
-  // Files written: transcripts of the runs that started this month or last month.
-  useEffect(() => {
-    if (!agents) return;
-    let cancelled = false;
-    const now = Date.now();
-    const from = monthStart(now, -1);
-    const mid = monthStart(now);
-    const runs = agents.flatMap(({ project, agents: list }) => list.filter((a) => isRun(a) && started(a) >= from).map((a) => ({ project, agent: a })));
-    const folders = new Map<string, { label: string; path: string }[]>();
-    void Promise.all(
-      runs.map(({ project, agent }) =>
-        activity
-          .transcript(project.id, agent)
-          .then(async (messages) => {
-            // Folder paths are only needed to place ACP edits; the labels come from the messages otherwise.
-            let f = folders.get(project.id);
-            if (!f) {
-              f = (await bridge.getProject(project.id).catch(() => null))?.folders ?? [];
-              folders.set(project.id, f);
-            }
-            return writtenFiles(messages, f).map((w) => ({ ...w, project: project.id }));
-          })
-          .catch(() => []),
-      ),
-    ).then((lists) => {
-      if (cancelled) return;
-      const cur = new Set<string>();
-      const prev = new Set<string>();
-      for (const w of lists.flat()) (Date.parse(w.at) >= mid ? cur : prev).add(`${w.project}/${w.folder}/${w.path}`);
-      setFiles({ current: cur.size, previous: prev.size });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [agents, activity, bridge]);
-
   const requests = useMemo(() => {
     const all: RecentRequest[] = [];
     const replies = new Map<string, Reply | null>();
@@ -167,19 +127,5 @@ export function useOverview() {
     return { all: all.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)), complete, replies };
   }, [projects, requestsByProject]);
 
-  const month = useMemo<Month | null>(() => {
-    if (!agents || !requests.complete || !files) return null;
-    const now = Date.now();
-    const mid = monthStart(now);
-    const from = monthStart(now, -1);
-    const count = (t: number[]) => ({ current: t.filter((x) => x >= mid).length, previous: t.filter((x) => x >= from && x < mid).length });
-    const req = count(requests.all.map((r) => Date.parse(r.created_at)));
-    const runs = count(agents.flatMap((p) => p.agents.filter(isRun).map(started)));
-    return {
-      current: { requests: req.current, runs: runs.current, files: files.current },
-      previous: { requests: req.previous, runs: runs.previous, files: files.previous },
-    };
-  }, [agents, requests, files]);
-
-  return { projects, agents, usage, daily, requests, month, orchestrators };
+  return { projects, agents, usage, daily, requests, orchestrators };
 }

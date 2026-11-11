@@ -1,3 +1,4 @@
+import { useApp } from "../../state/app";
 import type { Limit } from "@octo/agent-client";
 import { useMemo } from "react";
 import { cn } from "../../lib/cn";
@@ -60,6 +61,7 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
  */
 export function UsageLimits() {
   const ws = useWorkspace();
+  const { config } = useApp();
   // Decision 36: nothing polls or ticks while the Usage tab is hidden (it stays mounted) or the page is.
   const pageVisible = usePageVisible();
   const shown = ws.isVisible(toolTab("usage")) && pageVisible;
@@ -80,11 +82,24 @@ export function UsageLimits() {
         </p>
       )}
       {limits.status === "ok" && groups.length === 0 && (
-        <div className="flex flex-col gap-1 px-2 py-6 text-center">
-          <p className="text-sm text-fg-2">No rate limits observed yet</p>
-          <p className="text-xs text-fg-3">
-            Limits appear after the first model response that carries rate-limit headers (they are kept until the harness restarts).
-          </p>
+        <div data-limits-empty className="flex flex-col gap-1 px-2 py-6 text-center">
+          {config?.router ? (
+            <>
+              <p className="text-sm text-fg-2">The router reports no rate limits</p>
+              <p className="text-xs text-fg-3">
+                Requests go through an Octo router, and the provider behind it (OpenRouter, for one) sends no rate-limit headers. Limits appear here when a
+                provider that sends them, such as Anthropic's API, answers a request.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-fg-2">No rate limits reported yet</p>
+              <p className="text-xs text-fg-3">
+                Limits appear after the first model response that carries rate-limit headers. Some providers (OpenRouter, for one) send none; the harness keeps
+                what it saw until it restarts.
+              </p>
+            </>
+          )}
         </div>
       )}
       {groups.map(([provider, rows]) => (

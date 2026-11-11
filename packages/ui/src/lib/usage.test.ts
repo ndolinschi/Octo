@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Limit, UsageBucket, UsageReport } from "@octo/agent-client";
 import {
+  isFlatRate,
+  paidCost,
   barHeights,
   costText,
   daysWithData,
@@ -158,4 +160,15 @@ test("usage view guard", () => {
 test("range: the last N UTC days, to exclusive", () => {
   assert.deepEqual(rangeOf(7, NOW), { from: "2026-11-04", to: "2026-11-11" });
   assert.deepEqual(rangeOf(1, NOW), { from: "2026-11-10", to: "2026-11-11" });
+});
+
+test("flat-rate rows: shown as an equivalent, never added to the paid total", () => {
+  const paid = { cost_usd: 1.2 };
+  const flat = { cost_usd: 0.53, flat_rate: true };
+  assert.equal(costText(flat), "≈ $0.53 on your subscription");
+  assert.equal(costText(paid), formatUsd(1.2));
+  assert.equal(isFlatRate(flat), true);
+  assert.equal(isFlatRate(paid), false);
+  assert.equal(paidCost({ cost_usd: 1.73 }, [paid, flat]), 1.2);
+  assert.equal(paidCost({ cost_usd: null }, [flat]), null);
 });

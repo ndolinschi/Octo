@@ -67,8 +67,12 @@ export function Popover(props: {
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !anchor.current?.contains(t)) onClose();
     };
+    // Only a scroll that moves the anchor closes it: a live transcript scrolling elsewhere must not (v6.3 part 2).
     const scrolled = (e: Event) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
+      const t = e.target;
+      if (t instanceof Node && ref.current?.contains(t)) return;
+      const a = anchor.current;
+      if (t === document || (t instanceof Node && a && t.contains(a))) onClose();
     };
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;

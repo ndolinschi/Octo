@@ -37,8 +37,12 @@ export function StateGlyph(props: { state: GlyphState; size?: GlyphSize; box?: n
           className={cn(props.state === "working" && "text-fg-3")}
         />
         {g.arc && <path d={g.arc} strokeLinecap="round" className="octo-ring-turn" />}
-        {g.dot !== null && (
-          <circle cx={g.c} cy={g.c} r={g.dot} fill="currentColor" stroke="none" className={cn(props.state === "needs" && "octo-ring-pulse")} />
+        {g.dot !== null && <circle cx={g.c} cy={g.c} r={g.dot} fill="currentColor" stroke="none" />}
+        {g.alert && (
+          <g className="octo-ring-pulse">
+            <line x1={g.alert.x} y1={g.alert.y1} x2={g.alert.x} y2={g.alert.y2} strokeLinecap="round" />
+            <circle cx={g.alert.x} cy={g.alert.cy} r={g.alert.dr} fill="currentColor" stroke="none" />
+          </g>
         )}
         {g.bar && <line {...g.bar} strokeLinecap="round" />}
       </svg>
