@@ -151,3 +151,29 @@ the turn clears pending approvals. 5. Existing projects keep Full access after t
 - 2 is independent of 1 and 3 on the harness side; UI work on the composer overlaps with 3 (access selector), so
   the UI parts of 2 and 3 are built by one agent.
 - Each part: harness (Sonnet) → client (Sonnet) → UI (Opus) → independent review → live run on the mock stack.
+
+
+---
+
+## As built — v7 (harness)
+
+Exact API, limits and configuration: [`apps/harness/docs/v7.md`](../../../apps/harness/docs/v7.md). Client: `@octo/agent-client` (`types.ts`, `state.ts`, optional `Bridge` members). What differs from, or fills a gap in, the text above:
+
+**Changes.**
+- Beyond `write_file` and ACP `fs/write_text_file`, changes made by a `bash` call and by an ACP agent's own tools are found by before/after snapshots of the project folders (`source: bash | acp_turn`; the others `write_file | acp_fs`). `kind` gained `deleted` (`after_hash` null), and a change carries `note` (why there is no diff: `binary | too_large | no_preimage | pruned`) and `source`.
+- Pre-images: a copy of each text file up to 1 MiB in the project data dir (256 MiB per project), refreshed between calls; the diff blob store is the `blobs` table (text, 2 MiB). Walk cap 20 000 files per folder; git work trees use `git ls-files --exclude-standard`. Details and what is not detected: v7.md.
+- `GET /changes` leaves out files created and deleted again or changed back. The revert response is `FileStat` plus `deleted: true` for a removed created file; `409 revert_unavailable` is new (content before not kept).
+- Retention (30 days) runs after each turn and at start-up.
+
+**Approvals.**
+- `access` default for projects created without it is the server's `HARNESS_DEFAULT_ACCESS`, `supervised` for `harness serve` (the spec's "new projects supervised"); library embedders and the Go tests default to `full`. Existing projects are `full`. `scripts/e2e-router.sh` and `scripts/e2e-acp-orchestrator.sh` set `HARNESS_DEFAULT_ACCESS=full` because they create projects through the API and do not answer approvals.
+- Gap filled (unattended): an unanswered request is denied after `HARNESS_APPROVAL_TIMEOUT` (default 30 minutes).
+- ACP: the card is `kind: "acp"` with the agent's options, command and first location; an allowed `request_permission` for an edit also covers the `fs/write_text_file` that follows (one card per edit); `allow_for_turn` is per tool kind; reads and searches are never asked. The `Approval` has `agent_label`; project JSON has `needs_you`, `pending_approvals`, `pending_inputs`; event `project.attention` was added.
+
+**Queue.**
+- `DELETE /queue` (clear) was added; `POST /messages` answers `202 {queued}` (the old `409 turn_in_progress` is gone for this route). A message sent while no turn runs starts a turn even when the queue is paused. After a restart a non-empty queue is paused. `turn.finished` is published after the turn's slot is released.
+
+**Forms and secrets (decision 43).**
+- Tool `request_input` for built-in agents (every depth) and the MCP tool list; `/inputs`, `/secrets` as in v7.md; events `input.requested`, `input.resolved` (non-secret values included, secret ids only as `provided`), `secrets.changed`.
+- A secret field's id is the secret's name; values under 4 bytes are refused. Use: `bash` `env` and `spawn_agent` `env` with `secret:<name>` references only. Not built: secrets for an ACP orchestrator's own process, remote tool server headers (no header settings exist).
+- Everything stored or sent passes a redactor; see v7.md for what is and is not covered.

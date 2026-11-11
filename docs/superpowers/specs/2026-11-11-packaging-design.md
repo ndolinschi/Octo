@@ -178,3 +178,35 @@ window itself (no WebKitGTK here), light theme in a real webview, and the real h
 - Host theme: `index.html` hard-coded `data-theme="dark"`, so `HostStatus`'s follow-the-system hook (which returns when a theme is set) never ran and the host screens were dark on a
   light system. Now a first-paint script plus colours and `color-scheme` meta in `index.html`; the hook is gone.
 - Closing the last window exits the app (Tauri default, `prevent_exit` is never called) and `RunEvent::Exit` stops both sidecars; documented per platform in the README.
+
+## R1 — ready for the owner's daily use (2026-11-11)
+
+Owner: "bring the app to production so I can start using and testing it; I will test on Grok, Claude and Copilot."
+The bar below is what "ready" means; anything not on it waits.
+
+1. **The branch builds from a clean clone.** `pnpm install && pnpm lint && pnpm --filter @octo/desktop build`,
+   `scripts/install.sh` and CI are green at HEAD (today HEAD has a type error in `packages/ui`; fixed with UI part 2).
+2. **No terminal after install.** The app starts both sidecars, and the first-run screen (P9) lists the agents found
+   on this machine with one of: ready / not logged in (+ the exact command to run) / not installed (+ what to
+   install). The user picks one, or enters an API key; nothing else is needed to send the first message.
+3. **The three agents the owner tests are first-class:** `claude-code`, `copilot`, `grok` are listed first, each with
+   install and login instructions in the app and in `apps/harness/docs/acp-orchestrator.md`. Known vendor limits are
+   stated where the user sees them (Copilot: `/login` or `COPILOT_GITHUB_TOKEN` with "Copilot Requests"; Grok: browser
+   login, an `XAI_API_KEY` in the harness environment switches it to per-token billing).
+4. **A failure is never silent.** Agent missing, not logged in, refused MCP servers, crashed mid-turn, router down,
+   budget reached: each ends the turn with a visible message that says what happened and what to do.
+5. **A problem can be reported in one step.** `harness doctor` (and the same data at `GET /v1/diagnostics`, shown in
+   Settings with a "Copy report" button): versions, data dir, PATH used for children, each agent's command
+   resolution, probe result and reason, router state, the last 200 log lines. An opt-in ACP wire trace
+   (`HARNESS_ACP_TRACE=1` or a Settings switch; per-session file under the data dir, size-capped, values of
+   environment variables and bearer tokens redacted) so a failed run with a real CLI can be diagnosed from the file.
+   No secrets in either; a test asserts it.
+6. **Data is safe across updates.** Migrations are forward-only and tested from the previous schema; the app never
+   deletes a project database; a newer database opened by an older binary is refused with a message.
+7. **A checklist the owner runs** (`docs/superpowers/LIVE-CHECKLIST.md`): install, first run, one task per agent
+   (Claude Code, Copilot, Grok) as orchestrator and as sub-agent, router on/off, quit/kill, what to send back
+   (the doctor report and the trace file).
+
+Out of R1: bots, I3 savings view, signed/notarised builds, auto-update, Windows.
+**What the orchestrator cannot do:** run or log in any of the three CLIs — every agent-specific path stays "not
+verified" until the owner's run; R1 makes that run cheap to do and to report.
