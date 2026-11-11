@@ -532,6 +532,25 @@ monochrome dithered illustration):
     with the vendor prefix dropped and middle-truncated) in the header, the composer, Usage and the team strip; the
     header shows the *served* model and, when it differs from the chosen one, "chosen → served" in the tooltip —
     never one name in the header and another in the composer without explanation.
+49. **Choosing a folder is a picker, never a typed path** (owner, testing: "what is this folder selection — set
+    folder URL — a weird solution"; reference shown: a composer chip that opens a searchable list). Everywhere a
+    folder is chosen (new project, add folder, the composer's folder chip):
+    a popover (320px, anchored to the chip or field; a sheet below 600px) with a search field focused on open,
+    then **Recent** (folders of existing projects and the last 8 chosen, newest first; name in `fg`, parent path
+    in `fg-3`, middle-truncated; a branch glyph and branch name when it is a git repository), then **Browse…**
+    which opens the operating system's folder dialog in the desktop app. Typing filters Recent and, once the text
+    looks like a path (`/`, `~`, a drive letter), lists matching directories live from the harness so a path can
+    be completed with arrows and `Tab` — this is also the whole picker in a browser, where there is no system
+    dialog. `Enter` chooses, `Esc` closes, the current folder has a check mark. A folder that does not exist or
+    cannot be read is said inline, before the project is created. The raw text field is gone.
+    Host contract: the shell passes `pickFolder?: () => Promise<string | null>` (Tauri dialog) — `packages/ui`
+    still imports no Tauri API. Harness: `GET /v1/fs/dirs?path=<prefix>` → up to 50 child directories
+    (name, path, `git: {branch} | null`), loopback only, hidden directories only when the prefix names one.
+50. **A backdrop never moves.** The streak and every other decorative layer are fixed to their panel: they do not
+    scroll with content, do not shift on overscroll or trackpad rubber-banding, cannot be dragged or selected,
+    and do not re-layout when a scrollbar appears. Start screens that fit do not scroll at all
+    (`overscroll-behavior: none`; no stray overflow). A test asserts `scrollHeight === clientHeight` for Home, the
+    empty project and the no-projects screen at 390, 768, 1440 and 1920.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
