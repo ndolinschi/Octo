@@ -13,7 +13,7 @@ import { Button } from "../components/primitives/Button";
 import { Dialog } from "../components/primitives/Dialog";
 import { Presence } from "../components/primitives/Presence";
 import { Panel } from "../components/shell/Panel";
-import { PanelBar } from "../components/shell/SidebarToggle";
+import { TitleBarProject } from "../components/shell/TitleBarProject";
 
 /** The project dialog loads on first use (its own chunk). */
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
@@ -27,6 +27,7 @@ export function ProjectWorkspace(props: { agentId: string | null }) {
     <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
       <FileViewProvider projectId={projectId}>
         <Files>
+          <TitleBarProject />
           <Body />
           <SettingsDialog show={settings} onClose={() => setSettings(false)} />
           <CloseDialog />
@@ -90,7 +91,6 @@ function Body() {
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       {loadError && !project ? (
         <Panel className="flex-1">
-          <PanelBar />
           <LoadError message={loadError} onRetry={reload} />
         </Panel>
       ) : (

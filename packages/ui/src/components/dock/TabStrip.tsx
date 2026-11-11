@@ -14,7 +14,6 @@ import { dragStep, pressTab, takeSettle, useDrag } from "./drag";
 import { tabButton } from "../../state/workspace/ids";
 import { tabInfo } from "./tabInfo";
 import { Tab } from "./Tab";
-import { SidebarToggle } from "../shell/SidebarToggle";
 import { type FileKey } from "../../lib/files";
 import { ChevronDown, Plus } from "lucide-react";
 import { IconButton } from "../primitives/Button";
@@ -38,7 +37,7 @@ const SCROLL_MARGIN = 24;
  * sidebar" while the sidebar is hidden; the last ends with the project's global actions. Roving focus: ←/→/Home/End
  * move and select, Delete closes, Shift+F10 or the context-menu key opens the tab menu.
  */
-export function TabStrip(props: { label: string; groupId: string; tabs: TabId[]; active: TabId; focused: boolean; first: boolean; last: boolean }) {
+export function TabStrip(props: { label: string; groupId: string; tabs: TabId[]; active: TabId; focused: boolean; last: boolean }) {
   const ws = useWorkspace();
   const code = useCode();
   const { state, project } = useProject();
@@ -165,7 +164,6 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
 
   return (
     <div data-strip className="relative flex shrink-0 items-center gap-1 px-pane pt-pane">
-      {props.first && <SidebarToggle />}
       <div ref={wrap} className="flex min-w-0 flex-1 items-center gap-1">
         <div
           ref={list}

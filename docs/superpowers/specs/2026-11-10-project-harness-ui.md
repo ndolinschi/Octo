@@ -1099,6 +1099,32 @@ a live backend.
   composer; the header still shows the requested model, not `served_model`; "orchestrator" capitalisation.
 - Debt: `WorkspaceProvider.tsx` 543 lines, `lib/streak.ts` 354 (Q5).
 
+
+### As built (decisions 51, 54, 60: title bar, folder row, window jump; shell pass 2)
+
+- **51:** the folder row of the project dialog is a grid (`minmax(0,1fr) · minmax(0,8rem) · auto`), the label field's placeholder
+  is "Label (optional)". The spacing audit has a `dialog-bounds` rule (nothing in a `[data-dialog-body]` passes its padding box;
+  a negative-margin ghost button may bleed its hover surface) and a `new-project-dialog` state at 1440×900, 1100×800, 800×600,
+  640×480 and 390×700; `--selftest` injects a 2000px child and the rule reports it.
+- **54:** `components/shell/TitleBar.tsx` is the 40px row (window inset from `chrome.insetStart`/`insetEnd`, sidebar toggle,
+  back/forward, then two slots); `TitleBarProject.tsx`, rendered inside the project's providers, portals the name and state
+  into the start slot and the model chip, budget, tokens, side question and "⋯" into the end slot (`state/titleBar.ts`). The
+  sidebar has no header row, the tab strip and the empty panels have no toggle, the drawer starts under the row. Drag areas carry
+  `data-drag-region`; `OctoApp` takes `chrome?: WindowChrome` (default: no overlay, no insets). Desktop: `windowChrome.ts`
+  (`chromeFor`, `isDragTarget`, tested), `useWindowChrome.ts` (drag, double-click zoom, no inset in full screen; Tauri API loaded
+  only for the macOS app), `tauri.macos.conf.json` (`titleBarStyle: "Overlay"`, `hiddenTitle`, `trafficLightPosition`), three
+  window permissions in `capabilities/default.json`. The row is `bg-window` above the panel (top gutter 0; the audit's gutter rule
+  measures from the row). The team line (decision 34) no longer shows. Interim: `[data-chat-header] { display: none }` in
+  `styles.css` hides the old header until chat stops rendering it. **Not verified:** macOS (traffic-light inset, dragging, zoom,
+  full screen), WebKit, the Rust side (not compiled here; no Rust source changed).
+- **60:** the first split opens with the conversation at its remembered width (`octo.chatSplit`, default 420px, written when the
+  divider between the conversation and its only neighbour is dragged) in one commit; the file view's `Suspense` fallback is
+  `FileViewSkeleton` (bar, editor lines, tree column at the stored width); the editor shows `EditorSkeleton` until Monaco's editor
+  exists. `lib/scrollAnchor.ts` keeps the reading position across the resize; chat has to call it (see the hand-over).
+  `scripts/layout-shift.mjs` samples the conversation column and the sidebar after every rendered frame: at 1440×900 with
+  `--anchor`: one column shift, none in the sidebar, anchor moved 0px (without the hook Chromium's own anchoring leaves 22px;
+  WebKit has none). Not run below 1000px.
+
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)

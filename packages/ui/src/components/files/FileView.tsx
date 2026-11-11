@@ -20,6 +20,7 @@ import { Button, IconButton } from "../primitives/Button";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
+import { EditorSkeleton } from "./EditorSkeleton";
 import { CodeEditor } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
@@ -446,11 +447,15 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
 function Message({ file, name, showLoading }: { file: OpenFile | undefined; name: string; showLoading: boolean }) {
   const code = useCode();
   if (showLoading || !file || file.status === "loading" || file.status === "ready") {
-    if (!showLoading) return null;
+    // The editor's place holds grey lines from the first frame (decision 60); the words are for screen readers.
+    if (!showLoading && file?.status === "ready") return null;
     return (
-      <p className="flex items-center gap-2 px-3 pt-3 text-sm text-fg-3">
-        <Spinner /> Opening {name}…
-      </p>
+      <div className="relative h-full">
+        <EditorSkeleton />
+        <p role="status" className="sr-only">
+          Opening {name}…
+        </p>
+      </div>
     );
   }
   const text =

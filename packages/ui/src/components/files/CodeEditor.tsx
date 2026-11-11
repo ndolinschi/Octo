@@ -2,8 +2,8 @@ import type * as Monaco from "monaco-editor";
 import { useEffect, useRef, useState } from "react";
 import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
-import { useDelayedLoading, useLatest } from "../../lib/hooks";
-import { Spinner } from "../primitives/Status";
+import { useLatest } from "../../lib/hooks";
+import { EditorSkeleton } from "./EditorSkeleton";
 import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
 import { type FileKey } from "../../lib/files";
@@ -71,7 +71,6 @@ export function CodeEditor(props: {
   const host = useRef<HTMLDivElement>(null);
   const [mod, setMod] = useState<MonacoModule | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const loadingShown = useDelayedLoading(!mod && !failed);
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const shownKey = useRef<FileKey | null>(null);
   const onSave = useLatest(props.onSave);
@@ -220,12 +219,8 @@ export function CodeEditor(props: {
 
   return (
     <div className="relative h-full min-h-0">
-      {loadingShown && (
-        <div className="absolute inset-0 z-10 flex items-start gap-2 bg-panel px-3 pt-3 text-sm text-fg-3">
-          <Spinner />
-          Loading editor…
-        </div>
-      )}
+      {/* Decision 60: grey lines in the editor's own box until Monaco is in, shown at once (no empty frame, no late spinner). */}
+      {!editor && !failed && <EditorSkeleton />}
       <div ref={host} className="h-full min-h-0" data-testid="code-editor" />
       {mod && editor && <mod.EditorComments editor={editor} monaco={mod.monaco} buffers={buffers} folder={file.folder} path={file.path} />}
     </div>

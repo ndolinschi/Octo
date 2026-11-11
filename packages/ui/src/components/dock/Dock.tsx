@@ -47,7 +47,7 @@ export function Dock() {
         return (
           <Fragment key={g.id}>
             {before && !ws.narrow && <Divider index={i - 1} value={before.size} />}
-            <GroupView group={g} name={groupName(i, groups.length)} first={i === 0 || ws.narrow} last={i === groups.length - 1 || ws.narrow} />
+            <GroupView group={g} name={groupName(i, groups.length)} last={i === groups.length - 1 || ws.narrow} />
           </Fragment>
         );
       })}
@@ -68,7 +68,7 @@ function useVisited(group: Group): Set<string> {
   return visited;
 }
 
-function GroupView({ group, name, first, last }: { group: Group; name: string; first: boolean; last: boolean }) {
+function GroupView({ group, name, last }: { group: Group; name: string; last: boolean }) {
   const ws = useWorkspace();
   const visited = useVisited(group);
   const focused = group.id === ws.layout.focused;
@@ -116,7 +116,6 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
           tabs={strip.tabs}
           active={strip.active}
           focused={focused}
-          first={first}
           last={last}
         />
         <BackdropProvider value={backdrop}>

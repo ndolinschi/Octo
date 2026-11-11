@@ -8,7 +8,7 @@
  *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--only <state>] [--json <path>]
  *                                              [--strict] [--selftest] [--query "demo=1"] [--list] [--help]
  *
- * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance (see RULES below).
+ * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds (see RULES below).
  * States that cannot be reached are reported as `skipped` with a reason, never as a crash.
  */
 import { createRequire } from "node:module";
@@ -28,7 +28,7 @@ const SCALE = [2, 4, 6, 8, 12, 16, 20, 24, 32, 40];
 const ROW_HEIGHTS = [24, 28, 32, 36, 40];
 const TOL = 0.5;
 const ICON_GAP_MIN = 6;
-const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance"];
+const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds"];
 
 // ---------------------------------------------------------------------------------------------------------------
 // CLI
@@ -130,9 +130,9 @@ async function openProject(page, ctx, name) {
 
 async function waitChat(page) {
   try {
-    await page.locator("[data-chat-header]").first().waitFor({ state: "visible", timeout: T });
+    await page.locator("[data-composer]").first().waitFor({ state: "visible", timeout: T });
   } catch {
-    skip("no visible chat header (Chat tab not shown)");
+    skip("no visible composer (Chat tab not shown)");
   }
   try {
     await page.locator("[data-column]").first().waitFor({ state: "visible", timeout: 2000 });
@@ -146,7 +146,15 @@ async function waitChat(page) {
 const TOOL_ROWS = { "Show agents": "agents", "Show notes": "notes", "Show files": "files", "Show project details": "details", "Show usage": "usage" };
 
 async function clickTool(page, label) {
-  if (label === "Show files" && (await page.getByRole("tree", { name: "Project files" }).first().isVisible().catch(() => false))) return;
+  if (
+    label === "Show files" &&
+    (await page
+      .getByRole("tree", { name: "Project files" })
+      .first()
+      .isVisible()
+      .catch(() => false))
+  )
+    return;
   await openTool(page, label);
 }
 
@@ -465,6 +473,24 @@ const STATES = [
     },
   },
   {
+    id: "new-project-dialog",
+    viewports: [...WIDE, { width: 800, height: 600 }, { width: 640, height: 480 }, { width: 390, height: 700 }],
+    async run(page) {
+      const open = page.getByRole("button", { name: "Show sidebar" }).first();
+      if (await open.isVisible().catch(() => false)) await open.click({ timeout: T });
+      await settle(page, 300);
+      const btn = page.getByRole("button", { name: "New project", exact: true }).first();
+      if (!(await btn.count())) skip("no New project button");
+      await btn.click({ timeout: T });
+      try {
+        await page.getByRole("dialog").first().waitFor({ timeout: T });
+      } catch {
+        skip("the New project dialog did not open");
+      }
+      await settle(page, 500);
+    },
+  },
+  {
     id: "project-settings-models",
     viewports: WIDE,
     async run(page, ctx) {
@@ -634,7 +660,10 @@ function auditInPage(cfg) {
       const sidebar = document.querySelector('nav[aria-label="Projects"]');
       const sbr = sidebar && visible(sidebar) ? sidebar.getBoundingClientRect() : null;
       const named = [];
-      named.push(["top", Math.min(...groups.map((g) => g.r.top)), groups.reduce((a, b) => (b.r.top < a.r.top ? b : a)).el]);
+      // Decision 54: the title bar row is the top gutter; the panel's top edge sits directly under it.
+      const bar = [...document.querySelectorAll("[data-title-bar]")].find(visible);
+      const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
+      named.push(["top", Math.min(...groups.map((g) => g.r.top)) - barBottom, groups.reduce((a, b) => (b.r.top < a.r.top ? b : a)).el]);
       named.push(["right", vw - Math.max(...groups.map((g) => g.r.right)), groups.reduce((a, b) => (b.r.right > a.r.right ? b : a)).el]);
       named.push(["bottom", vh - Math.max(...groups.map((g) => g.r.bottom)), groups.reduce((a, b) => (b.r.bottom > a.r.bottom ? b : a)).el]);
       const sorted = [...groups].sort((a, b) => a.r.left - b.r.left);
@@ -644,8 +673,9 @@ function auditInPage(cfg) {
         if (gap > -1) named.push([`between-groups-${i}`, gap, sorted[i].el]);
       }
       measures.gutter = Object.fromEntries(named.map(([k, v]) => [k, r1(v)]));
-      const ref = named[0][1];
-      for (const [name, v, el] of named) {
+      // With a title bar the top gutter is 0 by design; the other sides agree with each other.
+      const ref = bar ? named[1][1] : named[0][1];
+      for (const [name, v, el] of named.slice(bar ? 1 : 0)) {
         if (Math.abs(v - ref) > TOL) report("gutter", el, name, `${r1(v)}px`, `${r1(ref)}px (top gutter)`);
       }
     }
@@ -840,6 +870,37 @@ function auditInPage(cfg) {
     }
   }
 
+  // ---- 8. dialog-bounds (decision 51): nothing inside a dialog's body reaches past the body's padding box, so a field
+  // can never run over the dialog's edge. Content that scrolls on its own (an overflow-x container) is exempt.
+  if (rules.includes("dialog-bounds")) {
+    const scrollsX = (el, stop) => {
+      for (let n = el.parentElement; n && n !== stop; n = n.parentElement) {
+        const ox = getComputedStyle(n).overflowX;
+        if (ox === "auto" || ox === "scroll" || ox === "hidden" || ox === "clip") return true;
+      }
+      return false;
+    };
+    for (const body of document.querySelectorAll("[data-dialog-body]")) {
+      if (!visible(body)) continue;
+      const br = body.getBoundingClientRect();
+      const bcs = getComputedStyle(body);
+      const left = br.left + parseFloat(bcs.paddingLeft);
+      const right = br.right - parseFloat(bcs.paddingRight);
+      measures.dialogBounds = { ...(measures.dialogBounds ?? {}), content: `${r1(left)}..${r1(right)}` };
+      for (const el of all) {
+        if (!body.contains(el) || el === body || scrollsX(el, body)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0) continue;
+        // A ghost button with a negative margin bleeds its hover surface into the padding on purpose (text stays aligned).
+        const ecs = getComputedStyle(el);
+        const bleedL = parseFloat(ecs.marginLeft) < 0;
+        const bleedR = parseFloat(ecs.marginRight) < 0;
+        if (r.right > right + TOL && !bleedR) report("dialog-bounds", el, "right edge past the dialog's padding", `${r1(r.right)}px`, `<= ${r1(right)}px`);
+        else if (r.left < left - TOL && !bleedL) report("dialog-bounds", el, "left edge before the dialog's padding", `${r1(r.left)}px`, `>= ${r1(left)}px`);
+      }
+    }
+  }
+
   return { violations: out, suppressed, measures, scanned: all.length };
 }
 
@@ -858,6 +919,12 @@ function injectBad() {
     <button style="background:#444;color:#fff;border:0;padding:4px 16px 4px 4px;height:28px">unbalanced inset</button>
     <div style="display:flex;gap:10px;margin-left:5px"><span>gap</span><span>10px</span></div>`;
   document.body.appendChild(host);
+  const dlg = document.querySelector("[data-dialog-body] form, [data-dialog-body]");
+  if (dlg) {
+    const wide = document.createElement("div");
+    wide.style.cssText = "width:2000px;height:8px;position:relative";
+    dlg.appendChild(wide);
+  }
   const p = document.querySelector("[data-prompt]");
   if (p) {
     p.style.position = "relative";

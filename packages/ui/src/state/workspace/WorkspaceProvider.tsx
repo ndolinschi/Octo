@@ -2,7 +2,7 @@ import { focusSoon, focusSurfaceSoon } from "../../lib/focus";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { PREFS, usePersistentState } from "../../lib/storage";
+import { loadPref, numberCodec, PREFS, usePersistentState, writePref } from "../../lib/storage";
 import { useNav, type WorkspaceApi, type WorkspaceCommand } from "../nav";
 import { useProject } from "../project";
 import * as L from "./layout";
@@ -14,6 +14,7 @@ import {
   TOOL_WIDTH,
   TOOL_GROUP_MAX_FRACTION,
   TOOL_GROUP_UNMEASURED_FRACTION,
+  CHAT_SPLIT_DEFAULT,
   FILE_GROUP_MIN_FRACTION,
   PERSIST_LAYOUT_MS,
 } from "../../lib/constants";
@@ -107,6 +108,9 @@ export type WorkspaceValue = {
   reopenClosed(): void;
   attachCode(link: CodeLink | null): void;
 };
+
+/** The remembered conversation width beside a side group (px). */
+const CHAT_SPLIT_CODEC = numberCodec(MIN_GROUP, 4000, CHAT_SPLIT_DEFAULT);
 
 export const {
   Provider: WorkspaceContextProvider,
@@ -210,6 +214,17 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     [widthRef],
   );
 
+  /**
+   * The share of the row a new file group takes (decision 60): the conversation keeps its remembered width (default 420px)
+   * and the file view gets the rest, so opening a file moves the divider once, to where it will stay. Not yet measured: half.
+   */
+  const fileFraction = useCallback(() => {
+    const inner = widthRef.current - GROUP_GAP;
+    if (inner <= 0) return undefined;
+    const chat = loadPref(PREFS.chatSplit, CHAT_SPLIT_CODEC);
+    return Math.min(1 - MIN_GROUP / inner, Math.max(FILE_GROUP_MIN_FRACTION, 1 - chat / inner));
+  }, [widthRef]);
+
   const doClose = useCallback(
     (tabs: TabId[]) => {
       const current = layoutRef.current;
@@ -307,10 +322,11 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         // The side question's input takes the caret (Ctrl/Cmd+; means "ask now").
         if (tool === "side") focusSoon(() => document.getElementById("octo-side-input"), { timeout: 3000 });
         else if (tool !== "files") focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
-        openSide(tab, tool === "files" ? undefined : toolFraction());
+        openSide(tab, tool === "files" ? fileFraction() : toolFraction());
         if (tool === "files") {
           const g = L.groupOf(layoutRef.current, tab);
-          if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+          if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
+            commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
         }
       },
       // A file needs room: a side group sized for a tool widens to half the row.
@@ -324,9 +340,10 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           if (where.replace && L.groupOf(current, where.replace)) return commit(L.replace(current, where.replace, L.fileTab(key)));
           return commit(L.open(current, L.fileTab(key), { group: where.group }));
         }
-        openSide(L.fileTab(key));
+        openSide(L.fileTab(key), fileFraction());
         const g = L.groupOf(layoutRef.current, L.fileTab(key));
-        if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+        if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
+          commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
       },
       openIn: (tab, groupId) => commit(L.open(layoutRef.current, tab, { group: groupId })),
       dropTab: (tab) => commit(L.close(layoutRef.current, [tab])),
@@ -382,7 +399,12 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       resize: (index, px) => {
         const inner = widthRef.current - (layoutRef.current.groups.length - 1) * GROUP_GAP;
         if (inner <= 0) return;
-        commit(L.resize(layoutRef.current, index, px / inner, MIN_GROUP / inner));
+        const next = L.resize(layoutRef.current, index, px / inner, MIN_GROUP / inner);
+        commit(next);
+        // Decision 60: where the user puts the divider between the conversation and its one neighbour is where the next first split opens.
+        const [first] = next.groups;
+        if (next.groups.length === 2 && index === 0 && first && first.tabs.includes(L.CHAT))
+          writePref(PREFS.chatSplit, CHAT_SPLIT_CODEC.stringify(first.size * inner));
       },
       equalize: () => commit(L.equalize(layoutRef.current)),
       walkGroup: () => (narrowRef.current ? "all" : L.focusedGroup(layoutRef.current).id),
@@ -438,6 +460,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
     };
   }, [
+    fileFraction,
     projectId,
     project,
     layout,

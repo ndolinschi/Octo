@@ -213,6 +213,11 @@
   #root {
     height: 100%;
   }
+  /* Interim (decision 54): the title bar row shows what the conversation header showed. Delete this rule together with
+     components/chat/ChatHeader.tsx (it only hides the old header until chat stops rendering it). */
+  [data-chat-header] {
+    display: none;
+  }
   body {
     margin: 0;
     background: var(--octo-window);

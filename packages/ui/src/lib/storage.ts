@@ -30,6 +30,8 @@ export const PREFS = {
   favouriteModels: key("favouriteModels"),
   /** Folders chosen in the folder picker (decision 49), newest first: a JSON list of paths. */
   chosenFolders: key("chosenFolders"),
+  /** The conversation's width in px beside a side group, as plain text: where the first split opens (decision 60). */
+  chatSplit: key("chatSplit"),
   /** Start-screen backdrop (decision 31): `"vivid" | "mono" | "off"` as plain text. */
   backdrop: key("backdrop"),
 } as const;
@@ -58,6 +60,17 @@ export function choiceCodec<const T extends string>(choices: readonly T[], fallb
   return {
     parse: (raw) => choices.find((c) => c === raw) ?? fallback,
     stringify: (value) => value,
+  };
+}
+
+/** A finite number in [min, max] as plain text; anything else gives `fallback`. */
+export function numberCodec(min: number, max: number, fallback: number): Codec<number> {
+  return {
+    parse: (raw) => {
+      const n = raw === null || raw.trim() === "" ? Number.NaN : Number(raw);
+      return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+    },
+    stringify: (value) => String(Math.round(value)),
   };
 }
 

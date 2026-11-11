@@ -186,7 +186,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           {folders.map((f, i) => {
             const invalid = f.path.trim() !== "" && !isAbsolute(f.path.trim());
             return (
-              <div key={f.key} className="flex items-center gap-2">
+              <div key={f.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto] items-center gap-2">
                 {/* Decision 49: a folder is chosen in a picker (recent, Browse…, path completion), never typed raw. */}
                 <FolderField
                   id={`${id}-folder-${f.key}`}
@@ -202,8 +202,9 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                   aria-label={`Folder ${i + 1} label`}
                   value={f.label}
                   onChange={(e) => updateFolder(f.key, { label: e.target.value })}
-                  placeholder={f.path.trim() ? basename(f.path.trim()) : "label"}
-                  className="w-32 shrink-0"
+                  placeholder="Label (optional)"
+                  title={f.path.trim() ? `Shown as "${basename(f.path.trim())}" when empty` : "Defaults to the folder's name"}
+                  className="min-w-0"
                 />
                 <IconButton
                   icon={X}

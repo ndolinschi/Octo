@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from "react";
+import { FileViewSkeleton } from "../files/EditorSkeleton";
 import { useProject } from "../../state/project";
 import { FloatRoomContext } from "../primitives/floatRoom";
 import { parseTab, type TabId } from "../../state/workspace/layout";
@@ -35,14 +36,14 @@ export function TabView({ tab }: { tab: TabId }) {
       return <ConversationView agentId={ref.agentId} tab={tab} />;
     case "file":
       return (
-        <Suspense fallback={null}>
+        <Suspense fallback={<FileViewSkeleton />}>
           <FileView tab={tab} fileKey={ref.key} floatingComposer={renderFloatingComposer} />
         </Suspense>
       );
     case "tool":
       if (ref.tool === "files")
         return (
-          <Suspense fallback={null}>
+          <Suspense fallback={<FileViewSkeleton />}>
             <FileView tab={tab} fileKey={null} floatingComposer={renderFloatingComposer} />
           </Suspense>
         );

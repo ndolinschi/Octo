@@ -17,7 +17,8 @@ import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
 import type { SettingsView } from "../components/shell/SettingsDialog";
 import { Sidebar } from "../components/shell/Sidebar";
-import { PanelBar } from "../components/shell/SidebarToggle";
+import { TitleBar } from "../components/shell/TitleBar";
+import { TitleBarSlotsContext } from "../state/titleBar";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { ActivityProvider } from "../state/activity";
 import { DRAWER_QUERY } from "../lib/constants";
@@ -60,6 +61,9 @@ function Shell() {
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [palette, setPalette] = useState(false);
   const drawerOpener = useRef<HTMLElement | null>(null);
+  // The two ends of the title bar row that the open project fills (see `TitleBarProject`).
+  const [titleStart, setTitleStart] = useState<HTMLElement | null>(null);
+  const [titleEnd, setTitleEnd] = useState<HTMLElement | null>(null);
   const sidebarOpen = drawerMode ? drawerOpen : inlineOpen;
 
   const known = projects?.some((p) => p.id === route.projectId) ?? false;
@@ -178,62 +182,67 @@ function Shell() {
 
   return (
     <ShellContext.Provider value={{ sidebarOpen, toggleSidebar }}>
-      <div className="flex h-full overflow-hidden bg-window text-fg">
-        {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} onToggle={toggleSidebar} />}
-        {/* Equal gutters on every side of every panel (the sidebar card included); full-bleed on phones. */}
-        <div className="relative flex min-w-0 flex-1 flex-col p-gutter max-sm:p-0" inert={drawerShown}>
-          {workspace && route.projectId ? (
-            <ProjectProvider key={route.projectId} projectId={route.projectId}>
-              <ProjectWorkspace agentId={route.agentId} />
-            </ProjectProvider>
-          ) : (
-            <Panel className="flex-1">
-              <PanelBar />
-              <div className="min-h-0 flex-1">{main}</div>
-            </Panel>
-          )}
-        </div>
-        <Presence show={drawerShown}>
-          <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
-            <Sidebar {...sidebarProps} onToggle={() => setDrawerOpen(false)} />
-          </SidebarDrawer>
-        </Presence>
-        <Presence show={creating}>
-          <Suspense fallback={null}>
-            <ProjectDialog
-              onClose={() => setCreating(false)}
-              onSubmit={async (input) => {
-                const project = await bridge.createProject(input);
-                await refreshProjects();
-                setCreating(false);
-                navigate(project.id);
-                // The new project's composer takes focus once the dialog is gone and the project is in.
-                focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
+      <TitleBarSlotsContext.Provider value={{ start: titleStart, end: titleEnd }}>
+        <div className="flex h-full flex-col overflow-hidden bg-window text-fg">
+          {/* Decision 54: the title bar is the header. One row across the window, whether the sidebar is open or closed. */}
+          <TitleBar alignStart={!drawerMode && inlineOpen} startRef={setTitleStart} endRef={setTitleEnd} />
+          <div className="flex min-h-0 flex-1">
+            {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} />}
+            {/* Equal gutters on the other sides of every panel (the sidebar card included); the row above is the top one. Full-bleed on phones. */}
+            <div className="relative flex min-w-0 flex-1 flex-col p-gutter pt-0 max-sm:p-0" inert={drawerShown}>
+              {workspace && route.projectId ? (
+                <ProjectProvider key={route.projectId} projectId={route.projectId}>
+                  <ProjectWorkspace agentId={route.agentId} />
+                </ProjectProvider>
+              ) : (
+                <Panel className="flex-1">
+                  <div className="min-h-0 flex-1">{main}</div>
+                </Panel>
+              )}
+            </div>
+          </div>
+          <Presence show={drawerShown}>
+            <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
+              <Sidebar {...sidebarProps} />
+            </SidebarDrawer>
+          </Presence>
+          <Presence show={creating}>
+            <Suspense fallback={null}>
+              <ProjectDialog
+                onClose={() => setCreating(false)}
+                onSubmit={async (input) => {
+                  const project = await bridge.createProject(input);
+                  await refreshProjects();
+                  setCreating(false);
+                  navigate(project.id);
+                  // The new project's composer takes focus once the dialog is gone and the project is in.
+                  focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
+                }}
+              />
+            </Suspense>
+          </Presence>
+          <Presence show={settings !== null}>
+            <Suspense fallback={null}>
+              <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
+            </Suspense>
+          </Presence>
+          <Presence show={palette}>
+            <Suspense fallback={null}>
+              <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
+            </Suspense>
+          </Presence>
+          <Presence show={pending}>
+            <LeaveDialog
+              count={nav.unsavedCount()}
+              onStay={() => {
+                nav.clearPendingTurn();
+                stay();
               }}
+              onLeave={proceed}
             />
-          </Suspense>
-        </Presence>
-        <Presence show={settings !== null}>
-          <Suspense fallback={null}>
-            <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
-          </Suspense>
-        </Presence>
-        <Presence show={palette}>
-          <Suspense fallback={null}>
-            <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
-          </Suspense>
-        </Presence>
-        <Presence show={pending}>
-          <LeaveDialog
-            count={nav.unsavedCount()}
-            onStay={() => {
-              nav.clearPendingTurn();
-              stay();
-            }}
-            onLeave={proceed}
-          />
-        </Presence>
-      </div>
+          </Presence>
+        </div>
+      </TitleBarSlotsContext.Provider>
     </ShellContext.Provider>
   );
 }
@@ -275,7 +284,8 @@ function SidebarDrawer(props: { onClose(): void; opener: React.RefObject<HTMLEle
     if (state === "closed" && opener.current?.isConnected) opener.current.focus();
   }, [state, opener]);
   return (
-    <div className="fixed inset-0 z-40" inert={state === "closed"}>
+    // Starts under the title bar row, so its toggle stays reachable (it closes the drawer).
+    <div className="fixed inset-x-0 top-bar bottom-0 z-40" inert={state === "closed"}>
       <div className="octo-scrim absolute inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
       <div ref={panel} data-state={state} className="octo-drawer absolute inset-y-0 left-0 max-w-[calc(100%-48px)] overscroll-contain shadow-pop">
         {children}

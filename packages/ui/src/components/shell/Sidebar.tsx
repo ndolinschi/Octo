@@ -1,9 +1,8 @@
-import { ArrowLeft, ArrowRight, House, PanelLeft, Plus, Search, Settings, type LucideIcon } from "lucide-react";
+import { House, Plus, Search, Settings, type LucideIcon } from "lucide-react";
 import { navigate } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
 import { useMemo, useRef, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { useHistoryAvailability } from "../../lib/history";
 import { useNow, useScrollFade } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useOrchestrators } from "../../state/orchestrators";
@@ -64,12 +63,9 @@ export function Sidebar(props: {
   onSettings(): void;
   /** A project row was picked (closes the drawer). */
   onPick(): void;
-  /** Hides the inline sidebar, or closes the drawer. */
-  onToggle(): void;
 }) {
   const { projects, health } = useApp();
   const now = useNow(true, CLOCK_SIDEBAR_MS);
-  const history = useHistoryAvailability();
   const list = useRef<HTMLUListElement>(null);
   useScrollFade(list, "y");
   const canCreate = health === "online";
@@ -82,17 +78,9 @@ export function Sidebar(props: {
   const orchestrators = useOrchestrators(projects);
 
   return (
-    <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window py-gutter pl-gutter max-sm:py-0">
+    <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window pb-gutter pl-gutter max-sm:pb-0">
       <div className="flex min-h-0 flex-1 flex-col p-pane">
-        {/* 2px side padding: the toggle's glyph centres on the rows' leading slot, the last button's on their trailing edge. */}
-        <div className="flex h-row shrink-0 items-center gap-1 px-0.5">
-          <IconButton icon={PanelLeft} label="Hide sidebar" aria-expanded onClick={props.onToggle} />
-          <span className="flex-1" />
-          <IconButton icon={ArrowLeft} label="Back" onClick={() => window.history.back()} disabled={!history.back} />
-          <IconButton icon={ArrowRight} label="Forward" onClick={() => window.history.forward()} disabled={!history.forward} />
-        </div>
-
-        <div className="mt-2 flex shrink-0 flex-col">
+        <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
           <NavRow icon={Search} label="Search" onClick={props.onSearch} shortcut={{ hint: `${MOD}K`, keys: "Control+K Meta+K" }} />
           <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />

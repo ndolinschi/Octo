@@ -20,6 +20,8 @@ export const MIN_GROUP = 280;
 export const GROUP_GAP = 8;
 /** Width a newly opened side group takes for a tool (Agents, Notes, Details). */
 export const TOOL_WIDTH = 360;
+/** The conversation's width when the first side group opens, until the user drags the divider (decision 60). */
+export const CHAT_SPLIT_DEFAULT = 420;
 /** A group holding a file or the Files tool is widened to at least this fraction of the row. */
 export const FILE_GROUP_MIN_FRACTION = 0.45;
 /** Largest fraction of the row a new tool group takes, and the fraction used before the row has been measured. */
