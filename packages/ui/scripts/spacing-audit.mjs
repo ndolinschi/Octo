@@ -650,6 +650,8 @@ function auditInPage(cfg) {
     };
     const SIDES = ["top", "right", "bottom", "left"];
     for (const el of all) {
+      // The composer's aurora ring: its 1px padding is the ring's thickness (a mask), not spacing.
+      if (el.classList.contains("octo-aurora")) continue;
       const cs = getComputedStyle(el);
       const check = (prop, v) => {
         if (v === null || Number.isNaN(v)) return;

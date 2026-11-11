@@ -13,7 +13,7 @@ in `.claude/rules/typescript.md`). This file describes structure: what lives whe
 
 ```text
 app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host), AppShell, ProjectWorkspace
-components/<feature>/   chat · files · agents · notes · details · usage · memory · home · project · shell · side   (screens and their parts)
+components/<feature>/   chat · files · agents · notes · details · usage · memory · v7 · settings · providers · home · project · shell · side   (screens and their parts)
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
                         as a prop: the file view's floating composer)
 components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs (OrchestratorGlyph, fileIcons),
@@ -55,8 +55,16 @@ and `apps/desktop/src`.
 | `src/index.ts` | | | ✓ | | | | | ✓ | | |
 
 Features reach each other only through `dock/TabView`, which composes them (for example it passes the chat feature's
-floating composer to the file view as a render prop). A hook or context several layers need (`useGroup`,
-`useFloatingHere`) is app state and lives in `state/`.
+floating composer to the file view as a render prop) or the app shell, which fills the slots the chat leaves open through
+`state/chatSlots` (approvals and forms at the end of the transcript, the queue above the composer; the v7 components).
+A hook or context several layers need (`useGroup`, `useFloatingHere`) is app state and lives in `state/`.
+
+Window frame: `shell/TitleBar` is the one header row (sidebar toggle, back/forward, then slots the open project fills with
+`TitleBarProject`: name, state, model, budget, tokens, actions; the settings page puts "Settings" there). There is no header
+row in the sidebar or the conversation (`ChatHeader` and `SettingsDialog` are gone); Settings is the page
+`components/settings` at `#/settings/<section>`. New features: `v7/` (approvals, forms, queue, Changes tab), `memory/`
+(Memory tab), `providers/` and `lib/providers` (connect screen and sheet, provider list, model-picker data),
+`files/editor/completion/` (inline completion).
 
 ## Providers
 
@@ -95,7 +103,7 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
 - The demo bridge and its fixtures are not in the package root: they sit behind the `@octo/ui/demo` subpath export, which
   `apps/desktop` loads with `import()` only for `?demo=` (`useBridge`). A normal start downloads none of it (initial
   bundle 211.2 → 195.1 kB gzip). Inside the demo, `seedFiles.ts` and `lsp.ts` still load with `import()` as well.
-- Home, Details, Usage and Integrations are lazy chunks (`React.lazy` in `app/AppShell` and `dock/TabView`), as are the
+- Home, Details, Usage, Memory, Changes, Settings, the connect screen/sheet, the approval/queue slots and Markdown are lazy chunks (`React.lazy` in `app/AppShell` and `dock/TabView`), as are the
   streak canvas (`primitives/Streak`) and the highlighter (`lib/highlight`).
 - v6.3 part 2 moved these out of the initial bundle too (initial 188.8 kB gzip): the file view (`files/FileView` and its
   tree, crumbs, editor host), Agents, Notes, the side question, the "+" tab picker and the all-tabs list (`dock/TabPicker`,

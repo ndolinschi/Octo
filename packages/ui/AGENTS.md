@@ -35,6 +35,7 @@ harness at `VITE_HARNESS_BRIDGE_URL` (default `http://127.0.0.1:8790`).
 - `monaco-editor` as a value only in `components/files/monaco.ts`; heavy optional code behind `import()`.
 - Spacing, row heights, radii and colours come from the tokens in `styles.css`; the audit must stay at zero.
 - New `Bridge` methods: change `@octo/agent-client` first, then implement them in `src/demo/bridge.ts`. Demo code is exported only from `@octo/ui/demo` and hosts load it with `import()`; the package root never mentions it.
+- The window's header is `components/shell/TitleBar` (project name/state/model come from `TitleBarProject`; Settings is a page, not a dialog). Features may not import each other: the shell fills `state/chatSlots` (approvals, queue) and `dock/TabView` mounts the Changes (`v7/`) and Memory (`memory/`) tabs. New views are lazy; the bundle budget in `scripts/check-bundle-size.mjs` is never raised.
 - A design change updates the spec's "As built" section in the same commit.
 
 ## Verifying UI work
