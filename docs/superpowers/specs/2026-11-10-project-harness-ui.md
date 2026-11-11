@@ -603,6 +603,12 @@ monochrome dithered illustration):
     left of them; in a browser the row is the same without the inset. Tabs stay directly under it. Host contract:
     the shell passes `chrome: { overlay: boolean; insetStart: number; insetEnd: number }`; `packages/ui` imports no
     Tauri API and marks drag areas with a data attribute the shell maps.
+    **Sidebar closed** (owner's screenshot: "the closed view looks very bad; the button should be in the header
+    next to the traffic lights"): the sidebar toggle lives in the title bar immediately after the window
+    controls' inset, in the same place whether the sidebar is open or closed; closing the sidebar leaves no
+    strip, no second bar and no orphan button — the content panel takes the full window under the title bar, and
+    the panel's top-left corner is where the sidebar's was. Back/forward follow the toggle. The streak then runs
+    edge to edge under the title bar with no dark band above it.
 55. **An agent at work is never just a spinner** (owner, live with Claude Code over ACP: "Working… 23s" and
     nothing else — "we need to stream messages, not only loading; this is not responsive"). The harness already
     forwards an ACP agent's text chunks; what it drops today is everything the agent does *before* it writes:
