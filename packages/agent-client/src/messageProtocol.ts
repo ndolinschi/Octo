@@ -36,7 +36,24 @@ export type HttpOnlyMethod =
   | "submitInput"
   | "listSecrets"
   | "putSecret"
-  | "deleteSecret";
+  | "deleteSecret"
+  | "listPullRequests"
+  | "listReviews"
+  | "openReview"
+  | "getReview"
+  | "patchReview"
+  | "listReviewFiles"
+  | "getReviewFileDiff"
+  | "reviewFileRawUrl"
+  | "setReviewFileViewed"
+  | "listReviewComments"
+  | "createReviewComment"
+  | "updateReviewComment"
+  | "deleteReviewComment"
+  | "listReviewFindings"
+  | "decideReviewFinding"
+  | "previewReviewSubmit"
+  | "submitReview";
 export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer" | HttpOnlyMethod>;
 export type WireError = { status: number; code: string; message: string };
 

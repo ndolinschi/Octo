@@ -8,6 +8,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
+	"github.com/ndolinschi/Octo/apps/harness/internal/review"
 )
 
 const (
@@ -27,6 +28,7 @@ type Server struct {
 	limits  LimitSource
 	router  RouterInfo
 	mcp     http.Handler
+	reviews *review.Service
 
 	settings         SettingsStore
 	settingsLoopback bool
@@ -164,6 +166,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/projects/{pid}/lsp/sessions/{sid}/messages", s.postLSPMessage)
 	mux.HandleFunc("GET /v1/projects/{pid}/lsp/sessions/{sid}/events", s.lspEvents)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/lsp/sessions/{sid}", s.deleteLSPSession)
+	s.reviewRoutes(mux)
 	if s.mcp != nil {
 		mux.Handle(mcp.PathPrefix, s.mcp)
 	}

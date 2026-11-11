@@ -1,3 +1,5 @@
+import type { ReviewUpdatedEvent } from "./review";
+
 export type ShellKind = "desktop" | "web" | "vscode";
 
 export type AgentBridgeConfig = {
@@ -387,7 +389,8 @@ export type BridgeEvent =
   | SecretsChangedEvent
   | ProvidersUpdatedEvent
   | TaskUpdatedEvent
-  | MemoryUpdatedEvent;
+  | MemoryUpdatedEvent
+  | ReviewUpdatedEvent;
 
 export type BridgeEventType = BridgeEvent["type"];
 

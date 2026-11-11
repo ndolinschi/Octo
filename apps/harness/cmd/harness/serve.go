@@ -22,6 +22,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
 	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
+	"github.com/ndolinschi/Octo/apps/harness/internal/codehost"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
@@ -32,6 +33,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
+	"github.com/ndolinschi/Octo/apps/harness/internal/review"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/settings"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -240,6 +242,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	lspMgr := lsp.NewManager(lsp.Options{})
+	// PR review (RV1): the `gh` adapter; worktrees of finished reviews are swept at start and every 6 hours.
+	reviews := review.New(store, hub, review.Options{Host: codehost.NewGH()})
+	go reviews.Run(ctx, 6*time.Hour)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -269,7 +274,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	defer cancelRequests()
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
-			bridge.WithMCP(orch.MCPHandler(bridge.Version)),
+			bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithReviews(reviews),
 			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
 			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 			bridge.WithDiagnostics(func() any {
