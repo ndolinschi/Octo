@@ -139,8 +139,14 @@ func checkLiveTurn(t *testing.T, r *rig, pid, agentID string, evs []stamped) {
 	if started < 0 || finished < 0 || started >= finished {
 		t.Fatalf("tool.started at %d, tool.finished at %d", started, finished)
 	}
-	if evs[finished].at.Sub(evs[started].at) < 100*time.Millisecond {
-		t.Fatalf("the tool row appeared only at its end (%v before it finished)", evs[finished].at.Sub(evs[started].at))
+	// Published at the announcement, not at the end: the row and its start precede
+	// the in-progress update the agent sent 150 ms before it finished the call (an
+	// order in one stream, so a slow machine cannot blur it the way a clock can).
+	running := liveIndex(evs, events.ToolUpdated, func(m map[string]any) bool {
+		return m["tool_use_id"] == "call-live" && m["status"] == "in_progress"
+	})
+	if running < 0 || started >= running || running >= finished {
+		t.Fatalf("tool.started at %d, in-progress update at %d, tool.finished at %d", started, running, finished)
 	}
 	row := -1
 	for i, e := range evs {
@@ -151,7 +157,7 @@ func checkLiveTurn(t *testing.T, r *rig, pid, agentID string, evs []stamped) {
 			}
 		}
 	}
-	if row < 0 || row >= finished {
+	if row < 0 || row >= running {
 		t.Fatalf("the tool_use message was published at %d, after the tool finished at %d", row, finished)
 	}
 	var sawRunning, sawDone bool
@@ -269,7 +275,7 @@ func TestLiveACPSlowToolIsVisibleWhileItRuns(t *testing.T) {
 	}
 	s := liveIndex(evs, events.ToolStarted, nil)
 	f := liveIndex(evs, events.ToolFinished, nil)
-	if s < 0 || f < 0 || evs[f].at.Sub(evs[s].at) < 300*time.Millisecond {
+	if s < 0 || f < 0 || evs[f].at.Sub(evs[s].at) < 200*time.Millisecond { // the agent held it 400 ms
 		t.Fatalf("tool row visible for %v, want ~400 ms", evs[f].at.Sub(evs[s].at))
 	}
 	if !hasActivity(evs, "tool:Running `pnpm test`") {

@@ -207,6 +207,9 @@ func (c *Client) Prompt(ctx context.Context, sessionID, prompt string, h Handler
 		c.active = nil
 		c.mu.Unlock()
 	}()
+	if ps, ok := h.(PromptStartHandler); ok {
+		ps.PromptStarted(runCtx)
+	}
 
 	type outcome struct {
 		res promptResult
