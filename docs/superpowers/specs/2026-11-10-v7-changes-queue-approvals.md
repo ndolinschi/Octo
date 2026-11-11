@@ -166,7 +166,7 @@ Exact API, limits and configuration: [`apps/harness/docs/v7.md`](../../../apps/h
 - Retention (30 days) runs after each turn and at start-up.
 
 **Approvals.**
-- `access` default for projects created without it is the server's `HARNESS_DEFAULT_ACCESS`, `supervised` for `harness serve` (the spec's "new projects supervised"); library embedders and the Go tests default to `full`. Existing projects are `full`. `scripts/e2e-router.sh` and `scripts/e2e-acp-orchestrator.sh` set `HARNESS_DEFAULT_ACCESS=full` because they create projects through the API and do not answer approvals.
+- `access` default for projects created without it is the server's `HARNESS_DEFAULT_ACCESS`, `full` for `harness serve` until the UI shows approval cards, then it flips to `supervised` (the spec's "new projects supervised"); `HARNESS_DEFAULT_ACCESS=supervised` works now. Library embedders and the Go tests default to `full`. Existing projects are `full`. `scripts/e2e-router.sh` and `scripts/e2e-acp-orchestrator.sh` set `HARNESS_DEFAULT_ACCESS=full` (kept explicit; harmless now that it is the default).
 - Gap filled (unattended): an unanswered request is denied after `HARNESS_APPROVAL_TIMEOUT` (default 30 minutes).
 - ACP: the card is `kind: "acp"` with the agent's options, command and first location; an allowed `request_permission` for an edit also covers the `fs/write_text_file` that follows (one card per edit); `allow_for_turn` is per tool kind; reads and searches are never asked. The `Approval` has `agent_label`; project JSON has `needs_you`, `pending_approvals`, `pending_inputs`; event `project.attention` was added.
 
