@@ -368,8 +368,9 @@ const STATES = [
       await settle(page, 400);
     },
   },
+  // Decision 59: Settings is a page; the Providers section and the connect sheet of an agent.
   {
-    id: "settings-dialog",
+    id: "settings-page",
     viewports: WIDE,
     async run(page, ctx) {
       await openProject(page, ctx, "Atlas API");
@@ -377,9 +378,25 @@ const STATES = [
       if (!(await btn.count()) || !(await btn.isVisible())) skip("sidebar Settings button not visible");
       await btn.click({ timeout: T });
       try {
+        await page.locator("[data-settings]").waitFor({ timeout: T });
+        await page.getByRole("link", { name: "Providers" }).click({ timeout: T });
+        await page.locator("#row-provider-copilot").waitFor({ timeout: T });
+      } catch {
+        skip("settings page did not open");
+      }
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "connect-sheet",
+    viewports: WIDE,
+    async run(page) {
+      await page.evaluate(() => (window.location.hash = "#/settings/providers"));
+      try {
+        await page.locator("#row-provider-copilot").getByRole("button").click({ timeout: T });
         await page.getByRole("dialog").first().waitFor({ timeout: T });
       } catch {
-        skip("settings dialog did not open");
+        skip("connect sheet did not open");
       }
       await settle(page, 400);
     },

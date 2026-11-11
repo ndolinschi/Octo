@@ -55,7 +55,7 @@ function itemsOf(plugins: Plugin[]): Item[] {
 }
 
 /**
- * Settings → Integrations (contract v6 decision 20): what the harness loaded from local plugin manifests,
+ * Settings → Editor → Plugins (contract v6 decision 20; a section of the settings page since decision 59): what the harness loaded from local plugin manifests,
  * read-only. Search, kind chips with counts, a summary, then two columns of 40px rows (one under 560px):
  * kind tile, name, one muted line, the plugin, and whether its command was found. Manifest problems are
  * listed under their plugin; the footer says how to add one. No catalogue and no Connect: plugins are files.
@@ -131,7 +131,7 @@ export function IntegrationsView() {
           placeholder="Search integrations"
           spellCheck={false}
           autoComplete="off"
-          data-autofocus
+
           className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
         />
       </label>

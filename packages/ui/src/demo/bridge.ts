@@ -18,6 +18,7 @@ import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
 import { genericTurn } from "./generic";
 import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
+import { demoProviders } from "./providers";
 import { orbitLive } from "./orbit";
 import { withDemoV7 } from "./v7";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
@@ -421,6 +422,8 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
   });
 
   const bridge: Bridge = {
+    // Providers, settings and diagnostics (decisions 53, 59): `?providers=none` shows the connect screen.
+    ...demoProviders(),
     health: async () => (await delay(), { ok: true, version: "demo" }),
     getConfig: async () => {
       await delay();

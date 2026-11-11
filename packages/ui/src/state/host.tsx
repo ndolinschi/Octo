@@ -6,6 +6,8 @@ export type HostCapabilities = {
   openProjectInEditor?(projectId: string): void;
   pickFolder?(): Promise<string | null>;
   theme?: "dark" | "light";
+  /** Restarts the harness (and the shell's other sidecars), for settings that apply after a restart (decision 59). */
+  restart?(): void;
 };
 
 const HostContext = createContext<HostCapabilities>({});

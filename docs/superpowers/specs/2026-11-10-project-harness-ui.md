@@ -1125,6 +1125,37 @@ a live backend.
   `--anchor`: one column shift, none in the sidebar, anchor moved 0px (without the hook Chromium's own anchoring leaves 22px;
   WebKit has none). Not run below 1000px.
 
+### As built (decisions 53, 58, 59 — settings page, providers, connect screen; 2026-11-11)
+
+- **Settings page** (`components/settings/`, lazy chunk): `#/settings/<section>` (`lib/route.ts`: `parseSettingsHash`,
+  `settingsHref`, `useSettingsSection`); navigation in the sidebar's place (Back, search across an index of rows,
+  sections with glyphs), 780px column (`--spacing-settings`), group cards, rows 56px+ with one control; below 760px
+  (`--breakpoint-settings`) a section select on top and stacked controls. Esc goes back. `SettingsDialog` is gone; its
+  theme, backdrop, bridge state and Integrations (now Editor → Plugins) are kept. Harness settings (`getSettings` /
+  `putSettings`) show "Saved", errors and "Saved. Applies after a restart" with "Restart now" when the host passes
+  `HostCapabilities.restart` (desktop: the sidecar restart).
+- **Sections as built**: General (startup: last project / Home; harness connection), Appearance (theme, backdrop,
+  reduce motion → `data-motion`), Providers (rows with state and Connect / Reconnect / Details / Remove; API keys and
+  router folded), Models (default orchestrator and tiers limited to what can run; "Models in pickers" switches,
+  `PREFS.hiddenModels`), Agents (state, install / login text and commands with copy, models, Check again), Editor
+  (inline completion per project; plugins), Usage and budget (plan limits; budget per project), Memory (context mode
+  per project), Privacy and data (Copy diagnostic report, wire trace switch, data folder, child env list), About.
+  **Simplified / not built:** notifications, sound and density (no feature behind them), the digest switch, an agent's
+  default-model setting, the completion *model* (only Off / tier), per-language completion.
+- **Providers** (`lib/providers/`): `useProviders(bridge)` (one cache per bridge; `GET /v1/providers` through the
+  optional `listProviders`, else derived from config + plugins + settings — unknown reads as connected),
+  `useModelPicker` / `pickerView` / `pickerKey` (the headless model picker of decisions 53 a and 58: only what runs,
+  grouped by provider, agents with "›" and a second level, not-ready providers one connect row each, search across both
+  levels), `chipLabel`, `canRun`, `commandsIn` (commands in a hint). The picker component is the composer's.
+- **Connect** (`components/providers/`): `ConnectSheet` (agent steps with copy buttons and Check again; write-only
+  key form — the value lives only in the DOM input and is cleared after `putSettings`; router switch and upstream key)
+  and `ConnectScreen`, shown by `AppShell` instead of Home / the project form while nothing is connected.
+- Demo: `demo/providers.ts` (Claude Code ready, Copilot not logged in, Grok not installed, API and router not
+  connected; `?providers=none` for the connect screen; settings and diagnostics in memory).
+- Verified with Playwright against `?demo=1` (screenshots of every section at 1440×900 dark, General / Providers /
+  Models at 390×700 and light, Providers at 1100×700, 800×600, 640×480, the sheets and the connect screen; console
+  clean, no horizontal scroll). Not verified against a live harness's `/v1/providers` (not built when this was).
+
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)

@@ -20,7 +20,8 @@ export default function HostedApp({ search }: { search: string }) {
   const notice = dismissedFor === state.url ? undefined : state.notices[0];
   return (
     <>
-      <BridgeShell choice={choice} />
+      {/* Settings' "Restart now" (decision 59) restarts the sidecars, like the notice's Retry. */}
+      <BridgeShell choice={choice} onRestart={retry} />
       {notice ? <HostNotice notice={notice} retrying={retrying} onRetry={retry} onDismiss={() => setDismissedFor(state.url)} /> : null}
     </>
   );

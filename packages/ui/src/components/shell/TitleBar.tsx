@@ -14,10 +14,12 @@ const SIDE_PAD = 8;
  * (`end`; see `TitleBarProject`). Empty areas carry `data-drag-region`, which the host maps to window dragging (this
  * package imports no platform API); controls are not drag regions. `data-title-bar` marks the row for tests and styles.
  *
+ * `title`: a page that is not a project (Settings) names itself here.
+ *
  * `alignStart`: the inline sidebar is open, so the first cluster is as wide as the sidebar and the project's name
  * starts where the content panel does.
  */
-export function TitleBar(props: { alignStart: boolean; startRef(el: HTMLElement | null): void; endRef(el: HTMLElement | null): void }) {
+export function TitleBar(props: { alignStart: boolean; startRef(el: HTMLElement | null): void; endRef(el: HTMLElement | null): void; title?: string }) {
   const { sidebarOpen, toggleSidebar } = useShell();
   const { insetStart, insetEnd } = useChrome();
   const history = useHistoryAvailability();
@@ -39,7 +41,9 @@ export function TitleBar(props: { alignStart: boolean; startRef(el: HTMLElement 
         <IconButton icon={ArrowLeft} label="Back" onClick={() => window.history.back()} disabled={!history.back} />
         <IconButton icon={ArrowRight} label="Forward" onClick={() => window.history.forward()} disabled={!history.forward} />
       </div>
-      <div ref={props.startRef} data-drag-region className="flex h-full min-w-0 flex-1 items-center gap-2" />
+      <div ref={props.startRef} data-drag-region className="flex h-full min-w-0 flex-1 items-center gap-2">
+        {props.title && <span className="min-w-0 truncate font-medium">{props.title}</span>}
+      </div>
       <div ref={props.endRef} className="flex shrink-0 items-center gap-3" />
     </header>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLatest } from "./hooks";
 
 export type Route = { projectId: string | null; agentId: string | null };
@@ -65,4 +65,32 @@ export function useGuardedRoute(block: (next: Route, current: Route) => boolean)
     },
     stay: () => setPending(null),
   };
+}
+
+/**
+ * Decision 59: `#/settings/<section>` is the settings page. The section as written (the page falls back to its first
+ * section for an unknown one); `null` for any other hash. `#/settings` alone is the first section.
+ */
+export function parseSettingsHash(hash: string): string | null {
+  const m = /^#\/settings(?:\/([^/?#]*))?\/?$/.exec(hash);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1] ?? "");
+  } catch {
+    return "";
+  }
+}
+
+export function settingsHref(section: string): string {
+  return `#/settings/${encodeURIComponent(section)}`;
+}
+
+const subscribeHash = (cb: () => void) => {
+  window.addEventListener("hashchange", cb);
+  return () => window.removeEventListener("hashchange", cb);
+};
+
+/** The settings section in the location hash, or null when the settings page is not open. */
+export function useSettingsSection(): string | null {
+  return useSyncExternalStore(subscribeHash, () => parseSettingsHash(window.location.hash));
 }

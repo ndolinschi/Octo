@@ -578,6 +578,7 @@ export const SETTING_IDS = {
   routerEnabled: "OCTO_ROUTER_ENABLED",
   routerBaseUrl: "OCTO_ROUTER_BASE_URL",
   childEnvAllow: "HARNESS_CHILD_ENV_ALLOW",
+  acpTrace: "HARNESS_ACP_TRACE",
 } as const;
 
 // --- v7: changes per turn and diffs ---------------------------------------------------------------------------
@@ -706,6 +707,34 @@ export type Diagnostics = {
   acp_trace: { enabled: boolean; dir: string; files: string[] };
   log_tail: string[];
   problems: string[];
+};
+
+// --- Decision 53: providers ---------------------------------------------------------------------------------
+
+/** What can run a model: an Anthropic-compatible API key, the Octo router, or an agent CLI on this machine. */
+export type ProviderKind = "api" | "router" | "agent";
+export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "error";
+export type ProviderModel = { id: string; label: string };
+export type Provider = {
+  id: string;
+  kind: ProviderKind;
+  label: string;
+  state: ProviderState;
+  /** Why it is not ready, in one line. */
+  reason?: string;
+  /** The exact command (or text) that installs the agent. */
+  install_hint?: string;
+  /** The exact command (or text) that logs the agent in. */
+  login_hint?: string;
+  /** What it can run; for an agent, the manifest's models and those it advertised in its last session. */
+  models: ProviderModel[];
+  default_model?: string;
+};
+/** `GET /v1/providers`: every provider with its state, and the defaults a new project would get from the connected ones. */
+export type ProviderList = {
+  connected: number;
+  suggested: { orchestrator: string; fast: string; balanced: string; deep: string };
+  providers: Provider[];
 };
 
 // --- M1: orchestrator memory ----------------------------------------------------------------------------------

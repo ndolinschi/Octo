@@ -1,9 +1,12 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useEscape, useMediaQuery } from "../lib/hooks";
 import { focusSoon, visibleComposer } from "../lib/focus";
-import { navigate, useGuardedRoute } from "../lib/route";
+import { navigate, settingsHref, useGuardedRoute, useSettingsSection } from "../lib/route";
+import { useProviders } from "../lib/providers/useProviders";
+import { startupOpensLast, useStoredMotion } from "../components/settings/prefs";
 import { useUnseen } from "../lib/seen";
 import { useApp } from "../state/app";
+import { useHost } from "../state/host";
 import { NavProvider, useNav } from "../state/nav";
 import { ProjectProvider } from "../state/project";
 import { RequestsProvider } from "../state/requests";
@@ -15,7 +18,6 @@ import { NoProjectsHero } from "../components/project/NoProjectsHero";
 import type { PaletteAction } from "../components/shell/CommandPalette";
 import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
-import type { SettingsView } from "../components/shell/SettingsDialog";
 import { Sidebar } from "../components/shell/Sidebar";
 import { TitleBar } from "../components/shell/TitleBar";
 import { TitleBarSlotsContext } from "../state/titleBar";
@@ -30,10 +32,13 @@ const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.Comman
 /** Demo-only `#/p/<id>/memory` (the Memory view on its own); not in a normal start's chunks. */
 const MemoryRoute = lazy(() => import("./MemoryRoute").then((m) => ({ default: m.MemoryRoute })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
-/** The project and settings dialogs load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
-const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/shell/SettingsDialog")]);
+/** The project dialog and the settings page load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
+const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/settings/SettingsPage")]);
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
-const SettingsDialog = lazy(() => import("../components/shell/SettingsDialog").then((m) => ({ default: m.SettingsDialog })));
+const SettingsPage = lazy(() => import("../components/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+/** Decision 53: the connect sheet and the no-provider screen (their own chunks). */
+const ConnectSheet = lazy(() => import("../components/providers/ConnectSheet").then((m) => ({ default: m.ConnectSheet })));
+const ConnectScreen = lazy(() => import("../components/providers/ConnectScreen").then((m) => ({ default: m.ConnectScreen })));
 
 /** Below this width the sidebar becomes an overlay drawer, closed by default. */
 
@@ -51,6 +56,7 @@ export function AppShell() {
 
 function Shell() {
   const { health, projects, bridge, refreshProjects, demo } = useApp();
+  const host = useHost();
   const nav = useNav();
   // Leaving a project with unsaved editor changes asks first.
   const { route, pending, proceed, stay } = useGuardedRoute(
@@ -60,7 +66,17 @@ function Shell() {
   const [inlineOpen, setInlineOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [settings, setSettings] = useState<SettingsView | null>(null);
+  // Decision 59: Settings is a page at `#/settings/<section>`; "Back" returns to the hash it was opened from.
+  const settings = useSettingsSection();
+  const beforeSettings = useRef("#/");
+  useEffect(() => {
+    if (settings === null) beforeSettings.current = window.location.hash || "#/";
+  }, [settings, route]);
+  const [connectTarget, setConnectTarget] = useState<string | null>(null);
+  // Decision 53 b: nothing connected → the connect screen instead of Home and the project form.
+  const providers = useProviders(bridge, health === "online");
+  const noProvider = providers.status === "ready" && providers.list.connected === 0;
+  useStoredMotion();
   const [palette, setPalette] = useState(false);
   const drawerOpener = useRef<HTMLElement | null>(null);
   // The two ends of the title bar row that the open project fills (see `TitleBarProject`).
@@ -75,7 +91,8 @@ function Shell() {
 
   // Opening the app (no route) shows the most recently active project, as before; `#/` is Home and stays
   // (decision 22); an unknown project id falls back to the first project.
-  const opened = useRef(window.location.hash === "" || window.location.hash === "#");
+  // Settings → General → "On startup: Home" keeps Home instead.
+  const opened = useRef((window.location.hash === "" || window.location.hash === "#") && startupOpensLast());
   useEffect(() => {
     if (health !== "online" || projects === null) return;
     const atHome = route.projectId === null && !opened.current;
@@ -85,7 +102,7 @@ function Shell() {
 
   // The drawer closes on navigation and whenever the window grows out of drawer mode.
   useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, drawerMode]);
-  useEscape(drawerMode && drawerOpen && !palette && settings === null, () => setDrawerOpen(false));
+  useEscape(drawerMode && drawerOpen && !palette, () => setDrawerOpen(false));
 
   // Warm the palette's chunk once the app is idle, so Ctrl/Cmd+K opens it without a wait.
   useEffect(() => {
@@ -132,11 +149,12 @@ function Shell() {
   };
   const newProject = () => {
     setDrawerOpen(false);
-    setCreating(true);
+    if (noProvider) navigate(null);
+    else setCreating(true);
   };
-  const openSettings = (view: SettingsView = "general") => {
+  const openSettings = (section = "general") => {
     setDrawerOpen(false);
-    setSettings(view);
+    window.location.hash = settingsHref(section);
   };
   const openPalette = () => {
     setDrawerOpen(false);
@@ -146,6 +164,12 @@ function Shell() {
   const workspace = health !== "offline" && known && route.projectId !== null;
   let main: React.ReactNode = null;
   if (health === "offline") main = <OfflineState />;
+  else if (noProvider && route.projectId === null)
+    main = (
+      <Suspense fallback={null}>
+        <ConnectScreen onConnect={setConnectTarget} />
+      </Suspense>
+    );
   else if (projects && projects.length === 0) main = <NoProjectsHero onCreate={newProject} />;
   else if (route.projectId === null && projects)
     main = (
@@ -178,17 +202,36 @@ function Shell() {
     { id: "home", label: "Go to Home", run: () => navigate(null) },
     { id: "new", label: "New project", run: newProject },
     { id: "settings", label: "Open settings", run: () => openSettings() },
-    { id: "integrations", label: "Open integrations", run: () => openSettings("integrations") },
+    { id: "integrations", label: "Open integrations", run: () => openSettings("editor") },
+    { id: "providers", label: "Connect a provider", run: () => openSettings("providers") },
     { id: "sidebar", label: "Toggle sidebar", run: toggleSidebar },
   ];
 
   return (
     <ShellContext.Provider value={{ sidebarOpen, toggleSidebar }}>
-      <TitleBarSlotsContext.Provider value={{ start: titleStart, end: titleEnd }}>
+      {/* The project's name and model show in the title bar only while the project is on screen; the settings page sets its own title. */}
+      <TitleBarSlotsContext.Provider value={{ start: settings === null ? titleStart : null, end: settings === null ? titleEnd : null }}>
         <div className="flex h-full flex-col overflow-hidden bg-window text-fg">
           {/* Decision 54: the title bar is the header. One row across the window, whether the sidebar is open or closed. */}
-          <TitleBar alignStart={!drawerMode && inlineOpen} startRef={setTitleStart} endRef={setTitleEnd} />
-          <div className="flex min-h-0 flex-1">
+          <TitleBar
+            alignStart={settings !== null || (!drawerMode && inlineOpen)}
+            startRef={setTitleStart}
+            endRef={setTitleEnd}
+            {...(settings !== null ? { title: "Settings" } : {})}
+          />
+          {settings !== null && (
+            <div className="min-h-0 flex-1">
+              <Suspense fallback={null}>
+                <SettingsPage
+                  section={settings}
+                  onBack={() => (window.location.hash = beforeSettings.current)}
+                  connect={setConnectTarget}
+                  restart={host.restart}
+                />
+              </Suspense>
+            </div>
+          )}
+          <div className="flex min-h-0 flex-1" hidden={settings !== null}>
             {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} />}
             {/* Equal gutters on the other sides of every panel (the sidebar card included); the row above is the top one. Full-bleed on phones. */}
             <div className="relative flex min-w-0 flex-1 flex-col p-gutter pt-0 max-sm:p-0" inert={drawerShown}>
@@ -229,9 +272,9 @@ function Shell() {
               />
             </Suspense>
           </Presence>
-          <Presence show={settings !== null}>
+          <Presence show={connectTarget !== null}>
             <Suspense fallback={null}>
-              <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
+              <ConnectSheet target={connectTarget ?? ""} onClose={() => setConnectTarget(null)} />
             </Suspense>
           </Presence>
           <Presence show={palette}>

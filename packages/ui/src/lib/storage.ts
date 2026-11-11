@@ -34,6 +34,12 @@ export const PREFS = {
   chatSplit: key("chatSplit"),
   /** Start-screen backdrop (decision 31): `"vivid" | "mono" | "off"` as plain text. */
   backdrop: key("backdrop"),
+  /** Models and agent models left out of every picker (decision 59, Settings → Models): a JSON list of setting strings. */
+  hiddenModels: key("hiddenModels"),
+  /** What opening the app shows (Settings → General): `"last" | "home"` as plain text. */
+  startup: key("startup"),
+  /** Motion (Settings → Appearance): `"system" | "reduced"` as plain text. */
+  motion: key("motion"),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */

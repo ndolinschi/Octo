@@ -1363,3 +1363,20 @@
   }
 }
 /* /completion */
+/* settings — decision 59 (the settings page) and decision 53 (the connect screen). */
+@theme {
+  /* Below this width the settings navigation is a select on top and rows stack their control under the text. */
+  --breakpoint-settings: 760px;
+  --spacing-settings: 780px; /* the settings page's content column */
+  --spacing-connect: 560px; /* the connect screen's column */
+}
+/* Settings → Appearance → Reduce motion: whatever the system says. */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+/* end settings */
