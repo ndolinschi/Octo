@@ -628,6 +628,13 @@ monochrome dithered illustration):
     chevron. The popover is attached to its chip (4px gap, aligned to the chip's start edge) so it reads as the
     chip's menu; the "scroll to latest" button hides while any popover of the composer is open. Model picker rows
     follow decision 53 (only what can run) and show one name per row — the raw model id moves to the tooltip.
+57. **The request rail** (the ticks beside the conversation; owner: "too big spacing, should be vertically
+    centred not at the top, and appear only after five points"). The rail appears only when the conversation has
+    **five or more** user requests; below that there is nothing to navigate. It is centred vertically in the
+    conversation's viewport (not pinned to the top), ticks are 6px apart (was ~24px), 8px wide and 1px thick in
+    `fg-4`, the current one 12px wide in `fg`; with more ticks than fit in 60% of the viewport height the rail
+    scrolls itself to keep the current tick centred. Hover or focus on the rail shows the request's first line
+    beside the tick; click or `Alt+↑/↓` jumps. It never takes layout width from the conversation.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
