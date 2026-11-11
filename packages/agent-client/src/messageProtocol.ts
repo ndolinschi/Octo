@@ -8,7 +8,28 @@ export type MessagePortLike = {
 };
 
 export type Theme = "dark" | "light";
-export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer" | "getSettings" | "putSettings">;
+/** The methods the message bridge forwards: not the optional HTTP-only ones (settings and the v7 members). */
+export type HttpOnlyMethod =
+  | "getSettings"
+  | "putSettings"
+  | "sendOrQueueMessage"
+  | "getQueue"
+  | "editQueued"
+  | "removeQueued"
+  | "clearQueue"
+  | "resumeQueue"
+  | "sendQueuedNow"
+  | "listChanges"
+  | "getChange"
+  | "revertChange"
+  | "listApprovals"
+  | "resolveApproval"
+  | "listInputs"
+  | "submitInput"
+  | "listSecrets"
+  | "putSecret"
+  | "deleteSecret";
+export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer" | HttpOnlyMethod>;
 export type WireError = { status: number; code: string; message: string };
 
 export type ClientMessage =

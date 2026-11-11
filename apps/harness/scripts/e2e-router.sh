@@ -30,8 +30,8 @@ done
 for _ in $(seq 100); do curl -fsS http://127.0.0.1:8811/health >/dev/null 2>&1 && break || sleep 0.2; done
 curl -fsS http://127.0.0.1:8811/health | grep -q '"service":"octo"' || fail "router not up: $(cat "$TMP/router.log")"
 # Harnesses start after the router: detection happens at start-up (a late router is found by the minute re-probe).
-HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8815 --data-dir "$TMP/h1" --base-url http://127.0.0.1:8811/autoroute >"$TMP/h1.log" 2>&1 & PIDS+=($!)
-HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8816 --data-dir "$TMP/h2" --base-url http://127.0.0.1:8812 >"$TMP/h2.log" 2>&1 & PIDS+=($!)
+HARNESS_DEFAULT_ACCESS=full HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8815 --data-dir "$TMP/h1" --base-url http://127.0.0.1:8811/autoroute >"$TMP/h1.log" 2>&1 & PIDS+=($!)
+HARNESS_DEFAULT_ACCESS=full HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8816 --data-dir "$TMP/h2" --base-url http://127.0.0.1:8812 >"$TMP/h2.log" 2>&1 & PIDS+=($!)
 for url in http://127.0.0.1:8815/health http://127.0.0.1:8816/health; do
   for _ in $(seq 50); do curl -fsS "$url" >/dev/null 2>&1 && break || sleep 0.2; done
 done

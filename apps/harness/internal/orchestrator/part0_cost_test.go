@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/fakeacp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/fakerouter"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mockllm"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
@@ -192,5 +194,63 @@ func TestTurnFinishedComesAfterTheSlotIsReleased(t *testing.T) {
 			}
 		}
 		cancel()
+	}
+}
+
+// A delegation refused for budget reasons is announced: agent.created, then
+// agent.updated with status failed and the reason.
+func TestBudgetRefusedDelegationAnnouncesFailedAgent(t *testing.T) {
+	r, fr := newFakeRig(t, mockllm.New(0), fakerouter.Options{IgnoreBudget: true}, orchestrator.Options{})
+	pid := r.project(t, 1)
+	r.update(t, pid, budgetInput(0.01))
+	// The router's figure is learned from the first response; the spawns that follow are refused.
+	fr.SetSpent(pid, 0.02)
+	got := r.runCollect(t, pid, "build it", nil)
+	if got.status != "failed" {
+		t.Fatalf("turn = %s", got.status)
+	}
+	created := map[string]bool{}
+	for _, m := range got.of("agent.created") {
+		created[m["agent"].(map[string]any)["id"].(string)] = true
+	}
+	failed := 0
+	for _, m := range got.of("agent.updated") {
+		a := m["agent"].(map[string]any)
+		if id := a["id"].(string); created[id] && a["status"] == "failed" {
+			if e, _ := a["error"].(string); !strings.Contains(e, "Project budget reached") {
+				t.Errorf("failed agent error = %q", e)
+			}
+			failed++
+		}
+	}
+	if len(created) == 0 || failed != len(created) {
+		t.Fatalf("created %d refused agents, %d announced failed", len(created), failed)
+	}
+}
+
+// A process that resumes the session with session/load continues its counters:
+// they are seeded from what the session reported before, so the first update
+// after the resume is a delta. (The scripted agent restarts its counters at the
+// same figure, which then counts as "no change"; without the seed the figure
+// would be recorded a second time.)
+func TestResumedSessionContinuesTheUsageCounters(t *testing.T) {
+	ag := fakeAgent("fake", true)
+	ag.Env[fakeacp.EnvLoadSession] = "1"
+	ag.Env[fakeacp.EnvUniqueSessions] = "1"
+	r := newACPRig(t, mockllm.New(0), ag)
+	pid := r.projectAt(t, t.TempDir())
+	name := "acp:fake"
+	if _, err := r.svcWithAgents(t, ag).Update(context.Background(), pid, project.Input{Models: &config.Models{Orchestrator: name}}); err != nil {
+		t.Fatal(err)
+	}
+	r.runCollect(t, pid, "[cum-cost] one", nil)
+	for r.orch.Running(pid) {
+		time.Sleep(time.Millisecond)
+	}
+	r.orch.CloseProject(pid) // ends the agent process; the stored session id stays
+	r.runCollect(t, pid, "[cum-cost] two", nil)
+	sum, _, _ := costOf(t, r, pid)
+	if !near(sum, 0.01) {
+		t.Fatalf("summed cost = %v, want 0.01 (the resumed session's counter did not move)", sum)
 	}
 }

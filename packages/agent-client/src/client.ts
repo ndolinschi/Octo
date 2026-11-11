@@ -1,5 +1,16 @@
 import type {
   Agent,
+  Approval,
+  ApprovalAnswer,
+  ChangeDetail,
+  InputAnswer,
+  InputRequest,
+  QueuedMessage,
+  QueueState,
+  RevertResult,
+  SecretInfo,
+  SendResult,
+  TurnChanges,
   BridgeConfig,
   BridgeEvent,
   BridgeEventType,
@@ -105,6 +116,34 @@ export interface Bridge {
   getSettings?(): Promise<SettingsView>;
   /** Validates the whole update, writes it atomically, applies what can apply at once. Secrets are write-only. */
   putSettings?(update: SettingsUpdate): Promise<SettingsView>;
+  /*
+   * v7 members. All optional (only the HTTP bridge implements them; the message and demo bridges do not), so a host
+   * that predates them keeps compiling; hosts check for presence.
+   */
+  /** Like sendMessage, but a message sent while a turn runs is queued (202) and resolves as `{ queued }`. */
+  sendOrQueueMessage?(projectId: string, text: string): Promise<SendResult>;
+  getQueue?(projectId: string): Promise<QueueState>;
+  editQueued?(projectId: string, queueId: string, text: string): Promise<QueuedMessage>;
+  removeQueued?(projectId: string, queueId: string): Promise<void>;
+  /** Removes every queued message. */
+  clearQueue?(projectId: string): Promise<void>;
+  /** Lifts the pause after a failed or cancelled turn. */
+  resumeQueue?(projectId: string): Promise<void>;
+  /** Cancels the running turn and runs that queued message next. */
+  sendQueuedNow?(projectId: string, queueId: string): Promise<void>;
+  /** What agents changed, one entry per file per turn, newest turn first; `turnId` narrows to one turn. */
+  listChanges?(projectId: string, turnId?: number): Promise<TurnChanges[]>;
+  getChange?(projectId: string, changeId: number): Promise<ChangeDetail>;
+  /** Writes the content before the change back; 409 `file_changed` when the file moved on, 409 `revert_unavailable` without a stored original. */
+  revertChange?(projectId: string, changeId: number): Promise<RevertResult>;
+  listApprovals?(projectId: string): Promise<Approval[]>;
+  resolveApproval?(projectId: string, approvalId: string, answer: ApprovalAnswer): Promise<void>;
+  listInputs?(projectId: string): Promise<InputRequest[]>;
+  /** Submits or skips an open form. Secret values go to the harness's secret store and are never echoed. */
+  submitInput?(projectId: string, inputId: string, answer: InputAnswer): Promise<void>;
+  listSecrets?(projectId: string): Promise<SecretInfo[]>;
+  putSecret?(projectId: string, name: string, value: string): Promise<void>;
+  deleteSecret?(projectId: string, name: string): Promise<void>;
   openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
@@ -131,6 +170,14 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "side.done",
   "side.error",
   "settings.changed",
+  "change.recorded",
+  "approval.requested",
+  "approval.resolved",
+  "input.requested",
+  "input.resolved",
+  "queue.updated",
+  "project.attention",
+  "secrets.changed",
 ];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -242,7 +289,14 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       }
       return { messages: body.messages as Message[], compactions: Array.isArray(body.compactions) ? (body.compactions as Transcript["compactions"]) : [] };
     },
-    sendMessage: (id, text) => unwrap<Message>(request("POST", `${p(id)}/messages`, { text }), "message"),
+    sendMessage: async (id, text) => {
+      const body = await request("POST", `${p(id)}/messages`, { text });
+      if (isRecord(body) && isRecord(body.queued)) {
+        throw new BridgeError(202, "queued", "a turn is running: the message was queued (use sendOrQueueMessage)");
+      }
+      if (!isRecord(body) || !isRecord(body.message)) throw new BridgeError(0, "invalid_response", 'missing "message" in response');
+      return body.message as unknown as Message;
+    },
     cancelTurn: async (id) => {
       await request("POST", `${p(id)}/cancel`);
     },
@@ -266,6 +320,44 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getUsage: (params) => request("GET", `/v1/usage${usageQuery(params)}`) as Promise<UsageReport>,
     getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
     listLanguageServers: (id) => unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
+    sendOrQueueMessage: async (id, text) => {
+      const body = await request("POST", `${p(id)}/messages`, { text });
+      if (isRecord(body) && isRecord(body.queued)) return { queued: body.queued as QueuedMessage };
+      if (isRecord(body) && isRecord(body.message)) return { message: body.message as unknown as Message };
+      throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
+    },
+    getQueue: (id) => request("GET", `${p(id)}/queue`) as Promise<QueueState>,
+    editQueued: (id, qid, text) => request("PATCH", `${p(id)}/queue/${encodeURIComponent(qid)}`, { text }) as Promise<QueuedMessage>,
+    removeQueued: async (id, qid) => {
+      await request("DELETE", `${p(id)}/queue/${encodeURIComponent(qid)}`);
+    },
+    clearQueue: async (id) => {
+      await request("DELETE", `${p(id)}/queue`);
+    },
+    resumeQueue: async (id) => {
+      await request("POST", `${p(id)}/queue/resume`);
+    },
+    sendQueuedNow: async (id, qid) => {
+      await request("POST", `${p(id)}/queue/${encodeURIComponent(qid)}/send-now`);
+    },
+    listChanges: (id, turnId) => unwrap<TurnChanges[]>(request("GET", `${p(id)}/changes${turnId === undefined ? "" : `?turn=${turnId}`}`), "turns"),
+    getChange: (id, cid) => request("GET", `${p(id)}/changes/${cid}`) as Promise<ChangeDetail>,
+    revertChange: (id, cid) => request("POST", `${p(id)}/changes/${cid}/revert`) as Promise<RevertResult>,
+    listApprovals: (id) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals`), "approvals"),
+    resolveApproval: async (id, aid, answer) => {
+      await request("POST", `${p(id)}/approvals/${encodeURIComponent(aid)}`, answer);
+    },
+    listInputs: (id) => unwrap<InputRequest[]>(request("GET", `${p(id)}/inputs`), "inputs"),
+    submitInput: async (id, iid, answer) => {
+      await request("POST", `${p(id)}/inputs/${encodeURIComponent(iid)}`, answer);
+    },
+    listSecrets: (id) => unwrap<SecretInfo[]>(request("GET", `${p(id)}/secrets`), "secrets"),
+    putSecret: async (id, name, value) => {
+      await request("PUT", `${p(id)}/secrets/${encodeURIComponent(name)}`, { value });
+    },
+    deleteSecret: async (id, name) => {
+      await request("DELETE", `${p(id)}/secrets/${encodeURIComponent(name)}`);
+    },
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     openLanguageServer: (id, serverId) =>

@@ -117,6 +117,10 @@ func serveConfig(args []string) (config.Config, string, error) {
 }
 
 func serve(ctx context.Context, cfg config.Config, addr string) error {
+	access, approvalTimeout, err := v7Env()
+	if err != nil {
+		return err
+	}
 	store, err := projectstore.Open(cfg.DataDir)
 	if err != nil {
 		return err
@@ -163,11 +167,12 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Prices:          priceTable,
 		Windows:         cfg.ContextWindows,
 		ACPIdle:         cfg.ACPIdle,
+		ApprovalTimeout: approvalTimeout,
 
 		BuiltinUnavailable:  builtinReason,
 		DefaultOrchestrator: cfg.Models.Orchestrator,
 	})
-	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth},
+	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth, Access: access},
 		project.WithPrices(priceTable), project.WithRouter(octo), project.WithACPAgents(pluginReg))
 	// A model setting that names an ACP agent must name a loaded, available one.
 	// A settings file written earlier can name an agent that has since gone
@@ -258,4 +263,31 @@ func portOf(a net.Addr) string {
 	}
 	_, p, _ := net.SplitHostPort(a.String())
 	return p
+}
+
+// v7Env reads the v7 settings from the environment (harness.env fills it):
+// HARNESS_DEFAULT_ACCESS, the access mode of projects created without one
+// ("supervised", the default, or "full"), and HARNESS_APPROVAL_TIMEOUT, how long
+// an approval request waits for an answer before it is denied (a Go duration,
+// default 30m; "0" or negative: wait for ever).
+func v7Env() (access string, timeout time.Duration, err error) {
+	access = os.Getenv("HARNESS_DEFAULT_ACCESS")
+	switch access {
+	case "":
+		access = projectstore.AccessSupervised
+	case projectstore.AccessSupervised, projectstore.AccessFull:
+	default:
+		return "", 0, fmt.Errorf("HARNESS_DEFAULT_ACCESS must be %q or %q", projectstore.AccessSupervised, projectstore.AccessFull)
+	}
+	if v := os.Getenv("HARNESS_APPROVAL_TIMEOUT"); v != "" {
+		d, perr := time.ParseDuration(v)
+		if perr != nil {
+			return "", 0, fmt.Errorf("HARNESS_APPROVAL_TIMEOUT: %w", perr)
+		}
+		if d == 0 {
+			d = -1
+		}
+		timeout = d
+	}
+	return access, timeout, nil
 }

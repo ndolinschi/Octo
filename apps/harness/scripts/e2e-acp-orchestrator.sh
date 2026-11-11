@@ -26,7 +26,7 @@ plugin() { # $1 dir, $2 extra env json members (may be empty)
 JSON
 }
 serve() { # $1 port, $2 data dir, $3 plugins dir; env HARNESS_ACP_IDLE optional
-  HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr "127.0.0.1:$1" --data-dir "$2" --base-url http://127.0.0.1:8820 \
+  HARNESS_DEFAULT_ACCESS=full HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr "127.0.0.1:$1" --data-dir "$2" --base-url http://127.0.0.1:8820 \
     --plugins-dir "$3" >"$2.log" 2>&1 & PIDS+=($!)
   SERVE_PID=$!
   for _ in $(seq 60); do curl -fsS "http://127.0.0.1:$1/health" >/dev/null 2>&1 && return; sleep 0.2; done
@@ -131,7 +131,7 @@ nokey() {
   printf 'HARNESS_MODEL_FAST=env-file-fast\nHARNESS_MODEL_BALANCED=env-file-balanced\n' >"$TMP/$name-data/harness.env"
   chmod 600 "$TMP/$name-data/harness.env"
   env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u HARNESS_OCTO_KEY -u HARNESS_PLUGINS_DIR -u HARNESS_DATA_DIR \
-    PATH="$TMP/$name-bin" HARNESS_MODEL_BALANCED=from-process \
+    PATH="$TMP/$name-bin" HARNESS_DEFAULT_ACCESS=full HARNESS_MODEL_BALANCED=from-process \
     "$TMP/harness" serve --addr "127.0.0.1:$port" --data-dir "$TMP/$name-data" --plugins-dir "$TMP/$name-plugins" >"$TMP/$name-data.log" 2>&1 & PIDS+=($!)
   local serve_pid=$!
   for _ in $(seq 60); do curl -fsS "$base/health" >/dev/null 2>&1 && break; sleep 0.2; done

@@ -250,3 +250,12 @@ func (d *DB) UsageLog(ctx context.Context) ([]UsageEntry, error) {
 	}
 	return out, rows.Err()
 }
+
+// ACPUsageSince sums the cost and input tokens of the agent's ACP usage rows
+// recorded at or after since: what an ACP session has reported so far, so a
+// process that resumes it can continue the session's cumulative counters.
+func (d *DB) ACPUsageSince(ctx context.Context, agentID, since string) (costUSD float64, tokens int64, err error) {
+	err = d.sql.QueryRowContext(ctx, `SELECT COALESCE(SUM(cost_usd), 0), COALESCE(SUM(input_tokens), 0)
+		FROM usage WHERE agent_id = ? AND source = ? AND role IS NULL AND created_at >= ?`, agentID, SourceACP, since).Scan(&costUSD, &tokens)
+	return costUSD, tokens, err
+}

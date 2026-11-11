@@ -1,4 +1,18 @@
-import type { Agent, BridgeEvent, CompactionMarker, ContentBlock, Message, Note, SideMessage, SideStarted, TurnStatus } from "./types";
+import type {
+  Agent,
+  Approval,
+  BridgeEvent,
+  CompactionMarker,
+  ContentBlock,
+  FileChange,
+  InputRequest,
+  Message,
+  Note,
+  QueuedMessage,
+  SideMessage,
+  SideStarted,
+  TurnStatus,
+} from "./types";
 
 /** The project's side conversation (decision 40): kept apart from every agent's messages. */
 export type SideState = {
@@ -7,6 +21,16 @@ export type SideState = {
   pending: { side_id: string; text: string } | null;
   /** The last question that failed; cleared by the next question. */
   error: { side_id: string; message: string } | null;
+};
+
+/** What waits for the user (v7): pending approvals and open forms, from events or a reload. */
+export type AttentionState = { needs_you: boolean; approvals: number; inputs: number };
+
+/** A form that was answered, kept so its card can collapse to "provided" lines (never holds secret values). */
+export type AnsweredInput = {
+  status: "submitted" | "skipped" | "cancelled";
+  provided: string[];
+  values: Record<string, string | boolean>;
 };
 
 export type ProjectState = {
@@ -19,6 +43,18 @@ export type ProjectState = {
   /** Compaction markers per agent id, ordered by `upto_message_id`. */
   compactions: Record<string, CompactionMarker[]>;
   side: SideState;
+  /** v7: changes recorded by events, by turn id (oldest first); refetch listChanges for the net per-file view. */
+  changes: Record<number, FileChange[]>;
+  /** v7: pending approvals, oldest first. */
+  approvals: Approval[];
+  /** v7: open forms, oldest first, and the answered ones by form id. */
+  inputs: InputRequest[];
+  answeredInputs: Record<string, AnsweredInput>;
+  /** v7: the message queue. */
+  queue: { paused: boolean; messages: QueuedMessage[] };
+  attention: AttentionState;
+  /** v7: bumped when secrets were stored or deleted (refetch listSecrets). */
+  secretsRevision: number;
   lastSeq: number;
   lastTurn: { status: TurnStatus; error: string | null } | null;
 };
@@ -37,6 +73,13 @@ export function emptyProjectState(): ProjectState {
     notes: [],
     compactions: {},
     side: emptySide(),
+    changes: {},
+    approvals: [],
+    inputs: [],
+    answeredInputs: {},
+    queue: { paused: false, messages: [] },
+    attention: { needs_you: false, approvals: 0, inputs: 0 },
+    secretsRevision: 0,
     lastSeq: 0,
     lastTurn: null,
   };
@@ -158,6 +201,31 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         },
       };
     }
+    case "change.recorded": {
+      const list = state.changes[event.turn_id] ?? [];
+      if (list.some((c) => c.id === event.change.id)) return state;
+      return { ...state, changes: { ...state.changes, [event.turn_id]: [...list, event.change] } };
+    }
+    case "approval.requested":
+      if (state.approvals.some((a) => a.id === event.approval.id)) return state;
+      return { ...state, approvals: [...state.approvals, event.approval] };
+    case "approval.resolved":
+      return { ...state, approvals: state.approvals.filter((a) => a.id !== event.id) };
+    case "input.requested":
+      if (state.inputs.some((i) => i.id === event.input.id)) return state;
+      return { ...state, inputs: [...state.inputs, event.input] };
+    case "input.resolved":
+      return {
+        ...state,
+        inputs: state.inputs.filter((i) => i.id !== event.id),
+        answeredInputs: { ...state.answeredInputs, [event.id]: { status: event.status, provided: event.provided, values: event.values } },
+      };
+    case "queue.updated":
+      return { ...state, queue: { paused: event.paused, messages: event.messages } };
+    case "project.attention":
+      return { ...state, attention: { needs_you: event.needs_you, approvals: event.approvals, inputs: event.inputs } };
+    case "secrets.changed":
+      return { ...state, secretsRevision: state.secretsRevision + 1 };
     case "project.updated":
     case "file.changed":
     case "settings.changed": // not about this project
@@ -259,4 +327,19 @@ export function totalTokens(state: ProjectState): { input: number; output: numbe
     output += agent.output_tokens;
   }
   return { input, output };
+}
+
+/** Replaces the pending approvals with a loaded list (after a reload). */
+export function withApprovals(state: ProjectState, approvals: Approval[]): ProjectState {
+  return { ...state, approvals: [...approvals].sort((a, b) => a.created_at.localeCompare(b.created_at)) };
+}
+
+/** Replaces the open forms with a loaded list (after a reload); answered forms are kept. */
+export function withInputs(state: ProjectState, inputs: InputRequest[]): ProjectState {
+  return { ...state, inputs: [...inputs].sort((a, b) => a.created_at.localeCompare(b.created_at)) };
+}
+
+/** Replaces the queue with a loaded one (GET .../queue). */
+export function withQueue(state: ProjectState, queue: { paused: boolean; messages: QueuedMessage[] }): ProjectState {
+  return { ...state, queue };
 }

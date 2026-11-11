@@ -45,7 +45,12 @@ export type ProjectInput = {
   max_depth?: number;
   /** Spend cap in USD (> 0); null removes it (PATCH only). */
   budget_usd?: number | null;
+  /** v7: `supervised` asks before writes, commands and ACP permission requests; `full` never asks. */
+  access?: AccessMode;
 };
+
+/** Access mode of a project (v7 approvals). */
+export type AccessMode = "supervised" | "full";
 
 export type ProjectSummary = {
   id: string;
@@ -56,6 +61,10 @@ export type ProjectSummary = {
   agent_count: number;
   created_at: string;
   updated_at: string;
+  /** v7: an approval or a form waits for the user (a turn that waits is still `running`). */
+  needs_you?: boolean;
+  pending_approvals?: number;
+  pending_inputs?: number;
 };
 
 export type Project = ProjectSummary & {
@@ -68,6 +77,8 @@ export type Project = ProjectSummary & {
   budget_usd?: number | null;
   /** Last known spend in USD (router report or usage rows); null: unknown. */
   spent_usd?: number | null;
+  /** v7: the project's access mode (`full` for projects that predate approvals). */
+  access?: AccessMode;
 };
 
 export type Agent = {
@@ -242,6 +253,27 @@ export type FileChangedEvent = {
  */
 export type SettingsChangedEvent = { type: "settings.changed"; seq: number; ids: string[] };
 
+/** A file change was recorded (v7): by write_file, ACP fs/write_text_file, or a bash / ACP-turn snapshot. */
+export type ChangeRecordedEvent = { type: "change.recorded"; seq: number; turn_id: number; change: FileChange };
+export type ApprovalRequestedEvent = { type: "approval.requested"; seq: number; approval: Approval };
+export type ApprovalResolvedEvent = { type: "approval.resolved"; seq: number; id: string; decision: ApprovalDecision };
+/** A form was opened by `request_input`; it carries the schema only. */
+export type InputRequestedEvent = { type: "input.requested"; seq: number; input: InputRequest };
+/** A form was answered. `provided` lists the secret fields' ids (never values); `values` the non-secret ones. */
+export type InputResolvedEvent = {
+  type: "input.resolved";
+  seq: number;
+  id: string;
+  status: "submitted" | "skipped" | "cancelled";
+  provided: string[];
+  values: Record<string, string | boolean>;
+};
+export type QueueUpdatedEvent = { type: "queue.updated"; seq: number; paused: boolean; messages: QueuedMessage[] };
+/** How many approvals and forms wait for the user. */
+export type ProjectAttentionEvent = { type: "project.attention"; seq: number; needs_you: boolean; approvals: number; inputs: number };
+/** Names (never values) of secrets that were stored or deleted. */
+export type SecretsChangedEvent = { type: "secrets.changed"; seq: number; names: string[] };
+
 export type BridgeEvent =
   | AgentCreatedEvent
   | AgentUpdatedEvent
@@ -257,7 +289,15 @@ export type BridgeEvent =
   | SideDeltaEvent
   | SideDoneEvent
   | SideErrorEvent
-  | SettingsChangedEvent;
+  | SettingsChangedEvent
+  | ChangeRecordedEvent
+  | ApprovalRequestedEvent
+  | ApprovalResolvedEvent
+  | InputRequestedEvent
+  | InputResolvedEvent
+  | QueueUpdatedEvent
+  | ProjectAttentionEvent
+  | SecretsChangedEvent;
 
 export type BridgeEventType = BridgeEvent["type"];
 
@@ -468,3 +508,92 @@ export const SETTING_IDS = {
   routerBaseUrl: "OCTO_ROUTER_BASE_URL",
   childEnvAllow: "HARNESS_CHILD_ENV_ALLOW",
 } as const;
+
+// --- v7: changes per turn and diffs ---------------------------------------------------------------------------
+
+export type ChangeKind = "created" | "modified" | "deleted";
+/** Why a change has no diff: binary, too_large, no_preimage (the content before was not kept) or pruned (older than 30 days). */
+export type ChangeNote = "binary" | "too_large" | "no_preimage" | "pruned" | "";
+export type ChangeSource = "write_file" | "acp_fs" | "bash" | "acp_turn";
+
+export type FileChange = {
+  id: number;
+  /** Id of the orchestrator's user message that started the turn. */
+  turn_id: number;
+  agent_id: string;
+  folder: string;
+  path: string;
+  kind: ChangeKind;
+  /** Line counts; null when no diff is available. */
+  added: number | null;
+  removed: number | null;
+  created_at: string;
+  note: ChangeNote;
+  source: ChangeSource;
+};
+
+/** One file's net change in a turn: first before to last after. A file created and deleted again is not listed. */
+export type FileChangeSummary = Omit<FileChange, "id" | "agent_id"> & { change_ids: number[]; agent_ids: string[] };
+export type TurnChanges = { turn_id: number; files: FileChangeSummary[]; added: number; removed: number };
+export type ChangeDetail = FileChange & { before: string | null; after: string | null; diff_available: boolean };
+/** The file after a revert; `deleted` is set when the revert removed a file the change had created. */
+export type RevertResult = FileStat & { deleted?: boolean };
+
+// --- v7: message queue ----------------------------------------------------------------------------------------
+
+export type QueuedMessage = { id: string; text: string; created_at: string };
+export type QueueState = { paused: boolean; messages: QueuedMessage[] };
+/** What POST .../messages answers: the started turn's message, or (a turn is running) the queued one. */
+export type SendResult = { message: Message; queued?: undefined } | { queued: QueuedMessage; message?: undefined };
+
+// --- v7: approvals --------------------------------------------------------------------------------------------
+
+export type ApprovalKind = "write" | "command" | "acp";
+export type ApprovalDecision = "allow" | "allow_for_turn" | "deny";
+export type ApprovalOption = { id: string; label: string; kind: "allow_once" | "allow_always" | "reject_once" | "reject_always" };
+export type Approval = {
+  id: string;
+  agent_id: string;
+  /** The agent's role, or the plugin id of an ACP agent. */
+  agent_label: string;
+  turn_id: number;
+  kind: ApprovalKind;
+  /** "Write src/a.ts", the command line, or the ACP tool title. */
+  title: string;
+  detail: {
+    folder?: string;
+    path?: string;
+    diff?: { added: number; removed: number };
+    command?: string;
+    /** The options an ACP agent offered (kind `acp`). */
+    options?: ApprovalOption[];
+  };
+  created_at: string;
+};
+export type ApprovalAnswer = { decision: ApprovalDecision; option_id?: string; note?: string };
+
+// --- v7: forms and secrets (decision 43) ----------------------------------------------------------------------
+
+export type InputFieldKind = "secret" | "text" | "select" | "confirm" | "path";
+export type InputField = {
+  id: string;
+  label: string;
+  kind: InputFieldKind;
+  options?: string[];
+  required?: boolean;
+  help?: string;
+};
+export type InputRequest = {
+  id: string;
+  agent_id: string;
+  agent_label: string;
+  turn_id: number;
+  title: string;
+  reason: string;
+  fields: InputField[];
+  created_at: string;
+};
+/** Submit with `values` by field id (strings; booleans for confirm fields), or skip. */
+export type InputAnswer = { skip?: boolean; values?: Record<string, string | boolean> };
+/** A stored secret: its name only. Agents use it as `secret:<name>`. */
+export type SecretInfo = { name: string; updated_at: string };

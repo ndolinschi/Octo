@@ -66,12 +66,6 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	handler := newACPSession(rt, orch.ID, target.agent.ID, orch.Model)
 	handler.orchestrator = true
 	handler.flat = target.agent.FlatRate
-	// The agent's usage counters are cumulative over its session, which outlives
-	// a turn: carry them across turns so a new turn's first update is a delta,
-	// not the whole session again.
-	s.mu.Lock()
-	handler.lastCost, handler.lastUsed = s.costSeen, s.usedSeen
-	s.mu.Unlock()
 	defer func() {
 		handler.mu.Lock()
 		cost, used := handler.lastCost, handler.lastUsed
@@ -86,6 +80,12 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 		return agent.Result{}, err
 	}
 	defer s.endTurn()
+	// The agent's usage counters are cumulative over its session, which outlives
+	// a turn: carry them across turns (and, via open, across a resumed session)
+	// so a turn's first update is a delta, not the whole session again.
+	s.mu.Lock()
+	handler.lastCost, handler.lastUsed = s.costSeen, s.usedSeen
+	s.mu.Unlock()
 	s.mu.Lock()
 	if s.reg != nil {
 		handler.setHarnessTools(s.reg)
@@ -213,8 +213,24 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	if have && stored.PluginAgent == ag.ID && stored.Model == t.recorded() && client.Capabilities().LoadSession {
 		err := s.loadWithFallback(ctx, client, ag.ID, stored.SessionID, cwd, servers)
 		if err == nil {
+			// The resumed session keeps counting from where it was: seed the
+			// counters with what it has reported so far, so its next
+			// usage_update is a delta (an agent that restarts its counters is
+			// handled as a restart by the delta logic).
+			uc, cancelU := dbCtx(ctx)
+			since, uerr := rt.db.ACPSessionSince(uc, orch.ID)
+			var cost float64
+			var tokens int64
+			if uerr == nil && since != "" {
+				cost, tokens, uerr = rt.db.ACPUsageSince(uc, orch.ID, since)
+			}
+			cancelU()
+			if uerr != nil {
+				rt.logErr("seed acp usage counters", uerr)
+			}
 			s.mu.Lock()
 			s.sessID = stored.SessionID
+			s.costSeen, s.usedSeen = cost, tokens
 			s.mu.Unlock()
 			return false, nil
 		}
