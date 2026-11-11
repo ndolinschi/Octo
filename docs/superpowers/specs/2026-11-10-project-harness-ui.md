@@ -562,6 +562,15 @@ monochrome dithered illustration):
     at 1440×900, 1100×700, 800×600, 640×480 and 390×700, and the screenshot script opens every dialog (New
     project with "Models and delegation" expanded, Settings, the pickers) at each. The desktop window has a
     minimum size of 640×480.
+52. **The empty conversation shows nothing the composer already says** (owner: "this info looks useless for
+    chat" — the Folders / Models / Agents summary card). The card is removed. An empty project is: the streak,
+    one line ("What should we work on in <project>?"), the composer centred at reading width, and under it the
+    same chips as everywhere (folder, model or agent, tier) — each chip *is* the setting and opens its picker.
+    Nothing else: no list of tiers, no list of available agents, no explanatory paragraph. Up to three starter
+    prompts may appear below the composer only when they are specific to this project (from its folder: "Explain
+    the structure of <repo>", "Review my uncommitted changes", "What changed since <last tag>?"); they fill the
+    composer, they do not send. General rule this follows from: a screen does not repeat configuration as prose —
+    configuration lives in controls, and details live in Settings.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
