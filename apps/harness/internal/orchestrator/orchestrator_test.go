@@ -19,6 +19,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 )
 
 type rig struct {
@@ -46,13 +47,18 @@ func newRigWith(t *testing.T, llm http.Handler, opts orchestrator.Options) *rig 
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
 	opts.Client, opts.MaxTurns = anthropicclient.New("k", srv.URL, ""), 10
+	if opts.Router == nil {
+		// As in production: probe the base URL, which only an Octo router answers.
+		opts.Router = router.New(context.Background(), srv.URL, "", router.WithCallRetryWait(100*time.Millisecond))
+	}
 	orch := orchestrator.New(store, hub, notes, opts)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = orch.Shutdown(ctx)
 	})
-	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: 3})
+	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: 3},
+		project.WithPrices(opts.Prices), project.WithRouter(opts.Router))
 	return &rig{store: store, hub: hub, orch: orch, svc: svc, notes: notes}
 }
 
@@ -141,6 +147,7 @@ type fakeReq struct {
 		InputSchema json.RawMessage `json:"input_schema"`
 	} `json:"tools"`
 	Msgs   []json.RawMessage `json:"messages"`
+	Stream bool              `json:"stream"`
 	System json.RawMessage   `json:"system"`
 }
 

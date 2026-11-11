@@ -24,6 +24,7 @@ type Server struct {
 	langs   LanguageServers
 	lsp     LSPSessions
 	limits  LimitSource
+	router  RouterInfo
 	ping    time.Duration
 }
 
@@ -31,6 +32,15 @@ type Server struct {
 type PluginSource interface {
 	Plugins() []plugins.Plugin
 }
+
+// RouterInfo is the Octo router detection GET /v1/config reports.
+type RouterInfo interface {
+	Enabled() bool
+	Capabilities() []string
+}
+
+// WithRouter reports the detected Octo router in GET /v1/config.
+func WithRouter(r RouterInfo) Option { return func(s *Server) { s.router = r } }
 
 // Option customizes the server.
 type Option func(*Server)

@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
@@ -36,6 +39,12 @@ type Loop struct {
 	NoPromptCaching bool
 	// Limits cap tool results returned to the model; zero fields mean defaults.
 	Limits tools.Limits
+	// Router, when it detected an Octo router, adds Hints to every request and
+	// supplies the served model, tier, trigger and cost of every response.
+	Router *router.Router
+	Hints  router.Hints
+	// Gate, when set, is checked before every request; its error stops the loop.
+	Gate func(ctx context.Context) error
 }
 
 // Run continues history (which must end with a user message already persisted
@@ -70,6 +79,11 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 		if err := ctx.Err(); err != nil {
 			return res, err
 		}
+		if l.Gate != nil {
+			if err := l.Gate(ctx); err != nil {
+				return res, err
+			}
+		}
 		params.Messages = messages
 		send := params
 		if !l.NoPromptCaching {
@@ -77,19 +91,24 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 			// reach the stored history.
 			send.Messages = withMessageBreakpoint(messages)
 		}
-		resp, err := l.call(ctx, send)
+		resp, routed, err := l.request(ctx, send)
 		if err != nil {
 			return res, err
 		}
-		u := Usage{
-			Model:            l.Model,
-			InputTokens:      resp.Usage.InputTokens,
-			OutputTokens:     resp.Usage.OutputTokens,
-			CacheReadTokens:  resp.Usage.CacheReadInputTokens,
-			CacheWriteTokens: resp.Usage.CacheCreationInputTokens,
-		}
+		u := l.usageOf(ctx, resp, routed)
 		res.Usage.add(u)
 		l.Sink.Usage(u)
+
+		summary, isCompaction, err := compactionSummary(routed.Trigger, resp.RawJSON())
+		if err != nil {
+			return res, err
+		}
+		if isCompaction {
+			if messages, err = l.compact(ctx, summary); err != nil {
+				return res, err
+			}
+			continue
+		}
 
 		toolUses, textParts := collectAssistant(resp.Content)
 		assistantMsg := resp.ToParam()
@@ -121,20 +140,25 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 	return res, ErrMaxTurns
 }
 
-func (l *Loop) call(ctx context.Context, params anthropic.MessageNewParams) (anthropic.Message, error) {
+func (l *Loop) call(ctx context.Context, params anthropic.MessageNewParams, opts []option.RequestOption, httpResp **http.Response) (anthropic.Message, error) {
 	if l.Stream {
-		return l.streamMessage(ctx, params)
+		return l.streamMessage(ctx, params, opts, httpResp)
 	}
-	full, err := l.Client.Messages.New(ctx, params)
+	full, err := l.Client.Messages.New(ctx, params, opts...)
 	if err != nil {
 		return anthropic.Message{}, err
 	}
 	return *full, nil
 }
 
-func (l *Loop) streamMessage(ctx context.Context, params anthropic.MessageNewParams) (anthropic.Message, error) {
-	stream := l.Client.Messages.NewStreaming(ctx, params)
+func (l *Loop) streamMessage(ctx context.Context, params anthropic.MessageNewParams, opts []option.RequestOption, httpResp **http.Response) (anthropic.Message, error) {
+	stream := l.Client.Messages.NewStreaming(ctx, params, opts...)
 	defer stream.Close()
+	if httpResp != nil && *httpResp != nil && (*httpResp).StatusCode < 400 &&
+		(*httpResp).Header.Get(router.HeaderTrigger) == router.TriggerCompact {
+		// A router compaction is a JSON body even when a stream was asked for.
+		return readJSONMessage((*httpResp).Body)
+	}
 	var message anthropic.Message
 	for stream.Next() {
 		event := stream.Current()

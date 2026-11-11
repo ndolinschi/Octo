@@ -29,6 +29,10 @@ type recorder struct {
 }
 
 func (r *recorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost { // the router probe's GET /health
+		r.next.ServeHTTP(w, req)
+		return
+	}
 	body, _ := io.ReadAll(req.Body)
 	r.mu.Lock()
 	r.bodies = append(r.bodies, body)

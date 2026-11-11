@@ -18,12 +18,35 @@ const (
 	DefaultAddr     = "127.0.0.1:8790"
 )
 
-// Models maps agent kinds and tiers to model ids.
+// Tier policies: how an Octo router treats the tier hint (see docs).
+const (
+	TierPolicyAuto    = "auto"
+	TierPolicyCeiling = "ceiling"
+	TierPolicyFixed   = "fixed"
+)
+
+// ValidTierPolicy reports whether p is auto, ceiling or fixed.
+func ValidTierPolicy(p string) bool {
+	return p == TierPolicyAuto || p == TierPolicyCeiling || p == TierPolicyFixed
+}
+
+// Models maps agent kinds and tiers to model ids, plus the project's tier
+// policy for an Octo router.
 type Models struct {
 	Orchestrator string `json:"orchestrator"`
 	Fast         string `json:"fast"`
 	Balanced     string `json:"balanced"`
 	Deep         string `json:"deep"`
+	// TierPolicy is auto, ceiling or fixed; empty means auto.
+	TierPolicy string `json:"tier_policy"`
+}
+
+// Policy returns TierPolicy, defaulting to auto.
+func (m Models) Policy() string {
+	if m.TierPolicy == "" {
+		return TierPolicyAuto
+	}
+	return m.TierPolicy
 }
 
 // ForTier returns the model id for a tier name, or "" for an unknown tier.
@@ -48,6 +71,7 @@ func defaultModels() Models {
 		Fast:         envOr("HARNESS_MODEL_FAST", "claude-haiku-5-5"),
 		Balanced:     envOr("HARNESS_MODEL_BALANCED", "claude-sonnet-5-5"),
 		Deep:         envOr("HARNESS_MODEL_DEEP", "claude-opus-5-5"),
+		TierPolicy:   TierPolicyAuto,
 	}
 }
 

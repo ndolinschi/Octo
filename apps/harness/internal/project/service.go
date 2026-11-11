@@ -8,10 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/budget"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 )
 
 // Turns is the orchestrator surface the service drives.
@@ -33,6 +35,7 @@ type Service struct {
 	turns    Turns
 	defaults Defaults
 	prices   prices.Table
+	router   *router.Router
 	now      func() time.Time
 }
 
@@ -41,6 +44,11 @@ type ServiceOption func(*Service)
 
 // WithPrices sets the table used to estimate API usage cost.
 func WithPrices(t prices.Table) ServiceOption { return func(s *Service) { s.prices = t } }
+
+// WithRouter lets project JSON include the spend an Octo router last reported.
+func WithRouter(r *router.Router) ServiceOption { return func(s *Service) { s.router = r } }
+
+func (s *Service) meter() budget.Meter { return budget.Meter{Prices: s.prices, Router: s.router} }
 
 func NewService(store *projectstore.Store, hub *events.Hub, turns Turns, defaults Defaults, opts ...ServiceOption) *Service {
 	s := &Service{store: store, hub: hub, turns: turns, defaults: defaults, now: time.Now}
@@ -122,7 +130,13 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
-	models := mergeModels(s.defaults.Models, in.Models)
+	models, err := mergeModels(s.defaults.Models, in.Models)
+	if err != nil {
+		return Project{}, err
+	}
+	if err := validBudget(in.BudgetUSD); err != nil {
+		return Project{}, err
+	}
 	modelsJSON, err := json.Marshal(models)
 	if err != nil {
 		return Project{}, err
@@ -130,6 +144,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	db, err := s.store.Create(ctx, projectstore.NewProject{
 		Name: strings.TrimSpace(*in.Name), Description: deref(in.Description), Instructions: deref(in.Instructions),
 		ModelsJSON: string(modelsJSON), MaxDepth: depth, Folders: folders, OrchestratorModel: models.Orchestrator,
+		BudgetUSD: in.BudgetUSD.Value,
 	})
 	if err != nil {
 		return Project{}, err
@@ -161,13 +176,21 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		patch.MaxDepth = in.MaxDepth
 	}
 	if in.Models != nil {
-		raw, err := json.Marshal(mergeModels(cur.Models, in.Models))
+		merged, err := mergeModels(cur.Models, in.Models)
+		if err != nil {
+			return Project{}, err
+		}
+		raw, err := json.Marshal(merged)
 		if err != nil {
 			return Project{}, err
 		}
 		js := string(raw)
 		patch.ModelsJSON = &js
 	}
+	if err := validBudget(in.BudgetUSD); err != nil {
+		return Project{}, err
+	}
+	patch.SetBudget, patch.BudgetUSD = in.BudgetUSD.Set, in.BudgetUSD.Value
 	var folders []projectstore.Folder
 	if in.Folders != nil {
 		if folders, err = resolveFolders(*in.Folders); err != nil {

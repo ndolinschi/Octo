@@ -2,6 +2,7 @@ package projectstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
 
@@ -41,6 +42,14 @@ type UsageRecord struct {
 	CostUSD *float64
 	// Context, when set, is stored on the agent in the same transaction.
 	Context *ContextWindow
+	// ServedModel, Tier, RouteTrigger and RouterRequestID come from an Octo
+	// router's result headers and call record; empty when there is none.
+	ServedModel     string
+	Tier            string
+	RouteTrigger    string
+	RouterRequestID string
+	// CostEstimated marks CostUSD as the router's own estimate, not a reported price.
+	CostEstimated bool
 	// CreatedAt overrides the row time (RFC 3339 UTC, as Now returns); empty means now.
 	CreatedAt string
 }
@@ -74,9 +83,11 @@ func (d *DB) RecordUsage(ctx context.Context, r UsageRecord) (Agent, error) {
 		cost = *r.CostUSD
 	}
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO usage (agent_id, model, source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.AgentID, r.Model, r.Source, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens, cost, at)
+		`INSERT INTO usage (agent_id, model, source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at,
+			served_model, tier, route_trigger, router_request_id, cost_estimated)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.AgentID, r.Model, r.Source, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens, cost, at,
+		nullable(r.ServedModel), nullable(r.Tier), nullable(r.RouteTrigger), nullable(r.RouterRequestID), r.CostEstimated)
 	if err != nil {
 		return Agent{}, err
 	}
@@ -84,6 +95,13 @@ func (d *DB) RecordUsage(ctx context.Context, r UsageRecord) (Agent, error) {
 		return Agent{}, err
 	}
 	return d.Agent(ctx, r.AgentID)
+}
+
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // SetContext stores an agent's context occupancy.
@@ -103,20 +121,26 @@ func (d *DB) SetContext(ctx context.Context, id string, w ContextWindow) (Agent,
 type UsageRow struct {
 	Key, Label, Model, Source string
 	Reported                  bool
-	InputTokens               int64
-	OutputTokens              int64
-	CacheReadTokens           int64
-	CacheWriteTokens          int64
-	Requests                  int64
+	// ReportedEstimated is set when the reported cost is a router estimate.
+	ReportedEstimated bool
+	InputTokens       int64
+	OutputTokens      int64
+	CacheReadTokens   int64
+	CacheWriteTokens  int64
+	Requests          int64
 	// ReportedCostUSD is the summed source-reported cost (zero unless Reported).
 	ReportedCostUSD float64
 }
+
+// servedModel is the model that answered: the router's when it named one,
+// else the one the harness asked for.
+const servedModel = "COALESCE(NULLIF(u.served_model, ''), u.model)"
 
 // keyExprs maps a group to the SQL key and label expressions. The project
 // group has a single bucket per database; its key is filled in by UsageRows.
 var keyExprs = map[UsageGroup][2]string{
 	GroupDay:     {"substr(u.created_at, 1, 10)", "substr(u.created_at, 1, 10)"},
-	GroupModel:   {"u.model", "u.model"},
+	GroupModel:   {servedModel, servedModel},
 	GroupAgent:   {"u.agent_id", "COALESCE(a.role, u.agent_id)"},
 	GroupProject: {"''", "''"},
 }
@@ -128,12 +152,12 @@ func (d *DB) UsageRows(ctx context.Context, from, to string, g UsageGroup) ([]Us
 	if !ok {
 		return nil, fmt.Errorf("projectstore: unknown usage group %q", g)
 	}
-	rows, err := d.sql.QueryContext(ctx, `SELECT `+exprs[0]+`, `+exprs[1]+`, u.model, u.source, u.cost_usd IS NOT NULL,
+	rows, err := d.sql.QueryContext(ctx, `SELECT `+exprs[0]+`, `+exprs[1]+`, `+servedModel+`, u.source, u.cost_usd IS NOT NULL, u.cost_estimated,
 		SUM(u.input_tokens), SUM(u.output_tokens), SUM(u.cache_read_tokens), SUM(u.cache_write_tokens),
 		COUNT(*), COALESCE(SUM(u.cost_usd), 0)
 		FROM usage u LEFT JOIN agents a ON a.id = u.agent_id
 		WHERE u.created_at >= ? AND u.created_at < ?
-		GROUP BY 1, 2, 3, 4, 5`, from, to)
+		GROUP BY 1, 2, 3, 4, 5, 6`, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +165,7 @@ func (d *DB) UsageRows(ctx context.Context, from, to string, g UsageGroup) ([]Us
 	var out []UsageRow
 	for rows.Next() {
 		var r UsageRow
-		if err := rows.Scan(&r.Key, &r.Label, &r.Model, &r.Source, &r.Reported, &r.InputTokens, &r.OutputTokens,
+		if err := rows.Scan(&r.Key, &r.Label, &r.Model, &r.Source, &r.Reported, &r.ReportedEstimated, &r.InputTokens, &r.OutputTokens,
 			&r.CacheReadTokens, &r.CacheWriteTokens, &r.Requests, &r.ReportedCostUSD); err != nil {
 			return nil, err
 		}
@@ -160,4 +184,45 @@ func (d *DB) UsageRows(ctx context.Context, from, to string, g UsageGroup) ([]Us
 		}
 	}
 	return out, nil
+}
+
+// UsageEntry is one stored usage row, oldest first in UsageLog.
+type UsageEntry struct {
+	AgentID         string
+	Model           string
+	ServedModel     string
+	Tier            string
+	RouteTrigger    string
+	RouterRequestID string
+	Source          string
+	InputTokens     int64
+	OutputTokens    int64
+	CostUSD         *float64
+	CostEstimated   bool
+	CreatedAt       string
+}
+
+// UsageLog returns every usage row in insertion order.
+func (d *DB) UsageLog(ctx context.Context) ([]UsageEntry, error) {
+	rows, err := d.sql.QueryContext(ctx, `SELECT agent_id, model, COALESCE(served_model, ''), COALESCE(tier, ''),
+		COALESCE(route_trigger, ''), COALESCE(router_request_id, ''), source, input_tokens, output_tokens, cost_usd,
+		cost_estimated, created_at FROM usage ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UsageEntry
+	for rows.Next() {
+		var e UsageEntry
+		var cost sql.NullFloat64
+		if err := rows.Scan(&e.AgentID, &e.Model, &e.ServedModel, &e.Tier, &e.RouteTrigger, &e.RouterRequestID,
+			&e.Source, &e.InputTokens, &e.OutputTokens, &cost, &e.CostEstimated, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		if cost.Valid {
+			e.CostUSD = &cost.Float64
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }

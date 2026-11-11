@@ -11,6 +11,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
@@ -55,6 +56,9 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	if in.Role == "" || in.Title == "" || in.Task == "" || !tier.Valid() {
 		return "spawn_agent requires role, title, task and tier (fast|balanced|deep)", true, nil
 	}
+	if be := rt.budgetReached(ctx); be != nil {
+		return be.Error(), true, nil
+	}
 	var ext *acpTarget
 	model := rt.models.ForTier(in.Tier)
 	if in.Agent == "" && strings.TrimSpace(in.Model) != "" {
@@ -94,6 +98,10 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 			return "(sub-agent returned no report)", false, nil
 		}
 		return rt.o.opts.Limits.CapReport(text), false, nil
+	case router.IsBudget(err):
+		// Not a recoverable tool error: stop the whole turn, no more upstream calls.
+		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
+		return "", false, err
 	case ctx.Err() != nil || errors.Is(err, errAgentCancelled):
 		rt.settle(ctx, child.ID, projectstore.StatusCancelled, "", "")
 		return "sub-agent cancelled", true, nil

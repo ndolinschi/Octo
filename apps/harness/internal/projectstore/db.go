@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS project (
 	models_json TEXT NOT NULL,
 	max_depth INTEGER NOT NULL,
 	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL
+	updated_at TEXT NOT NULL,
+	budget_usd REAL
 );
 CREATE TABLE IF NOT EXISTS folders (
 	id TEXT PRIMARY KEY,
@@ -69,9 +70,22 @@ CREATE TABLE IF NOT EXISTS usage (
 	cache_read_tokens INTEGER NOT NULL DEFAULT 0,
 	cache_write_tokens INTEGER NOT NULL DEFAULT 0,
 	cost_usd REAL,
+	created_at TEXT NOT NULL,
+	served_model TEXT,
+	tier TEXT,
+	route_trigger TEXT,
+	router_request_id TEXT,
+	cost_estimated INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS usage_created ON usage (created_at);
+CREATE TABLE IF NOT EXISTS compactions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	agent_id TEXT NOT NULL,
+	summary TEXT NOT NULL,
+	upto_message_id INTEGER NOT NULL,
 	created_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS usage_created ON usage (created_at);`
+CREATE INDEX IF NOT EXISTS compactions_agent ON compactions (agent_id, id);`
 
 // DB is one project's database. All methods are safe for concurrent use.
 type DB struct {
@@ -84,9 +98,9 @@ func (d *DB) ID() string { return d.id }
 func (d *DB) init(ctx context.Context, in NewProject) error {
 	now := Now()
 	_, err := d.sql.ExecContext(ctx,
-		`INSERT INTO project (id, name, description, instructions, models_json, max_depth, created_at, updated_at)
-		 VALUES (1, ?, ?, ?, ?, ?, ?, ?)`,
-		in.Name, in.Description, in.Instructions, in.ModelsJSON, in.MaxDepth, now, now)
+		`INSERT INTO project (id, name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd)
+		 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		in.Name, in.Description, in.Instructions, in.ModelsJSON, in.MaxDepth, now, now, in.BudgetUSD)
 	if err != nil {
 		return err
 	}
@@ -99,11 +113,15 @@ func (d *DB) init(ctx context.Context, in NewProject) error {
 
 func (d *DB) Info(ctx context.Context) (Project, error) {
 	p := Project{ID: d.id}
+	var budget sql.NullFloat64
 	err := d.sql.QueryRowContext(ctx,
-		`SELECT name, description, instructions, models_json, max_depth, created_at, updated_at FROM project WHERE id = 1`,
-	).Scan(&p.Name, &p.Description, &p.Instructions, &p.ModelsJSON, &p.MaxDepth, &p.CreatedAt, &p.UpdatedAt)
+		`SELECT name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd FROM project WHERE id = 1`,
+	).Scan(&p.Name, &p.Description, &p.Instructions, &p.ModelsJSON, &p.MaxDepth, &p.CreatedAt, &p.UpdatedAt, &budget)
 	if err == sql.ErrNoRows {
 		return p, ErrNotFound
+	}
+	if budget.Valid {
+		p.BudgetUSD = &budget.Float64
 	}
 	return p, err
 }
@@ -116,6 +134,13 @@ func (d *DB) UpdateInfo(ctx context.Context, patch InfoPatch) error {
 	set.str("models_json", patch.ModelsJSON)
 	if patch.MaxDepth != nil {
 		set.add("max_depth", *patch.MaxDepth)
+	}
+	if patch.SetBudget {
+		var v any
+		if patch.BudgetUSD != nil {
+			v = *patch.BudgetUSD
+		}
+		set.add("budget_usd", v)
 	}
 	set.add("updated_at", Now())
 	return set.exec(ctx, d.sql, "project", "id = 1")

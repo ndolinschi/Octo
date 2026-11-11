@@ -5,10 +5,19 @@ import (
 	"fmt"
 )
 
-// agentColumnsAdded lists agents columns added after the first release.
-var agentColumnsAdded = []struct{ name, ddl string }{
-	{"context_used", "INTEGER"},
-	{"context_size", "INTEGER"},
+type column struct{ name, ddl string }
+
+// columnsAdded lists, per table, the columns added after the first release.
+var columnsAdded = []struct {
+	table   string
+	columns []column
+}{
+	{"agents", []column{{"context_used", "INTEGER"}, {"context_size", "INTEGER"}}},
+	{"project", []column{{"budget_usd", "REAL"}}},
+	{"usage", []column{
+		{"served_model", "TEXT"}, {"tier", "TEXT"}, {"route_trigger", "TEXT"}, {"router_request_id", "TEXT"},
+		{"cost_estimated", "INTEGER NOT NULL DEFAULT 0"},
+	}},
 }
 
 // migrate brings a project database up to the current schema. It is
@@ -18,16 +27,18 @@ func (d *DB) migrate(ctx context.Context) error {
 	if _, err := d.sql.ExecContext(ctx, projectSchema); err != nil {
 		return fmt.Errorf("project schema: %w", err)
 	}
-	have, err := d.columns(ctx, "agents")
-	if err != nil {
-		return err
-	}
-	for _, c := range agentColumnsAdded {
-		if have[c.name] {
-			continue
+	for _, t := range columnsAdded {
+		have, err := d.columns(ctx, t.table)
+		if err != nil {
+			return err
 		}
-		if _, err := d.sql.ExecContext(ctx, "ALTER TABLE agents ADD COLUMN "+c.name+" "+c.ddl); err != nil {
-			return fmt.Errorf("add agents.%s: %w", c.name, err)
+		for _, c := range t.columns {
+			if have[c.name] {
+				continue
+			}
+			if _, err := d.sql.ExecContext(ctx, "ALTER TABLE "+t.table+" ADD COLUMN "+c.name+" "+c.ddl); err != nil {
+				return fmt.Errorf("add %s.%s: %w", t.table, c.name, err)
+			}
 		}
 	}
 	return nil

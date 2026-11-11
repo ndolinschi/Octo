@@ -26,6 +26,10 @@ type Project struct {
 	Models              config.Models         `json:"models"`
 	MaxDepth            int                   `json:"max_depth"`
 	OrchestratorAgentID string                `json:"orchestrator_agent_id"`
+	// BudgetUSD is the spend cap (null: none); SpentUSD the last known spend
+	// (null: unknown).
+	BudgetUSD *float64 `json:"budget_usd"`
+	SpentUSD  *float64 `json:"spent_usd"`
 }
 
 func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error) {
@@ -52,6 +56,14 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 			CreatedAt: info.CreatedAt, UpdatedAt: info.UpdatedAt,
 		},
 		Instructions: info.Instructions, Folders: folders, Models: models, MaxDepth: info.MaxDepth,
+		BudgetUSD: info.BudgetUSD,
+	}
+	spent, known, err := s.meter().Spent(ctx, db)
+	if err != nil {
+		return Project{}, err
+	}
+	if known {
+		p.SpentUSD = &spent
 	}
 	for _, a := range agents {
 		if a.ParentID == nil {

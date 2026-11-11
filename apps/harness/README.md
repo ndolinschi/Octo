@@ -184,6 +184,16 @@ ACP agents also report context occupancy: `context_used` and `context_size` on t
 
 **Not read:** subscription plan limits (Claude Pro/Max, ChatGPT Plus/Pro, Google AI plans). No documented programmatic source exists for them, so the harness neither reads CLI credentials nor calls undocumented endpoints; those limits are shown by the agent's own CLI. OpenRouter key info is not polled in Phase A.
 
+## Octo router integration (I1)
+
+When `--base-url` points at an Octo router (detected through `GET /health`; use the `/autoroute` path), the harness sends hints (`x-octo-budget-key`, `-agent-role`, `-agent-depth`, `-tier-hint`, `-tier-policy`, `-task`, `-budget-usd`), records the served model, tier, trigger and the router's cost per request, enforces the project's budget and applies router compactions. Details: [`docs/architecture.md`](docs/architecture.md#working-with-the-octo-router). Check it end to end with `bash scripts/e2e-router.sh` (needs `cargo build -p octo`; uses ports 8811, 8812, 8815, 8816).
+
+API additions:
+
+- `GET /v1/config` also returns `router` (bool) and `router_capabilities` (string array, empty without a router).
+- Project JSON (`GET/POST/PATCH /v1/projects`) gains `budget_usd` (number or null) and `spent_usd` (number or null, last known spend), and `models.tier_policy` (`auto` | `ceiling` | `fixed`, default `auto`). `POST` and `PATCH` accept `budget_usd` (> 0; `null` on PATCH removes it) and `models.tier_policy`; invalid values are 400 `invalid_request`.
+- `/v1/usage` with a router: `group=model` buckets are keyed by the served model; `cost_usd` is the router's figure (`cost_estimated` true when the router estimated it).
+
 ## Data layout
 
 Under `--data-dir` (default `./data/harness`):

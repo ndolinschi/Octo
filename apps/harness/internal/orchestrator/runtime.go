@@ -134,6 +134,9 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 
 		NoPromptCaching: rt.o.opts.NoPromptCaching,
 		Limits:          rt.o.opts.Limits,
+		Router:          rt.o.opts.Router,
+		Hints:           rt.hints(a),
+		Gate:            rt.gate(),
 	}
 	return loop.Run(ctx, history)
 }

@@ -12,7 +12,14 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	d := s.svc.Defaults()
-	writeJSON(w, http.StatusOK, map[string]any{"default_models": d.Models, "default_max_depth": d.MaxDepth})
+	caps := []string{}
+	if s.router != nil && s.router.Enabled() {
+		caps = s.router.Capabilities()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"default_models": d.Models, "default_max_depth": d.MaxDepth,
+		"router": s.router != nil && s.router.Enabled(), "router_capabilities": caps,
+	})
 }
 
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {

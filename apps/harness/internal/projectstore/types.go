@@ -48,6 +48,8 @@ type Project struct {
 	MaxDepth     int
 	CreatedAt    string
 	UpdatedAt    string
+	// BudgetUSD is the project's spend cap; nil means none.
+	BudgetUSD *float64
 }
 
 type Folder struct {
@@ -119,6 +121,9 @@ type InfoPatch struct {
 	Instructions *string
 	ModelsJSON   *string
 	MaxDepth     *int
+	// SetBudget says BudgetUSD is provided; a nil BudgetUSD then clears the budget.
+	SetBudget bool
+	BudgetUSD *float64
 }
 
 type NewProject struct {
@@ -128,6 +133,7 @@ type NewProject struct {
 	ModelsJSON   string
 	MaxDepth     int
 	Folders      []Folder
+	BudgetUSD    *float64
 	// OrchestratorModel is recorded on the project's root agent row.
 	OrchestratorModel string
 }

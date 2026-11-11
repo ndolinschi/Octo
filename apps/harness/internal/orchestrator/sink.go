@@ -62,12 +62,22 @@ func (s *agentSink) record(u agent.Usage, w *projectstore.ContextWindow) {
 		InputTokens: u.InputTokens, OutputTokens: u.OutputTokens,
 		CacheReadTokens: u.CacheReadTokens, CacheWriteTokens: u.CacheWriteTokens,
 		CostUSD: u.CostUSD, Context: w,
+		ServedModel: u.ServedModel, Tier: u.Tier, RouteTrigger: u.Trigger, RouterRequestID: u.RequestID,
+		CostEstimated: u.CostEstimated,
 	})
 	if err != nil {
 		s.rt.logErr("record usage", err)
 		return
 	}
 	s.rt.publishAgent(events.AgentUpdated, a)
+}
+
+// Compacted stores a router-made summary as the agent's compacted history.
+func (s *agentSink) Compacted(ctx context.Context, summary string) error {
+	c, cancel := dbCtx(ctx)
+	defer cancel()
+	_, err := s.rt.db.AddCompaction(c, s.agentID, summary)
+	return err
 }
 
 // setContext stores the context window without writing a usage row.

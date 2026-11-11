@@ -11,7 +11,9 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
@@ -39,6 +41,10 @@ type Options struct {
 	Remote []tools.Def
 	// Agents are the plugin-provided ACP agents; only available ones are offered.
 	Agents []plugins.Agent
+	// Router is the detected Octo router (nil: the base URL is not one).
+	Router *router.Router
+	// Prices estimate cost for the harness's own budget enforcement.
+	Prices prices.Table
 }
 
 // Orchestrator runs project turns: one at a time per project, each a tree of agents.

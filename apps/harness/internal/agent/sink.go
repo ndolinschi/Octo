@@ -17,8 +17,17 @@ type Sink interface {
 	Usage(u Usage)
 }
 
+// Compactor is implemented by sinks that keep compaction summaries; the loop
+// calls Compacted when an Octo router answered with one (see compactionSummary).
+type Compactor interface {
+	Compacted(ctx context.Context, summary string) error
+}
+
 // Usage is the token usage of one model response. Model is the model the
 // request asked for; CostUSD is a source-reported cost, nil when there is none.
+// The fields after CostUSD are only set with an Octo router in the path:
+// ServedModel is the model that answered, CostEstimated says CostUSD is the
+// router's own estimate.
 type Usage struct {
 	Model            string
 	InputTokens      int64
@@ -26,6 +35,12 @@ type Usage struct {
 	CacheReadTokens  int64
 	CacheWriteTokens int64
 	CostUSD          *float64
+
+	ServedModel   string
+	Tier          string
+	Trigger       string
+	RequestID     string
+	CostEstimated bool
 }
 
 func (u *Usage) add(o Usage) {

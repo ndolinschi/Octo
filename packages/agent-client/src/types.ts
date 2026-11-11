@@ -9,7 +9,9 @@ export const DEFAULT_BRIDGE_URL = "http://127.0.0.1:8790";
 
 export type Tier = "fast" | "balanced" | "deep";
 export type AgentStatus = "idle" | "running" | "completed" | "failed" | "cancelled";
-export type Models = { orchestrator: string; fast: string; balanced: string; deep: string };
+/** How an Octo router treats the tier hint: auto (may go lower or higher), ceiling (never above), fixed (the hint's tier). */
+export type TierPolicy = "auto" | "ceiling" | "fixed";
+export type Models = { orchestrator: string; fast: string; balanced: string; deep: string; tier_policy?: TierPolicy };
 export type Folder = { id: string; label: string; path: string };
 
 export type ProjectInput = {
@@ -19,6 +21,8 @@ export type ProjectInput = {
   folders?: { path: string; label?: string }[];
   models?: Partial<Models>;
   max_depth?: number;
+  /** Spend cap in USD (> 0); null removes it (PATCH only). */
+  budget_usd?: number | null;
 };
 
 export type ProjectSummary = {
@@ -38,6 +42,10 @@ export type Project = ProjectSummary & {
   models: Models;
   max_depth: number;
   orchestrator_agent_id: string;
+  /** Spend cap in USD; null: none. */
+  budget_usd?: number | null;
+  /** Last known spend in USD (router report or usage rows); null: unknown. */
+  spent_usd?: number | null;
 };
 
 export type Agent = {
@@ -147,7 +155,14 @@ export type BridgeEvent =
 
 export type BridgeEventType = BridgeEvent["type"];
 
-export type BridgeConfig = { default_models: Models; default_max_depth: number };
+export type BridgeConfig = {
+  default_models: Models;
+  default_max_depth: number;
+  /** An Octo router was detected behind the harness's base URL. */
+  router?: boolean;
+  /** Capabilities the router announced (autoroute, route_hints, result_headers, budget_key). */
+  router_capabilities?: string[];
+};
 
 export type PluginLanguageServer = {
   id: string;

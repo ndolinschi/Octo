@@ -24,6 +24,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/remote"
 )
@@ -98,6 +99,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		slog.Warn("ignoring price table; costs will be unknown", "err", err)
 	}
 	limitStore := limits.NewStore()
+	octo := router.New(ctx, cfg.BaseURL, cfg.OctoKey)
+	slog.Info("octo router", "detected", octo.Enabled(), "capabilities", octo.Capabilities())
 
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
@@ -110,9 +113,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Limits:          cfg.Limits,
 		Remote:          remoteReg.All(),
 		Agents:          pluginReg.Agents(),
+		Router:          octo,
+		Prices:          priceTable,
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth},
-		project.WithPrices(priceTable))
+		project.WithPrices(priceTable), project.WithRouter(octo))
 	if err := svc.Recover(ctx); err != nil {
 		return fmt.Errorf("restart recovery: %w", err)
 	}
@@ -126,7 +131,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	defer cancelRequests()
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
-			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore)),
+			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo)),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}

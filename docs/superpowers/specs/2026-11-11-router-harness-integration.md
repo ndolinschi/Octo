@@ -109,6 +109,28 @@ Built in `apps/router` (20 new tests in `tests/harness_integration.rs`; 219 pass
   shorter the router forwards normally with trigger `compact_not_applied`.
 - Hints are also read on `/autoroute/v1/chat/completions`.
 
+## As built — I1, harness side (2026-11-11)
+
+Built in `apps/harness` (packages `internal/router`, `internal/budget`, `internal/fakerouter`; type-only additions in
+`packages/agent-client`). Verified by the orchestrator: Go gates, and `apps/harness/scripts/e2e-router.sh` against the
+real router with a mock upstream — acceptance 1, 2 and 5 pass. **Not verified against the real router:** compaction
+(acceptance 4; the mock upstream cannot produce it — covered with the fake router only), the served tier under
+`ceiling` / `fixed` (acceptance 3; covered separately on each side, not jointly), a real classifier, a real upstream.
+
+- **The base URL must be the router's autoroute path** (`--base-url http://host:port/autoroute`); hints and result
+  headers exist only there.
+- Detection runs at start-up; a router that appears later is found by a re-probe at most once a minute.
+- Last known spend = `x-octo-spent-usd` + the call record's cost; `spent_usd` in project JSON is the larger of that
+  and the usage-row sum (`null` while nothing has a cost).
+- A call record of `cost_usd: 0` / `estimated` is treated as "no price": the harness estimates from its own
+  `prices.toml` by served model, else reports `null`.
+- A 402 writes a zero-token usage row; the error reaches every parent so the turn ends.
+- A compaction summary is stored in a `compactions` table (`upto_message_id`), not as an assistant message; the UI
+  does not show it and no event is emitted (to do with the UI pass: a "History compacted" marker).
+- The budget header is read at the start of a turn; a PATCH mid-turn applies to the header from the next turn.
+- New API fields: `GET /v1/config` `router`, `router_capabilities`; project `budget_usd`, `spent_usd`,
+  `models.tier_policy`.
+
 ## I2 — a routing decision for delegation (after I1)
 
 `POST /autoroute/v1/route` — the harness asks before it spawns a sub-agent whose tier the orchestrator left open

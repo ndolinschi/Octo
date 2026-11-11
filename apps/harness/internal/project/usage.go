@@ -185,6 +185,7 @@ func addRow(b *UsageBucket, c *costSum, r projectstore.UsageRow, tab prices.Tabl
 	case r.Reported:
 		c.usd += r.ReportedCostUSD
 		c.any = true
+		c.estimated = c.estimated || r.ReportedEstimated
 	case r.Source == projectstore.SourceAPI:
 		est, ok := tab.Estimate(r.Model, prices.Tokens{
 			Input: r.InputTokens, Output: r.OutputTokens, CacheRead: r.CacheReadTokens, CacheWrite: r.CacheWriteTokens,

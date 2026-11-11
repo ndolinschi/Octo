@@ -206,6 +206,31 @@ Messages store SDK-shaped JSON from `json.Marshal(anthropic.MessageParam)`. **`h
 
 Set `ANTHROPIC_API_KEY` to the key the upstream expects (OpenRouter bearer or Anthropic key, depending on Octo config). When Octo has `server.client_auth_key`, set `HARNESS_OCTO_KEY` or `--octo-key` so the SDK sends `x-octo-key`.
 
+### Working with the Octo router
+
+Spec: [`2026-11-11-router-harness-integration.md`](../../../docs/superpowers/specs/2026-11-11-router-harness-integration.md) (I1). Code: `internal/router` (detection, hint headers, result headers, call records, spend), `internal/agent/route.go` and `compact.go` (the request path), `internal/budget` (spend), `internal/orchestrator/route.go` (hints, budget gate). Tests use `internal/fakerouter`, a contract-level fake; `scripts/e2e-router.sh` runs the same flows against a real router and a mock upstream.
+
+**Detection.** At start-up `GET {origin of --base-url}/health` (2 s timeout, no `x-octo-key`). `"service":"octo"` turns the integration on and `GET /v1/config` reports `router: true` and `router_capabilities`. When the probe fails the integration stays off and is re-probed in the background at most once a minute (the check runs when `Enabled()` is next asked, never on the request path), so a router started after the harness is found within a minute. Any other service, an error status or an unreachable host leaves the harness exactly as it was without the router: no `x-octo-*` request header is sent (except `x-octo-key` when you configured one) and nothing below applies. Use the router's autoroute path as base URL (`--base-url http://127.0.0.1:8080/autoroute`): the hints and result headers are only on `/autoroute/v1/messages`.
+
+**Hints sent on every Messages request** (older routers ignore unknown headers):
+
+| Header | Value |
+| --- | --- |
+| `x-octo-budget-key` | the project id, so all agents of a project (orchestrator and every sub-agent) share one budget |
+| `x-octo-budget-usd` | the project's `budget_usd`, only when one is set (the router ignores it without the budget key) |
+| `x-octo-agent-role` / `x-octo-agent-depth` | `orchestrator` or `sub`; `0`, `1`, ... |
+| `x-octo-tier-hint` | the tier the harness would have used: a sub-agent's spawn tier; for the orchestrator the tier whose model it runs on (balanced when it is none of them) |
+| `x-octo-tier-policy` | the project's `models.tier_policy`: `auto` (default), `ceiling` (never above the hint), `fixed` (the hint's tier). Validated: anything else is a 400 on create/PATCH |
+| `x-octo-task` | sub-agents only: the first 200 characters of the task title, percent-encoded |
+
+**Ledger.** Every usage row gains `served_model`, `tier`, `route_trigger` (stored as the router sent it, no fixed list) and `router_request_id`. After the response body has ended the harness reads `GET /autoroute/v1/calls/{x-octo-request-id}` once, and once more after 200 ms if it was still 404. With the record, `cost_usd` is the router's figure and `cost_estimated` is true when the record's `cost_source` is `estimated`. Without it (record never ready, router old, request failed before the router answered) `cost_usd` stays empty and the usage report estimates it from `prices.toml` by the served model, marked estimated; with no price the cost is unknown (`null`), never 0. A record of `cost_usd: 0` with source `estimated` means the router knew no price and is treated the same way. Failed, rejected and cancelled requests that carry a request id get a row too (tokens from the record, else what the stream had delivered). `/v1/usage?group=model` groups by the served model, falling back to the requested one; `agent_id`, `day` and `project` groups are unchanged. Migration: `ALTER TABLE usage ADD COLUMN` for the five new columns, `project.budget_usd`, and a new `compactions` table, all when missing, so Phase A databases open unchanged.
+
+**Budget.** `PATCH /v1/projects/{id}` takes `budget_usd` (a number > 0, `null` removes it); project JSON returns `budget_usd` and `spent_usd` (the larger of the router's last report for the project, which is the header spend plus the call's cost, and the sum of the usage rows; `null` while nothing has a cost). A 402 from the router settles the agent as failed with `Project budget reached ($X of $Y)` (X, Y from the 402's `x-octo-spent-usd` / `x-octo-budget-usd`), the error travels up through every parent, so the turn ends with that message and no further request is made. `spawn_agent` refuses to start a sub-agent once the last known spend is at or over the budget and returns the same message as a tool error. Without a router (or one that does not announce `budget_key`) the harness enforces the budget itself: before every request it sums the project's usage rows (reported costs plus `prices.toml` estimates); unknown prices mean unknown spend and no enforcement.
+
+**Compaction.** The router answers a compaction with `x-octo-trigger: compact` and the upstream's Messages JSON as a body, never a stream even when one was requested; it succeeded when the status is 2xx and `stop_reason` is `compaction`. The loop reads the summary from the `compaction` content block's `content` string, else the concatenated `text` blocks (`compactionSummary` in `internal/agent/compact.go`, the one function to change if the format changes). A failed compaction ends the turn with an error and leaves the history alone. On success the response is not stored as a message; the summary goes to the `compactions` table (`upto_message_id` = every message stored so far) and the loop continues with a single user message that carries the summary. The raw messages stay in `messages` for the UI. The next turn of the orchestrator rebuilds its history from the latest compaction plus the messages after it (`loadHistory`). The compaction call has its own usage row with trigger `compact`.
+
+**Without a router** nothing above is sent or recorded except the harness-side budget (`budget_usd`), the `tier_policy` setting (stored, unused) and an empty `served_model`.
+
 ## CLI surface
 
 | Command | Purpose |
