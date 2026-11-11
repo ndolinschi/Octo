@@ -32,7 +32,8 @@ export function TeamLine({
   const roles = teamRoles(team);
   const box = useRef<HTMLDivElement>(null);
   const { count: fit, textFits } = useFitCount(box, roles.map((r) => `${r.role}${r.count}${r.status}`).join("|"));
-  const text = orchestrator.kind !== "working" && orchestrator.kind !== "new" ? teamLine(team.length, null, 0) : null;
+  // A failed turn says "Failed" in the header; "Worked alone" beside it would contradict it (decision 53).
+  const text = orchestrator.kind === "idle" ? teamLine(team.length, null, 0) : null;
   const collapsed = text !== null && !textFits ? text : null;
   useEffect(() => onCollapsed?.(collapsed), [collapsed, onCollapsed]);
   if (orchestrator.kind === "new") return <CanCallOn />;
@@ -40,7 +41,7 @@ export function TeamLine({
   const rest = roles.slice(shown.length).reduce((n, r) => n + r.count, 0);
   return (
     <div ref={box} data-team-line role="group" aria-label="Team" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-      {orchestrator.kind !== "working" && (
+      {text !== null && (
         // Decision 47: never cut mid-word — when it does not fit it leaves the line (kept for measuring) for the "⋯" menu.
         <span
           data-fit-fixed

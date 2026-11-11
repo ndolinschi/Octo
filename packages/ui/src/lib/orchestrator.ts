@@ -37,13 +37,16 @@ export function liveOrchestratorState(state: ProjectState, projectStatus: "idle"
   return orchestratorState(agents, projectStatus);
 }
 
-/** One line: "Working, 3 agents", "Working", "Needs you", "Idle, 2h ago", "No requests yet" (no "·" joiners: craft rule). */
+/**
+ * One line: "Working, 3 agents", "Working", "Failed", "Idle, 2h ago", "No requests yet" (no "·" joiners: craft rule). A
+ * failed turn says "Failed" (decision 53): the project is still in the "Needs you" triage group, its ring the alert.
+ */
 export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string): string {
   switch (s.kind) {
     case "working":
       return s.agents.length === 0 ? "Working" : `Working, ${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}`;
     case "needs":
-      return "Needs you";
+      return "Failed";
     case "idle": {
       const at = s.at ?? fallbackAt;
       return at ? `Idle, ${timeAgo(at, now)}` : "Idle";

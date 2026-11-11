@@ -149,3 +149,9 @@ export function turnWarning(error: string | null | undefined): string | null {
   const text = error.replace(/^warning:\s*/i, "").trim();
   return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : null;
 }
+
+/** Decision 57: the request rail appears from five requests (fewer are all on screen or one scroll away). */
+export const RAIL_MIN_REQUESTS = 5;
+export function showRail(requests: number): boolean {
+  return requests >= RAIL_MIN_REQUESTS;
+}

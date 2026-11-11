@@ -21,10 +21,12 @@ export function Popover(props: {
   /** Opens above/below this element instead of the anchor (e.g. the whole composer, not its footer). */
   edge?: () => HTMLElement | null;
   align?: "start" | "end";
+  /** Gap to the anchor (default 6; a composer chip's picker sits 4px from it, decision 56). */
+  gap?: number;
   className?: string;
   children: ReactNode;
 }) {
-  const { anchor, onClose, side = "bottom", align = "start" } = props;
+  const { anchor, onClose, side = "bottom", align = "start", gap = GAP } = props;
   const edge = useLatest(props.edge);
   const ref = useRef<HTMLDivElement>(null);
   const state = usePresence();
@@ -39,18 +41,28 @@ export function Popover(props: {
       const r = a.getBoundingClientRect();
       const v = edge.current?.()?.getBoundingClientRect() ?? r;
       const { width, height } = el.getBoundingClientRect();
-      const roomAbove = v.top - GAP - EDGE;
-      const roomBelow = window.innerHeight - v.bottom - GAP - EDGE;
+      const roomAbove = v.top - gap - EDGE;
+      const roomBelow = window.innerHeight - v.bottom - gap - EDGE;
       const up = side === "top" ? height <= roomAbove || roomAbove > roomBelow : height > roomBelow && roomAbove > roomBelow;
       const left = Math.min(Math.max(EDGE, align === "start" ? r.left : r.right - width), window.innerWidth - width - EDGE);
-      const top = up ? Math.max(EDGE, v.top - GAP - height) : Math.min(v.bottom + GAP, window.innerHeight - height - EDGE);
+      const top = up ? Math.max(EDGE, v.top - gap - height) : Math.min(v.bottom + gap, window.innerHeight - height - EDGE);
       setPos({ left, top, origin: `${align === "start" ? "0%" : "100%"} ${up ? "100%" : "0%"}` });
     };
     place();
     const ro = new ResizeObserver(place);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [anchor, side, align, edge]);
+  }, [anchor, side, align, edge, gap]);
+
+  // Decision 56: while a popover of the composer is open, the "Jump to latest" button hides (it would sit under it).
+  useEffect(() => {
+    if (!anchor.current?.closest("[data-composer]")) return;
+    const root = document.documentElement;
+    root.dataset.composerPopover = "";
+    return () => {
+      delete root.dataset.composerPopover;
+    };
+  }, [anchor]);
 
   useEffect(() => {
     const opener = anchor.current;
@@ -103,7 +115,7 @@ export function Popover(props: {
       inert={!open}
       style={pos ? ({ left: pos.left, top: pos.top, "--octo-origin": pos.origin } as CSSProperties) : { left: -9999, top: 0 }}
       className={cn(
-        "octo-overlay fixed z-[60] flex max-h-[min(420px,70vh)] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
+        "octo-overlay fixed z-[60] flex max-h-[min(420px,calc(100dvh-24px))] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
         props.className,
       )}
     >

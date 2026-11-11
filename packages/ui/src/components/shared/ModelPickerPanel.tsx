@@ -90,7 +90,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
       side={variant === "bar" ? "top" : "bottom"}
       align={variant === "text" ? "end" : "start"}
       digits
-      {...(variant === "bar" ? { edge: () => button.current?.closest<HTMLElement>("[data-composer-box]") ?? null } : {})}
+      {...(variant === "bar" ? { gap: 4 } : {})}
       sections={sections}
       onClose={props.onClose}
       footer={

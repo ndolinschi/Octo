@@ -74,6 +74,14 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
         }
       : null,
     onFolders: ws ? ws.openSettings : undefined,
+    // Decision 49: a chosen folder joins the project (kept if it is already there).
+    onAddFolder: project
+      ? (path: string) => {
+          if (project.folders.some((f) => f.path === path)) return;
+          // A failed update leaves the project's folders as they were: the chip keeps showing the unchanged list.
+          void update({ folders: [...project.folders.map((f) => ({ path: f.path, label: f.label })), { path }] }).catch(() => undefined);
+        }
+      : undefined,
     // Routing applies to Messages API models behind the router, not to an orchestrator that runs as an ACP agent.
     policy:
       config?.router && project && !(current ?? "").startsWith("acp:")

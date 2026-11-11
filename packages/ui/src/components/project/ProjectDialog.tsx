@@ -2,12 +2,16 @@ import type { Models, Project, ProjectInput, TierPolicy } from "@octo/agent-clie
 import { budgetState, modelIds, parseBudget, TIER_POLICIES } from "../../lib/models";
 import { ModelPicker } from "../shared/ModelPicker";
 import { Segmented } from "../primitives/Segmented";
-import { ChevronRight, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, Plus, X } from "lucide-react";
+import { lazy, Suspense, useRef } from "react";
+import { Presence } from "../primitives/Presence";
+
+/** The folder picker loads with the first folder field opened (its own chunk). */
+const FolderPicker = lazy(() => import("../shared/FolderPicker").then((m) => ({ default: m.FolderPicker })));
 import { Glyph } from "../primitives/Glyph";
 import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
 import { basename, errorMessage } from "../../lib/format";
-import { useHost } from "../../state/host";
 import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
@@ -30,7 +34,6 @@ function isAbsolute(path: string) {
 
 export function ProjectDialog(props: { project?: Project; onClose(): void; onSubmit(input: ProjectInput): Promise<void>; onDelete?(): Promise<void> }) {
   const { config } = useApp();
-  const { pickFolder } = useHost();
   const editing = Boolean(props.project);
   const initialModels = props.project?.models ?? config?.default_models ?? FALLBACK_MODELS;
   const [name, setName] = useState(props.project?.name ?? "");
@@ -47,6 +50,8 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const router = config?.router === true;
   const known = modelIds(...Object.values(initialModels), ...Object.values(config?.default_models ?? {}));
   const [advanced, setAdvanced] = useState(false);
+  /** The folder row whose picker opens by itself ("Add folder"). */
+  const [openFolderKey, setOpenFolderKey] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -182,33 +187,24 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             const invalid = f.path.trim() !== "" && !isAbsolute(f.path.trim());
             return (
               <div key={f.key} className="flex items-center gap-2">
-                <Input
+                {/* Decision 49: a folder is chosen in a picker (recent, Browse…, path completion), never typed raw. */}
+                <FolderField
                   id={`${id}-folder-${f.key}`}
-                  aria-label={`Folder ${i + 1} path`}
-                  aria-invalid={invalid || undefined}
-                  aria-describedby={invalid ? `${id}-folder-error` : undefined}
-                  value={f.path}
-                  onChange={(e) => updateFolder(f.key, { path: e.target.value })}
-                  placeholder="/Users/you/code/repo"
-                  className="flex-[2] font-mono text-xs"
+                  index={i}
+                  path={f.path}
+                  invalid={invalid}
+                  describedBy={invalid ? `${id}-folder-error` : undefined}
+                  autoOpen={f.key === openFolderKey}
+                  current={folders.map((x) => x.path).filter(Boolean)}
+                  onChoose={(path) => updateFolder(f.key, { path })}
                 />
                 <Input
                   aria-label={`Folder ${i + 1} label`}
                   value={f.label}
                   onChange={(e) => updateFolder(f.key, { label: e.target.value })}
                   placeholder={f.path.trim() ? basename(f.path.trim()) : "label"}
-                  className="flex-1"
+                  className="w-32 shrink-0"
                 />
-                {pickFolder && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Browse for folder ${i + 1}`}
-                    onClick={() => void pickFolder().then((path) => path && updateFolder(f.key, { path }))}
-                  >
-                    Browse
-                  </Button>
-                )}
                 <IconButton
                   icon={X}
                   label={`Remove folder ${i + 1}`}
@@ -227,7 +223,13 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             variant="ghost"
             icon={Plus}
             className="-ml-3 w-fit"
-            onClick={() => setFolders((rows) => [...rows, { key: Math.max(...rows.map((r) => r.key)) + 1, path: "", label: "" }])}
+            onClick={() =>
+              setFolders((rows) => {
+                const key = Math.max(...rows.map((r) => r.key)) + 1;
+                setOpenFolderKey(key);
+                return [...rows, { key, path: "", label: "" }];
+              })
+            }
           >
             Add folder
           </Button>
@@ -245,7 +247,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           </button>
           {advanced && (
             <div className="mt-3 grid gap-3">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 @min-[520px]/dialog:grid-cols-2">
                 {MODEL_FIELDS.map((m) => (
                   // Decision 27 / ACP in the UI: a model, a tier's model or an ACP agent on a subscription; any other id by typing it.
                   <Field key={m.key} label={m.label}>
@@ -323,5 +325,59 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         )}
       </form>
     </Dialog>
+  );
+}
+
+/** A folder row's field: the chosen path (or a prompt) as a button that opens the folder picker (decision 49). */
+function FolderField(props: {
+  id: string;
+  index: number;
+  path: string;
+  invalid: boolean;
+  describedBy: string | undefined;
+  autoOpen: boolean;
+  current: string[];
+  onChoose(path: string): void;
+}) {
+  const [open, setOpen] = useState(props.autoOpen);
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={button}
+        id={props.id}
+        type="button"
+        aria-label={`Folder ${props.index + 1}: ${props.path || "not chosen"}`}
+        data-invalid={props.invalid || undefined}
+        aria-describedby={props.describedBy}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={props.path || undefined}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-input-border bg-panel px-3 text-left text-sm hover:bg-hover data-invalid:border-err",
+          open && "border-fg",
+        )}
+      >
+        <Glyph icon={FolderOpen} size={14} className="shrink-0 text-fg-3" />
+        <span className={cn("min-w-0 flex-1 truncate", props.path ? "font-mono text-xs text-fg" : "text-fg-3")} dir={props.path ? "rtl" : undefined}>
+          {props.path ? <bdi>{props.path}</bdi> : "Choose a folder…"}
+        </span>
+        <Glyph icon={ChevronDown} size={14} className="shrink-0 text-fg-3" />
+      </button>
+      <Presence show={open} exitMs={0}>
+        {open && (
+          <Suspense fallback={null}>
+            <FolderPicker
+              anchor={button}
+              label={`Folder ${props.index + 1}`}
+              current={props.current}
+              onChoose={props.onChoose}
+              onClose={() => setOpen(false)}
+            />
+          </Suspense>
+        )}
+      </Presence>
+    </>
   );
 }

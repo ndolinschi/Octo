@@ -614,6 +614,18 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const { demoLimits } = await import("./usage");
       return demoLimits(Date.now());
     },
+    // Folder picker (decision 49): a fake home directory; the recent folders are the projects' own, newest first.
+    listDirs: async (path) => {
+      await delay();
+      const { demoListDirs } = await import("./dirs");
+      return demoListDirs(path);
+    },
+    recentFolders: async () => {
+      await delay();
+      const { demoRecentFolders } = await import("./dirs");
+      const recs = [...records.values()].sort((a, b) => Date.parse(b.project.updated_at) - Date.parse(a.project.updated_at));
+      return demoRecentFolders(recs.flatMap((r) => r.project.folders.map((f) => f.path)));
+    },
     listLanguageServers: async (id) => (await delay(), get(id), demoLanguageServers(pluginsOn)),
     openLanguageServer: async (id, serverId) => {
       await delay();

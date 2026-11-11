@@ -2,7 +2,7 @@ import { Search, Star } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { cn } from "../../lib/cn";
 import { MOD_LABEL } from "../../lib/keys";
-import { pickerIndex, type PickerSection } from "../../lib/picker";
+import { pickerIndex, type PickerRow, type PickerSection } from "../../lib/picker";
 import { Glyph } from "./Glyph";
 import { Highlight } from "./Highlight";
 import { Popover } from "./Popover";
@@ -35,6 +35,14 @@ export function Picker(props: {
   empty?: string;
   /** Open above / below this element instead of the anchor (the whole composer, not its context bar). */
   edge?: () => HTMLElement | null;
+  /** Hears the query (a caller that loads rows for it: the folder picker's path completion). */
+  onQuery?(query: string): void;
+  /** `Tab` on the active row: the text that replaces the query (path completion), or null to do nothing. */
+  complete?(row: PickerRow): string | null;
+  /** Gap to the anchor (Popover's default 6). */
+  gap?: number;
+  /** Width class of the popover (default 320px). */
+  widthClass?: string;
 }) {
   const { onClose } = props;
   const [query, setQuery] = useState("");
@@ -70,6 +78,16 @@ export function Picker(props: {
     }
     if (e.key === "Home" && mod) return void setActive(enabled[0]?.id ?? null);
     if (e.key === "End" && mod) return void setActive(enabled.at(-1)?.id ?? null);
+    if (e.key === "Tab" && !e.shiftKey && props.complete && current) {
+      const next = props.complete(current);
+      if (next !== null) {
+        e.preventDefault();
+        setQuery(next);
+        setActive(null);
+        props.onQuery?.(next);
+        return;
+      }
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       run(current?.id);
@@ -95,9 +113,10 @@ export function Picker(props: {
       label={props.label}
       onClose={onClose}
       {...(props.edge ? { edge: props.edge } : {})}
+      {...(props.gap !== undefined ? { gap: props.gap } : {})}
       side={props.side ?? "bottom"}
       align={props.align ?? "start"}
-      className="w-80 max-w-[calc(100vw-16px)]"
+      className={props.widthClass ?? "w-80 max-w-[calc(100vw-16px)]"}
     >
       <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
         <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />
@@ -114,6 +133,7 @@ export function Picker(props: {
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(null);
+            props.onQuery?.(e.target.value);
           }}
           onKeyDown={onKeyDown}
           className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"

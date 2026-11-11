@@ -1,4 +1,4 @@
-import { ChevronDown, Cpu } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, Cpu } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import type { ModelPickerProps } from "./modelPickerProps";
 
@@ -50,7 +50,8 @@ export function ModelPicker(props: ModelPickerProps) {
       >
         {variant === "bar" && <Glyph icon={Cpu} size={14} className="shrink-0 text-fg-3" />}
         <span className="min-w-0 truncate">{props.children ?? name}</span>
-        <Glyph icon={ChevronDown} size={14} className={cn("shrink-0 text-fg-3", variant === "field" && "ml-auto")} />
+        {/* Decision 56: a control that opens upward (the composer's chips) shows the up-down pair. */}
+        <Glyph icon={variant === "bar" ? ChevronsUpDown : ChevronDown} size={14} className={cn("shrink-0 text-fg-3", variant === "field" && "ml-auto")} />
       </button>
       <Presence show={open} exitMs={0}>
         {open && (

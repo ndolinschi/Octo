@@ -28,6 +28,8 @@ export const PREFS = {
   comments: (projectId: string) => key(`comments.${projectId}`),
   /** Starred models and agents of the model picker (decision 27): a JSON list of setting strings. */
   favouriteModels: key("favouriteModels"),
+  /** Folders chosen in the folder picker (decision 49), newest first: a JSON list of paths. */
+  chosenFolders: key("chosenFolders"),
   /** Start-screen backdrop (decision 31): `"vivid" | "mono" | "off"` as plain text. */
   backdrop: key("backdrop"),
 } as const;

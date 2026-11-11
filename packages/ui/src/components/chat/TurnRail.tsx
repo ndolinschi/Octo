@@ -16,7 +16,8 @@ function firstWords(text: string, n = 6): string {
  * Marker pitch: 24px while the rail fits (decision 36: each marker a 24×24 target), compressed down to 3px for long
  * conversations, then the rail scrolls (current kept in view).
  */
-const PITCH = 24;
+// Decision 57: ticks 6px apart, 8px wide (the hover card and the palette carry the detail).
+const PITCH = 6;
 const MIN_PITCH = 3;
 
 /**
@@ -103,14 +104,14 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
                 }}
                 onBlur={() => setShown((s) => (s === req.id ? null : s))}
                 // Decision 36: 24px wide (it grows leftwards, away from the column) × the pitch (24 while the rail fits).
-                className="group/mark relative grid h-full w-3 place-items-center rounded-2xs before:absolute before:inset-y-0 before:right-0 before:w-6 before:content-['']"
+                className="group/mark relative grid h-full w-2 place-items-center rounded-2xs before:absolute before:inset-y-0 before:right-0 before:w-6 before:content-['']"
               >
                 <span
                   aria-hidden
                   className={cn(
                     tick,
                     "rounded-full transition-[width,background-color] duration-100",
-                    active ? "w-3 bg-fg-2" : "w-2 bg-line-strong group-hover/mark:bg-fg-3",
+                    active ? "w-2 bg-fg-2" : "w-2 bg-line-strong group-hover/mark:bg-fg-3",
                     req.state === "working" && !active && "bg-accent",
                     req.state === "failed" && !active && "bg-err",
                   )}

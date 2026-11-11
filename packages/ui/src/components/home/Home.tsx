@@ -58,29 +58,32 @@ export function Home({
   const recap = useRecap(data, now);
   const count = data.projects?.length ?? 0;
   return (
-    <section aria-labelledby="home-title" data-home className="@container/home relative h-full overflow-x-hidden overflow-y-auto">
+    // Decision 50: the streak is fixed to the panel (outside the scroller); only the content scrolls, never rubber-bands.
+    <section aria-labelledby="home-title" data-home className="@container/home relative h-full overflow-hidden">
       {backdrop !== "off" && <StreakLayer preset={STREAK_HOME} theme={theme} mono={backdrop === "mono"} />}
-      <div className="relative mx-auto flex w-full max-w-home flex-col gap-4 px-6 pt-8 pb-8 max-sm:px-4">
-        <div className="relative flex flex-col gap-3">
-          {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
-          <h1 id="home-title" className="relative text-center text-display text-fg">
-            {count > 0 && <span className="octo-lead">{count === 1 ? "One project. " : `${count} projects. `}</span>}
-            What should we work on?
-          </h1>
-          <TriageRow items={triaged} loading={data.projects === null} value={filter} onChange={setFilter} />
-          <Recap recap={recap} onUsage={latest ? () => onUsage(latest.id) : null} />
-        </div>
-        <Projects items={triaged} data={data} now={now} filter={filter} onNewProject={onNewProject} onSearch={onSearch} />
-        {/* Two columns that stack independently (a masonry of two), paired so their heights come out close: who is
+      <div data-home-scroll data-start-scroll className="relative h-full overflow-x-hidden overflow-y-auto overscroll-none">
+        <div className="relative mx-auto flex w-full max-w-home flex-col gap-4 px-6 pt-8 pb-8 max-sm:px-4">
+          <div className="relative flex flex-col gap-3">
+            {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
+            <h1 id="home-title" className="relative text-center text-display text-fg">
+              {count > 0 && <span className="octo-lead">{count === 1 ? "One project. " : `${count} projects. `}</span>}
+              What should we work on?
+            </h1>
+            <TriageRow items={triaged} loading={data.projects === null} value={filter} onChange={setFilter} />
+            <Recap recap={recap} onUsage={latest ? () => onUsage(latest.id) : null} />
+          </div>
+          <Projects items={triaged} data={data} now={now} filter={filter} onNewProject={onNewProject} onSearch={onSearch} />
+          {/* Two columns that stack independently (a masonry of two), paired so their heights come out close: who is
             working and this month on the left, tokens and activity on the right; no card stretches, none leaves a
             hole. One column under 900px, in reading order. */}
-        <div className="grid grid-cols-1 items-start gap-3 @min-[900px]/home:grid-cols-2">
-          <div className="flex min-w-0 flex-col gap-3">
-            <TeamCard projects={data.projects} agents={data.agents} />
-            <ActivityCard agents={data.agents} requests={data.requests.complete ? data.requests.all : null} now={now} />
-          </div>
-          <div className="flex min-w-0 flex-col gap-3">
-            <TokensCard usage={data.usage} daily={data.daily} now={now} onOpen={latest ? () => onUsage(latest.id) : null} />
+          <div className="grid grid-cols-1 items-start gap-3 @min-[900px]/home:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-3">
+              <TeamCard projects={data.projects} agents={data.agents} />
+              <ActivityCard agents={data.agents} requests={data.requests.complete ? data.requests.all : null} now={now} />
+            </div>
+            <div className="flex min-w-0 flex-col gap-3">
+              <TokensCard usage={data.usage} daily={data.daily} now={now} onOpen={latest ? () => onUsage(latest.id) : null} />
+            </div>
           </div>
         </div>
       </div>

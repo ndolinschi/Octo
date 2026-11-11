@@ -21,6 +21,8 @@ import { Button } from "../primitives/Button";
 import { Presence } from "../primitives/Presence";
 import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
 
+/** The folder picker loads when first opened (decision 49; its own chunk). */
+const FolderPicker = lazy(() => import("../shared/FolderPicker").then((m) => ({ default: m.FolderPicker })));
 /** The "+" menu loads when first opened (prefetched when the composer takes focus): its own chunk. */
 const loadMenu = () => import("./ComposerMenu");
 const ComposerMenu = lazy(() => loadMenu().then((m) => ({ default: m.ComposerMenu })));
@@ -51,6 +53,8 @@ export type ComposerProps = {
   policy?: { value: TierPolicy; onChange(policy: TierPolicy): void } | null;
   /** The folders button: opens the project's settings. */
   onFolders?: (() => void) | undefined;
+  /** Decision 49: the folder chip opens the folder picker; choosing adds the folder to the project. */
+  onAddFolder?: ((path: string) => void) | undefined;
   /** One quiet line above the box (no API key: decision ACP), with an optional way forward. */
   notice?: { text: string; title?: string; action?: { label: string; run(): void } } | null;
   onSend(text: string): Promise<void>;
@@ -228,6 +232,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     model.choose(next).catch((e: unknown) => setModelError({ model: next, message: errorMessage(e) }));
   };
   const policy = props.policy ?? null;
+  const [folderPicker, setFolderPicker] = useState(false);
+  const folderChip = useRef<HTMLButtonElement>(null);
   const control = "press grid size-7 shrink-0 place-items-center rounded-sm";
   const quiet = "flex h-chip min-w-0 shrink-0 press items-center gap-1.5 rounded-sm px-1.5 text-xs text-fg-2 whitespace-nowrap hover:bg-hover hover:text-fg";
   const inlineOpen = menu?.mode === "inline";
@@ -388,18 +394,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="min-w-0 shrink"
             />
           )}
-          {/* The folders the orchestrator works in (glyph = the Files meaning); opens the project's settings. */}
+          {/* The folders the orchestrator works in (glyph = the Files meaning); opens the folder picker (decision 49). */}
           <button
+            ref={folderChip}
             type="button"
-            onClick={props.onFolders}
-            disabled={!props.onFolders}
-            title={props.folders.map((f) => f.path).join("\n") || "No folders attached: add one in project settings"}
+            aria-haspopup={props.onAddFolder ? "dialog" : undefined}
+            aria-expanded={props.onAddFolder ? folderPicker : undefined}
+            onClick={() => (props.onAddFolder ? setFolderPicker((o) => !o) : props.onFolders?.())}
+            disabled={!props.onFolders && !props.onAddFolder}
+            title={props.folders.map((f) => f.path).join("\n") || "No folders attached: choose one"}
             aria-label={`Folders: ${folders || "none"}`}
             className={cn(quiet, "min-w-0 shrink text-fg-3 disabled:pointer-events-none @max-[420px]/composer:hidden")}
           >
             <Glyph icon={GLYPH.files} size={14} className="shrink-0" />
             <span className="min-w-0 truncate">{folders || "No folders attached"}</span>
           </button>
+          <Presence show={folderPicker && !!props.onAddFolder} exitMs={0}>
+            {folderPicker && props.onAddFolder && (
+              <Suspense fallback={null}>
+                <FolderPicker
+                  anchor={folderChip}
+                  label="Add a folder to the project"
+                  side="top"
+                  current={props.folders.map((f) => f.path)}
+                  onChoose={props.onAddFolder}
+                  onClose={() => setFolderPicker(false)}
+                />
+              </Suspense>
+            )}
+          </Presence>
           {policy && <RoutingButton policy={policy} />}
           {(props.onFolders || policy) && <FoldMenu folders={folders} onFolders={props.onFolders} policy={policy} />}
           {pendingComments > 0 && props.comments?.render(commentsOpen, setCommentsOpen)}

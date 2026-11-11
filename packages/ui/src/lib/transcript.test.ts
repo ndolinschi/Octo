@@ -3,7 +3,7 @@ import type { ContentBlock, Message } from "@octo/agent-client";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SPAWN_TOOL } from "./tools";
-import { buildTurns, latestReply, promptText, requestSummaries, compactionSlots, turnWarning } from "./transcript";
+import { buildTurns, latestReply, promptText, requestSummaries, compactionSlots, turnWarning, showRail } from "./transcript";
 
 let nextId = 1;
 const msg = (role: "user" | "assistant", content: ContentBlock[], at: string): Message => ({ id: nextId++, agent_id: "a", role, content, created_at: at });
@@ -194,4 +194,12 @@ test("an MCP-prefixed spawn_agent call renders as a delegation", () => {
   const item = buildTurns(msgs)[0]?.items[0];
   assert.equal(item?.kind, "delegations");
   assert.equal(item?.kind === "delegations" ? item.uses[0]?.name : null, "spawn_agent");
+});
+
+test("the rail shows from five requests (decision 57)", () => {
+  assert.equal(showRail(0), false);
+  assert.equal(showRail(3), false);
+  assert.equal(showRail(4), false);
+  assert.equal(showRail(5), true);
+  assert.equal(showRail(12), true);
 });

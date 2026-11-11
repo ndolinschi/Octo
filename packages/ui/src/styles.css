@@ -809,7 +809,7 @@
 /* Streak (decision 32, third pass; supersedes 21/21b and the glow of decision 12): a thin white-hot line with a
    long-tail glow and grain everywhere, on the start screens only — Home, the empty project (behind its whole group),
    the no-projects hero. The canvas is drawn at 2px cells (3 above a 1600px window) and scaled with `pixelated`; it
-   overhangs by 12px for the optional 20s drift (no drift under reduced motion or while the page is hidden). Its
+   overhangs by 12px (the drift that used it was removed by decision 50: a backdrop never moves). Its
    colours are the looks in `lib/streak.ts`. */
 .octo-streak-layer {
   animation: octo-fade-in 240ms ease-out both;
@@ -827,21 +827,22 @@
 .octo-streak[data-drawn] {
   opacity: 1;
 }
-@media (prefers-reduced-motion: no-preference) {
-  .octo-streak[data-drawn] {
-    animation: octo-drift 20s ease-in-out infinite alternate;
-  }
-  .octo-streak[data-paused] {
-    animation-play-state: paused;
-  }
+/* Decision 50: a backdrop never moves — no drift, no scrolling with content (its layer sits outside the scroller), no
+   selection or drag. */
+.octo-streak-layer,
+.octo-streak {
+  user-select: none;
+  -webkit-user-drag: none;
 }
-@keyframes octo-drift {
-  from {
-    translate: -12px 6px;
-  }
-  to {
-    translate: 12px -6px;
-  }
+/* The backdrop is its own composited layer, painted once: a click elsewhere (a focus ring, a menu, a sibling's
+   re-render) never makes it repaint, and translucent cards over it blend with a stable layer (owner: "flickers a
+   bit" in WebKit; not reproduced in Chromium — see the hand-back). */
+.octo-streak-layer {
+  contain: strict;
+  transform: translateZ(0);
+}
+.octo-card {
+  isolation: isolate;
 }
 /* Surfaces over the streak (Home cards, the project list): the panel at 85% (decision 32 asks 72%; see below; light 80%) with a 12px
    blur and a little saturation, so the band reads through; a 1px `line-strong` edge and a 1px inner top highlight.
@@ -964,4 +965,9 @@
 :root[data-theme="dark"] .octo-lead,
 :root:not([data-theme="light"]) .octo-lead {
   color: #b4b4b4;
+}
+
+/* Decision 56: no "Jump to latest" under an open composer popover. */
+:root[data-composer-popover] [data-jump-room] button {
+  visibility: hidden;
 }

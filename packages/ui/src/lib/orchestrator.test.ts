@@ -52,7 +52,7 @@ test("working: project running, root running or any sub-agent running; agents ol
 test("a failed last turn needs the user", () => {
   const s = orchestratorState([root({ status: "failed", error: "model unavailable" })], "idle");
   assert.deepEqual(s, { kind: "needs", error: "model unavailable", at: "2026-11-10T10:05:00Z" });
-  assert.equal(stateLine(s, NOW), "Needs you");
+  assert.equal(stateLine(s, NOW), "Failed");
 });
 
 test("idle shows how long since the last turn ended", () => {

@@ -9,7 +9,7 @@ import { useProject } from "../../state/project";
 import { CHAT, type TabId } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { roleName } from "../../lib/orchestrator";
-import { turnWarning } from "../../lib/transcript";
+import { showRail, turnWarning } from "../../lib/transcript";
 import { TurnBanner, useLoginHint } from "./Transcript";
 
 /** A sub-agent's header loads with the first Agent tab (its own chunk). */
@@ -46,7 +46,6 @@ const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m
 const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyFacts })));
 
 /** The turn rail appears from the first request (decision 34). */
-const RAIL_MIN_REQUESTS = 1;
 
 /**
  * A conversation (the orchestrator's Chat tab or a sub-agent's Agent tab). The header, transcript
@@ -190,7 +189,8 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
     <div
       className={cn(
         "@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]",
-        empty && "overflow-x-hidden overflow-y-auto",
+        // Decision 50: the empty project's streak is on the dock group (never in this scroller); no rubber-band either.
+        empty && "overflow-x-hidden overflow-y-auto overscroll-none",
       )}
     >
       {isOrchestrator && <ChatHeader transparent={empty} />}
@@ -212,12 +212,13 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
               onHeight={stuck.setPinnedHeight}
             />
           )}
-          {requests.length >= RAIL_MIN_REQUESTS && (
+          {showRail(requests.length) && (
             // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16. The
             // layer covers the whole scroll area (it clips like the transcript) but takes no pointer events.
             <div className={cn(EDGES, "pointer-events-none absolute inset-x-0 top-0 z-20 @max-[560px]/conv:hidden")} style={{ height: scrollHeight }}>
-              <div className="relative mx-auto max-w-measure">
-                <div className="pointer-events-auto absolute top-2 right-full mr-3">
+              {/* Decision 57: centred vertically in the conversation's viewport; it takes no layout width. */}
+              <div className="relative mx-auto h-full max-w-measure">
+                <div className="pointer-events-auto absolute top-1/2 right-full mr-3 -translate-y-1/2">
                   <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
                 </div>
               </div>
