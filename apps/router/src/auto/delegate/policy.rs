@@ -68,8 +68,13 @@ fn micros_to_usd(micros: u128) -> f64 {
     micros as f64 / 1_000_000.0
 }
 
+pub fn api_swap(tiers: &Tiers, policy: &RoutePolicy, tier: ApiTier) -> Option<&'static str> {
+    tiers.price_swap(tier.ladder_band(), None, policy.shape())
+}
+
 fn api_micros(tiers: &Tiers, policy: &RoutePolicy, tier: ApiTier) -> Option<u128> {
-    tiers.blended_cost_micros(tier.ladder_band(), policy.shape())
+    let band = api_swap(tiers, policy, tier).unwrap_or(tier.ladder_band());
+    tiers.blended_cost_micros(band, policy.shape())
 }
 
 fn strengths_of(strengths: &[String]) -> Vec<Band> {

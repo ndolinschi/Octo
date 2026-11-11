@@ -10,7 +10,9 @@ use crate::auto::{body, jev, new_request_id, valid_budget_key, Auto, Hints, Reje
 use crate::history::{usage_from_output, History};
 
 use super::band;
-use super::policy::{estimate_usd, select, select_after_budget, How, RoutePolicy, Selection};
+use super::policy::{
+    api_swap, estimate_usd, select, select_after_budget, How, RoutePolicy, Selection,
+};
 use super::types::{Alternative, Band, Candidate, RouteRequest, RouteResponse};
 
 pub struct RouteInput<'a> {
@@ -102,24 +104,35 @@ pub async fn route(
     }
 
     let chosen = &candidates[selection.index];
+    let swap = match chosen {
+        Candidate::Api { tier, .. } => api_swap(tiers, policy, *tier),
+        Candidate::Agent { .. } => None,
+    };
     let reason = reason(&ReasonPlan {
         band: classified.band,
         classification: &classified.how,
         how: selection.how,
         chosen,
         budget: (budget.micros, spent),
+        swap: swap.map(|served| (served, tiers.slug(served))),
     });
     let request_id = new_request_id();
-    let (model, tier) = match chosen {
-        Candidate::Api { tier, .. } => (
-            Some(tiers.slug(tier.ladder_band())),
-            tier.ladder_band().to_string(),
-        ),
-        Candidate::Agent { .. } => (None, "agent".to_string()),
+    let (model, tier, decided_tier) = match chosen {
+        Candidate::Api { tier, .. } => {
+            let decided = tier.ladder_band();
+            let served = swap.unwrap_or(decided);
+            (
+                Some(tiers.slug(served)),
+                served.to_string(),
+                swap.map(|_| decided.to_string()),
+            )
+        }
+        Candidate::Agent { .. } => (None, "agent".to_string(), None),
     };
     let row = CallRow {
         model: model.clone().unwrap_or_else(|| chosen.id().to_string()),
         tier,
+        decided_tier,
         trigger: "route".to_string(),
         input_tokens: classified.input_tokens,
         output_tokens: classified.output_tokens,
@@ -290,6 +303,7 @@ struct ReasonPlan<'a> {
     how: How,
     chosen: &'a Candidate,
     budget: (u64, u64),
+    swap: Option<(&'static str, String)>,
 }
 
 fn reason(plan: &ReasonPlan<'_>) -> String {
@@ -316,6 +330,13 @@ fn reason(plan: &ReasonPlan<'_>) -> String {
         ),
     };
     let lead = capitalize(&lead);
+    let swap_note = match (plan.chosen, &plan.swap) {
+        (Candidate::Api { tier, .. }, Some((served, slug))) => format!(
+            " Price rule: the {} tier would be served by the {served} tier model {slug}, which is cheaper for this request.",
+            tier.as_str()
+        ),
+        _ => String::new(),
+    };
     let rest = match plan.how {
         How::FlatAgent => format!("{name} is flat-rate and logged in, so it adds no API cost"),
         How::Api => format!("the {tier} API tier is the cheapest able to do it"),
@@ -329,7 +350,7 @@ fn reason(plan: &ReasonPlan<'_>) -> String {
         How::BudgetAgent => format!("flat-rate agent {name} is used"),
         How::BudgetApi => format!("the cheapest API tier offered ({tier}) is used"),
     };
-    format!("{lead}; {rest}.")
+    format!("{lead}; {rest}.{swap_note}")
 }
 
 fn capitalize(text: &str) -> String {

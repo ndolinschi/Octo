@@ -397,6 +397,7 @@ fn row(model: &str, cost_usd: f64) -> CallRow {
     CallRow {
         model: model.to_string(),
         tier: "low".to_string(),
+        decided_tier: None,
         trigger: "none".to_string(),
         input_tokens: 1,
         output_tokens: 1,

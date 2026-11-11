@@ -87,6 +87,27 @@ Shipped strip list (Anthropic-only; proven against destinstral `supported_parame
 
 Protected keys (`tools`, `tool_choice`, `system`, `messages`, `max_tokens`, `stop_sequences`, `metadata`) are never stripped even if listed.
 
+## Price rule: never pay more for less
+
+`[autoroute] never_pay_more_for_less` (default `true`). Whenever the router has decided a ladder tier **T** for a request, whatever picked it (classifier, hint, sticky hold, stall escalation, housekeeping/background routing, fill `upgrade`, budget cap, the unavailable-model retry escalation, a permission check on a remembered session), the tier **served** is the cheapest tier among T and all tiers above T, by the `prices.toml` blended estimate for that request's shape (estimated input tokens and `min(max_tokens, 1024)` output, the same shape budget routing uses).
+
+| Case | Behaviour |
+| --- | --- |
+| Ties | The lower tier wins (a higher tier is served only when strictly cheaper) |
+| Unpriced tiers | A tier without a usable price (missing, partial or all-zero rates) is never preferred over a priced one; if T itself is unpriced, T is served |
+| `tier-policy: ceiling` | Candidates are T up to the ceiling only |
+| `tier-policy: fixed` | The rule does not apply |
+| `custom` (client-preferred high model via `high_allow`), passthrough without a tier decision | Not swapped |
+| Rule off | Today's behaviour: the decided tier is served |
+
+Only the served model changes. The session still remembers the **decided** tier T (`sticky_band` and the remembered model), so hysteresis, stall and sticky logic are unchanged; the next turn is decided and priced afresh. Context-window checks, compaction, the retry and `x-octo-tier` all use the served model. Because the served tier is part of the history `tier_before` (computed the same way from the remembered tier), a steady swapped session does not report `rerouting` every turn.
+
+Reporting: `x-octo-model` and `x-octo-tier` are what was served; when the rule changed the tier, `x-octo-decided-tier` carries T and `x-octo-price-swap: 1` is set (a separate header, the `x-octo-trigger` value is not altered). The call record gains `decided_tier` (absent without a swap). The history `calls` table keeps the served tier in `tier_after`; it has no decided-tier column. The retry after a model-unavailable failure decides the tier above the served one and applies the rule to it; if the served tier is already `high` there is no escalation.
+
+The `POST /autoroute/v1/route` endpoint applies the same rule to API candidates: candidate ids are kept as offered, but each API candidate's `estimated_cost_usd`, its ranking and the returned `model` are those of the tier that would really be served; the `reason` then ends with a `Price rule:` sentence and the call record has `decided_tier`.
+
+On the shipped ladder (`docs/ladder-cost-check.md`) the most capable tier is the cheapest for a nominal request, so `low` and `mid` decisions are served by `high`.
+
 ## Sticky, stall, budget
 
 | Mechanism | Behavior |
@@ -221,7 +242,9 @@ Set on the response head, so they are available before a streamed body starts. S
 | Header | Value |
 | --- | --- |
 | `x-octo-model` | The model actually sent upstream (ladder slug after any retry escalation) |
-| `x-octo-tier` | `low`, `mid`, `high` (`custom` for a client-preferred high model) |
+| `x-octo-tier` | `low`, `mid`, `high` (`custom` for a client-preferred high model); the tier actually served |
+| `x-octo-decided-tier` | Only when the [price rule](#price-rule-never-pay-more-for-less) served a different tier than the one decided: the decided tier |
+| `x-octo-price-swap` | `1` exactly when `x-octo-decided-tier` is present |
 | `x-octo-trigger` | Why: `none` (plain sticky turn), `classify`, `reclassify`, `tool_update`, `hint`, `budget_cap`, `budget` (402), `stall:*`, `stall_release`, `hysteresis_hold`, `housekeeping`, `housekeeping_trimmed`, `permission_check`, `upgrade`, `retry`, `classifier_failure`, `compact_not_applied`, `compact`, ... (same values as the history `trigger` column) |
 | `x-octo-request-id` | Id of this call, key for the calls endpoint (`octo_<hex>`). With a retry, the id is the final attempt's |
 | `x-octo-budget-usd`, `x-octo-spent-usd` | Effective budget and spend so far (USD, six decimals) for the budget key, or for the session when only the configured budget applies. Absent when no budget applies. Spend excludes the response being sent |
@@ -232,6 +255,7 @@ Set on the response head, so they are available before a streamed body starts. S
 {"model":"deepseek/deepseek-v4.1-flash","tier":"low","trigger":"hint","input_tokens":1000,"output_tokens":500,"cache_read_tokens":0,"cache_write_tokens":0,"cost_usd":0.002,"cost_source":"estimated"}
 ```
 
+- `decided_tier` is present only when the price rule served another tier than the one decided (then `tier` is the served one).
 - 404 `{"error":"unknown or unfinished request",...}` until the response body has ended (the row is written when the stream finishes, before the client sees the end of the body), and for ids that were evicted or never existed.
 - `cost_source` is `reported` when the cost came from the upstream (OpenRouter `usage.cost` or BYOK upstream cost) and `estimated` otherwise (`prices.toml`; when nothing is priced `cost_usd` is `0` and the source is `estimated`).
 - Failed responses (non-2xx) and cancelled ones (client dropped the stream) get a row too, with the tokens known so far (estimated for dropped streams) and no cost when unknown.
@@ -286,7 +310,7 @@ Integration I2 of the same spec. Before the harness starts a sub-agent it asks t
 }
 ```
 
-`model` is present only for an API choice: the ladder slug of the tier (`fast` = `autoroute.low`, `balanced` = `mid`, `deep` = `high`). `request_id` is the key for `GET /autoroute/v1/calls/{id}`.
+`model` is present only for an API choice: the ladder slug of the tier (`fast` = `autoroute.low`, `balanced` = `mid`, `deep` = `high`), after the [price rule](#price-rule-never-pay-more-for-less): the slug of the tier that would really be served. `request_id` is the key for `GET /autoroute/v1/calls/{id}`.
 
 Request fields: `task.title` or `task.brief` must be non-empty; `task.tools`, `task.brief` and `task.depth` default to `[]`, `""` and `0`; `budget_key` follows the header rules (1 to 128 printable ASCII characters). `limit_remaining` may be omitted or `null` (unknown). Candidate `id`s must be non-empty and unique.
 
@@ -330,11 +354,11 @@ Band to tier: `easy` -> `fast`, `medium` -> `balanced`, `hard` -> `deep`.
 
 `strengths` vocabulary: `easy`, `medium`, `hard` (case-insensitive). Other words are ignored; a list with no recognised word counts as no `strengths`.
 
-`estimated_cost_usd` is the blended cost of a nominal request through the price table, for the candidate's ladder model: `nominal_input_tokens` in and `nominal_output_tokens` out (default 30000 / 500, the same shape budget routing uses). It is `null` for an API tier whose ladder model has no usable price (missing, partial or all-zero rates), `0` for a flat-rate agent and `null` for an agent that is not flat-rate. The estimate is of the delegated work only, not of the classifier call.
+`estimated_cost_usd` is the blended cost of a nominal request through the price table, for the model the router would really serve for that candidate's tier (the candidate's own ladder model unless the price rule picks a cheaper tier above it): `nominal_input_tokens` in and `nominal_output_tokens` out (default 30000 / 500, the same shape budget routing uses). It is `null` for an API tier whose ladder model has no usable price (missing, partial or all-zero rates), `0` for a flat-rate agent and `null` for an agent that is not flat-rate. The estimate is of the delegated work only, not of the classifier call.
 
 ### Call record
 
-The decision is stored as a call record (same read-through store as the proxy calls) and readable through `GET /autoroute/v1/calls/{request_id}`: `trigger: "route"`, `model` is the ladder slug (API choice) or the agent id, `tier` is `low`/`mid`/`high` or `agent`, token counts and `cost_usd` are those of the classifier call (zero when it did not run), and an extra `route` object carries `choice`, `band`, `reason`, `classifier` (`used`, `fallback`, `skipped`), `depth` and `budget_key`. The classifier call is also written to the SQLite history as a decision row with purpose `route`.
+The decision is stored as a call record (same read-through store as the proxy calls) and readable through `GET /autoroute/v1/calls/{request_id}`: `trigger: "route"`, `model` is the ladder slug (API choice) or the agent id, `tier` is the served `low`/`mid`/`high` or `agent` (`decided_tier` is added when the price rule swapped it), token counts and `cost_usd` are those of the classifier call (zero when it did not run), and an extra `route` object carries `choice`, `band`, `reason`, `classifier` (`used`, `fallback`, `skipped`), `depth` and `budget_key`. The classifier call is also written to the SQLite history as a decision row with purpose `route`.
 
 ### Config (`[autoroute.route]`, `config/autoroute.toml`)
 

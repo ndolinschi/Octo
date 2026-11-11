@@ -442,6 +442,8 @@ pub struct Budget {
 pub struct Limits {
     pub budget_micros: u64,
     pub max_band: Option<&'static str>,
+    pub fixed: bool,
+    pub shape: RequestShape,
 }
 
 pub struct DecideRequest<'a> {
@@ -452,6 +454,13 @@ pub struct DecideRequest<'a> {
     pub api_key: &'a str,
     pub body: Value,
     pub allow_compact: bool,
+}
+
+pub fn request_shape(body: &Value) -> RequestShape {
+    RequestShape {
+        input_tokens: metrics::estimate_tokens(models::counted_bytes(body)),
+        output_tokens: body::max_tokens(body).min(1024),
+    }
 }
 
 pub async fn decide(req: DecideRequest<'_>) -> Turn {
@@ -530,13 +539,12 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
         TierPolicy::Ceiling | TierPolicy::Fixed => hints.tier,
         TierPolicy::Auto => None,
     };
+    let budget_shape = request_shape(&req.body);
     let limits = Limits {
         budget_micros: budget.micros,
         max_band,
-    };
-    let budget_shape = RequestShape {
-        input_tokens: client_tokens,
-        output_tokens: reserve.min(1024),
+        fixed: hints.policy == TierPolicy::Fixed,
+        shape: budget_shape,
     };
 
     if body::is_permission_check(&raw_text) {
@@ -640,10 +648,11 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
                 compact_event = Some(COMPACT_NOT_APPLIED_REASON);
                 allow_compact = false;
             } else if allow_compact {
+                let served = route::serve(&req.auto.tiers, &limits, &row.model);
                 let outgoing = body::shape(body::ShapePlan {
                     body: &req.body,
-                    model: &row.model,
-                    previous_model: Some(row.model.as_str()),
+                    model: &served.model,
+                    previous_model: Some(served.model.as_str()),
                     models: loaded.as_ref(),
                     provider_order: &req.auto.tiers.provider_order,
                     allow_fallbacks: req.auto.tiers.allow_fallbacks,
@@ -659,7 +668,8 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
                 return route::repeat_compact(RepeatCompact {
                     auto: req.auto,
                     body: &outgoing,
-                    model: &row.model,
+                    model: &served.model,
+                    decided_tier: served.decided_tier,
                     models: loaded.as_ref(),
                 });
             } else if let Some(id) = actor.clone() {

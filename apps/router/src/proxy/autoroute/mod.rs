@@ -140,6 +140,7 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
             let info = ResultInfo {
                 model: None,
                 tier: None,
+                decided_tier: None,
                 trigger: "budget",
                 request_id: &crate::auto::new_request_id(),
                 budget: Some((reject.budget_micros, reject.spent_micros)),
@@ -277,6 +278,7 @@ async fn retry_once(plan: RetryOnce<'_>) -> Option<Result<Response, ProxyError>>
             tier_after: plan.forward.meta.tier_after.clone(),
             trigger: "retry".to_string(),
             stripped: plan.forward.meta.stripped.clone(),
+            decided_tier: plan.forward.meta.decided_tier.clone(),
         };
         forward.trimmed_from_tokens = None;
         forward
@@ -334,9 +336,18 @@ async fn escalated_forward(
 ) -> Option<crate::auto::Forward> {
     let tiers = plan.state.auto.tiers();
     let models = plan.state.auto.cached_models().await;
+    let decided_band = tiers.band(next);
+    let ceiling = match plan.hints.policy {
+        crate::auto::TierPolicy::Ceiling => plan.hints.tier,
+        _ => None,
+    };
+    let swapped = (plan.hints.policy != crate::auto::TierPolicy::Fixed)
+        .then(|| tiers.price_swap(decided_band, ceiling, crate::auto::request_shape(payload)))
+        .flatten();
+    let served = swapped.map_or_else(|| next.to_string(), |band| tiers.slug(band));
     let mut shaped = crate::auto::shape(crate::auto::ShapePlan {
         body: payload,
-        model: next,
+        model: &served,
         previous_model: Some(current),
         models: models.as_ref(),
         provider_order: &tiers.provider_order,
@@ -352,9 +363,10 @@ async fn escalated_forward(
     let body = serde_json::to_vec(&shaped.body).ok()?;
     let meta = RouteMeta {
         tier_before: plan.forward.meta.tier_after.clone(),
-        tier_after: tiers.band(next).to_string(),
+        tier_after: tiers.band(&served).to_string(),
         trigger: "retry".to_string(),
         stripped: None,
+        decided_tier: swapped.map(|_| decided_band.to_string()),
     }
     .with_stripped(&shaped.stripped);
     Some(crate::auto::Forward {
@@ -412,6 +424,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         session_id,
         tier_before: Some(meta.tier_before.clone()),
         tier_after: Some(meta.tier_after.clone()),
+        decided_tier: meta.decided_tier.clone(),
         trigger: meta.trigger.clone(),
         trimmed_from_tokens: plan.forward.trimmed_from_tokens,
         client_model: plan.signals.client_model.clone(),
@@ -437,6 +450,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         .auto
         .budget_status(plan.session.as_deref(), plan.hints.budget_key.as_deref());
     let tier = plan.forward.meta.tier_after.clone();
+    let decided_tier = plan.forward.meta.decided_tier.clone();
     let trigger = plan.forward.meta.trigger.clone();
     let result = if plan.chat {
         plan.state
@@ -463,6 +477,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
             &ResultInfo {
                 model: served_model.as_deref(),
                 tier: Some(&tier),
+                decided_tier: decided_tier.as_deref(),
                 trigger: &trigger,
                 request_id: &request_id,
                 budget,
@@ -475,6 +490,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
 pub(super) struct ResultInfo<'a> {
     pub model: Option<&'a str>,
     pub tier: Option<&'a str>,
+    pub decided_tier: Option<&'a str>,
     pub trigger: &'a str,
     pub request_id: &'a str,
     pub budget: Option<(u64, u64)>,
@@ -492,6 +508,10 @@ pub(super) fn apply_result_headers(response: &mut Response, info: &ResultInfo<'_
     }
     if let Some(tier) = info.tier {
         put("x-octo-tier", tier);
+    }
+    if let Some(decided) = info.decided_tier {
+        put("x-octo-decided-tier", decided);
+        put("x-octo-price-swap", "1");
     }
     put("x-octo-trigger", info.trigger);
     put("x-octo-request-id", info.request_id);
@@ -548,6 +568,7 @@ async fn chat_compact(
                 session_id: None,
                 tier_before: None,
                 tier_after: None,
+                decided_tier: None,
                 trigger: "none".to_string(),
                 trimmed_from_tokens: None,
                 client_model: None,

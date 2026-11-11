@@ -24,6 +24,12 @@ session_budget_usd = 0
 # CHEAPEST ladder tier by prices.toml (blended estimate for the request shape); "reject"
 # answers 402 (Anthropic error shape, type billing_error) naming the budget and the spend.
 session_budget_action = "downgrade"
+# Never pay more for less: when true, a request decided for tier T is served by the cheapest
+# PRICED tier among T and every tier above it (by the prices.toml blended estimate for the
+# request's shape; ties keep the lower tier). The session still remembers T, only the served
+# model changes. tier-policy ceiling limits the candidates to T..=ceiling; fixed turns the rule off.
+# See docs/autoroute.md (Price rule).
+never_pay_more_for_less = true
 # Keep this many recent messages when trimming housekeeping turns (system + tools always kept).
 housekeeping_keep_messages = 6
 allow_fallbacks = true

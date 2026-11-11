@@ -4,6 +4,7 @@ pub mod error;
 pub mod handler;
 pub mod routes;
 pub mod select;
+pub mod stdin_watch;
 
 use std::time::Duration;
 
@@ -103,6 +104,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
+    let stdin_closed = stdin_watch::stdin_closed();
 
     #[cfg(unix)]
     {
@@ -111,12 +113,16 @@ async fn shutdown_signal() {
         tokio::select! {
             _ = ctrl_c => {}
             _ = terminate.recv() => {}
+            _ = stdin_closed => info!("stdin closed ({})", stdin_watch::EXIT_ON_STDIN_CLOSE_ENV),
         }
     }
 
     #[cfg(not(unix))]
     {
-        let _ = ctrl_c.await;
+        tokio::select! {
+            _ = ctrl_c => {}
+            _ = stdin_closed => info!("stdin closed ({})", stdin_watch::EXIT_ON_STDIN_CLOSE_ENV),
+        }
     }
 
     info!("shutdown signal received");

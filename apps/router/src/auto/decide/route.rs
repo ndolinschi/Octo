@@ -7,13 +7,44 @@ use crate::providers::openrouter::OpenRouterModels;
 use super::super::action::{Compact, Forward, Turn};
 use super::super::body::{self, compaction_body, ShapePlan};
 use super::super::catalog::RequestShape;
-use super::super::catalog::{self, LargerFit};
+use super::super::catalog::{self, LargerFit, Tiers};
 use super::super::metrics::{self, context_estimate};
 use super::super::routing::RouteMeta;
 use super::super::session::SessionChoice;
 use super::models::counted_bytes;
 use super::sticky::{cap_for_budget_with, StickyOutcome};
-use super::Auto;
+use super::{Auto, Limits};
+
+pub(super) struct Served {
+    pub model: String,
+    pub decided_tier: Option<String>,
+}
+
+pub(super) fn serve(tiers: &Tiers, limits: &Limits, decided: &str) -> Served {
+    if !limits.fixed {
+        let band = tiers.band(decided);
+        if let Some(to) = tiers.price_swap(band, limits.max_band, limits.shape) {
+            return Served {
+                model: tiers.slug(to),
+                decided_tier: Some(band.to_string()),
+            };
+        }
+    }
+    Served {
+        model: decided.to_string(),
+        decided_tier: None,
+    }
+}
+
+fn served_tier_before(tiers: &Tiers, limits: &Limits, tier_before: &str) -> String {
+    if limits.fixed {
+        return tier_before.to_string();
+    }
+    tiers
+        .price_swap(tier_before, limits.max_band, limits.shape)
+        .unwrap_or(tier_before)
+        .to_string()
+}
 
 pub(super) struct RoutePlan {
     pub model: String,
@@ -71,6 +102,7 @@ pub(super) struct RepeatCompact<'a> {
     pub auto: &'a Auto,
     pub body: &'a Value,
     pub model: &'a str,
+    pub decided_tier: Option<String>,
     pub models: Option<&'a OpenRouterModels>,
 }
 
@@ -79,10 +111,15 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
     if plan.model.is_empty() {
         plan.model = ctx.auto.tiers.mid.clone();
     }
-    let previous = ctx.previous_model.as_deref();
+    let mut served = serve(&ctx.auto.tiers, &plan.limits, &plan.model);
+    let previous_served = ctx
+        .previous_model
+        .as_deref()
+        .map(|model| serve(&ctx.auto.tiers, &plan.limits, model).model);
+    let previous = previous_served.as_deref();
     let mut shaped_out = shaped(ShapeArgs {
         body: &ctx.body,
-        model: &plan.model,
+        model: &served.model,
         previous_model: previous,
         models: ctx.models,
         provider_order: &ctx.auto.tiers.provider_order,
@@ -92,7 +129,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         default_max_tokens: ctx.auto.tiers.default_max_tokens,
     });
     let mut outgoing = shaped_out.body;
-    if let Some(window) = catalog::context_length(ctx.models, &plan.model) {
+    if let Some(window) = catalog::context_length(ctx.models, &served.model) {
         let estimate = context_estimate(counted_bytes(&outgoing), window, plan.reserve);
         tracing::debug!(
             input_tokens_est = estimate.input_tokens_est,
@@ -145,7 +182,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 models: ctx.models,
                 input_tokens: need,
                 max_tokens: plan.reserve,
-                current: &plan.model,
+                current: &served.model,
             }) {
                 plan.model = slug;
                 let mut upgraded = StickyOutcome {
@@ -171,7 +208,8 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 plan.model = upgraded.model;
                 plan.sticky_band = upgraded.sticky_band;
                 plan.reason = upgraded.reason;
-                let grew = catalog::context_length(ctx.models, &plan.model)
+                served = serve(&ctx.auto.tiers, &plan.limits, &plan.model);
+                let grew = catalog::context_length(ctx.models, &served.model)
                     .is_some_and(|next| next > window);
                 if !grew {
                     return finish_overflow(OverflowCtx {
@@ -186,7 +224,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 }
                 shaped_out = shaped(ShapeArgs {
                     body: &ctx.body,
-                    model: &plan.model,
+                    model: &served.model,
                     previous_model: previous,
                     models: ctx.models,
                     provider_order: &ctx.auto.tiers.provider_order,
@@ -196,7 +234,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                     default_max_tokens: ctx.auto.tiers.default_max_tokens,
                 });
                 outgoing = shaped_out.body.clone();
-                if let Some(next_window) = catalog::context_length(ctx.models, &plan.model) {
+                if let Some(next_window) = catalog::context_length(ctx.models, &served.model) {
                     let again =
                         context_estimate(counted_bytes(&outgoing), next_window, plan.reserve);
                     if again.usable < 1024 || again.fill >= metrics::FILL_THRESHOLD {
@@ -224,7 +262,7 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             }
         }
     } else {
-        tracing::debug!(model = %plan.model, "autoroute catalog miss; skip fill/compact");
+        tracing::debug!(model = %served.model, "autoroute catalog miss; skip fill/compact");
     }
     let input_tokens_est = metrics::estimate_tokens(counted_bytes(&outgoing));
     if plan.persist {
@@ -243,9 +281,11 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
             down_count: plan.down_count,
         });
     }
-    let tier_after = ctx.auto.tiers().band(&plan.model).to_string();
-    let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref())
-        .with_stripped(&shaped_out.stripped);
+    let tier_after = ctx.auto.tiers().band(&served.model).to_string();
+    let tier_before = served_tier_before(&ctx.auto.tiers, &plan.limits, &plan.tier_before);
+    let meta = RouteMeta::from_plan(tier_before, tier_after, plan.reason.as_deref())
+        .with_stripped(&shaped_out.stripped)
+        .with_decided_tier(served.decided_tier);
     encode_forward(&outgoing, meta, plan.trimmed_from_tokens)
 }
 
@@ -258,6 +298,7 @@ fn skips_fill_upgrade(reason: Option<&str>) -> bool {
 
 fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
     let plan = ctx.plan;
+    let served = serve(&ctx.auto.tiers, &plan.limits, &plan.model);
     if !plan.allow_compact {
         if plan.persist {
             remember(RememberPlan {
@@ -277,11 +318,12 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
         }
         return forward_shaped(ShapedForward {
             body: ctx.body,
-            model: &plan.model,
+            model: &served.model,
+            decided_tier: served.decided_tier,
             previous_model: ctx.previous_model,
             models: ctx.models,
             reason: plan.reason,
-            tier_before: plan.tier_before.clone(),
+            tier_before: served_tier_before(&ctx.auto.tiers, &plan.limits, &plan.tier_before),
             auto: ctx.auto,
             trimmed_from_tokens: plan.trimmed_from_tokens,
         });
@@ -305,7 +347,8 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
     repeat_compact(RepeatCompact {
         auto: ctx.auto,
         body: ctx.outgoing,
-        model: &plan.model,
+        model: &served.model,
+        decided_tier: served.decided_tier,
         models: ctx.models,
     })
 }
@@ -313,6 +356,7 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
 pub(super) struct ShapedForward<'a> {
     pub body: &'a Value,
     pub model: &'a str,
+    pub decided_tier: Option<String>,
     pub previous_model: Option<&'a str>,
     pub models: Option<&'a OpenRouterModels>,
     pub reason: Option<String>,
@@ -335,7 +379,8 @@ pub(super) fn forward_shaped(plan: ShapedForward<'_>) -> Turn {
         default_max_tokens: plan.auto.tiers.default_max_tokens,
     });
     let meta = RouteMeta::from_plan(plan.tier_before, tier_after, plan.reason.as_deref())
-        .with_stripped(&shaped_out.stripped);
+        .with_stripped(&shaped_out.stripped)
+        .with_decided_tier(plan.decided_tier);
     encode_forward(&shaped_out.body, meta, plan.trimmed_from_tokens)
 }
 
@@ -384,6 +429,7 @@ pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
             body,
             model: plan.model.to_string(),
             fallback_model: fallback.map(str::to_string),
+            decided_tier: plan.decided_tier,
         }),
         Err(err) => {
             tracing::error!(%err, "autoroute compact encode failed");

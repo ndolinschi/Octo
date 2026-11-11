@@ -873,3 +873,95 @@ fn route_policy_loads_from_the_route_table_and_the_shipped_config_matches_the_de
     assert_eq!(loaded.autoroute_route.nominal_input_tokens, 1000);
     assert_eq!(loaded.autoroute_route.nominal_output_tokens, 500);
 }
+
+fn inverted_state(classifier: &Classifier, rule: bool) -> AppState {
+    let mut config = priced_config();
+    config.prices = PriceTable::new(vec![
+        ("low-model".into(), price(9.0, 9.0)),
+        ("mid-model".into(), price(5.0, 5.0)),
+        ("high-model".into(), price(1.0, 1.0)),
+    ]);
+    config.autoroute_never_pay_more_for_less = rule;
+    config.openrouter_decisions_url = format!("http://{}/v1/decisions", classifier.addr);
+    AppState::new(config).unwrap()
+}
+
+#[tokio::test]
+async fn the_price_rule_costs_each_api_candidate_at_what_would_really_be_served() {
+    let classifier = spawn_classifier(EASY, 200, 0).await;
+    let state = inverted_state(&classifier, true);
+    let (status, value) = route(&state, &request("easy", ladder())).await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    let cheapest = 1.0 * 30_000.0 / 1e6 + 1.0 * 500.0 / 1e6;
+    assert_eq!(
+        value["choice"], "api-fast",
+        "equal cost ties to the lower tier"
+    );
+    assert_eq!(value["model"], "high-model", "what the router would serve");
+    assert!((value["estimated_cost_usd"].as_f64().unwrap() - cheapest).abs() < 1e-9);
+    for alternative in value["alternatives"].as_array().unwrap() {
+        assert!((alternative["estimated_cost_usd"].as_f64().unwrap() - cheapest).abs() < 1e-9);
+    }
+    let reason = value["reason"].as_str().unwrap();
+    assert!(
+        reason.contains("Price rule") && reason.contains("high-model"),
+        "{reason}"
+    );
+    let id = value["request_id"].as_str().unwrap();
+    let (_, row) = call(
+        &state,
+        "GET",
+        &format!("/autoroute/v1/calls/{id}"),
+        &[],
+        Vec::new(),
+    )
+    .await;
+    assert_eq!(row["model"], "high-model");
+    assert_eq!(row["tier"], "high");
+    assert_eq!(row["decided_tier"], "low");
+}
+
+#[tokio::test]
+async fn the_price_rule_off_keeps_the_candidate_estimates_and_model() {
+    let classifier = spawn_classifier(EASY, 200, 0).await;
+    let state = inverted_state(&classifier, false);
+    let (_, value) = route(&state, &request("easy", ladder())).await;
+    assert_eq!(value["choice"], "api-deep", "cheapest by its own price");
+    assert_eq!(value["model"], "high-model");
+    assert!(!value["reason"].as_str().unwrap().contains("Price rule"));
+    let low = 9.0 * 30_000.0 / 1e6 + 9.0 * 500.0 / 1e6;
+    let alternatives = value["alternatives"].as_array().unwrap();
+    let fast = alternatives.iter().find(|a| a["id"] == "api-fast").unwrap();
+    assert!((fast["estimated_cost_usd"].as_f64().unwrap() - low).abs() < 1e-9);
+    let id = value["request_id"].as_str().unwrap();
+    let (_, row) = call(
+        &state,
+        "GET",
+        &format!("/autoroute/v1/calls/{id}"),
+        &[],
+        Vec::new(),
+    )
+    .await;
+    assert!(row.get("decided_tier").is_none(), "{row}");
+}
+
+#[tokio::test]
+async fn a_single_low_candidate_is_served_at_the_cheaper_tier_above_it() {
+    let classifier = spawn_classifier(EASY, 200, 0).await;
+    let state = inverted_state(&classifier, true);
+    let (_, value) = route(&state, &request("easy", vec![api("api-fast", "fast")])).await;
+    assert_eq!(value["choice"], "api-fast");
+    assert_eq!(value["model"], "high-model");
+}
+
+#[tokio::test]
+async fn unpriced_ladder_models_are_never_swapped_by_the_route_endpoint() {
+    let classifier = spawn_classifier(EASY, 200, 0).await;
+    let mut config = priced_config();
+    config.prices = PriceTable::default();
+    config.openrouter_decisions_url = format!("http://{}/v1/decisions", classifier.addr);
+    let state = AppState::new(config).unwrap();
+    let (_, value) = route(&state, &request("easy", ladder())).await;
+    assert_eq!(value["model"], "low-model");
+    assert!(!value["reason"].as_str().unwrap().contains("Price rule"));
+}

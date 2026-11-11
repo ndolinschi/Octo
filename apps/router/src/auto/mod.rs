@@ -35,7 +35,7 @@ pub use decide::sticky::{
     apply as apply_sticky, cap_for_budget, cap_for_budget_shaped, cap_for_budget_with,
     StickyOutcome, StickyPlan,
 };
-pub use decide::{decide, decide_with, Auto, Budget, DecideRequest, Limits};
+pub use decide::{decide, decide_with, request_shape, Auto, Budget, DecideRequest, Limits};
 pub use delegate::{
     route as delegate_route, Alternative, ApiTier, Band, Candidate, RouteError, RouteInput,
     RoutePolicy, RouteRequest, RouteResponse, Task,

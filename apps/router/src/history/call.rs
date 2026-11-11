@@ -16,6 +16,7 @@ pub struct CallObserve {
     pub session_id: Option<String>,
     pub tier_before: Option<String>,
     pub tier_after: Option<String>,
+    pub decided_tier: Option<String>,
     pub trigger: String,
     pub trimmed_from_tokens: Option<u64>,
     pub client_model: Option<String>,

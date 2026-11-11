@@ -162,6 +162,7 @@ impl Capture {
                 session_id: observe.session_id.clone(),
                 tier_before: observe.tier_before.clone(),
                 tier_after: observe.tier_after.clone(),
+                decided_tier: observe.decided_tier.clone(),
                 trigger: observe.trigger.clone(),
                 trimmed_from_tokens: observe.trimmed_from_tokens,
                 client_model: observe.client_model.clone(),
@@ -287,6 +288,7 @@ impl Capture {
                 let row = crate::auto::CallRow {
                     model: call_model,
                     tier: self.observe.tier_after.clone().unwrap_or_default(),
+                    decided_tier: self.observe.decided_tier.clone(),
                     trigger: self.observe.trigger.clone(),
                     input_tokens: usage.input_tokens.map_or(0, |t| t.0),
                     output_tokens: usage.output_tokens.map_or(0, |t| t.0),

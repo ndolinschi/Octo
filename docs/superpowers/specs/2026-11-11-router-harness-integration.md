@@ -235,3 +235,21 @@ orchestrator header shows the project budget as `spent / budget` when one is set
 
 Proxying subscription vendors' private HTTP endpoints through the router (see the subscription design, S3b).
 Changing the ladder's models (owner decision pending: by catalogue prices the `high` tier is the cheapest).
+
+## As built — price rule, low price, exit with the parent (router, 2026-11-11)
+
+Verified by the orchestrator: `cargo fmt --check`, clippy with `-D warnings`, 302 tests with the proxy variables
+removed. **Not verified:** a live upstream run; the low-tier price against a billed call (the owner's figure was
+taken as given; the catalogue was not re-fetched).
+
+- `[autoroute] never_pay_more_for_less` (default true): after a tier is decided, a tier above it (up to the ceiling)
+  that is strictly cheaper for this request's shape is served instead. Ties and unpriced tiers never swap;
+  `tier-policy: fixed`, `custom`/unset tiers and passthrough are never swapped. The session remembers the decided
+  tier, so a steady swap is not reported as rerouting.
+- A swap is visible as `x-octo-decided-tier` + `x-octo-price-swap: 1` (`x-octo-model`/`x-octo-tier` stay "what was
+  served"), as `decided_tier` in the call record, and in the route endpoint's estimates, `model` and `reason`.
+- `prices.toml`: low tier 0.051 / 0.567 per million. The ladder is still inverted for a 30k-in / 500-out request
+  (low 1,813, mid 4,800, high 430 micro-USD), so with the rule on both low and mid are served by high; the start-up
+  warning says so.
+- `OCTO_EXIT_ON_STDIN_CLOSE=1`: the router shuts down gracefully when stdin closes (tested against the real binary).
+- Open: the history `calls` table stores only the served tier.

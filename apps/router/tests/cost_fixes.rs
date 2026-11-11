@@ -900,6 +900,7 @@ async fn r7_stream_dropped_mid_response_still_records_tokens_and_cost() {
             session_id: None,
             tier_before: None,
             tier_after: None,
+            decided_tier: None,
             trigger: "none".to_string(),
             trimmed_from_tokens: None,
             client_model: None,

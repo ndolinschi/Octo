@@ -28,5 +28,38 @@ pub fn ladder_warnings(tiers: &Tiers) -> Vec<String> {
             }
         }
     }
+    let inverted = warnings
+        .iter()
+        .any(|warning| warning.contains("not monotonic"));
+    if inverted {
+        warnings.push(rule_note(tiers, shape));
+    }
     warnings
+}
+
+fn rule_note(tiers: &Tiers, shape: RequestShape) -> String {
+    if !tiers.never_pay_more_for_less {
+        return "autoroute.never_pay_more_for_less is off: a request routed to a lower tier is billed at that tier's price even where a higher tier is cheaper".to_string();
+    }
+    let served: Vec<String> = BANDS
+        .iter()
+        .filter_map(|band| {
+            tiers
+                .price_swap(band, None, shape)
+                .map(|to| format!("{band} is served by {to} ({})", tiers.slug(to)))
+        })
+        .collect();
+    let detail = if served.is_empty() {
+        "no tier is swapped for this request shape".to_string()
+    } else {
+        format!(
+            "for a {} in / {} out token request {}",
+            shape.input_tokens,
+            shape.output_tokens,
+            served.join(", ")
+        )
+    };
+    format!(
+        "autoroute.never_pay_more_for_less is on: a request decided for a tier is served by the cheapest priced tier at or above it (ties keep the lower tier; tier-policy ceiling caps the candidates, fixed disables the rule); {detail}"
+    )
 }

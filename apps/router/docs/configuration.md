@@ -46,12 +46,13 @@ Helpers (not loaded as Config fragments): `claude-code.env.example`, `experiment
 | `background_model_patterns` | `["haiku"]` | Observe `bg_signal` |
 | `background_by_client_model` | `false` | Opt-in routing like housekeeping |
 | `server_tool_mode` | `passthrough` | `passthrough` \| `online_suffix` \| `reject` |
+| `never_pay_more_for_less` | `true` | A request decided for tier T is served by the cheapest priced tier among T and the tiers above it (ties keep the lower tier; unpriced tiers never preferred; `ceiling` caps the candidates, `fixed` disables it). The session keeps the decided tier. See [autoroute.md](./autoroute.md#price-rule-never-pay-more-for-less) |
 
 Invalid `classifier_failure_tier`, `session_budget_action`, or `default_max_tokens = 0` fail config load.
 
 Request header `x-octo-budget-key: <key>` (autoroute routes, 1-128 printable ASCII characters) tracks spend under that key instead of the session id, so several agent sessions share one `session_budget_usd`. The header is removed before the request goes upstream. It works without a session id too; `x-octo-budget-usd` with the key lowers the budget for that key (smaller of header and `session_budget_usd`; a header budget always rejects, see [autoroute.md](./autoroute.md#harness-integration)). Spend under a key lives in memory (1 hour idle expiry) and is not restored from the database.
 
-`prices.toml` rates were verified against the OpenRouter catalogue on 2026-11-10: [ladder-cost-check.md](./ladder-cost-check.md). At startup Octo logs a warning when the ladder is not monotonic in price (a higher tier cheaper than a lower one for a 30k in / 500 out request) and when a ladder model has no usable price entry.
+`prices.toml` rates were verified against the OpenRouter catalogue on 2026-11-10, except the low model's input/output, which were updated on 2026-11-11 from the owner-reported catalogue figures: [ladder-cost-check.md](./ladder-cost-check.md). At startup Octo logs a warning when the ladder is not monotonic in price (a higher tier cheaper than a lower one for a 30k in / 500 out request), followed by one line saying whether `never_pay_more_for_less` is on (and which tiers it then swaps for that request shape) or off, and a warning when a ladder model has no usable price entry. A monotonic, fully priced ladder logs nothing.
 
 ## Environment
 
@@ -61,6 +62,7 @@ Request header `x-octo-budget-key: <key>` (autoroute routes, 1-128 printable ASC
 | `OCTO_HISTORY_TOKEN_KEY` | HMAC key for token hashing |
 | `DATABASE_URL` | For `cargo sqlx prepare` / migrate (dev) |
 | `RUST_LOG` | Tracing filter (default `info`) |
+| `OCTO_EXIT_ON_STDIN_CLOSE` | `1`: watch stdin and shut down gracefully (the SIGTERM path, history writes drained) when it reaches EOF or errors; any data read is discarded. Off by default. For a parent (the desktop app) that holds the router's stdin pipe, so a killed parent does not leave the router running. Manual check: `sleep 3600 \| OCTO_EXIT_ON_STDIN_CLOSE=1 cargo run`, then `kill` the `sleep`; the router logs `stdin closed` and exits. Covered by `tests/stdin_exit.rs` |
 | `OPENROUTER_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Client-side keys for curl / Claude Code (not read by Octo server for upstream auth) |
 
 Do not commit secrets. Clients send credentials per request.

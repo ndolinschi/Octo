@@ -10,6 +10,8 @@ const CALL_STORE_CAP: usize = 4096;
 pub struct CallRow {
     pub model: String,
     pub tier: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decided_tier: Option<String>,
     pub trigger: String,
     pub input_tokens: u64,
     pub output_tokens: u64,

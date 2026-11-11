@@ -63,6 +63,11 @@ pub(super) async fn upstream(
         header_generation_id: generation_id,
         hints,
         request_id: &request_id,
+        decided_tier: if sent_model(&sent) == sent_model(&compact.body) {
+            compact.decided_tier.as_deref()
+        } else {
+            None
+        },
     });
     let mut response = Response::new(Body::from(bytes.to_vec()));
     *response.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
@@ -77,6 +82,7 @@ pub(super) async fn upstream(
         &super::ResultInfo {
             model: Some(&recorded.model),
             tier: Some(&tier),
+            decided_tier: recorded.decided_tier.as_deref(),
             trigger: "compact",
             request_id: &request_id,
             budget: state
@@ -150,10 +156,20 @@ struct RecordPlan<'a> {
     header_generation_id: Option<String>,
     hints: &'a Hints,
     request_id: &'a str,
+    decided_tier: Option<&'a str>,
 }
 
 struct Recorded {
     model: String,
+    decided_tier: Option<String>,
+}
+
+fn sent_model(body: &[u8]) -> Option<String> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    value
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 fn record(plan: RecordPlan<'_>) -> Recorded {
@@ -185,6 +201,7 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
     let row = CallRow {
         model: served.clone(),
         tier: plan.state.auto.tiers().band(&served).to_string(),
+        decided_tier: plan.decided_tier.map(str::to_string),
         trigger: "compact".to_string(),
         input_tokens: usage.input_tokens.map_or(0, |t| t.0),
         output_tokens: usage.output_tokens.map_or(0, |t| t.0),
@@ -251,5 +268,8 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         trigger: "compact".to_string(),
         request_id: Some(plan.request_id.to_string()),
     });
-    Recorded { model: served }
+    Recorded {
+        model: served,
+        decided_tier: plan.decided_tier.map(str::to_string),
+    }
 }
