@@ -8,7 +8,7 @@ import { cn } from "../../lib/cn";
 import { useApp } from "../../state/app";
 import { useOptionalCode } from "../../state/code";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { Highlight } from "../files/FileTree";
+import { Highlight } from "../primitives/Highlight";
 import { fileIcon } from "../primitives/fileIcons";
 import { usePresence } from "../primitives/Presence";
 

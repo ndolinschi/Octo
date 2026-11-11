@@ -10,7 +10,7 @@ import { useProject } from "../../state/project";
 import { Button, IconButton } from "../primitives/Button";
 import { RunningDot, Spinner } from "../primitives/Status";
 import { DelegationGroup } from "./DelegationGroup";
-import { Markdown } from "./Markdown";
+import { Markdown } from "../shared/Markdown";
 import { SentComments } from "./SentComments";
 import { ToolGroup } from "./ToolGroup";
 import { TranscriptContext, type ToolResult, type TranscriptCtx } from "./transcriptContext";

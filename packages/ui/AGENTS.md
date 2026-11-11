@@ -15,6 +15,8 @@ pnpm --filter @octo/ui lint                     # tsc --noEmit && eslint . (erro
 pnpm --filter @octo/ui format:check             # prettier; `pnpm --filter @octo/ui format` rewrites
 pnpm --filter @octo/ui test                     # node:test + tsx, *.test.ts beside the code
 pnpm --filter @octo/agent-client test
+pnpm --filter @octo/desktop test                # bridge selection (pure function)
+pnpm test:scripts                               # from the repo root: the layer-imports ESLint rule (pnpm lint also runs scripts/check-cycles.mjs)
 pnpm --filter @octo/desktop build               # also reports chunk sizes
 node scripts/check-bundle-size.mjs              # after the build: initial JS gzip must stay within the budget
 node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420   # must print total=0
@@ -29,10 +31,10 @@ harness at `VITE_HARNESS_BRIDGE_URL` (default `http://127.0.0.1:8790`).
 - The strict flags (`tsconfig.base.json`) and the ESLint config (`eslint.config.mjs`, repo root) enforce the rules above:
   import boundaries, `any`, `!`, empty blocks, type-only imports. Fix an error; do not add `eslint-disable` or
   `@ts-expect-error` without a reason on the same line. A new warning counts as a new violation.
-- Imports go one way (`lib` ← `lsp` ← `state` ← `primitives` ← features ← `app`); features meet only in `dock/TabView`.
+- Imports go one way (`lib` ← `lsp` ← `state` ← `primitives` ← `shared` ← features ← `dock` ← `app`; `demo` sees only `lib` and `lsp`), enforced as lint errors with no exceptions and no cycles (`octo/layer-imports`, `scripts/check-cycles.mjs`). Features meet only in `dock/TabView`, which passes one feature to another as a prop or slot. Shared code moves down: a piece two features need goes to `components/shared` (it may read `state`) or `primitives` (it may not); app state to `state/`.
 - `monaco-editor` as a value only in `components/files/monaco.ts`; heavy optional code behind `import()`.
 - Spacing, row heights, radii and colours come from the tokens in `styles.css`; the audit must stay at zero.
-- New `Bridge` methods: change `@octo/agent-client` first, then implement them in `src/demo/bridge.ts`.
+- New `Bridge` methods: change `@octo/agent-client` first, then implement them in `src/demo/bridge.ts`. Demo code is exported only from `@octo/ui/demo` and hosts load it with `import()`; the package root never mentions it.
 - A design change updates the spec's "As built" section in the same commit.
 
 ## Verifying UI work

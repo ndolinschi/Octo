@@ -1,6 +1,6 @@
 # Frontend code-quality pass — plan
 
-**Date:** 2026-11-10 · **Status:** approved by the owner; runs after UI v6.1 and before v7
+**Date:** 2026-11-10 · **Status:** approved by the owner; Q1–Q4 done (Q4: `Markdown` and `FileLink` live in a new `components/shared` layer, not `primitives`, because inline code links read app state); Q5 pending
 **Scope:** `packages/ui`, `packages/agent-client`, `apps/desktop` (TypeScript only). No visual or behavioural change.
 **Inputs:** the audit summarised in [`packages/ui/ARCHITECTURE.md`](../../../packages/ui/ARCHITECTURE.md) ("Known debt"),
 the rules in [`.cursor/rules/octo-typescript.mdc`](../../../.cursor/rules/octo-typescript.mdc).

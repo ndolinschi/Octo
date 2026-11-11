@@ -1,12 +1,13 @@
 import { ChevronRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { ancestors, fileKey, parentPath, type FileKey } from "../../lib/files";
 import { useCode, type DirState } from "../../state/code";
 import { useOptionalComments } from "../../state/comments";
 import { CommentCount, commentsDescription } from "./CommentCount";
 import { fileIcon } from "../primitives/fileIcons";
+import { Highlight } from "../primitives/Highlight";
 import { useDelayedLoading } from "../../lib/hooks";
 import { Spinner } from "../primitives/Status";
 
@@ -60,20 +61,6 @@ function flatten(
 /** Nesting depth as a spacer (a width, not padding: indents are structure, not spacing). */
 function Indent({ px }: { px: number }) {
   return px > 0 ? <span aria-hidden className="shrink-0" style={{ width: px }} /> : null;
-}
-
-/** The matched part of a name in `fg` on the `hover` tint (no weight change). */
-export function Highlight({ text, query }: { text: string; query: string }): ReactNode {
-  const q = query.trim().toLowerCase();
-  const i = q ? text.toLowerCase().indexOf(q) : -1;
-  if (i < 0) return text;
-  return (
-    <>
-      {text.slice(0, i)}
-      <mark className="rounded-2xs bg-hover text-fg">{text.slice(i, i + q.length)}</mark>
-      {text.slice(i + q.length)}
-    </>
-  );
 }
 
 export type FileTreeHandle = { focusFirst(): void };

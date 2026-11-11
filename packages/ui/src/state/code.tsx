@@ -1,6 +1,6 @@
 import { BridgeError, type FileEntry, type Folder } from "@octo/agent-client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { EditorBuffers } from "../components/files/buffers";
+import { EditorBuffers } from "../lib/buffers";
 import { ancestors, fileKey, fileName, normalizePath, parentPath, splitKey, type FilePosition, type FileKey, keyInFolder, isRootKey } from "../lib/files";
 import { EditorIntel, type IntelClient } from "../lsp/hub";
 import type { TabId } from "./workspace/layout";

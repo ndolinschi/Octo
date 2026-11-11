@@ -6,7 +6,7 @@ import type { Components } from "react-markdown";
 import { normalizePath, parentPath } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
 import { useCode } from "../../state/code";
-import { Markdown } from "../chat/Markdown";
+import { Markdown } from "../shared/Markdown";
 
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 

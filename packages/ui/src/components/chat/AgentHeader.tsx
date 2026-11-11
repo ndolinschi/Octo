@@ -7,7 +7,7 @@ import { agentDuration, formatDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { Markdown } from "./Markdown";
+import { Markdown } from "../shared/Markdown";
 import { modelLabel, statusLabel, tierLabel } from "../primitives/Status";
 import { contextText } from "../../lib/usageView";
 

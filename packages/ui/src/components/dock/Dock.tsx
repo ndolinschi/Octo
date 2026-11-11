@@ -9,7 +9,7 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { panelClass } from "../shell/Panel";
 import { Divider } from "./Divider";
 import { DragLayer } from "./DragLayer";
-import { GroupProvider } from "./group";
+import { GroupProvider } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
 import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";

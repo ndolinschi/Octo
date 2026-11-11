@@ -1,6 +1,6 @@
 import type * as Monaco from "monaco-editor";
-import type { FilePosition } from "../../lib/files";
-import { type FileKey } from "../../lib/files";
+import type { FilePosition } from "./files";
+import { type FileKey } from "./files";
 
 export type MonacoApi = typeof Monaco;
 

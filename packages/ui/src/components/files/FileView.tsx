@@ -13,8 +13,8 @@ import { useProject } from "../../state/project";
 import { fileTab, type TabId } from "../../state/workspace/layout";
 import { focusSoon } from "../../lib/focus";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { FloatingComposer, useFloatingHere } from "../chat/FloatingComposer";
-import { useGroup } from "../dock/group";
+import { useFloatingHere } from "../../state/workspace/useFloatingHere";
+import { useGroup } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
 import { Button, IconButton } from "../primitives/Button";
 import { Menu } from "../primitives/Menu";
@@ -29,6 +29,9 @@ import { EDITOR_MIN_WIDTH, FILE_VIEW_OVERLAY_BELOW } from "../../lib/constants";
 import { slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 
+/** Renders the floating composer over the editor area; `onHeight` reports the room it takes. Supplied by the dock. */
+export type FloatingSlot = (onHeight: (px: number) => void) => ReactNode;
+
 /** Gap between the floating composer and the last line it must not cover (contract v6 decision 8). */
 const FLOAT_ROOM = 16;
 
@@ -42,7 +45,7 @@ const MD_MODE = slot("md", (v): v is Mode => v === "preview" || v === "source");
  * width and open state shared by every file view of the project). When no Chat tab is visible, the
  * focused file view shows the floating composer over its editor area (never over the tree).
  */
-export function FileView({ tab, fileKey }: { tab: TabId; fileKey: FileKey | null }) {
+export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileKey: FileKey | null; floatingComposer: FloatingSlot }) {
   const code = useCode();
   const ws = useWorkspace();
   const fv = useFileView();
@@ -214,7 +217,7 @@ export function FileView({ tab, fileKey }: { tab: TabId; fileKey: FileKey | null
         <div data-editor-area className="relative flex min-w-0 flex-1 flex-col">
           {file && <Notice file={file} />}
           <div className="min-h-0 flex-1">{body}</div>
-          {floating && <FloatingComposer onHeight={setFloatHeight} />}
+          {floating && floatingComposer(setFloatHeight)}
         </div>
         {treeShown && (
           <TreeColumn

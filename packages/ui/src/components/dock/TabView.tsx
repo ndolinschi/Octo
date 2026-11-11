@@ -2,11 +2,15 @@ import { lazy, Suspense, useState } from "react";
 import { useProject } from "../../state/project";
 import { FloatRoomContext } from "../primitives/floatRoom";
 import { parseTab, type TabId } from "../../state/workspace/layout";
+import { useFloatingHere } from "../../state/workspace/useFloatingHere";
 import { AgentsPanel } from "../agents/AgentsPanel";
 import { ConversationView } from "../chat/ConversationView";
-import { FloatingComposer, useFloatingHere } from "../chat/FloatingComposer";
-import { FileView } from "../files/FileView";
+import { FloatingComposer } from "../chat/FloatingComposer";
+import { FileView, type FloatingSlot } from "../files/FileView";
 import { NotesPanel } from "../notes/NotesPanel";
+
+/** What a file view renders as its floating composer: the dock, not the file feature, knows about chat. */
+const renderFloatingComposer: FloatingSlot = (onHeight) => <FloatingComposer onHeight={onHeight} />;
 
 /** The Details tab loads when it is first opened (its own chunk). */
 const DetailsPanel = lazy(() => import("../details/DetailsPanel").then((m) => ({ default: m.DetailsPanel })));
@@ -24,9 +28,9 @@ export function TabView({ tab }: { tab: TabId }) {
     case "agent":
       return <ConversationView agentId={ref.agentId} tab={tab} />;
     case "file":
-      return <FileView tab={tab} fileKey={ref.key} />;
+      return <FileView tab={tab} fileKey={ref.key} floatingComposer={renderFloatingComposer} />;
     case "tool":
-      if (ref.tool === "files") return <FileView tab={tab} fileKey={null} />;
+      if (ref.tool === "files") return <FileView tab={tab} fileKey={null} floatingComposer={renderFloatingComposer} />;
       return (
         <ToolView tab={tab}>
           {ref.tool === "agents" ? (

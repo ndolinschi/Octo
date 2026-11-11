@@ -5,7 +5,7 @@ import { excerpt, formatRelative, errorMessage } from "../../lib/format";
 import { useProject } from "../../state/project";
 import { Button, IconButton } from "../primitives/Button";
 import { Input, Textarea } from "../primitives/Field";
-import { Markdown } from "../chat/Markdown";
+import { Markdown } from "../shared/Markdown";
 import { FloatRoom } from "../primitives/floatRoom";
 
 export function NotesPanel() {

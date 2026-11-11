@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useCode } from "../../state/code";
-import { parseTab, type Group, type TabId } from "../../state/workspace/layout";
-import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { useCode } from "../code";
+import { parseTab, type Group, type TabId } from "./layout";
+import { useWorkspace } from "./WorkspaceProvider";
 import { createRequiredContext } from "../../lib/context";
 
 export type GroupValue = {

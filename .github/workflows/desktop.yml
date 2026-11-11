@@ -23,6 +23,9 @@ jobs:
       - run: pnpm format:check
       - run: pnpm --filter @octo/agent-client test
       - run: pnpm --filter @octo/ui test
+      - run: pnpm --filter @octo/desktop test
+      # layer-imports ESLint rule (import cycles are checked by `pnpm lint`)
+      - run: pnpm test:scripts
       - run: pnpm --filter @octo/desktop build
       # Initial JS (gzip) must stay within the budget recorded in the script.
       - run: node scripts/check-bundle-size.mjs

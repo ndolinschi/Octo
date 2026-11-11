@@ -4,54 +4,29 @@
 // warning, listed under its debt row in packages/ui/ARCHITECTURE.md; the warning count is the baseline that steps
 // Q3-Q5 of docs/superpowers/plans/2026-11-10-frontend-code-quality.md drive to zero.
 //
-// Import boundaries encode the "Allowed imports" table in packages/ui/ARCHITECTURE.md. Patterns match import
-// specifiers (the code uses relative imports only), so `**/state/**` catches `../state/x` and `../../state/x`.
+// Import boundaries encode the "Allowed imports" table in packages/ui/ARCHITECTURE.md: the `octo/layer-imports` rule
+// (scripts/eslint/layer-imports.mjs) classifies every relative import by the layer it resolves to. There are no
+// exceptions and no warnings; scripts/check-cycles.mjs forbids import cycles.
 import js from "@eslint/js";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import layerImports from "./scripts/eslint/layer-imports.mjs";
 
 const UI = "packages/ui/src";
-const FEATURES = ["chat", "files", "agents", "notes", "details", "home", "project", "shell"];
 
-// Import-specifier patterns for src directories: under("state") matches "../state" and "../../state/x".
-const under = (...dirs) => dirs.flatMap((d) => [`**/${d}`, `**/${d}/**`]);
-const forbid = (dirs, message) => ({ group: under(...dirs), message });
-
-// ---- Errors: the code already meets these. --------------------------------------------------------------------
+// ---- Third-party import bans ----
 
 const NO_TAURI = { group: ["@tauri-apps/*"], message: "Hosts pass HostCapabilities; packages/ui never imports Tauri." };
 const MONACO_MSG = "Value imports of monaco-editor live only in components/files/monaco.ts (loaded with import()). Use `import type`.";
 const MONACO_PATH = { name: "monaco-editor", allowTypeImports: true, message: MONACO_MSG };
 const MONACO_DEEP = { group: ["monaco-editor/*"], allowTypeImports: true, message: MONACO_MSG };
-const NO_UP_FROM_LIB = forbid(["lsp", "state", "app", "demo", "components"], "lib imports nothing above it.");
 const NUL_MESSAGE = "The NUL separator belongs to lib/files.ts: build keys with fileKey(), read them with splitKey() / parseFileKey() / keyFolder() / keyInFolder() / isRootKey().";
 const AGENT_CLIENT = {
   paths: ["react", "react-dom", "@octo/ui"].map((name) => ({ name, message: "agent-client has no React, DOM or UI dependency." })),
   patterns: [{ group: ["react/*", "react-dom/*", "@octo/ui/*", "@tauri-apps/*"], message: "agent-client is platform-free." }],
 };
-
-// ---- Warnings: violations listed under "Known debt" in ARCHITECTURE.md, removed in Q4. ------------------------
-
-const FEATURE_DIRS = FEATURES.map((f) => `components/${f}`);
-const featureBoundary = (feature) => ({
-  files: [`${UI}/components/${feature}/**`],
-  rules: {
-    "no-restricted-imports": [
-      "warn",
-      {
-        patterns: [
-          forbid(
-            [...FEATURE_DIRS.filter((d) => d !== `components/${feature}`), "components/dock"],
-            "Features meet only in dock/TabView; shared code moves to primitives or lib.",
-          ),
-          forbid(["app", "demo"], "Features do not import app or demo."),
-        ],
-      },
-    ],
-  },
-});
 
 export default tseslint.config(
   {
@@ -147,12 +122,19 @@ export default tseslint.config(
   {
     files: [`${UI}/lib/**`],
     rules: {
-      "@typescript-eslint/no-restricted-imports": ["error", { paths: [MONACO_PATH], patterns: [MONACO_DEEP, NO_TAURI, NO_UP_FROM_LIB] }],
+      "@typescript-eslint/no-restricted-imports": ["error", { paths: [MONACO_PATH], patterns: [MONACO_DEEP, NO_TAURI] }],
     },
   },
   {
     files: ["packages/agent-client/src/**/*.ts"],
     rules: { "@typescript-eslint/no-restricted-imports": ["error", AGENT_CLIENT] },
+  },
+
+  // ---- Layer imports: the "Allowed imports" table of ARCHITECTURE.md on resolved paths; errors, no exceptions ----
+  {
+    files: [`${UI}/**/*.{ts,tsx}`],
+    plugins: { octo: { rules: { "layer-imports": layerImports } } },
+    rules: { "octo/layer-imports": ["error", { root: UI }] },
   },
 
   // ---- Ids: the NUL separator of file keys (and so of file tab ids) is private to lib/files.ts ----
@@ -167,34 +149,6 @@ export default tseslint.config(
       ],
     },
   },
-
-  // ---- Import boundaries: warnings (debt) ----
-  {
-    files: [`${UI}/lsp/**`, `${UI}/state/**`],
-    rules: {
-      "no-restricted-imports": [
-        "warn",
-        {
-          patterns: [
-            forbid(["components"], "state and lsp never import components (debt: EditorBuffers lives under components, Q4)."),
-            forbid(["app", "demo"], "state and lsp sit below app and demo."),
-          ],
-        },
-      ],
-    },
-  },
-  {
-    files: [`${UI}/components/primitives/**`],
-    rules: {
-      "no-restricted-imports": [
-        "warn",
-        {
-          patterns: [forbid(["lsp", "state", "app", "demo", ...FEATURE_DIRS, "components/dock"], "primitives import only lib (and agent-client types).")],
-        },
-      ],
-    },
-  },
-  ...FEATURES.map(featureBoundary),
 
   // ---- Tests: doubles may throw non-Errors ----
   {

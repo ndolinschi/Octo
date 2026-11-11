@@ -14,32 +14,47 @@ in `.claude/rules/typescript.md`). This file describes structure: what lives whe
 ```text
 app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host), AppShell, ProjectWorkspace
 components/<feature>/   chat · files · agents · notes · details · usage · home · project · shell   (screens and their parts)
-components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point
-components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs (OrchestratorGlyph), InfoList
-                        rows, FloatRoom, Segmented, DayBars (day chart), backdrop (group-level streak request),
-                        Streak (lazy canvas) + StreakLayer
-state/                  one provider per concern (see the tree below); state/workspace/layout.ts is pure
+components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
+                        as a prop: the file view's floating composer)
+components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs (OrchestratorGlyph, fileIcons),
+                        Highlight (matched text), InfoList rows, FloatRoom, Segmented, DayBars (day chart), backdrop
+                        (group-level streak request), Streak (lazy canvas) + StreakLayer — import `lib` only
+components/shared/      pieces several features use that read app state: Markdown (prose, code highlight) and FileLink
+                        (InlineCode: a path in prose opens the file through `state/code`)
+state/                  one provider per concern (see the tree below); state/workspace/layout.ts is pure; the dock group's
+                        context (state/workspace/group.tsx) and useFloatingHere live here too
 lsp/                    language-server client (hub in the main chunk, the rest loads with Monaco)
-lib/                    pure helpers and small hooks: files, format, match (+ group ranking), comments, transcript, tools, route,
+lib/                    pure helpers and small hooks: files, buffers (EditorBuffers: Monaco models, type-only import), format, match (+ group ranking), comments, transcript, tools, route,
                         storage, fileLinks, codePalette, highlight (lazy), streak, focus, constants, context, orchestrator
                         (a project's orchestrator state), usage (report arithmetic, chart scale, limits), crumbs
                         (breadcrumb fit), frontMatter, languages, streakPresets (band geometry per start screen) — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
-demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks)
+demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks); its own entry point,
+                        `@octo/ui/demo` (`demo/index.ts`), not part of the package root
 styles.css              design tokens (@theme), base rules, Monaco widget overrides
 scripts/                spacing-audit.mjs (Playwright; fails on off-scale spacing)
 ```
 
-Allowed imports (a row may import the columns marked ✓):
+Allowed imports (a row may import the columns marked ✓), enforced on **resolved paths** by the `octo/layer-imports` ESLint
+rule (`scripts/eslint/layer-imports.mjs`) as an error with no exceptions; `import type`, re-exports and `import()` count
+like value imports. `node scripts/check-cycles.mjs` (part of `pnpm lint`) fails on any import cycle in `packages/ui/src`
+and `apps/desktop/src`.
 
-| from \ to | lib | lsp | state | primitives | features | app | `@octo/agent-client` |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `lib` | – | | | | | | types |
-| `lsp` | ✓ | – | | | | | ✓ |
-| `state` | ✓ | ✓ | ✓ | | | | ✓ |
-| `components/primitives` | ✓ | | | – | | | types |
-| `components/<feature>` | ✓ | ✓ | ✓ | ✓ | only through `dock/TabView` | | ✓ |
-| `app` | ✓ | | ✓ | ✓ | ✓ | – | ✓ |
-| `demo` | ✓ | | | | | | ✓ |
+| from \ to | lib | lsp | state | primitives | shared | features | dock | app | demo | `@octo/agent-client` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `lib` | – | | | | | | | | | types |
+| `lsp` | ✓ | – | | | | | | | | ✓ |
+| `state` | ✓ | ✓ | ✓ | | | | | | | ✓ |
+| `components/primitives` | ✓ | | | – | | | | | | types |
+| `components/shared` | ✓ | | ✓ | ✓ | – | | | | | ✓ |
+| `components/<feature>` | ✓ | ✓ | ✓ | ✓ | ✓ | itself only | | | | ✓ |
+| `components/dock` | ✓ | | ✓ | ✓ | ✓ | ✓ | – | | | ✓ |
+| `app` | ✓ | | ✓ | ✓ | ✓ | ✓ | ✓ | – | | ✓ |
+| `demo` | ✓ | ✓ | | | | | | | – | ✓ |
+| `src/index.ts` | | | ✓ | | | | | ✓ | | |
+
+Features reach each other only through `dock/TabView`, which composes them (for example it passes the chat feature's
+floating composer to the file view as a render prop). A hook or context several layers need (`useGroup`,
+`useFloatingHere`) is app state and lives in `state/`.
 
 ## Providers
 
@@ -60,7 +75,7 @@ HostProvider              embedding capabilities (openFile, pickFolder, theme) �
 
 ## Data flow
 
-1. A host creates a `Bridge` (`createHttpBridge`, the message-port bridge, or `createDemoBridge`) and renders `OctoApp`.
+1. A host creates a `Bridge` (`createHttpBridge`, the message-port bridge, or `createDemoBridge` from `@octo/ui/demo`) and renders `OctoApp`.
 2. `ProjectProvider` subscribes to the project's SSE stream; each event goes through the pure reducer from
    `@octo/agent-client` (`applyEvent`, `withAgents`, `withMessages`) into `ProjectState`.
 3. Components read state from context and call bridge methods for writes; the resulting events update the state.
@@ -75,7 +90,9 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
   from `CodeEditor`. Everything that needs Monaco types uses `import type`.
 - The language-server client (`lsp/manager`, `session`, `rpc`, `convert`, `uri`) loads with that chunk;
   `lsp/hub.ts` is the small seam that stays in the main chunk.
-- Demo fixtures (`demo/seedFiles.ts`, `demo/lsp.ts`) and other heavy, optional code load with `import()`.
+- The demo bridge and its fixtures are not in the package root: they sit behind the `@octo/ui/demo` subpath export, which
+  `apps/desktop` loads with `import()` only for `?demo=` (`useBridge`). A normal start downloads none of it (initial
+  bundle 211.2 → 195.1 kB gzip). Inside the demo, `seedFiles.ts` and `lsp.ts` still load with `import()` as well.
 - Home, Details, Usage and Integrations are lazy chunks (`React.lazy` in `app/AppShell` and `dock/TabView`), as are the
   streak canvas (`primitives/Streak`) and the highlighter (`lib/highlight`).
 
@@ -111,14 +128,14 @@ The initial bundle must stay lean (budget and measured sizes are in the spec's "
 
 ## Public API
 
-`src/index.ts`: `OctoApp`, `OctoAppProps`, `HostCapabilities`, `createDemoBridge` and its option types; plus
+`src/index.ts`: `OctoApp`, `OctoAppProps`, `HostCapabilities`; `@octo/ui/demo`: `createDemoBridge` and its option types;
 `@octo/ui/styles.css`. Hosts must `@import "tailwindcss"` before the stylesheet.
 
 ## Verification
 
 `pnpm --filter @octo/ui lint` is `tsc --noEmit` (strict flags from the root `tsconfig.base.json`) plus ESLint
 (`eslint.config.mjs`: typescript-eslint type-checked, react-hooks, jsx-a11y, and the import boundaries of the table
-above — violations of the debt rows below are warnings until Q4). `pnpm --filter @octo/ui test` runs the `node:test`
+above, all errors). `pnpm --filter @octo/ui test` runs the `node:test`
 tests beside the pure modules. Visual and interaction behaviour is checked with
 Playwright scripts against the demo bridge (`?demo=1`, knobs `?demo=one|many|empty`, `?lsp=…`, `?plugins=none`)
 and with `scripts/spacing-audit.mjs`.
@@ -126,7 +143,7 @@ and with `scripts/spacing-audit.mjs`.
 ## Known debt (audit of 2026-11-10)
 
 Measured at the time: 114 files, ~14k lines; 14 files over 250 lines; 120 effects; 84 type casts; 13 non-null
-assertions; 0 `any`; 0 unit tests. Q2 added the unit tests, Q3 the shared helpers (rows removed below). Do not add to
+assertions; 0 `any`; 0 unit tests. Q2 added the unit tests, Q3 the shared helpers, Q4 the import boundaries (rows removed below). Do not add to
 this list; reduce it when you touch the code.
 
 | Debt | Where | Direction |
@@ -134,12 +151,9 @@ this list; reduce it when you touch the code.
 | Providers that own several concerns | `state/code.tsx` (files, tree, index, save, LSP), `state/workspace/WorkspaceProvider.tsx` (layout, persistence, shortcuts, palette) | Split into hooks composed by a thin provider |
 | Every SSE event re-renders all `useProject()` consumers | `state/project.tsx` | Actions context + state context, as in `state/nav.tsx` |
 | Note actions compute from captured state | `state/project.tsx` | Reducer actions |
-| `state` and `lsp` import from components | `state/code.tsx`, `lsp/manager.ts` → `components/files/buffers` | Move `EditorBuffers` below components |
-| `files` ↔ `dock` import each other; features import `chat/Markdown`, `files/fileIcons`, `files/FileTree` | `files/FileView.tsx`, `dock/TabView.tsx`, `chat/ComposerMenu.tsx`, `notes/NotesPanel.tsx` | Shared pieces move to `primitives` / `lib` |
 | Cross-component DOM queries | `WorkspaceProvider`, `dock/drag.ts`, `ProjectDialog` | Refs, context, one owning module |
 | Large components mixing loading, layout and keyboard | `files/FileView.tsx`, `files/editor/EditorComments.tsx`, `chat/Composer.tsx`, `files/FileTree.tsx`, `project/ProjectDialog.tsx` | Extract hooks |
 | Repeated long class strings; arbitrary-pixel breakpoints in CSS classes (`max-[560px]`, `@max-[360px]/…`) that no JS constant mirrors | `chat/Composer*`, `shell/CommandPalette`, `files/TreeColumn`, `IntegrationsView`, `DelegationGroup` | Row / MenuItem / OverlayPanel primitives; `@theme` breakpoint tokens where a value repeats |
 | `ProjectId` / `AgentId` are plain strings (they come from `@octo/agent-client` types, which this step does not touch) | `state/project.tsx`, `lib/route.ts`, everything keyed by project or agent | Brand them in `@octo/agent-client` with parsers there, then use the brands here |
 | List / listbox / menu keyboard handling written per overlay | `Menu`, `CommandPalette`, `ComposerMenu`, `TabStrip` | Shared hooks in `primitives` |
-| ESLint warnings (108 at the end of Q3, 121 at the end of Q1: 21 import-boundary, 15 `prefer-optional-chain`, 16 `no-unnecessary-condition`, 3 `!`, 7 `set-state-in-effect`, 3 `refs`, 7 `exhaustive-deps`, 35 jsx-a11y, rest React Compiler rules and deprecations); casts: 179 by the Q1 counting script (188 before Q3, tests included) | `eslint.config.mjs` (counts: `pnpm lint`) | Each step Q4–Q5 removes its warnings (boundaries Q4, hooks / a11y Q5) and turns the rule into an error |
-| Demo fixtures are exported from the package root | `src/index.ts` | A `@octo/ui/demo` subpath |
+| ESLint warnings (83 in `packages/ui` at the end of Q4, 104 before it, 121 at the end of Q1: 11 `prefer-optional-chain`, 16 `no-unnecessary-condition`, 3 `!`, 7 `set-state-in-effect`, 3 `refs`, 7 `exhaustive-deps`, 25 jsx-a11y, rest React Compiler rules and deprecations; the import-boundary rule has none); casts: 179 by the Q1 counting script (188 before Q3, tests included) | `eslint.config.mjs` (counts: `pnpm lint`) | Q5 removes its warnings (hooks / a11y) and turns those rules into errors |

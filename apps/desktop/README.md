@@ -32,6 +32,6 @@ If nothing answers, the app shows an offline screen with the command and keeps r
 
 ## Demo mode
 
-Open `http://localhost:1420/?demo=1` to run against an in-memory bridge (`createDemoBridge()` from `@octo/ui`)
+Open `http://localhost:1420/?demo=1` to run against an in-memory bridge (`createDemoBridge()` from `@octo/ui/demo`, loaded only for `?demo=`)
 seeded with three projects: a finished investigation, a live run that streams scripted events, and an empty
 project. Messages you send in demo mode run a short scripted turn. `?demo=empty` starts with no projects.

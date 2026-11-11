@@ -6,7 +6,7 @@ import { resolveFolder } from "../../lib/files";
 import { useOptionalCode } from "../../state/code";
 import { useHost } from "../../state/host";
 import { acpCall, locateInProject, looksLikeDiff, toolMeta, toolPath } from "../../lib/tools";
-import { HighlightedCode } from "./Markdown";
+import { HighlightedCode } from "../shared/Markdown";
 import type { ToolUse } from "../../lib/transcript";
 import { RunningDot } from "../primitives/Status";
 import { toolState, useTranscript, type ToolState } from "./transcriptContext";

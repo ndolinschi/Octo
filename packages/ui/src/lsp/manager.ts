@@ -1,6 +1,6 @@
 import type { Bridge, Folder, LanguageServerInfo } from "@octo/agent-client";
 import type * as Monaco from "monaco-editor";
-import type { EditorBuffers } from "../components/files/buffers";
+import type { EditorBuffers } from "../lib/buffers";
 import { fileKey, splitKey, type FilePosition, type FileKey } from "../lib/files";
 import { completionKind, documentation, toHoverContents, toLocations, toLspPosition, toMarkers, toMonacoRange, toProblems } from "./convert";
 import type { EditorIntel, IntelClient } from "./hub";

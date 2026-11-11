@@ -6,18 +6,12 @@ import { formatDuration } from "../../lib/format";
 import { useNow, useLatest } from "../../lib/hooks";
 import { buildTurns, requestSummaries } from "../../lib/transcript";
 import { useProject } from "../../state/project";
-import { CHAT, focusedGroup, type TabId } from "../../state/workspace/layout";
+import { CHAT } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { RunningDot, Spinner } from "../primitives/Status";
 import { CommentsControl } from "./CommentsControl";
 import { Composer } from "./Composer";
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
-
-/** True for the tab that hosts the floating composer: the focused group's active tab while no Chat tab is visible. */
-export function useFloatingHere(tab: TabId): boolean {
-  const ws = useWorkspace();
-  return focusedGroup(ws.layout).active === tab && !ws.isVisible(CHAT);
-}
 
 const CHIP =
   "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs text-fg-2 tabular-nums shadow-float octo-ring-float hover:text-fg";

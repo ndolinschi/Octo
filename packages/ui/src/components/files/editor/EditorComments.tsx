@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useComments } from "../../../state/comments";
 import { linesLabel } from "../../../lib/comments";
-import type { EditorBuffers, MonacoApi } from "../buffers";
+import type { EditorBuffers, MonacoApi } from "../../../lib/buffers";
 import { CommentZone, type ZoneProps } from "./CommentBox";
 import { useLatest } from "../../../lib/hooks";
 

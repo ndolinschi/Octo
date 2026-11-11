@@ -66,7 +66,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
     }
     setBusy(true);
     setError(null);
-    const changedModels = Object.fromEntries((Object.keys(models) as (keyof Models)[]).filter((k) => models[k].trim()).map((k) => [k, models[k].trim()]));
+    const changedModels = Object.fromEntries(Object.entries(models).flatMap(([k, v]) => (typeof v === "string" && v.trim() ? [[k, v.trim()]] : [])));
     try {
       await props.onSubmit({
         name: name.trim(),

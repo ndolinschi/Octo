@@ -3,8 +3,9 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r --filter \"./packages/*\" --filter \"@octo/desktop\" run build",
-    "test": "pnpm -r --filter \"./packages/*\" run test",
-    "lint": "pnpm -r run lint",
+    "test": "pnpm -r --filter \"./packages/*\" --filter \"@octo/desktop\" run test && pnpm test:scripts",
+    "lint": "pnpm -r run lint && node scripts/check-cycles.mjs",
+    "test:scripts": "node --test scripts/eslint/*.test.mjs",
     "format:check": "pnpm -r run format:check",
     "format": "pnpm -r run format",
     "check:bundle": "node scripts/check-bundle-size.mjs"

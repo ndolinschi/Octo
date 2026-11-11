@@ -12,8 +12,11 @@ import { gzipSync } from "node:zlib";
  * Measured with this script on 2026-11-10, before the Q1 tooling pass: 208.77 kB (node zlib default level;
  * Vite's own reporter prints 202.88 kB for the entry chunk alone because it compresses differently).
  * Budget = measured + 3 kB. Raise it only with a reason in the commit message.
+ *
+ * Q4 (2026-11-11): the demo fixtures moved behind `@octo/ui/demo`, loaded with import() only for `?demo=`; the initial
+ * chunk measured 195.09 kB (was 211.22 kB after Q3). Budget = measured + 0.6 kB.
  */
-const BUDGET_KB = 211.8;
+const BUDGET_KB = 195.7;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

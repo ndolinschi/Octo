@@ -4,7 +4,7 @@ import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
 import { useDelayedLoading, useLatest } from "../../lib/hooks";
 import { Spinner } from "../primitives/Status";
-import type { EditorBuffers, MonacoApi } from "./buffers";
+import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
 import { type FileKey } from "../../lib/files";
 
