@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/anthropics/anthropic-sdk-go/v2/packages/param"
@@ -71,6 +72,34 @@ func (r *Registry) AnthropicTools() []anthropic.ToolUnionParam {
 			union.OfTool.Description = param.NewOpt(d.Description)
 		}
 		out = append(out, union)
+	}
+	return out
+}
+
+func (r *Registry) All() []Def {
+	out := make([]Def, 0, len(r.byName))
+	for _, d := range r.byName {
+		out = append(out, d)
+	}
+	slices.SortFunc(out, func(a, b Def) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
+
+// Decorate replaces the named tool's handler with wrap(handler); unknown names are ignored.
+func (r *Registry) Decorate(name string, wrap func(Handler) Handler) {
+	if d, ok := r.byName[name]; ok {
+		d.Handle = wrap(d.Handle)
+		r.byName[name] = d
+	}
+}
+
+// Without returns a copy of the registry minus the named tools.
+func (r *Registry) Without(names ...string) *Registry {
+	out := NewRegistry()
+	for n, d := range r.byName {
+		if !slices.Contains(names, n) {
+			out.byName[n] = d
+		}
 	}
 	return out
 }

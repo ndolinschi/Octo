@@ -1,0 +1,153 @@
+# v7 — changes per turn, message queue, approvals
+
+**Date:** 2026-11-10 · **Status:** approved scope and order (owner); details decided by the orchestrating agent; not built
+**Builds on:** [`2026-11-10-project-harness-design.md`](./2026-11-10-project-harness-design.md), [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md), [`2026-11-10-project-harness-ui.md`](./2026-11-10-project-harness-ui.md)
+**Why these three:** [`../research/2026-11-10-t3code-gap.md`](../research/2026-11-10-t3code-gap.md)
+
+Build order: 1 → 2 → 3. Each is harness → client → UI, with its own acceptance criteria and commit.
+
+## Non-goals
+
+Git integration (commits, branches, PRs), checkpoints / rewind of files, per-agent worktrees, approvals for the
+built-in read-only tools, steering a running model call mid-stream.
+
+---
+
+## 1. Changes per turn and a diff view
+
+**Intent.** After a turn, the user sees what changed on disk and can read each change — without git.
+
+**Harness.** Every successful agent write (built-in `write_file`, ACP `fs/write_text_file`) records a change with
+the content before and after. Snapshots are stored in the project database (content-addressed, deduplicated,
+text only, ≤ 2 MiB each — the file API's limit; larger or binary files record the change without a diff).
+
+```sql
+CREATE TABLE blobs (hash TEXT PRIMARY KEY, content BLOB NOT NULL);          -- sha256 of content
+CREATE TABLE changes (
+  id INTEGER PRIMARY KEY, turn_id INTEGER NOT NULL,                         -- id of the orchestrator's user message that started the turn
+  agent_id TEXT NOT NULL, folder TEXT NOT NULL, path TEXT NOT NULL,
+  before_hash TEXT, after_hash TEXT,                                        -- NULL before = created; NULL after never (no delete tool)
+  added INTEGER, removed INTEGER,                                           -- line counts; NULL when no diff is available
+  created_at TEXT NOT NULL
+);
+```
+
+| Method | Path | Response |
+| --- | --- | --- |
+| GET | `/v1/projects/{pid}/changes?turn=` | `{ "turns": TurnChanges[] }` (newest first; `turn` narrows to one) |
+| GET | `/v1/projects/{pid}/changes/{cid}` | `ChangeDetail` |
+| POST | `/v1/projects/{pid}/changes/{cid}/revert` | → `FileStat`; writes `before` back (deletes a created file); `409 file_changed` if the file no longer equals `after` |
+
+```ts
+type FileChange = {
+  id: number; turn_id: number; agent_id: string; folder: string; path: string;
+  kind: "created" | "modified"; added: number | null; removed: number | null; created_at: string;
+};
+type TurnChanges = { turn_id: number; files: FileChangeSummary[]; added: number; removed: number };
+// one entry per file per turn: first `before` to last `after`, with the ids of the underlying changes
+type FileChangeSummary = Omit<FileChange, "id" | "agent_id"> & { change_ids: number[]; agent_ids: string[] };
+type ChangeDetail = FileChange & { before: string | null; after: string | null; diff_available: boolean };
+```
+
+New SSE event `change.recorded` `{ seq, turn_id, change: FileChange }`. Retention: blobs referenced by no change
+are deleted; changes older than 30 days lose their blobs (the row stays, `diff_available: false`).
+
+**UI.** (a) Under a finished turn that changed files: a card "N files changed" with `+added −removed` totals,
+one 28px row per file (glyph, name, muted folder path, `+a −r` in tabular numerals, `ok` / `err` colours) and
+"Review" (opens the first diff). (b) A **Diff tab** (`diff:{turnId}\0{folder}\0{path}`): Monaco diff editor
+(inline under 900px of width, side by side above), breadcrumb row like the file view, prev / next file in the
+turn, "Open file", "Revert this change" (confirm; explains the 409 case). (c) Details → Files and Home → "files
+written" read `/changes` instead of scanning transcripts. (d) Code comments work in the diff's modified side and
+attach to the file as usual.
+
+**Acceptance.** 1. A turn in which two agents write three files (one twice) yields one card with three rows and
+correct line counts; the diff shows first-before → last-after. 2. A created file shows as all-added; revert
+removes it. 3. Revert restores the previous content on disk; if the file changed since, it is refused with a
+clear choice. 4. ACP agent writes are recorded the same way. 5. Binary / over-limit writes list without a diff.
+6. Existing projects open after the migration; turns before it simply have no card. 7. All gates.
+
+## 2. Message queue (send while a turn runs)
+
+**Intent.** The user can keep typing while the orchestrator works; nothing is lost and nothing interleaves.
+
+**Harness.** `POST /v1/projects/{pid}/messages` while a turn is running no longer returns 409: the message is
+queued (persisted, FIFO, at most 20, each ≤ the normal message limit) and returns `202 { "queued": QueuedMessage }`.
+When the turn ends (completed, failed or cancelled) the next queued message starts a new turn automatically;
+after a failed or cancelled turn the queue **pauses** (it does not auto-run on top of an error) until resumed.
+
+| Method | Path | Body → Response |
+| --- | --- | --- |
+| GET | `/v1/projects/{pid}/queue` | → `{ "paused": boolean, "messages": QueuedMessage[] }` |
+| PATCH | `/v1/projects/{pid}/queue/{qid}` | `{ "text" }` → `QueuedMessage` |
+| DELETE | `/v1/projects/{pid}/queue/{qid}` | → `204` |
+| POST | `/v1/projects/{pid}/queue/resume` | → `202` |
+| POST | `/v1/projects/{pid}/queue/{qid}/send-now` | → `202`; cancels the running turn, then runs this message first |
+
+`QueuedMessage = { id: string; text: string; created_at: string }`. SSE: `queue.updated` `{ seq, paused, messages }`.
+Cancel (`/cancel`) stops the turn and pauses the queue; it never drops queued messages. Full queue → `409 queue_full`.
+
+**UI.** While a turn runs the composer stays enabled: Enter queues ("Queued" hint), the Stop button stays.
+Queued messages appear as a stack above the composer (one 28px row each: text truncated, Edit, Remove, "Send now"),
+collapsible past three ("3 queued"). Paused state: "Queue paused after a failed turn" + Resume / Clear. Pending
+code comments attach to the message at the moment it is queued. The floating composer shows the same count chip.
+
+**Acceptance.** 1. Three messages sent during a turn run in order, each as its own turn, none lost across a
+harness restart. 2. Editing and removing a queued message works; "Send now" cancels the running turn and runs
+that message next. 3. After a failed turn the queue is paused and resumes only on request. 4. The 21st message
+is refused with a visible reason. 5. All gates.
+
+## 3. Approvals (Supervised / Full access)
+
+**Intent.** The user decides whether agents may change things without asking. Today everything is auto-approved,
+including ACP agents' permission requests.
+
+**Model.** A project has `access: "supervised" | "full"` (default `full` for existing projects — no behaviour
+change on upgrade; new projects default to `supervised`). In supervised mode these need approval: built-in
+`write_file` and shell commands, ACP `session/request_permission`, ACP `fs/write_text_file`. Reads never ask.
+An approval request blocks only the agent that raised it; siblings keep running.
+
+```ts
+type Approval = {
+  id: string; agent_id: string; turn_id: number;
+  kind: "write" | "command" | "acp";
+  title: string;                       // "Write src/auth/refresh.ts", the command line, or the ACP tool title
+  detail: { folder?: string; path?: string; diff?: { added: number; removed: number }; command?: string;
+            options?: { id: string; label: string; kind: "allow_once" | "allow_always" | "reject_once" | "reject_always" }[] };
+  created_at: string;
+};
+```
+
+| Method | Path | Body → Response |
+| --- | --- | --- |
+| GET | `/v1/projects/{pid}/approvals` | → `{ "approvals": Approval[] }` (pending only) |
+| POST | `/v1/projects/{pid}/approvals/{id}` | `{ "decision": "allow" \| "allow_for_turn" \| "deny", "option_id"?: string, "note"?: string }` → `204` |
+
+`allow_for_turn` approves the same kind (and, for commands, the same program) from the same agent for the rest of
+the turn. A denial returns a tool error to the agent with the user's note, so it can adapt. Pending approvals are
+denied when the turn is cancelled and survive a UI reload (not a harness restart: the turn itself does not).
+SSE: `approval.requested` `{ seq, approval }`, `approval.resolved` `{ seq, id, decision }`. `PATCH /v1/projects/{pid}`
+accepts `access`.
+
+**UI.** The composer footer gets an access selector next to the model ("Supervised" / "Full access", with a
+one-line explanation in its menu). A pending approval renders in the **orchestrator chat** at the bottom of the
+live turn — also when a sub-agent raised it (with the agent's role and a link to its tab): title, the diff
+preview or command in mono, and Allow / Allow for this turn / Deny (Deny can take a note). Keyboard: focus moves
+to the card when it appears unless the user is typing; `Enter` allows, `Esc` leaves it pending. The sidebar
+project row and the floating composer show a "needs approval" state (`warn` dot / chip); the delegation row of a
+waiting agent says "Waiting for approval". Agent tabs stay read-only: they show the pending request but the
+buttons live in the orchestrator chat and in a pinned bar at the top of that agent's tab.
+
+**Acceptance.** 1. Supervised: a sub-agent's write pauses that agent, shows a card in the orchestrator chat with
+the diff, Allow lets it finish, Deny makes the agent receive an error and continue. 2. Allow for this turn stops
+further prompts of the same kind from that agent in that turn only. 3. An ACP agent's permission request shows
+its options and the chosen one is returned to it; with Full access behaviour is exactly as today. 4. Cancelling
+the turn clears pending approvals. 5. Existing projects keep Full access after the migration. 6. All gates.
+
+---
+
+## Sequencing notes
+
+- 1 before 3: the approval card reuses the change/diff machinery for write previews.
+- 2 is independent of 1 and 3 on the harness side; UI work on the composer overlaps with 3 (access selector), so
+  the UI parts of 2 and 3 are built by one agent.
+- Each part: harness (Sonnet) → client (Sonnet) → UI (Opus) → independent review → live run on the mock stack.

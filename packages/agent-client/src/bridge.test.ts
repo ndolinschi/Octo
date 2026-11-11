@@ -18,8 +18,5 @@ test("resolveBridgeUrl falls back to default", () => {
 });
 
 test("resolveBridgeUrl strips trailing slash", () => {
-  assert.equal(
-    resolveBridgeUrl({ VITE_HARNESS_BRIDGE_URL: "http://localhost:8790/" }),
-    "http://localhost:8790",
-  );
+  assert.equal(resolveBridgeUrl({ VITE_HARNESS_BRIDGE_URL: "http://localhost:8790/" }), "http://localhost:8790");
 });

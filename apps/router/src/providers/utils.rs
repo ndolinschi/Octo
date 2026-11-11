@@ -12,8 +12,8 @@ use tracing::info;
 
 use crate::auto::parent_session_id;
 use crate::history::{
-    describe_input, request_payload, resolve_cost, response_payload, token_from_headers,
-    usage_from_parts, CallObserve, FinishedCall, Millis,
+    complete_dropped_usage, describe_input, request_payload, resolve_cost, response_payload,
+    token_from_headers, usage_from_parts, CallObserve, DroppedStream, FinishedCall, Millis,
 };
 use crate::proxy::error::ProxyError;
 
@@ -93,7 +93,7 @@ pub async fn proxy_post_bytes(
         Err(err) => {
             if let Some(mut capture) = capture {
                 capture.started = started;
-                capture.finish(502, Vec::new(), Vec::new(), 0, false);
+                capture.finish(502, Vec::new(), Vec::new(), 0, Completion::Whole);
             }
             return Err(err.into());
         }
@@ -171,6 +171,8 @@ impl Capture {
                 hk_text_signal: observe.hk_text_signal,
                 auto: observe.auto.clone(),
                 on_response: observe.on_response.clone(),
+                request_id: observe.request_id.clone(),
+                budget_key: observe.budget_key.clone(),
             },
             model,
             message,
@@ -190,8 +192,9 @@ impl Capture {
         output: Vec<u8>,
         tail: Vec<u8>,
         response_bytes: usize,
-        stream_failed: bool,
+        completion: Completion,
     ) {
+        let stream_failed = completion == Completion::Failed;
         if stream_failed {
             tracing::warn!(
                 session_id = self.observe.session_id.as_deref().unwrap_or(""),
@@ -201,7 +204,18 @@ impl Capture {
         }
         let output_text = String::from_utf8_lossy(&output).into_owned();
         let tail_text = String::from_utf8_lossy(&tail);
-        let usage = usage_from_parts(&output_text, &tail_text, response_bytes);
+        let mut usage = usage_from_parts(&output_text, &tail_text, response_bytes);
+        if completion != Completion::Whole {
+            usage = complete_dropped_usage(
+                usage,
+                DroppedStream {
+                    request_bytes: self.request_bytes,
+                    prefix: &output_text,
+                    tail: &tail_text,
+                    response_bytes,
+                },
+            );
+        }
         let resolved = resolve_cost(&usage, self.model.as_deref(), self.observe.history.prices());
         let response_payload = response_payload(
             self.observe.kind,
@@ -212,6 +226,7 @@ impl Capture {
         );
         let latency_ms = Millis::new(self.started.elapsed().as_millis() as u64);
         let generation_id = self.header_generation_id.or(usage.generation_id.clone());
+        let call_model = self.model.clone().unwrap_or_default();
         let parent = self
             .observe
             .session_id
@@ -258,10 +273,30 @@ impl Capture {
             bg_signal: self.observe.bg_signal,
             hk_text_signal: self.observe.hk_text_signal,
         });
-        if let (Some(auto), Some(session_id), Some(cost)) =
-            (&self.observe.auto, &self.observe.session_id, resolved.cost)
-        {
-            auto.add_session_cost(session_id, cost.0);
+        if let Some(auto) = &self.observe.auto {
+            if let Some(cost) = resolved.cost {
+                auto.add_cost(
+                    self.observe.session_id.as_deref(),
+                    self.observe.budget_key.as_deref(),
+                    cost.0,
+                );
+            }
+            if let Some(request_id) = &self.observe.request_id {
+                auto.record_call(
+                    request_id.clone(),
+                    crate::auto::CallRow {
+                        model: call_model,
+                        tier: self.observe.tier_after.clone().unwrap_or_default(),
+                        trigger: self.observe.trigger.clone(),
+                        input_tokens: usage.input_tokens.map_or(0, |t| t.0),
+                        output_tokens: usage.output_tokens.map_or(0, |t| t.0),
+                        cache_read_tokens: usage.cache_read_tokens.map_or(0, |t| t.0),
+                        cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
+                        cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
+                        cost_source: cost_source_label(resolved.source),
+                    },
+                );
+            }
         }
         if let Some(hook) = self.observe.on_response {
             let text = if tail_text.is_empty() {
@@ -272,6 +307,13 @@ impl Capture {
             hook(&text);
         }
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Completion {
+    Whole,
+    Dropped,
+    Failed,
 }
 
 const USAGE_TAIL: usize = 64 * 1024;
@@ -341,7 +383,11 @@ where
                         std::mem::take(&mut this.buf),
                         std::mem::take(&mut this.tail),
                         this.response_bytes,
-                        this.stream_failed,
+                        if this.stream_failed {
+                            Completion::Failed
+                        } else {
+                            Completion::Whole
+                        },
                     );
                 }
                 Poll::Ready(None)
@@ -359,7 +405,11 @@ impl<S> Drop for Tee<S> {
                 std::mem::take(&mut self.buf),
                 std::mem::take(&mut self.tail),
                 self.response_bytes,
-                self.stream_failed,
+                if self.stream_failed {
+                    Completion::Failed
+                } else {
+                    Completion::Dropped
+                },
             );
         }
     }
@@ -426,4 +476,11 @@ pub fn apply_openai_request_headers(mut upstream: RequestBuilder, parts: &Parts)
         }
     }
     forward_content_type(upstream, parts)
+}
+
+pub fn cost_source_label(source: crate::history::CostSource) -> &'static str {
+    match source {
+        crate::history::CostSource::Upstream | crate::history::CostSource::OpenRouter => "reported",
+        crate::history::CostSource::Estimate | crate::history::CostSource::None => "estimated",
+    }
 }

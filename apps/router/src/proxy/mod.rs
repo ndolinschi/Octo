@@ -26,6 +26,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::error!(%err, "failed to build application state");
         err
     })?;
+    for warning in crate::auto::ladder_warnings(state.auto.tiers()) {
+        tracing::warn!("{warning}");
+    }
     match History::connect(
         &config.history_database_path,
         &config.history_token_key,

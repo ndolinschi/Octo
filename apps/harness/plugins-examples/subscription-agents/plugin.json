@@ -1,0 +1,133 @@
+{
+  "name": "subscription-agents",
+  "version": "0.2.0",
+  "description": "Ten coding-agent CLIs as sub-agents, on the subscriptions their own CLIs are logged in to. Only the scripted agent has been run against this harness; the commands for cursor, opencode, antigravity, devin, droid, omp and pi come from vendor docs, the ACP registry and secondary sources and are unverified.",
+  "agents": [
+    {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "command": "npx",
+      "args": ["-y", "@agentclientprotocol/claude-agent-acp"],
+      "env": {},
+      "auth": {
+        "probe": ["claude", "auth", "status"],
+        "hint": "Log in once with the Claude Code CLI (claude). The harness hides its own ANTHROPIC_API_KEY from the agent so the subscription is used; to bill per token on purpose, add env {\"ANTHROPIC_API_KEY\": \"${ANTHROPIC_API_KEY}\"} to this entry."
+      }
+    },
+    {
+      "id": "copilot",
+      "label": "GitHub Copilot",
+      "command": "copilot",
+      "args": ["--acp", "--stdio"],
+      "env": { "COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}" },
+      "auth": {
+        "hint": "Sign in with the Copilot CLI (see its docs), or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission."
+      }
+    },
+    {
+      "id": "grok",
+      "label": "Grok",
+      "command": "grok",
+      "args": ["agent", "{modelArgs}", "stdio"],
+      "modelArg": ["-m", "{model}"],
+      "env": { "XAI_API_KEY": "${XAI_API_KEY}" },
+      "auth": {
+        "methods": [{ "id": "xai.api_key", "requiresEnv": "XAI_API_KEY" }, "cached_token"],
+        "hint": "Sign in with the Grok CLI (grok login). XAI_API_KEY is forwarded when the harness has it, but is billed per token, not on the subscription: unset it to use the cached subscription login."
+      }
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "command": "npx",
+      "args": ["-y", "@agentclientprotocol/codex-acp"],
+      "env": { "CODEX_HOME": "${OCTO_CODEX_HOME}" },
+      "auth": {
+        "probe": ["codex", "login", "status"],
+        "hint": "Log in with the Codex CLI (codex login, or codex login --device-auth on a headless machine); with OCTO_CODEX_HOME set, log in with CODEX_HOME pointing at the same folder."
+      }
+    },
+    {
+      "id": "cursor",
+      "label": "Cursor",
+      "command": "cursor-agent",
+      "args": ["acp"],
+      "env": { "CURSOR_API_KEY": "${CURSOR_API_KEY}" },
+      "auth": {
+        "probe": ["cursor-agent", "status"],
+        "skip": ["cursor_login"],
+        "hint": "Run cursor-agent login once (browser), or start the harness with CURSOR_API_KEY set. Some installs name the binary agent."
+      }
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "command": "opencode",
+      "args": ["acp"],
+      "env": {},
+      "auth": {
+        "hint": "Start opencode once and connect a model provider with /connect; models are named provider/model. Provider keys in the harness environment are not forwarded: set them in OpenCode's own config or add them to this entry's env."
+      }
+    },
+    {
+      "id": "antigravity",
+      "label": "Antigravity",
+      "command": "agy",
+      "args": ["acp"],
+      "env": {},
+      "auth": {
+        "hint": "Needs Antigravity CLI 1.5.0 or newer (agy acp --help). Sign in once with agy, or agy acp --login, in a terminal."
+      }
+    },
+    {
+      "id": "devin",
+      "label": "Devin CLI",
+      "command": "devin",
+      "args": ["acp"],
+      "modelArg": ["--model", "{model}"],
+      "env": { "WINDSURF_API_KEY": "${WINDSURF_API_KEY}" },
+      "auth": {
+        "probe": ["devin", "auth", "status"],
+        "methods": [{ "id": "windsurf-api-key", "requiresEnv": "WINDSURF_API_KEY" }, "cached_token"],
+        "hint": "Run devin auth login (add --force-manual-token-flow over SSH), or set WINDSURF_API_KEY. List models with devin models list --format json."
+      }
+    },
+    {
+      "id": "droid",
+      "label": "Factory Droid",
+      "command": "droid",
+      "args": ["exec", "--output-format", "acp"],
+      "modelArg": ["-m", "{model}"],
+      "env": {
+        "FACTORY_API_KEY": "${FACTORY_API_KEY}",
+        "DROID_DISABLE_AUTO_UPDATE": "true",
+        "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
+      },
+      "auth": {
+        "methods": [{ "id": "factory-api-key", "requiresEnv": "FACTORY_API_KEY" }],
+        "skip": ["device-pairing"],
+        "hint": "Start the harness with FACTORY_API_KEY set (needed on headless machines); the browser device pairing of droid cannot be completed by the harness."
+      }
+    },
+    {
+      "id": "omp",
+      "label": "Oh My Pi",
+      "command": "omp",
+      "args": ["acp"],
+      "env": { "PI_CODING_AGENT_DIR": "${OCTO_OMP_DIR}" },
+      "auth": {
+        "hint": "Run omp once and sign in (credentials in ~/.omp); omp models --json must list at least one model. Set OCTO_OMP_DIR to use a separate profile folder."
+      }
+    },
+    {
+      "id": "pi",
+      "label": "Pi (community ACP adapter)",
+      "command": "npx",
+      "args": ["-y", "pi-acp"],
+      "env": {},
+      "auth": {
+        "hint": "Needs pi on PATH. Run pi and /login (or set a provider API key in pi's own config) first. pi-acp is a third-party MVP adapter and offers only a terminal login."
+      }
+    }
+  ]
+}

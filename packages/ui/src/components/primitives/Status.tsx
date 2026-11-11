@@ -1,0 +1,61 @@
+import type { AgentStatus, Tier } from "@octo/agent-client";
+import { agentGlyph, orchestratorGlyph } from "../../lib/stateGlyph";
+import { StateGlyph } from "./StateGlyph";
+
+const LABEL: Record<AgentStatus, string> = {
+  idle: "Idle",
+  running: "Working",
+  completed: "Done",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+export function statusLabel(status: AgentStatus): string {
+  return LABEL[status];
+}
+
+/**
+ * Loading (transient work: a file opening, a server starting) uses the same working ring as everything else
+ * (decision 29: no other spinner shape exists). `className` replaces the default colour (`text-fg-2`).
+ */
+export function Spinner({ size = 12, className = "text-fg-2" }: { size?: number; className?: string }) {
+  return <StateGlyph state="working" size={size >= 14 ? 14 : 12} box={size} className={className} />;
+}
+
+/** Something is running: the working ring centred in a `box`-sized square. */
+export function RunningDot({ box = 12, className }: { box?: number; className?: string }) {
+  return <StateGlyph state="working" size={box >= 16 ? 14 : 12} box={box} {...(className === undefined ? {} : { className })} />;
+}
+
+/** An agent's state as its ring (decision 29): working, failed, or the quiet done / idle ring. */
+export function StatusIcon({ status, size = 14, unseen = false }: { status: AgentStatus; size?: 14 | 16; unseen?: boolean }) {
+  return <StateGlyph state={agentGlyph(status, unseen)} size={size === 16 ? 14 : 12} box={size} />;
+}
+
+/**
+ * The orchestrator's state in one 16px slot (sidebar rows, Home, the header): its ring at 14px — working (turning arc),
+ * needs you (pulsing dot, `warn`), unseen activity (accent disc), not started (dashed), idle (thin ring).
+ */
+export function OrchestratorGlyph({ state, unseen = false }: { state: "working" | "needs" | "idle" | "new"; unseen?: boolean }) {
+  return <StateGlyph state={orchestratorGlyph(state, unseen)} size={14} box={16} label />;
+}
+
+const TIER_LABEL: Record<Tier, string> = { fast: "fast", balanced: "balanced", deep: "deep" };
+
+export function tierLabel(tier: Tier): string {
+  return TIER_LABEL[tier];
+}
+
+export function isTier(v: unknown): v is Tier {
+  return v === "fast" || v === "balanced" || v === "deep";
+}
+
+/** "claude-sonnet-5-5-20261001" → "Sonnet 5.5"; ids that don't follow that shape lose only the vendor prefix. */
+export function modelLabel(model: string): string {
+  // An ACP agent from a plugin: its id, marked as such.
+  if (model.startsWith("acp:")) return `${model.slice(4)} (ACP)`;
+  const id = model.replace(/^claude-/, "").replace(/-\d{8}$/, "");
+  const [, family, major, minor] = /^([a-z]+)-(\d+)(?:-(\d+))?$/.exec(id) ?? [];
+  if (family === undefined || major === undefined) return id;
+  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${major}${minor ? `.${minor}` : ""}`;
+}

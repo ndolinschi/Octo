@@ -1246,6 +1246,7 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         allow_fallbacks: true,
         strip_fields: &[],
         require_parameters: RequireParameters::ToolsOnly,
+        default_max_tokens: 8192,
     })
     .body;
     assert!(tools_only.get("provider").is_none());
@@ -1262,6 +1263,7 @@ fn shape_strips_thinking_only_on_model_change_and_clamps_tokens() {
         allow_fallbacks: true,
         strip_fields: &[],
         require_parameters: RequireParameters::Never,
+        default_max_tokens: 8192,
     })
     .body;
     assert!(never.get("provider").is_none());
@@ -1398,6 +1400,7 @@ fn shape_call_530_fixture_only_strips_output_config() {
         allow_fallbacks: true,
         strip_fields: &strip,
         require_parameters: RequireParameters::ToolsOnly,
+        default_max_tokens: 8192,
     });
     let shaped = result.body;
     assert!(shaped.get("output_config").is_none());
@@ -1433,6 +1436,7 @@ fn shape_empty_strip_fields_disables_stripping() {
         allow_fallbacks: true,
         strip_fields: &[],
         require_parameters: RequireParameters::Never,
+        default_max_tokens: 8192,
     });
     assert!(shaped.stripped.is_empty());
     assert_eq!(shaped.body["output_config"], json!({"effort": "high"}));
@@ -1464,6 +1468,7 @@ fn shape_ignores_protected_strip_fields() {
         allow_fallbacks: true,
         strip_fields: &fields,
         require_parameters: RequireParameters::ToolsOnly,
+        default_max_tokens: 8192,
     });
     assert_eq!(shaped.stripped, vec!["output_config".to_string()]);
     assert_eq!(shaped.body["tools"], body["tools"]);
@@ -1538,6 +1543,7 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
         allow_fallbacks: false,
         strip_fields: &[],
         require_parameters: RequireParameters::Always,
+        default_max_tokens: 8192,
     })
     .body;
     assert_eq!(pinned["provider"]["require_parameters"], true);
@@ -1563,6 +1569,7 @@ fn shape_merges_provider_pin_without_dropping_require_parameters() {
         allow_fallbacks: false,
         strip_fields: &[],
         require_parameters: RequireParameters::Always,
+        default_max_tokens: 8192,
     })
     .body;
     assert_eq!(kept["provider"]["order"], json!(["Anthropic"]));
@@ -1589,6 +1596,7 @@ fn require_parameters_replaces_string_provider_with_object() {
         allow_fallbacks: true,
         strip_fields: &[],
         require_parameters: RequireParameters::Always,
+        default_max_tokens: 8192,
     })
     .body;
     assert_eq!(shaped["provider"], json!({"require_parameters": true}));
@@ -2332,6 +2340,7 @@ async fn budget_blocks_fill_upgrade_and_compacts_instead() {
         Turn::Compact(row) => {
             assert_eq!(row.model, "mid-m");
         }
+        Turn::Reject(_) => panic!("budget action is downgrade"),
         Turn::Forward(forward) => {
             let payload: serde_json::Value = serde_json::from_slice(&forward.body).unwrap();
             assert_ne!(payload["model"], "high-m");

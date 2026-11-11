@@ -1,25 +1,32 @@
+mod calls;
 mod compact;
+pub mod retry;
 mod status;
 
+pub use calls::call;
 pub use status::status;
 
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use axum::{
     body::{to_bytes, Body, Bytes},
     extract::{Request, State},
-    http::StatusCode,
-    response::Response,
+    http::{header, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
 };
 use serde_json::Value;
 
 use crate::auto::{
     bg_signal, client_has_thinking, client_tool_names_csv, is_housekeeping, last_user_text,
-    preferred_model, server_tool_types, session_key, Compact, DecideRequest, RouteMeta, Turn,
+    preferred_model, server_tool_types, session_key, Compact, DecideRequest, Hints, RouteMeta,
+    Turn,
 };
 use crate::history::{token_from_headers, CallKind, CallObserve, CallProvider};
 use crate::proxy::error::ProxyError;
 use crate::state::AppState;
+
+const FAILURE_BODY_LIMIT: usize = 64 * 1024;
 
 #[derive(Clone, Debug, Default)]
 struct ClientSignals {
@@ -57,13 +64,15 @@ pub async fn chat(State(state): State<AppState>, request: Request) -> Result<Res
 
 async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response, ProxyError> {
     let max_body = state.config.max_body_bytes;
-    let (parts, body) = request.into_parts();
+    let (mut parts, body) = request.into_parts();
     let body_bytes = to_bytes(body, max_body)
         .await
         .map_err(ProxyError::from_read_body)?;
     let api_key = token_from_headers(&parts.headers);
+    let hints = Hints::take(&mut parts.headers);
     let value: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
     let session = session_key(&value);
+    state.auto.bind_hints(session.as_deref(), &hints);
     let signals = client_signals(&value, &state.config.autoroute_background_model_patterns);
     let server_tools = server_tool_types(&value);
     if let Some(tool) = server_tools.first() {
@@ -82,15 +91,18 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
             });
         }
     }
-    let turn = crate::auto::decide(DecideRequest {
-        auto: &state.auto,
-        history: &state.history,
-        client: &state.client,
-        decisions_url: &state.config.openrouter_decisions_url,
-        api_key: &api_key,
-        body: value,
-        allow_compact: !chat,
-    })
+    let turn = crate::auto::decide_with(
+        DecideRequest {
+            auto: &state.auto,
+            history: &state.history,
+            client: &state.client,
+            decisions_url: &state.config.openrouter_decisions_url,
+            api_key: &api_key,
+            body: value,
+            allow_compact: !chat,
+        },
+        &hints,
+    )
     .await;
     match turn {
         Turn::Forward(mut forward) => {
@@ -109,11 +121,29 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
                 chat,
                 signals,
                 server_tool: server_tools.into_iter().next(),
+                hints,
             })
             .await
         }
+        Turn::Reject(reject) => {
+            let mut response = ProxyError::anthropic(
+                StatusCode::PAYMENT_REQUIRED,
+                "billing_error",
+                reject.message(),
+            )
+            .into_response();
+            let info = ResultInfo {
+                model: None,
+                tier: None,
+                trigger: "budget",
+                request_id: &crate::auto::new_request_id(),
+                budget: Some((reject.budget_micros, reject.spent_micros)),
+            };
+            apply_result_headers(&mut response, &info);
+            Ok(response)
+        }
         Turn::Compact(row) if chat => chat_compact(state, parts, row).await,
-        Turn::Compact(row) => compact::upstream(state, &parts, &row).await,
+        Turn::Compact(row) => compact::upstream(state, &parts, &row, &hints).await,
     }
 }
 
@@ -138,6 +168,7 @@ struct ForwardTurn<'a> {
     chat: bool,
     signals: ClientSignals,
     server_tool: Option<String>,
+    hints: Hints,
 }
 
 async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
@@ -149,6 +180,7 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
         chat,
         signals,
         server_tool,
+        hints,
     } = plan;
     let retry_parts = clone_parts(&parts);
     let retry_forward = forward.clone();
@@ -160,46 +192,59 @@ async fn forward_turn(plan: ForwardTurn<'_>) -> Result<Response, ProxyError> {
         chat,
         signals: signals.clone(),
         server_tool: server_tool.clone(),
+        hints: hints.clone(),
     })
     .await;
-    match first {
+    let (response, failure) = match first {
         Ok(response) if !chat && retryable_status(response.status()) => {
-            if let Some(retried) = retry_next_tier(RetryNext {
-                state,
-                parts: retry_parts,
-                forward: retry_forward,
-                session,
-                chat,
-                signals: signals.clone(),
-                server_tool: server_tool.clone(),
-            })
-            .await
-            {
-                return retried;
-            }
-            Ok(response)
+            let (response, failure) = buffer_failure(response, state).await;
+            (Ok(response), failure)
         }
-        Err(err) if !chat && retryable_error(&err) => {
-            if let Some(retried) = retry_next_tier(RetryNext {
-                state,
-                parts: retry_parts,
-                forward: retry_forward,
-                session,
-                chat,
-                signals,
-                server_tool,
-            })
-            .await
-            {
-                return retried;
-            }
-            Err(err)
-        }
-        other => other,
-    }
+        Err(err) if !chat && retryable_error(&err) => (Err(err), Failure::default()),
+        other => return other,
+    };
+    let retried = retry_once(RetryOnce {
+        state,
+        parts: retry_parts,
+        forward: retry_forward,
+        session,
+        chat,
+        signals,
+        server_tool,
+        failure,
+        hints,
+    })
+    .await;
+    retried.unwrap_or(response)
 }
 
-struct RetryNext<'a> {
+#[derive(Default)]
+struct Failure {
+    delay: Option<Duration>,
+    model_unavailable: bool,
+}
+
+async fn buffer_failure(response: Response, state: &AppState) -> (Response, Failure) {
+    let (parts, body) = response.into_parts();
+    let bytes = to_bytes(body, FAILURE_BODY_LIMIT).await.unwrap_or_default();
+    let max = Duration::from_secs(state.auto.tiers().retry_after_max_secs);
+    let delay = parts
+        .headers
+        .get(header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| retry::retry_after_delay(value, SystemTime::now(), max));
+    let model_unavailable =
+        retry::model_unavailable(parts.status.as_u16(), &String::from_utf8_lossy(&bytes));
+    (
+        Response::from_parts(parts, Body::from(bytes)),
+        Failure {
+            delay,
+            model_unavailable,
+        },
+    )
+}
+
+struct RetryOnce<'a> {
     state: &'a AppState,
     parts: axum::http::request::Parts,
     forward: crate::auto::Forward,
@@ -207,55 +252,33 @@ struct RetryNext<'a> {
     chat: bool,
     signals: ClientSignals,
     server_tool: Option<String>,
+    failure: Failure,
+    hints: Hints,
 }
 
-async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyError>> {
+async fn retry_once(plan: RetryOnce<'_>) -> Option<Result<Response, ProxyError>> {
     let payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
     let current = payload.get("model").and_then(Value::as_str)?.to_string();
-    let next = plan.state.auto.tiers().next_up(&current)?;
-    let budget = plan.state.auto.tiers().session_budget_micros;
-    if budget > 0 {
-        let spent = plan
-            .session
-            .as_deref()
-            .map(|id| plan.state.auto.session_cost_micros(id))
-            .unwrap_or(0);
-        if spent >= budget
-            && crate::auto::band_rank(plan.state.auto.tiers().band(&next))
-                > crate::auto::band_rank("mid")
-        {
+    let forward = if plan.failure.model_unavailable {
+        let next = plan.state.auto.tiers().next_up(&current)?;
+        if escalation_blocked(plan.state, plan.session.as_deref(), &plan.hints, &next) {
             return None;
         }
-    }
-    let models = plan.state.auto.cached_models().await;
-    let mut shaped = crate::auto::shape(crate::auto::ShapePlan {
-        body: &payload,
-        model: &next,
-        previous_model: Some(current.as_str()),
-        models: models.as_ref(),
-        provider_order: &plan.state.auto.tiers().provider_order,
-        allow_fallbacks: plan.state.auto.tiers().allow_fallbacks,
-        strip_fields: &plan.state.auto.tiers().strip_fields,
-        require_parameters: plan.state.auto.tiers().require_parameters,
-    });
-    if plan.server_tool.is_some() && plan.state.config.autoroute_server_tool_mode == "online_suffix"
-    {
-        shaped.body = crate::auto::with_online_suffix(&shaped.body);
-    }
-    let body = serde_json::to_vec(&shaped.body).ok()?;
-    let tier_after = plan.state.auto.tiers().band(&next).to_string();
-    let meta = RouteMeta {
-        tier_before: plan.forward.meta.tier_after.clone(),
-        tier_after,
-        trigger: "retry".to_string(),
-        stripped: None,
-    }
-    .with_stripped(&shaped.stripped);
-    let forward = crate::auto::Forward {
-        body,
-        meta,
-        trimmed_from_tokens: None,
+        escalated_forward(&plan, &payload, &current, &next).await?
+    } else {
+        let mut forward = plan.forward.clone();
+        forward.meta = RouteMeta {
+            tier_before: plan.forward.meta.tier_after.clone(),
+            tier_after: plan.forward.meta.tier_after.clone(),
+            trigger: "retry".to_string(),
+            stripped: plan.forward.meta.stripped.clone(),
+        };
+        forward.trimmed_from_tokens = None;
+        forward
     };
+    if let Some(delay) = plan.failure.delay.filter(|delay| !delay.is_zero()) {
+        tokio::time::sleep(delay).await;
+    }
     Some(
         dispatch_forward(DispatchForward {
             state: plan.state,
@@ -265,9 +288,75 @@ async fn retry_next_tier(plan: RetryNext<'_>) -> Option<Result<Response, ProxyEr
             chat: plan.chat,
             signals: plan.signals,
             server_tool: plan.server_tool,
+            hints: plan.hints,
         })
         .await,
     )
+}
+
+fn escalation_blocked(state: &AppState, session: Option<&str>, hints: &Hints, next: &str) -> bool {
+    let tiers = state.auto.tiers();
+    if matches!(
+        hints.policy,
+        crate::auto::TierPolicy::Ceiling | crate::auto::TierPolicy::Fixed
+    ) {
+        if let Some(max) = hints.tier {
+            if crate::auto::band_rank(tiers.band(next)) > crate::auto::band_rank(max) {
+                return true;
+            }
+        }
+    }
+    let Some((budget, spent)) = state
+        .auto
+        .budget_status(session, hints.budget_key.as_deref())
+    else {
+        return false;
+    };
+    if spent < budget {
+        return false;
+    }
+    match tiers.cheapest_band(crate::auto::RequestShape::default()) {
+        Some(cheapest) => tiers.band(next) != cheapest,
+        None => crate::auto::band_rank(tiers.band(next)) > crate::auto::band_rank("mid"),
+    }
+}
+
+async fn escalated_forward(
+    plan: &RetryOnce<'_>,
+    payload: &Value,
+    current: &str,
+    next: &str,
+) -> Option<crate::auto::Forward> {
+    let tiers = plan.state.auto.tiers();
+    let models = plan.state.auto.cached_models().await;
+    let mut shaped = crate::auto::shape(crate::auto::ShapePlan {
+        body: payload,
+        model: next,
+        previous_model: Some(current),
+        models: models.as_ref(),
+        provider_order: &tiers.provider_order,
+        allow_fallbacks: tiers.allow_fallbacks,
+        strip_fields: &tiers.strip_fields,
+        require_parameters: tiers.require_parameters,
+        default_max_tokens: tiers.default_max_tokens,
+    });
+    if plan.server_tool.is_some() && plan.state.config.autoroute_server_tool_mode == "online_suffix"
+    {
+        shaped.body = crate::auto::with_online_suffix(&shaped.body);
+    }
+    let body = serde_json::to_vec(&shaped.body).ok()?;
+    let meta = RouteMeta {
+        tier_before: plan.forward.meta.tier_after.clone(),
+        tier_after: tiers.band(next).to_string(),
+        trigger: "retry".to_string(),
+        stripped: None,
+    }
+    .with_stripped(&shaped.stripped);
+    Some(crate::auto::Forward {
+        body,
+        meta,
+        trimmed_from_tokens: None,
+    })
 }
 
 struct DispatchForward<'a> {
@@ -278,6 +367,7 @@ struct DispatchForward<'a> {
     chat: bool,
     signals: ClientSignals,
     server_tool: Option<String>,
+    hints: Hints,
 }
 
 async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyError> {
@@ -297,6 +387,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
                 }
             }) as Arc<dyn Fn(&str) + Send + Sync>
         });
+    let request_id = crate::auto::new_request_id();
     let meta = &plan.forward.meta;
     let rerouting_reason = plan
         .server_tool
@@ -325,8 +416,24 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         hk_text_signal: Some(plan.signals.hk_text_signal),
         auto: Some(plan.state.auto.clone()),
         on_response: hook,
+        request_id: Some(request_id.clone()),
+        budget_key: plan.hints.budget_key.clone(),
     });
-    if plan.chat {
+    let served_model = serde_json::from_slice::<Value>(&plan.forward.body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    let budget = plan
+        .state
+        .auto
+        .budget_status(plan.session.as_deref(), plan.hints.budget_key.as_deref());
+    let tier = plan.forward.meta.tier_after.clone();
+    let trigger = plan.forward.meta.trigger.clone();
+    let result = if plan.chat {
         plan.state
             .llm
             .openrouter
@@ -344,7 +451,53 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
             .openrouter
             .forward_messages(&plan.state.client, request, observe)
             .await
+    };
+    result.map(|mut response| {
+        apply_result_headers(
+            &mut response,
+            &ResultInfo {
+                model: served_model.as_deref(),
+                tier: Some(&tier),
+                trigger: &trigger,
+                request_id: &request_id,
+                budget,
+            },
+        );
+        response
+    })
+}
+
+pub(super) struct ResultInfo<'a> {
+    pub model: Option<&'a str>,
+    pub tier: Option<&'a str>,
+    pub trigger: &'a str,
+    pub request_id: &'a str,
+    pub budget: Option<(u64, u64)>,
+}
+
+pub(super) fn apply_result_headers(response: &mut Response, info: &ResultInfo<'_>) {
+    let headers = response.headers_mut();
+    let mut put = |name: &'static str, value: &str| {
+        if let Ok(value) = HeaderValue::from_str(value) {
+            headers.insert(name, value);
+        }
+    };
+    if let Some(model) = info.model {
+        put("x-octo-model", model);
     }
+    if let Some(tier) = info.tier {
+        put("x-octo-tier", tier);
+    }
+    put("x-octo-trigger", info.trigger);
+    put("x-octo-request-id", info.request_id);
+    if let Some((budget, spent)) = info.budget {
+        put("x-octo-budget-usd", &usd(budget));
+        put("x-octo-spent-usd", &usd(spent));
+    }
+}
+
+pub(super) fn usd(micros: u64) -> String {
+    format!("{}.{:06}", micros / 1_000_000, micros % 1_000_000)
 }
 
 fn clone_parts(parts: &axum::http::request::Parts) -> axum::http::request::Parts {
@@ -399,6 +552,8 @@ async fn chat_compact(
                 hk_text_signal: None,
                 auto: None,
                 on_response: None,
+                request_id: None,
+                budget_key: None,
             }),
         )
         .await

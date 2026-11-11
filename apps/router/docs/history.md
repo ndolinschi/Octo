@@ -56,25 +56,33 @@ Upserted from last-user `tool_result` blocks that look like cargo / pytest / uni
 
 ```mermaid
 flowchart TD
-  rates{rates_complete AND any rate > 0?}
-  est[estimated_cost_micros]
   upq{upstream cost > 0?}
   up[upstream_cost_micros]
   orc{OpenRouter usage.cost > 0?}
   orv[or_cost_micros]
+  rates{rates_complete AND any rate > 0 AND estimate > 0?}
+  est[estimated_cost_micros]
   none[cost_source = none]
 
-  rates -->|yes and estimate > 0| est --> pick[cost_micros = estimate]
-  rates -->|no / zero estimate| upq
-  upq -->|yes| up --> pick2[cost_micros = upstream]
+  upq -->|yes| up --> pick[cost_micros = upstream]
   upq -->|no| orc
-  orc -->|yes| orv --> pick3[cost_micros = openrouter]
-  orc -->|no| none
+  orc -->|yes| orv --> pick2[cost_micros = openrouter]
+  orc -->|no| rates
+  rates -->|yes| est --> pick3[cost_micros = estimate]
+  rates -->|no| none
 ```
+
+Reported cost (BYOK upstream, then OpenRouter `usage.cost`) wins; the `prices.toml` estimate is used only when none is reported. `cost_source` records which one was used, and `estimated_cost_micros` is stored either way so the two can be compared.
+
+Token semantics for the estimate: Anthropic Messages usage (`input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`) reports `input_tokens` as the **uncached** count, so cache reads and writes are added on top. OpenAI/OpenRouter chat usage (`prompt_tokens`, `prompt_tokens_details.cached_tokens`) reports `prompt_tokens` as the **total** including cache reads, so cache reads are subtracted from the input rate and billed at `cache_read`. The stored `input_tokens` column holds whichever number the vendor reported.
+
+A stream that ends early (client disconnect or upstream error after the headers) still records usage: input tokens from `message_start` (or estimated as request bytes / 4 when the vendor sent none), and output tokens estimated as streamed text bytes / 4 when the reported figure is missing or smaller than what was seen. Those rows are estimates.
+
+At the first request of a session after a restart, session spend is restored from this database whenever history is enabled (not only when a budget is set). Restored spend is kept separate from the routing state, so it does not create a sticky session.
 
 Money is stored as **integer micro-dollars** (`CostMicros`). Failed / no-usage rows stay honest zeros with `cost_source = "none"`.
 
-Ladder slugs in shipped `prices.toml` may use `0.0` placeholders — estimate is skipped (`!any_nonzero()`), so FinOps falls through to upstream / OpenRouter / `none` until you fill console rates.
+Rows in `prices.toml` that are all `0.0` skip the estimate (`!any_nonzero()`). The shipped rates were checked against the OpenRouter catalogue on 2026-11-10 ([ladder-cost-check.md](./ladder-cost-check.md)); `cache_write` stays `0.0` where the catalogue publishes no price.
 
 ## Caveats
 

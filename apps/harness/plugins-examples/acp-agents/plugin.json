@@ -1,0 +1,21 @@
+{
+  "name": "acp-agents",
+  "version": "0.3.0",
+  "description": "More external coding agents over ACP (check each command against the tool's own docs; Claude Code, Copilot, Grok, Codex and the other subscription CLIs are in subscription-agents)",
+  "agents": [
+    {
+      "id": "gemini",
+      "label": "Gemini CLI",
+      "command": "gemini",
+      "args": [
+        "--acp"
+      ],
+      "env": {
+        "GEMINI_API_KEY": "${GEMINI_API_KEY}"
+      },
+      "auth": {
+        "hint": "Start gemini once in a terminal and sign in (see its docs), or start the harness with GEMINI_API_KEY set. Only GEMINI_API_KEY is forwarded from the harness environment."
+      }
+    }
+  ]
+}

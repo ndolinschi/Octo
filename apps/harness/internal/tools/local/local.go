@@ -1,247 +1,144 @@
 package local
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
-const bashTimeout = 30 * time.Second
+const (
+	ToolBash      = "bash"
+	ToolReadFile  = "read_file"
+	ToolWriteFile = "write_file"
+	ToolListDir   = "list_dir"
+)
 
-var bashTrustWarn sync.Once
+// Root is a labelled directory that file and shell tools are confined to.
+type Root struct {
+	Label string
+	Path  string
+}
 
-var schemaBash = json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to run"}},"required":["command"]}`)
-var schemaReadFile = json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Relative path under workspace"}},"required":["path"]}`)
-var schemaWriteFile = json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Relative path under workspace"},"content":{"type":"string","description":"File contents"}},"required":["path","content"]}`)
-var schemaListDir = json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Relative directory path; defaults to workspace root"}}}`)
+// AllTools lists every tool RegisterRoots can provide.
+var AllTools = []string{ToolBash, ToolReadFile, ToolWriteFile, ToolListDir}
 
+const folderProp = `"folder":{"type":"string","description":"Folder label; defaults to the first folder"}`
+
+func schemaFor(tool string, multi bool) json.RawMessage {
+	props := map[string]string{
+		ToolBash:        `"command":{"type":"string","description":"Shell command to run"}`,
+		ToolReadFile:    `"path":{"type":"string","description":"Relative path under the folder"},"offset":{"type":"integer","description":"First line to read, 1-based; default 1"},"limit":{"type":"integer","description":"Maximum number of lines to read; defaults to a server-side cap (2000)"}`,
+		ToolWriteFile:   `"path":{"type":"string","description":"Relative path under the folder"},"content":{"type":"string","description":"File contents"}`,
+		ToolListDir:     `"path":{"type":"string","description":"Relative directory path; defaults to the folder root"}`,
+		ToolSearchFiles: searchProps,
+	}
+	required := map[string]string{
+		ToolBash:        `["command"]`,
+		ToolReadFile:    `["path"]`,
+		ToolWriteFile:   `["path","content"]`,
+		ToolListDir:     `[]`,
+		ToolSearchFiles: `["pattern"]`,
+	}
+	p := props[tool]
+	if multi {
+		p += "," + folderProp
+	}
+	return json.RawMessage(`{"type":"object","properties":{` + p + `},"required":` + required[tool] + `}`)
+}
+
+var descriptions = map[string]string{
+	ToolBash:        "Run a shell command in a project folder",
+	ToolReadFile:    "Read a text file under a project folder. Long files are cut: use offset and limit (lines) to page through them",
+	ToolWriteFile:   "Write a text file under a project folder",
+	ToolListDir:     "List a directory under a project folder",
+	ToolSearchFiles: "Search the text files under a project folder for a regular expression; returns path:line: text for each match",
+}
+
+// Register installs all four tools over a single workspace.
 func Register(reg *tools.Registry, workspace string) error {
-	absWorkspace, err := filepath.Abs(workspace)
-	if err != nil {
-		return fmt.Errorf("workspace: %w", err)
-	}
-	ws := absWorkspace
+	return RegisterRoots(reg, []Root{{Label: "workspace", Path: workspace}}, AllTools...)
+}
 
-	toolsDefs := []tools.Def{
-		{
-			Name:        "bash",
-			Description: "Run a shell command in the workspace",
-			InputSchema: schemaBash,
-			Handle:      bashHandler(ws),
-		},
-		{
-			Name:        "read_file",
-			Description: "Read a text file under the workspace",
-			InputSchema: schemaReadFile,
-			Handle:      readFileHandler(ws),
-		},
-		{
-			Name:        "write_file",
-			Description: "Write a text file under the workspace",
-			InputSchema: schemaWriteFile,
-			Handle:      writeFileHandler(ws),
-		},
-		{
-			Name:        "list_dir",
-			Description: "List a directory under the workspace",
-			InputSchema: schemaListDir,
-			Handle:      listDirHandler(ws),
-		},
+// RegisterRoots installs the named tools (all when none are named) over roots.
+// With no roots nothing is registered.
+func RegisterRoots(reg *tools.Registry, roots []Root, names ...string) error {
+	return RegisterRootsLimits(reg, roots, tools.Limits{}, names...)
+}
+
+// RegisterRootsLimits is RegisterRoots with explicit caps (zero fields mean
+// their defaults); today only read_file's line and byte caps use them.
+func RegisterRootsLimits(reg *tools.Registry, roots []Root, lim tools.Limits, names ...string) error {
+	if len(roots) == 0 {
+		return nil
 	}
-	for _, d := range toolsDefs {
-		if err := reg.Register(d); err != nil {
+	if len(names) == 0 {
+		names = AllTools
+	}
+	rs, err := newRootSet(roots)
+	if err != nil {
+		return err
+	}
+	handlers := map[string]tools.Handler{
+		ToolBash:        bashHandler(rs),
+		ToolReadFile:    readFileHandler(rs, lim),
+		ToolWriteFile:   writeFileHandler(rs),
+		ToolListDir:     listDirHandler(rs),
+		ToolSearchFiles: searchFilesHandler(rs),
+	}
+	for _, name := range names {
+		h, ok := handlers[name]
+		if !ok {
+			return fmt.Errorf("local: unknown tool %q", name)
+		}
+		err := reg.Register(tools.Def{
+			Name:        name,
+			Description: descriptions[name],
+			InputSchema: schemaFor(name, len(roots) > 1),
+			Handle:      h,
+		})
+		if err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func bashHandler(workspace string) tools.Handler {
-	return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
-		bashTrustWarn.Do(func() {
-			slog.Warn("bash runs real shell commands with the harness process privileges; not sandboxed")
-		})
-		var in struct {
-			Command string `json:"command"`
-		}
-		if err := json.Unmarshal(input, &in); err != nil {
-			return err.Error(), true, nil
-		}
-		if strings.TrimSpace(in.Command) == "" {
-			return "command required", true, nil
-		}
-		runCtx, cancel := context.WithTimeout(ctx, bashTimeout)
-		defer cancel()
-		cmd := exec.CommandContext(runCtx, "bash", "-c", in.Command)
-		cmd.Dir = workspace
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		out := stdout.String()
-		if se := stderr.String(); se != "" {
-			if out != "" {
-				out += "\n"
-			}
-			out += se
-		}
-		if err != nil {
-			if out == "" {
-				out = err.Error()
-			}
-			return tools.CapString(out), true, nil
-		}
-		return tools.CapString(out), false, nil
-	}
+type rootSet struct {
+	roots []Root
 }
 
-func readFileHandler(workspace string) tools.Handler {
-	return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
-		var in struct {
-			Path string `json:"path"`
-		}
-		if err := json.Unmarshal(input, &in); err != nil {
-			return err.Error(), true, nil
-		}
-		path, err := resolveUnderWorkspace(workspace, in.Path)
+func newRootSet(roots []Root) (*rootSet, error) {
+	out := make([]Root, 0, len(roots))
+	for _, r := range roots {
+		abs, err := filepath.Abs(r.Path)
 		if err != nil {
-			return err.Error(), true, nil
+			return nil, fmt.Errorf("folder %q: %w", r.Label, err)
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err.Error(), true, nil
-		}
-		return string(tools.CapBytes(data)), false, nil
+		out = append(out, Root{Label: r.Label, Path: abs})
 	}
+	return &rootSet{roots: out}, nil
 }
 
-func writeFileHandler(workspace string) tools.Handler {
-	return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
-		var in struct {
-			Path    string `json:"path"`
-			Content string `json:"content"`
-		}
-		if err := json.Unmarshal(input, &in); err != nil {
-			return err.Error(), true, nil
-		}
-		path, err := resolveUnderWorkspace(workspace, in.Path)
-		if err != nil {
-			return err.Error(), true, nil
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err.Error(), true, nil
-		}
-		if err := os.WriteFile(path, []byte(in.Content), 0o644); err != nil {
-			return err.Error(), true, nil
-		}
-		return "ok", false, nil
+// pick returns the root path for a folder label; empty selects the first root.
+func (s *rootSet) pick(label string) (string, error) {
+	if label == "" {
+		return s.roots[0].Path, nil
 	}
+	for _, r := range s.roots {
+		if r.Label == label {
+			return r.Path, nil
+		}
+	}
+	return "", fmt.Errorf("unknown folder %q", label)
 }
 
-func listDirHandler(workspace string) tools.Handler {
-	return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
-		var in struct {
-			Path string `json:"path"`
-		}
-		if err := json.Unmarshal(input, &in); err != nil {
-			return err.Error(), true, nil
-		}
-		rel := in.Path
-		if rel == "" {
-			rel = "."
-		}
-		path, err := resolveUnderWorkspace(workspace, rel)
-		if err != nil {
-			return err.Error(), true, nil
-		}
-		entries, err := os.ReadDir(path)
-		if err != nil {
-			return err.Error(), true, nil
-		}
-		var b strings.Builder
-		for i, e := range entries {
-			if i > 0 {
-				b.WriteByte('\n')
-			}
-			name := e.Name()
-			if e.IsDir() {
-				name += "/"
-			}
-			b.WriteString(name)
-		}
-		return b.String(), false, nil
-	}
-}
-
-func resolveUnderWorkspace(workspace, rel string) (string, error) {
-	if rel == "" {
-		return "", fmt.Errorf("path required")
-	}
-	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("path must be relative to workspace")
-	}
-	clean := filepath.Clean(rel)
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	joined := filepath.Join(workspace, clean)
-	absTarget, err := filepath.Abs(joined)
+func (s *rootSet) resolve(folder, rel string) (root, abs string, err error) {
+	root, err = s.pick(folder)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	absWorkspace, err := filepath.Abs(workspace)
-	if err != nil {
-		return "", err
-	}
-	if absTarget != absWorkspace && !strings.HasPrefix(absTarget, absWorkspace+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	realWorkspace, err := filepath.EvalSymlinks(absWorkspace)
-	if err != nil {
-		return "", err
-	}
-	realTarget, err := resolveRealPath(absTarget)
-	if err != nil {
-		return "", err
-	}
-	if !pathWithinRoot(realTarget, realWorkspace) {
-		return "", fmt.Errorf("path escapes workspace")
-	}
-	return absTarget, nil
-}
-
-func resolveRealPath(absPath string) (string, error) {
-	if _, err := os.Lstat(absPath); err == nil {
-		return filepath.EvalSymlinks(absPath)
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-	parent := filepath.Dir(absPath)
-	base := filepath.Base(absPath)
-	if parent == absPath {
-		return "", fmt.Errorf("path not found")
-	}
-	realParent, err := resolveRealPath(parent)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(realParent, base), nil
-}
-
-func pathWithinRoot(path, root string) bool {
-	if path == root {
-		return true
-	}
-	sep := string(filepath.Separator)
-	return strings.HasPrefix(path, root+sep)
+	abs, err = resolveUnderWorkspace(root, rel)
+	return root, abs, err
 }

@@ -1,0 +1,240 @@
+package projectstore
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+)
+
+// Usage sources.
+const (
+	SourceAPI = "api"
+	SourceACP = "acp"
+)
+
+// UsageGroup is a way to bucket usage rows.
+type UsageGroup string
+
+const (
+	GroupDay     UsageGroup = "day"
+	GroupModel   UsageGroup = "model"
+	GroupProject UsageGroup = "project"
+	GroupAgent   UsageGroup = "agent"
+)
+
+func (g UsageGroup) Valid() bool {
+	return g == GroupDay || g == GroupModel || g == GroupProject || g == GroupAgent
+}
+
+// ContextWindow is how much of an agent's context is occupied.
+type ContextWindow struct{ Used, Size int64 }
+
+// RoleSide is the usage role of side-question requests.
+const RoleSide = "side"
+
+// UsageRecord is one model response (api) or one ACP usage delta (acp).
+type UsageRecord struct {
+	AgentID          string
+	Model            string
+	Source           string
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+	// CostUSD is a cost reported by the source; nil when there is none.
+	CostUSD *float64
+	// Context, when set, is stored on the agent in the same transaction.
+	Context *ContextWindow
+	// ServedModel, Tier, RouteTrigger and RouterRequestID come from an Octo
+	// router's result headers and call record; empty when there is none.
+	ServedModel     string
+	Tier            string
+	RouteTrigger    string
+	RouterRequestID string
+	// CostEstimated marks CostUSD as the router's own estimate, not a reported price.
+	CostEstimated bool
+	// Role marks a row that belongs to no agent's own thread ("side": a side
+	// question); empty for an agent's own requests. Such a row is attributed to
+	// AgentID but not added to the agent's token totals.
+	Role string
+	// CreatedAt overrides the row time (RFC 3339 UTC, as Now returns); empty means now.
+	CreatedAt string
+}
+
+// RecordUsage writes a usage row and adds the input/output tokens to the
+// agent's totals atomically.
+func (d *DB) RecordUsage(ctx context.Context, r UsageRecord) (Agent, error) {
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return Agent{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	set, args := "input_tokens = input_tokens + ?, output_tokens = output_tokens + ?", []any{r.InputTokens, r.OutputTokens}
+	if r.Context != nil {
+		set += ", context_used = ?, context_size = ?"
+		args = append(args, r.Context.Used, r.Context.Size)
+	}
+	if r.Role == "" {
+		res, err := tx.ExecContext(ctx, `UPDATE agents SET `+set+` WHERE id = ?`, append(args, r.AgentID)...)
+		if err != nil {
+			return Agent{}, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return Agent{}, ErrNotFound
+		}
+	}
+	at := r.CreatedAt
+	if at == "" {
+		at = Now()
+	}
+	var cost any
+	if r.CostUSD != nil {
+		cost = *r.CostUSD
+	}
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO usage (agent_id, model, source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at,
+			served_model, tier, route_trigger, router_request_id, cost_estimated, role)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.AgentID, r.Model, r.Source, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens, cost, at,
+		nullable(r.ServedModel), nullable(r.Tier), nullable(r.RouteTrigger), nullable(r.RouterRequestID), r.CostEstimated,
+		nullable(r.Role))
+	if err != nil {
+		return Agent{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Agent{}, err
+	}
+	return d.Agent(ctx, r.AgentID)
+}
+
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// SetContext stores an agent's context occupancy.
+func (d *DB) SetContext(ctx context.Context, id string, w ContextWindow) (Agent, error) {
+	res, err := d.sql.ExecContext(ctx, `UPDATE agents SET context_used = ?, context_size = ? WHERE id = ?`, w.Used, w.Size, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Agent{}, ErrNotFound
+	}
+	return d.Agent(ctx, id)
+}
+
+// UsageRow is a sum of usage rows sharing a bucket key, model, source and
+// whether the source reported a cost.
+type UsageRow struct {
+	Key, Label, Model, Source string
+	Reported                  bool
+	// ReportedEstimated is set when the reported cost is a router estimate.
+	ReportedEstimated bool
+	InputTokens       int64
+	OutputTokens      int64
+	CacheReadTokens   int64
+	CacheWriteTokens  int64
+	Requests          int64
+	// ReportedCostUSD is the summed source-reported cost (zero unless Reported).
+	ReportedCostUSD float64
+}
+
+// servedModel is the model that answered: the router's when it named one,
+// else the one the harness asked for.
+const servedModel = "COALESCE(NULLIF(u.served_model, ''), u.model)"
+
+// keyExprs maps a group to the SQL key and label expressions. The project
+// group has a single bucket per database; its key is filled in by UsageRows.
+var keyExprs = map[UsageGroup][2]string{
+	GroupDay:     {"substr(u.created_at, 1, 10)", "substr(u.created_at, 1, 10)"},
+	GroupModel:   {servedModel, servedModel},
+	GroupAgent:   {"COALESCE(u.role, u.agent_id)", "COALESCE(u.role, a.role, u.agent_id)"},
+	GroupProject: {"''", "''"},
+}
+
+// UsageRows sums the rows with from <= created_at < to (fixed-width RFC 3339
+// UTC strings, as Now returns) by group.
+func (d *DB) UsageRows(ctx context.Context, from, to string, g UsageGroup) ([]UsageRow, error) {
+	exprs, ok := keyExprs[g]
+	if !ok {
+		return nil, fmt.Errorf("projectstore: unknown usage group %q", g)
+	}
+	rows, err := d.sql.QueryContext(ctx, `SELECT `+exprs[0]+`, `+exprs[1]+`, `+servedModel+`, u.source, u.cost_usd IS NOT NULL, u.cost_estimated,
+		SUM(u.input_tokens), SUM(u.output_tokens), SUM(u.cache_read_tokens), SUM(u.cache_write_tokens),
+		COUNT(*), COALESCE(SUM(u.cost_usd), 0)
+		FROM usage u LEFT JOIN agents a ON a.id = u.agent_id
+		WHERE u.created_at >= ? AND u.created_at < ?
+		GROUP BY 1, 2, 3, 4, 5, 6`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UsageRow
+	for rows.Next() {
+		var r UsageRow
+		if err := rows.Scan(&r.Key, &r.Label, &r.Model, &r.Source, &r.Reported, &r.ReportedEstimated, &r.InputTokens, &r.OutputTokens,
+			&r.CacheReadTokens, &r.CacheWriteTokens, &r.Requests, &r.ReportedCostUSD); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if g == GroupProject && len(out) > 0 {
+		info, err := d.Info(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i := range out {
+			out[i].Key, out[i].Label = d.id, info.Name
+		}
+	}
+	return out, nil
+}
+
+// UsageEntry is one stored usage row, oldest first in UsageLog.
+type UsageEntry struct {
+	AgentID         string
+	Model           string
+	ServedModel     string
+	Tier            string
+	RouteTrigger    string
+	RouterRequestID string
+	Source          string
+	InputTokens     int64
+	OutputTokens    int64
+	CostUSD         *float64
+	CostEstimated   bool
+	// Role is "side" for side-question rows, empty for an agent's own requests.
+	Role      string
+	CreatedAt string
+}
+
+// UsageLog returns every usage row in insertion order.
+func (d *DB) UsageLog(ctx context.Context) ([]UsageEntry, error) {
+	rows, err := d.sql.QueryContext(ctx, `SELECT agent_id, model, COALESCE(served_model, ''), COALESCE(tier, ''),
+		COALESCE(route_trigger, ''), COALESCE(router_request_id, ''), source, input_tokens, output_tokens, cost_usd,
+		cost_estimated, COALESCE(role, ''), created_at FROM usage ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UsageEntry
+	for rows.Next() {
+		var e UsageEntry
+		var cost sql.NullFloat64
+		if err := rows.Scan(&e.AgentID, &e.Model, &e.ServedModel, &e.Tier, &e.RouteTrigger, &e.RouterRequestID,
+			&e.Source, &e.InputTokens, &e.OutputTokens, &cost, &e.CostEstimated, &e.Role, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		if cost.Valid {
+			e.CostUSD = &cost.Float64
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}

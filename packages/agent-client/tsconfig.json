@@ -1,12 +1,8 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
+    // No DOM: the client takes fetch / EventSource through options and must type-check without browser globals.
     "lib": ["ES2022"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": true,
     "types": []
   },
   "include": ["src"]

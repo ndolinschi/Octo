@@ -224,7 +224,7 @@ fn zero_estimate_defers_to_nonzero_upstream() {
 }
 
 #[test]
-fn estimate_beats_upstream_when_prices_set() {
+fn upstream_reported_cost_beats_estimate_when_prices_set() {
     use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
 
     let usage = usage_from_output(concat!(
@@ -243,9 +243,9 @@ fn estimate_beats_upstream_when_prices_set() {
         },
     )]);
     let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
-    assert_eq!(resolved.source, CostSource::Estimate);
+    assert_eq!(resolved.source, CostSource::Upstream);
     assert_eq!(resolved.estimated_cost, Some(CostMicros(1_000_000)));
-    assert_eq!(resolved.cost, Some(CostMicros(1_000_000)));
+    assert_eq!(resolved.cost, Some(CostMicros(10_000)));
 }
 
 #[test]
@@ -271,7 +271,7 @@ fn no_usage_resolves_to_none() {
 }
 
 #[test]
-fn cache_read_priced_separately_from_uncached_input() {
+fn messages_shape_input_tokens_are_uncached_and_cache_read_is_added() {
     use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
 
     let usage = usage_from_output(concat!(
@@ -293,9 +293,88 @@ fn cache_read_priced_separately_from_uncached_input() {
     assert_eq!(resolved.source, CostSource::Estimate);
     assert_eq!(
         resolved.cost,
-        Some(CostMicros(700_000)),
-        "uncached 600k*$1 + cache_read 400k*$0.25 = $0.7"
+        Some(CostMicros(1_100_000)),
+        "uncached input_tokens 1M*$1 + cache_read 400k*$0.25 = $1.1"
     );
+}
+
+#[test]
+fn chat_shape_prompt_tokens_include_cached_tokens() {
+    use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
+
+    let usage = usage_from_output(concat!(
+        r#"{"usage":{"prompt_tokens":1000000,"completion_tokens":0,"#,
+        r#""prompt_tokens_details":{"cached_tokens":400000}}}"#
+    ));
+    let prices = PriceTable::new(vec![(
+        "mistralai/devstral-2512".into(),
+        ModelPrice {
+            input: 1.0,
+            cache_read: 0.25,
+            cache_write: 0.0,
+            output: 0.0,
+            billed_as: None,
+            rates_complete: true,
+        },
+    )]);
+    let resolved = resolve_cost(&usage, Some("mistralai/devstral-2512"), &prices);
+    assert_eq!(resolved.source, CostSource::Estimate);
+    assert_eq!(
+        resolved.cost,
+        Some(CostMicros(700_000)),
+        "prompt_tokens includes cache: uncached 600k*$1 + cache_read 400k*$0.25 = $0.7"
+    );
+}
+
+#[test]
+fn audit_experiment_c_records_reported_cost_and_correct_estimate() {
+    use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
+
+    let prices = PriceTable::new(vec![(
+        "minimax/minimax-m3.1-flash".into(),
+        ModelPrice {
+            input: 0.15,
+            cache_read: 0.015,
+            cache_write: 0.0,
+            output: 0.60,
+            billed_as: None,
+            rates_complete: true,
+        },
+    )]);
+    let usage = usage_from_output(concat!(
+        r#"{"usage":{"input_tokens":20000,"output_tokens":500,"cache_read_input_tokens":90000,"#,
+        r#""cache_creation_input_tokens":8000,"cost":0.0123}}"#
+    ));
+    let resolved = resolve_cost(&usage, Some("minimax/minimax-m3.1-flash"), &prices);
+    assert_eq!(resolved.source, CostSource::OpenRouter);
+    assert_eq!(resolved.cost, Some(CostMicros(12_300)));
+    assert_eq!(resolved.or_cost, Some(CostMicros(12_300)));
+    assert_eq!(
+        resolved.estimated_cost,
+        Some(CostMicros(4_650)),
+        "20000*0.15 + 90000*0.015 + 8000*0 + 500*0.60 micro-USD"
+    );
+}
+
+#[test]
+fn estimate_is_used_only_when_no_reported_cost() {
+    use octo::history::{resolve_cost, CostSource, ModelPrice, PriceTable};
+
+    let prices = PriceTable::new(vec![(
+        "m".into(),
+        ModelPrice {
+            input: 1.0,
+            cache_read: 0.0,
+            cache_write: 0.0,
+            output: 2.0,
+            billed_as: None,
+            rates_complete: true,
+        },
+    )]);
+    let usage = usage_from_output(r#"{"usage":{"input_tokens":1000,"output_tokens":500}}"#);
+    let resolved = resolve_cost(&usage, Some("m"), &prices);
+    assert_eq!(resolved.source, CostSource::Estimate);
+    assert_eq!(resolved.cost, Some(CostMicros(2_000)));
 }
 
 #[test]

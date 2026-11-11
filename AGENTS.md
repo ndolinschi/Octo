@@ -5,10 +5,12 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
 | App / package | Path | Stack | Notes |
 | --- | --- | --- | --- |
 | **router** (Octo) | [`apps/router/`](./apps/router/) | Rust (crate `octo`) | HTTP proxy + autoroute |
-| **harness** | [`apps/harness/`](./apps/harness/) | Go 1.26+ | Anthropic Messages agent client (tools, sessions) |
-| **desktop** | [`apps/desktop/`](./apps/desktop/) | Tauri 2 + React | Shell for shared UI (local tools via future bridge) |
-| **ui** | [`packages/ui/`](./packages/ui/) | React | Shell-agnostic screens (`@octo/ui`) |
-| **agent-client** | [`packages/agent-client/`](./packages/agent-client/) | TypeScript | Bridge URL + future HTTP client (`@octo/agent-client`) |
+| **harness** | [`apps/harness/`](./apps/harness/) | Go 1.26+ | Project-based agent harness: `harness serve` bridge, orchestrator + sub-agents, per-project SQLite, file API, plugins (language servers, ACP agents, tool servers) |
+| **desktop** | [`apps/desktop/`](./apps/desktop/) | Vite + React + Tailwind 4 (Tauri 2 shell) | Host for the shared UI (talks to `harness serve`; `?demo=1` for demo data) |
+| **ui** | [`packages/ui/`](./packages/ui/) | React | Shell-agnostic UI (`@octo/ui`): sidebar, tab workspace, chat, Monaco editor with comments and LSP |
+| **agent-client** | [`packages/agent-client/`](./packages/agent-client/) | TypeScript | Bridge HTTP + SSE client, state reducer, message-port bridge, file/plugin/LSP methods (`@octo/agent-client`) |
+
+**Current state and next steps:** [`docs/superpowers/HANDOVER.md`](./docs/superpowers/HANDOVER.md).
 
 Future **web** host: [`apps/web/`](./apps/web/) (stub). Do not invent other shared packages until something is actually shared twice.
 
@@ -53,20 +55,31 @@ bash scripts/install-go-toolchain.sh
 cd apps/harness
 go test ./...
 go vet ./...
+
+# Full stack without an API key (three terminals)
+go run ./examples/mockllm
+ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:8791
+pnpm --filter @octo/desktop dev   # from repo root, then open http://localhost:1420
 ```
 
 ## Desktop + UI (pnpm)
 
-Design: [`docs/superpowers/specs/2026-11-09-desktop-ui-design.md`](./docs/superpowers/specs/2026-11-09-desktop-ui-design.md). Rules: `.cursor/rules/octo-frontend.mdc`.
+Design: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](./docs/superpowers/specs/2026-11-10-project-harness-design.md) (projects, bridge API) and [`2026-11-10-project-harness-ui.md`](./docs/superpowers/specs/2026-11-10-project-harness-ui.md) (UI). Rules: `.cursor/rules/octo-frontend.mdc`, `.cursor/rules/octo-typescript.mdc` (the same text for Claude: `.claude/rules/typescript.md`).
+
+Per-module instructions: [`packages/ui/AGENTS.md`](./packages/ui/AGENTS.md) (architecture: [`packages/ui/ARCHITECTURE.md`](./packages/ui/ARCHITECTURE.md)), [`packages/agent-client/AGENTS.md`](./packages/agent-client/AGENTS.md), [`apps/desktop/AGENTS.md`](./apps/desktop/AGENTS.md).
 
 ```bash
 pnpm install
+pnpm lint                                  # tsc --noEmit + eslint in agent-client, ui, desktop (strict flags: tsconfig.base.json)
+pnpm format:check                          # prettier + Tailwind class order; `pnpm format` rewrites
 pnpm --filter @octo/agent-client test
+pnpm --filter @octo/ui test
 pnpm --filter @octo/desktop build
+node scripts/check-bundle-size.mjs         # after the build: initial JS (gzip) within its budget
 cd apps/desktop/src-tauri && cargo check
 ```
 
-Phase 1 is UI scaffold only. Harness **bridge** (`harness serve`) is Phase 2 — see [`docs/superpowers/plans/2026-11-09-harness-bridge-phase2.md`](./docs/superpowers/plans/2026-11-09-harness-bridge-phase2.md). Set `VITE_HARNESS_BRIDGE_URL` when the bridge exists (default `http://127.0.0.1:8790`).
+The UI talks only to the harness bridge (`harness serve`, default `http://127.0.0.1:8790`; override with `VITE_HARNESS_BRIDGE_URL`). Open the app with `?demo=1` to run against the in-memory demo bridge with no backend.
 
 Do not share SQLite/config between harness, router, and desktop.
 
@@ -80,7 +93,7 @@ Open the **monorepo root** for rust-analyzer (Cargo workspace) and gopls (`apps/
 git submodule update --init --recursive
 ```
 
-Vendored: `.cursor/skills/superpowers/`, `.cursor/skills/ponytail/`.
+Vendored: `.cursor/skills/superpowers/`, `.cursor/skills/ponytail/`, `.cursor/skills/interfaces/` (UI review and polish: `better-interface`, `better-ui`, `better-typography`, `better-colors`, `better-layout`, `better-writing`).
 
 ## Git
 

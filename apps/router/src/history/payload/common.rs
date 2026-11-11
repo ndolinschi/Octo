@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::super::metrics::{CostMicros, TokenCount};
-use super::ParsedUsage;
+use super::{DroppedStream, ParsedUsage};
 
 pub fn parse_json_body(body: &str) -> Value {
     serde_json::from_str(body).unwrap_or_else(|_| {
@@ -118,6 +118,58 @@ pub fn usage_from_output(output: &str) -> ParsedUsage {
     found
 }
 
+pub fn complete_dropped_usage(mut usage: ParsedUsage, stream: DroppedStream<'_>) -> ParsedUsage {
+    let seen_bytes = streamed_text_bytes(&stream);
+    let seen_tokens = (seen_bytes / 4) as u64;
+    let reported = usage.output_tokens.map(|count| count.0);
+    if seen_tokens > 0 && reported.is_none_or(|count| count < seen_tokens) {
+        usage.output_tokens = Some(TokenCount(seen_tokens));
+    }
+    if usage.input_tokens.is_none() && stream.request_bytes > 0 {
+        usage.input_tokens = Some(TokenCount((stream.request_bytes / 4) as u64));
+        usage.input_includes_cache = false;
+    }
+    usage
+}
+
+fn streamed_text_bytes(stream: &DroppedStream<'_>) -> usize {
+    let suffix = tail_suffix_bytes(
+        stream.tail.as_bytes(),
+        stream.response_bytes,
+        stream.prefix.len(),
+    );
+    let captured = stream.prefix.len() + suffix.len();
+    if captured == 0 {
+        return 0;
+    }
+    let text: usize = streaming_events(stream.prefix, stream.tail, stream.response_bytes)
+        .iter()
+        .map(event_text_bytes)
+        .sum();
+    let scaled = (text as u128).saturating_mul(stream.response_bytes.max(captured) as u128)
+        / captured as u128;
+    usize::try_from(scaled).unwrap_or(usize::MAX)
+}
+
+fn event_text_bytes(event: &Value) -> usize {
+    let mut total = 0;
+    if let Some(delta) = event.get("delta") {
+        for key in ["text", "partial_json", "thinking"] {
+            total += delta.get(key).and_then(Value::as_str).map_or(0, str::len);
+        }
+    }
+    if let Some(choices) = event.get("choices").and_then(Value::as_array) {
+        for choice in choices {
+            if let Some(delta) = choice.get("delta") {
+                for key in ["content", "reasoning"] {
+                    total += delta.get(key).and_then(Value::as_str).map_or(0, str::len);
+                }
+            }
+        }
+    }
+    total
+}
+
 pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> ParsedUsage {
     let suffix = tail_suffix_bytes(tail.as_bytes(), response_bytes, prefix.len());
     let head = usage_from_output(prefix);
@@ -126,7 +178,13 @@ pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> Pars
     } else {
         usage_from_output(&String::from_utf8_lossy(suffix))
     };
+    let input_includes_cache = if head.input_tokens.is_some() {
+        head.input_includes_cache
+    } else {
+        end.input_includes_cache
+    };
     ParsedUsage {
+        input_includes_cache,
         input_tokens: head.input_tokens.or(end.input_tokens),
         output_tokens: end.output_tokens.or(head.output_tokens),
         cost: end.cost.or(head.cost),
@@ -199,9 +257,14 @@ fn apply_usage(found: ParsedUsage, usage: Option<&Value>) -> ParsedUsage {
     let Some(usage) = usage else {
         return found;
     };
-    let input_tokens = json_token_count(usage.get("prompt_tokens"))
-        .or_else(|| json_token_count(usage.get("input_tokens")))
-        .or(found.input_tokens);
+    let (input_tokens, input_includes_cache) =
+        if let Some(count) = json_token_count(usage.get("prompt_tokens")) {
+            (Some(count), true)
+        } else if let Some(count) = json_token_count(usage.get("input_tokens")) {
+            (Some(count), false)
+        } else {
+            (found.input_tokens, found.input_includes_cache)
+        };
     let output_tokens = json_token_count(usage.get("completion_tokens"))
         .or_else(|| json_token_count(usage.get("output_tokens")))
         .or(found.output_tokens);
@@ -225,6 +288,7 @@ fn apply_usage(found: ParsedUsage, usage: Option<&Value>) -> ParsedUsage {
     let cache_write_tokens =
         json_token_count(usage.get("cache_creation_input_tokens")).or(found.cache_write_tokens);
     ParsedUsage {
+        input_includes_cache,
         input_tokens,
         output_tokens,
         cost,

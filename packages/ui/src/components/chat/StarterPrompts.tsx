@@ -1,0 +1,48 @@
+import type { Project } from "@octo/agent-client";
+type Starter = { title: string; text: string };
+
+function prompts(project: Project): Starter[] {
+  const where = project.folders.length ? `the attached folder${project.folders.length > 1 ? "s" : ""}` : "this project";
+  return [
+    {
+      title: "Map the codebase",
+      text: `Get oriented in ${where}: map the structure, entry points and how the main pieces fit together. Save the key facts as notes.`,
+    },
+    {
+      title: "Find what's risky",
+      text: `Review ${where} for the riskiest areas (fragile code, missing tests, unclear ownership) and rank them with evidence.`,
+    },
+    {
+      title: "Plan a change",
+      text: "I want to make a change. Ask me what it is, then break it into tasks you can delegate, and propose a plan before anyone edits files.",
+    },
+  ];
+}
+
+/**
+ * Starter prompts under the empty project's composer: quiet 32px rows (no box, no icons — three different
+ * pictures for three sentences only added noise), [title] 8 [the prompt, muted, truncated]; the full prompt
+ * is the row's tooltip (pointer and keyboard focus) and its accessible description, and picking one puts it
+ * in the composer, where it can be read and edited before sending.
+ */
+export function StarterPrompts({ project, onPick }: { project: Project; onPick(text: string): void }) {
+  return (
+    <ul aria-label="Starter prompts" className="flex flex-col px-1">
+      {prompts(project).map((p) => (
+        <li key={p.title}>
+          <button
+            type="button"
+            data-row
+            onClick={() => onPick(p.text)}
+            title={p.text}
+            aria-description={p.text}
+            className="flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-left text-sm press-row hover:bg-hover"
+          >
+            <span className="shrink-0 text-fg">{p.title}</span>
+            <span className="min-w-0 flex-1 truncate text-fg-3">{p.text}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}

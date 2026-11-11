@@ -63,6 +63,11 @@ pub struct Config {
     pub autoroute_background_model_patterns: Vec<String>,
     pub autoroute_background_by_client_model: bool,
     pub autoroute_server_tool_mode: String,
+    pub autoroute_compact_cooldown_requests: u32,
+    pub autoroute_classifier_failure_tier: String,
+    pub autoroute_default_max_tokens: u64,
+    pub autoroute_retry_after_max_secs: u64,
+    pub autoroute_session_budget_action: String,
     pub prices: crate::history::PriceTable,
 }
 
@@ -379,6 +384,16 @@ struct AutorouteSection {
     background_by_client_model: bool,
     #[serde(default = "default_autoroute_server_tool_mode")]
     server_tool_mode: String,
+    #[serde(default)]
+    compact_cooldown_requests: u32,
+    #[serde(default = "default_autoroute_classifier_failure_tier")]
+    classifier_failure_tier: String,
+    #[serde(default = "default_autoroute_default_max_tokens")]
+    default_max_tokens: u64,
+    #[serde(default = "default_autoroute_retry_after_max_secs")]
+    retry_after_max_secs: u64,
+    #[serde(default = "default_autoroute_session_budget_action")]
+    session_budget_action: String,
 }
 
 impl Default for AutorouteSection {
@@ -402,8 +417,29 @@ impl Default for AutorouteSection {
             background_model_patterns: default_autoroute_background_model_patterns(),
             background_by_client_model: false,
             server_tool_mode: default_autoroute_server_tool_mode(),
+            compact_cooldown_requests: 0,
+            classifier_failure_tier: default_autoroute_classifier_failure_tier(),
+            default_max_tokens: default_autoroute_default_max_tokens(),
+            retry_after_max_secs: default_autoroute_retry_after_max_secs(),
+            session_budget_action: default_autoroute_session_budget_action(),
         }
     }
+}
+
+fn default_autoroute_classifier_failure_tier() -> String {
+    "mid".to_string()
+}
+
+fn default_autoroute_default_max_tokens() -> u64 {
+    8192
+}
+
+fn default_autoroute_retry_after_max_secs() -> u64 {
+    10
+}
+
+fn default_autoroute_session_budget_action() -> String {
+    "downgrade".to_string()
 }
 
 fn default_autoroute_session_budget_usd() -> f64 {
@@ -607,6 +643,19 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
             value: file.autoroute.require_parameters,
         });
     }
+    if !crate::auto::is_band(&file.autoroute.classifier_failure_tier) {
+        return Err(ConfigError::InvalidAutorouteClassifierFailureTier {
+            value: file.autoroute.classifier_failure_tier,
+        });
+    }
+    if crate::auto::BudgetAction::parse(&file.autoroute.session_budget_action).is_none() {
+        return Err(ConfigError::InvalidAutorouteBudgetAction {
+            value: file.autoroute.session_budget_action,
+        });
+    }
+    if file.autoroute.default_max_tokens == 0 {
+        return Err(ConfigError::InvalidAutorouteDefaultMaxTokens);
+    }
     for key in &file.autoroute.strip_fields {
         if crate::auto::PROTECTED_STRIP_FIELDS
             .iter()
@@ -661,6 +710,11 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         autoroute_background_model_patterns: file.autoroute.background_model_patterns,
         autoroute_background_by_client_model: file.autoroute.background_by_client_model,
         autoroute_server_tool_mode: file.autoroute.server_tool_mode,
+        autoroute_compact_cooldown_requests: file.autoroute.compact_cooldown_requests,
+        autoroute_classifier_failure_tier: file.autoroute.classifier_failure_tier,
+        autoroute_default_max_tokens: file.autoroute.default_max_tokens,
+        autoroute_retry_after_max_secs: file.autoroute.retry_after_max_secs,
+        autoroute_session_budget_action: file.autoroute.session_budget_action,
         prices: {
             use crate::history::{ModelPrice, PriceTable};
             let rows = file
@@ -711,6 +765,12 @@ pub enum ConfigError {
         "invalid autoroute.require_parameters {value:?}; expected always, tools_only, or never"
     )]
     InvalidAutorouteRequireParameters { value: String },
+    #[error("invalid autoroute.classifier_failure_tier {value:?}; expected low, mid, or high")]
+    InvalidAutorouteClassifierFailureTier { value: String },
+    #[error("invalid autoroute.session_budget_action {value:?}; expected downgrade or reject")]
+    InvalidAutorouteBudgetAction { value: String },
+    #[error("autoroute.default_max_tokens must be greater than zero")]
+    InvalidAutorouteDefaultMaxTokens,
     #[error("invalid bind_addr {addr}")]
     InvalidBindAddr {
         addr: String,

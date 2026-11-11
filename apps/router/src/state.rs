@@ -79,6 +79,14 @@ impl AppState {
                 tiers.background_model_patterns =
                     config.autoroute_background_model_patterns.clone();
                 tiers.server_tool_mode = config.autoroute_server_tool_mode.clone();
+                tiers.compact_cooldown_requests = config.autoroute_compact_cooldown_requests;
+                tiers.classifier_failure_tier = config.autoroute_classifier_failure_tier.clone();
+                tiers.default_max_tokens = config.autoroute_default_max_tokens;
+                tiers.retry_after_max_secs = config.autoroute_retry_after_max_secs;
+                tiers.session_budget_action =
+                    crate::auto::BudgetAction::parse(&config.autoroute_session_budget_action)
+                        .unwrap_or(crate::auto::BudgetAction::Downgrade);
+                tiers.prices = config.prices.clone();
                 tiers
             }),
             config,

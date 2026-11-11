@@ -81,6 +81,8 @@ async fn streamed_response_is_forwarded_then_stored() {
             hk_text_signal: None,
             auto: None,
             on_response: None,
+            request_id: None,
+            budget_key: None,
         }),
     )
     .await
@@ -156,6 +158,8 @@ async fn missing_token_is_not_a_shared_identity() {
             hk_text_signal: None,
             auto: None,
             on_response: None,
+            request_id: None,
+            budget_key: None,
         }),
     )
     .await
@@ -207,6 +211,8 @@ async fn decisions_response_is_stored_with_its_kind() {
             hk_text_signal: None,
             auto: None,
             on_response: None,
+            request_id: None,
+            budget_key: None,
         }),
     )
     .await
@@ -280,6 +286,8 @@ async fn usage_past_the_stored_prefix_is_kept() {
             hk_text_signal: None,
             auto: None,
             on_response: None,
+            request_id: None,
+            budget_key: None,
         }),
     )
     .await
@@ -362,6 +370,8 @@ async fn upstream_chunk_error_keeps_header_status() {
             hk_text_signal: None,
             auto: None,
             on_response: None,
+            request_id: None,
+            budget_key: None,
         }),
     )
     .await
@@ -675,6 +685,8 @@ async fn generation_id_prefers_openrouter_header_over_body_msg() {
             hk_text_signal: None,
             auto: None,
             on_response: None,
+            request_id: None,
+            budget_key: None,
         }),
     )
     .await

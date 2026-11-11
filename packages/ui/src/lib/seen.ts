@@ -1,0 +1,50 @@
+import type { ProjectSummary } from "@octo/agent-client";
+import { useEffect } from "react";
+import { PREFS, jsonCodec, usePersistentState } from "./storage";
+
+/**
+ * Unseen activity: a project is unseen when its `updated_at` is newer than the last value the
+ * user saw while it was open. Projects never opened compare against the first-run time, so a
+ * fresh install starts with nothing unseen. Stored in localStorage (guarded); in memory otherwise.
+ */
+type Seen = { since: string; projects: Record<string, string> };
+
+/** Stored as `{"since": ISO time, "projects": {id: updated_at}}`; missing or malformed starts fresh (nothing unseen). */
+export const seenCodec = jsonCodec<Seen>((v) => {
+  if (
+    typeof v === "object" &&
+    v !== null &&
+    "since" in v &&
+    typeof v.since === "string" &&
+    "projects" in v &&
+    typeof v.projects === "object" &&
+    v.projects !== null
+  ) {
+    const projects = Object.fromEntries(Object.entries(v.projects).filter((e): e is [string, string] => typeof e[1] === "string"));
+    return { since: v.since, projects };
+  }
+  return { since: new Date().toISOString(), projects: {} };
+});
+
+/** Ids of projects with unseen activity; marks the open project as seen as it changes. */
+export function useUnseen(projects: ProjectSummary[] | null, openId: string | null): Set<string> {
+  const [seen, setSeen] = usePersistentState(PREFS.seen, seenCodec);
+  const open = projects?.find((p) => p.id === openId);
+
+  useEffect(() => {
+    if (!open || seen.projects[open.id] === open.updated_at) return;
+    const marked = { ...seen.projects, [open.id]: open.updated_at };
+    // Forget deleted projects while we are writing anyway.
+    const kept = projects ? Object.fromEntries(Object.entries(marked).filter(([id]) => projects.some((p) => p.id === id))) : marked;
+    const next = { ...seen, projects: kept };
+    setSeen(next);
+  }, [open, seen, projects, setSeen]);
+
+  const unseen = new Set<string>();
+  for (const p of projects ?? []) {
+    if (p.id === openId) continue;
+    const last = seen.projects[p.id] ?? seen.since;
+    if (Date.parse(p.updated_at) > Date.parse(last)) unseen.add(p.id);
+  }
+  return unseen;
+}

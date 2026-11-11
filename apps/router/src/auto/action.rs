@@ -14,6 +14,31 @@ pub struct Compact {
     pub fallback_model: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reject {
+    pub budget_micros: u64,
+    pub spent_micros: u64,
+    pub budget_key: Option<String>,
+}
+
+impl Reject {
+    pub fn message(&self) -> String {
+        let scope = match &self.budget_key {
+            Some(key) => format!("budget key `{key}`"),
+            None => "session".to_string(),
+        };
+        format!(
+            "autoroute {scope} budget exceeded: spent ${} of ${} (autoroute.session_budget_usd, session_budget_action = reject)",
+            usd(self.spent_micros),
+            usd(self.budget_micros)
+        )
+    }
+}
+
+fn usd(micros: u64) -> String {
+    format!("{}.{:06}", micros / 1_000_000, micros % 1_000_000)
+}
+
 pub trait ModelAction {
     fn rerouting(&self) -> (i64, Option<String>);
 }
@@ -34,6 +59,7 @@ impl ModelAction for Compact {
 pub enum Turn {
     Forward(Forward),
     Compact(Compact),
+    Reject(Reject),
 }
 
 impl ModelAction for Turn {
@@ -41,6 +67,7 @@ impl ModelAction for Turn {
         match self {
             Self::Forward(action) => action.rerouting(),
             Self::Compact(action) => action.rerouting(),
+            Self::Reject(_) => (0, None),
         }
     }
 }

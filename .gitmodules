@@ -4,3 +4,6 @@
 [submodule ".cursor/skills/ponytail"]
 	path = .cursor/skills/ponytail
 	url = https://github.com/DietrichGebert/ponytail.git
+[submodule ".cursor/skills/interfaces"]
+	path = .cursor/skills/interfaces
+	url = https://github.com/jakubkrehel/skills.git

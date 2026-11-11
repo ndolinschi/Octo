@@ -7,14 +7,24 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./demo": "./src/demo/index.ts",
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit && eslint .",
+    "audit:spacing": "node scripts/spacing-audit.mjs",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "format:check": "prettier --check --ignore-path ../../.prettierignore \"src/**/*.{ts,tsx,css}\" \"*.json\"",
+    "format": "prettier --write --ignore-path ../../.prettierignore \"src/**/*.{ts,tsx,css}\" \"*.json\""
   },
   "dependencies": {
-    "@octo/agent-client": "workspace:*"
+    "@octo/agent-client": "workspace:*",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.71.0",
+    "monaco-editor": "0.57.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "peerDependencies": {
     "react": "^19.1.0",
@@ -23,6 +33,7 @@
   "devDependencies": {
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "tsx": "^4.20.5"
   }
 }
