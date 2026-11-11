@@ -465,6 +465,38 @@ monochrome dithered illustration):
     "colour means state"; the bot's *state* is still the ring (decision 29) at the avatar's lower-right corner.
     Bot rows are 40px: avatar, name, the bot's latest line in `fg-3` (one line, ellipsis). Sub-agents keep rings
     only — avatars are for standing identities.
+42. **Quality bar for every pass** (owner, 2026-11-11: "more premium, more adaptive, more responsive … good on
+    every front, tidy"). A pass is not done until each new or changed screen meets all of: (a) works at 390, 768,
+    1100, 1440 and 1920 px with no horizontal scroll, no clipped or truncated control label, and touch targets
+    ≥ 40px below 768; (b) every action answers within 100 ms (pressed state, optimistic update or a skeleton —
+    never a frozen control), every list has loading, empty and error states with a way forward; (c) all of it is
+    reachable by keyboard with a visible focus ring and focus returned after overlays close; (d) dark and light
+    are both checked by screenshot; (e) the spacing audit is 0 and the console is clean. The reviewer checks these
+    five explicitly and reports per screen.
+43. **Forms in the conversation — values that never reach the model** (owner's example: key-entry forms in the
+    bot reference). When an agent needs something from the user that is structured or secret, it does not ask in
+    prose: it calls a harness tool `request_input` with a schema (`fields: { id, label, kind: "secret" | "text" |
+    "select" | "confirm" | "path", options?, required?, help? }[]`, `title`, `reason`), and the UI renders a form
+    card in the conversation at that point. Submitting posts to the harness (`POST /v1/projects/{pid}/inputs/{id}`).
+    **Secret fields are stored by the harness** (project secret store, file mode 0600, never in SQLite transcripts,
+    never in events, never logged) and the model receives only `{ id: "provided" }` plus the name under which a
+    tool may use it (`secret:<name>`, resolved by the harness when it builds a child process environment or a
+    request header — the allow-list in `internal/childenv` gains per-project secrets). Non-secret values are
+    returned to the agent as the tool result. The card shows: title, the agent's one-line reason, fields with
+    labels above, a masked input with reveal for secrets, "Submit" (primary) and "Skip"; after submit it collapses
+    to one line ("API key provided · Change"). While the form is open the project state is "Needs you"
+    (decision 29's dashed ring). A secret typed into the ordinary composer is not intercepted — the composer shows
+    a quiet hint when the text looks like a key ("Looks like a secret. Use a form so it is not sent to the model")
+    with an action that moves it into a form. Settings → Secrets lists names, never values, with Replace and
+    Delete. Built with v7 approvals (same card frame, same "Needs you" plumbing).
+44. **Tables and structured results** (owner's example: tables shown in the bot reference). Markdown tables in
+    assistant text render as real tables: hairline rows, header in `fg-2` medium, numeric columns right-aligned
+    with tabular figures (detected per column), 32px rows, the first column sticky when the table scrolls
+    sideways inside its own container (the page never scrolls sideways), a "Copy" menu (Markdown / CSV) on hover
+    or focus, and above 12 rows a "Show all N rows" fold. Tool results that are tabular (CSV, JSON arrays of flat
+    objects, ≤ 200 rows shown) use the same component inside the tool panel. Below 600px a table with more than
+    three columns keeps the sideways scroll rather than stacking. Key–value results (≤ 8 pairs) render as a
+    two-column definition list, not a table.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
