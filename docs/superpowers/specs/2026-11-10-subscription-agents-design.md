@@ -64,6 +64,13 @@ From the Synara research ([`../research/2026-11-11-synara-gap.md`](../research/2
 - Where a manifest forwards a vendor API key (Grok, Cursor, Devin, Droid), a key set in the harness environment
   wins over the cached subscription login — unset it to stay on the subscription.
 
+**Revised the same day (external review):** the scrub is now an **allow-list** — children (ACP agents, language
+servers, probes **and the `bash` tool**, which used to inherit everything) get only known-harmless variables
+(paths, locale, proxy/CA, toolchain locations); any name containing KEY, TOKEN, SECRET, PASSWORD or CREDENTIAL is
+dropped. The operator passes more with `HARNESS_CHILD_ENV_ALLOW="NAME,PREFIX_*"`; a manifest's explicit `env` still
+passes a key on purpose. Agent JSON gains `served_model` and `routed_tier` (the newest main-thread usage row), carried
+by the existing `agent.updated`.
+
 ## S2 — the orchestrator on a subscription (design; build after S1 is proven live)
 
 A project's `models.orchestrator` may be `acp:<agent>[/<model>]`. The orchestrator then runs as an ACP session

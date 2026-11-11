@@ -5,9 +5,17 @@ import (
 	"database/sql"
 )
 
-const agentCols = `id, parent_id, depth, role, title, task, model, tier, status, result, error,
+// lastRowOf selects one column of the agent's newest main-thread API usage row
+// (not a side question, not a compaction request). NULLIF turns "" into NULL,
+// so a call that went straight to a provider reports no served model or tier.
+func lastRowOf(col string) string {
+	return `(SELECT NULLIF(` + col + `, '') FROM usage u WHERE u.agent_id = agents.id AND u.source = 'api' AND u.role IS NULL
+		AND COALESCE(u.route_trigger, '') <> 'compact' ORDER BY u.id DESC LIMIT 1)`
+}
+
+var agentCols = `id, parent_id, depth, role, title, task, model, tier, status, result, error,
 	spawn_tool_use_id, input_tokens, output_tokens, created_at, started_at, finished_at,
-	context_used, context_size`
+	context_used, context_size, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier")
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -16,8 +24,9 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	var tier sql.NullString
 	var parent, result, errText, spawn, started, finished sql.NullString
 	var ctxUsed, ctxSize sql.NullInt64
+	var served, routed sql.NullString
 	err := r.Scan(&a.ID, &parent, &a.Depth, &a.Role, &a.Title, &a.Task, &a.Model, &tier, &a.Status,
-		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished, &ctxUsed, &ctxSize)
+		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished, &ctxUsed, &ctxSize, &served, &routed)
 	if err != nil {
 		return a, err
 	}
@@ -29,6 +38,8 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	a.FinishedAt = nullStr(finished)
 	a.ContextUsed = nullInt(ctxUsed)
 	a.ContextSize = nullInt(ctxSize)
+	a.ServedModel = nullStr(served)
+	a.RoutedTier = nullStr(routed)
 	if tier.Valid {
 		t := Tier(tier.String)
 		a.Tier = &t

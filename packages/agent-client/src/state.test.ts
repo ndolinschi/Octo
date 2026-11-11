@@ -61,6 +61,27 @@ test("agent.created/updated upsert and keep order", () => {
   assert.equal(s.lastSeq, 3);
 });
 
+test("agent.updated stores served_model and routed_tier and replaces them when they change", () => {
+  let s = emptyProjectState();
+  s = applyEvent(s, { type: "agent.created", seq: 1, agent: agent("o", null, { served_model: null, routed_tier: null }) });
+  assert.equal(s.agents.o?.served_model, null);
+  s = applyEvent(s, {
+    type: "agent.updated",
+    seq: 2,
+    agent: agent("o", null, { served_model: "deepseek-v4", routed_tier: "low" }),
+  });
+  assert.equal(s.agents.o?.served_model, "deepseek-v4");
+  assert.equal(s.agents.o?.routed_tier, "low");
+  s = applyEvent(s, {
+    type: "agent.updated",
+    seq: 3,
+    agent: agent("o", null, { served_model: "claude-opus-5-5", routed_tier: "high" }),
+  });
+  assert.equal(s.agents.o?.served_model, "claude-opus-5-5");
+  assert.equal(s.agents.o?.routed_tier, "high");
+  assert.equal(s.agents.o?.model, "m");
+});
+
 test("applyEvent is immutable", () => {
   const s = emptyProjectState();
   const next = applyEvent(s, { type: "message.delta", seq: 1, agent_id: "a", text: "x" });

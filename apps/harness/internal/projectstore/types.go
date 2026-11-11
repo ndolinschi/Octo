@@ -79,6 +79,12 @@ type Agent struct {
 	FinishedAt     *string     `json:"finished_at"`
 	ContextUsed    *int64      `json:"context_used"`
 	ContextSize    *int64      `json:"context_size"`
+	// ServedModel and RoutedTier come from the agent's newest main-thread API
+	// usage row: the model the Octo router answered with and the router tier it
+	// chose. Both are null with no router in the path or nothing recorded yet.
+	// (Tier above is the tier the agent was spawned at, not the router's.)
+	ServedModel *string `json:"served_model"`
+	RoutedTier  *string `json:"routed_tier"`
 }
 
 type NewAgent struct {

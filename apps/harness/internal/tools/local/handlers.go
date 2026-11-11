@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
@@ -44,6 +45,8 @@ func bashHandler(rs *rootSet) tools.Handler {
 		defer cancel()
 		cmd := exec.CommandContext(runCtx, "bash", "-c", in.Command)
 		cmd.Dir = dir
+		// Same allow-list as plugin processes: no provider keys or other secrets.
+		cmd.Env = childenv.Build(os.Environ(), nil)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr

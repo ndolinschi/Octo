@@ -15,11 +15,11 @@ func TestChildEnvironmentIsScrubbed(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-leak")
 	t.Setenv("XAI_API_KEY", "xai-declared")
 	t.Setenv("HARNESS_OCTO_KEY", "octo-secret")
-	t.Setenv("OCTO_PLAIN_VAR", "kept")
+	t.Setenv("LC_OCTO_PLAIN_VAR", "kept")
 
 	declared := plugins.Launch{Env: map[string]string{"XAI_API_KEY": "${XAI_API_KEY}"}}.ResolvedEnv()
 	env := map[string]string{
-		fakeacp.EnvReportEnv: "ANTHROPIC_API_KEY,ANTHROPIC_BASE_URL,OPENAI_API_KEY,XAI_API_KEY,HARNESS_OCTO_KEY,OCTO_PLAIN_VAR",
+		fakeacp.EnvReportEnv: "ANTHROPIC_API_KEY,ANTHROPIC_BASE_URL,OPENAI_API_KEY,XAI_API_KEY,HARNESS_OCTO_KEY,LC_OCTO_PLAIN_VAR",
 	}
 	for k, v := range declared {
 		env[k] = v
@@ -28,7 +28,7 @@ func TestChildEnvironmentIsScrubbed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Env: ANTHROPIC_API_KEY=unset, ANTHROPIC_BASE_URL=unset, OPENAI_API_KEY=unset, XAI_API_KEY=set, HARNESS_OCTO_KEY=unset, OCTO_PLAIN_VAR=set."
+	want := "Env: ANTHROPIC_API_KEY=unset, ANTHROPIC_BASE_URL=unset, OPENAI_API_KEY=unset, XAI_API_KEY=set, HARNESS_OCTO_KEY=unset, LC_OCTO_PLAIN_VAR=set."
 	if !strings.Contains(text, want) {
 		t.Fatalf("agent saw a different environment:\n%s\nwant it to contain %q", text, want)
 	}

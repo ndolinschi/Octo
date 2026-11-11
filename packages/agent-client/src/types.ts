@@ -78,6 +78,13 @@ export type Agent = {
   /** Tokens in the agent's context and the window size; null when unknown (the bridge always sends them). */
   context_used?: number | null;
   context_size?: number | null;
+  /**
+   * The model that answered the agent's newest main-thread request, as reported by an Octo router, and the router
+   * tier it chose (`tier` above is the tier the agent was spawned at). null: no router in the path or nothing recorded.
+   * Show `served_model` rather than `model` when it is set; `agent.updated` carries a new value when it changes.
+   */
+  served_model?: string | null;
+  routed_tier?: string | null;
 };
 
 export type ContentBlock =

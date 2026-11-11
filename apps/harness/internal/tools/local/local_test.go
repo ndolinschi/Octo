@@ -383,3 +383,31 @@ func TestSearchFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestBashDoesNotSeeSecrets(t *testing.T) {
+	for k, v := range map[string]string{
+		"OPENROUTER_API_KEY": "sk-or-leak", "ANTHROPIC_API_KEY": "sk-ant-leak",
+		"GITHUB_TOKEN": "ghp-leak", "MISTRAL_API_KEY": "mi-leak", "UNKNOWN_FAKE_VAR": "unknown-leak",
+	} {
+		t.Setenv(k, v)
+	}
+	t.Setenv("PATH", os.Getenv("PATH")) // keep PATH explicit in the test
+	workspace := t.TempDir()
+	reg := tools.NewRegistry()
+	if err := Register(reg, workspace); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	def, _ := reg.Get("bash")
+	output, isError, err := def.Handle(context.Background(), json.RawMessage(`{"command":"env"}`))
+	if err != nil || isError {
+		t.Fatalf("env: %v %v %s", err, isError, output)
+	}
+	for _, leak := range []string{"sk-or-leak", "sk-ant-leak", "ghp-leak", "mi-leak", "unknown-leak", "OPENROUTER_API_KEY"} {
+		if strings.Contains(output, leak) {
+			t.Fatalf("bash saw %q:\n%s", leak, output)
+		}
+	}
+	if !strings.Contains(output, "PATH=") {
+		t.Fatalf("PATH missing from bash environment:\n%s", output)
+	}
+}

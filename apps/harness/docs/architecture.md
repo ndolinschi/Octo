@@ -30,6 +30,7 @@ flowchart TB
 | Path | Role |
 | --- | --- |
 | `cmd/harness` | CLI: `serve`, `run`, `sessions`, `show` (wiring only; `serve.go` is the one wiring site for the server) |
+| `internal/childenv` | Allow-list environment for every child process (bash tool, ACP agents, language servers, probes); `HARNESS_CHILD_ENV_ALLOW` adds names; see README "Child environment" |
 | `internal/config` | Env defaults (`ANTHROPIC_*`, `HARNESS_*`), model tiers |
 | `internal/anthropicclient` | SDK client + optional `ANTHROPIC_BASE_URL` |
 | `internal/agent` | `Loop`: system prompt, history, streaming, concurrent tools, usage, `Sink`; `Runner` = legacy CLI session |
