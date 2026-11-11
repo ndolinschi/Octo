@@ -55,6 +55,13 @@ test("a failed last turn needs the user", () => {
   assert.equal(stateLine(s, NOW), "Failed");
 });
 
+test("the harness's attention decides when present: failed needs, none does not infer from agents", () => {
+  const ok = root({ status: "completed" });
+  assert.equal(orchestratorState([ok], "idle", "failed").kind, "needs");
+  assert.equal(orchestratorState([root({ status: "failed", error: "x" })], "idle", "none").kind, "idle");
+  assert.equal(orchestratorState([root({ status: "failed", error: "x" })], "running", "failed").kind, "working");
+});
+
 test("idle shows how long since the last turn ended", () => {
   assert.equal(stateLine(orchestratorState([root()], "idle"), NOW), "Idle, 1h ago");
   assert.equal(stateLine({ kind: "idle", at: null }, NOW, "2026-11-10T11:58:00Z"), "Idle, 2m ago");

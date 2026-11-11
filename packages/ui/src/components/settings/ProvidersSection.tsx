@@ -73,7 +73,7 @@ function ProviderRow({ provider: p }: { provider: Provider }) {
       setConfirm(false),
     );
   const detail =
-    p.state === "ready" ? (p.models.length ? (p.models.length === 1 ? "1 model" : `${p.models.length} models`) : "Ready") : (p.reason ?? stateText(p.state));
+    p.state === "ready" ? (p.models.length ? (p.models.length === 1 ? "1 model" : `${p.models.length} models`) : "Ready") : p.reason || stateText(p.state);
   const kind = p.kind === "api" ? "API key" : p.kind === "router" ? "Router" : "Agent on this machine";
   return (
     <SettingsRow
@@ -83,8 +83,11 @@ function ProviderRow({ provider: p }: { provider: Provider }) {
       description={
         <>
           <span className={cn(p.state !== "ready" && p.state !== "not_connected" && "text-warn")}>{stateText(p.state)}</span>
-          {" · "}
-          {p.state === "ready" ? `${kind}, ${detail}` : detail}
+          {p.state === "ready"
+            ? ` · ${kind}, ${detail}`
+            : detail === stateText(p.state) || detail.toLowerCase() === stateText(p.state).toLowerCase()
+              ? ""
+              : ` · ${detail}`}
         </>
       }
       status={

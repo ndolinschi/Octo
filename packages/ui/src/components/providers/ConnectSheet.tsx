@@ -135,7 +135,7 @@ function AgentSteps({ provider: p }: { provider: Provider }) {
           : "The agent picks its own model."}
       </p>
     );
-  const steps: { title: string; text: string | undefined; commands: string[] }[] = [];
+  const steps: { title: string; text: string; commands: string[] }[] = [];
   if (p.state === "not_installed") steps.push({ title: "Install", text: p.install_hint, commands: commandsIn(p.install_hint) });
   steps.push({ title: "Log in", text: p.login_hint, commands: commandsIn(p.login_hint) });
   return (

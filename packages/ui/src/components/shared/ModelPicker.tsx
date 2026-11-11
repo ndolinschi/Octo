@@ -31,7 +31,7 @@ export function ModelPicker(props: ModelPickerProps) {
         ref={button}
         type="button"
         aria-label={`${props.label}: ${name}`}
-        title={props.title ?? `${props.label}: ${props.value}`}
+        title={props.warning ?? props.title ?? `${props.label}: ${props.value}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         disabled={props.disabled}
@@ -45,6 +45,7 @@ export function ModelPicker(props: ModelPickerProps) {
               ? "h-chip px-1.5 text-xs text-fg-3 hover:bg-hover hover:text-fg"
               : "h-chip px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg",
           open && "bg-active text-fg",
+          props.warning && "text-warn hover:text-warn",
           props.className,
         )}
       >

@@ -1,46 +1,49 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ProviderList } from "@octo/agent-client";
+import type { Provider, ProviderList, ProviderModel } from "@octo/agent-client";
 import { choosable, hiddenModelsCodec, pickerKey, pickerRows, pickerView } from "./modelList";
+
+const model = (id: string, label: string): ProviderModel => ({ id, label, source: "manifest" });
+/** A provider as the harness sends it: every field present, empty when unknown. */
+const provider = (p: Pick<Provider, "id" | "kind" | "label" | "state"> & Partial<Provider>): Provider => ({
+  reason: "",
+  install_hint: "",
+  login_hint: "",
+  models: [],
+  default_model: "",
+  flat_rate: false,
+  ...p,
+});
 
 const list: ProviderList = {
   connected: 3,
   suggested: { orchestrator: "claude-sonnet-5-5", fast: "claude-haiku-5-5", balanced: "claude-sonnet-5-5", deep: "claude-opus-5-5" },
   providers: [
-    {
+    provider({
       id: "anthropic-api",
       kind: "api",
       label: "Anthropic API",
       state: "ready",
-      models: [
-        { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-        { id: "claude-haiku-5-5", label: "Haiku 5.5" },
-      ],
-    },
-    { id: "octo-router", kind: "router", label: "Octo router", state: "not_connected", models: [] },
-    {
+      models: [model("claude-sonnet-5-5", "Sonnet 5.5"), model("claude-haiku-5-5", "Haiku 5.5")],
+    }),
+    provider({ id: "octo-router", kind: "router", label: "Octo router", state: "not_connected", models: [] }),
+    provider({
       id: "claude-code",
       kind: "agent",
       label: "Claude Code",
       state: "ready",
-      models: [
-        { id: "claude-opus-5-5", label: "Opus 5.5" },
-        { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-      ],
+      models: [model("claude-opus-5-5", "Opus 5.5"), model("claude-sonnet-5-5", "Sonnet 5.5")],
       default_model: "claude-sonnet-5-5",
-    },
-    {
+    }),
+    provider({
       id: "copilot",
       kind: "agent",
       label: "GitHub Copilot",
       state: "ready",
-      models: [
-        { id: "gpt-5", label: "GPT-5" },
-        { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-      ],
-    },
-    { id: "solo", kind: "agent", label: "Solo", state: "ready", models: [{ id: "only", label: "Only" }] },
-    { id: "grok", kind: "agent", label: "Grok", state: "not_installed", models: [{ id: "grok-5", label: "Grok 5" }] },
+      models: [model("gpt-5", "GPT-5"), model("claude-sonnet-5-5", "Sonnet 5.5")],
+    }),
+    provider({ id: "solo", kind: "agent", label: "Solo", state: "ready", models: [model("only", "Only")] }),
+    provider({ id: "grok", kind: "agent", label: "Grok", state: "not_installed", models: [model("grok-5", "Grok 5")] }),
   ],
 };
 

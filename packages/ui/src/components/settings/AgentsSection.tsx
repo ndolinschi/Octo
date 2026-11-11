@@ -55,7 +55,7 @@ function AgentCard({ agent: a, refreshing, onCheck }: { agent: Provider; refresh
         rowId={`agent-${a.id}-state`}
         leading={<StateDot tone={toneOf(a)} />}
         title={stateText(a.state)}
-        description={a.state === "ready" ? "Logged in and ready to run." : (a.reason ?? "Not ready.")}
+        description={a.state === "ready" ? "Logged in and ready to run." : a.reason || "Not ready."}
         control={
           <Button size="sm" onClick={onCheck} disabled={refreshing} aria-busy={refreshing}>
             {refreshing ? "Checking…" : "Check again"}
@@ -67,7 +67,7 @@ function AgentCard({ agent: a, refreshing, onCheck }: { agent: Provider; refresh
           title="Install"
           description={
             <span className="flex flex-col gap-2">
-              <span>{a.install_hint ?? "Install the agent's command line so that it is on PATH."}</span>
+              <span>{a.install_hint || "Install the agent's command line so that it is on PATH."}</span>
               {install.map((c) => (
                 <CommandLine key={c} command={c} label="install command" />
               ))}

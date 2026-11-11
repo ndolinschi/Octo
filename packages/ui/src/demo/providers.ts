@@ -3,7 +3,8 @@ import {
   type Bridge,
   type Diagnostics,
   type Provider,
-  type ProviderList,
+  type ProviderModel,
+  type ProvidersResponse,
   type Setting,
   type SettingsUpdate,
   type SettingsView,
@@ -24,11 +25,15 @@ const COPILOT_INSTALL = "Install the GitHub Copilot CLI: `npm install -g @github
 const GROK_LOGIN = "Log in once in the browser: run `grok login`. An XAI_API_KEY in the harness environment switches Grok to per-token billing.";
 const GROK_INSTALL = "Install the Grok CLI so that `grok` is on PATH (from x.ai).";
 
-const API_MODELS = [
-  { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-  { id: "claude-haiku-5-5", label: "Haiku 5.5" },
-  { id: "claude-opus-5-5", label: "Opus 5.5" },
+/** The harness's catalogue (`internal/providers`): the three compiled-in tiers, deepest first. */
+const API_MODELS: ProviderModel[] = [
+  { id: "claude-opus-5-5", label: "Claude Opus 5.5", source: "catalogue" },
+  { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", source: "catalogue" },
+  { id: "claude-haiku-5-5", label: "Claude Haiku 5.5", source: "catalogue" },
 ];
+/** An agent's models carry their id as the label (the harness has no better name); one was not advertised last time. */
+const manifest = (id: string): ProviderModel => ({ id, label: id, source: "manifest" });
+const SEEN_AT = "2026-11-11T12:00:00Z";
 
 const settingDefs: Omit<Setting, "source" | "editable">[] = [
   { id: "ANTHROPIC_API_KEY", kind: "secret", label: "Anthropic API key", group: "keys", applies: "restart" },
@@ -112,53 +117,50 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<Pick
     }),
   });
 
-  const providers = (): ProviderList => {
+  const providers = (): ProvidersResponse => {
     const apiReady = file.has("ANTHROPIC_API_KEY");
-    const routerOn = file.get("OCTO_ROUTER_ENABLED") === true;
+    // The router is listed only while one is detected; the demo never has one.
     const list: Provider[] = [
       {
-        id: "anthropic-api",
+        id: "api",
         kind: "api",
         label: "Anthropic API",
         state: apiReady ? "ready" : "not_connected",
-        ...(apiReady ? {} : { reason: "No API key" }),
-        models: apiReady ? API_MODELS : [],
-      },
-      {
-        id: "octo-router",
-        kind: "router",
-        label: "Octo router",
-        state: "not_connected",
-        reason: routerOn ? "Switched on: starts with the app's next start" : "Switched off",
-        models: [],
+        reason: apiReady ? "" : "No API key",
+        install_hint: "",
+        login_hint: "Add an API key in Settings (ANTHROPIC_API_KEY).",
+        models: API_MODELS,
+        default_model: "claude-sonnet-5-5",
+        flat_rate: false,
       },
       {
         id: "claude-code",
         kind: "agent",
         label: "Claude Code",
         state: none ? "not_logged_in" : "ready",
-        ...(none ? { reason: "The login probe says it is not logged in" } : {}),
+        reason: none ? "not logged in" : "",
         install_hint: CLAUDE_INSTALL,
         login_hint: CLAUDE_LOGIN,
         models: [
-          { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-          { id: "claude-opus-5-5", label: "Opus 5.5" },
-          { id: "claude-haiku-5-5", label: "Haiku 5.5" },
+          manifest("claude-sonnet-5-5"),
+          manifest("claude-opus-5-5"),
+          manifest("claude-haiku-5-5"),
+          { id: "claude-opus-4-1", label: "claude-opus-4-1", source: "advertised", seen_at: SEEN_AT, stale: true },
         ],
         default_model: "claude-sonnet-5-5",
+        flat_rate: true,
       },
       {
         id: "copilot",
         kind: "agent",
         label: "GitHub Copilot",
         state: "not_logged_in",
-        reason: "The login probe says it is not logged in",
+        reason: "not logged in",
         install_hint: COPILOT_INSTALL,
         login_hint: COPILOT_LOGIN,
-        models: [
-          { id: "gpt-5", label: "GPT-5" },
-          { id: "claude-sonnet-5-5", label: "Sonnet 5.5" },
-        ],
+        models: [manifest("gpt-5"), manifest("claude-sonnet-5-5")],
+        default_model: "gpt-5",
+        flat_rate: true,
       },
       {
         id: "grok",
@@ -169,6 +171,8 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<Pick
         install_hint: GROK_INSTALL,
         login_hint: GROK_LOGIN,
         models: [],
+        default_model: "",
+        flat_rate: true,
       },
     ];
     const connected = list.filter((p) => p.state === "ready").length;
@@ -234,10 +238,10 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<Pick
             command: a.state === "not_installed" ? "not found" : `/opt/homebrew/bin/${a.id === "claude-code" ? "claude" : a.id}`,
             ...(a.state === "not_installed" && a.reason ? { unavailable_reason: a.reason } : {}),
             requires: [],
-            probe: { ran: a.state !== "not_installed", logged_in: a.state === "not_installed" ? null : a.state === "ready", reason: a.reason ?? "" },
+            probe: { ran: a.state !== "not_installed", logged_in: a.state === "not_installed" ? null : a.state === "ready", reason: a.reason },
             ...(a.login_hint ? { login_hint: a.login_hint } : {}),
             ...(a.install_hint ? { install_hint: a.install_hint } : {}),
-            flat_rate: true,
+            flat_rate: a.flat_rate,
           })),
         acp_trace: { enabled: file.get("HARNESS_ACP_TRACE") === true, dir: "~/Library/Application Support/Octo/harness/traces", files: [] },
         log_tail: ['level=INFO msg="harness serve" addr=127.0.0.1:8790', 'level=INFO msg="plugins loaded" agents=3'],

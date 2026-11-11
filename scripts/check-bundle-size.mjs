@@ -23,8 +23,11 @@ import { gzipSync } from "node:zlib";
  * "+" menu, the comments control, the Markdown preview, sent comments, the agent header, tool details and the table frame
  * moved to lazy chunks (warmed 1.5 s after start): 190.1 kB with this pass's new code in (and the harness's newer
  * agent-client types). Budget lowered from 196.8 to measured + 3 = 193.1.
+ *
+ * Merge of the harness and UI branches (2026-11-11): 152.89 kB (the entry chunk shrank as more moved to lazy chunks).
+ * Budget lowered from 193.1 to measured + 3 = 155.9.
  */
-const BUDGET_KB = 193.1;
+const BUDGET_KB = 155.9;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

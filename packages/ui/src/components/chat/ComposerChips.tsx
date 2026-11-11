@@ -61,7 +61,7 @@ function useChipMenu(onOpenChange: (open: boolean) => void) {
 }
 
 /** The orchestrator's model or agent (decision 58): "Claude Code · Opus". */
-export function ModelChip(props: ChipProps & { value: string; title?: string | undefined; onChoose(value: string): void }) {
+export function ModelChip(props: ChipProps & { value: string; title?: string | undefined; unavailable?: boolean; onChoose(value: string): void }) {
   const { ref, open, setOpen } = useChipMenu(props.onOpenChange);
   const source = useModelPickerData();
   const ref0 = parseModelRef(props.value);
@@ -77,7 +77,8 @@ export function ModelChip(props: ChipProps & { value: string; title?: string | u
         disabled={props.disabled}
         aria-haspopup="dialog"
         onClick={() => setOpen(!open)}
-        tip={props.title}
+        tip={props.unavailable ? "This model's provider is not connected" : props.title}
+        warn={props.unavailable === true}
         className="max-w-60"
       />
       <Presence show={open}>

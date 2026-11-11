@@ -158,6 +158,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
       ? {
           value: current,
           title: served?.asked ? `${served.asked} → ${served.name} (chosen → served by the router)` : undefined,
+          unavailable: project?.models_unavailable?.some((i) => i.field === "orchestrator") === true,
           choose: async (model) => {
             if (!project || model === project.models.orchestrator) return;
             setPending(model);

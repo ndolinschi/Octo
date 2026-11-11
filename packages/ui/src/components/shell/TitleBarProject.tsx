@@ -110,6 +110,7 @@ function End() {
               : null
           }
           onChoose={(m) => void update({ models: { orchestrator: m } }).catch(() => undefined)}
+          {...(project.models_unavailable?.some((i) => i.field === "orchestrator") ? { warning: "This model's provider is not connected" } : {})}
           title={served?.asked ? `${served.asked} → ${served.name} (chosen → served by the router)` : `Orchestrator model: ${served?.name ?? chosen}`}
           className="-mx-1.5"
         >

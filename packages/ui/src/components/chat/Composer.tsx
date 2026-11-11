@@ -25,7 +25,7 @@ export type ComposerProps = {
   disabledReason: string | null;
   folders: Folder[];
   /** The orchestrator's model or agent (choose rejects to roll back). */
-  model: { value: string; title?: string | undefined; choose(model: string): Promise<void> } | null;
+  model: { value: string; title?: string | undefined; unavailable?: boolean; choose(model: string): Promise<void> } | null;
   /** One quiet line above the box (no API key), with the reason in its tooltip. */
   notice?: { text: string; title?: string } | null;
   /** Decision 49: the folder chip's picker adds the chosen folder to the project. */
@@ -297,7 +297,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             >
               <Glyph icon={Plus} size={16} />
             </button>
-            {model && <ModelChip value={model.value} title={model.title} onChoose={chooseModel} bare={shed >= 3} disabled={disabled} onOpenChange={onChip} />}
+            {model && (
+              <ModelChip
+                value={model.value}
+                title={model.title}
+                unavailable={model.unavailable === true}
+                onChoose={chooseModel}
+                bare={shed >= 3}
+                disabled={disabled}
+                onOpenChange={onChip}
+              />
+            )}
             <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 2} disabled={disabled} onOpenChange={onChip} />
             {props.tier && (
               <TierChip

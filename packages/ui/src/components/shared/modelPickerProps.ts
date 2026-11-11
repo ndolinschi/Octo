@@ -20,6 +20,8 @@ export type ModelPickerProps = {
   /** Text shown on the button instead of the model's name (the header shows the served model). */
   children?: ReactNode;
   title?: string;
+  /** The harness cannot run this model now (`models_unavailable`): the button turns warn-coloured with this text as its tooltip. */
+  warning?: string;
   /** Offer the typed text as a model id of its own (project settings: any id the provider accepts). */
   custom?: boolean;
 };

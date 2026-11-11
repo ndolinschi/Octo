@@ -30,7 +30,7 @@ export function useOrchestrators(projects: readonly ProjectSummary[] | null): Ma
       out.set(
         p.id,
         agents
-          ? orchestratorState(agents, live ? "idle" : p.status)
+          ? orchestratorState(agents, live ? "idle" : p.status, p.attention)
           : p.status === "running"
             ? { kind: "working", agents: [] }
             : { kind: "idle", at: p.updated_at },

@@ -1,4 +1,4 @@
-import type { Agent, ProjectState } from "@octo/agent-client";
+import type { Agent, ProjectAttentionKind, ProjectState } from "@octo/agent-client";
 import { timeAgo } from "./format";
 
 /**
@@ -17,10 +17,14 @@ export function runningAgents(agents: readonly Agent[]): Agent[] {
   return agents.filter((a) => a.parent_id !== null && a.status === "running").sort(byStart);
 }
 
-export function orchestratorState(agents: readonly Agent[], projectStatus: "idle" | "running"): OrchestratorState {
+export function orchestratorState(agents: readonly Agent[], projectStatus: "idle" | "running", attention?: ProjectAttentionKind): OrchestratorState {
   const root = agents.find((a) => a.parent_id === null);
   const running = runningAgents(agents);
   if (projectStatus === "running" || root?.status === "running" || running.length) return { kind: "working", agents: running };
+  // The harness says whether the last turn failed (`attention`); without it (an older harness) the agents decide.
+  if (attention === "failed") return { kind: "needs", error: root?.error ?? null, at: root?.finished_at ?? null };
+  if (attention === "none")
+    return !root || (!root.started_at && agents.length <= 1) ? { kind: "new" } : { kind: "idle", at: root.finished_at ?? root.started_at };
   // A failed turn needs the user even when nothing was stored (an ACP orchestrator that could not start: owner's live
   // test showed "Idle" and nothing else). An `error` on a non-running orchestrator counts too, unless it is a warning.
   if (root && (root.status === "failed" || (root.error && !/^warning:/i.test(root.error)))) return { kind: "needs", error: root.error, at: root.finished_at };
@@ -34,7 +38,8 @@ export function liveOrchestratorState(state: ProjectState, projectStatus: "idle"
     const a = state.agents[id];
     return a ? [a] : [];
   });
-  return orchestratorState(agents, projectStatus);
+  const failure = state.attention.state;
+  return orchestratorState(agents, projectStatus, failure === "failed" || failure === "none" ? failure : undefined);
 }
 
 /**

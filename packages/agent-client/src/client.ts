@@ -28,7 +28,6 @@ import type {
   MemorySearchResult,
   Task,
   Diagnostics,
-  ProviderList,
   Approval,
   ApprovalAnswer,
   ChangeDetail,
@@ -184,7 +183,6 @@ export interface Bridge {
    * Decision 53: every provider (API key, router, agent CLIs) with its state and models. Optional: a harness that
    * predates `GET /v1/providers` answers 404, and the UI then derives the list from the config and the plugins.
    */
-  listProviders?(): Promise<ProviderList>;
   /*
    * v7 members. All optional (only the HTTP bridge implements them; the message and demo bridges do not), so a host
    * that predates them keeps compiling; hosts check for presence.
@@ -549,7 +547,6 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     listDirs: (path) => request("GET", `/v1/fs/dirs?path=${encodeURIComponent(path)}`) as Promise<DirListing>,
     recentFolders: () => unwrap<FolderEntry[]>(request("GET", "/v1/fs/recent"), "entries"),
     getDiagnostics: () => request("GET", "/v1/diagnostics") as Promise<Diagnostics>,
-    listProviders: () => request("GET", "/v1/providers") as Promise<ProviderList>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,

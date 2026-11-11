@@ -78,7 +78,7 @@ bash apps/harness/scripts/test-subscriptions.sh      # LIVE: real agent CLIs on 
 ```
 
 Docs of the harness's features (exact API): `apps/harness/docs/` — `architecture.md`, `settings.md`, `v7.md`, `memory.md`
-(orchestrator memory), `acp-orchestrator.md` (ACP orchestrator, agents, diagnostics, wire trace). Every variable and setting:
+(orchestrator memory), `providers.md` (providers, models, `GET /v1/providers`), `review.md` (PR review), `acp-orchestrator.md` (ACP orchestrator, agents, diagnostics, wire trace). Every variable and setting:
 the table in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md#environment-variables-and-settings).
 
 ## Desktop + UI (pnpm)
@@ -120,7 +120,7 @@ Do not share SQLite/config between harness, router, and desktop.
   was verified and what was not. Current ones beyond the UI and harness design: `2026-11-10-subscription-agents-design.md`
   (ACP agents, orchestrator on a subscription), `2026-11-10-v7-changes-queue-approvals.md`, `2026-11-11-router-harness-integration.md`,
   `2026-11-11-packaging-design.md` (settings, sidecars, installer, R1), `2026-11-11-orchestrator-memory-design.md`,
-  `2026-11-11-inline-completion-design.md` (approved, not built), `2026-11-11-bots-design.md` (draft). Research reports are in
+  `2026-11-11-inline-completion-design.md` (built on both sides: harness endpoint, editor provider; not verified with a real model), `2026-11-11-pr-review-design.md` (RV1 harness built; UI not built), `2026-11-11-bots-design.md` (draft). Research reports are in
   `docs/superpowers/research/`.
 - A change that alters behaviour updates the spec's "As built" section (and the feature's page in `apps/harness/docs/` or the
   app's docs) in the same commit. State what was run and what was not; "not verified" is a valid entry.
