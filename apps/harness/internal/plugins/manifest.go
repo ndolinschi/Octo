@@ -54,6 +54,10 @@ type manifestAgent struct {
 	// bands (easy, medium, hard) the agent suits, for automatic routing.
 	FlatRate  *bool    `json:"flatRate"`
 	Strengths []string `json:"strengths"`
+	// BillingEnv lists environment variables that, when set (non-empty) in the
+	// environment the agent is started with, switch a flat-rate agent to per-token
+	// billing: an API key forwarded to it (XAI_API_KEY for Grok).
+	BillingEnv []string `json:"billingEnv"`
 	// Requires lists commands that must be on PATH (besides the agent's own
 	// command) for the agent to count as available: for an adapter run through
 	// npx that drives a separately installed CLI.

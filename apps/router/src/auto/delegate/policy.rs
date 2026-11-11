@@ -54,9 +54,16 @@ pub struct Selection {
     pub alternatives: Vec<usize>,
 }
 
-pub fn estimate_usd(tiers: &Tiers, policy: &RoutePolicy, candidate: &Candidate) -> Option<f64> {
+pub fn estimate_usd(
+    tiers: &Tiers,
+    policy: &RoutePolicy,
+    candidates: &[Candidate],
+    candidate: &Candidate,
+) -> Option<f64> {
     match candidate {
-        Candidate::Api { tier, .. } => api_micros(tiers, policy, *tier).map(micros_to_usd),
+        Candidate::Api { tier, .. } => {
+            api_micros(tiers, policy, candidates, *tier).map(micros_to_usd)
+        }
         Candidate::Agent {
             flat_rate: true, ..
         } => Some(0.0),
@@ -68,12 +75,27 @@ fn micros_to_usd(micros: u128) -> f64 {
     micros as f64 / 1_000_000.0
 }
 
-pub fn api_swap(tiers: &Tiers, policy: &RoutePolicy, tier: ApiTier) -> Option<&'static str> {
-    tiers.price_swap(tier.ladder_band(), None, policy.shape())
+/// The price rule's swap for an API candidate, limited to tiers the caller offered among `candidates`.
+pub fn api_swap(
+    tiers: &Tiers,
+    policy: &RoutePolicy,
+    candidates: &[Candidate],
+    tier: ApiTier,
+) -> Option<&'static str> {
+    tiers.price_swap_where(tier.ladder_band(), None, policy.shape(), |band| {
+        candidates
+            .iter()
+            .any(|c| matches!(c, Candidate::Api { tier, .. } if tier.ladder_band() == band))
+    })
 }
 
-fn api_micros(tiers: &Tiers, policy: &RoutePolicy, tier: ApiTier) -> Option<u128> {
-    let band = api_swap(tiers, policy, tier).unwrap_or(tier.ladder_band());
+fn api_micros(
+    tiers: &Tiers,
+    policy: &RoutePolicy,
+    candidates: &[Candidate],
+    tier: ApiTier,
+) -> Option<u128> {
+    let band = api_swap(tiers, policy, candidates, tier).unwrap_or(tier.ladder_band());
     tiers.blended_cost_micros(band, policy.shape())
 }
 
@@ -134,9 +156,10 @@ fn rank<'a>(
                 Candidate::Agent {
                     flat_rate: true, ..
                 } => (0, 0),
-                Candidate::Api { tier, .. } => {
-                    (1, api_micros(tiers, policy, *tier).unwrap_or(u128::MAX))
-                }
+                Candidate::Api { tier, .. } => (
+                    1,
+                    api_micros(tiers, policy, candidates, *tier).unwrap_or(u128::MAX),
+                ),
                 Candidate::Agent { .. } => (2, 0),
             };
             Ranked {

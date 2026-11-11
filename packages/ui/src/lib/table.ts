@@ -10,8 +10,9 @@ export const FOLD_ROWS = 12;
 /** A key–value result of at most this many pairs is a definition list. */
 export const MAX_PAIRS = 8;
 
-/** A cell that holds a number: 1,284 · €2,418,903.17 · 12% · 3.1k · −4 · 240ms (an empty cell or "—" passes). */
-export const NUMERIC_CELL = /^(?:[-+−]?[$€£]?\s?\d[\d,.\s]*(?:%|k|K|M|B|ms|s|x|×)?|—|–|-|)$/;
+import { NUMERIC_CELL } from "./numericCell";
+
+export { NUMERIC_CELL };
 
 export type Table = { head: string[]; rows: string[][]; truncated: number };
 export type Structured = { kind: "table"; table: Table } | { kind: "pairs"; pairs: [string, string][] };

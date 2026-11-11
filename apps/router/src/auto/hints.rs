@@ -14,16 +14,71 @@ const TASK_MAX_CHARS: usize = 200;
 /// `x-octo-tier-hint` carried a value that is none of the accepted ones.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidTierHint {
-    value: String,
+    reason: TierHintFault,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TierHintFault {
+    Unknown(String),
+    Undecodable,
+    Conflict,
+}
+
+const ACCEPTED_TIERS: &str =
+    "accepted values are low, mid, high (or fast, balanced, deep), case-insensitive";
 
 impl InvalidTierHint {
     pub fn message(&self) -> String {
-        format!(
-            "invalid {TIER_HINT_HEADER} `{}`: accepted values are low, mid, high (or fast, balanced, deep), case-insensitive",
-            self.value
-        )
+        match &self.reason {
+            TierHintFault::Unknown(value) => {
+                format!("invalid {TIER_HINT_HEADER} `{value}`: {ACCEPTED_TIERS}")
+            }
+            TierHintFault::Undecodable => format!(
+                "invalid {TIER_HINT_HEADER}: the value is not visible ASCII; {ACCEPTED_TIERS}"
+            ),
+            TierHintFault::Conflict => format!(
+                "conflicting {TIER_HINT_HEADER} headers: send one, or repeat the same tier; {ACCEPTED_TIERS}"
+            ),
+        }
     }
+}
+
+fn parse_tier_hints(headers: &mut HeaderMap) -> Result<Option<&'static str>, InvalidTierHint> {
+    let values: Vec<_> = headers.get_all(TIER_HINT_HEADER).iter().cloned().collect();
+    headers.remove(TIER_HINT_HEADER);
+    let mut found: Option<&'static str> = None;
+    for value in values {
+        let Ok(raw) = value.to_str() else {
+            return Err(InvalidTierHint {
+                reason: TierHintFault::Undecodable,
+            });
+        };
+        let raw = raw.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let band = match raw.to_ascii_lowercase().as_str() {
+            "low" | "fast" => "low",
+            "mid" | "balanced" => "mid",
+            "high" | "deep" => "high",
+            _ => {
+                return Err(InvalidTierHint {
+                    reason: TierHintFault::Unknown(
+                        raw.chars().filter(|c| !c.is_control()).take(40).collect(),
+                    ),
+                })
+            }
+        };
+        match found {
+            Some(earlier) if earlier != band => {
+                return Err(InvalidTierHint {
+                    reason: TierHintFault::Conflict,
+                })
+            }
+            _ => found = Some(band),
+        }
+    }
+    Ok(found)
 }
 
 impl std::fmt::Display for InvalidTierHint {
@@ -106,21 +161,7 @@ impl Hints {
             }
             parsed
         });
-        let mut invalid_tier = None;
-        let tier = match text(headers, TIER_HINT_HEADER) {
-            None => None,
-            Some(value) => match value.to_ascii_lowercase().as_str() {
-                "low" | "fast" => Some("low"),
-                "mid" | "balanced" => Some("mid"),
-                "high" | "deep" => Some("high"),
-                _ => {
-                    invalid_tier = Some(InvalidTierHint {
-                        value: value.chars().filter(|c| !c.is_control()).take(40).collect(),
-                    });
-                    None
-                }
-            },
-        };
+        let tier = parse_tier_hints(headers);
         let policy = text(headers, TIER_POLICY_HEADER)
             .and_then(|value| match value.to_ascii_lowercase().as_str() {
                 "auto" => Some(TierPolicy::Auto),
@@ -139,9 +180,7 @@ impl Hints {
             }
             decoded
         });
-        if let Some(err) = invalid_tier {
-            return Err(err);
-        }
+        let tier = tier?;
         Ok(Self {
             budget_micros: budget_key.as_ref().and(budget_micros),
             budget_key,

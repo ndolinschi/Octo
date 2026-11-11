@@ -474,7 +474,10 @@ export type UsageBucket = {
   cache_read_tokens: number;
   cache_write_tokens: number;
   requests: number;
-  /** Reported cost plus estimated cost; null when nothing in the bucket has a price. */
+  /**
+   * Money spent: reported plus estimated cost. 0 (never null) for a bucket of flat-rate usage only; null when an API
+   * request in the bucket has no known cost. Real shapes: `fixtures/usage.*.json`, written by the harness's contract test.
+   */
   cost_usd: number | null;
   /** True when any part comes from the harness's price table. */
   cost_estimated: boolean;
@@ -483,6 +486,8 @@ export type UsageBucket = {
    * not in `cost_usd`; show it as "≈ $x on your subscription". Null or absent when there is none.
    */
   subscription_equivalent_usd?: number | null;
+  /** The bucket holds flat-rate (subscription) usage and nothing else. A bucket with both has it false and both figures. */
+  flat_rate?: boolean;
 };
 
 export type UsageReport = {

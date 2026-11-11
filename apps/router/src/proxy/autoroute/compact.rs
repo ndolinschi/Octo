@@ -200,7 +200,7 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
     let served = model.clone().unwrap_or_default();
     let estimate_ratio = crate::history::estimate_ratio(&resolved);
     if let Some(ratio) = estimate_ratio {
-        crate::history::warn_estimate_ratio_once(&served, ratio);
+        crate::history::warn_estimate_ratio(&served, ratio);
     }
     let generation_id = plan
         .header_generation_id

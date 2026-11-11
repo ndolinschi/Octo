@@ -443,6 +443,8 @@ pub struct Limits {
     pub budget_micros: u64,
     pub max_band: Option<&'static str>,
     pub fixed: bool,
+    /// Set when the model was picked by the context-window upgrade: the price rule must not swap it back.
+    pub no_swap: bool,
     pub shape: RequestShape,
 }
 
@@ -544,6 +546,7 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
         budget_micros: budget.micros,
         max_band,
         fixed: hints.policy == TierPolicy::Fixed,
+        no_swap: false,
         shape: budget_shape,
     };
 
@@ -648,7 +651,13 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
                 compact_event = Some(COMPACT_NOT_APPLIED_REASON);
                 allow_compact = false;
             } else if allow_compact {
-                let served = route::serve(&req.auto.tiers, &limits, &row.model);
+                let served = route::serve(
+                    &req.auto.tiers,
+                    &limits,
+                    loaded.as_ref(),
+                    reserve,
+                    &row.model,
+                );
                 let outgoing = body::shape(body::ShapePlan {
                     body: &req.body,
                     model: &served.model,
@@ -671,6 +680,7 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
                     model: &served.model,
                     decided_tier: served.decided_tier,
                     models: loaded.as_ref(),
+                    limits: &limits,
                 });
             } else if let Some(id) = actor.clone() {
                 req.auto.clear_awaiting_compact(&id);

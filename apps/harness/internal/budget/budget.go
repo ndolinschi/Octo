@@ -19,8 +19,10 @@ type Meter struct {
 }
 
 // Spent returns the project's spend in USD; known is false when nothing in the
-// project has a cost yet (never zero by guess). With a router it is the larger
-// of the router's last report for the project and the rows' sum.
+// project has a cost yet (never zero by guess). With a router that tracks
+// budgets it is the highest spend the router reported for the project
+// (x-octo-spent-usd) and never a sum of rows; until it has reported one, the
+// costs the router itself reported on the rows.
 func (m Meter) Spent(ctx context.Context, db *projectstore.DB) (usd float64, known bool, err error) {
 	rows, err := db.UsageRows(ctx, "0000", "9999", projectstore.GroupProject)
 	if err != nil {
@@ -31,6 +33,13 @@ func (m Meter) Spent(ctx context.Context, db *projectstore.DB) (usd float64, kno
 	// estimate (which would make the harness stop at a number the router
 	// does not share). A flat-rate agent's figure is never spend.
 	routed := m.Router.Has(router.CapBudgetKey)
+	if routed {
+		// One number: the router's own, which also holds what the harness never
+		// sees (its classifier calls). Summing rows would give a second, smaller one.
+		if v, ok := m.Router.Spent(db.ID()); ok {
+			return v, true, nil
+		}
+	}
 	for _, r := range rows {
 		switch {
 		case r.Flat:
@@ -50,7 +59,7 @@ func (m Meter) Spent(ctx context.Context, db *projectstore.DB) (usd float64, kno
 		}
 	}
 	if v, ok := m.Router.Spent(db.ID()); ok && (!known || v > usd) {
-		usd, known = v, true
+		usd, known = v, true // a router that does not track budgets, but reported
 	}
 	return usd, known, nil
 }

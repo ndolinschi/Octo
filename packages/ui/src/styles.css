@@ -860,7 +860,9 @@
   --octo-card-highlight: rgb(255 255 255 / 0.06);
 }
 :root[data-theme="light"] {
-  --octo-card-alpha: 80%;
+  /* 80% left the Activity card's 12px fg-3 caption at 4.27:1 (1440) / 1.95:1 (1920) once Home's band ran full width
+     (live test 7): raised to 90%; the band still reads through every gap around the cards. */
+  --octo-card-alpha: 90%;
   --octo-card-highlight: rgb(255 255 255 / 0.7);
 }
 @supports (backdrop-filter: blur(12px)) {

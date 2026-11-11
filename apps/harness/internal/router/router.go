@@ -163,12 +163,16 @@ func (r *Router) Spent(key string) (float64, bool) {
 	return v, ok
 }
 
-// NoteSpent records the router-reported spend for a budget key.
+// NoteSpent records router-reported spend for a budget key. The highest value
+// seen wins: the router's figure only grows, and two calls that run at once
+// can finish in either order, so the later arrival is not the newer figure.
 func (r *Router) NoteSpent(key string, usd float64) {
 	if r == nil || key == "" {
 		return
 	}
 	r.mu.Lock()
-	r.spent[key] = usd
+	if v, ok := r.spent[key]; !ok || usd > v {
+		r.spent[key] = usd
+	}
 	r.mu.Unlock()
 }

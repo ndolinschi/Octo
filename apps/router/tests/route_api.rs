@@ -946,11 +946,29 @@ async fn the_price_rule_off_keeps_the_candidate_estimates_and_model() {
 }
 
 #[tokio::test]
-async fn a_single_low_candidate_is_served_at_the_cheaper_tier_above_it() {
+async fn the_route_endpoint_only_swaps_to_tiers_the_caller_offered() {
     let classifier = spawn_classifier(EASY, 200, 0).await;
     let state = inverted_state(&classifier, true);
+    // only `fast` offered: high is cheaper but not a candidate, so low is served and estimated
     let (_, value) = route(&state, &request("easy", vec![api("api-fast", "fast")])).await;
     assert_eq!(value["choice"], "api-fast");
+    assert_eq!(value["model"], "low-model");
+    assert!(!value["reason"].as_str().unwrap().contains("Price rule"));
+    let id = value["request_id"].as_str().unwrap();
+    let (_, row) = call(
+        &state,
+        "GET",
+        &format!("/autoroute/v1/calls/{id}"),
+        &[],
+        Vec::new(),
+    )
+    .await;
+    assert!(row.get("decided_tier").is_none(), "{row}");
+    let low = 9.0 * 30_000.0 / 1e6 + 9.0 * 500.0 / 1e6;
+    assert!((value["estimated_cost_usd"].as_f64().unwrap() - low).abs() < 1e-9);
+    // fast + deep offered: the swap to deep is allowed
+    let offered = vec![api("api-fast", "fast"), api("api-deep", "deep")];
+    let (_, value) = route(&state, &request("easy", offered)).await;
     assert_eq!(value["model"], "high-model");
 }
 

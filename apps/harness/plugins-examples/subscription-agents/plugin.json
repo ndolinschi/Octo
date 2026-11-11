@@ -7,6 +7,9 @@
       "id": "claude-code",
       "label": "Claude Code",
       "flatRate": true,
+      "billingEnv": [
+        "ANTHROPIC_API_KEY"
+      ],
       "strengths": [
         "easy",
         "medium",
@@ -52,7 +55,10 @@
     {
       "id": "grok",
       "label": "Grok",
-      "flatRate": false,
+      "flatRate": true,
+      "billingEnv": [
+        "XAI_API_KEY"
+      ],
       "command": "grok",
       "args": [
         "agent",

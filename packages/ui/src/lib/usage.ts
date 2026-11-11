@@ -85,23 +85,40 @@ export function formatUsd(n: number): string {
 
 /** A bucket's cost as shown: "no price" when the harness has none for it (never "$0"), else compact USD. */
 export function costText(b: Pick<UsageBucket, "cost_usd">): string {
-  if (b.cost_usd !== null && isFlatRate(b)) return `≈ ${formatUsd(b.cost_usd)} on your subscription`;
+  const equivalent = subscriptionEquivalent(b);
+  if (equivalent !== null) return `≈ ${formatUsd(equivalent)} on your subscription`;
   return b.cost_usd === null ? "no price" : formatUsd(b.cost_usd);
 }
 
 /**
- * A usage row the harness marks `flat_rate` (an agent on a subscription): its cost is what the tokens would have cost,
- * not money spent. Read defensively — older harnesses do not send the field.
+ * A usage row on a subscription (an ACP agent on a flat rate): `flat_rate: true` or a positive
+ * `subscription_equivalent_usd` (a live harness sent the latter with `cost_usd: null` and no `flat_rate`). Read
+ * defensively — older harnesses send neither field.
  */
 export function isFlatRate(b: object): boolean {
-  return "flat_rate" in b && b.flat_rate === true;
+  return ("flat_rate" in b && b.flat_rate === true) || (subscriptionEquivalent(b) ?? 0) > 0;
+}
+
+/** What a subscription row would have cost (`subscription_equivalent_usd`, else an older harness's `cost_usd`); null otherwise. */
+export function subscriptionEquivalent(b: object): number | null {
+  const eq = "subscription_equivalent_usd" in b && typeof b.subscription_equivalent_usd === "number" ? b.subscription_equivalent_usd : null;
+  if (eq !== null && eq > 0) return eq;
+  const flat = "flat_rate" in b && b.flat_rate === true;
+  const cost = "cost_usd" in b && typeof b.cost_usd === "number" ? b.cost_usd : null;
+  return flat ? (eq ?? cost) : null;
 }
 
 /** What was paid: the total minus flat-rate rows (never added to the paid total); null when nothing has a price. */
 export function paidCost(total: Pick<UsageBucket, "cost_usd">, buckets: readonly Pick<UsageBucket, "cost_usd">[]): number | null {
   if (total.cost_usd === null) return null;
+  // A flat-rate row's `cost_usd` is spend (0 from a current harness); an older one put the equivalent there.
   const flat = buckets.filter(isFlatRate).reduce((n, b) => n + (b.cost_usd ?? 0), 0);
   return Math.max(0, total.cost_usd - flat);
+}
+
+/** The subscription equivalents of all rows (shown under the total, never added to it). */
+export function subscriptionTotal(buckets: readonly object[]): number {
+  return buckets.reduce<number>((n, b) => n + (subscriptionEquivalent(b) ?? 0), 0);
 }
 
 export type ShareRow = { key: string; label: string; tokens: number; share: number; bucket: UsageBucket };

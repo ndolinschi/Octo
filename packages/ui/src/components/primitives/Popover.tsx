@@ -40,7 +40,10 @@ export function Popover(props: {
     const place = () => {
       const r = a.getBoundingClientRect();
       const v = edge.current?.()?.getBoundingClientRect() ?? r;
-      const { width, height } = el.getBoundingClientRect();
+      // Layout size, not the painted box: the entry animation scales the panel, which would misplace it (a 1px overlap
+      // with its chip, decision 56).
+      const width = el.offsetWidth;
+      const height = el.offsetHeight;
       const roomAbove = v.top - gap - EDGE;
       const roomBelow = window.innerHeight - v.bottom - gap - EDGE;
       const up = side === "top" ? height <= roomAbove || roomAbove > roomBelow : height > roomBelow && roomAbove > roomBelow;

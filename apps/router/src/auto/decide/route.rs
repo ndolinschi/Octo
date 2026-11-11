@@ -20,10 +20,30 @@ pub(super) struct Served {
     pub decided_tier: Option<String>,
 }
 
-pub(super) fn serve(tiers: &Tiers, limits: &Limits, decided: &str) -> Served {
-    if !limits.fixed {
+fn swap_target(
+    tiers: &Tiers,
+    limits: &Limits,
+    models: Option<&OpenRouterModels>,
+    reserve: u64,
+    band: &str,
+) -> Option<&'static str> {
+    tiers.price_swap_where(band, limits.max_band, limits.shape, |target| {
+        tiers.swap_fits_window(models, band, target, limits.shape, reserve)
+    })
+}
+
+/// The model served for a decided one: the price rule's pick unless the rule is off, the policy is `fixed`, the
+/// model came from the window upgrade, or the cheaper tier's window cannot hold the request.
+pub(super) fn serve(
+    tiers: &Tiers,
+    limits: &Limits,
+    models: Option<&OpenRouterModels>,
+    reserve: u64,
+    decided: &str,
+) -> Served {
+    if !limits.fixed && !limits.no_swap {
         let band = tiers.band(decided);
-        if let Some(to) = tiers.price_swap(band, limits.max_band, limits.shape) {
+        if let Some(to) = swap_target(tiers, limits, models, reserve, band) {
             return Served {
                 model: tiers.slug(to),
                 decided_tier: Some(band.to_string()),
@@ -36,12 +56,17 @@ pub(super) fn serve(tiers: &Tiers, limits: &Limits, decided: &str) -> Served {
     }
 }
 
-fn served_tier_before(tiers: &Tiers, limits: &Limits, tier_before: &str) -> String {
+fn served_tier_before(
+    tiers: &Tiers,
+    limits: &Limits,
+    models: Option<&OpenRouterModels>,
+    reserve: u64,
+    tier_before: &str,
+) -> String {
     if limits.fixed {
         return tier_before.to_string();
     }
-    tiers
-        .price_swap(tier_before, limits.max_band, limits.shape)
+    swap_target(tiers, limits, models, reserve, tier_before)
         .unwrap_or(tier_before)
         .to_string()
 }
@@ -104,6 +129,7 @@ pub(super) struct RepeatCompact<'a> {
     pub model: &'a str,
     pub decided_tier: Option<String>,
     pub models: Option<&'a OpenRouterModels>,
+    pub limits: &'a Limits,
 }
 
 pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
@@ -111,11 +137,23 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
     if plan.model.is_empty() {
         plan.model = ctx.auto.tiers.mid.clone();
     }
-    let mut served = serve(&ctx.auto.tiers, &plan.limits, &plan.model);
-    let previous_served = ctx
-        .previous_model
-        .as_deref()
-        .map(|model| serve(&ctx.auto.tiers, &plan.limits, model).model);
+    let mut served = serve(
+        &ctx.auto.tiers,
+        &plan.limits,
+        ctx.models,
+        plan.reserve,
+        &plan.model,
+    );
+    let previous_served = ctx.previous_model.as_deref().map(|model| {
+        serve(
+            &ctx.auto.tiers,
+            &plan.limits,
+            ctx.models,
+            plan.reserve,
+            model,
+        )
+        .model
+    });
     let previous = previous_served.as_deref();
     let mut shaped_out = shaped(ShapeArgs {
         body: &ctx.body,
@@ -208,7 +246,17 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 plan.model = upgraded.model;
                 plan.sticky_band = upgraded.sticky_band;
                 plan.reason = upgraded.reason;
-                served = serve(&ctx.auto.tiers, &plan.limits, &plan.model);
+                if plan.reason.as_deref() == Some("upgrade") {
+                    // the upgrade picked this model for its window; the price rule must not swap it back
+                    plan.limits.no_swap = true;
+                }
+                served = serve(
+                    &ctx.auto.tiers,
+                    &plan.limits,
+                    ctx.models,
+                    plan.reserve,
+                    &plan.model,
+                );
                 let grew = catalog::context_length(ctx.models, &served.model)
                     .is_some_and(|next| next > window);
                 if !grew {
@@ -282,7 +330,13 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
         });
     }
     let tier_after = ctx.auto.tiers().band(&served.model).to_string();
-    let tier_before = served_tier_before(&ctx.auto.tiers, &plan.limits, &plan.tier_before);
+    let tier_before = served_tier_before(
+        &ctx.auto.tiers,
+        &plan.limits,
+        ctx.models,
+        plan.reserve,
+        &plan.tier_before,
+    );
     let meta = RouteMeta::from_plan(tier_before, tier_after, plan.reason.as_deref())
         .with_stripped(&shaped_out.stripped)
         .with_decided_tier(served.decided_tier);
@@ -298,7 +352,13 @@ fn skips_fill_upgrade(reason: Option<&str>) -> bool {
 
 fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
     let plan = ctx.plan;
-    let served = serve(&ctx.auto.tiers, &plan.limits, &plan.model);
+    let served = serve(
+        &ctx.auto.tiers,
+        &plan.limits,
+        ctx.models,
+        plan.reserve,
+        &plan.model,
+    );
     if !plan.allow_compact {
         if plan.persist {
             remember(RememberPlan {
@@ -323,7 +383,13 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
             previous_model: ctx.previous_model,
             models: ctx.models,
             reason: plan.reason,
-            tier_before: served_tier_before(&ctx.auto.tiers, &plan.limits, &plan.tier_before),
+            tier_before: served_tier_before(
+                &ctx.auto.tiers,
+                &plan.limits,
+                ctx.models,
+                plan.reserve,
+                &plan.tier_before,
+            ),
             auto: ctx.auto,
             trimmed_from_tokens: plan.trimmed_from_tokens,
         });
@@ -350,6 +416,7 @@ fn finish_overflow(ctx: OverflowCtx<'_>) -> Turn {
         model: &served.model,
         decided_tier: served.decided_tier,
         models: ctx.models,
+        limits: &plan.limits,
     })
 }
 
@@ -409,21 +476,29 @@ pub(super) fn passthrough(plan: Passthrough<'_>) -> Turn {
 }
 
 pub(super) fn repeat_compact(plan: RepeatCompact<'_>) -> Turn {
-    let fallback = catalog::context_length(plan.models, plan.model).and_then(|current_window| {
-        plan.auto
-            .tiers
-            .candidates()
-            .into_iter()
-            .filter_map(|slug| {
-                if catalog::ids_match(slug, plan.model) {
-                    return None;
-                }
-                let window = catalog::context_length(plan.models, slug)?;
-                (window > current_window).then_some((window, slug))
-            })
-            .min_by_key(|(window, _)| *window)
-            .map(|(_, slug)| slug)
-    });
+    let fallback = catalog::context_length(plan.models, plan.model)
+        .filter(|_| !plan.limits.fixed)
+        .and_then(|current_window| {
+            plan.auto
+                .tiers
+                .candidates()
+                .into_iter()
+                .filter_map(|slug| {
+                    if catalog::ids_match(slug, plan.model) {
+                        return None;
+                    }
+                    if let Some(max) = plan.limits.max_band {
+                        if catalog::band_rank(plan.auto.tiers.band(slug)) > catalog::band_rank(max)
+                        {
+                            return None;
+                        }
+                    }
+                    let window = catalog::context_length(plan.models, slug)?;
+                    (window > current_window).then_some((window, slug))
+                })
+                .min_by_key(|(window, _)| *window)
+                .map(|(_, slug)| slug)
+        });
     match serde_json::to_vec(&compaction_body(plan.body, plan.model)) {
         Ok(body) => Turn::Compact(Compact {
             body,

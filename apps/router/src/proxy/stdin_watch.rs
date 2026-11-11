@@ -8,7 +8,11 @@ pub fn enabled(raw: Option<&str>) -> bool {
     matches!(raw.map(str::trim), Some("1"))
 }
 
-/// Reads and discards `reader` on a detached thread; the receiver resolves on EOF or a read error.
+/// How long to wait before polling a reader that reported `WouldBlock` (a non-blocking stdin).
+const WOULD_BLOCK_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// Reads and discards `reader` on a detached thread; the receiver resolves on EOF (0 bytes) or a hard read error.
+/// `Interrupted` is retried at once and `WouldBlock` after a short sleep: neither means the parent is gone.
 /// A plain thread (not `spawn_blocking`) so a pending read never delays runtime or process exit.
 pub fn spawn<R: Read + Send + 'static>(mut reader: R) -> oneshot::Receiver<()> {
     let (tx, rx) = oneshot::channel();
@@ -16,8 +20,13 @@ pub fn spawn<R: Read + Send + 'static>(mut reader: R) -> oneshot::Receiver<()> {
         let mut buf = [0u8; 4096];
         loop {
             match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
+                Ok(0) => break,
                 Ok(_) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(WOULD_BLOCK_POLL);
+                }
+                Err(_) => break,
             }
         }
         let _ = tx.send(());

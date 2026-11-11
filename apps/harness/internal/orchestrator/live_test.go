@@ -277,6 +277,21 @@ func TestLiveACPSlowToolIsVisibleWhileItRuns(t *testing.T) {
 	}
 }
 
+func TestLiveACPRunningToolIsNotQuiet(t *testing.T) {
+	r := liveRigWith(t, 100*time.Millisecond)
+	pid := r.acpOrchProject(t)
+	evs, status := r.liveRun(t, pid, "[slow-tool] go") // a tool silent for 400 ms
+	if status != "completed" {
+		t.Fatalf("status = %s", status)
+	}
+	if n := len(activitiesOfKind(evs, "quiet")); n != 0 {
+		t.Fatalf("a running tool was reported quiet: %v", activities(evs))
+	}
+	if !hasActivity(evs, "tool:Running `pnpm test`") {
+		t.Fatalf("activity = %v", activities(evs))
+	}
+}
+
 func TestLiveACPQuietAgentIsReported(t *testing.T) {
 	r := liveRigWith(t, 120*time.Millisecond)
 	pid := r.acpOrchProject(t)

@@ -38,6 +38,8 @@ func (r *Registry) withState(a Agent) Agent {
 	if r.probes != nil && a.probeable() {
 		a.LoggedIn = r.probes.result(a.ID)
 	}
+	// An API key forwarded to a subscription agent makes it bill per token.
+	a.FlatRate = a.FlatRateIn(a.ResolvedEnv())
 	return a
 }
 

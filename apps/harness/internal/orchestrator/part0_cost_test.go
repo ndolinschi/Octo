@@ -258,3 +258,32 @@ func TestResumedSessionContinuesTheUsageCounters(t *testing.T) {
 		t.Fatalf("summed cost = %v, want 0.01 (the resumed session's counter did not move)", sum)
 	}
 }
+
+// A subscription agent whose manifest names a billing key is flat-rate until that
+// key reaches the process: decided at spawn from the resolved environment.
+func TestFlatRateAgentBecomesSpendWhenItsBillingKeyIsForwarded(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		keySet   bool
+		wantFlat int
+	}{{"without the key", false, 2}, {"with the key forwarded", true, 0}} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.keySet {
+				t.Setenv("OCTO_TEST_BILLING_KEY", "sk-test")
+			}
+			ag := fakeAgent("fake", true)
+			ag.FlatRate = true
+			ag.BillingEnv = []string{"OCTO_TEST_BILLING_KEY"}
+			ag.Env["OCTO_TEST_BILLING_KEY"] = "${OCTO_TEST_BILLING_KEY}"
+			r := newACPRig(t, mockllm.New(0), ag)
+			pid := r.projectAt(t, t.TempDir())
+			if got := r.runCollect(t, pid, "[acp] summarize", nil); got.status != "completed" {
+				t.Fatalf("turn = %s", got.status)
+			}
+			_, flat, nonFlat := costOf(t, r, pid)
+			if flat != tc.wantFlat || nonFlat != 2-tc.wantFlat {
+				t.Fatalf("flat=%d non-flat=%d, want %d flat", flat, nonFlat, tc.wantFlat)
+			}
+		})
+	}
+}

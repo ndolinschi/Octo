@@ -66,7 +66,7 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	s := rt.o.acp.session(rt.pid())
 	handler := newACPSession(rt, orch.ID, target.agent.ID, orch.Model)
 	handler.orchestrator = true
-	handler.flat = target.agent.FlatRate
+	handler.flat = target.agent.FlatRateIn(target.processEnv())
 	defer func() {
 		handler.mu.Lock()
 		cost, used := handler.lastCost, handler.lastUsed

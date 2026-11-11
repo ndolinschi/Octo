@@ -110,13 +110,14 @@ func TestBuiltinAgentIDClashIsSilent(t *testing.T) {
 }
 
 // flatRate choices of the built-in subscription-agents entries (documented in
-// the plugin README): agents whose entry forwards a per-token API key by
-// default, or that front arbitrary providers, are not flat-rate.
+// the plugin README): agents that front arbitrary providers or forward a
+// per-token key by default are not flat-rate; Grok and Claude Code are, until their
+// billingEnv key (XAI_API_KEY, ANTHROPIC_API_KEY) is in the environment they get.
 func TestBuiltinFlatRateChoices(t *testing.T) {
 	reg := plugins.Load(context.Background(), t.TempDir(), nil, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
 	want := map[string]bool{
 		"claude-code": true, "copilot": true, "codex": true, "cursor": true, "antigravity": true, "devin": true,
-		"grok": false, "opencode": false, "droid": false, "omp": false, "pi": false,
+		"grok": true, "opencode": false, "droid": false, "omp": false, "pi": false,
 	}
 	for _, a := range reg.Agents() {
 		if w, ok := want[a.ID]; !ok || a.FlatRate != w {

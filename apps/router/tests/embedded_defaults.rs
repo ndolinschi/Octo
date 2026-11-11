@@ -153,3 +153,55 @@ fn a_complete_directory_uses_no_embedded_defaults() {
     let (_, embedded) = Config::load_directory_with_report(Path::new("config")).unwrap();
     assert!(embedded.is_empty());
 }
+
+// ---- merge order: anything on disk wins key by key, whichever fragment it sits in ----
+
+#[test]
+fn a_key_in_an_earlier_on_disk_file_beats_the_embedded_fragment() {
+    let dir = shell_dir("order-openrouter");
+    std::fs::write(
+        dir.join("upstream.toml"),
+        "[openrouter]\nmessages_url = \"http://127.0.0.1:9/mine\"\n",
+    )
+    .unwrap();
+    let config = Config::load_from_directory(&dir).unwrap();
+    assert_eq!(config.openrouter_messages_url, "http://127.0.0.1:9/mine");
+    // the rest of the embedded openrouter.toml still applies
+    let shipped = Config::load_from_directory(Path::new("config")).unwrap();
+    assert_eq!(
+        config.openrouter_chat_completions_url,
+        shipped.openrouter_chat_completions_url
+    );
+
+    let dir = shell_dir("order-autoroute");
+    std::fs::write(
+        dir.join("server.toml"),
+        "[server]\nbind_addr = \"127.0.0.1:48123\"\n[autoroute]\nlow = \"my/low\"\n",
+    )
+    .unwrap();
+    let config = Config::load_from_directory(&dir).unwrap();
+    assert_eq!(config.autoroute_low_model, "my/low");
+    assert_eq!(config.autoroute_mid_model, shipped.autoroute_mid_model);
+}
+
+#[test]
+fn a_price_row_in_another_on_disk_file_beats_the_embedded_prices() {
+    let dir = shell_dir("order-prices");
+    let shipped = Config::load_from_directory(Path::new("config")).unwrap();
+    let low = shipped.autoroute_low_model.clone();
+    std::fs::write(
+        dir.join("autoroute.toml"),
+        format!(
+            "[autoroute]\nnever_pay_more_for_less = true\n[prices.\"{low}\"]\ninput = 7.0\ncache_read = 0.7\ncache_write = 0.0\noutput = 8.0\n"
+        ),
+    )
+    .unwrap();
+    let (config, embedded) = Config::load_directory_with_report(&dir).unwrap();
+    assert_eq!(embedded, ["openrouter.toml", "prices.toml"]);
+    let row = config.prices.get(&low).unwrap();
+    assert_eq!((row.input, row.output, row.cache_read), (7.0, 8.0, 0.7));
+    assert!(
+        config.prices.get(&shipped.autoroute_mid_model).is_some(),
+        "the other embedded rows stay"
+    );
+}

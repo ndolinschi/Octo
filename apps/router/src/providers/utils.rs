@@ -230,7 +230,7 @@ impl Capture {
         let generation_id_for_row = generation_id.clone();
         let estimate_ratio = crate::history::estimate_ratio(&resolved);
         if let Some(ratio) = estimate_ratio {
-            crate::history::warn_estimate_ratio_once(self.model.as_deref().unwrap_or(""), ratio);
+            crate::history::warn_estimate_ratio(self.model.as_deref().unwrap_or(""), ratio);
         }
         let call_model = self.model.clone().unwrap_or_default();
         let parent = self

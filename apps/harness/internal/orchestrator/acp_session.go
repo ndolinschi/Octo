@@ -102,7 +102,8 @@ func (s *acpSession) touch() {
 }
 
 // watchSilence publishes agent.activity "quiet" once when nothing at all has
-// arrived from the agent for the quiet period (not while it waits for the user).
+// arrived from the agent for the quiet period (not while it waits for the user,
+// and not while a tool call is open: that stays "tool" with its label).
 func (s *acpSession) watchSilence() {
 	after := s.rt.o.opts.ACPQuietAfter
 	if after <= 0 {
@@ -117,7 +118,7 @@ func (s *acpSession) watchSilence() {
 		case <-tick.C:
 		}
 		s.mu.Lock()
-		fire := !s.done && !s.waiting && !s.quiet && time.Since(s.lastEvent) >= after
+		fire := !s.done && !s.waiting && !s.quiet && len(s.open) == 0 && time.Since(s.lastEvent) >= after
 		if fire {
 			s.quiet = true
 		}

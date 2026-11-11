@@ -148,7 +148,7 @@ impl Tiers {
 
     pub fn blended_cost_micros(&self, band: &str, shape: RequestShape) -> Option<u128> {
         let price = self.prices.get(&self.slug(band))?;
-        if price.input <= 0.0 && price.output <= 0.0 {
+        if !price.rates_complete || (price.input <= 0.0 && price.output <= 0.0) {
             return None;
         }
         Some(blended_cost_micros(
@@ -179,6 +179,17 @@ impl Tiers {
         ceiling: Option<&str>,
         shape: RequestShape,
     ) -> Option<&'static str> {
+        self.price_swap_where(decided, ceiling, shape, |_| true)
+    }
+
+    /// [`Tiers::price_swap`] restricted to target tiers `allow` accepts (the decided tier itself is never filtered).
+    pub fn price_swap_where(
+        &self,
+        decided: &str,
+        ceiling: Option<&str>,
+        shape: RequestShape,
+        allow: impl Fn(&str) -> bool,
+    ) -> Option<&'static str> {
         if !self.never_pay_more_for_less {
             return None;
         }
@@ -189,6 +200,9 @@ impl Tiers {
             .max(start);
         let mut best = (start, self.blended_cost_micros(decided, shape)?);
         for (index, band) in BANDS.iter().enumerate().take(end + 1).skip(start + 1) {
+            if !allow(band) {
+                continue;
+            }
             if let Some(cost) = self.blended_cost_micros(band, shape) {
                 if cost < best.1 {
                     best = (index, cost);
@@ -196,6 +210,47 @@ impl Tiers {
             }
         }
         (best.0 != start).then_some(BANDS[best.0])
+    }
+
+    /// Whether the request (`shape.input_tokens` estimated, `reserve` = its `max_tokens`) fits the tier's model window
+    /// with room to spare (same 75% fill rule as the fill check). Unknown windows count as fitting.
+    pub fn fits_request(
+        &self,
+        models: Option<&crate::providers::openrouter::OpenRouterModels>,
+        band: &str,
+        shape: RequestShape,
+        reserve: u64,
+    ) -> bool {
+        let Some(window) = context_length(models, &self.slug(band)) else {
+            return true;
+        };
+        let usable = metrics::usable_window(window, reserve);
+        usable >= 1024 && (shape.input_tokens as f64) < usable as f64 * metrics::FILL_THRESHOLD
+    }
+
+    /// Whether the price rule may swap `decided` for `target` as far as context windows go: the target holds the
+    /// request, or the decided tier does not either and the target's window is no smaller.
+    pub fn swap_fits_window(
+        &self,
+        models: Option<&crate::providers::openrouter::OpenRouterModels>,
+        decided: &str,
+        target: &str,
+        shape: RequestShape,
+        reserve: u64,
+    ) -> bool {
+        if self.fits_request(models, target, shape, reserve) {
+            return true;
+        }
+        if self.fits_request(models, decided, shape, reserve) {
+            return false;
+        }
+        match (
+            context_length(models, &self.slug(decided)),
+            context_length(models, &self.slug(target)),
+        ) {
+            (Some(from), Some(to)) => to >= from,
+            _ => true,
+        }
     }
 
     /// The ladder tier the router really serves for a decided one under the price rule.

@@ -21,6 +21,8 @@ pub struct ParsedUsage {
     pub cache_read_tokens: Option<super::TokenCount>,
     pub cache_write_tokens: Option<super::TokenCount>,
     pub generation_id: Option<String>,
+    /// The `model` the response says it was served by, when it carries one.
+    pub model: Option<String>,
     pub input_includes_cache: bool,
 }
 
@@ -36,6 +38,7 @@ impl ParsedUsage {
         cache_read_tokens: None,
         cache_write_tokens: None,
         generation_id: None,
+        model: None,
         input_includes_cache: false,
     };
 }

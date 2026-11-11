@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Ladder maps router tiers to the slugs the fake serves.
@@ -52,6 +53,16 @@ type Options struct {
 	// IgnoreBudget makes the fake accept requests over budget (the harness's own
 	// checks are then the only ones in play).
 	IgnoreBudget bool
+	// ClassifierUSD is charged to the budget key's spend, on top of the call's own
+	// cost, for every request the classifier decided (not a hint): the real router
+	// counts its classify cost in spend, and the call record does not show it.
+	ClassifierUSD float64
+	// SpentAfter adds spent_after_usd (the key's spend once the call was charged,
+	// classifier cost included) to every call record.
+	SpentAfter bool
+	// DelayFor holds a request before it is answered, after its spend header was
+	// fixed (a way to make calls overlap and finish out of order).
+	DelayFor func(*http.Request) time.Duration
 	// CostSource is the call record's cost_source (default "reported").
 	CostSource string
 	// Route scripts the I2 route endpoint (POST /autoroute/v1/route). When set
@@ -207,6 +218,9 @@ func (r *Router) messages(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if r.opts.DelayFor != nil {
+		time.Sleep(r.opts.DelayFor(req))
+	}
 	session := key + "|" + body.Metadata.UserID
 	if r.shouldCompact(session, len(body.Messages)) {
 		entry.Trigger = "compact"

@@ -590,21 +590,14 @@ impl Config {
     ) -> Result<(Self, Vec<&'static str>), ConfigError> {
         use std::io::ErrorKind;
 
-        let mut merged = Map::new();
-        let mut embedded = Vec::new();
+        // Read every file on disk first; the embedded text stands in for the missing embedded ones only.
+        let mut on_disk: Vec<(PathBuf, Map<String, Value>)> = Vec::new();
+        let mut present: Vec<&str> = Vec::new();
         for name in CONFIG_DIR_FILES {
             let path = dir.join(name);
             let contents = match std::fs::read_to_string(&path) {
                 Ok(contents) => contents,
-                Err(source) if source.kind() == ErrorKind::NotFound => {
-                    match EMBEDDED_DEFAULTS.iter().find(|(file, _)| file == name) {
-                        Some((file, text)) => {
-                            embedded.push(*file);
-                            text.to_string()
-                        }
-                        None => continue,
-                    }
-                }
+                Err(source) if source.kind() == ErrorKind::NotFound => continue,
                 Err(source) => {
                     return Err(ConfigError::Read {
                         path: path.clone(),
@@ -619,6 +612,29 @@ impl Config {
             let Value::Table(table) = table else {
                 return Err(ConfigError::InvalidFragment { path });
             };
+            present.push(name);
+            on_disk.push((path, table));
+        }
+        // Embedded fragments go in first and every file on disk after them, so anything on disk wins key by key,
+        // whichever fragment it sits in.
+        let mut merged = Map::new();
+        let mut embedded = Vec::new();
+        for (name, text) in EMBEDDED_DEFAULTS {
+            if present.contains(name) {
+                continue;
+            }
+            let path = dir.join(name);
+            let table: Value = toml::from_str(text).map_err(|source| ConfigError::Parse {
+                path: path.clone(),
+                source,
+            })?;
+            let Value::Table(table) = table else {
+                return Err(ConfigError::InvalidFragment { path });
+            };
+            embedded.push(*name);
+            merge_tables(&mut merged, table);
+        }
+        for (_, table) in on_disk {
             merge_tables(&mut merged, table);
         }
         let file: ConfigFile =

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { costText, formatUsd, isFlatRate, paidCost, shareRows } from "../../lib/usage";
+import { costText, formatUsd, isFlatRate, paidCost, shareRows, subscriptionTotal } from "../../lib/usage";
 import type { UsageView } from "../../lib/usageView";
 import { InfoSection } from "../primitives/InfoList";
 import { useModelNames } from "../../state/models";
@@ -16,7 +16,7 @@ export function UsageCost({ load, view }: { load: Load<UsageData>; view: UsageVi
   const total = data?.models.total;
   // Flat-rate rows (agents on a subscription) are an equivalent, not spend: never in the paid total.
   const paid = data ? paidCost(data.models.total, data.models.buckets) : null;
-  const flat = data ? data.models.buckets.filter(isFlatRate).reduce((n, b) => n + (b.cost_usd ?? 0), 0) : 0;
+  const flat = data ? subscriptionTotal(data.models.buckets) : 0;
   const rows = useMemo(
     () =>
       data
@@ -27,7 +27,7 @@ export function UsageCost({ load, view }: { load: Load<UsageData>; view: UsageVi
         : [],
     [data, modelLabel],
   );
-  const unpriced = data?.models.buckets.some((b) => b.cost_usd === null) ?? false;
+  const unpriced = data?.models.buckets.some((b) => b.cost_usd === null && !isFlatRate(b)) ?? false;
   const empty = !data || data.models.buckets.length === 0;
   return (
     <UsageState load={load} empty={empty}>
@@ -41,7 +41,7 @@ export function UsageCost({ load, view }: { load: Load<UsageData>; view: UsageVi
             {[
               `Last ${view.days} days, ${view.scope === "project" ? "this project" : "all projects"}`,
               unpriced && total.cost_usd !== null ? "Models without a price are not included" : null,
-              flat > 0 ? `Not counted: ≈ ${formatUsd(flat)} of agents on your subscription` : null,
+              flat > 0 ? `Not counted: ≈ ${formatUsd(flat)} on your subscriptions` : null,
             ]
               .filter(Boolean)
               .join(". ")}
@@ -55,14 +55,16 @@ export function UsageCost({ load, view }: { load: Load<UsageData>; view: UsageVi
           rows={rows}
           value={(r) => (
             <>
-              <span className={r.bucket.cost_usd === null ? "text-fg-3" : undefined}>{costText(r.bucket)}</span>
-              {r.bucket.cost_estimated && <span className="ml-1 text-fg-3">est.</span>}
+              <span className={r.bucket.cost_usd === null || isFlatRate(r.bucket) ? "text-fg-3" : undefined}>{costText(r.bucket)}</span>
+              {r.bucket.cost_estimated && !isFlatRate(r.bucket) && <span className="ml-1 text-fg-3">est.</span>}
             </>
           )}
           title={(r) =>
-            r.bucket.cost_usd === null
-              ? `${r.key}: no price for this model`
-              : `${r.key}: $${r.bucket.cost_usd.toFixed(4)}${r.bucket.cost_estimated ? " (estimated from the price table)" : " (reported by the source)"}`
+            isFlatRate(r.bucket)
+              ? `${r.key}: on your subscription (${costText(r.bucket)}), not counted as spend`
+              : r.bucket.cost_usd === null
+                ? `${r.key}: no price for this model`
+                : `${r.key}: $${r.bucket.cost_usd.toFixed(4)}${r.bucket.cost_estimated ? " (estimated from the price table)" : " (reported by the source)"}`
           }
         />
       </InfoSection>

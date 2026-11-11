@@ -126,8 +126,13 @@ func (l *Loop) usageOf(ctx context.Context, resp anthropic.Message, res router.R
 		u.CostUSD = rec.CostUSD
 		u.CostEstimated = rec.CostSource == router.CostEstimated
 	}
-	if res.SpentUSD != nil && u.CostUSD != nil {
+	switch {
+	case rec.SpentAfterUSD != nil:
+		// The router's own figure after this call (classifier cost included).
+		l.Router.NoteSpent(l.Hints.BudgetKey, *rec.SpentAfterUSD)
+	case res.SpentUSD != nil && u.CostUSD != nil:
 		// The header is the spend before this response; add this call's cost.
+		// (The router's classifier cost for this call is only in the next header.)
 		l.Router.NoteSpent(l.Hints.BudgetKey, *res.SpentUSD+*u.CostUSD)
 	}
 	return u

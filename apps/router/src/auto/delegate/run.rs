@@ -105,7 +105,7 @@ pub async fn route(
 
     let chosen = &candidates[selection.index];
     let swap = match chosen {
-        Candidate::Api { tier, .. } => api_swap(tiers, policy, *tier),
+        Candidate::Api { tier, .. } => api_swap(tiers, policy, candidates, *tier),
         Candidate::Agent { .. } => None,
     };
     let reason = reason(&ReasonPlan {
@@ -169,7 +169,7 @@ pub async fn route(
         model,
         band: classified.band,
         reason,
-        estimated_cost_usd: estimate_usd(tiers, policy, chosen),
+        estimated_cost_usd: estimate_usd(tiers, policy, candidates, chosen),
         alternatives: alternatives(auto, policy, candidates, &selection),
         request_id,
     })
@@ -186,7 +186,7 @@ fn alternatives(
         .iter()
         .map(|&index| Alternative {
             id: candidates[index].id().to_string(),
-            estimated_cost_usd: estimate_usd(auto.tiers(), policy, &candidates[index]),
+            estimated_cost_usd: estimate_usd(auto.tiers(), policy, candidates, &candidates[index]),
         })
         .collect()
 }

@@ -29,7 +29,7 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	defer client.Close()
 
 	h := newACPSession(rt, child.ID, ag.ID, child.Model)
-	h.flat = ag.FlatRate
+	h.flat = ag.FlatRateIn(t.processEnv())
 	toolUse := ""
 	if child.SpawnToolUseID != nil {
 		toolUse = *child.SpawnToolUseID

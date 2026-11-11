@@ -5,7 +5,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCopy } from "../../lib/hooks";
 import { InlineCode } from "./FileLink";
-import { NUMERIC_CELL } from "../../lib/table";
+import { NUMERIC_CELL } from "../../lib/numericCell";
 
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);

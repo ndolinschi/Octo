@@ -277,11 +277,31 @@ async fn retry_once(plan: RetryOnce<'_>) -> Option<Result<Response, ProxyError>>
     let payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
     let current = payload.get("model").and_then(Value::as_str)?.to_string();
     let forward = if plan.failure.model_unavailable {
-        let next = plan.state.auto.tiers().next_up(&current)?;
-        if escalation_blocked(plan.state, plan.session.as_deref(), &plan.hints, &next) {
+        let tiers = plan.state.auto.tiers();
+        // A price-swapped call that finds its model gone retries on the tier that was decided (the swap target is
+        // the top of the ladder, so there is nothing above it); otherwise the next tier up.
+        let decided = plan
+            .forward
+            .meta
+            .decided_tier
+            .as_deref()
+            .filter(|band| matches!(*band, "low" | "mid" | "high"))
+            .map(|band| tiers.slug(band));
+        let (next, swap) = match decided {
+            Some(slug) if tiers.band(&slug) != tiers.band(&current) => (slug, false),
+            _ => (tiers.next_up(&current)?, true),
+        };
+        let shape = crate::auto::request_shape(&payload);
+        if escalation_blocked(
+            plan.state,
+            plan.session.as_deref(),
+            &plan.hints,
+            &next,
+            EscalationShape { shape, swap },
+        ) {
             return None;
         }
-        escalated_forward(&plan, &payload, &current, &next).await?
+        escalated_forward(&plan, &payload, &current, &next, swap).await?
     } else {
         let mut forward = plan.forward.clone();
         forward.meta = RouteMeta {
@@ -312,7 +332,22 @@ async fn retry_once(plan: RetryOnce<'_>) -> Option<Result<Response, ProxyError>>
     )
 }
 
-fn escalation_blocked(state: &AppState, session: Option<&str>, hints: &Hints, next: &str) -> bool {
+#[derive(Clone, Copy)]
+pub struct EscalationShape {
+    pub shape: crate::auto::RequestShape,
+    /// Whether the price rule applies to `next` (it does not when retrying on the decided tier).
+    pub swap: bool,
+}
+
+/// Whether an unavailable-model escalation to `next` is refused (ceiling, or budget spent and the tier the rule would
+/// serve is not the cheapest).
+pub fn escalation_blocked(
+    state: &AppState,
+    session: Option<&str>,
+    hints: &Hints,
+    next: &str,
+    how: EscalationShape,
+) -> bool {
     let tiers = state.auto.tiers();
     if matches!(
         hints.policy,
@@ -333,9 +368,21 @@ fn escalation_blocked(state: &AppState, session: Option<&str>, hints: &Hints, ne
     if spent < budget {
         return false;
     }
-    match tiers.cheapest_band(crate::auto::RequestShape::default()) {
-        Some(cheapest) => tiers.band(next) != cheapest,
-        None => crate::auto::band_rank(tiers.band(next)) > crate::auto::band_rank("mid"),
+    // Compare what would be served after the price rule, not the decided tier.
+    let ceiling = match hints.policy {
+        crate::auto::TierPolicy::Ceiling => hints.tier,
+        _ => None,
+    };
+    let served = if how.swap && hints.policy != crate::auto::TierPolicy::Fixed {
+        tiers
+            .price_swap(tiers.band(next), ceiling, how.shape)
+            .unwrap_or(tiers.band(next))
+    } else {
+        tiers.band(next)
+    };
+    match tiers.cheapest_band(how.shape) {
+        Some(cheapest) => served != cheapest,
+        None => crate::auto::band_rank(served) > crate::auto::band_rank("mid"),
     }
 }
 
@@ -344,6 +391,7 @@ async fn escalated_forward(
     payload: &Value,
     current: &str,
     next: &str,
+    swap: bool,
 ) -> Option<crate::auto::Forward> {
     let tiers = plan.state.auto.tiers();
     let models = plan.state.auto.cached_models().await;
@@ -352,7 +400,7 @@ async fn escalated_forward(
         crate::auto::TierPolicy::Ceiling => plan.hints.tier,
         _ => None,
     };
-    let swapped = (plan.hints.policy != crate::auto::TierPolicy::Fixed)
+    let swapped = (swap && plan.hints.policy != crate::auto::TierPolicy::Fixed)
         .then(|| tiers.price_swap(decided_band, ceiling, crate::auto::request_shape(payload)))
         .flatten();
     let served = swapped.map_or_else(|| next.to_string(), |band| tiers.slug(band));

@@ -496,6 +496,30 @@ async fn an_unavailable_model_escalation_respects_a_ceiling() {
     assert_eq!(upstream_models(&captured.lock().unwrap()), ["mid-model"]);
 }
 
+#[tokio::test]
+async fn a_swapped_call_whose_model_is_gone_retries_on_the_decided_tier() {
+    // low is decided (hint), high is served by the rule; high is retired: there is no tier above it, so the retry
+    // goes to the decided tier instead of failing.
+    let (state, captured) = state_for(
+        inverted(),
+        vec![
+            Scripted::status(503).with_body(MODEL_UNAVAILABLE),
+            Scripted::ok(),
+        ],
+    )
+    .await;
+    let response = send(&state, &turn("gone-1"), &[("x-octo-tier-hint", "fast")]).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(hv(&response, "x-octo-trigger").as_deref(), Some("retry"));
+    assert_eq!(hv(&response, "x-octo-model").as_deref(), Some("low-model"));
+    assert_eq!(hv(&response, "x-octo-tier").as_deref(), Some("low"));
+    assert!(hv(&response, "x-octo-decided-tier").is_none());
+    assert_eq!(
+        upstream_models(&captured.lock().unwrap()),
+        ["high-model", "low-model"]
+    );
+}
+
 // ---- decide-level: stall, compaction ----
 
 fn decide_req<'a>(

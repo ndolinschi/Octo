@@ -4,6 +4,7 @@ import type { Limit, UsageBucket, UsageReport } from "@octo/agent-client";
 import {
   isFlatRate,
   paidCost,
+  subscriptionTotal,
   barHeights,
   costText,
   daysWithData,
@@ -171,4 +172,17 @@ test("flat-rate rows: shown as an equivalent, never added to the paid total", ()
   assert.equal(isFlatRate(paid), false);
   assert.equal(paidCost({ cost_usd: 1.73 }, [paid, flat]), 1.2);
   assert.equal(paidCost({ cost_usd: null }, [flat]), null);
+});
+
+test("the real harness shape: cost_usd null + subscription_equivalent_usd, no flat_rate", () => {
+  const sub = { cost_usd: null, subscription_equivalent_usd: 1.08 };
+  const flatNew = { cost_usd: 0, flat_rate: true, subscription_equivalent_usd: 0.53 };
+  const paid = { cost_usd: 2, flat_rate: false, subscription_equivalent_usd: 0 };
+  assert.equal(isFlatRate(sub), true);
+  assert.equal(costText(sub), "≈ $1.08 on your subscription");
+  assert.equal(costText(flatNew), "≈ $0.53 on your subscription");
+  assert.equal(costText(paid), formatUsd(2));
+  assert.equal(isFlatRate(paid), false);
+  assert.equal(paidCost({ cost_usd: 2 }, [sub, flatNew, paid]), 2);
+  assert.ok(Math.abs(subscriptionTotal([sub, flatNew, paid]) - 1.61) < 1e-9);
 });

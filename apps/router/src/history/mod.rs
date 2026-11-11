@@ -23,8 +23,8 @@ pub use call::{CallObserve, DecisionRow, FinishedCall};
 pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use cost::{
-    blended_cost_micros, estimate_ratio, resolve_cost, warn_estimate_ratio_once, CostSource,
-    ModelPrice, PriceTable, ResolvedCost,
+    blended_cost_micros, estimate_ratio, estimate_warn_due, resolve_cost, warn_estimate_ratio,
+    CostSource, ModelPrice, PriceTable, ResolvedCost,
 };
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};

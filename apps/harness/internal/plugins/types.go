@@ -51,6 +51,10 @@ type Agent struct {
 	// flatRate (false when absent). Strengths are the bands it suits (optional).
 	FlatRate  bool     `json:"flat_rate"`
 	Strengths []string `json:"strengths,omitempty"`
+	// BillingEnv: variables that make a flat-rate agent bill per token when set
+	// in its environment (manifest billingEnv). FlatRate is already false in
+	// listings when the harness's own environment sets one.
+	BillingEnv []string `json:"billing_env,omitempty"`
 	Launch
 
 	// Requires are the manifest's extra commands (server-side; diagnostics).
@@ -68,3 +72,18 @@ type Agent struct {
 type ToolServer struct {
 	URL string `json:"url"`
 }
+
+// PerTokenIn reports whether env (the environment the agent is started with)
+// carries one of the agent's billingEnv variables, which makes a flat-rate
+// agent bill per token.
+func (a Agent) PerTokenIn(env map[string]string) bool {
+	for _, k := range a.BillingEnv {
+		if env[k] != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// FlatRateIn is FlatRate for an agent started with env.
+func (a Agent) FlatRateIn(env map[string]string) bool { return a.FlatRate && !a.PerTokenIn(env) }
