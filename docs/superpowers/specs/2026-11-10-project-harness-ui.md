@@ -359,6 +359,14 @@ monochrome dithered illustration):
 | H: tabs run across the title bar, Home pinned first, "+" at the end; every tab carries a small **live state glyph** (dotted ring animating while working, amber when waiting, green when done) | Good: you see which agents are alive without opening them; the glyph, not a coloured dot, carries the state. Confirms decision 25 | Decision 29: one state-glyph family, used on tabs, sidebar rows, lists and chips |
 | H: the composer is two layers — the input card, and a footer bar fused under it with the run's context (repository, branch, sandbox level, where it runs) | Good: what the agent may touch and where it runs is stated at the moment you send, not in a settings page | Decision 30: composer context bar |
 | H: the start backdrop is a single-hue dithered picture, very low contrast | Good as a calm alternative; the owner prefers the bold streak | Decision 31: the streak keeps Vivid as the default and gains Mono and Off in Settings |
+| J (owner, 2026-11-11: a coding-agent desktop app): the right panel is **stacked plain sections** — Environment, Context (one thin multi-colour bar, "20% used", a legend of rows with a number and a share), Outputs (files the run produced), Changes (+/− and one action), Background tasks — with captions, key–value rows and almost no buttons | Good: this is the quiet panel the owner asked for; information first, one action per section at most | Decision 38: Details becomes stacked sections in this anatomy, with a Context meter |
+| J: Background tasks pane — "Running 1" / "Finished 37" groups; a row = name, duration at the right, a stop square only while running; a task folds its children ("27 tasks, 1 failed", the failure in red) | Good: the whole team at a glance, grouped by what needs attention; nesting without a tree widget | Decision 39: the Agents tab takes this shape |
+| J: a diff review pane — changed files listed at the right with +/− counts, commits below, a scope chip ("Pushed commits only"), each file a foldable block that hides unmodified lines | Good; it is the v7 Changes view | Folded into the v7 spec (file list + per-file blocks + scope: this turn / this request / all) |
+| J: **Side chat** — a second, disposable conversation about the session that "sees the full context and adds nothing to the session" | Good for an orchestrator: asking "what is it doing and why" must not derail or lengthen the working thread | Decision 40: Side question |
+| J: activity folded to one quiet line with a small animated glyph, the duration and a chevron ("Reading decision 29… 11s ›"); system notes the same ("Hook re-prompted ›") | Good; confirms decision 24 | Decision 24 keeps the one-line form; duration is always shown |
+| J: composer hint "↵ to send, ⌘↵ to queue for later"; attachments as thumbnails above the text; model · effort · mode and a small context ring in the footer | Good; the hint teaches the queue without a button | v7 queue uses this hint; the context ring joins decision 30's bar |
+| J: sidebar rows carry a right-aligned state glyph with a count (PRs, checks) | Good in small doses | Project rows may show one right-aligned count ("2" agents working, "1" needs you) next to the state ring; nothing else |
+| K (owner: a bot list — a coloured blob avatar with two eyes, the bot's name, its latest line) | Good: a standing agent needs a face you recognise at a glance; the earlier verdict "no mascots" is revised — the cartoon style is not ours, the recognisable shape is | Decision 41: generated bot avatars |
 | H: "Swarms" (named standing groups of agents) and "Automations" as sidebar sections | Same idea as our bots and standing tasks | Already in the bots design; sidebar sections arrive with it |
 | H: thread list under the swarms with state glyph + age | Session list — the thing decision 23 removed | Not taken |
 | H: account switcher in the sidebar foot | No accounts in a local tool | Not taken |
@@ -427,6 +435,36 @@ monochrome dithered illustration):
     the chosen tier · Fixed), shown only when `config.router` is true; Usage → Tokens/Cost rows are the *served*
     models; a quiet "History compacted" separator in the transcript where a compaction was applied (needs a
     harness event — add `agent.compacted`).
+38. **Details as stacked sections** (reference J). The Details tab is a single scroll of sections, each a 12px
+    caption in `fg-3` and plain rows (28px, label left, value right in tabular mono), separated by 20px — no
+    cards, no segmented controls, at most one quiet text action at a section's right edge. Order: **Project**
+    (folders, branch when known), **Context** — "N% used" + "used / window", one 3px bar split by colour into
+    the parts of the orchestrator's context (messages, tool results, notes, system) with a legend of rows (swatch,
+    name, tokens, share; rows under 0.5% fold into "Other"), **Team** (models per tier, routing policy, budget
+    when set), **Outputs** (files written this request, newest first, 5 + "Show more"; a click opens the file),
+    **Changes** (+added −removed, "Review" — v7), **Plugins in use**, **Activity**. Usage keeps its own tab but
+    follows the same anatomy (decision 33). Needs `GET /v1/projects/{pid}/context` from the harness (token counts
+    per part; estimates are marked).
+39. **Agents tab as Running / Finished** (reference J). Two groups with counts; a row is 32px: state ring
+    (decision 29), name, the current activity line in `fg-3` (one line), duration at the right (tabular), and a
+    stop square only while running. An agent with children shows a fold line under it — "5 agents, 1 failed" (the
+    failure count in `err`) — that expands to the children at one indent step; depth beyond 2 flattens with a
+    "↳ parent" prefix. Finished rows are quiet (`fg-2`), failed ones keep the failed ring. A click opens the
+    agent in a split (decision 34). The tree widget with chevrons on every row is retired.
+40. **Side question** (reference J). A disposable conversation about the project that does not enter the
+    orchestrator's history: opened from the header strip or `Ctrl+;` as a right pane titled "Side question" with
+    one line of explanation ("Ask about this project without interrupting the orchestrator. Nothing here is added
+    to its conversation.") and a single-line input. Harness: `POST /v1/projects/{pid}/side` — one model call with
+    the orchestrator's current (compacted) history as context, read-only tools only, the fast tier by default,
+    stored in a separate `side_messages` table, usage recorded with role `side`. Works while a turn is running.
+    Cleared when the pane is closed unless pinned.
+41. **Bot avatars** (reference K; revises the bots draft's "neutral glyph"). Each bot gets a generated avatar: one
+    of 8 soft closed shapes (blob, star-blob, rounded square, cloud, …) in one of 8 mid-saturation hues, both
+    picked from the bot's id (stable), with two small "eye" dots — drawn as SVG from `lib/botAvatar.ts` (pure,
+    tested), 28px in rows and 20px in chips. Colour here is identity, not state — the one stated exception to
+    "colour means state"; the bot's *state* is still the ring (decision 29) at the avatar's lower-right corner.
+    Bot rows are 40px: avatar, name, the bot's latest line in `fg-3` (one line, ellipsis). Sub-agents keep rings
+    only — avatars are for standing identities.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a

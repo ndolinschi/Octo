@@ -21,7 +21,8 @@ Reference analysis (the bot app in the owner's screenshots):
 | Bots as named identities with a role, listed on the left, each with its latest line | Good: you know who is doing what | Bots are first-class; shown with state and their latest activity line |
 | A bot's side panel: Activity and Library (what it produced, by day) | Good | Every bot has Activity and Library (reuses the Details sections and, from v7, per-turn changes) |
 | The bot drives programs on the computer (a terminal, a coding CLI) and "hands you the screen" | Powerful; the risk is exactly why permissions exist | Capabilities are explicit and granted per bot; each risky action passes the approval rules |
-| Messenger look: bubbles, mascots, reactions | Not our language | Not taken; bots get a neutral glyph + a colour-free initial tile |
+| Messenger look: bubbles, reactions | Not our language | Not taken |
+| A recognisable avatar per bot (coloured blob with eyes) and a list row of avatar, name, latest line (owner, 2026-11-11: "a good example") | Good: a standing identity needs a face | Generated shape-and-hue avatars, see UI decision 41 |
 | Each bot is its own separate chat | Conflicts with "everything works through the project" | Bots work **inside projects**; the project's orchestrator stays the single entry point (see below) |
 
 ## Model
@@ -79,7 +80,7 @@ type BotPermissions = {
 
 ## UI
 
-- **Sidebar**: under Projects, a **Bots** section — one 40px row per bot: tile with its initial, name, state line
+- **Sidebar**: under Projects, a **Bots** section — one 40px row per bot: generated avatar (UI decision 41) with the state ring, name, latest line
   ("Working in Atlas API", "Needs you", "Idle"). Click opens the bot's page.
 - **Bot page** (a tab): Profile (role, instructions, model), **Permissions** as plain-language rows with their
   setting ("Run commands — ask every time", "Write files — orbit-app only", "Network — off"), Projects it works
