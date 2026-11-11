@@ -255,6 +255,51 @@ Fifth batch (F: a start screen with a dithered light streak behind the composer 
       instead of generic starter prompts only.
     - **Words:** never "session", "thread", "chat" or "conversation" in UI copy; "request" for what the user asked,
       "run" for a sub-agent's work, "orchestrator" for the project's agent.
+24. **Quiet tool panels** (owner on the Usage panel beside the orchestrator: "the right sidebar looks bad — the
+    buttons are too gaudy"). What is wrong: three boxed segmented controls stacked on top of each other
+    (Tokens|Cost|Limits, then 7d|30d|90d — whose labels truncate to "3…" and "9…" — then This project|All
+    projects), directly under a strip that already carries a tab plus six icon buttons. Fourteen boxed controls
+    before the first number. Rules for every tool panel (Usage, Details, Agents, Notes, Files):
+    - **No boxed segmented controls inside a tool panel.** Views are **text tabs**: one row of 13px labels, the
+      current one in `fg` with a 2px underline in `fg`, the others `fg-3`, 16px apart, 28px row, no fills, no
+      borders. Usage: "Tokens  Cost  Limits".
+    - **Options are inline menus, not button groups**: range and scope become two quiet text buttons with a 12px
+      chevron on the total's row, right-aligned ("30 days ⌄", "This project ⌄"), each opening a menu. Never
+      truncate a control's label; if the row is too narrow the scope menu drops to its own line.
+    - **The strip carries tabs only.** The six tool buttons leave the group strip (see decision 25: they live in
+      the "+" menu and the palette); Project settings moves to the orchestrator header's `…` menu. The window's
+      top-right corner is empty.
+    - One number is the hero (the total); breakdown rows share one grid (label, bar, value) across By model / By
+      agent; section captions 12px `fg-3` with 24px above, 8px below.
+    - At most one filled or bordered control visible in a tool panel at rest (the floating composer excluded).
+25. **Browser-grade tabs** (owner: "tabs must be like in a browser — draggable and really convenient"). The strip
+    behaves like a browser's:
+    - **Sizing:** tabs share the strip; each is up to 200px, shrinking evenly to a 96px minimum as more open,
+      then to icon-only (40px, tooltip with the name) before the strip scrolls; the active tab never shrinks
+      below 96px. The Orchestrator tab is pinned first (cannot be closed or moved out of first place in its group).
+    - **"+" at the end of the tabs** (and `Ctrl/Cmd+T`): a menu / quick picker — Agents, Notes, Files, Details,
+      Usage, then "Open file…" (the file search) and running or recent agents. This replaces the header's tool
+      icon cluster.
+    - **Close:** × on hover and on the active tab, middle-click, `Ctrl/Cmd+W`; `Ctrl/Cmd+Shift+T` reopens the last
+      closed tab (a per-project stack of 20). After closing, the neighbour to the right becomes active (else left).
+    - **Switch:** `Ctrl+Tab` / `Ctrl+Shift+Tab` in most-recently-used order, `Ctrl/Cmd+1…8` by position,
+      `Ctrl/Cmd+9` the last; mouse wheel over the strip scrolls it.
+    - **Drag to reorder with live displacement:** the dragged tab follows the pointer along the strip (clamped to
+      the strip while inside it); neighbours slide out of the way as its centre passes theirs (150ms
+      `cubic-bezier(0.2,0,0,1)`, transform only); on drop it settles into its slot (120ms). No insertion bar
+      inside a strip.
+    - **Drag out:** pulled more than 24px below/above the strip the tab detaches into a floating chip; over
+      another group's strip it joins that strip with the same live displacement; over a group body the left /
+      right quarter shows the split zone, the middle "move here"; dropped on the window's far right edge it
+      creates a new group. Esc cancels and the tab returns to its slot with a 150ms settle.
+    - **Keyboard equivalents:** `Ctrl/Cmd+Shift+PageUp/PageDown` move the tab left/right; the existing
+      "Move to the other side" and "Split right" stay in the tab menu, which also gains "Close tabs to the right"
+      and "Reopen closed tab".
+    - **Overflow:** when tabs scroll, a 24px "all tabs" button at the strip's right opens a searchable list.
+    - **Feel:** no layout jump on open/close (neighbours animate their width 120ms; instant under reduced
+      motion); the strip never shifts the panel below it; hit areas ≥ 28px tall; touch drag after a 250ms hold.
+    - Pure logic (sizing, MRU order, closed-tab stack, displacement slots) lives in `state/workspace/*.ts` with
+      unit tests; pointer handling in one module (`dock/drag.ts`).
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
