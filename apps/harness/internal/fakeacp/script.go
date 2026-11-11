@@ -122,6 +122,16 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		return "cancelled"
 	case has(MarkerEscape):
 		return a.escape(ctx)
+	case has(MarkerCumCost):
+		return a.cumCost()
+	case has(MarkerOwnEdit):
+		return a.ownEdit(cwd)
+	case has(MarkerPerm):
+		return a.permScript(ctx, cwd)
+	case has(MarkerAskForm):
+		return a.askForm(ctx)
+	case has(MarkerLeakEnv):
+		return a.leakEnv()
 	case has(MarkerEcho):
 		a.mu.Lock()
 		loaded := a.loaded
@@ -291,8 +301,8 @@ func (a *agent) mcpSpawn(ctx context.Context, builtin bool) string {
 	} else if spawnAgent != "" && !builtin {
 		args["agent"] = spawnAgent
 	}
-	a.mcpToolCall("mcp-spawn-1", "octo-harness: spawn_agent", args)
-	granted, ok := a.askPermission(ctx, "mcp-spawn-1", "octo-harness: spawn_agent")
+	a.mcpToolCall("mcp-spawn-1", mcpTitle("spawn_agent"), args)
+	granted, ok := a.askPermission(ctx, "mcp-spawn-1", mcpTitle("spawn_agent"))
 	if !ok {
 		return "cancelled"
 	}
@@ -318,7 +328,7 @@ func (a *agent) mcpSpawn(ctx context.Context, builtin bool) string {
 	}
 
 	noteArgs := map[string]any{"title": "mcp-note", "content": "written via MCP"}
-	a.mcpToolCall("mcp-note-1", "octo-harness: save_note", noteArgs)
+	a.mcpToolCall("mcp-note-1", mcpTitle("save_note"), noteArgs)
 	text, isErr, err := c.callTool(ctx, "save_note", noteArgs)
 	if err != nil || isErr {
 		a.toolUpdate("mcp-note-1", "failed", textContent(fmt.Sprint(text, err)))

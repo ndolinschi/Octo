@@ -318,6 +318,8 @@ export type PluginAgent = {
   default_model?: string;
   /** One-line login instruction from the manifest. */
   hint?: string;
+  /** Why `available` is false (a required command is missing); absent when available. */
+  unavailable_reason?: string;
   /** The manifest says the agent runs on a flat-rate subscription (flatRate; false when absent). */
   flat_rate?: boolean;
   /** Difficulty bands the manifest says the agent suits (strengths); absent when none. */
@@ -381,6 +383,11 @@ export type UsageBucket = {
   cost_usd: number | null;
   /** True when any part comes from the harness's price table. */
   cost_estimated: boolean;
+  /**
+   * What flat-rate (subscription) agents' usage would have cost by their own figures. Not spent and
+   * not in `cost_usd`; show it as "≈ $x on your subscription". Null or absent when there is none.
+   */
+  subscription_equivalent_usd?: number | null;
 };
 
 export type UsageReport = {

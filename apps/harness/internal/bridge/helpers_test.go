@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -199,3 +200,5 @@ func count(evs []sseEvent, typ string) int {
 	}
 	return n
 }
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }

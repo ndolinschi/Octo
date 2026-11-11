@@ -54,6 +54,9 @@ func orchestratorReply(r *request) reply {
 	if agents := r.spawnAgentChoices(); len(agents) > 0 && strings.Contains(ask, acpMarker) {
 		return acpReply(r, anchor, ask, agents[0])
 	}
+	if strings.Contains(ask, formMarker) && r.hasTool("request_input") {
+		return formReply(r, anchor, ask)
+	}
 	if strings.Contains(strings.ToLower(ask), "quick") {
 		return reply{Text: quickAnswer(ask)}
 	}
@@ -84,6 +87,9 @@ func subAgentReply(r *request) reply {
 				Calls: []call{{Name: "list_dir", Input: map[string]any{"path": "."}}},
 			}
 		})
+	}
+	if len(r.Messages) > 0 {
+		steps = append(steps, v7Steps(r, r.Messages[0].text(), role)...)
 	}
 	nested := len(r.Messages) > 0 && strings.Contains(r.Messages[0].text(), "[nested]")
 	marked := len(r.Messages) > 0 && strings.Contains(r.Messages[0].text(), "[write]")

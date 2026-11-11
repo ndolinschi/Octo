@@ -28,6 +28,8 @@ type Input struct {
 	MaxDepth     *int           `json:"max_depth"`
 	// BudgetUSD is the project's spend cap; JSON null removes it.
 	BudgetUSD OptionalFloat `json:"budget_usd"`
+	// Access is "supervised" or "full" (v7 approvals).
+	Access *string `json:"access"`
 }
 
 // OptionalFloat distinguishes an absent JSON field from an explicit null.
@@ -53,6 +55,13 @@ func (o *OptionalFloat) UnmarshalJSON(b []byte) error {
 func validBudget(o OptionalFloat) error {
 	if o.Set && o.Value != nil && (!(*o.Value > 0) || math.IsInf(*o.Value, 0)) {
 		return invalid("budget_usd must be greater than 0, or null to remove the budget")
+	}
+	return nil
+}
+
+func validAccess(a *string) error {
+	if a != nil && *a != projectstore.AccessSupervised && *a != projectstore.AccessFull {
+		return invalid("access must be %q or %q", projectstore.AccessSupervised, projectstore.AccessFull)
 	}
 	return nil
 }

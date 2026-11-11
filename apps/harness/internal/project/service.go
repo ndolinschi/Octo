@@ -9,19 +9,29 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
 	"github.com/ndolinschi/Octo/apps/harness/internal/budget"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/inputs"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+	"github.com/ndolinschi/Octo/apps/harness/internal/secrets"
 )
 
 // Turns is the orchestrator surface the service drives.
 type Turns interface {
 	Start(ctx context.Context, projectID, text string) (projectstore.Message, error)
+	// Submit starts a turn, or queues the message when one runs.
+	Submit(ctx context.Context, projectID, text string) (projectstore.Message, *projectstore.QueuedMessage, error)
+	Queue(ctx context.Context, projectID string) ([]projectstore.QueuedMessage, bool, error)
+	EditQueued(ctx context.Context, projectID, queueID, text string) (projectstore.QueuedMessage, error)
+	RemoveQueued(ctx context.Context, projectID, queueID string) error
+	ResumeQueue(ctx context.Context, projectID string) error
+	SendNow(ctx context.Context, projectID, queueID string) error
 	Cancel(projectID string)
 	Running(projectID string) bool
 	Context(ctx context.Context, projectID, agentID string) (orchestrator.ContextReport, error)
@@ -29,6 +39,18 @@ type Turns interface {
 	CancelSide(projectID string)
 	// CloseProject ends the project's ACP orchestrator process, if any.
 	CloseProject(projectID string)
+	// Approvals are the pending approval requests; ResolveApproval answers one.
+	Approvals(projectID string) []approval.Approval
+	ResolveApproval(projectID, id string, r approval.Resolution) error
+	// Inputs are the open forms; SubmitInput answers one.
+	Inputs(projectID string) []inputs.Input
+	SubmitInput(projectID, id string, a inputs.Answer) error
+	// Secrets are the project's stored secrets (names only).
+	Secrets(projectID string) ([]secrets.Info, error)
+	PutSecret(projectID, name, value string) error
+	DeleteSecret(projectID, name string) error
+	// Attention counts what waits for the user: approvals and open forms.
+	Attention(projectID string) (approvals, inputs int)
 }
 
 // ACPAgents lists the loaded ACP agents, for validating `acp:` model settings.
@@ -39,6 +61,10 @@ type ACPAgents interface {
 type Defaults struct {
 	Models   config.Models
 	MaxDepth int
+	// Access is the access mode of projects created without one: "supervised"
+	// or "full" (the zero value means full, so embedders and tests that never
+	// heard of approvals keep today's behaviour; `harness serve` sets it).
+	Access string
 }
 
 // Service is the application layer behind the bridge: projects, agents, messages.
@@ -156,6 +182,9 @@ func (s *Service) Recover(ctx context.Context) error {
 		if err := db.RecoverInterrupted(ctx); err != nil {
 			return err
 		}
+		if _, err := db.PruneBlobs(ctx, projectstore.Stamp(s.now().Add(-ChangeRetention))); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -222,6 +251,13 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err := validBudget(in.BudgetUSD); err != nil {
 		return Project{}, err
 	}
+	if err := validAccess(in.Access); err != nil {
+		return Project{}, err
+	}
+	access := s.Defaults().Access
+	if in.Access != nil {
+		access = *in.Access
+	}
 	modelsJSON, err := json.Marshal(models)
 	if err != nil {
 		return Project{}, err
@@ -229,7 +265,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	db, err := s.store.Create(ctx, projectstore.NewProject{
 		Name: strings.TrimSpace(*in.Name), Description: deref(in.Description), Instructions: deref(in.Instructions),
 		ModelsJSON: string(modelsJSON), MaxDepth: depth, Folders: folders, OrchestratorModel: models.Orchestrator,
-		BudgetUSD: in.BudgetUSD.Value,
+		BudgetUSD: in.BudgetUSD.Value, Access: access,
 	})
 	if err != nil {
 		return Project{}, err
@@ -279,6 +315,10 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		return Project{}, err
 	}
 	patch.SetBudget, patch.BudgetUSD = in.BudgetUSD.Set, in.BudgetUSD.Value
+	if err := validAccess(in.Access); err != nil {
+		return Project{}, err
+	}
+	patch.Access = in.Access
 	var folders []projectstore.Folder
 	if in.Folders != nil {
 		if folders, err = resolveFolders(*in.Folders); err != nil {

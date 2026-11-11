@@ -62,6 +62,9 @@ type orchSession struct {
 	turnCancel context.CancelFunc
 	fatal      error
 	notesSent  string // hash of the notes block the agent last saw
+	// costSeen and usedSeen are the agent's last cumulative usage counters.
+	costSeen float64
+	usedSeen int64
 
 	busy     bool
 	lastUsed time.Time
@@ -110,11 +113,16 @@ func (s *orchSession) closeLocked() {
 		s.client = nil
 	}
 	s.sessID = ""
+	s.costSeen, s.usedSeen = 0, 0 // the counters belong to the session that ended
 }
 
 // CloseProject ends the project's ACP orchestrator process, if any (project
 // delete). It is safe to call at any time.
 func (o *Orchestrator) CloseProject(projectID string) {
+	o.dropTracker(projectID)
+	o.approvals.Forget(projectID)
+	o.inputs.Forget(projectID)
+	o.secrets.Forget(projectID)
 	o.acp.mu.Lock()
 	s := o.acp.sessions[projectID]
 	delete(o.acp.sessions, projectID)

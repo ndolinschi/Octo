@@ -3,7 +3,10 @@ package plugins_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
@@ -123,5 +126,38 @@ func TestBuiltinFlatRateChoices(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Errorf("agents missing: %v", want)
+	}
+}
+
+// The owner's default routing strengths of the built-in entries; a copied
+// manifest may change them.
+func TestBuiltinStrengths(t *testing.T) {
+	reg := plugins.Load(context.Background(), t.TempDir(), nil, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
+	want := map[string][]string{
+		"claude-code": {"easy", "medium", "hard"}, "codex": {"easy", "medium", "hard"},
+		"copilot": {"easy", "medium"}, "cursor": {"easy", "medium"},
+	}
+	for _, a := range reg.Agents() {
+		if w := want[a.ID]; fmt.Sprint(a.Strengths) != fmt.Sprint(w) && !(len(w) == 0 && len(a.Strengths) == 0) {
+			t.Errorf("agent %s strengths = %v, want %v", a.ID, a.Strengths, w)
+		}
+	}
+}
+
+// pi's hint says "Needs pi on PATH": it requires it. The npx-run adapters of
+// Claude Code and Codex carry no requires (see the plugin README).
+func TestBuiltinRequires(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "npx"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	reg := plugins.Load(context.Background(), t.TempDir(), nil, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
+	if cc, _ := reg.Agent("claude-code"); !cc.Available || cc.UnavailableReason != "" {
+		t.Fatalf("claude-code = %+v", cc)
+	}
+	pi, ok := reg.Agent("pi")
+	if !ok || pi.Available || !strings.Contains(pi.UnavailableReason, `"pi"`) {
+		t.Fatalf("pi = %+v", pi)
 	}
 }

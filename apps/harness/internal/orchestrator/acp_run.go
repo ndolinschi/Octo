@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -20,7 +21,7 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	ag := t.agent
 	cwd := rt.folders[0].Path
 	client, err := acp.Start(ctx, acp.Spec{
-		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID,
+		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: t.processEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
 	})
 	if err != nil {
 		return "", fmt.Errorf("start ACP agent %q: %w", ag.ID, err)
@@ -28,6 +29,13 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	defer client.Close()
 
 	h := newACPSession(rt, child.ID, ag.ID, child.Model)
+	h.flat = ag.FlatRate
+	toolUse := ""
+	if child.SpawnToolUseID != nil {
+		toolUse = *child.SpawnToolUseID
+	}
+	endSpan := rt.trackSpan(ctx, child.ID, toolUse, changes.SourceACPTurn)
+	defer endSpan()
 	stop, err := client.RunWith(ctx, cwd, child.Task, h, acp.RunOptions{
 		Model: t.model, ModelRequired: t.requested, ModelApplied: t.model != "" && len(ag.ModelArg) > 0, AuthHint: ag.Hint, Auth: authPolicy(ag),
 	})

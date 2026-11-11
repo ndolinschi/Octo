@@ -124,6 +124,13 @@ func (r *Router) UpstreamCalls() int {
 	return r.upstream
 }
 
+// SetSpent sets the spend the router reports for a budget key (tests).
+func (r *Router) SetSpent(key string, usd float64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.spent[key] = usd
+}
+
 // Spent is the fake's own spend for a budget key.
 func (r *Router) Spent(key string) float64 {
 	r.mu.Lock()

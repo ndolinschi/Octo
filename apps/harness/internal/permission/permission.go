@@ -1,8 +1,9 @@
 // Package permission is the single place that answers an ACP agent's
-// session/request_permission. Today's policy is "approve within the project
-// folders" (the folder confinement itself is enforced where the agent acts:
-// fs/* requests are rejected outside the folders); the v7 approvals work
-// replaces the Policy behind Decide without touching any caller.
+// session/request_permission. The default policy is "approve within the
+// project folders" (the folder confinement itself is enforced where the agent
+// acts: fs/* requests are rejected outside the folders); a project with
+// supervised access is answered by the orchestrator's approval policy, passed
+// in Request.Policy, which falls back to AutoApprove for full access.
 package permission
 
 import (
@@ -21,7 +22,14 @@ type Request struct {
 	// Orchestrator is true when the agent runs the project's orchestrator
 	// rather than a sub-agent task.
 	Orchestrator bool
-	ACP          acp.PermissionRequest
+	// AgentID is the agent row the request belongs to and TurnID the turn it
+	// happens in (the id of the user message that started it).
+	AgentID string
+	TurnID  int64
+	ACP     acp.PermissionRequest
+	// Policy, when set, answers this request instead of the process-wide one
+	// (the orchestrator's approval policy: it knows the project's access).
+	Policy Policy
 }
 
 // Decision is the answer. OptionID is the chosen option; empty means cancel
@@ -69,8 +77,11 @@ func SetPolicy(p Policy) {
 
 // Decide answers a permission request through the current policy.
 func Decide(ctx context.Context, req Request) Decision {
-	mu.RLock()
-	p := current
-	mu.RUnlock()
+	p := req.Policy
+	if p == nil {
+		mu.RLock()
+		p = current
+		mu.RUnlock()
+	}
 	return p.Decide(ctx, req)
 }

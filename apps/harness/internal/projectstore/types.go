@@ -50,6 +50,21 @@ type Project struct {
 	UpdatedAt    string
 	// BudgetUSD is the project's spend cap; nil means none.
 	BudgetUSD *float64
+	// Access is "supervised" or "full" (see AccessSupervised).
+	Access string
+}
+
+// Access modes of a project (v7 approvals).
+const (
+	AccessSupervised = "supervised"
+	AccessFull       = "full"
+)
+
+func orFull(a string) string {
+	if a == AccessSupervised {
+		return a
+	}
+	return AccessFull
 }
 
 type Folder struct {
@@ -147,6 +162,7 @@ type InfoPatch struct {
 	// SetBudget says BudgetUSD is provided; a nil BudgetUSD then clears the budget.
 	SetBudget bool
 	BudgetUSD *float64
+	Access    *string
 }
 
 type NewProject struct {
@@ -157,6 +173,8 @@ type NewProject struct {
 	MaxDepth     int
 	Folders      []Folder
 	BudgetUSD    *float64
+	// Access is the new project's access mode ("" = full).
+	Access string
 	// OrchestratorModel is recorded on the project's root agent row.
 	OrchestratorModel string
 }

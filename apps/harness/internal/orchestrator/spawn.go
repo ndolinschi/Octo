@@ -28,6 +28,9 @@ type spawnInput struct {
 	Tier  string `json:"tier"`
 	Agent string `json:"agent"`
 	Model string `json:"model"`
+	// Env maps environment variable names to secret references for an
+	// external agent's process.
+	Env map[string]string `json:"env"`
 }
 
 func (rt *runtime) spawnDef(parent projectstore.Agent) (tools.Def, error) {
@@ -69,8 +72,16 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		}
 		return "spawn_agent requires role, title, task and tier (fast|balanced|deep)", true, nil
 	}
+	// A delegation refused for budget reasons before the sub-agent starts still
+	// gets its row, settled as failed with the reason, so the delegation does not
+	// sit "starting" forever. (Malformed calls and unknown agents are plain tool
+	// errors: nothing was going to start.)
+	refuse := func(msg string) (string, bool, error) {
+		rt.refuseChild(ctx, parent, in, tier, msg)
+		return msg, true, nil
+	}
 	if be := rt.budgetReached(ctx); be != nil {
-		return be.Error(), true, nil
+		return refuse(be.Error())
 	}
 	var route *projectstore.RouteInfo
 	var budgetErr error
@@ -110,6 +121,16 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		}
 		ext, model = &target, target.recorded()
 	}
+	if len(in.Env) > 0 {
+		if ext == nil {
+			return "spawn_agent: env only applies together with agent; a built-in sub-agent passes env on its own bash calls", true, nil
+		}
+		env, err := rt.o.secrets.Resolve(rt.pid(), in.Env)
+		if err != nil {
+			return "spawn_agent: " + err.Error(), true, nil
+		}
+		ext.env = env
+	}
 	toolUseID := tools.ToolUseID(ctx)
 	c, cancel := dbCtx(ctx)
 	child, err := rt.db.CreateAgent(c, projectstore.NewAgent{
@@ -141,7 +162,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		if text == "" {
 			return "(sub-agent returned no report)", false, nil
 		}
-		return rt.o.opts.Limits.CapReport(text), false, nil
+		return rt.o.opts.Limits.CapReport(rt.redact(text)), false, nil
 	case router.IsBudget(err):
 		// Not a recoverable tool error: stop the whole turn, no more upstream calls.
 		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
@@ -151,7 +172,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		return "sub-agent cancelled", true, nil
 	default:
 		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
-		return "sub-agent failed: " + err.Error(), true, nil
+		return rt.redact("sub-agent failed: " + err.Error()), true, nil
 	}
 }
 
@@ -162,4 +183,27 @@ func (rt *runtime) runChild(ctx context.Context, child projectstore.Agent, task 
 	}
 	res, err := rt.runAgent(ctx, child, []anthropic.MessageParam{task})
 	return res.Text, err
+}
+
+// refuseChild records a delegation that was refused before it started: the
+// sub-agent row is created and settled as failed with the reason, both
+// announced, and linked to the spawn_agent call.
+func (rt *runtime) refuseChild(ctx context.Context, parent projectstore.Agent, in spawnInput, tier projectstore.Tier, reason string) {
+	if !tier.Valid() {
+		tier = projectstore.TierBalanced
+	}
+	toolUseID := tools.ToolUseID(ctx)
+	c, cancel := dbCtx(ctx)
+	child, err := rt.db.CreateAgent(c, projectstore.NewAgent{
+		ParentID: &parent.ID, Depth: parent.Depth + 1, Role: in.Role, Title: in.Title, Task: in.Task,
+		Model: rt.models.ForTier(string(tier)), Tier: &tier, Status: projectstore.StatusRunning,
+		SpawnToolUseID: &toolUseID, Started: true,
+	})
+	cancel()
+	if err != nil {
+		rt.logErr("record refused sub-agent", err)
+		return
+	}
+	rt.publishAgent(events.AgentCreated, child)
+	rt.settle(ctx, child.ID, projectstore.StatusFailed, "", reason)
 }

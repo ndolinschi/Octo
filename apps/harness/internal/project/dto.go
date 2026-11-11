@@ -17,6 +17,12 @@ type Summary struct {
 	AgentCount  int    `json:"agent_count"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
+	// NeedsYou is true while an approval or a form waits for the user;
+	// PendingApprovals and PendingInputs count them. (Status stays idle or
+	// running: a turn that waits for the user is still running.)
+	NeedsYou         bool `json:"needs_you"`
+	PendingApprovals int  `json:"pending_approvals"`
+	PendingInputs    int  `json:"pending_inputs"`
 }
 
 type Project struct {
@@ -30,6 +36,9 @@ type Project struct {
 	// (null: unknown).
 	BudgetUSD *float64 `json:"budget_usd"`
 	SpentUSD  *float64 `json:"spent_usd"`
+	// Access is "supervised" (writes, commands and ACP permission requests
+	// wait for the user) or "full".
+	Access string `json:"access"`
 }
 
 func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error) {
@@ -56,8 +65,10 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 			CreatedAt: info.CreatedAt, UpdatedAt: info.UpdatedAt,
 		},
 		Instructions: info.Instructions, Folders: folders, Models: models, MaxDepth: info.MaxDepth,
-		BudgetUSD: info.BudgetUSD,
+		BudgetUSD: info.BudgetUSD, Access: info.Access,
 	}
+	p.PendingApprovals, p.PendingInputs = s.turns.Attention(info.ID)
+	p.NeedsYou = p.PendingApprovals+p.PendingInputs > 0
 	spent, known, err := s.meter().Spent(ctx, db)
 	if err != nil {
 		return Project{}, err

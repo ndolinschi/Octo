@@ -11,12 +11,16 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
+	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/inputs"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+	"github.com/ndolinschi/Octo/apps/harness/internal/secrets"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 )
 
@@ -69,6 +73,11 @@ type Options struct {
 	// to ACP agents without HTTP MCP support; the harness appends --url and
 	// --token-env. Empty: this executable with "mcp-relay".
 	MCPRelay []string
+	// ApprovalTimeout is how long an approval request waits for an answer
+	// before it is denied (zero: approval.DefaultTimeout; negative: never).
+	ApprovalTimeout time.Duration
+	// Secrets is the project secret store; nil makes one under each project's data directory.
+	Secrets *secrets.Manager
 }
 
 // Orchestrator runs project turns: one at a time per project, each a tree of agents.
@@ -84,7 +93,17 @@ type Orchestrator struct {
 
 	acp *acpHost
 
+	trackers  map[string]*changes.Tracker // guarded by mu
+	approvals *approval.Manager
+	inputs    *inputs.Manager
+	secrets   *secrets.Manager
+
 	defaultOrch atomic.Pointer[string] // the server default orchestrator (SetDefaultOrchestrator)
+
+	// qmu serializes queue decisions (see queue.go); sendNow marks a project
+	// whose running turn was cancelled by SendNow. Lock order: qmu before mu.
+	qmu     sync.Mutex
+	sendNow map[string]bool
 
 	mu     sync.Mutex
 	turns  map[string]context.CancelFunc
@@ -97,6 +116,13 @@ func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Option
 	o := &Orchestrator{
 		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle),
 		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), sides: make(map[string]*side),
+		trackers: make(map[string]*changes.Tracker), sendNow: make(map[string]bool),
+	}
+	o.approvals = approval.New(o.hub.Publish, o.publishAttention, opts.ApprovalTimeout)
+	o.inputs = inputs.New(o.hub.Publish, o.publishAttention)
+	o.secrets = opts.Secrets
+	if o.secrets == nil {
+		o.secrets = secrets.New(store.ProjectDir)
 	}
 	def := opts.DefaultOrchestrator
 	o.defaultOrch.Store(&def)
@@ -161,8 +187,12 @@ func (o *Orchestrator) Start(ctx context.Context, projectID, text string) (proje
 	go func() {
 		defer o.wg.Done()
 		defer cancel()
-		o.runTurn(turnCtx, rt, orch)
+		status, finished := o.runTurn(turnCtx, rt, orch)
+		o.qmu.Lock()
 		o.release(projectID)
+		o.hub.Publish(projectID, events.TurnFinished, finished)
+		o.advance(projectID, status)
+		o.qmu.Unlock()
 	}()
 	return msg, nil
 }
@@ -207,6 +237,7 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 	if err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
+	rt.turnID = msg.ID
 	rt.publish(events.MessageCreated, map[string]any{"message": msg})
 	running, now := projectstore.StatusRunning, projectstore.Now()
 	model := rt.models.Orchestrator
@@ -224,7 +255,7 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 	return msg, rt, orch, nil
 }
 
-func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectstore.Agent) {
+func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectstore.Agent) (projectstore.AgentStatus, map[string]any) {
 	res, err := rt.runOrchestrator(ctx, orch)
 	status, errText := projectstore.StatusCompleted, ""
 	switch {
@@ -233,6 +264,9 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 		status = projectstore.StatusCancelled
 	default:
 		status, errText = projectstore.StatusFailed, err.Error()
+		if errText == "" {
+			errText = "the turn failed without a reason"
+		}
 		slog.Error("turn failed", "project", rt.pid(), "err", err)
 	}
 	if status == projectstore.StatusCompleted && rt.isACPOrchestrator() {
@@ -241,5 +275,6 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 			errText = "warning: " + w
 		}
 	}
-	rt.finishTurn(orch.ID, status, res.Text, errText)
+	o.approvals.EndTurn(rt.pid(), rt.turnID)
+	return status, rt.finishTurn(orch.ID, status, res.Text, errText)
 }

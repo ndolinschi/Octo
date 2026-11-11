@@ -80,6 +80,9 @@ func (s *Store) Close() error {
 	return first
 }
 
+// ProjectDir is the data directory of a project (project.sqlite and files beside it).
+func (s *Store) ProjectDir(id string) string { return s.projectDir(id) }
+
 func (s *Store) projectDir(id string) string {
 	return filepath.Join(s.dir, "projects", id)
 }
@@ -131,7 +134,7 @@ func (s *Store) open(ctx context.Context, id string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db := &DB{id: id, sql: sdb}
+	db := &DB{id: id, sql: sdb, dir: s.projectDir(id)}
 	if err := db.migrate(ctx); err != nil {
 		_ = sdb.Close()
 		return nil, err

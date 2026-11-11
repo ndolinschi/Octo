@@ -62,19 +62,23 @@ func (s *Service) Compactions(ctx context.Context, pid, aid string) ([]Compactio
 	return out, nil
 }
 
-// PostMessage starts a turn on the project's orchestrator.
-func (s *Service) PostMessage(ctx context.Context, pid, text string) (projectstore.Message, error) {
+// PostMessage starts a turn on the project's orchestrator, or, while one
+// runs (or messages wait ahead of it), queues the message: queued is then set
+// and msg is empty.
+func (s *Service) PostMessage(ctx context.Context, pid, text string) (msg projectstore.Message, queued *projectstore.QueuedMessage, err error) {
 	if strings.TrimSpace(text) == "" {
-		return projectstore.Message{}, invalid("text is required")
+		return msg, nil, invalid("text is required")
 	}
-	msg, err := s.turns.Start(ctx, pid, text)
+	msg, queued, err = s.turns.Submit(ctx, pid, text)
 	switch {
+	case errors.Is(err, orchestrator.ErrQueueFull):
+		return msg, nil, queueFull()
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return msg, turnInProgress("a turn is already running for this project")
+		return msg, nil, turnInProgress("a turn is already running for this project")
 	case errors.Is(err, projectstore.ErrNotFound):
-		return msg, notFound("project")
+		return msg, nil, notFound("project")
 	}
-	return msg, err
+	return msg, queued, err
 }
 
 func (s *Service) Cancel(ctx context.Context, pid string) error {

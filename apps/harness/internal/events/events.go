@@ -18,6 +18,14 @@ const (
 	ProjectUpdated = "project.updated"
 	TurnFinished   = "turn.finished"
 	AgentCompacted = "agent.compacted"
+	// ChangeRecorded carries one recorded file change (v7 changes).
+	ChangeRecorded = "change.recorded"
+	// ProjectAttention says how many approvals and forms wait for the user.
+	ProjectAttention = "project.attention"
+	// QueueUpdated carries the whole message queue and whether it is paused.
+	QueueUpdated = "queue.updated"
+	// SecretsChanged carries the names (never values) of secrets that were stored or deleted.
+	SecretsChanged = "secrets.changed"
 	SideDelta      = "side.delta"
 	SideDone       = "side.done"
 	SideError      = "side.error"

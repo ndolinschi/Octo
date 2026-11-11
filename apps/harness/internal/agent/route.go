@@ -68,8 +68,8 @@ func (l *Loop) budgetError(res router.Result) error {
 	switch {
 	case res.BudgetUSD != nil:
 		be.Budget = *res.BudgetUSD
-	case l.Hints.BudgetUSD != nil:
-		be.Budget = *l.Hints.BudgetUSD
+	case l.Hints.Budget() != nil:
+		be.Budget = *l.Hints.Budget()
 	}
 	return be
 }

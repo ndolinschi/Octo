@@ -1,6 +1,7 @@
 package local
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -14,6 +15,23 @@ const (
 	ToolWriteFile = "write_file"
 	ToolListDir   = "list_dir"
 )
+
+type extraEnvKey struct{}
+
+// WithExtraEnv gives the bash tool extra environment variables for the call in
+// ctx (already resolved values; the caller keeps them out of the tool input).
+func WithExtraEnv(ctx context.Context, env map[string]string) context.Context {
+	if env == nil {
+		env = map[string]string{}
+	}
+	return context.WithValue(ctx, extraEnvKey{}, env)
+}
+
+// ExtraEnv is what WithExtraEnv set, and whether it was set at all.
+func ExtraEnv(ctx context.Context) (map[string]string, bool) {
+	env, ok := ctx.Value(extraEnvKey{}).(map[string]string)
+	return env, ok
+}
 
 // Root is a labelled directory that file and shell tools are confined to.
 type Root struct {

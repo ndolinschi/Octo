@@ -15,6 +15,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -64,12 +65,32 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	s := rt.o.acp.session(rt.pid())
 	handler := newACPSession(rt, orch.ID, target.agent.ID, orch.Model)
 	handler.orchestrator = true
+	handler.flat = target.agent.FlatRate
+	// The agent's usage counters are cumulative over its session, which outlives
+	// a turn: carry them across turns so a new turn's first update is a delta,
+	// not the whole session again.
+	s.mu.Lock()
+	handler.lastCost, handler.lastUsed = s.costSeen, s.usedSeen
+	s.mu.Unlock()
+	defer func() {
+		handler.mu.Lock()
+		cost, used := handler.lastCost, handler.lastUsed
+		handler.mu.Unlock()
+		s.mu.Lock()
+		s.costSeen, s.usedSeen = cost, used
+		s.mu.Unlock()
+	}()
 	fresh, err := s.beginTurn(ctx, cancel, rt, orch, handler, target)
 	if err != nil {
 		handler.finish(ctx, true)
 		return agent.Result{}, err
 	}
 	defer s.endTurn()
+	s.mu.Lock()
+	if s.reg != nil {
+		handler.setHarnessTools(s.reg)
+	}
+	s.mu.Unlock()
 
 	prompt, err := rt.acpTurnPrompt(ctx, s, orch, fresh)
 	if err != nil {
@@ -79,7 +100,28 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	s.mu.Lock()
 	client, sessID := s.client, s.sessID
 	s.mu.Unlock()
+	endSpan := rt.trackSpan(ctx, orch.ID, "", changes.SourceACPTurn)
 	stop, err := client.Prompt(ctx, sessID, prompt, handler)
+	if err != nil && ctx.Err() == nil && handler.idle() && connectionEnded(client) {
+		// The agent process died between turns and the harness had not noticed
+		// yet (its exit is seen asynchronously): the prompt never reached an agent
+		// that did anything. Start a fresh process once and send it again.
+		slog.Warn("acp agent was gone when the prompt was sent; restarting it", "project", rt.pid(), "agent", target.agent.ID, "err", err)
+		s.mu.Lock()
+		s.closeLocked()
+		s.mu.Unlock()
+		var fresh2 bool
+		if fresh2, err = s.beginTurn(ctx, cancel, rt, orch, handler, target); err == nil {
+			var prompt2 string
+			if prompt2, err = rt.acpTurnPrompt(ctx, s, orch, fresh2); err == nil {
+				s.mu.Lock()
+				client, sessID = s.client, s.sessID
+				s.mu.Unlock()
+				stop, err = client.Prompt(ctx, sessID, prompt2, handler)
+			}
+		}
+	}
+	endSpan()
 	handler.finish(ctx, err != nil)
 	rt.syncNotes(ctx, s)
 	s.mu.Lock()
@@ -150,7 +192,7 @@ func (s *orchSession) setNoMCP(msg string) {
 func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.Agent, t acpTarget, cwd string) (bool, error) {
 	ag := t.agent
 	client, err := acp.Start(ctx, acp.Spec{
-		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID,
+		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
 	})
 	if err != nil {
 		return false, fmt.Errorf("start ACP agent %q: %w", ag.ID, err)
@@ -490,7 +532,7 @@ func (b mcpBackend) Call(ctx context.Context, bind mcp.Binding, name string, arg
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer context.AfterFunc(turnCtx, cancel)()
-	id := handler.claimToolUse(cctx, name)
+	id := handler.claimToolUse(cctx, name, args)
 	if id == "" {
 		id = projectstore.NewID("mcp")
 	}
@@ -508,4 +550,15 @@ func (b mcpBackend) Call(ctx context.Context, bind mcp.Binding, name string, arg
 		return "", false, err
 	}
 	return text, isErr, nil
+}
+
+// connectionEnded reports whether the agent's connection is (or, within a
+// moment, becomes) closed: a process that died is noticed by the reader asynchronously.
+func connectionEnded(c *acp.Client) bool {
+	select {
+	case <-c.Done():
+		return true
+	case <-time.After(2 * time.Second):
+		return false
+	}
 }

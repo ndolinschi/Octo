@@ -30,6 +30,10 @@ type UsageBucket struct {
 	Requests         int64    `json:"requests"`
 	CostUSD          *float64 `json:"cost_usd"`
 	CostEstimated    bool     `json:"cost_estimated"`
+	// SubscriptionEquivalentUSD is what flat-rate (subscription) agents'
+	// usage would have cost per token by their own figures: not spent, not in
+	// CostUSD (null when there is none).
+	SubscriptionEquivalentUSD *float64 `json:"subscription_equivalent_usd"`
 }
 
 type UsageReport struct {
@@ -159,12 +163,16 @@ type costSum struct {
 	usd       float64
 	any       bool
 	estimated bool
+	sub       float64
+	subAny    bool
 }
 
 func (c *costSum) merge(o costSum) {
 	c.usd += o.usd
 	c.any = c.any || o.any
 	c.estimated = c.estimated || o.estimated
+	c.sub += o.sub
+	c.subAny = c.subAny || o.subAny
 }
 
 func (c costSum) apply(b *UsageBucket) {
@@ -173,6 +181,10 @@ func (c costSum) apply(b *UsageBucket) {
 		b.CostUSD = &v
 	}
 	b.CostEstimated = c.estimated
+	if c.subAny {
+		v := c.sub
+		b.SubscriptionEquivalentUSD = &v
+	}
 }
 
 func addRow(b *UsageBucket, c *costSum, r projectstore.UsageRow, tab prices.Table) {
@@ -182,6 +194,11 @@ func addRow(b *UsageBucket, c *costSum, r projectstore.UsageRow, tab prices.Tabl
 	b.CacheWriteTokens += r.CacheWriteTokens
 	b.Requests += r.Requests
 	switch {
+	case r.Flat:
+		if r.Reported {
+			c.sub += r.ReportedCostUSD
+			c.subAny = true
+		}
 	case r.Reported:
 		c.usd += r.ReportedCostUSD
 		c.any = true

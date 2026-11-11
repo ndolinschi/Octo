@@ -54,6 +54,10 @@ type manifestAgent struct {
 	// bands (easy, medium, hard) the agent suits, for automatic routing.
 	FlatRate  *bool    `json:"flatRate"`
 	Strengths []string `json:"strengths"`
+	// Requires lists commands that must be on PATH (besides the agent's own
+	// command) for the agent to count as available: for an adapter run through
+	// npx that drives a separately installed CLI.
+	Requires []string `json:"requires"`
 }
 
 // Strength values a manifest may list.
@@ -157,6 +161,9 @@ func (a manifestAgent) validate() error {
 	}
 	if err := validateStrengths(a.Strengths); err != nil {
 		return err
+	}
+	if slices.ContainsFunc(a.Requires, func(r string) bool { return strings.TrimSpace(r) == "" }) {
+		return fmt.Errorf("requires must list command names")
 	}
 	if len(a.ModelArg) > 0 && !slices.ContainsFunc(a.ModelArg, func(s string) bool { return strings.Contains(s, ModelPlaceholder) }) {
 		return fmt.Errorf("modelArg must contain %s", ModelPlaceholder)

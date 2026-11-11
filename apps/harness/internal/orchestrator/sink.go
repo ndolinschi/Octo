@@ -25,6 +25,7 @@ func (s *agentSink) Message(ctx context.Context, role string, msg anthropic.Mess
 	if err != nil {
 		return err
 	}
+	body = s.rt.o.secrets.RedactBytes(s.rt.pid(), body) // last guard: no stored secret reaches a transcript row
 	c, cancel := dbCtx(ctx)
 	defer cancel()
 	stored, err := s.rt.db.AppendMessage(c, s.agentID, role, body)
@@ -63,7 +64,7 @@ func (s *agentSink) record(u agent.Usage, w *projectstore.ContextWindow) {
 		CacheReadTokens: u.CacheReadTokens, CacheWriteTokens: u.CacheWriteTokens,
 		CostUSD: u.CostUSD, Context: w,
 		ServedModel: u.ServedModel, Tier: u.Tier, RouteTrigger: u.Trigger, RouterRequestID: u.RequestID,
-		CostEstimated: u.CostEstimated,
+		CostEstimated: u.CostEstimated, FlatRate: u.FlatRate,
 	})
 	if err != nil {
 		s.rt.logErr("record usage", err)

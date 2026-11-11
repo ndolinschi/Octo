@@ -176,8 +176,17 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			continue
 		}
 		l, ok := launch(a.manifestCommand, p.Dir)
+		reason := ""
+		if !ok {
+			reason = "the agent's program was not found on PATH"
+		}
+		for _, req := range a.Requires {
+			if _, found := resolveCommand(req, p.Dir); !found && ok {
+				ok, reason = false, fmt.Sprintf("%q is required and was not found on PATH", req)
+			}
+		}
 		ag := Agent{
-			ID: a.ID, Label: labelOr(a.Label, a.ID), Available: ok, Launch: l,
+			ID: a.ID, Label: labelOr(a.Label, a.ID), Available: ok, UnavailableReason: reason, Launch: l,
 			Models: append([]string{}, a.Models...), DefaultModel: a.DefaultModel, ModelArg: slices.Clone(a.ModelArg),
 			FlatRate: a.FlatRate != nil && *a.FlatRate, Strengths: slices.Clone(a.Strengths),
 		}

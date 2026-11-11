@@ -1,6 +1,10 @@
 package project
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+)
 
 type Kind int
 
@@ -47,4 +51,17 @@ func fileTooLarge(msg string) *Error {
 
 func binaryFile() *Error {
 	return &Error{Kind: KindUnsupported, Code: "binary_file", Message: "file is not UTF-8 text"}
+}
+
+func revertUnavailable(note string) *Error {
+	msg := "the content before this change was not kept"
+	if note != "" {
+		msg += " (" + note + ")"
+	}
+	return &Error{Kind: KindConflict, Code: "revert_unavailable", Message: msg}
+}
+
+func queueFull() *Error {
+	return &Error{Kind: KindConflict, Code: "queue_full",
+		Message: fmt.Sprintf("the message queue is full (%d messages); wait for the running turn or remove one", projectstore.MaxQueue)}
 }

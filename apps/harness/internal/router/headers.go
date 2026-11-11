@@ -45,6 +45,18 @@ type Hints struct {
 	// Task is the task title; only sent for sub-agents.
 	Task      string
 	BudgetUSD *float64
+	// BudgetFn, when set, is asked for the project's budget at every request
+	// (a budget changed while a turn runs applies to its next request) and
+	// takes the place of BudgetUSD.
+	BudgetFn func() *float64
+}
+
+// Budget is the budget to send now.
+func (h Hints) Budget() *float64 {
+	if h.BudgetFn != nil {
+		return h.BudgetFn()
+	}
+	return h.BudgetUSD
 }
 
 // Header renders the hints as request headers. Empty fields are left out.
@@ -63,8 +75,8 @@ func (h Hints) Header() http.Header {
 	if h.Role == "sub" {
 		set(HeaderTask, encodeTask(h.Task))
 	}
-	if h.BudgetUSD != nil {
-		out.Set(HeaderBudgetUSD, strconv.FormatFloat(*h.BudgetUSD, 'f', -1, 64))
+	if b := h.Budget(); b != nil {
+		out.Set(HeaderBudgetUSD, strconv.FormatFloat(*b, 'f', -1, 64))
 	}
 	return out
 }

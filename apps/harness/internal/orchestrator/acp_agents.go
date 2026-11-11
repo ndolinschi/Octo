@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -36,6 +37,21 @@ type acpTarget struct {
 	agent     plugins.Agent
 	model     string
 	requested bool // the model came from spawn_agent, not the manifest default
+	// env is extra environment for the agent's process: secrets spawn_agent's
+	// env mapped, already resolved.
+	env map[string]string
+}
+
+// processEnv is the agent's manifest environment plus the mapped secrets.
+func (t acpTarget) processEnv() map[string]string {
+	env := t.agent.ResolvedEnv()
+	if len(t.env) == 0 {
+		return env
+	}
+	out := make(map[string]string, len(env)+len(t.env))
+	maps.Copy(out, env)
+	maps.Copy(out, t.env)
+	return out
 }
 
 // recorded is the model stored on the sub-agent and its usage rows.
@@ -133,6 +149,11 @@ func spawnSchemaFor(agents []plugins.Agent, auto bool) (json.RawMessage, error) 
 		}
 		if len(enum) > 0 {
 			model["enum"] = enum
+		}
+		props["env"] = map[string]any{
+			"type": "object", "additionalProperties": map[string]any{"type": "string"},
+			"description": "Optional, only with agent: environment variables for that external agent's process, each " +
+				"NAME: \"secret:<name>\" naming a secret the user stored through request_input. The harness fills the value in.",
 		}
 		props["model"] = model
 		props["agent"] = map[string]any{

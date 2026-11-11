@@ -72,6 +72,7 @@ type agent struct {
 	cwd      string
 	cancel   context.CancelFunc
 	deafMode bool
+	cumN     int
 	opts     options
 	authed   bool
 	model    string

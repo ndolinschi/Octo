@@ -36,13 +36,15 @@ type LanguageServer struct {
 // server-side; LoggedIn is filled from the background probe when the registry
 // serves the agent and is nil when there is no probe or no result yet.
 type Agent struct {
-	ID           string   `json:"id"`
-	Label        string   `json:"label"`
-	Available    bool     `json:"available"`
-	LoggedIn     *bool    `json:"logged_in"`
-	Models       []string `json:"models"`
-	DefaultModel string   `json:"default_model,omitempty"`
-	Hint         string   `json:"hint,omitempty"`
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Available bool   `json:"available"`
+	// UnavailableReason says what is missing when Available is false.
+	UnavailableReason string   `json:"unavailable_reason,omitempty"`
+	LoggedIn          *bool    `json:"logged_in"`
+	Models            []string `json:"models"`
+	DefaultModel      string   `json:"default_model,omitempty"`
+	Hint              string   `json:"hint,omitempty"`
 	// FlatRate: the agent runs on a flat-rate subscription; set by the manifest's
 	// flatRate (false when absent). Strengths are the bands it suits (optional).
 	FlatRate  bool     `json:"flat_rate"`

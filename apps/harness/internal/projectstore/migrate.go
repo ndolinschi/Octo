@@ -16,10 +16,14 @@ var columnsAdded = []struct {
 		{"context_used", "INTEGER"}, {"context_size", "INTEGER"},
 		{"route_reason", "TEXT"}, {"route_band", "TEXT"}, {"route_request_id", "TEXT"}, {"route_choice", "TEXT"},
 	}},
-	{"project", []column{{"budget_usd", "REAL"}}},
+	{"project", []column{
+		{"budget_usd", "REAL"},
+		// Projects that predate approvals keep today's behaviour: full access.
+		{"access", "TEXT NOT NULL DEFAULT 'full'"}, {"queue_paused", "INTEGER NOT NULL DEFAULT 0"},
+	}},
 	{"usage", []column{
 		{"served_model", "TEXT"}, {"tier", "TEXT"}, {"route_trigger", "TEXT"}, {"router_request_id", "TEXT"},
-		{"cost_estimated", "INTEGER NOT NULL DEFAULT 0"}, {"role", "TEXT"},
+		{"cost_estimated", "INTEGER NOT NULL DEFAULT 0"}, {"role", "TEXT"}, {"flat_rate", "INTEGER NOT NULL DEFAULT 0"},
 	}},
 	{"compactions", []column{{"usage_id", "INTEGER"}}},
 }

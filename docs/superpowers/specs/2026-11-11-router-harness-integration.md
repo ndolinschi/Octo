@@ -253,3 +253,37 @@ taken as given; the catalogue was not re-fetched).
   warning says so.
 - `OCTO_EXIT_ON_STDIN_CLOSE=1`: the router shuts down gracefully when stdin closes (tested against the real binary).
 - Open: the history `calls` table stores only the served tier.
+
+## As built — fixes after the live run (harness, 2026-11-11)
+
+Verified by the orchestrator: `gofmt`, `go vet`, `go test -race ./...`, `scripts/e2e-router.sh`,
+`scripts/e2e-acp-orchestrator.sh`, agent-client lint and tests, `packages/ui` type-check. **Everything ran against the
+scripted agent and the fake router**; nothing here was confirmed with Claude Code, Copilot or the real router.
+
+- **Flat-rate cost is not spend.** Usage rows gain `flat_rate`; a flat-rate agent's figure is stored as an estimate,
+  left out of `spent_usd`, budget checks and cost totals, and reported as `subscription_equivalent_usd`. An ACP
+  orchestrator's cumulative `usage_update` counters now live with its session, so a turn no longer records the whole
+  session again (the likely source of the $0.53). Gap: after `session/load` into a new process an agent that continues
+  its old counters is counted twice once. Assumption not checked live: the real counters are cumulative per session.
+- **One budget number.** With a router that announces `budget_key`, spend is the router's figure; estimates are never
+  counted. The orchestrator's own requests pass the same gate as delegation (the router's 402 stays as backstop), and
+  the budget header is read per request.
+- A delegation refused for budget creates the child row and settles it `failed` with the reason.
+- An ACP orchestrator that cannot start ends the turn `failed` with the message and the manifest hint (already the
+  case at this level; **the silence the owner saw with Copilot was not reproduced** — a transcript is needed).
+- Manifest `requires: string[]` → `available: false` + `unavailable_reason`. Built in: only `pi` (its command is
+  `npx`); `claude-code` and `codex` were left without it (their adapters are said to bundle the CLI — unverified).
+- Tool rows titled `mcp__octo-harness__<tool>` (and three other spellings) are stored under the tool's own name; the
+  sub-agent link matches by arguments first, then title and timing.
+- `--exit-on-stdin-close` / `HARNESS_EXIT_ON_STDIN_CLOSE=1`: graceful shutdown when stdin closes (tested with a real
+  process).
+- Child environment: 24 more names pass (`GIT_*` config, `PKG_CONFIG_PATH`, `LD_LIBRARY_PATH`, `DOCKER_HOST`,
+  `KUBECONFIG`, `RUSTUP_TOOLCHAIN`, `AWS_PROFILE`, `AWS_REGION`, `AWS_SHARED_CREDENTIALS_FILE`, …); keys, tokens and
+  `GIT_ASKPASS` stay dropped.
+- `turn.finished` is published after the turn's slot is released (probable cause of the flaky load-session test; the
+  flake itself was not reproduced). A prompt that fails because the agent had just died restarts the agent once.
+- `strengths` defaults as decided above.
+- **v7 groundwork is in the same tree** (changes and diffs, approvals, queue, forms and the secret store): it
+  compiles and its unit tests pass, but docs, client types, `serve` wiring and `scripts/e2e-v7.sh` are not done.
+  Visible already: `POST /messages` during a turn answers 202 `{queued}` instead of 409; `request_input` is registered
+  for every agent.

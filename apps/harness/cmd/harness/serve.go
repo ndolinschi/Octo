@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -39,7 +40,19 @@ func cmdServe(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.ExitOnStdinClose {
+		go watchStdin(os.Stdin, stop)
+	}
 	return serve(ctx, cfg, addr)
+}
+
+// watchStdin reads r until it ends (EOF or error: the parent is gone) and then
+// calls stop, which takes the same graceful path as SIGTERM. Whatever is read
+// is discarded.
+func watchStdin(r io.Reader, stop func()) {
+	_, _ = io.Copy(io.Discard, r)
+	slog.Info("standard input closed; shutting down")
+	stop()
 }
 
 // serveConfig parses the serve flags and builds the configuration: the
@@ -54,6 +67,7 @@ func serveConfig(args []string) (config.Config, string, error) {
 	maxTurns := fs.Int("max-turns", 0, "Max loop iterations per agent (0 = config default)")
 	promptCaching := fs.Bool("prompt-caching", true, "Send cache_control breakpoints (or HARNESS_PROMPT_CACHING, default true); disable for gateways that reject them")
 	noBuiltin := fs.Bool("no-builtin-plugins", false, "Do not load the plugins embedded in the binary (or HARNESS_NO_BUILTIN_PLUGINS=1)")
+	exitOnStdin := fs.Bool("exit-on-stdin-close", false, "Shut down gracefully when standard input reaches EOF (or HARNESS_EXIT_ON_STDIN_CLOSE=1); for a parent that may die without stopping us")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable; sub-agents only)")
 	var pluginDirs multiFlag
@@ -90,6 +104,9 @@ func serveConfig(args []string) (config.Config, string, error) {
 	}
 	if *noBuiltin {
 		cfg.NoBuiltinPlugins = true
+	}
+	if *exitOnStdin || os.Getenv("HARNESS_EXIT_ON_STDIN_CLOSE") == "1" {
+		cfg.ExitOnStdinClose = true
 	}
 	if len(remoteBases) > 0 {
 		cfg.RemoteBases = remoteBases

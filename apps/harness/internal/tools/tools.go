@@ -103,3 +103,11 @@ func (r *Registry) Without(names ...string) *Registry {
 	}
 	return out
 }
+
+// Redefine replaces the named tool's definition with f(definition); unknown
+// names are ignored.
+func (r *Registry) Redefine(name string, f func(Def) Def) {
+	if d, ok := r.byName[name]; ok {
+		r.byName[name] = f(d)
+	}
+}

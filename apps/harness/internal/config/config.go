@@ -140,6 +140,10 @@ type Config struct {
 	// NoBuiltinPlugins skips the plugins embedded in the binary
 	// (--no-builtin-plugins, HARNESS_NO_BUILTIN_PLUGINS=1).
 	NoBuiltinPlugins bool
+	// ExitOnStdinClose makes `harness serve` shut down gracefully when its
+	// standard input reaches EOF, so a harness started by a desktop app does not
+	// outlive it (--exit-on-stdin-close, HARNESS_EXIT_ON_STDIN_CLOSE=1; off by default).
+	ExitOnStdinClose bool
 	MaxTurns         int
 	Stream           bool
 	// PromptCaching adds cache_control breakpoints to Messages requests

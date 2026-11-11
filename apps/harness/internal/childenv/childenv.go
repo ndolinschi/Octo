@@ -46,6 +46,17 @@ var allowExact = map[string]bool{
 	"PYTHONPATH": true, "VIRTUAL_ENV": true, "CONDA_PREFIX": true,
 	// Output behaviour that test runners and CLIs read.
 	"CI": true, "NO_COLOR": true, "FORCE_COLOR": true,
+	// Version control and build tools: identity, editor and pager choices,
+	// config and ssh command, native library search paths (names and paths,
+	// not credentials; GIT_ASKPASS and tokens stay out).
+	"GIT_AUTHOR_NAME": true, "GIT_AUTHOR_EMAIL": true, "GIT_COMMITTER_NAME": true, "GIT_COMMITTER_EMAIL": true,
+	"GIT_EDITOR": true, "GIT_PAGER": true, "GIT_TERMINAL_PROMPT": true, "GIT_CONFIG_GLOBAL": true, "GIT_SSH_COMMAND": true,
+	"PKG_CONFIG_PATH": true, "LD_LIBRARY_PATH": true, "DYLD_LIBRARY_PATH": true, "LIBRARY_PATH": true, "CPATH": true,
+	"RUSTUP_TOOLCHAIN": true, "RUSTFLAGS": true,
+	// Where container and cloud CLIs find their configuration, not what they
+	// authenticate with.
+	"DOCKER_HOST": true, "DOCKER_CONTEXT": true, "KUBECONFIG": true,
+	"AWS_PROFILE": true, "AWS_REGION": true, "AWS_DEFAULT_REGION": true, "AWS_CONFIG_FILE": true,
 	// The Codex agent's home folder (a path; the login file stays inside it).
 	"CODEX_HOME": true,
 }
@@ -56,6 +67,10 @@ var allowPrefixes = []string{"LC_", "XDG_"}
 // Allowed by prefix on the original (lower-case) spelling, further checked by
 // the stricter npm rule below.
 const npmPrefix = "NPM_CONFIG_"
+
+// Names that contain a secret word but only locate a file: allowed before the
+// secret-word rule runs.
+var allowDespiteWords = map[string]bool{"AWS_SHARED_CREDENTIALS_FILE": true}
 
 // Never allowed (unless the operator names the variable): a name containing any
 // of these substrings.
@@ -157,6 +172,9 @@ func permitted(name string, op Allow) bool {
 		return false
 	}
 	if op.has(upper) {
+		return true
+	}
+	if allowDespiteWords[upper] {
 		return true
 	}
 	if upper != "SSH_AUTH_SOCK" && secretLike(upper) {

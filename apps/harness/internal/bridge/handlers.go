@@ -127,9 +127,13 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	msg, err := s.svc.PostMessage(r.Context(), r.PathValue("pid"), in.Text)
+	msg, queued, err := s.svc.PostMessage(r.Context(), r.PathValue("pid"), in.Text)
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if queued != nil {
+		writeJSON(w, http.StatusAccepted, map[string]any{"queued": queued})
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"message": msg})

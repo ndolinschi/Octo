@@ -26,11 +26,19 @@ func (m Meter) Spent(ctx context.Context, db *projectstore.DB) (usd float64, kno
 	if err != nil {
 		return 0, false, err
 	}
+	// With a router that tracks budgets, its figure is the authority: the rows
+	// contribute only costs the router itself reported, never a price-table
+	// estimate (which would make the harness stop at a number the router
+	// does not share). A flat-rate agent's figure is never spend.
+	routed := m.Router.Has(router.CapBudgetKey)
 	for _, r := range rows {
 		switch {
+		case r.Flat:
+			// a flat-rate agent's figure is not money spent
 		case r.Reported:
 			usd += r.ReportedCostUSD
 			known = true
+		case routed:
 		case r.Source == projectstore.SourceAPI:
 			est, ok := m.Prices.Estimate(r.Model, prices.Tokens{
 				Input: r.InputTokens, Output: r.OutputTokens, CacheRead: r.CacheReadTokens, CacheWrite: r.CacheWriteTokens,

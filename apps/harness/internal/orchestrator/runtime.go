@@ -16,6 +16,9 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
 )
 
+// changeRetention is how long a recorded change keeps its diff.
+const changeRetention = 30 * 24 * time.Hour
+
 // runtime is a snapshot of one project taken at turn start, plus helpers
 // shared by every agent in the turn's tree.
 type runtime struct {
@@ -25,6 +28,8 @@ type runtime struct {
 	models  config.Models
 	folders []projectstore.Folder
 	notes   []projectstore.Note
+	// turnID is the id of the user message that started the turn (0 outside a turn).
+	turnID int64
 }
 
 func (o *Orchestrator) newRuntime(ctx context.Context, db *projectstore.DB) (*runtime, error) {
@@ -82,7 +87,10 @@ func (rt *runtime) registry(a projectstore.Agent) (*tools.Registry, error) {
 	if err := local.RegisterRootsLimits(reg, rt.roots(), rt.o.opts.Limits, names...); err != nil {
 		return nil, err
 	}
-	rt.announceWrites(reg)
+	rt.guardTools(reg, a)
+	if err := reg.Register(rt.inputDef(a)); err != nil {
+		return nil, err
+	}
 	if a.Depth < rt.info.MaxDepth {
 		def, err := rt.spawnDef(a)
 		if err != nil {
@@ -152,6 +160,7 @@ func (rt *runtime) settle(ctx context.Context, id string, status projectstore.Ag
 	defer cancel()
 	now := projectstore.Now()
 	patch := projectstore.AgentPatch{Status: &status, FinishedAt: &now}
+	result, errText = rt.redact(result), rt.redact(errText)
 	if result != "" {
 		patch.Result = &result
 	}
@@ -166,8 +175,11 @@ func (rt *runtime) settle(ctx context.Context, id string, status projectstore.Ag
 	rt.publishAgent(events.AgentUpdated, a)
 }
 
-// finishTurn settles the orchestrator, cancels any stragglers and ends the turn.
-func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, text, errText string) {
+// finishTurn settles the orchestrator and cancels any stragglers. It returns
+// the turn.finished payload; the caller publishes it once the turn's slot is
+// released, so a client that reacts to turn.finished never meets "turn already
+// in progress".
+func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, text, errText string) map[string]any {
 	ctx := context.Background()
 	c, cancel := dbCtx(ctx)
 	defer cancel()
@@ -180,6 +192,7 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	} else {
 		rt.logErr("list agents", err)
 	}
+	text, errText = rt.redact(text), rt.redact(errText)
 	idle, now := projectstore.StatusIdle, projectstore.Now()
 	patch := projectstore.AgentPatch{Status: &idle, FinishedAt: &now}
 	if text != "" {
@@ -193,9 +206,13 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	} else {
 		rt.logErr("settle orchestrator", err)
 	}
+	// Diffs older than the retention window go; the rows stay.
+	if _, err := rt.db.PruneBlobs(c, projectstore.Stamp(time.Now().Add(-changeRetention))); err != nil {
+		rt.logErr("prune change blobs", err)
+	}
 	var e any
 	if errText != "" {
 		e = errText
 	}
-	rt.publish(events.TurnFinished, map[string]any{"status": string(status), "error": e})
+	return map[string]any{"status": string(status), "error": e}
 }

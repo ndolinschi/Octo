@@ -29,6 +29,9 @@ type Spec struct {
 	Dir     string
 	// Name labels the agent in logs.
 	Name string
+	// Redact, when set, removes secrets from the agent's stderr lines before
+	// they are logged or quoted in an error.
+	Redact func(string) string
 }
 
 type process struct {
@@ -46,7 +49,7 @@ func startProcess(spec Spec) (*process, error) {
 	cmd.Env = childenv.Build(os.Environ(), spec.Env)
 	cmd.WaitDelay = waitDelay
 	setProcessGroup(cmd)
-	stderr := &stderrLog{name: spec.Name}
+	stderr := &stderrLog{name: spec.Name, redact: spec.Redact}
 	cmd.Stderr = stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -117,9 +120,11 @@ func (p *process) describeExit() string {
 // stderrLog logs each stderr line at debug (capped) and remembers a tail.
 type stderrLog struct {
 	name string
-	mu   sync.Mutex
-	buf  bytes.Buffer
-	last []byte
+	// redact, when set, cleans each line before it is logged or kept.
+	redact func(string) string
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	last   []byte
 }
 
 func (s *stderrLog) Write(p []byte) (int, error) {
@@ -141,6 +146,9 @@ func (s *stderrLog) Write(p []byte) (int, error) {
 
 func (s *stderrLog) line(l string) {
 	l = strings.TrimRight(l, "\r\n")
+	if s.redact != nil {
+		l = s.redact(l)
+	}
 	if len(l) > stderrLineCap {
 		l = l[:stderrLineCap] + "...(truncated)"
 	}

@@ -41,8 +41,14 @@ func TestRouterBudgetStopsTurn(t *testing.T) {
 				t.Fatal("upstream calls continued after the turn stopped")
 			}
 			agents := r.agents(t, pid)
-			if len(agents) != 1 || agents[0].Error == nil || !budgetMessage.MatchString(*agents[0].Error) {
-				t.Fatalf("agents = %d, orchestrator error = %v; want no sub-agents started over budget", len(agents), agents[0].Error)
+			if agents[0].Error == nil || !budgetMessage.MatchString(*agents[0].Error) {
+				t.Fatalf("orchestrator error = %v", agents[0].Error)
+			}
+			// No sub-agent ran over budget: each refused delegation is a failed row with the reason.
+			for _, a := range agents[1:] {
+				if a.Status != "failed" || a.Error == nil || !budgetMessage.MatchString(*a.Error) {
+					t.Fatalf("sub-agent %s = %s / %v; want failed with the budget message", a.Role, a.Status, a.Error)
+				}
 			}
 			for _, q := range fr.Requests() {
 				if q.Header.Get("x-octo-budget-usd") != "0.01" || q.Header.Get("x-octo-budget-key") != pid {
@@ -94,19 +100,16 @@ func TestSpawnRefusedOnceSpendReachesBudget(t *testing.T) {
 	}
 	before := len(r.agents(t, pid))
 	r.update(t, pid, budgetInput(0.01))
-	if st := r.run(t, pid, "build it again", nil); st != "completed" {
-		t.Fatalf("second turn = %s", st)
+	// The router's spend is already over the budget: the orchestrator's own request is
+	// stopped by the same check as delegation, before anything is sent.
+	if st := r.run(t, pid, "build it again", nil); st != "failed" {
+		t.Fatalf("second turn = %s, want failed", st)
 	}
 	if got := len(r.agents(t, pid)); got != before {
 		t.Fatalf("agents %d -> %d: sub-agents were started over budget", before, got)
 	}
-	orch := r.agents(t, pid)[0]
-	var refused bool
-	for _, m := range toolResultTexts(t, r, pid, orch.ID) {
-		refused = refused || (strings.Contains(m, "Project budget reached ($") && strings.Contains(m, `"is_error":true`))
-	}
-	if !refused {
-		t.Fatal("orchestrator got no budget tool error for spawn_agent")
+	if e := r.agents(t, pid)[0].Error; e == nil || !budgetMessage.MatchString(*e) {
+		t.Fatalf("orchestrator error = %v", e)
 	}
 }
 

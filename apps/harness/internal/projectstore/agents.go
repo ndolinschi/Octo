@@ -158,7 +158,13 @@ func (d *DB) RecoverInterrupted(ctx context.Context) error {
 		`UPDATE agents SET status = 'idle' WHERE parent_id IS NULL AND status = 'running'`); err != nil {
 		return err
 	}
+	if _, err := d.sql.ExecContext(ctx,
+		`UPDATE agents SET status = 'failed', error = 'interrupted', finished_at = ? WHERE status = 'running'`, now); err != nil {
+		return err
+	}
+	// Queued messages survive a restart but never run on their own after one:
+	// the turn they waited for was cut short.
 	_, err := d.sql.ExecContext(ctx,
-		`UPDATE agents SET status = 'failed', error = 'interrupted', finished_at = ? WHERE status = 'running'`, now)
+		`UPDATE project SET queue_paused = 1 WHERE EXISTS (SELECT 1 FROM queue)`)
 	return err
 }

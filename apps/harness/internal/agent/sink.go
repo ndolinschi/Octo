@@ -41,6 +41,8 @@ type Usage struct {
 	Trigger       string
 	RequestID     string
 	CostEstimated bool
+	// FlatRate: CostUSD is a flat-rate agent's own estimate, not money spent.
+	FlatRate bool
 }
 
 func (u *Usage) add(o Usage) {

@@ -61,6 +61,10 @@ type UsageRecord struct {
 	// question; "route": the router's classifier call for a delegation); empty for an agent's own requests. Such a row is attributed to
 	// AgentID but not added to the agent's token totals.
 	Role string
+	// FlatRate marks a row of a flat-rate (subscription) agent: CostUSD is its
+	// own estimate of what the usage would cost per token, not money spent. It
+	// never counts toward spend, budgets or cost totals.
+	FlatRate bool
 	// CreatedAt overrides the row time (RFC 3339 UTC, as Now returns); empty means now.
 	CreatedAt string
 }
@@ -97,11 +101,11 @@ func (d *DB) RecordUsage(ctx context.Context, r UsageRecord) (Agent, error) {
 	}
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO usage (agent_id, model, source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at,
-			served_model, tier, route_trigger, router_request_id, cost_estimated, role)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			served_model, tier, route_trigger, router_request_id, cost_estimated, role, flat_rate)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.AgentID, r.Model, r.Source, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens, cost, at,
 		nullable(r.ServedModel), nullable(r.Tier), nullable(r.RouteTrigger), nullable(r.RouterRequestID), r.CostEstimated,
-		nullable(r.Role))
+		nullable(r.Role), r.FlatRate)
 	if err != nil {
 		return Agent{}, err
 	}
@@ -135,6 +139,9 @@ func (d *DB) SetContext(ctx context.Context, id string, w ContextWindow) (Agent,
 type UsageRow struct {
 	Key, Label, Model, Source string
 	Reported                  bool
+	// Flat marks rows of flat-rate agents; their ReportedCostUSD is a
+	// subscription equivalent, not spend.
+	Flat bool
 	// ReportedEstimated is set when the reported cost is a router estimate.
 	ReportedEstimated bool
 	InputTokens       int64
@@ -166,12 +173,12 @@ func (d *DB) UsageRows(ctx context.Context, from, to string, g UsageGroup) ([]Us
 	if !ok {
 		return nil, fmt.Errorf("projectstore: unknown usage group %q", g)
 	}
-	rows, err := d.sql.QueryContext(ctx, `SELECT `+exprs[0]+`, `+exprs[1]+`, `+servedModel+`, u.source, u.cost_usd IS NOT NULL, u.cost_estimated,
+	rows, err := d.sql.QueryContext(ctx, `SELECT `+exprs[0]+`, `+exprs[1]+`, `+servedModel+`, u.source, u.cost_usd IS NOT NULL, u.cost_estimated, u.flat_rate,
 		SUM(u.input_tokens), SUM(u.output_tokens), SUM(u.cache_read_tokens), SUM(u.cache_write_tokens),
 		COUNT(*), COALESCE(SUM(u.cost_usd), 0)
 		FROM usage u LEFT JOIN agents a ON a.id = u.agent_id
 		WHERE u.created_at >= ? AND u.created_at < ?
-		GROUP BY 1, 2, 3, 4, 5, 6`, from, to)
+		GROUP BY 1, 2, 3, 4, 5, 6, 7`, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +186,7 @@ func (d *DB) UsageRows(ctx context.Context, from, to string, g UsageGroup) ([]Us
 	var out []UsageRow
 	for rows.Next() {
 		var r UsageRow
-		if err := rows.Scan(&r.Key, &r.Label, &r.Model, &r.Source, &r.Reported, &r.ReportedEstimated, &r.InputTokens, &r.OutputTokens,
+		if err := rows.Scan(&r.Key, &r.Label, &r.Model, &r.Source, &r.Reported, &r.ReportedEstimated, &r.Flat, &r.InputTokens, &r.OutputTokens,
 			&r.CacheReadTokens, &r.CacheWriteTokens, &r.Requests, &r.ReportedCostUSD); err != nil {
 			return nil, err
 		}
@@ -213,6 +220,7 @@ type UsageEntry struct {
 	OutputTokens    int64
 	CostUSD         *float64
 	CostEstimated   bool
+	FlatRate        bool
 	// Role is "side" or "route" for rows outside an agent's own thread, empty for an agent's own requests.
 	Role      string
 	CreatedAt string
@@ -222,7 +230,7 @@ type UsageEntry struct {
 func (d *DB) UsageLog(ctx context.Context) ([]UsageEntry, error) {
 	rows, err := d.sql.QueryContext(ctx, `SELECT agent_id, model, COALESCE(served_model, ''), COALESCE(tier, ''),
 		COALESCE(route_trigger, ''), COALESCE(router_request_id, ''), source, input_tokens, output_tokens, cost_usd,
-		cost_estimated, COALESCE(role, ''), created_at FROM usage ORDER BY id`)
+		cost_estimated, flat_rate, COALESCE(role, ''), created_at FROM usage ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +240,7 @@ func (d *DB) UsageLog(ctx context.Context) ([]UsageEntry, error) {
 		var e UsageEntry
 		var cost sql.NullFloat64
 		if err := rows.Scan(&e.AgentID, &e.Model, &e.ServedModel, &e.Tier, &e.RouteTrigger, &e.RouterRequestID,
-			&e.Source, &e.InputTokens, &e.OutputTokens, &cost, &e.CostEstimated, &e.Role, &e.CreatedAt); err != nil {
+			&e.Source, &e.InputTokens, &e.OutputTokens, &cost, &e.CostEstimated, &e.FlatRate, &e.Role, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		if cost.Valid {

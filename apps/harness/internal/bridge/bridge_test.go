@@ -38,7 +38,14 @@ func TestFullTurnOverHTTP(t *testing.T) {
 		t.Fatalf("posted message = %+v", posted.Message)
 	}
 
-	e.wantError(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": "again"}, http.StatusConflict, "turn_in_progress")
+	// v7: a message sent while a turn runs is queued (it used to be refused with 409 turn_in_progress);
+	// it is removed again here so the rest of this test sees one turn.
+	var queued struct{ Queued projectstore.QueuedMessage }
+	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": "again"}, http.StatusAccepted, &queued)
+	if queued.Queued.ID == "" || queued.Queued.Text != "again" {
+		t.Fatalf("queued = %+v", queued)
+	}
+	e.into(t, "DELETE", "/v1/projects/"+pid+"/queue/"+queued.Queued.ID, nil, http.StatusNoContent, nil)
 	e.wantError(t, "DELETE", "/v1/projects/"+pid, nil, http.StatusConflict, "turn_in_progress")
 	var running project.Summary
 	e.into(t, "GET", "/v1/projects/"+pid, nil, http.StatusOK, &running)
