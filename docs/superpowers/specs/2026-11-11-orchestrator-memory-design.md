@@ -160,3 +160,21 @@ Details and the receipt format: [`apps/harness/docs/memory.md`](../../../apps/ha
 Criteria to flip the default: on the owner's long-running project, a week of `window` with receipts showing the model found older details by search when asked, cache-read share not clearly worse than `full`, and no case where it asked the user to repeat something said before. Until then `window` is an opt-in per project (`PATCH /v1/projects/{id}` `{"memory": {"context": "window"}}`).
 
 **Not shown:** quality of answers with a real model in either mode; real cache behaviour; behaviour with `recent_exchanges` above the cap of the window block on very long messages (they are cut, tested only structurally); clearing against a real window size (the test uses a configured 6 000-token window); the live-session task block on a real ACP agent.
+
+
+---
+
+## As built — M3 (UI)
+
+`packages/ui/src/components/memory/` (`MemoryView({projectId, onOpenMessage?, onOpenFile?, initialTab?, turnId?})`, `MemoryPanel` for the dock) and `packages/ui/src/lib/memory/` (task filters and fact order, receipt arithmetic, search form and hit targets, file helpers; unit tests in `memory.test.ts`). Lazy: nothing of it is in the initial bundle. Four tabs in one `Segmented`:
+
+- **Tasks**: status filter with counts; list (status ring, title, age) and detail (goal with who wrote it, constraints, acceptance, quotes with "Open the request", decisions, facts oldest first with superseded ones struck through and a link to the replacement in the same task or another one, outcome, files).
+- **Files**: list (newest first), rendered view, editor (summary + text, 64 kB limit checked before the harness says no), delete behind a confirm dialog. Creating a file is not offered.
+- **Search**: query, kinds, From / Before dates; hits current-first, superseded ones struck and marked; each hit opens its task / file / request; an empty answer says "Nothing in memory matches".
+- **Context**: the orchestrator's requests (from the open project's state), the receipt of the chosen one: stacked bar by block share, per block tokens, share, cap fill ("reached" in `warn`), item count and ids as chips (files, tasks, facts link into the other tabs, message ids link to the chat when the host passes `onOpenMessage`). A turn without a receipt (404) is an empty state, not an error.
+
+Layout: container query, list and detail side by side from 640px of view width, one column below (the detail replaces the list under a Back button). Rows are buttons with ↑/↓/Home/End. Loading, empty and error states per tab; reads re-run on `task.updated` and `memory.updated`.
+
+Demo: `?demo=1#/p/<id>/memory` renders the view alone (route handled in `app/AppShell.tsx`, lazy, demo only). The demo's receipts now exist for every request but the oldest, the second oldest being a full-mode turn; a request made after the memory first loaded is found by re-reading the thread (the 404 gap is closed).
+
+**Verified:** Playwright against `?demo=1` (dark and light at 1440x900, dark at 390x700, console clean): tab switching, task filter, keyboard row moves, superseded facts, file edit / save / too-large / delete with cancel and confirm, search with kinds, empty query, no-result, `?memory=fail|empty|none`. **Not verified:** against a real harness (shapes taken from the types and `memory.md`); the dock tab (not registered, see the handover for the snippet); screen-reader behaviour beyond roles and labels; the spacing audit does not reach the Memory route.

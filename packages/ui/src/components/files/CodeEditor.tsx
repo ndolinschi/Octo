@@ -1,5 +1,5 @@
 import type * as Monaco from "monaco-editor";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
 import { useLatest } from "../../lib/hooks";
@@ -9,6 +9,7 @@ import { errorMessage } from "../../lib/format";
 import { type FileKey } from "../../lib/files";
 
 type MonacoModule = typeof import("./monaco");
+const InlineCompletion = lazy(() => import("./editor/completion/InlineCompletion"));
 
 let pending: Promise<MonacoModule> | null = null;
 
@@ -223,6 +224,11 @@ export function CodeEditor(props: {
       {!editor && !failed && <EditorSkeleton />}
       <div ref={host} className="h-full min-h-0" data-testid="code-editor" />
       {mod && editor && <mod.EditorComments editor={editor} monaco={mod.monaco} buffers={buffers} folder={file.folder} path={file.path} />}
+      {mod && editor && (
+        <Suspense fallback={null}>
+          <InlineCompletion editor={editor} monaco={mod.monaco} fileKey={file.key} folder={file.folder} path={file.path} />
+        </Suspense>
+      )}
     </div>
   );
 }

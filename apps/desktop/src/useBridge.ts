@@ -12,8 +12,8 @@ export function useBridge(choice: BridgeChoice): Bridge | null {
   useEffect(() => {
     if (choice.kind !== "demo") return;
     let live = true;
-    void import("@octo/ui/demo").then((m) => {
-      if (live) setDemo(m.createDemoBridge(choice.options));
+    void Promise.all([import("@octo/ui/demo"), import("./demo")]).then(([m, extras]) => {
+      if (live) setDemo(extras.withDemoExtras(m.createDemoBridge(choice.options), window.location.search));
     });
     return () => {
       live = false;

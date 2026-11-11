@@ -23,6 +23,7 @@ import { Spinner } from "../primitives/Status";
 import { EditorSkeleton } from "./EditorSkeleton";
 import { CodeEditor } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
+import { CompletionStatus } from "./editor/completion/CompletionStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 /** The Markdown preview loads with the first Markdown file (its own chunk). */
 const MarkdownPreview = lazy(() => import("./MarkdownPreview").then((m) => ({ default: m.MarkdownPreview })));
@@ -196,6 +197,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
             )}
             {file?.modified && !saving && <span>Unsaved</span>}
           </span>
+          {fileKey && <CompletionStatus fileKey={fileKey} compact={width > 0 && width < 640} />}
           {fileKey && (
             <EditorStatus
               compact={width > 0 && width < 640}

@@ -50,3 +50,9 @@ off and costs nothing.
 
 - A real FIM endpoint (models that expose one are faster and cheaper than prompting a chat model).
 - Next-edit prediction (jump-and-edit suggestions) — a different feature; not in this design.
+
+---
+
+## As built — UI browser check
+
+Driven with Playwright against `?demo=1` (Monaco in the dev server, Chromium): the status item goes ready, thinking, ready; ghost text appears after typing `function cl` (demo suggestion `clamp(...)` body), `Ctrl+→` takes one word, `Esc` removes the ghost text and leaves the typed text, `Tab` inserts the whole suggestion; none of the three is taken by an app shortcut. `?completion=budget` shows paused with "The project's budget is reached", `?completion=off` shows off. Dark and light ghost text and every status were screenshotted. Not verified: a real model, IME composition, files over 1 MB, the Monaco web-worker warning seen in headless runs under load (Monaco's own fallback to the main thread; not caused by this code).

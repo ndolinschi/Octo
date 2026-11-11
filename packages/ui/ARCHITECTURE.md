@@ -13,7 +13,7 @@ in `.claude/rules/typescript.md`). This file describes structure: what lives whe
 
 ```text
 app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host), AppShell, ProjectWorkspace
-components/<feature>/   chat · files · agents · notes · details · usage · home · project · shell · side   (screens and their parts)
+components/<feature>/   chat · files · agents · notes · details · usage · memory · home · project · shell · side   (screens and their parts)
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
                         as a prop: the file view's floating composer)
 components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs (OrchestratorGlyph, fileIcons),
@@ -28,7 +28,7 @@ lsp/                    language-server client (hub in the main chunk, the rest 
 lib/                    pure helpers and small hooks: models (names, served model, budget, routing, middle truncation),
                         modelPicker, picker, recap, triage, table, contextMeter, agentGroups, keys, files, buffers (EditorBuffers: Monaco models, type-only import), format, match (+ group ranking), comments, transcript, tools, route,
                         storage, fileLinks, codePalette, highlight (lazy), streak, focus, constants, context, orchestrator
-                        (a project's orchestrator state), usage (report arithmetic, chart scale, limits), crumbs
+                        (a project's orchestrator state), usage (report arithmetic, chart scale, limits), memory/ (task filters, receipt arithmetic, search form), crumbs
                         (breadcrumb fit), frontMatter, languages, streakPresets (band geometry per start screen) — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
 demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks); its own entry point,
                         `@octo/ui/demo` (`demo/index.ts`), not part of the package root

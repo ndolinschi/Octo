@@ -27,6 +27,8 @@ import { DRAWER_QUERY } from "../lib/constants";
 /** The palette loads after the first paint (idle) or on first use, whichever comes first (its own chunk). */
 const loadPalette = () => import("../components/shell/CommandPalette");
 const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
+/** Demo-only `#/p/<id>/memory` (the Memory view on its own); not in a normal start's chunks. */
+const MemoryRoute = lazy(() => import("./MemoryRoute").then((m) => ({ default: m.MemoryRoute })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
 /** The project and settings dialogs load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
 const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/shell/SettingsDialog")]);
@@ -48,7 +50,7 @@ export function AppShell() {
 }
 
 function Shell() {
-  const { health, projects, bridge, refreshProjects } = useApp();
+  const { health, projects, bridge, refreshProjects, demo } = useApp();
   const nav = useNav();
   // Leaving a project with unsaved editor changes asks first.
   const { route, pending, proceed, stay } = useGuardedRoute(
@@ -192,7 +194,13 @@ function Shell() {
             <div className="relative flex min-w-0 flex-1 flex-col p-gutter pt-0 max-sm:p-0" inert={drawerShown}>
               {workspace && route.projectId ? (
                 <ProjectProvider key={route.projectId} projectId={route.projectId}>
-                  <ProjectWorkspace agentId={route.agentId} />
+                  {demo && window.location.hash.endsWith("/memory") ? (
+                    <Suspense fallback={null}>
+                      <MemoryRoute />
+                    </Suspense>
+                  ) : (
+                    <ProjectWorkspace agentId={route.agentId} />
+                  )}
                 </ProjectProvider>
               ) : (
                 <Panel className="flex-1">

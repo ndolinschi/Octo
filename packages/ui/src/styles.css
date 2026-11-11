@@ -1323,3 +1323,43 @@
   margin-left: 3px;
   background: var(--octo-accent);
 }
+/* completion */
+/* Inline completion (inline completion design, decision 7). Ghost text in the muted tone, never italic. */
+.monaco-editor .ghost-text-decoration,
+.monaco-editor .ghost-text-decoration-preview,
+.monaco-editor .ghost-text {
+  color: var(--octo-fg-3) !important;
+  font-style: normal !important;
+}
+/* "Thinking": a 1px line under the status item with a light sweeping across it; a still line under reduced motion. */
+.octo-completion-shimmer {
+  position: absolute;
+  inset: auto 6px 0;
+  height: 1px;
+  overflow: hidden;
+  background: var(--octo-line-strong);
+}
+.octo-completion-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  background: linear-gradient(90deg, transparent, var(--octo-fg-2), transparent);
+  animation: octo-completion-sweep 900ms cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+@keyframes octo-completion-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .octo-completion-shimmer::after {
+    animation: none;
+    width: 100%;
+    background: var(--octo-fg-3);
+  }
+}
+/* /completion */

@@ -12,7 +12,7 @@ export type TabId = string & { readonly __brand: "TabId" };
 export type Group = { id: string; tabs: TabId[]; active: TabId; size: number };
 export type Layout = { groups: Group[]; focused: string };
 
-export type ToolTab = "agents" | "notes" | "files" | "details" | "usage" | "changes" | "side";
+export type ToolTab = "agents" | "notes" | "files" | "details" | "usage" | "changes" | "memory" | "side";
 export type TabRef = { kind: "chat" } | { kind: "tool"; tool: ToolTab } | { kind: "agent"; agentId: string } | { kind: "file"; key: FileKey };
 
 // The brand is applied here and nowhere else: every call site below has just validated or built the string.
@@ -20,7 +20,7 @@ const brand = (id: string) => id as TabId;
 
 export const CHAT = brand("chat");
 export const MAX_GROUPS = 4;
-const TOOLS: readonly ToolTab[] = ["agents", "notes", "files", "details", "usage", "changes", "side"];
+const TOOLS: readonly ToolTab[] = ["agents", "notes", "files", "details", "usage", "changes", "memory", "side"];
 
 export const toolTab = (tool: ToolTab): TabId => brand(tool);
 export const agentTab = (agentId: string): TabId => brand(`agent:${agentId}`);

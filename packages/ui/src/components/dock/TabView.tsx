@@ -21,6 +21,8 @@ const AgentsPanel = lazy(() => import("../agents/AgentsPanel").then((m) => ({ de
 const NotesPanel = lazy(() => import("../notes/NotesPanel").then((m) => ({ default: m.NotesPanel })));
 /** Changes (v7): the diff review of what the agents changed. */
 const ChangesPane = lazy(() => import("./ChangesPane").then((m) => ({ default: m.ChangesPane })));
+/** Memory (its own chunk). */
+const MemoryTab = lazy(() => import("../memory/MemoryTab").then((m) => ({ default: m.MemoryTab })));
 /** The side question (decision 40). */
 const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default: m.SidePanel })));
 /** The Usage tab too (v6.2). */
@@ -61,6 +63,14 @@ export function TabView({ tab }: { tab: TabId }) {
           <ToolView tab={tab}>
             <Suspense fallback={null}>
               <ChangesPane />
+            </Suspense>
+          </ToolView>
+        );
+      if (ref.tool === "memory")
+        return (
+          <ToolView tab={tab}>
+            <Suspense fallback={null}>
+              <MemoryTab />
             </Suspense>
           </ToolView>
         );

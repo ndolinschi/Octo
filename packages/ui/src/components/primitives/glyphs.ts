@@ -1,5 +1,6 @@
 import {
   Bot,
+  Brain,
   FileDiff,
   ChartNoAxesColumn,
   Folder,
@@ -33,6 +34,8 @@ export const GLYPH = {
   usage: Gauge,
   /** What the agents changed in the project: diffs, revert (Changes tool). */
   changes: FileDiff,
+  /** What the orchestrator remembers: tasks, files, context, search (Memory tool). */
+  memory: Brain,
   /** A side question about the project that does not enter the orchestrator's history (decision 40). */
   side: MessageCircleQuestionMark,
   /** Settings, app-wide and per project: one gear (the tooltip says which). */
