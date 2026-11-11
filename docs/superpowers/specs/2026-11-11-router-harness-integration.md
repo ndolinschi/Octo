@@ -287,3 +287,50 @@ scripted agent and the fake router**; nothing here was confirmed with Claude Cod
   compiles and its unit tests pass, but docs, client types, `serve` wiring and `scripts/e2e-v7.sh` are not done.
   Visible already: `POST /messages` during a turn answers 202 `{queued}` instead of 409; `request_input` is registered
   for every agent.
+
+## Owner's live run 2 (HEAD a375955, Linux box, 2026-11-11) — findings and decisions
+
+**Confirmed live by the owner:** clean build, `install.sh` single pass, sidecars die with the app (< 1 s), light
+first frame on Linux, Claude Code over ACP as orchestrator and sub-agent (file question, delegation shown as
+`spawn_agent`, same session, stop, logged-out error), logged-out Copilot and Grok fail visibly, price-swap headers,
+budget stop, router cost = OpenRouter bill, memory search for some word forms, context receipts.
+**Still blocked on the owner's logins:** Copilot and Grok beyond the logged-out case.
+
+Decisions (each becomes a fix with a test):
+
+1. **The packaged router must have its full configuration.** The app wrote only `server/limits/history.toml`, so
+   the router ran without prices, the ladder and provider settings; the price rule and budget routing were off.
+   The router embeds its default `prices.toml`, `autoroute.toml` and `openrouter.toml` and uses them for any file
+   missing from its config directory (a file present on disk wins); start-up logs which defaults were used.
+2. **One spend number, for real.** Harness $0.003305 vs router $0.003390: the harness summed call records and
+   missed the classifier's own cost. The harness takes the router's reported spend (`x-octo-spent-usd`, highest
+   value seen for the budget key, also when two calls finish out of order) and never sums on its own in router mode.
+3. **Usage contract for subscriptions:** every bucket and row carries `flat_rate: boolean`, `cost_usd` (spend only,
+   0 for flat-rate) and `subscription_equivalent_usd`. The UI shows "≈ $X on your subscription" from the latter.
+   Demo fixtures are generated from the same Go structs' JSON (a contract test) — the demo looked right while the
+   real API did not.
+4. **Grok on a subscription is flat-rate** unless `XAI_API_KEY` is forwarded to it; then it is spend.
+5. **Agent facts from the live run go into the manifest:** Grok install (`npm i -g @xai-official/grok` or the x.ai
+   install script), login `grok login` / `grok login --device-auth` on a headless machine, `--no-auto-update`, auth
+   method `grok.com` treated as "interactive login needed" with a plain message; login probes for Grok
+   (`grok models` → "not authenticated") and, if a non-interactive status command exists, Copilot; Codex is
+   `available` only when its adapter can actually start, and has an install line.
+6. **Errors are written for the user.** "acp rpc error -32000: Authentication required" becomes "<agent> is not
+   logged in" with the hint in a separate `hint` field (the UI showed it twice because it was also inside the text).
+7. **`harness doctor` describes the app the user runs:** default data directory = the desktop app's when it exists
+   (and says which one it used), reads `harness.env`, reports the trace setting and files correctly, explains
+   "router is started by the desktop app" instead of looking broken, de-duplicates PATH.
+8. **ACP usage:** output tokens are recorded (they were 0); a cancelled turn is stored and shown as stopped.
+9. **Memory, from real use.** A request does not automatically become an open task: trivial exchanges (no tool,
+   short answer) get no task record; a follow-up joins the task it continues (the digest decides, the orchestrator
+   may override); a finished turn closes its task with an outcome; a cancelled one is `dropped`; `files` is
+   filled from the turn's tool calls. Search gets a Russian stemmer at index and query time and folds ё/е (the
+   trigram fallback missed "-ами", "скобок/скобками", "Молдове/Молдовы"). `window` context cost 15% more than
+   `full` on a real caching provider (uncached input 2.2×): it stays opt-in, and its window now advances in steps
+   (every `recent_exchanges` requests, not every request) so the prefix stays cacheable between steps.
+10. **Router details:** `x-octo-tier-hint` accepts `low|mid|high` as well as `fast|balanced|deep` and rejects
+    anything else with 400 instead of ignoring it; low `cache_read` 0.018; when a reported cost differs from the
+    table estimate by more than 25% the router logs it once per model and exposes the ratio in the call record
+    (the provider actually used was dearer than the catalogue price); the upstream generation id is stored when
+    the upstream returns one.
+11. **Traces** redact e-mail addresses.
