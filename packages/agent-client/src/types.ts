@@ -62,6 +62,12 @@ export type MemorySettings = { context: "full" | "window"; recent_exchanges: num
 /** Access mode of a project (v7 approvals). */
 export type AccessMode = "supervised" | "full";
 
+/** What a project asks of the user (harness 0.2+): `failed` after a failed turn (the error is on the orchestrator's agent). */
+export type ProjectAttentionKind = "none" | "needs_you" | "failed";
+
+/** A model a project stores whose provider cannot run it now (`GET /v1/projects/{id}`; reading never fails because of it). */
+export type ModelIssue = { field: string; model: string; provider: string; reason: string };
+
 export type ProjectSummary = {
   id: string;
   name: string;
@@ -75,6 +81,8 @@ export type ProjectSummary = {
   needs_you?: boolean;
   pending_approvals?: number;
   pending_inputs?: number;
+  /** "needs_you" while an approval or a form waits; "failed" when the last turn failed and nothing waits; else "none". */
+  attention?: ProjectAttentionKind;
 };
 
 export type Project = ProjectSummary & {
@@ -91,6 +99,8 @@ export type Project = ProjectSummary & {
   access?: AccessMode;
   /** M2: the memory setting (`context: "full"`, 5 exchanges for projects that predate it). */
   memory?: MemorySettings;
+  /** Stored models whose provider cannot run them now (see {@link ModelIssue}); empty when everything can run. */
+  models_unavailable?: ModelIssue[];
 };
 
 export type Agent = {
@@ -319,8 +329,25 @@ export type InputResolvedEvent = {
   values: Record<string, string | boolean>;
 };
 export type QueueUpdatedEvent = { type: "queue.updated"; seq: number; paused: boolean; messages: QueuedMessage[] };
-/** How many approvals and forms wait for the user. */
-export type ProjectAttentionEvent = { type: "project.attention"; seq: number; needs_you: boolean; approvals: number; inputs: number };
+/**
+ * How many approvals and forms wait for the user. `state` is present when a turn started or ended: `failed` (with the
+ * `error`) after a failed turn, `none` when a retry starts; events without it leave the last state unchanged.
+ */
+export type ProjectAttentionEvent = {
+  type: "project.attention";
+  seq: number;
+  needs_you: boolean;
+  approvals: number;
+  inputs: number;
+  state?: "none" | "failed";
+  error?: string;
+};
+
+/**
+ * What can run a model changed (a login probe result, a key, a router, the models an agent advertised). Delivered on
+ * every project stream, like `settings.changed`; refetch `listProviders` when it arrives.
+ */
+export type ProvidersUpdatedEvent = { type: "providers.updated"; seq: number; connected: number };
 /** Names (never values) of secrets that were stored or deleted. */
 export type SecretsChangedEvent = { type: "secrets.changed"; seq: number; names: string[] };
 
@@ -358,10 +385,57 @@ export type BridgeEvent =
   | QueueUpdatedEvent
   | ProjectAttentionEvent
   | SecretsChangedEvent
+  | ProvidersUpdatedEvent
   | TaskUpdatedEvent
   | MemoryUpdatedEvent;
 
 export type BridgeEventType = BridgeEvent["type"];
+
+/** `api`: the built-in Messages loop; `router`: a detected Octo router; `agent`: an ACP agent of a plugin. */
+export type ProviderKind = "api" | "router" | "agent";
+/** `error` is reserved for a provider that is set up but failing; the harness does not report it yet. */
+export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "error";
+export type ProviderModelSource = "catalogue" | "manifest" | "advertised";
+
+export type ProviderModel = {
+  id: string;
+  label: string;
+  source: ProviderModelSource;
+  /** RFC 3339: when an agent last advertised this model. */
+  seen_at?: string;
+  /** The agent's latest session did not advertise it any more; it is kept, not dropped. */
+  stale?: boolean;
+};
+
+export type Provider = {
+  /** `api`, `router`, or the ACP agent's id (also the `<id>` of `acp:<id>[/<model>]`). */
+  id: string;
+  kind: ProviderKind;
+  label: string;
+  state: ProviderState;
+  /** Why it is not ready; empty when ready. */
+  reason: string;
+  /** One line on how to install the agent; empty when not known. */
+  install_hint: string;
+  /** One line on how to log in or connect; empty when not known. */
+  login_hint: string;
+  models: ProviderModel[];
+  /** The model used when none is named; empty when unknown. */
+  default_model: string;
+  /** A flat-rate subscription: no per-token charge at the margin. */
+  flat_rate: boolean;
+};
+
+/** The models a new project gets when the request names none; empty strings when nothing is ready. */
+export type SuggestedModels = { orchestrator: string; fast: string; balanced: string; deep: string };
+
+/** `GET /v1/providers`: what can run a model now. API first, then the router (when detected), then agents. */
+export type ProvidersResponse = {
+  /** How many providers are `ready`. */
+  connected: number;
+  suggested: SuggestedModels;
+  providers: Provider[];
+};
 
 export type BridgeConfig = {
   default_models: Models;

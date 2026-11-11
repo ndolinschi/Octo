@@ -39,6 +39,7 @@ import type {
   FolderEntry,
   CompletionResult,
   SideMessage,
+  ProvidersResponse,
   SettingsUpdate,
   SettingsView,
   SideStarted,
@@ -52,12 +53,17 @@ import { openLspSession } from "./lspSession";
 export class BridgeError extends Error {
   readonly status: number;
   readonly code: string;
+  /** `model_unavailable` (422): the provider that would run the model, and what is missing. */
+  readonly provider?: string;
+  readonly reason?: string;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, detail?: { provider?: string; reason?: string }) {
     super(message);
     this.name = "BridgeError";
     this.status = status;
     this.code = code;
+    if (detail?.provider !== undefined) this.provider = detail.provider;
+    if (detail?.reason !== undefined) this.reason = detail.reason;
   }
 }
 
@@ -133,6 +139,14 @@ export interface Bridge {
   getSettings?(): Promise<SettingsView>;
   /** Validates the whole update, writes it atomically, applies what can apply at once. Secrets are write-only. */
   putSettings?(update: SettingsUpdate): Promise<SettingsView>;
+  /**
+   * What can run a model right now (connect first, choose second): the built-in API loop, a detected router and every
+   * ACP agent, each with a state, its models and how to make it ready, plus the models a new project would get.
+   * Optional: only the HTTP bridge implements it; hosts check for presence. Refetch on `providers.updated`.
+   * Creating or patching a project with a model whose provider is not ready answers 422 `model_unavailable`
+   * (`BridgeError.provider` / `.reason`); creating with nothing connected answers 409 `no_provider`.
+   */
+  listProviders?(): Promise<ProvidersResponse>;
   /**
    * Folder picker. `path` is a directory path or a prefix of one (`~` is the home directory, empty is home): the
    * child directories of its directory whose names start with the last segment (case-insensitive, hidden ones only
@@ -231,6 +245,7 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "queue.updated",
   "project.attention",
   "secrets.changed",
+  "providers.updated",
   "task.updated",
   "memory.updated",
 ];
@@ -253,7 +268,11 @@ function toBridgeError(status: number, text: string): BridgeError {
   const err = isRecord(body) ? body.error : undefined;
   if (isRecord(err) && typeof err.message === "string") {
     const code = typeof err.code === "string" ? err.code : "http_error";
-    return new BridgeError(status, code, err.message);
+    const detail = {
+      ...(typeof err.provider === "string" ? { provider: err.provider } : {}),
+      ...(typeof err.reason === "string" ? { reason: err.reason } : {}),
+    };
+    return new BridgeError(status, code, err.message, detail);
   }
   const snippet = text.trim().slice(0, 200);
   return new BridgeError(status, "http_error", snippet || `HTTP ${status}`);
@@ -279,7 +298,7 @@ function parseEvent(data: unknown): BridgeEvent | undefined {
 }
 
 /** What {@link createHttpBridge} returns: every method is implemented, the optional ones included. */
-export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSettings">>;
+export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSettings" | "listProviders">>;
 
 export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
@@ -443,6 +462,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getDiagnostics: () => request("GET", "/v1/diagnostics") as Promise<Diagnostics>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
+    listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
     openLanguageServer: (id, serverId) =>
       openLspSession(
         {

@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/settings"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -127,6 +129,10 @@ func init() {
 	slog.SetDefault(slog.New(logRing.Wrap(base)))
 }
 
+// providersWatchEvery is how often the provider picture is re-read for what no
+// hook reports (the router answering, or going away).
+const providersWatchEvery = 15 * time.Second
+
 func traceOn(v string) bool { b, err := strconv.ParseBool(v); return err == nil && b }
 
 func serve(ctx context.Context, cfg config.Config, addr string) error {
@@ -150,25 +156,46 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	}
 
 	pluginReg := loadPlugins(ctx, cfg, remoteReg)
-	pluginReg.StartProbes(ctx)
 
 	priceTable, err := prices.Load(filepath.Join(cfg.DataDir, prices.File))
 	if err != nil {
 		slog.Warn("ignoring price table; costs will be unknown", "err", err)
 	}
 	limitStore := limits.NewStore()
-	octo := router.New(ctx, cfg.BaseURL, cfg.OctoKey, router.WithRouteTimeout(cfg.RouteTimeout), router.WithAPIKey(cfg.APIKey))
+	// The Messages API key can change while the process runs (the settings
+	// screen writes it), so everything that sends it reads it from here.
+	keys := config.NewKeySource(cfg.APIKey)
+	builtin := func() (bool, string) {
+		c := cfg
+		c.APIKey = keys.Get()
+		return c.BuiltinLoop()
+	}
+	octo := router.New(ctx, cfg.BaseURL, cfg.OctoKey, router.WithRouteTimeout(cfg.RouteTimeout), router.WithAPIKeyFunc(keys.Get))
 	slog.Info("octo router", "detected", octo.Enabled(), "capabilities", octo.Capabilities())
-	builtinOK, builtinReason := cfg.BuiltinLoop()
+	builtinOK, builtinReason := builtin()
 	if !builtinOK {
 		slog.Info("built-in agent loop unavailable; ACP agents still work", "reason", builtinReason)
 	}
 
 	acptrace.Configure(cfg.DataDir, traceOn(os.Getenv("HARNESS_ACP_TRACE")))
 	hub := events.NewHub()
+	// svc exists only after the orchestrator; a probe result can arrive before that.
+	var svcRef atomic.Pointer[project.Service]
+	provSvc := providers.New(providers.Options{
+		DataDir: cfg.DataDir, Builtin: builtin, Router: octo, Agents: pluginReg.Agents,
+		Defaults: func() config.Models {
+			if s := svcRef.Load(); s != nil {
+				return s.Defaults().Models
+			}
+			return cfg.Models
+		},
+		Publish: func(n int) { hub.PublishAll(events.ProvidersUpdated, map[string]any{"connected": n}) },
+	})
+	pluginReg.OnProbeChange(provSvc.Refresh)
+	pluginReg.StartProbes(ctx)
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
-		Client:   anthropicclient.New(cfg.APIKey, cfg.BaseURL, cfg.OctoKey, anthropicclient.WithResponseObserver(limitStore.Observe)),
+		Client:   anthropicclient.New(cfg.APIKey, cfg.BaseURL, cfg.OctoKey, anthropicclient.WithResponseObserver(limitStore.Observe), anthropicclient.WithKeyFunc(keys.Get)),
 		MaxTurns: cfg.MaxTurns,
 		Stream:   cfg.Stream,
 
@@ -176,7 +203,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Limits:          cfg.Limits,
 		Remote:          remoteReg.All(),
 		Agents:          pluginReg.Agents(),
-		AgentSource:     pluginReg.Agents,
+		AgentSource:     provSvc.Agents,
 		Router:          octo,
 		Prices:          priceTable,
 		Windows:         cfg.ContextWindows,
@@ -187,8 +214,18 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		BuiltinUnavailable:  builtinReason,
 		DefaultOrchestrator: cfg.Models.Orchestrator,
 	})
+	orch.OnAdvertisedModels(func(agentID string) {
+		if a, ok := orch.AdvertisedModels(agentID); ok {
+			ids := make([]string, len(a.Models))
+			for i, m := range a.Models {
+				ids[i] = m.ID
+			}
+			provSvc.Record(agentID, ids, a.Current)
+		}
+	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth, Access: access},
-		project.WithPrices(priceTable), project.WithRouter(octo), project.WithACPAgents(pluginReg))
+		project.WithPrices(priceTable), project.WithRouter(octo), project.WithACPAgents(provSvc), project.WithProviders(provSvc))
+	svcRef.Store(svc)
 	// A model setting that names an ACP agent must name a loaded, available one.
 	// A settings file written earlier can name an agent that has since gone
 	// away; the app must still start so the setting can be fixed in it.
@@ -217,8 +254,16 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			},
 			ChildEnvAllow: childenv.SetAllow,
 			ACPTrace:      acptrace.SetEnabled,
+			APIKey: func(key string) {
+				keys.Set(key)
+				_, why := builtin()
+				orch.SetBuiltinUnavailable(why)
+			},
 		},
-		Notify: func(ids []string) { hub.PublishAll(events.SettingsChanged, map[string]any{"ids": ids}) },
+		Notify: func(ids []string) {
+			hub.PublishAll(events.SettingsChanged, map[string]any{"ids": ids})
+			provSvc.Refresh() // publishes providers.updated when a key or a default model changed what can run
+		},
 	})
 	baseCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
@@ -226,13 +271,17 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
 			bridge.WithMCP(orch.MCPHandler(bridge.Version)),
 			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
-			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoop(builtinOK, builtinReason), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
-			bridge.WithDiagnostics(func() any { return diagnostics(cfg, pluginReg, octo, builtinOK, builtinReason, logRing, nil) })),
+			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
+			bridge.WithDiagnostics(func() any {
+				ok, why := builtin()
+				return diagnostics(cfg, pluginReg, octo, ok, why, logRing, nil)
+			})),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
+	provSvc.Watch(ctx, providersWatchEvery)
 	slog.Info("harness serving", "addr", ln.Addr().String(), "data_dir", cfg.DataDir)
 
 	select {

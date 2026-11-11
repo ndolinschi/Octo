@@ -193,22 +193,15 @@ done = first("tool.finished", lambda d: d["tool_use_id"] == "call-live")
 assert row < done, (row, done)
 assert any(t == "tool.updated" and d.get("title") == "Read README.md" for t, d in evs), "no tool.updated"
 PY
-  echo "-- built-in work fails with the one message"
-  BPID=$(curl -fsS -X POST "$base/v1/projects" -H 'content-type: application/json' \
-    -d "{\"name\":\"builtin\",\"folders\":[{\"path\":\"$TMP/$name-ws\"}],\"models\":{\"orchestrator\":\"claude-opus-5-5\"}}" | jget 'd["id"]')
-  curl -fsS -X POST "$base/v1/projects/$BPID/messages" -H 'content-type: application/json' -d '{"text":"hello"}' >/dev/null
-  for _ in $(seq 100); do
-    [ "$(curl -fsS "$base/v1/projects/$BPID" | jget 'd["status"]')" = idle ] && break
-    sleep 0.2
-  done
-  curl -fsS "$base/v1/projects/$BPID/agents" | python3 -c '
-import json, sys
-msg = sys.argv[1]
-orch = [a for a in json.load(sys.stdin)["agents"] if not a["parent_id"]][0]
-assert orch["status"] == "idle" and orch["error"] == msg, orch
-' "$msg" || fail "a built-in turn did not fail with the message"
+  echo "-- a project on a built-in model is refused while nothing can run it; a new project runs its tiers on the one ready agent"
+  code=$(curl -sS -o "$TMP/$name-422.json" -w '%{http_code}' -X POST "$base/v1/projects" -H 'content-type: application/json' \
+    -d "{\"name\":\"builtin\",\"folders\":[{\"path\":\"$TMP/$name-ws\"}],\"models\":{\"orchestrator\":\"claude-opus-5-5\"}}")
+  [ "$code" = 422 ] || fail "creating a project on an unusable model answered $code, want 422"
+  [ "$(jget 'd["error"]["code"]+"/"+d["error"]["provider"]' <"$TMP/$name-422.json")" = model_unavailable/api ] || fail "422 body: $(cat "$TMP/$name-422.json")"
+  [ "$(curl -fsS "$base/v1/providers" | jget 'd["suggested"]["orchestrator"]')" = acp:scripted ] || fail "suggested is not the one ready agent"
   t2=$(ask "$base" "$PID" "[mcp-spawn-builtin] spawn without agent")
-  grep -qF "$msg" <<<"$t2" || fail "a built-in sub-agent did not fail with the message: $t2"
+  # the project got the suggested models (acp:scripted in every slot), so a tier-based spawn runs on the agent
+  grep -q "Sub-agent report" <<<"$t2" && ! grep -qF "$msg" <<<"$t2" || fail "a tier-based sub-agent did not run on the ready agent: $t2"
   ! grep -qi "upstream\|connection refused" "$TMP/$name-data.log" || fail "the harness tried to reach an upstream: $(grep -i 'upstream\|connection refused' "$TMP/$name-data.log")"
 
   kill -TERM "$serve_pid"

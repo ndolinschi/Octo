@@ -42,6 +42,10 @@ const (
 	// SettingsChanged carries the ids of settings a PUT /v1/settings changed
 	// (never values). It is delivered on every project stream.
 	SettingsChanged = "settings.changed"
+	// ProvidersUpdated says what can run a model changed (a login probe result,
+	// a key, a router, the advertised models). Delivered on every project
+	// stream; a client refetches GET /v1/providers.
+	ProvidersUpdated = "providers.updated"
 )
 
 // Sources of a file.changed event.

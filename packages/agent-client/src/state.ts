@@ -27,7 +27,14 @@ export type SideState = {
 };
 
 /** What waits for the user (v7): pending approvals and open forms, from events or a reload. */
-export type AttentionState = { needs_you: boolean; approvals: number; inputs: number };
+export type AttentionState = {
+  needs_you: boolean;
+  approvals: number;
+  inputs: number;
+  /** `failed` after a failed turn (until the next one starts), with its `error`; absent before any turn. */
+  state?: "none" | "failed";
+  error?: string;
+};
 
 /** A form that was answered, kept so its card can collapse to "provided" lines (never holds secret values). */
 export type AnsweredInput = {
@@ -71,6 +78,8 @@ export type ProjectState = {
   memoryRevision: number;
   /** v7: bumped when secrets were stored or deleted (refetch listSecrets). */
   secretsRevision: number;
+  /** Bumped when what can run a model changed (`providers.updated`): refetch `listProviders`. */
+  providersRevision: number;
   lastSeq: number;
   lastTurn: { status: TurnStatus; error: string | null; hint?: string } | null;
 };
@@ -101,6 +110,7 @@ export function emptyProjectState(): ProjectState {
     tasks: {},
     memoryRevision: 0,
     secretsRevision: 0,
+    providersRevision: 0,
     lastSeq: 0,
     lastTurn: null,
   };
@@ -274,8 +284,16 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
       };
     case "queue.updated":
       return { ...state, queue: { paused: event.paused, messages: event.messages } };
-    case "project.attention":
-      return { ...state, attention: { needs_you: event.needs_you, approvals: event.approvals, inputs: event.inputs } };
+    case "project.attention": {
+      // An event without `state` (approval counts) keeps the last state of the turn.
+      const attention: AttentionState = { needs_you: event.needs_you, approvals: event.approvals, inputs: event.inputs };
+      const from = event.state === undefined ? state.attention : event;
+      if (from.state !== undefined) attention.state = from.state;
+      if (from.error !== undefined) attention.error = from.error;
+      return { ...state, attention };
+    }
+    case "providers.updated":
+      return { ...state, providersRevision: state.providersRevision + 1 };
     case "secrets.changed":
       return { ...state, secretsRevision: state.secretsRevision + 1 };
     case "task.updated": {

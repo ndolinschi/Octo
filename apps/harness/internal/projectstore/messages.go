@@ -2,7 +2,9 @@ package projectstore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 )
 
 // Message is a stored turn. Content is the normalized view of Raw.
@@ -106,4 +108,20 @@ func (d *DB) UpdateMessageContent(ctx context.Context, id int64, contentJSON []b
 	m := newMessage(id, agentID, role, contentJSON, created)
 	m.Stopped = stopped
 	return m, nil
+}
+
+// LastMessage is the newest message of the agent; ErrNotFound when it has none.
+func (d *DB) LastMessage(ctx context.Context, agentID string) (Message, error) {
+	var id int64
+	var role, content, created string
+	err := d.sql.QueryRowContext(ctx,
+		`SELECT id, role, content_json, created_at FROM messages WHERE agent_id = ? ORDER BY id DESC LIMIT 1`, agentID).
+		Scan(&id, &role, &content, &created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrNotFound
+	}
+	if err != nil {
+		return Message{}, err
+	}
+	return newMessage(id, agentID, role, []byte(content), created), nil
 }

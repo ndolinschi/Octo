@@ -168,6 +168,11 @@ type Applier struct {
 	ChildEnvAllow func(spec string)
 	// ACPTrace switches the ACP wire trace for sessions that start afterwards.
 	ACPTrace func(on bool)
+	// APIKey swaps the Messages API key of the running process ("" when the
+	// setting was removed). With it ANTHROPIC_API_KEY applies at once (the
+	// built-in loop becomes ready without a restart); without it the key needs
+	// a restart.
+	APIKey func(key string)
 }
 
 // Options configures a Manager.
@@ -218,6 +223,15 @@ func New(opts Options) *Manager {
 	return m
 }
 
+// appliesOf is when a change of d takes effect in this process: the API key
+// applies at once when the process can swap it (Applier.APIKey), else on restart.
+func (m *Manager) appliesOf(d def) string {
+	if d.id == IDAnthropicKey && m.opts.Apply.APIKey != nil {
+		return AppliesNow
+	}
+	return d.applies
+}
+
 // locked reports whether the value comes from outside the file, which then
 // cannot override it.
 func (m *Manager) locked(id string) (val string, isLocked bool) {
@@ -242,7 +256,7 @@ func (m *Manager) view() (View, error) {
 	}
 	v := View{Settings: make([]Setting, 0, len(defs)), RestartRequired: []string{}}
 	for _, d := range defs {
-		s := Setting{ID: d.id, Kind: d.kind, Label: d.label, Group: d.group, Applies: d.applies, Hint: d.hint, Editable: true}
+		s := Setting{ID: d.id, Kind: d.kind, Label: d.label, Group: d.group, Applies: m.appliesOf(d), Hint: d.hint, Editable: true}
 		raw, have := "", false
 		switch envVal, isLocked := m.locked(d.id); {
 		case isLocked:
@@ -271,7 +285,7 @@ func (m *Manager) view() (View, error) {
 			}
 			s.Value = val
 		}
-		if d.applies == AppliesRestart && s.Editable && file[d.id] != m.baseline[d.id] {
+		if m.appliesOf(d) == AppliesRestart && s.Editable && file[d.id] != m.baseline[d.id] {
 			v.RestartRequired = append(v.RestartRequired, d.id)
 		}
 		v.Settings = append(v.Settings, s)
@@ -544,9 +558,11 @@ func (m *Manager) effective(id string, file map[string]string) string {
 
 // applyNow pushes the changed apply-now settings into the running process.
 func (m *Manager) applyNow(changed []string, file map[string]string) {
-	var models, allow, trace bool
+	var models, allow, trace, key bool
 	for _, id := range changed {
 		switch id {
+		case IDAnthropicKey:
+			key = true
 		case IDACPTrace:
 			trace = true
 		case IDModelOrch, IDModelFast, IDModelBalanced, IDModelDeep:
@@ -565,6 +581,9 @@ func (m *Manager) applyNow(changed []string, file map[string]string) {
 		}
 		m.opts.Apply.Models(pick(IDModelOrch, b.Orchestrator), pick(IDModelFast, b.Fast),
 			pick(IDModelBalanced, b.Balanced), pick(IDModelDeep, b.Deep))
+	}
+	if key && m.opts.Apply.APIKey != nil {
+		m.opts.Apply.APIKey(m.effective(IDAnthropicKey, file))
 	}
 	if trace && m.opts.Apply.ACPTrace != nil {
 		m.opts.Apply.ACPTrace(routerOn(m.effective(IDACPTrace, file)))

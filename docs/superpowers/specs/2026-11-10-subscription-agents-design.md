@@ -157,3 +157,15 @@ turn: no `agent_thought_chunk` or `agent_message_chunk` lines until the end mean
 "Starting …", "Thinking…" and, after 10 s, "Still working — no output from <agent> yet"); a few chunks of many characters means
 the agent batches. Whether the Claude Code adapter sends `agent_thought_chunk` and `plan` at all depends on its version and the
 model's thinking setting.
+
+## As built — providers (harness)
+
+Decisions 53 and 58 of the UI contract, harness side (`apps/harness/docs/providers.md`). Verified against the scripted agent and fake probe commands only; no real agent CLI was run.
+
+- `GET /v1/providers`: `api` (built-in loop, catalogue models), `router` (only when detected), then one entry per ACP agent (claude-code, copilot, grok first). States `ready`, `not_connected`, `not_logged_in`, `not_installed` (`error` reserved). Agent models are the manifest list plus the models the agent advertised, cached in `{data-dir}/agent-models.json` (no schema change); a model no longer advertised is flagged `stale`, not dropped. `suggested` is the current defaults when the API is ready, else the first ready agent (claude-code, codex, copilot, rest) in every slot.
+- `providers.updated` is published on every project stream when a probe outcome, a key or default model, the advertised models or router detection changed what is ready.
+- Project create: `409 no_provider` with nothing ready, new projects get `suggested`; create and patch refuse a model whose provider is not ready with `422 model_unavailable {provider, reason}` (patch checks only changed fields); reading a project never fails and lists `models_unavailable`.
+- `ANTHROPIC_API_KEY` via `PUT /v1/settings` now applies at once (key read per request, built-in-loop switch swapped); `restart_required` no longer lists it. Router settings still need the desktop shell's restart.
+- Retry: the UI re-posts the failed text to `POST .../messages`; the harness now reuses the stored user message when the last turn failed and nothing answered it (no duplicate row, no `message.created`). A failed turn leaves `attention: "failed"` on the project JSON and `state: "failed"` + `error` on `project.attention`; the orchestrator row stays `idle` with the error. The UI's "Retrying…" label is a UI state (see report: the banner button never resets when the retried turn fails again at once).
+- The agent-model cache is fed through `Orchestrator.OnAdvertisedModels` / `AdvertisedModels` (the ACP session's `OnModels`); a user message reused by a retry keeps its original timestamp.
+

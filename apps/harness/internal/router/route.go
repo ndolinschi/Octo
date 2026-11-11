@@ -36,6 +36,17 @@ func WithRouteTimeout(d time.Duration) Option {
 // request (sent as x-api-key); without one the router falls back to its text rule.
 func WithAPIKey(k string) Option { return func(r *Router) { r.apiKey = k } }
 
+// WithAPIKeyFunc is WithAPIKey for a key that can change while the process runs
+// (it wins over WithAPIKey).
+func WithAPIKeyFunc(f func() string) Option { return func(r *Router) { r.apiKeyFn = f } }
+
+func (r *Router) key() string {
+	if r.apiKeyFn != nil {
+		return r.apiKeyFn()
+	}
+	return r.apiKey
+}
+
 // RouteTask is the task a route call is about.
 type RouteTask struct {
 	Title string   `json:"title"`
@@ -148,9 +159,9 @@ func (r *Router) Route(ctx context.Context, req RouteRequest) (RouteDecision, er
 	if r.octoKey != "" {
 		hreq.Header.Set("x-octo-key", r.octoKey)
 	}
-	if r.apiKey != "" {
+	if k := r.key(); k != "" {
 		// The router uses this token for its classifier call.
-		hreq.Header.Set("x-api-key", r.apiKey)
+		hreq.Header.Set("x-api-key", k)
 	}
 	resp, err := r.http.Do(hreq)
 	if err != nil {
