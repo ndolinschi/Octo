@@ -571,6 +571,38 @@ monochrome dithered illustration):
     the structure of <repo>", "Review my uncommitted changes", "What changed since <last tag>?"); they fill the
     composer, they do not send. General rule this follows from: a screen does not repeat configuration as prose —
     configuration lives in controls, and details live in Settings.
+53. **Connect first, choose second** (owner, live: "it asks me to select models for the orchestrator but does not
+    require connecting a provider — weird; I need to connect at least one provider and then be able to select").
+    A *provider* is anything that can run a model: an API key (Anthropic-compatible), the Octo router, or an agent
+    CLI on this machine (Claude Code, Copilot, Grok, …). Rules:
+    (a) **Nothing can be selected that cannot run.** Every model picker lists only models of connected providers
+    and agents that are ready, grouped by provider. Providers that are not connected appear below as one row each
+    ("Anthropic API — Connect", "GitHub Copilot — not logged in · how", "Grok — not installed · how") which opens
+    the connect sheet; their models are not listed.
+    (b) **No provider → no project form.** With nothing connected, Home, "New project" and the first run show the
+    connect screen instead: the agents found on this machine with their state and the exact command, and "Use an
+    API key" (the key goes to the harness through the form, never through a model). One connected provider is
+    enough; the screen says which one will be used.
+    (c) **Defaults follow what is connected.** A new project's orchestrator and tiers are filled from the connected
+    providers (one agent connected → it is the orchestrator and every tier); tier fields stay folded under
+    "Models and delegation" and are never required reading.
+    (d) **A provider that stops working is said where it is used:** the chip turns to a warning with "Reconnect",
+    and a failed turn's message has a **Connect a provider** button instead of naming an environment variable.
+    (e) The harness refuses to create or patch a project whose models cannot run (`422 model_unavailable` with the
+    provider and reason), so no client can reach the state in the owner's screenshot.
+    Also fixed with this: a failed turn shows **Failed** in the header and the sidebar (not "Needs you · Worked
+    alone"); Retry never duplicates the user's message in the transcript; "Retrying…" always resolves to an
+    answer or the error within the request timeout.
+54. **The title bar is the header** (owner: "this info can be in the very header of the app, next to the traffic
+    lights; a lot of unused space there"). The window uses an overlay title bar: one 40px row holds, left to
+    right, the window controls' inset (macOS traffic lights; 78px), the sidebar toggle and back/forward, then the
+    open project's name and state, and on the right the model chip, budget, the side-question and "⋯" actions.
+    The separate conversation header row and the standalone "Octo" title strip are removed, giving the
+    conversation ~70px more height. Empty areas of the row drag the window; double-click zooms; controls in it
+    are not drag regions. On Windows and Linux the native controls sit at the right and the row's actions shift
+    left of them; in a browser the row is the same without the inset. Tabs stay directly under it. Host contract:
+    the shell passes `chrome: { overlay: boolean; insetStart: number; insetEnd: number }`; `packages/ui` imports no
+    Tauri API and marks drag areas with a data attribute the shell maps.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
