@@ -53,12 +53,17 @@ src/
 │   ├── routes.rs           path table
 │   ├── handler.rs          passthrough handlers
 │   ├── auth.rs             client key middleware
+│   ├── stdin_watch.rs      OCTO_EXIT_ON_STDIN_CLOSE
 │   ├── select.rs           OpenAI/OpenRouter/Claude pin
 │   ├── error.rs            ProxyError → JSON
-│   └── autoroute/          messages/chat/status/compact
+│   └── autoroute/          messages/chat/status/compact/retry, route (delegation), calls
 ├── auto/
 │   ├── decide/             sticky, classify, gate, route
+│   ├── delegate/           POST /autoroute/v1/route: types, band, choice policy, classifier glue
 │   ├── jev/                Decisions questions + parse
+│   ├── hints.rs            harness hint headers
+│   ├── ledger.rs           per-budget-key spend
+│   ├── calls.rs            call records for the calls endpoint
 │   ├── body.rs             shape, housekeeping, session_key
 │   ├── catalog.rs          tiers, windows, strip defaults
 │   ├── stall.rs            error/tool stalls

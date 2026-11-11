@@ -30,6 +30,8 @@ Product docs (architecture, routes, autoroute, history, config, **works / gaps**
 
 Config primary paths (`chat_completions_path`, `messages_path`, `decisions_path`) still apply; default chat path uses body/path selection above.
 
+**Autoroute and harness endpoints:** `POST /autoroute/v1/messages`, `POST /autoroute/v1/chat/completions`, `GET /autoroute/status`, `GET /autoroute/v1/calls/{request-id}`, `POST /autoroute/v1/route` (routing decision for a delegated task); `GET /health` lists `capabilities` (`autoroute`, `route_hints`, `result_headers`, `budget_key`, `route_api`). The harness (`apps/harness`) is the main client of the last three; its side is described in [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md).
+
 User-facing curl examples and model samples: [README.md](./README.md).
 
 ## Environment setup
@@ -155,11 +157,13 @@ Full map: [docs/architecture.md](./docs/architecture.md). Quick index:
 | `src/proxy/routes.rs` | Proxy + autoroute paths; `GET /health` |
 | `src/proxy/handler.rs` | Thin Axum handlers; builds `CallObserve` for history |
 | `src/proxy/auth.rs` | Optional `x-octo-key` gate (skip `/health`) |
-| `src/proxy/autoroute/` | Autoroute handlers, status JSON, compaction glue |
+| `src/proxy/autoroute/` | Autoroute handlers (`messages`, `chat`, `status`, `route`, `calls`), compaction and retry glue |
+| `src/proxy/stdin_watch.rs` | `OCTO_EXIT_ON_STDIN_CLOSE`: graceful shutdown when stdin closes |
 | `src/proxy/error.rs` | `ProxyError` → JSON (400/413/502); Anthropic-shaped remap |
 | `src/proxy/select.rs` | Chat/messages `type` / path provider resolution → `CallProvider` |
 | `src/auto/` | Decide pipeline: JEV, sticky, stall, catalog, `shape()`, routing meta |
 | `src/auto/delegate/` | `POST /autoroute/v1/route` decision: types, choice policy, fallback band, classifier glue |
+| `src/auto/{hints,ledger,calls}.rs` | Harness hint headers, per-budget-key spend, call records served by `GET /autoroute/v1/calls/{id}` |
 | `src/history/` | SQLite pool, HMAC token hash, async inserts, cost, session outcomes, payloads |
 | `src/providers/llm/` | Wired OpenAI / OpenRouter chat / Claude messages |
 | `src/providers/decision/` | OpenRouter Decisions forward |
