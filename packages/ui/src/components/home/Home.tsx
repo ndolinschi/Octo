@@ -13,12 +13,11 @@ import { Glyph } from "../primitives/Glyph";
 import { SkeletonRows } from "../primitives/InfoList";
 import { OrchestratorGlyph } from "../primitives/Status";
 import { StreakLayer } from "../primitives/StreakLayer";
+import { STREAK_HOME } from "../../lib/streakPresets";
 import { ActivityCard, MonthCard, TeamCard, TokensCard } from "./HomeCards";
 import { useOverview } from "./useOverview";
 
-/** The streak runs corner to corner behind the title (decision 21b). */
-const HOME_STREAK = { x: 0.5, y: 0.34 } as const;
-const PROJECT_ROWS = 6;
+const PROJECT_ROWS = 5;
 const ORDER: Record<OrchestratorState["kind"], number> = { working: 0, needs: 1, idle: 2, new: 3 };
 
 /**
@@ -34,17 +33,28 @@ export function Home({ onNewProject, onSearch, onUsage }: { onNewProject(): void
   const latest = useMemo(() => [...(data.projects ?? [])].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0], [data.projects]);
   return (
     <section aria-labelledby="home-title" data-home className="@container/home relative h-full overflow-x-hidden overflow-y-auto">
-      <StreakLayer anchor={HOME_STREAK} theme={theme} />
-      <div className="relative mx-auto flex w-full max-w-home flex-col gap-6 px-6 py-10 max-sm:px-4">
-        <h1 id="home-title" className="text-center text-display text-fg">
-          What should we work on?
-        </h1>
+      <StreakLayer preset={STREAK_HOME} theme={theme} />
+      <div className="relative mx-auto flex w-full max-w-home flex-col gap-6 px-6 pt-10 pb-8 max-sm:px-4">
+        <div className="relative">
+          {/* The title sits on the band: a soft local scrim keeps it ≥ 4.5:1 (the band is not dimmed). */}
+          <div aria-hidden className="octo-streak-scrim" />
+          <h1 id="home-title" className="relative text-center text-display text-fg">
+            What should we work on?
+          </h1>
+        </div>
         <Projects data={data} now={now} onNewProject={onNewProject} onSearch={onSearch} />
+        {/* Two columns that stack independently (a masonry of two), paired so their heights come out close: who is
+            working and this month on the left, tokens and activity on the right; no card stretches, none leaves a
+            hole. One column under 900px, in reading order. */}
         <div className="grid grid-cols-1 items-start gap-3 @min-[900px]/home:grid-cols-2">
-          <TeamCard projects={data.projects} agents={data.agents} />
-          <TokensCard usage={data.usage} daily={data.daily} now={now} onOpen={latest ? () => onUsage(latest.id) : null} />
-          <ActivityCard agents={data.agents} requests={data.requests.complete ? data.requests.all : null} now={now} />
-          <MonthCard month={data.month} />
+          <div className="flex min-w-0 flex-col gap-3">
+            <TeamCard projects={data.projects} agents={data.agents} />
+            <MonthCard month={data.month} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-3">
+            <TokensCard usage={data.usage} daily={data.daily} now={now} onOpen={latest ? () => onUsage(latest.id) : null} />
+            <ActivityCard agents={data.agents} requests={data.requests.complete ? data.requests.all : null} now={now} />
+          </div>
         </div>
       </div>
     </section>
@@ -128,7 +138,7 @@ function ProjectRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="min-w-0 truncate text-sm text-fg">{project.name}</span>
-          <span className={cn("shrink-0 text-xs", state.kind === "needs" ? "text-err" : "text-fg-3")}>{state.kind === "idle" ? "Idle" : line}</span>
+          <span className={cn("shrink-0 text-xs", state.kind === "needs" ? "text-warn" : "text-fg-3")}>{state.kind === "idle" ? "Idle" : line}</span>
         </span>
         <span className="truncate text-xs text-fg-3">{second}</span>
       </span>

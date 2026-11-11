@@ -152,6 +152,8 @@ function Shell() {
     onNewProject: newProject,
     onSearch: openPalette,
     onSettings: () => openSettings(),
+    // Picking a project closes the drawer even when it is the one already open (the route does not change then).
+    onPick: () => setDrawerOpen(false),
   };
 
   const actions: PaletteAction[] = [

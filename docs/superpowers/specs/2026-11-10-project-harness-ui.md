@@ -14,8 +14,9 @@ structure, proportion and finish only — no other product's name, icons or asse
 
 1. **Spacing scale** 2 4 6 8 12 16 20 24 32 40 (px) for every padding, margin, gap and inset in our DOM. Row heights
    come from one set: **24** (compact controls, chips), **28** (tabs, tree rows, menu rows, request rows, filter
-   input), **32** (sidebar action/project rows, delegation rows, dialog inputs), **36** (group tab strip), **40**
-   (header rows: chat header, file breadcrumb row, composer one-line). Window gutters are one value on all sides
+   input), **32** (sidebar action rows, delegation rows, dialog inputs), **36** (group tab strip), **40**
+   (header rows: chat header, file breadcrumb row, composer one-line; since v6.2 also the two-line project rows of the
+   sidebar and Home). Window gutters are one value on all sides
    and between panels. Icon → label gap inside a row is 8 (6 in 24px chips). Exceptions must be listed in the
    audit's allow-list with a reason (Monaco internals are out of scope; text optical offsets are not exceptions).
 2. **Spacing audit** `packages/ui/scripts/spacing-audit.mjs` (Playwright, against a running dev server on demo
@@ -471,6 +472,155 @@ paddings/margins/gaps (the sr-only helper's −1px and `ml-auto` excluded), 0 ro
 Details, card insets equal on both sides (17 = 16 + border). States to add to the audit script: `home` (1440, 1100,
 390), `details-tab` (1440, 1100, with a floating composer), `integrations` (1440, 390), `empty-project` (1440, 390),
 `no-projects` (1440), `acp-agent-tab` (1440).
+
+### As built (v6.2)
+
+Decisions 21b and 23, the Usage tab (usage design, Phase A UI) and the v6.1 review
+(`docs/superpowers/research/2026-11-10-ui-review-v6.1.md`). Scripted checks: `scratchpad/v62/accept62.cjs` (new, 70
+checks — 72/76 pass, the 4 failures are the draw-time target below) next to the adapted `accept61.cjs` (102/102) and
+`accept.cjs` (v6, renamed `accept40.cjs`, 40/40); new pure modules have `*.test.ts` beside them (`pnpm --filter
+@octo/ui test`: 242 tests).
+
+**A — the orchestrator at work (decision 23).**
+
+- Sidebar = projects only: 40px two-line rows (name 13/20, state 12/16 `fg-3`), one 16px state slot on the left —
+  working = accent dot, needs you = `CircleAlert` in `warn`, unseen activity = filled accent dot (replaces the idle
+  ring; sr text "New activity"), idle / new = a quiet ring. State words (no "·" joiners, craft rule): "Working, 3 agents",
+  "Working", "Needs you", "Idle, 2h ago", "No requests yet" (`lib/orchestrator.ts`, tested). Data: the open project's live agents
+  (`ProjectProvider` publishes them into `ActivityStore`; their root's status alone decides, so the row turns Idle
+  with the turn, not with the next project poll), else `listAgents` cached per `updated_at`, else the summary's
+  `status` (`state/orchestrators.ts`). "Needs you" = the orchestrator agent's status `failed` after a turn (what the
+  harness writes); approvals will join it when the harness has them. Removed: the nested request lists, their expand
+  state, chevrons, retry path and `ProjectItem`'s request code; `RequestStore` now serves the palette and Home only.
+- Header = the orchestrator: project name (500), the live state, the running agents as one stack (dots + "Dependency
+  auditor, Test runner +1"; under 640px of conversation the dots and "+N", so the name never truncates first) that
+  opens Agents, the orchestrator's model (hidden under 560px), tokens, and a `…` menu "Orchestrator actions" (Show
+  agents, Show usage, Project settings). No request breadcrumb; "Copy request" left with it.
+- Tab label "Orchestrator", glyph `Workflow` (was the chat bubble).
+- Team strip above the composer while sub-agents run: 24px chips (role, activity, duration) sized to content up to
+  320px; when they do not all fit on one line (measured, `ResizeObserver`), one "N agents working" chip (opens Agents) —
+  never wraps. The transcript's "Working…" line stays for the orchestrator's own thinking.
+- Home: projects and their orchestrators — 5 rows (40px: state slot, name + state word, second line = what the
+  orchestrator is doing or the first PROSE line of its latest reply — headings, tables, code, rules and quotes skipped,
+  nothing when there is none; `latestReply`, tested), "+ New project" and "N more projects" (opens the palette).
+  Cards in a two-column masonry: Orchestrators at work + This month | Tokens + Activity (top-aligned, no stretch, no
+  hole); the block is anchored at the top (no jump). At 1440×900 the whole Home fits without scrolling (measured
+  scrollHeight = clientHeight with 7 demo projects).
+- Empty project: "Give {project}'s orchestrator its first task", one line, the composer, then on a translucent card the
+  three facts — Folders; Models as aligned pairs (tier muted, model: "Orchestrator Sonnet 5.5  Fast Haiku 5.5 …", no "·");
+  Agents ("Sub-agents, plus Claude Code, …") — and the starter prompts. The demo's default tiers follow the harness
+  (`config.DefaultModels`: the orchestrator plans on Sonnet); Atlas, Orbit, Payments and Infrastructure are set to Opus
+  on purpose (their history and usage were made on it). Title,
+  line and facts load as a lazy chunk; the composer is ONE element across the loading → empty → transcript layouts
+  (the conversation renders one tree whose middle slot switches), which fixes the focus race after creating a project
+  (R3 now passes).
+- Wording: no "session", "thread", "chat" or "conversation" in UI copy, ARIA labels, titles or demo prompts (checked by
+  scanning the DOM on Home, empty project, Usage and the palette; demo prose about web-auth sessions reworded; file
+  names such as `session.ts` are content). Rail: "Requests to the orchestrator".
+
+**B — streak, second version (21b).** `lib/streak.ts` (tested) + `primitives/Streak.tsx` (lazy, 2.4 kB gzip): one
+band per start screen, its geometry a named preset in `lib/streakPresets.ts` (kept apart from the renderer so the main
+bundle can name one): `STREAK_HOME` (the diagonal through (0.5, 0.34), echo 0.46 below), `STREAK_EMPTY` (from the top-left
+corner across the upper third to the right edge — anchor (0.5, 0.14), rise 0.3 — so the core passes ABOVE the title /
+composer / facts, which sit in the halo and the falloff; echo 0.66 below the block), `STREAK_HERO` (the diagonal through
+the middle); core ≈ 18% / halo ≈ 45% of the shorter side; three core lobes at
+−2°, 0°, +2.6° with along-band waviness; halo wider above the core than below; echo band 0.46 × short below at 0.24;
+near-white highlight on the core's upper edge; colour by energy along our ramp (`#1b2a5e` / `#dfe8ff` falloff → accent
+→ `#7a5cff` → `#ff3d6e` → `#ff7a3d`, warmer on the lower edge). Alpha: dark core 95% / halo 60%, light 55% / 35%
+(measured peaks 0.95 / 0.55). The strength is quantised to 5 levels with a 4×4 Bayer dither at 3 CSS px cells (4 from
+1920) — deviation: one step for all three channels (per-channel quantisation split the hue into rainbow fringes); colour
+stays continuous. Static sparse noise ≈ 3% of cells at 6–10% over the whole start screen. One sample per cell (a
+half-resolution sample showed 2 × 2 blocks — the "large blocky pixels" — and was dropped). Empty project: the streak is
+mounted on the dock group behind the tab strip and the header (`primitives/backdrop.ts`), with a 112px eased panel wash
+under them (no edge) so their text stays legible; the header is transparent there. Surfaces: `.octo-card` = panel at
+78% dark (decision said 72%: measured fg-3 at 4.47:1 over the core, raised locally per the rule) / 80% light, blur 16 +
+saturate 1.2, 1px `line-strong` edge, inner top highlight; opaque under forced colours / without backdrop-filter.
+Titles on the band keep a soft local scrim.
+
+Contrast, worst text run at the brightest (dark) / darkest (light) pixel behind it, text hidden, DPR 1
+(`scratchpad/v62/contrast62.cjs`, every text run grouped by its surface): Home dark 5.02 (project list / Tokens caption,
+1440 and 1920), light 4.94 (`ok` green "+109" on white, 1920) / 5.04 (1440); Home title 6.9 dark / 12.1 light; empty
+project dark 6.21 (header line), facts card 7.02, starters 6.96, title 11.06, tab 9.54; light 5.73 / 6.48 / 6.43 / 13.97;
+no-projects hero dark 7.51, light 8.36.
+
+Draw time — NOT met: decision 21b asks ≤ 4 ms per draw at 1440×900. The pixel work (`data-render-ms`, without reading
+the theme's colours and the canvas upload) measures a median of 5.1–5.3 ms at 1440×900 and 8–11 ms at 1920×1080 in this
+sandbox's headless Chromium (warm, 7 redraws), 2.7–4.5 ms in Node for the same cells; the first (cold) draw is ~25–35 ms.
+Done: lookup tables cached per theme, one pass with the band's row extent only, the noise field as a fill + 3% scattered
+writes, no clamping or allocation in the loop. Not done: sampling at half resolution (it halves the time but showed
+2 × 2 blocks). A draw happens once per size / theme change, never per frame.
+
+**C — Usage tab.** Tool tab `usage` ("Usage", `Gauge`), header button, palette "Show usage", Home Tokens → "Usage ›"
+(opens the most recent project's Usage over All projects: a one-shot `nav.requestTool` taken by the workspace on
+mount). Side group like Details; content column ≤ 480px. Controls: one full-width `Segmented` Tokens | Cost | Limits (28px,
+radio group, ←/→), then one quiet row of two 24px controls with the same radius — range 7d / 30d / 90d (as wide as its
+segments) and scope This project | All projects (the rest; stacked under 320px of panel, checked at the 280px minimum
+group); remembered per tab (`USAGE_VIEW` slot).
+- Tokens: total, then In / Out / Cache read / Cache write (two columns under 320px); `DayBars` (one bar per UTC day,
+  integer widths and heights, 3px minimum bar, a 1px `line-strong` baseline, first / last date ticks; hover or ←/→ on the
+  focused chart = a slider over the days, readout line under it) — shown only with ≥ 2 days of data, otherwise one
+  sentence ("All of it on Nov 11; the daily chart appears once a second day has usage"); scale linear, square root above
+  max/median 8, log above 100 (deviation: sqrt alone still flattened the demo's month, where one day holds most tokens);
+  By model; By agent role (this project) or By project (all).
+- Cost: compact USD total, "estimated" when any part comes from the price table, per model with "est." / "no price"
+  (never $0), and the `prices.toml` line whenever something is unpriced.
+- Limits: provider sections, one block per model + kind (label, remaining / limit, 4px bar — `err` under 10% —, "resets
+  in 42s" live and stopping at 0, "observed 2m ago"), stale after 10 minutes (60% opacity + "stale"); re-read every 15s;
+  empty state. "Plan limits for external agents": the available ACP agents and the sentence that their CLI shows plan
+  limits — no numbers.
+- Context: Agent tab meta "context 1.8k / 200k" and, in Details' token rows, a context line with an accent bar, only
+  when `context_used` and `context_size` are reported.
+- Home Tokens: `getUsage` 30 days (model + day); the same chart, hidden under 2 days with data.
+- Demo bridge (`demo/usage.ts`, lazy): usage spread over each agent's replies (one row per response like the harness),
+  cache read/write for API models, prices for Opus/Sonnet (estimated), none for Haiku ("no price"), the ACP agent's
+  reported cost; limits for Opus (requests, input, output — output under 10%), Sonnet tokens, Haiku requests stale
+  (observed 14 min ago); the ACP agent reports context occupancy.
+
+**D — review fixes.**
+P1: breadcrumbs collapse by measured fit (`lib/crumbs.ts`, tested: everything → `folder › … › parent › file` → `… ›
+parent › file` → `… › file`, the "…" a menu that includes the folder; the file name shortened once, only if it alone does
+not fit; each crumb's tooltip names its own path); the status slot is `shrink-0` and the crumbs take the rest (no
+overlap, measured). Tree: one glyph column — a folder's chevron or a file's type glyph — so each level has one label
+edge (folder glyphs stay out: decided once). Details ≤ 480px. Narrow groups: under 420px with two or more tabs (or no
+room for one) the header tools fold into "Project tools" `…`. Home cards top-aligned, no jump. Tokens chart (Part C).
+P2: focus never on `<body>` after a tree pick opening a second file tab, a Details file row, Remove comment (→ editor),
+a tab drop (→ the moved tab; root cause: file tab ids hold a NUL that `CSS.escape` mangles, so `[data-tab-id=…]`
+selectors never matched file tabs — `tabButton()` matches by value; `focusSoon(onlyIfLost)` now also waits while focus is
+on an element that is about to be hidden). "+" pick via the button: one space. Front matter → a quiet key/value block
+(`lib/frontMatter.ts`). Palette: groups ordered by their best match kind (`rankGroups` in `lib/match.ts`) — "integr" →
+"Open integrations" first. "1 manifest problem". Esc in a non-empty Integrations search clears it first
+(`data-esc-clears`). `?demo=many` heat map counts requests too; integer heat cells. Home/End in Home and Details lists.
+Tooltips on truncated rows (sidebar, Home, tree labels). After sending, the rail follows the newest request whose prompt
+is fully visible. Start-screen titles 20/28 on all three. Details rows on one 16px slot edge. "Plugins in use" = servers
+for languages present in the project's files (from the Filter-files index) + available ACP agents. ACP tool-detail
+diffs highlighted (`looksLikeDiff` → the chat's tokenizer). Filter pick: one selected row; the filter text is shared by
+the project's file views (kept when the Files tab turns into the file). Comment "+" names "lines 12–20". A group's
+active tab survives a reload. 390px: the selected tab and its close button stay 24px clear of the strip fade.
+Narrow file group next to the orchestrator: the tree column floats (closed) when it would leave the editor under 480px.
+
+**Structure.** New: `lib/{orchestrator,usage,usageView,crumbs,frontMatter,languages}.ts`, `state/orchestrators.ts`,
+`state/workspace/ids.ts` (moved from `dock/`), `components/usage/`, `home/HomeCards.tsx`, `chat/{TeamStrip,EmptyProject}`,
+`primitives/{DayBars,Segmented,backdrop}`. Lazy: Home, Usage, Details, Integrations, the empty-project block, the command
+palette (warmed 1.5s after start), demo usage, the streak, the highlighter.
+
+**Bundle** (initial JS, gzip, `node scripts/check-bundle-size.mjs`): 211.22 kB, budget 211.80 kB (not raised; the
+budget was set at 208.8 + 3). Before the lazy splits this pass measured 215.71 kB; made lazy to stay inside: the command
+palette (2.66 kB chunk, warmed after 1.5s), the empty-project block (1.45 kB), demo usage (1.24 kB), and the usage
+helpers the main bundle does not need (`lib/usageView.ts` holds the small part). Lazy chunks: Home 5.35, Usage 4.11,
+Details 3.66, Streak 2.78 kB.
+
+**Spacing.** `scripts/spacing-audit.mjs --url …:1434`: total 0, skipped 0 (no state became unreachable; the script
+reads project names from the sidebar links' `title`, which stays the project name). New surfaces measured with the same
+rules (`scratchpad/v62/myaudit62.cjs`, 1440 / 1100 / 390): Home, empty project, orchestrator + team strip, sidebar,
+Usage (Tokens, Cost, Limits) and Details — 0 off-scale paddings / margins / gaps (sr-only −1px and `mx-auto` centring
+excluded), 0 rows outside the set, team chips 24, Home card insets equal on both sides.
+
+**Acceptance checks changed** (coverage kept): see the list in the v6.2 report; every `Chat` tab selector → `Orchestrator`;
+"Requests in this conversation" → "Requests to the orchestrator"; D21 2px / 55% → D21b 3px, peak 85–95% dark / 50–55%
+light; D22 four cards → Orchestrators at work, This month, Tokens, Activity; "5 recent requests" → 5 project rows;
+"cards share their height" → columns start on one line; "heat map fills the width ±1px" → integer cells, < 1px per
+column left over; "a recent request opens its project" → a project row opens its orchestrator; header tool clicks go
+through the folded "Project tools" menu when a group folds; palette typing waits for the lazy palette.
 
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 

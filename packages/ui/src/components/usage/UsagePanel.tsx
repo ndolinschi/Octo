@@ -34,7 +34,7 @@ export function UsagePanel() {
   useScrollFade(scroller, "y");
   return (
     <div ref={scroller} data-usage className="h-full min-h-0 overflow-y-auto overscroll-contain fade-y px-pane pt-pane pb-4">
-      <div className="mx-auto flex w-full max-w-details flex-col gap-3">
+      <div className="@container/usage mx-auto flex w-full max-w-details flex-col gap-3">
         <Segmented
           label="Usage"
           options={[
@@ -46,14 +46,14 @@ export function UsagePanel() {
           onChange={(segment) => setView({ segment })}
         />
         {view.segment !== "limits" && (
-          <div className="flex items-center gap-2">
+          // One quiet row: range (as wide as its three segments) and scope, both 24px with one radius (stacked under 320px).
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2 @max-[320px]/usage:grid-cols-1">
             <Segmented
               label="Range"
               size={24}
               options={USAGE_DAYS.map((d) => ({ id: d, label: `${d}d`, title: `Last ${d} days` }))}
               value={view.days}
               onChange={(days) => setView({ days })}
-              className="w-32"
             />
             <Segmented
               label="Scope"
@@ -64,7 +64,6 @@ export function UsagePanel() {
               ]}
               value={view.scope}
               onChange={(scope) => setView({ scope })}
-              className="ml-auto min-w-0 flex-1"
             />
           </div>
         )}

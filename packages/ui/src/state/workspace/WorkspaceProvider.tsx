@@ -19,7 +19,7 @@ import {
 } from "../../lib/constants";
 import { createRequiredContext } from "../../lib/context";
 import { TabMemory, USAGE_VIEW } from "./tabMemory";
-import { domId } from "./ids";
+import { domId, tabButton } from "./ids";
 import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
 import { type FileKey, keyFolder } from "../../lib/files";
 
@@ -110,7 +110,8 @@ function focusFileSoon(key: FileKey) {
       const el = document.getElementById(panel);
       return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
     },
-    { onlyIfLost: true, timeout: 1500 },
+    // Monaco loads lazily: wait for it a while (only while focus is still on nothing).
+    { onlyIfLost: true, timeout: 5000 },
   );
 }
 
@@ -319,6 +320,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         if (target.kind === "strip") commit(L.move(current, tab, target.group, target.index), { focusTab: tab });
         else if (target.kind === "into") commit(L.move(current, tab, target.group), { focusTab: tab });
         else commit(L.split(current, tab, target.group, target.side), { focusTab: tab });
+        // The drag ends after the move: if that left focus on nothing, the moved tab's button takes it.
+        focusSoon(() => tabButton(document, tab), { onlyIfLost: true, delay: 80 });
       },
       resize: (index, px) => {
         const inner = widthRef.current - (layoutRef.current.groups.length - 1) * GROUP_GAP;
@@ -438,7 +441,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   /* ---------- palette ---------- */
 
   useEffect(() => {
-    const label = (tab: TabId) => document.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${CSS.escape(tab)}"]`)?.dataset.label ?? tab;
+    const label = (tab: TabId) => tabButton(document, tab)?.dataset.label ?? tab;
     const api: WorkspaceApi = {
       openAgent: (id) => valueRef.current.openAgent(id),
       focusChat: () => valueRef.current.focusChat(),

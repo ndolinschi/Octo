@@ -26,8 +26,9 @@ function trace(event: string, detail: unknown): void {
   console.debug(`[octo demo] ${event}`, typeof detail === "string" ? detail : JSON.stringify(detail));
 }
 
+/** The harness's built-in tiers (`config.DefaultModels`): new projects plan on the balanced tier. */
 const DEFAULT_MODELS: Models = {
-  orchestrator: "claude-opus-5-5",
+  orchestrator: "claude-sonnet-5-5",
   fast: "claude-haiku-5-5",
   balanced: "claude-sonnet-5-5",
   deep: "claude-opus-5-5",
@@ -116,6 +117,8 @@ function seed(): ProjectRecord[] {
   const atlas = makeProject(
     {
       name: "Atlas API",
+      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
+      models: { orchestrator: "claude-opus-5-5" },
       description: "Accounts + billing service and its web dashboard",
       instructions: "Prefer small, reviewable changes. Never edit migrations without asking. Every fix needs a test that failed first.",
       folders: [
@@ -133,6 +136,8 @@ function seed(): ProjectRecord[] {
   const orbit = makeProject(
     {
       name: "Orbit mobile",
+      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
+      models: { orchestrator: "claude-opus-5-5" },
       description: "iOS + Android client (React Native)",
       instructions: "Keep the old-architecture interop until native-camera is rewritten.",
       folders: [{ path: "/Users/maya/code/orbit-app", label: "orbit-app" }],
@@ -154,6 +159,8 @@ function seed(): ProjectRecord[] {
   const payments = makeProject(
     {
       name: "Payments ledger reconciliation and nightly settlement jobs",
+      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
+      models: { orchestrator: "claude-opus-5-5" },
       description: "Settlement batch jobs and the reconciliation report",
       folders: [{ path: "/Users/maya/code/ledger", label: "ledger" }],
     },
@@ -194,6 +201,8 @@ function seed(): ProjectRecord[] {
   const infra = makeProject(
     {
       name: "Infrastructure: Terraform modules for staging and production clusters",
+      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
+      models: { orchestrator: "claude-opus-5-5" },
       description: "Shared Terraform modules and environment stacks",
       folders: [{ path: "/Users/maya/code/infra", label: "infra" }],
     },

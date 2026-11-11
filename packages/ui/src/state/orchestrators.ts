@@ -24,10 +24,16 @@ export function useOrchestrators(projects: readonly ProjectSummary[] | null): Ma
     void version;
     const out = new Map<string, OrchestratorState>();
     for (const p of projects ?? []) {
-      const agents = store.liveAgents(p.id) ?? store.peekAgents(p);
+      // The open project's live agents are newer than the polled summary: their root's status decides alone.
+      const live = store.liveAgents(p.id);
+      const agents = live ?? store.peekAgents(p);
       out.set(
         p.id,
-        agents ? orchestratorState(agents, p.status) : p.status === "running" ? { kind: "working", agents: [] } : { kind: "idle", at: p.updated_at },
+        agents
+          ? orchestratorState(agents, live ? "idle" : p.status)
+          : p.status === "running"
+            ? { kind: "working", agents: [] }
+            : { kind: "idle", at: p.updated_at },
       );
     }
     return out;

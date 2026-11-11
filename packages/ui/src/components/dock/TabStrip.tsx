@@ -12,7 +12,7 @@ import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu, type MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { pressTab, useDrag } from "./drag";
-import { domId } from "../../state/workspace/ids";
+import { domId, tabButton } from "../../state/workspace/ids";
 import { tabInfo } from "./tabInfo";
 import { SidebarToggle } from "../shell/SidebarToggle";
 import { WorkspaceActions } from "./WorkspaceActions";
@@ -57,7 +57,7 @@ export function TabStrip(props: { label: string; tabs: TabId[]; active: TabId; f
 
   // Fold under 420px once the tools would squeeze the tabs: two or more tabs, or not even one 96px tab beside them.
   const folded = stripWidth > 0 && stripWidth < STRIP_TOOLS_FOLD_BELOW && (props.tabs.length > 1 || stripWidth - TOOLS_WIDTH < TAB_MIN_WIDTH);
-  const button = (tab: TabId) => list.current?.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${CSS.escape(tab)}"]`) ?? null;
+  const button = (tab: TabId) => (list.current ? tabButton(list.current, tab) : null);
 
   /* Overflow: fade whichever end has more tabs, and keep the selected tab in view. */
   const updateFade = useScrollFade(list, "x");

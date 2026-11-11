@@ -146,7 +146,7 @@ test("a request nobody answered yet has no end time; prompt-less turns are not r
   assert.deepEqual(requestSummaries([], false, null), []);
 });
 
-test("latest reply: the last assistant text's first non-empty line, as plain text", () => {
+test("latest reply: the first prose line of the last reply with text; headings, tables and code are skipped", () => {
   const msg = (id: number, role: "user" | "assistant", text: string | null): Message => ({
     id,
     agent_id: "o",
@@ -156,6 +156,11 @@ test("latest reply: the last assistant text's first non-empty line, as plain tex
   });
   assert.equal(latestReply([]), null);
   assert.equal(latestReply([msg(1, "user", "hi")]), null);
-  assert.deepEqual(latestReply([msg(1, "assistant", "\n## **Plan**\nmore"), msg(2, "assistant", null)]), { text: "Plan", at: "2026-11-10T10:01:00Z" });
+  assert.deepEqual(latestReply([msg(1, "assistant", "\n## What's happening\nThe **refresh** races."), msg(2, "assistant", null)]), {
+    text: "The refresh races.",
+    at: "2026-11-10T10:01:00Z",
+  });
   assert.equal(latestReply([msg(1, "assistant", "old"), msg(2, "assistant", "`new` reply")])?.text, "new reply");
+  assert.equal(latestReply([msg(1, "assistant", "| a | b |\n|---|---|\n```ts\ncode\n```\n- first item")])?.text, "first item");
+  assert.equal(latestReply([msg(1, "assistant", "earlier prose"), msg(2, "assistant", "## Only a heading")]), null, "the latest reply decides");
 });

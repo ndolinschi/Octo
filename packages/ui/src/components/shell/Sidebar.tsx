@@ -62,6 +62,8 @@ export function Sidebar(props: {
   onNewProject(): void;
   onSearch(): void;
   onSettings(): void;
+  /** A project row was picked (closes the drawer). */
+  onPick(): void;
   /** Hides the inline sidebar, or closes the drawer. */
   onToggle(): void;
 }) {
@@ -118,6 +120,7 @@ export function Sidebar(props: {
               active={p.id === props.activeProjectId}
               unseen={props.unseen.has(p.id)}
               state={orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }}
+              onPick={props.onPick}
               now={now}
             />
           ))}

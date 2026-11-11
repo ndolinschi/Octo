@@ -80,7 +80,7 @@ export function UsageTokens({ load, view, now }: { load: Load<UsageData>; view: 
             {formatTokens(total)}
             <span className="ml-2 text-sm font-normal text-fg-3">tokens</span>
           </p>
-          <dl className="@container grid grid-cols-4 gap-3">
+          <dl className="grid grid-cols-4 gap-3 @max-[320px]/usage:grid-cols-2">
             <Figure label="In" value={t.input_tokens} />
             <Figure label="Out" value={t.output_tokens} />
             <Figure label="Cache read" value={t.cache_read_tokens} />
@@ -89,18 +89,28 @@ export function UsageTokens({ load, view, now }: { load: Load<UsageData>; view: 
         </section>
       )}
       <section aria-label="Tokens per day" className="px-2 pt-1">
-        <DayBars
-          label={`Tokens per day, last ${view.days} days`}
-          height={CHART}
-          days={days.map((d) => ({
-            key: d.key,
-            value: d.total,
-            text: d.total
-              ? `${dayLabel(d.key)} · ${formatTokens(d.total)} tokens · ${formatTokens(d.input)} in / ${formatTokens(d.output)} out · ${d.requests} ${d.requests === 1 ? "response" : "responses"}`
-              : `${dayLabel(d.key)} · no usage`,
-          }))}
-          summary={`${daysWithData(days)} of ${view.days} days with usage · hover or use ← → for a day`}
-        />
+        {daysWithData(days) >= 2 ? (
+          <DayBars
+            label={`Tokens per day, last ${view.days} days`}
+            height={CHART}
+            ticks={[dayLabel(days[0]?.key ?? ""), dayLabel(days[days.length - 1]?.key ?? "")]}
+            days={days.map((d) => ({
+              key: d.key,
+              value: d.total,
+              text: d.total
+                ? `${dayLabel(d.key)}: ${formatTokens(d.total)} tokens, ${formatTokens(d.input)} in, ${formatTokens(d.output)} out, ${d.requests} ${d.requests === 1 ? "response" : "responses"}`
+                : `${dayLabel(d.key)}: no usage`,
+            }))}
+            summary={`${daysWithData(days)} of ${view.days} days with usage`}
+          />
+        ) : (
+          // One day is not a trend: say what there is instead of drawing a lone bar.
+          <p className="text-xs text-fg-3">
+            {daysWithData(days) === 1
+              ? `All of it on ${dayLabel(days.find((d) => d.total > 0)?.key ?? "")}; the daily chart appears once a second day has usage.`
+              : "No daily usage in this range."}
+          </p>
+        )}
       </section>
       <InfoSection title="By model" labelId="usage-models">
         <ShareRows rows={models} value={(r) => formatTokens(r.tokens)} title={(r) => `${r.key}: ${r.tokens.toLocaleString()} tokens`} />

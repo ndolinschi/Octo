@@ -16,6 +16,7 @@ import { Composer, type ComposerHandle } from "./Composer";
 import { TurnRail } from "./TurnRail";
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { StreakLayer } from "../primitives/StreakLayer";
+import { STREAK_EMPTY } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
 import { ObserverBar } from "./ObserverBar";
 import { TeamStrip } from "./TeamStrip";
@@ -39,8 +40,6 @@ export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
 const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyTitle })));
 const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyFacts })));
 
-/** The empty project's streak passes behind the title block (upper middle of the view). */
-const EMPTY_STREAK = { x: 0.5, y: 0.3 } as const;
 /** The turn rail appears from this many requests on. */
 const RAIL_MIN_REQUESTS = 3;
 
@@ -186,7 +185,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
       {isOrchestrator && <ChatHeader transparent={empty} />}
       {empty ? (
         <div data-empty-project className="flex flex-[1_0_auto] flex-col justify-end px-(--pad) pt-8 pb-6">
-          {!backdrop && <StreakLayer anchor={EMPTY_STREAK} theme={theme} />}
+          {!backdrop && <StreakLayer preset={STREAK_EMPTY} theme={theme} />}
           <Suspense fallback={null}>
             <EmptyTitle project={project} />
           </Suspense>

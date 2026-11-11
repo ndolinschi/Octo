@@ -11,8 +11,12 @@
 /** 4×4 Bayer matrix (0–15), row-major. */
 export const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
 
-/** Where the band's centre line passes, as fractions of the host's width and height. */
-export type StreakAnchor = { x: number; y: number };
+import type { StreakAnchor } from "./streakPresets";
+
+export type { StreakAnchor };
+
+/** The Bayer thresholds as fractions (0.5/16 … 15.5/16). */
+const DITHER = Float32Array.from([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], (b) => (b + 0.5) / 16);
 
 export type Rgb = readonly [number, number, number];
 
@@ -26,6 +30,10 @@ export type StreakOptions = {
   /** CSS px the buffer overhangs the host on every side (room for the drift). */
   overhang: number;
   anchor: StreakAnchor;
+  /** Steepness: the line climbs `rise` × height over the width (default 1, the host's diagonal). */
+  rise?: number;
+  /** The echo band's offset below the centre line, × the shorter side (default 0.46). */
+  echo?: number;
   panel: Rgb;
   accent: Rgb;
   theme: StreakTheme;
@@ -99,6 +107,33 @@ function hash(x: number, y: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
+/** Steps of the colour and alpha tables over t, v ∈ [0, 1]. */
+const RAMP = 512;
+type Tables = { rampR: Float32Array; rampG: Float32Array; rampB: Float32Array; alphaTab: Float64Array; noiseColors: Uint32Array };
+let cached: { key: string; t: Tables } | null = null;
+
+function tables(panel: Rgb, accent: Rgb, theme: StreakTheme): Tables {
+  const key = `${theme}:${panel.join(",")}:${accent.join(",")}`;
+  if (cached?.key === key) return cached.t;
+  const t: Tables = {
+    rampR: new Float32Array(RAMP + 1),
+    rampG: new Float32Array(RAMP + 1),
+    rampB: new Float32Array(RAMP + 1),
+    alphaTab: new Float64Array(RAMP + 1),
+    noiseColors: new Uint32Array(64),
+  };
+  for (let i = 0; i <= RAMP; i++) {
+    const [r, g, b] = rampColor(i / RAMP, accent, theme);
+    t.rampR[i] = r;
+    t.rampG[i] = g;
+    t.rampB[i] = b;
+    t.alphaTab[i] = bandAlpha(i / RAMP, theme);
+  }
+  for (let i = 0; i < 64; i++) t.noiseColors[i] = noisePixel(i * 0x9e3779b1, panel, accent, theme);
+  cached = { key, t };
+  return t;
+}
+
 /** Fills `out` (RGBA as little-endian uint32, `cols × rows`) and returns the brightest band alpha drawn. */
 export function renderStreak(out: Uint32Array, o: StreakOptions): number {
   const { cols, rows, cell, overhang, panel, accent, theme } = o;
@@ -110,13 +145,13 @@ export function renderStreak(out: Uint32Array, o: StreakOptions): number {
   const ax = o.anchor.x * w;
   const ay = o.anchor.y * h;
   // The host's diagonal, top-left → bottom-right.
-  const angle = Math.atan2(h, w);
+  const angle = Math.atan2(h * (o.rise ?? 1), w);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const sc = (CORE * short) / 2.9;
   const sh = (HALO * short) / 4;
   const se = (ECHO.width * short) / 4;
-  const echoOff = ECHO.off * short;
+  const echoOff = (o.echo ?? ECHO.off) * short;
   const length = Math.hypot(w, h);
 
   // Lookup tables at 1 CSS px over the distance across the band (d) and along it (s): a cell costs lookups only.
@@ -152,57 +187,81 @@ export function renderStreak(out: Uint32Array, o: StreakOptions): number {
 
   const base = pack(panel[0], panel[1], panel[2]);
   const peak = STREAK_ALPHA[theme].core;
-  const noiseCut = Math.round(noise * 4096);
+  // Colour, alpha and noise colours as lookup tables (no allocation in the hot loop), cached per theme + colours: a
+  // redraw for a new size reuses them.
+  const { rampR, rampG, rampB, alphaTab, noiseColors } = tables(panel, accent, theme);
+  const pr = panel[0];
+  const pg = panel[1];
+  const pb = panel[2];
+  const steps = levels - 1;
   let brightest = 0;
+  // The background first: the panel, then the sparse static noise field (≈ `noise` of the cells, positions from a
+  // hash, so the field is the same on every draw); the band below overwrites the cells it covers.
+  out.fill(base);
+  const total = cols * rows;
+  const lit = Math.round(total * noise);
+  for (let i = 0; i < lit; i++) {
+    const hv = hash(i, 7919);
+    out[hv % total] = noiseColors[(hv >>> 12) & 63] as number;
+  }
+  // One pass, one sample per cell (sampling at half resolution showed 2 × 2 blocks): strength and colour from the
+  // tables, then the cell's own dither step; a cell whose step is 0 skips the colour work.
+  const stepAlpha = peak / steps;
+  const half = cell / 2 - overhang;
   for (let y = 0; y < rows; y++) {
-    const py = y * cell + cell / 2 - overhang - ay;
+    const py = y * cell + half - ay;
     const bRow = (y & 3) * 4;
     const rowBase = y * cols;
-    for (let x = 0; x < cols; x++) {
-      const px = x * cell + cell / 2 - overhang - ax;
+    // d = -px·sin + py·cos is linear in x: the band covers only cells within ±dMax of the centre line.
+    const xFrom = Math.max(0, Math.floor(((py * cos - dMax) / sin + ax - half) / cell) - 1);
+    const xTo = Math.min(cols, Math.ceil(((py * cos + dMax) / sin + ax - half) / cell) + 2);
+    for (let x = xFrom; x < xTo; x++) {
+      const px = x * cell + half - ax;
       // d > 0 is below the centre line (toward the bottom-left), s runs along it.
       const d = -px * sin + py * cos;
       const s = px * cos + py * sin;
-      const di = Math.round(d) + dMax;
-      const si = Math.round(s) + reach;
-      const threshold = ((BAYER4[bRow + (x & 3)] as number) + 0.5) / 16;
-      if (di < 0 || di >= span || si < 0 || si >= sSpan) {
-        // Outside the band: the panel, and the sparse noise field.
-        const hv = hash(x, y);
-        out[rowBase + x] = (hv & 4095) < noiseCut ? noisePixel(hv, panel, accent, theme) : base;
-        continue;
-      }
-      // Three lobes, each at its own slight angle (an irregular edge): their distances differ by s · tilt.
-      const c0 = coreTab[clampIndex(Math.round(d - off0 + s * l0.tilt) + dMax, span)] as number;
-      const c1 = coreTab[clampIndex(Math.round(d - off1 + s * l1.tilt) + dMax, span)] as number;
-      const c2 = coreTab[clampIndex(Math.round(d - off2 + s * l2.tilt) + dMax, span)] as number;
-      const core = Math.max(c0 * (a0[si] as number), c1 * (a1[si] as number), c2 * (a2[si] as number));
+      const di = (d + dMax + 0.5) | 0;
+      const si = (s + reach + 0.5) | 0;
+      if (di < 0 || di >= span || si < 0 || si >= sSpan) continue;
       const halo = haloTab[di] as number;
       const echo = echoTab[di] as number;
+      // Three lobes, each at its own slight angle (an irregular edge): their distances differ by s · tilt.
+      let i0 = (d - off0 + s * l0.tilt + dMax + 0.5) | 0;
+      let i1 = (d - off1 + s * l1.tilt + dMax + 0.5) | 0;
+      let i2 = (d - off2 + s * l2.tilt + dMax + 0.5) | 0;
+      i0 = i0 < 0 ? 0 : i0 >= span ? span - 1 : i0;
+      i1 = i1 < 0 ? 0 : i1 >= span ? span - 1 : i1;
+      i2 = i2 < 0 ? 0 : i2 >= span ? span - 1 : i2;
+      const c0 = (coreTab[i0] as number) * (a0[si] as number);
+      const c1 = (coreTab[i1] as number) * (a1[si] as number);
+      const c2 = (coreTab[i2] as number) * (a2[si] as number);
+      const core = c0 > c1 ? (c0 > c2 ? c0 : c2) : c1 > c2 ? c1 : c2;
       const v0 = 0.68 * halo + 0.55 * core + echo;
+      if (v0 < 0.012) continue;
       const v = v0 > 1 ? 1 : v0;
-      if (v < 0.012) {
-        const hv = hash(x, y);
-        out[rowBase + x] = (hv & 4095) < noiseCut ? noisePixel(hv, panel, accent, theme) : base;
-        continue;
-      }
+      const a = alphaTab[(v * RAMP + 0.5) | 0] as number;
+      if (a > brightest) brightest = a;
+      // The band's strength is quantised to `levels` steps with the ordered dither (the same step for all three
+      // channels, so the grain never splits the hue into rainbow fringes); its colour stays continuous.
+      let q = ((a / peak) * steps + (DITHER[bRow + (x & 3)] as number)) | 0;
+      if (q > steps) q = steps;
+      if (q <= 0) continue;
+      const aq = q * stepAlpha;
       // Colour by energy: the halo (and the echo) run falloff → accent, the core accent → violet → pink → amber;
       // warmer on the core's lower edge, cooler above it (temperature contrast across the band).
-      const tilt = core * (d > 0 ? 0.12 : -0.08);
-      const [cr, cg, cb] = rampColor(0.3 * Math.sqrt(Math.min(1, halo + echo * 1.5)) + 0.78 * core + tilt, accent, theme);
+      const glow = halo + echo * 1.5;
+      let t = 0.3 * Math.sqrt(glow > 1 ? 1 : glow) + 0.78 * core + core * (d > 0 ? 0.12 : -0.08);
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ti = (t * RAMP + 0.5) | 0;
+      const cr = rampR[ti] as number;
+      const cg = rampG[ti] as number;
+      const cb = rampB[ti] as number;
       const hl = (lightTab[di] as number) * core * 0.85;
       const r = cr + (HIGHLIGHT[0] - cr) * hl;
       const g = cg + (HIGHLIGHT[1] - cg) * hl;
       const b = cb + (HIGHLIGHT[2] - cb) * hl;
-      const a = bandAlpha(v, theme);
-      if (a > brightest) brightest = a;
-      // The band's strength is quantised to `levels` steps with the ordered dither (the same step for all three
-      // channels, so the grain never splits the hue into rainbow fringes); its colour stays continuous.
-      const aq = quantizeAlpha(a, peak, levels, threshold);
-      const qr = (r - panel[0]) * aq;
-      const qg = (g - panel[1]) * aq;
-      const qb = (b - panel[2]) * aq;
-      out[rowBase + x] = pack(clamp255(panel[0] + qr), clamp255(panel[1] + qg), clamp255(panel[2] + qb));
+      // Between the panel and the ramp colour (aq < 1), so always 0–255: no clamping needed.
+      out[rowBase + x] = (0xff000000 | (((pb + (b - pb) * aq) | 0) << 16) | (((pg + (g - pg) * aq) | 0) << 8) | ((pr + (r - pr) * aq) | 0)) >>> 0;
     }
   }
   return brightest;
@@ -211,10 +270,6 @@ export function renderStreak(out: Uint32Array, o: StreakOptions): number {
 /** The band's strength on one of `levels` steps between 0 and `peak` (ordered dither: `threshold` ∈ [0, 1)). */
 export function quantizeAlpha(a: number, peak: number, levels: number, threshold: number): number {
   return Math.min(peak, (Math.floor((a / peak) * (levels - 1) + threshold) / (levels - 1)) * peak);
-}
-
-function clampIndex(i: number, span: number): number {
-  return i < 0 ? 0 : i >= span ? span - 1 : i;
 }
 
 /** One lit noise cell: a ramp hue at 6–10% over the panel. */

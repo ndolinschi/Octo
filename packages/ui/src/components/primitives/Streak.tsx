@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { parseColor, renderStreak, streakCell, type StreakAnchor } from "../../lib/streak";
+import { parseColor, renderStreak, streakCell } from "../../lib/streak";
+import type { StreakPreset } from "../../lib/streakPresets";
 
 /** How far the optional drift moves the band (CSS px); the canvas overhangs by this much on every side. */
 const DRIFT = 12;
@@ -10,8 +11,9 @@ const DRIFT = 12;
  * change. The optional drift is a CSS transform (styles.css, `.octo-streak`). Loaded with `import()` on
  * the start screens only; `aria-hidden`, no pointer events. `data-draw-ms` records the last draw time.
  */
-export default function Streak({ anchor, theme }: { anchor: StreakAnchor; theme: "dark" | "light" }) {
+export default function Streak({ preset, theme }: { preset: StreakPreset; theme: "dark" | "light" }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const { anchor, rise, echo } = preset;
   const { x: anchorX, y: anchorY } = anchor;
 
   useEffect(() => {
@@ -38,18 +40,24 @@ export default function Streak({ anchor, theme }: { anchor: StreakAnchor; theme:
       if (!ctx) return;
       const css = getComputedStyle(host);
       const img = ctx.createImageData(cols, rows);
+      const t1 = performance.now();
       const peak = renderStreak(new Uint32Array(img.data.buffer), {
         cols,
         rows,
         cell,
         overhang: DRIFT,
         anchor: { x: anchorX, y: anchorY },
+        rise,
+        echo,
         panel: parseColor(css.getPropertyValue("--octo-panel")),
         accent: parseColor(css.getPropertyValue("--octo-accent")),
         theme,
       });
+      const t2 = performance.now();
       ctx.putImageData(img, 0, 0);
       el.dataset.drawMs = (performance.now() - t0).toFixed(2);
+      // The pixel work alone (`lib/streak.ts`), without reading the theme's colours and the canvas upload.
+      el.dataset.renderMs = (t2 - t1).toFixed(2);
       el.dataset.peak = peak.toFixed(3);
       el.dataset.drawn = "";
     };
@@ -70,7 +78,7 @@ export default function Streak({ anchor, theme }: { anchor: StreakAnchor; theme:
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [anchorX, anchorY, theme]);
+  }, [anchorX, anchorY, rise, echo, theme]);
 
   return <canvas ref={canvas} aria-hidden data-streak className="octo-streak" />;
 }

@@ -51,12 +51,20 @@ export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: 
 }
 
 /**
- * The orchestrator's state in a 16px slot (sidebar rows, Home): working = the accent dot, needs you = the alert
- * glyph in `err`, idle / new = a quiet ring.
+ * The orchestrator's state in one 16px slot (sidebar rows, Home): working = the accent dot, needs you = the alert glyph
+ * in `warn`, unseen activity = a filled accent dot with a ring (it replaces the idle mark: one mark per row), idle /
+ * new = a quiet ring.
  */
-export function OrchestratorGlyph({ state }: { state: "working" | "needs" | "idle" | "new" }) {
+export function OrchestratorGlyph({ state, unseen = false }: { state: "working" | "needs" | "idle" | "new"; unseen?: boolean }) {
   if (state === "working") return <RunningDot box={16} />;
-  if (state === "needs") return <Glyph icon={CircleAlert} size={14} className="mx-px shrink-0 text-err" />;
+  if (state === "needs") return <Glyph icon={CircleAlert} size={14} className="mx-px shrink-0 text-warn" />;
+  if (unseen)
+    return (
+      <span className="grid size-4 shrink-0 place-items-center" title="New activity">
+        <span aria-hidden className="size-2 rounded-full bg-accent ring-2 ring-accent/25" />
+        <span className="sr-only">New activity</span>
+      </span>
+    );
   return (
     <span aria-hidden className="grid size-4 shrink-0 place-items-center">
       <span className="size-1.5 rounded-full border border-fg-3" />

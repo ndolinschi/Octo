@@ -1,5 +1,5 @@
 import type { Agent, ProjectState } from "@octo/agent-client";
-import { formatRelative } from "./format";
+import { timeAgo } from "./format";
 
 /**
  * The project orchestrator's state as the sidebar, the header and Home show it (contract decision 23), derived
@@ -35,16 +35,16 @@ export function liveOrchestratorState(state: ProjectState, projectStatus: "idle"
   return orchestratorState(agents, projectStatus);
 }
 
-/** One line: "Working · 3 agents", "Working", "Needs you", "Idle · 2h", "No requests yet". */
+/** One line: "Working, 3 agents", "Working", "Needs you", "Idle, 2h ago", "No requests yet" (no "·" joiners: craft rule). */
 export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string): string {
   switch (s.kind) {
     case "working":
-      return s.agents.length === 0 ? "Working" : `Working · ${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}`;
+      return s.agents.length === 0 ? "Working" : `Working, ${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}`;
     case "needs":
       return "Needs you";
     case "idle": {
       const at = s.at ?? fallbackAt;
-      return at ? `Idle · ${formatRelative(at, now)}` : "Idle";
+      return at ? `Idle, ${timeAgo(at, now)}` : "Idle";
     }
     case "new":
       return "No requests yet";

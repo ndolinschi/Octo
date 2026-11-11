@@ -44,9 +44,9 @@ test("working: project running, root running or any sub-agent running; agents ol
     runningAgents([a, b]).map((x) => x.id),
     ["b", "a"],
   );
-  assert.equal(stateLine(s, NOW), "Working · 2 agents");
+  assert.equal(stateLine(s, NOW), "Working, 2 agents");
   assert.equal(stateLine(orchestratorState([root()], "running"), NOW), "Working");
-  assert.equal(stateLine(orchestratorState([root(), a], "idle"), NOW), "Working · 1 agent");
+  assert.equal(stateLine(orchestratorState([root(), a], "idle"), NOW), "Working, 1 agent");
 });
 
 test("a failed last turn needs the user", () => {
@@ -56,8 +56,8 @@ test("a failed last turn needs the user", () => {
 });
 
 test("idle shows how long since the last turn ended", () => {
-  assert.equal(stateLine(orchestratorState([root()], "idle"), NOW), "Idle · 1h");
-  assert.equal(stateLine({ kind: "idle", at: null }, NOW, "2026-11-10T11:58:00Z"), "Idle · 2m");
+  assert.equal(stateLine(orchestratorState([root()], "idle"), NOW), "Idle, 1h ago");
+  assert.equal(stateLine({ kind: "idle", at: null }, NOW, "2026-11-10T11:58:00Z"), "Idle, 2m ago");
   assert.equal(stateLine({ kind: "idle", at: null }, NOW), "Idle");
 });
 

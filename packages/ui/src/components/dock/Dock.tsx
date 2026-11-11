@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../state/app";
 import { BackdropProvider, type Backdrop } from "../primitives/backdrop";
 import { StreakLayer } from "../primitives/StreakLayer";
+import { STREAK_EMPTY } from "../../lib/streakPresets";
 import { cn } from "../../lib/cn";
 import { allTabs, focusedGroup, type Group } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
@@ -13,9 +14,6 @@ import { domId } from "../../state/workspace/ids";
 import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";
 import { MIN_GROUP } from "../../lib/constants";
-
-/** The empty project's streak: corner to corner across the group, its core behind the title block. */
-const GROUP_STREAK = { x: 0.5, y: 0.4 } as const;
 
 const SIDES: readonly [string, string, string] = ["Left", "Middle", "Right"];
 
@@ -103,7 +101,14 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
       onFocusCapture={() => ws.focusGroup(group.id)}
       className={cn(panelClass, "relative", narrow && "flex-1")}
     >
-      {backdrops.has(strip.active) && <StreakLayer anchor={GROUP_STREAK} theme={theme} />}
+      {backdrops.has(strip.active) && (
+        <>
+          <StreakLayer preset={STREAK_EMPTY} theme={theme} />
+          {/* Under the tab strip and the header the band fades behind a soft panel wash (no edge), so their text keeps
+              ≥ 4.5:1 while the light still runs up to the panel's top edge. */}
+          <div aria-hidden className="octo-streak-topfade pointer-events-none absolute inset-x-0 top-0" />
+        </>
+      )}
       <GroupProvider group={group}>
         <TabStrip
           label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`}

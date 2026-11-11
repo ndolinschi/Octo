@@ -236,7 +236,7 @@ export function TokensCard({
         <>
           <p className="text-figure text-fg tabular-nums">
             {formatTokens(split.total)}
-            <span className="ml-2 text-sm font-normal text-fg-3">tokens · 30 days</span>
+            <span className="ml-2 text-sm font-normal text-fg-3">tokens in 30 days</span>
           </p>
           <ul aria-label="By model family" className="mt-2 flex flex-col">
             {split.parts.map(([name, n]) => (
@@ -257,7 +257,7 @@ export function TokensCard({
                 days={days.map((d) => ({
                   key: d.key,
                   value: d.total,
-                  text: `${new Date(`${d.key}T12:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })} · ${d.total ? `${formatTokens(d.total)} tokens` : "no usage"}`,
+                  text: `${new Date(`${d.key}T12:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })}: ${d.total ? `${formatTokens(d.total)} tokens` : "no usage"}`,
                 }))}
                 summary={`${daysWithData(days)} of 30 days with usage`}
               />

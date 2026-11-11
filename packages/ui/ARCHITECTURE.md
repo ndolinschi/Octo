@@ -23,7 +23,7 @@ lsp/                    language-server client (hub in the main chunk, the rest 
 lib/                    pure helpers and small hooks: files, format, match (+ group ranking), comments, transcript, tools, route,
                         storage, fileLinks, codePalette, highlight (lazy), streak, focus, constants, context, orchestrator
                         (a project's orchestrator state), usage (report arithmetic, chart scale, limits), crumbs
-                        (breadcrumb fit), frontMatter, languages — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
+                        (breadcrumb fit), frontMatter, languages, streakPresets (band geometry per start screen) — `*.test.ts` beside them (`pnpm --filter @octo/ui test`)
 demo/                   in-memory Bridge with seeded projects (for ?demo= and for scripted checks)
 styles.css              design tokens (@theme), base rules, Monaco widget overrides
 scripts/                spacing-audit.mjs (Playwright; fails on off-scale spacing)

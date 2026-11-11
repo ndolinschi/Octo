@@ -35,7 +35,7 @@ export function UsageCost({ load, view }: { load: Load<UsageData>; view: UsageVi
           </p>
           <p className="text-xs text-fg-3">
             Last {view.days} days, {view.scope === "project" ? "this project" : "all projects"}
-            {unpriced && total.cost_usd !== null ? " · models without a price are not included" : ""}
+            {unpriced && total.cost_usd !== null ? ". Models without a price are not included." : ""}
           </p>
         </section>
       )}

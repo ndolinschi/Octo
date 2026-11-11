@@ -11,3 +11,12 @@ export function domId(tab: TabId): string {
   }
   return id;
 }
+
+/**
+ * A tab's button under `root`, matched by its `data-tab-id` value (not a CSS selector: file tab ids hold a NUL, which
+ * `CSS.escape` turns into U+FFFD, so a selector never matches them).
+ */
+export function tabButton(root: ParentNode, tab: TabId): HTMLElement | null {
+  for (const el of root.querySelectorAll<HTMLElement>('[role="tab"][data-tab-id]')) if (el.dataset.tabId === tab) return el;
+  return null;
+}

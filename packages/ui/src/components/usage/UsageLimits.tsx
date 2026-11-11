@@ -16,16 +16,20 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
   const share = remainingShare(limit);
   const stale = isStale(limit.observed_at, now);
   const reset = resetLabel(limit.resets_at, now);
-  const name = `${modelLabel(limit.model)} · ${limitKindLabel(limit.kind)}`;
+  const name = `${modelLabel(limit.model)} ${limitKindLabel(limit.kind).toLowerCase()}`;
   return (
     <div
       data-limit
       data-stale={stale ? "" : undefined}
-      title={`${limit.provider} · ${limit.model} · ${limitKindLabel(limit.kind)}${stale ? " — stale: no response with these headers for over 10 minutes" : ""}`}
+      title={`${limit.model} on ${limit.provider}: ${limitKindLabel(limit.kind).toLowerCase()}${stale ? " — stale: no response with these headers for over 10 minutes" : ""}`}
       className={cn("flex flex-col gap-1 rounded-sm px-2 py-2", stale && "opacity-60")}
     >
       <div className="flex h-5 min-w-0 items-center gap-2 text-sm">
-        <span className="min-w-0 flex-1 truncate text-fg">{name}</span>
+        {/* The model, then the kind muted: two runs with a gap, no "·" joiner. */}
+        <span className="flex min-w-0 flex-1 items-baseline gap-2 truncate">
+          <span className="shrink-0 text-fg">{modelLabel(limit.model)}</span>
+          <span className="min-w-0 truncate text-fg-2">{limitKindLabel(limit.kind)}</span>
+        </span>
         <span className="shrink-0 text-xs text-fg-2 tabular-nums">{remainingText(limit)}</span>
       </div>
       <span

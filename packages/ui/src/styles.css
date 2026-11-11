@@ -782,7 +782,8 @@
 }
 :root,
 :root[data-theme="dark"] {
-  --octo-card-alpha: 72%;
+  /* 72% (decision 21b) left fg-3 at 4.47:1 over the core's brightest pixel: raised to 78% (measured ≥ 4.5). */
+  --octo-card-alpha: 78%;
   --octo-card-highlight: rgb(255 255 255 / 0.06);
 }
 :root[data-theme="light"] {
@@ -830,4 +831,18 @@
   /* A feathered rectangle (not a radial wash): even cover across a wide text block, to its row ends. */
   background: color-mix(in srgb, var(--octo-panel) 84%, transparent);
   filter: blur(24px);
+}
+
+/* Over the streak behind a group's tab strip and header (the empty project): a panel wash that eases out over
+   112px — opaque enough at the top for the strip's and header's text (measured ≥ 4.5:1), no visible edge. */
+.octo-streak-topfade {
+  height: 112px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--octo-panel) 92%, transparent) 0,
+    color-mix(in srgb, var(--octo-panel) 90%, transparent) 72px,
+    color-mix(in srgb, var(--octo-panel) 60%, transparent) 88px,
+    color-mix(in srgb, var(--octo-panel) 24%, transparent) 102px,
+    transparent 100%
+  );
 }

@@ -39,7 +39,7 @@ export function ChatHeader({ transparent = false }: { transparent?: boolean }) {
             {project.name}
           </span>
           <span
-            className={cn("flex shrink-0 items-center gap-1.5 text-xs", orchestrator.kind === "needs" ? "text-err" : running ? "text-fg-2" : "text-fg-3")}
+            className={cn("flex shrink-0 items-center gap-1.5 text-xs", orchestrator.kind === "needs" ? "text-warn" : running ? "text-fg-2" : "text-fg-3")}
             title={orchestrator.kind === "needs" ? (orchestrator.error ?? "The last turn failed") : `Orchestrator: ${line}`}
           >
             {orchestrator.kind !== "idle" && orchestrator.kind !== "new" && <OrchestratorGlyph state={orchestrator.kind} />}
@@ -53,7 +53,7 @@ export function ChatHeader({ transparent = false }: { transparent?: boolean }) {
             type="button"
             onClick={() => ws?.openTool("agents")}
             title={`Show agents: ${agents.map((a) => a.role).join(", ")}`}
-            className="flex h-chip max-w-[40%] min-w-0 shrink items-center gap-1.5 rounded-sm px-2 text-xs text-fg-2 press-row focus-inset hover:bg-hover hover:text-fg"
+            className="flex h-chip max-w-[40%] min-w-0 shrink-[4] items-center gap-1.5 rounded-sm px-2 text-xs text-fg-2 press-row focus-inset hover:bg-hover hover:text-fg"
           >
             <span aria-hidden className="flex shrink-0 -space-x-1">
               {agents.slice(0, 3).map((a) => (
@@ -62,8 +62,10 @@ export function ChatHeader({ transparent = false }: { transparent?: boolean }) {
                 </span>
               ))}
             </span>
-            <span className="min-w-0 truncate @max-[420px]/conv:hidden">{agentStack(agents.map((a) => a.role))}</span>
-            <span className="hidden shrink-0 tabular-nums @max-[420px]/conv:inline">{agents.length === 1 ? "1 agent" : `${agents.length} agents`}</span>
+            {/* The names show while there is room; under 640px of conversation the stack is its dots and "+N", so the
+                project name never truncates first. */}
+            <span className="min-w-0 truncate @max-[640px]/conv:hidden">{agentStack(agents.map((a) => a.role))}</span>
+            <span className="hidden shrink-0 tabular-nums @max-[640px]/conv:inline">+{agents.length}</span>
           </button>
         )}
         <span className="shrink-0 text-xs text-fg-3 @max-[560px]/conv:hidden" title={`Orchestrator model: ${project.models.orchestrator}`}>

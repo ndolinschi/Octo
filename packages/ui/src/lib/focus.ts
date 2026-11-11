@@ -1,17 +1,22 @@
 /**
  * Moves focus to an element that may not exist yet (a tab that is about to mount, a composer behind a
  * closing dialog): looks for it every frame until `timeout`. With `onlyIfLost`, it only acts while focus
- * sits on nothing (the body, or an element that was just removed), so it never steals focus the user moved.
+ * sits on nothing (the body, or an element that was just removed or hidden), so it never steals focus the user moved.
  */
 export function focusSoon(find: () => HTMLElement | null | undefined, options: { timeout?: number; delay?: number; onlyIfLost?: boolean } = {}): void {
   const { timeout = 1000, delay = 0, onlyIfLost = false } = options;
   const until = performance.now() + delay + timeout;
+  // Lost: nothing focused, or the focused element was removed or hidden (a tab panel that just went away).
   const lost = () => {
     const a = document.activeElement;
-    return !a || a === document.body || !a.isConnected;
+    return !a || a === document.body || !a.isConnected || (a instanceof HTMLElement && a.offsetParent === null && a.getClientRects().length === 0);
   };
   const step = () => {
-    if (onlyIfLost && !lost()) return;
+    // Focus still somewhere real: keep watching until the timeout (it may be lost a frame later), never take it.
+    if (onlyIfLost && !lost()) {
+      if (performance.now() < until) requestAnimationFrame(step);
+      return;
+    }
     const el = find();
     if (el && el.isConnected && el.offsetParent !== null) {
       el.focus({ preventScroll: true });
