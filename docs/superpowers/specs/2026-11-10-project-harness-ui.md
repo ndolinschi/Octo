@@ -363,12 +363,18 @@ monochrome dithered illustration):
 | H: thread list under the swarms with state glyph + age | Session list — the thing decision 23 removed | Not taken |
 | H: account switcher in the sidebar foot | No accounts in a local tool | Not taken |
 
-29. **State glyphs.** One 12px glyph family encodes an agent's state by shape and motion first, colour second
-    (so it survives colour blindness and forced colours): **working** — a ring of 8 dots with a 3-dot bright arc
-    travelling round (1.2 s, linear; static bright arc under reduced motion), `accent`; **needs you** — the ring
-    with a solid centre dot, `warn`, a slow 2 s opacity pulse of the centre (static under reduced motion);
-    **done, unseen** — a filled disc, `accent`; **done, seen / idle** — an open ring, `fg-3`; **failed** — the ring
-    with a short diagonal bar, `err`. Drawn as one SVG component (`primitives/StateGlyph.tsx`, pure geometry in
+29. **State glyphs.** One glyph family (12px; 14px in 36/40px rows) encodes state by **line style** and motion
+    first, colour second (so it survives colour blindness and forced colours). Reference I (owner, 2026-11-11: a
+    step list where the running step is a ring with a turning arc and waiting steps are dashed rings — "projects
+    could look like this: working or not"). All states are rings of one diameter and 1.5px stroke, so a column of
+    them reads as one family: **working** — a faint full ring (`fg-3` at 40%) with a bright 90° arc turning (1 s,
+    linear; static arc under reduced motion), `fg`; **queued / not started** — a **dashed** ring (6 dashes),
+    `fg-3`; **needs you** — a solid ring with a centre dot, `warn`, the dot pulsing slowly (2 s; static under
+    reduced motion); **done, unseen** — a solid ring with a filled disc, `accent`; **done, seen / idle** — a solid
+    thin ring, `fg-3`; **failed** — a solid ring with a short diagonal bar, `err`. The same family marks the steps
+    of the orchestrator's plan when it lists one (running step = turning arc, later steps = dashed), so a project
+    row, a team chip and a plan step speak one language. Drawn as one SVG component (
+    `primitives/StateGlyph.tsx`, pure geometry in
     `lib/stateGlyph.ts`, tested), never an icon-font spinner. Used everywhere a state appears: sidebar project
     rows, **tab labels** (Orchestrator and Agent tabs replace their kind icon with the state glyph while not idle),
     the team strip, Home rows and tiles, delegation rows, the palette. The watched live turn keeps its existing
