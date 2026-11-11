@@ -6,7 +6,7 @@ Passthrough routes forward the client body to upstream with streaming. Octo does
 
 | Method | Local path | Upstream role |
 | --- | --- | --- |
-| `GET` | `/health` | Liveness (no auth) |
+| `GET` | `/health` | Liveness (no auth); JSON with `service`, `version`, `capabilities` (see [autoroute.md](./autoroute.md#harness-integration)) |
 | `POST` | `/v1/chat/completions` | Chat (backend from select) |
 | `POST` | `/openai/completions`, `/openai/v1/chat/completions` | Direct OpenAI chat |
 | `POST` | `/openrouter/completions`, `/openrouter/v1/chat/completions` | OpenRouter chat |

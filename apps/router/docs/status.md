@@ -24,7 +24,7 @@ pie showData
 
 | Area | What you can rely on | Evidence |
 | --- | --- | --- |
-| Health | `GET /health` → 200 | `route_integration` |
+| Health | `GET /health` → 200 with `service`/`capabilities` JSON | `route_integration`, `harness_integration` |
 | Chat proxy | OpenAI + OpenRouter path/body/backend select, streaming | `chat_provider_select`, `proxy_post`, header tests |
 | Messages proxy | Direct Anthropic + OpenRouter Messages | `route_integration`, llm defaults |
 | Decisions proxy | OpenRouter Decisions forward + history | `history_store` |

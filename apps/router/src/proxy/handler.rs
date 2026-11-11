@@ -1,7 +1,6 @@
 use axum::{
     body::{to_bytes, Body, Bytes},
     extract::{Request, State},
-    http::StatusCode,
     response::IntoResponse,
 };
 
@@ -44,6 +43,8 @@ async fn forward_chat(
         hk_text_signal: None,
         auto: None,
         on_response: None,
+        request_id: None,
+        budget_key: None,
     });
     if forward {
         state
@@ -112,6 +113,8 @@ async fn forward_messages(
         hk_text_signal: None,
         auto: None,
         on_response: None,
+        request_id: None,
+        budget_key: None,
     });
     match provider {
         MessagesProvider::Claude => {
@@ -186,11 +189,20 @@ pub async fn decisions(
                 hk_text_signal: None,
                 auto: None,
                 on_response: None,
+                request_id: None,
+                budget_key: None,
             }),
         )
         .await
 }
 
+pub const CAPABILITIES: [&str; 4] = ["autoroute", "route_hints", "result_headers", "budget_key"];
+
 pub async fn health() -> impl IntoResponse {
-    StatusCode::OK
+    axum::Json(serde_json::json!({
+        "status": "ok",
+        "service": "octo",
+        "version": env!("CARGO_PKG_VERSION"),
+        "capabilities": CAPABILITIES,
+    }))
 }

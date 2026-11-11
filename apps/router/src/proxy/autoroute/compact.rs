@@ -7,7 +7,7 @@ use axum::{
 };
 use serde_json::Value;
 
-use crate::auto::{parent_session_id, session_key, Compact};
+use crate::auto::{new_request_id, parent_session_id, session_key, CallRow, Compact, Hints};
 use crate::history::{
     describe_input, request_payload, resolve_cost, response_payload, token_from_headers,
     usage_from_output, CallKind, CallProvider, FinishedCall, Millis,
@@ -23,6 +23,7 @@ pub(super) async fn upstream(
     state: &AppState,
     parts: &axum::http::request::Parts,
     compact: &Compact,
+    hints: &Hints,
 ) -> Result<Response, ProxyError> {
     let started = Instant::now();
     let (status, bytes, generation_id) = post(state, parts, &compact.body).await?;
@@ -49,7 +50,8 @@ pub(super) async fn upstream(
             state.auto.mark_awaiting_compact(&id);
         }
     }
-    record(RecordPlan {
+    let request_id = new_request_id();
+    let recorded = record(RecordPlan {
         state,
         parts,
         request_body: &sent,
@@ -57,12 +59,28 @@ pub(super) async fn upstream(
         output: &bytes,
         started,
         header_generation_id: generation_id,
+        hints,
+        request_id: &request_id,
     });
     let mut response = Response::new(Body::from(bytes.to_vec()));
     *response.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
     response.headers_mut().insert(
         axum::http::header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
+    );
+    let tier = state.auto.tiers().band(&recorded.model).to_string();
+    let session = session_of_bytes(&sent);
+    super::apply_result_headers(
+        &mut response,
+        &super::ResultInfo {
+            model: Some(&recorded.model),
+            tier: Some(&tier),
+            trigger: "compact",
+            request_id: &request_id,
+            budget: state
+                .auto
+                .budget_status(session.as_deref(), hints.budget_key.as_deref()),
+        },
     );
     Ok(response)
 }
@@ -128,9 +146,15 @@ struct RecordPlan<'a> {
     output: &'a [u8],
     started: Instant,
     header_generation_id: Option<String>,
+    hints: &'a Hints,
+    request_id: &'a str,
 }
 
-fn record(plan: RecordPlan<'_>) {
+struct Recorded {
+    model: String,
+}
+
+fn record(plan: RecordPlan<'_>) -> Recorded {
     let input = String::from_utf8_lossy(plan.request_body).into_owned();
     let output_text = String::from_utf8_lossy(plan.output).into_owned();
     let (model, message) = describe_input(&input);
@@ -147,9 +171,26 @@ fn record(plan: RecordPlan<'_>) {
         .as_deref()
         .and_then(parent_session_id)
         .map(str::to_string);
-    if let (Some(session_id), Some(cost)) = (session.as_deref(), resolved.cost) {
-        plan.state.auto.add_session_cost(session_id, cost.0);
+    if let Some(cost) = resolved.cost {
+        plan.state
+            .auto
+            .add_cost(session.as_deref(), plan.hints.budget_key.as_deref(), cost.0);
     }
+    let served = model.clone().unwrap_or_default();
+    plan.state.auto.record_call(
+        plan.request_id.to_string(),
+        CallRow {
+            model: served.clone(),
+            tier: plan.state.auto.tiers().band(&served).to_string(),
+            trigger: "compact".to_string(),
+            input_tokens: usage.input_tokens.map_or(0, |t| t.0),
+            output_tokens: usage.output_tokens.map_or(0, |t| t.0),
+            cache_read_tokens: usage.cache_read_tokens.map_or(0, |t| t.0),
+            cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
+            cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
+            cost_source: crate::providers::utils::cost_source_label(resolved.source),
+        },
+    );
     let generation_id = plan.header_generation_id.or(usage.generation_id.clone());
     plan.state.history.record(FinishedCall {
         kind: CallKind::Messages,
@@ -197,4 +238,5 @@ fn record(plan: RecordPlan<'_>) {
         tier_after: None,
         trigger: "compact".to_string(),
     });
+    Recorded { model: served }
 }

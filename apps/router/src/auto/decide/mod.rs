@@ -19,6 +19,7 @@ use crate::history::History;
 use super::action::{Reject, Turn};
 use super::body;
 use super::catalog::{self, CatalogCache, Tiers};
+use super::hints::{Hints, TierPolicy};
 use super::jev::Complexity;
 use super::metrics;
 use super::stall;
@@ -28,7 +29,7 @@ use super::session::SessionChoice;
 use classify::{ClassifyCtx, ClassifyTurn};
 use gate::SessionGate;
 use route::{RepeatCompact, RouteCtx, RoutePlan};
-use sticky::{apply as apply_sticky, cap_for_budget_shaped, StickyOutcome, StickyPlan};
+use sticky::{apply as apply_sticky, cap_for_budget_with, StickyOutcome, StickyPlan};
 
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60);
 const CATALOG_TTL: Duration = Duration::from_secs(10 * 60);
@@ -42,6 +43,7 @@ pub struct Auto {
     catalog: Arc<Mutex<CatalogCache>>,
     gates: Arc<SyncMutex<HashMap<String, Arc<Mutex<()>>>>>,
     ledger: Arc<SyncMutex<super::ledger::BudgetLedger>>,
+    calls: Arc<SyncMutex<super::calls::CallStore>>,
 }
 
 impl Auto {
@@ -54,6 +56,7 @@ impl Auto {
             ledger: Arc::new(SyncMutex::new(super::ledger::BudgetLedger::new(
                 SESSION_TTL,
             ))),
+            calls: Arc::new(SyncMutex::new(super::calls::CallStore::default())),
         }
     }
 
@@ -145,6 +148,92 @@ impl Auto {
         if let Ok(mut ledger) = self.ledger.lock() {
             ledger.bind(session_key, budget_key);
         }
+    }
+
+    pub fn bind_hints(&self, session_key: Option<&str>, hints: &Hints) {
+        let Some(budget_key) = hints.budget_key.as_deref() else {
+            return;
+        };
+        let Ok(mut ledger) = self.ledger.lock() else {
+            return;
+        };
+        match session_key {
+            Some(session) => ledger.bind(session, budget_key),
+            None => ledger.touch(budget_key),
+        }
+        if let Some(micros) = hints.budget_micros {
+            ledger.set_limit(budget_key, micros);
+        }
+    }
+
+    pub fn effective_budget(&self, budget_key: Option<&str>) -> Budget {
+        let configured = Budget {
+            micros: self.tiers.session_budget_micros,
+            action: self.tiers.session_budget_action,
+        };
+        let Some(limit) = budget_key.and_then(|key| self.ledger.lock().ok()?.limit(key)) else {
+            return configured;
+        };
+        if configured.micros > 0 && configured.micros < limit {
+            return configured;
+        }
+        Budget {
+            micros: limit,
+            action: BudgetAction::Reject,
+        }
+    }
+
+    pub fn budget_status(
+        &self,
+        session_key: Option<&str>,
+        budget_key: Option<&str>,
+    ) -> Option<(u64, u64)> {
+        let key = budget_key
+            .map(str::to_string)
+            .or_else(|| session_key.and_then(|id| self.budget_key_of(id)));
+        let budget = self.effective_budget(key.as_deref());
+        if budget.micros == 0 {
+            return None;
+        }
+        let spent = match key.as_deref() {
+            Some(key) => self.budget_spent(key),
+            None => session_key
+                .map(|id| self.session_cost_micros(id))
+                .unwrap_or(0),
+        };
+        Some((budget.micros, spent))
+    }
+
+    pub fn budget_spent(&self, budget_key: &str) -> u64 {
+        self.ledger
+            .lock()
+            .map(|mut ledger| ledger.spent(budget_key))
+            .unwrap_or(0)
+    }
+
+    pub fn add_cost(&self, session_key: Option<&str>, budget_key: Option<&str>, micros: u64) {
+        if micros == 0 {
+            return;
+        }
+        if let Some(key) = budget_key {
+            if let Ok(mut ledger) = self.ledger.lock() {
+                ledger.add(key, micros);
+            }
+            return;
+        }
+        if let Some(session) = session_key {
+            self.add_session_cost(session, micros);
+        }
+    }
+
+    pub fn record_call(&self, request_id: String, row: super::calls::CallRow) {
+        if let Ok(mut calls) = self.calls.lock() {
+            calls.insert(request_id, row);
+        }
+    }
+
+    pub fn call(&self, request_id: &str) -> Option<super::calls::CallRow> {
+        self.calls.lock().ok()?.get(request_id)
     }
 
     pub fn budget_key_of(&self, session_key: &str) -> Option<String> {
@@ -286,6 +375,18 @@ impl Auto {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Budget {
+    pub micros: u64,
+    pub action: BudgetAction,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Limits {
+    pub budget_micros: u64,
+    pub max_band: Option<&'static str>,
+}
+
 pub struct DecideRequest<'a> {
     pub auto: &'a Auto,
     pub history: &'a History,
@@ -297,6 +398,10 @@ pub struct DecideRequest<'a> {
 }
 
 pub async fn decide(req: DecideRequest<'_>) -> Turn {
+    decide_with(req, &Hints::default()).await
+}
+
+pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
     let preferred = body::preferred_model(&req.body);
     let all_tools = body::tool_names(&req.body);
     let reserve = body::max_tokens(&req.body);
@@ -345,20 +450,33 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .map(|row| row.sticky_band.clone())
         .unwrap_or_else(|| "unset".to_string());
 
-    let spent = actor
-        .as_ref()
-        .map(|id| req.auto.session_cost_micros(id))
-        .unwrap_or(0);
-
-    let budget = req.auto.tiers.session_budget_micros;
-    if budget > 0 && spent >= budget && req.auto.tiers.session_budget_action == BudgetAction::Reject
-    {
+    let budget_key = hints
+        .budget_key
+        .clone()
+        .or_else(|| actor.as_deref().and_then(|id| req.auto.budget_key_of(id)));
+    let spent = match budget_key.as_deref() {
+        Some(key) => req.auto.budget_spent(key),
+        None => actor
+            .as_ref()
+            .map(|id| req.auto.session_cost_micros(id))
+            .unwrap_or(0),
+    };
+    let budget = req.auto.effective_budget(budget_key.as_deref());
+    if budget.micros > 0 && spent >= budget.micros && budget.action == BudgetAction::Reject {
         return Turn::Reject(Reject {
-            budget_micros: budget,
+            budget_micros: budget.micros,
             spent_micros: spent,
-            budget_key: actor.as_deref().and_then(|id| req.auto.budget_key_of(id)),
+            budget_key: budget_key.clone(),
         });
     }
+    let max_band = match hints.policy {
+        TierPolicy::Ceiling | TierPolicy::Fixed => hints.tier,
+        TierPolicy::Auto => None,
+    };
+    let limits = Limits {
+        budget_micros: budget.micros,
+        max_band,
+    };
     let budget_shape = RequestShape {
         input_tokens: client_tokens,
         output_tokens: reserve.min(1024),
@@ -371,32 +489,35 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             .filter(|model| !model.is_empty())
             .or_else(|| preferred.clone())
             .unwrap_or_else(|| req.auto.tiers.mid.clone());
+        let mut plan = RoutePlan {
+            model,
+            tools: row
+                .map(|row| row.tools.clone())
+                .unwrap_or_else(|| all_tools.clone()),
+            reason: Some("permission_check".to_string()),
+            tier_before,
+            reserve,
+            allow_compact,
+            persist: false,
+            sticky_band: row
+                .map(|row| row.sticky_band.clone())
+                .unwrap_or_else(|| "unset".to_string()),
+            escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
+            escalate_band: row.and_then(|row| row.escalate_band.clone()),
+            last_stall: row.and_then(|row| row.last_stall.clone()),
+            pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
+            down_count: row.map(|row| row.down_count).unwrap_or(0),
+            trimmed_from_tokens: None,
+            spent_micros: spent,
+            limits: limits.clone(),
+        };
+        clamp_plan(&mut plan, &req.auto.tiers);
         return route::run(RouteCtx {
             auto: req.auto,
             body: req.body,
             models: loaded.as_ref(),
             previous_model: row.map(|row| row.model.clone()),
-            plan: RoutePlan {
-                model,
-                tools: row
-                    .map(|row| row.tools.clone())
-                    .unwrap_or_else(|| all_tools.clone()),
-                reason: Some("permission_check".to_string()),
-                tier_before,
-                reserve,
-                allow_compact,
-                persist: false,
-                sticky_band: row
-                    .map(|row| row.sticky_band.clone())
-                    .unwrap_or_else(|| "unset".to_string()),
-                escalate_remaining: row.map(|row| row.escalate_remaining).unwrap_or(0),
-                escalate_band: row.and_then(|row| row.escalate_band.clone()),
-                last_stall: row.and_then(|row| row.last_stall.clone()),
-                pending_down_band: row.and_then(|row| row.pending_down_band.clone()),
-                down_count: row.map(|row| row.down_count).unwrap_or(0),
-                trimmed_from_tokens: None,
-                spent_micros: spent,
-            },
+            plan,
         });
     }
 
@@ -415,6 +536,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             trim: true,
             persist: false,
             spent_micros: spent,
+            limits: limits.clone(),
         });
     }
 
@@ -438,6 +560,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             trim: true,
             persist: false,
             spent_micros: spent,
+            limits: limits.clone(),
         });
     }
 
@@ -488,6 +611,53 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         }
     }
 
+    if let (TierPolicy::Fixed, Some(band)) = (hints.policy, hints.tier) {
+        let mut sticky = StickyOutcome {
+            model: req.auto.tiers.slug(band),
+            sticky_band: band.to_string(),
+            escalate_remaining: 0,
+            escalate_band: None,
+            last_stall: None,
+            pending_down_band: None,
+            down_count: 0,
+            reason: Some("hint".to_string()),
+        };
+        cap_for_budget_with(
+            &mut sticky,
+            &req.auto.tiers,
+            limits.budget_micros,
+            spent,
+            budget_shape,
+        );
+        let row = choice.as_ref();
+        return route::run(RouteCtx {
+            auto: req.auto,
+            previous_model: row.map(|row| row.model.clone()),
+            body: req.body,
+            models: loaded.as_ref(),
+            plan: RoutePlan {
+                model: sticky.model,
+                tools: row
+                    .map(|row| row.tools.clone())
+                    .unwrap_or_else(|| all_tools.clone()),
+                reason: compact_event.map(str::to_string).or(sticky.reason),
+                tier_before,
+                reserve,
+                allow_compact,
+                persist,
+                sticky_band: sticky.sticky_band,
+                escalate_remaining: 0,
+                escalate_band: None,
+                last_stall: None,
+                pending_down_band: None,
+                down_count: 0,
+                trimmed_from_tokens: None,
+                spent_micros: spent,
+                limits: limits.clone(),
+            },
+        });
+    }
+
     let stall = stall::detect(&req.body, req.auto.tiers.stall_window);
     let tool_results_only = body::last_user_tool_results_only(&req.body);
     let current_tier = choice
@@ -505,6 +675,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         all_tools: &all_tools,
         tiers: &req.auto.tiers,
         current_tier,
+        task: hints.task.as_deref(),
     };
 
     if let Some(row) = hold_without_classify(HoldWithoutClassify {
@@ -528,6 +699,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
                 spent,
                 tiers: &req.auto.tiers,
                 shape: budget_shape,
+                limits: &limits,
             }),
         });
     }
@@ -536,6 +708,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         .as_ref()
         .is_none_or(|row| row.sticky_band == "unset" || row.model.is_empty());
     if subagent_unset
+        && !hints.has_tier()
         && actor.as_deref().is_some_and(body::is_subagent_key)
         && !question.trim().is_empty()
         && stall.is_none()
@@ -554,11 +727,35 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             trim: false,
             persist,
             spent_micros: spent,
+            limits: limits.clone(),
         });
     }
 
     let mut classifier_failed = false;
-    let picked = if choice.is_some() {
+    let hint_start = match hints.tier {
+        Some(band) if subagent_unset => {
+            let mut complexity = band_complexity(band);
+            let mut tools = all_tools.clone();
+            let mut reason = "hint";
+            if hints.is_sub() && !question.trim().is_empty() {
+                if let Some(pick) = classify::fresh(&classify_ctx, preferred.as_deref()).await {
+                    tools = pick.tools;
+                    if catalog::band_rank(catalog::complexity_band(pick.complexity))
+                        < catalog::band_rank(band)
+                    {
+                        complexity = pick.complexity;
+                        reason = "classify";
+                    }
+                }
+            }
+            Some((complexity, tools, reason.to_string()))
+        }
+        _ => None,
+    };
+    let hinted = hint_start.is_some();
+    let picked = if hinted {
+        None
+    } else if choice.is_some() {
         if question.trim().is_empty() {
             None
         } else {
@@ -612,48 +809,63 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
         }
     };
 
-    let (classified, tools, classify_reason) = match (picked, choice.clone()) {
-        (Some(pick), Some(row)) => {
-            let reason = if !catalog::ids_match(&pick.model, &row.model) {
-                Some("reclassify".to_string())
-            } else if pick.tools != row.tools {
-                Some("tool_update".to_string())
-            } else {
-                None
-            };
-            (pick.complexity, pick.tools, reason)
+    let (classified, tools, classify_reason) = if let Some((complexity, tools, reason)) = hint_start
+    {
+        (complexity, tools, Some(reason))
+    } else {
+        match (picked, choice.clone()) {
+            (Some(pick), Some(row)) => {
+                let reason = if !catalog::ids_match(&pick.model, &row.model) {
+                    Some("reclassify".to_string())
+                } else if pick.tools != row.tools {
+                    Some("tool_update".to_string())
+                } else {
+                    None
+                };
+                (pick.complexity, pick.tools, reason)
+            }
+            (Some(pick), None) => (
+                pick.complexity,
+                pick.tools,
+                Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
+            ),
+            (None, Some(row)) => (band_complexity(&row.sticky_band), row.tools.clone(), None),
+            (None, None) if classifier_failed => (
+                band_complexity(&req.auto.tiers.classifier_failure_tier),
+                all_tools.clone(),
+                Some(CLASSIFIER_FAILURE_REASON.to_string()),
+            ),
+            (None, None) => (
+                if stall.is_some() {
+                    Complexity::Low
+                } else {
+                    Complexity::Mid
+                },
+                all_tools.clone(),
+                forced_reason,
+            ),
         }
-        (Some(pick), None) => (
-            pick.complexity,
-            pick.tools,
-            Some(forced_reason.unwrap_or_else(|| "classify".to_string())),
-        ),
-        (None, Some(row)) => (band_complexity(&row.sticky_band), row.tools.clone(), None),
-        (None, None) if classifier_failed => (
-            band_complexity(&req.auto.tiers.classifier_failure_tier),
-            all_tools.clone(),
-            Some(CLASSIFIER_FAILURE_REASON.to_string()),
-        ),
-        (None, None) => (
-            if stall.is_some() {
-                Complexity::Low
-            } else {
-                Complexity::Mid
-            },
-            all_tools.clone(),
-            forced_reason,
-        ),
     };
 
     let mut sticky = apply_sticky(StickyPlan {
         tiers: &req.auto.tiers,
-        choice: choice.as_ref(),
+        choice: choice.as_ref().filter(|_| !hinted),
         classified,
         preferred: preferred.as_deref(),
         stall,
         tool_results_only,
     });
-    cap_for_budget_shaped(&mut sticky, &req.auto.tiers, spent, budget_shape);
+    let clamped = clamp_sticky(&mut sticky, &req.auto.tiers, limits.max_band);
+    if clamped {
+        sticky.reason = Some("hint".to_string());
+    }
+    cap_for_budget_with(
+        &mut sticky,
+        &req.auto.tiers,
+        limits.budget_micros,
+        spent,
+        budget_shape,
+    );
     let previous_model = choice.as_ref().map(|row| row.model.clone());
     let reason = sticky
         .reason
@@ -680,6 +892,7 @@ pub async fn decide(req: DecideRequest<'_>) -> Turn {
             down_count: sticky.down_count,
             trimmed_from_tokens: None,
             spent_micros: spent,
+            limits,
         },
     })
 }
@@ -716,6 +929,7 @@ struct LowNoSticky<'a> {
     trim: bool,
     persist: bool,
     spent_micros: u64,
+    limits: Limits,
 }
 
 fn low_no_sticky(plan: LowNoSticky<'_>) -> Turn {
@@ -765,6 +979,7 @@ fn low_no_sticky(plan: LowNoSticky<'_>) -> Turn {
             down_count: row.map(|row| row.down_count).unwrap_or(0),
             trimmed_from_tokens,
             spent_micros: plan.spent_micros,
+            limits: plan.limits,
         },
     })
 }
@@ -785,8 +1000,14 @@ fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
         down_count: plan.row.down_count,
         reason: plan.reason,
     };
-    cap_for_budget_shaped(&mut sticky, plan.tiers, plan.spent, plan.shape);
-    RoutePlan {
+    cap_for_budget_with(
+        &mut sticky,
+        plan.tiers,
+        plan.limits.budget_micros,
+        plan.spent,
+        plan.shape,
+    );
+    let mut ceiled = RoutePlan {
         model: sticky.model,
         tools: plan.row.tools.clone(),
         reason: sticky.reason,
@@ -802,7 +1023,10 @@ fn session_plan_budget(plan: SessionPlanBudget<'_>) -> RoutePlan {
         down_count: plan.row.down_count,
         trimmed_from_tokens: None,
         spent_micros: plan.spent,
-    }
+        limits: plan.limits.clone(),
+    };
+    clamp_plan(&mut ceiled, plan.tiers);
+    ceiled
 }
 
 struct SessionPlanBudget<'a> {
@@ -815,6 +1039,7 @@ struct SessionPlanBudget<'a> {
     spent: u64,
     tiers: &'a Tiers,
     shape: RequestShape,
+    limits: &'a Limits,
 }
 
 fn band_complexity(band: &str) -> Complexity {
@@ -822,5 +1047,56 @@ fn band_complexity(band: &str) -> Complexity {
         "low" => Complexity::Low,
         "high" => Complexity::High,
         _ => Complexity::Mid,
+    }
+}
+
+fn model_rank(tiers: &Tiers, model: &str) -> u8 {
+    match tiers.band(model) {
+        "custom" => catalog::band_rank("high"),
+        band => catalog::band_rank(band),
+    }
+}
+
+fn clamp_sticky(out: &mut StickyOutcome, tiers: &Tiers, max_band: Option<&str>) -> bool {
+    let Some(max) = max_band else {
+        return false;
+    };
+    let cap = catalog::band_rank(max);
+    let mut changed = false;
+    if model_rank(tiers, &out.model) > cap {
+        out.model = tiers.slug(max);
+        changed = true;
+    }
+    if catalog::band_rank(&out.sticky_band) > cap {
+        out.sticky_band = max.to_string();
+    }
+    if out
+        .escalate_band
+        .as_deref()
+        .is_some_and(|band| catalog::band_rank(band) > cap)
+    {
+        out.escalate_band = Some(max.to_string());
+    }
+    changed
+}
+
+fn clamp_plan(plan: &mut RoutePlan, tiers: &Tiers) {
+    let Some(max) = plan.limits.max_band else {
+        return;
+    };
+    let cap = catalog::band_rank(max);
+    if model_rank(tiers, &plan.model) > cap {
+        plan.model = tiers.slug(max);
+        plan.reason = Some("hint".to_string());
+    }
+    if catalog::band_rank(&plan.sticky_band) > cap {
+        plan.sticky_band = max.to_string();
+    }
+    if plan
+        .escalate_band
+        .as_deref()
+        .is_some_and(|band| catalog::band_rank(band) > cap)
+    {
+        plan.escalate_band = Some(max.to_string());
     }
 }

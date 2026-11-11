@@ -909,6 +909,8 @@ async fn r7_stream_dropped_mid_response_still_records_tokens_and_cost() {
             hk_text_signal: None,
             auto: None,
             on_response: None,
+            request_id: None,
+            budget_key: None,
         }),
     )
     .await

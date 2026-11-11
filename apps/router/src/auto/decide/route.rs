@@ -12,7 +12,7 @@ use super::super::metrics::{self, context_estimate};
 use super::super::routing::RouteMeta;
 use super::super::session::SessionChoice;
 use super::models::counted_bytes;
-use super::sticky::{cap_for_budget_shaped, StickyOutcome};
+use super::sticky::{cap_for_budget_with, StickyOutcome};
 use super::Auto;
 
 pub(super) struct RoutePlan {
@@ -31,6 +31,7 @@ pub(super) struct RoutePlan {
     pub down_count: u32,
     pub trimmed_from_tokens: Option<u64>,
     pub spent_micros: u64,
+    pub limits: super::Limits,
 }
 
 pub(super) struct RouteCtx<'a> {
@@ -127,7 +128,18 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                 });
             }
             let need = estimate.input_tokens_est.saturating_mul(4) / 3 + 1;
-            let tiers = ctx.auto.tiers.candidates();
+            let tiers: Vec<&str> = ctx
+                .auto
+                .tiers
+                .candidates()
+                .into_iter()
+                .filter(|slug| match plan.limits.max_band {
+                    Some(max) => {
+                        catalog::band_rank(ctx.auto.tiers.band(slug)) <= catalog::band_rank(max)
+                    }
+                    None => true,
+                })
+                .collect();
             if let Some(slug) = catalog::larger_fit(LargerFit {
                 candidates: &tiers,
                 models: ctx.models,
@@ -146,9 +158,10 @@ pub(super) fn run(ctx: RouteCtx<'_>) -> Turn {
                     down_count: plan.down_count,
                     reason: Some("upgrade".to_string()),
                 };
-                cap_for_budget_shaped(
+                cap_for_budget_with(
                     &mut upgraded,
                     &ctx.auto.tiers,
+                    plan.limits.budget_micros,
                     plan.spent_micros,
                     RequestShape {
                         input_tokens: estimate.input_tokens_est,

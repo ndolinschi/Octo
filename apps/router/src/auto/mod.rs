@@ -1,7 +1,9 @@
 mod action;
 mod body;
+mod calls;
 mod catalog;
 mod decide;
+mod hints;
 mod jev;
 mod ladder;
 mod ledger;
@@ -20,6 +22,7 @@ pub use body::{
     subagent_task_hash, trim_housekeeping, with_model, with_online_suffix, HousekeepingTrim,
     ShapePlan, ShapeResult, DEFAULT_MAX_TOKENS, PROTECTED_STRIP_FIELDS,
 };
+pub use calls::{new_request_id, CallRow};
 pub use catalog::{
     band_rank, bare_id, bump_band, complexity_band, context_length, larger_fit,
     max_completion_tokens, strip_model_marker, supports_reasoning, LargerFit,
@@ -28,9 +31,11 @@ pub use catalog::{
     default_strip_fields, is_band, BudgetAction, RequestShape, RequireParameters, Tiers,
 };
 pub use decide::sticky::{
-    apply as apply_sticky, cap_for_budget, cap_for_budget_shaped, StickyOutcome, StickyPlan,
+    apply as apply_sticky, cap_for_budget, cap_for_budget_shaped, cap_for_budget_with,
+    StickyOutcome, StickyPlan,
 };
-pub use decide::{decide, Auto, DecideRequest};
+pub use decide::{decide, decide_with, Auto, Budget, DecideRequest, Limits};
+pub use hints::{AgentRole, Hints, TierPolicy};
 pub use jev::{
     asks_file_or_repo_inspection, choice, choice_from_scores, classified, inspect, needed_tools,
     payload, Complexity, ContextFacts, PayloadPlan, Thresholds, ToolNeed,

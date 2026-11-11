@@ -6,6 +6,7 @@ pub struct BudgetLedger {
     bindings: HashMap<String, (String, Instant)>,
     spend: HashMap<String, (u64, Instant)>,
     restored: HashMap<String, (u64, Instant)>,
+    limits: HashMap<String, (u64, Instant)>,
     ttl: Duration,
 }
 
@@ -15,6 +16,7 @@ impl BudgetLedger {
             bindings: HashMap::new(),
             spend: HashMap::new(),
             restored: HashMap::new(),
+            limits: HashMap::new(),
             ttl,
         }
     }
@@ -29,6 +31,25 @@ impl BudgetLedger {
             .entry(budget_key.to_string())
             .or_insert((0, Instant::now()))
             .1 = Instant::now();
+    }
+
+    pub fn touch(&mut self, budget_key: &str) {
+        self.expire();
+        self.spend
+            .entry(budget_key.to_string())
+            .or_insert((0, Instant::now()))
+            .1 = Instant::now();
+    }
+
+    pub fn set_limit(&mut self, budget_key: &str, micros: u64) {
+        self.expire();
+        self.limits
+            .insert(budget_key.to_string(), (micros, Instant::now()));
+    }
+
+    pub fn limit(&mut self, budget_key: &str) -> Option<u64> {
+        self.expire();
+        self.limits.get(budget_key).map(|(micros, _)| *micros)
     }
 
     pub fn key_for(&mut self, session_key: &str) -> Option<String> {
@@ -73,5 +94,6 @@ impl BudgetLedger {
         self.bindings.retain(|_, (_, seen)| seen.elapsed() < ttl);
         self.spend.retain(|_, (_, seen)| seen.elapsed() < ttl);
         self.restored.retain(|_, (_, seen)| seen.elapsed() < ttl);
+        self.limits.retain(|_, (_, seen)| seen.elapsed() < ttl);
     }
 }

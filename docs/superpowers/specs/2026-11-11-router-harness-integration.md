@@ -89,6 +89,26 @@ ceiling` never serves above the hint; `fixed` serves the hint's tier. (4) A rout
 request is shorter and the router does not compact again. (5) Against a non-Octo base URL nothing changes and no
 `x-octo-*` request header is sent. (6) All gates in both apps.
 
+## As built — I1, router side (2026-11-11)
+
+Built in `apps/router` (20 new tests in `tests/harness_integration.rs`; 219 pass). Decisions taken while building:
+
+- **A budget sent in `x-octo-budget-usd` always rejects (402)** when it is the effective one, whatever
+  `session_budget_action` says; the configured budget keeps its configured action when it is the smaller.
+- `x-octo-budget-usd` is ignored without `x-octo-budget-key`; the key needs no session id.
+- `x-octo-spent-usd` is the spend **before** the response it is on.
+- `x-octo-request-id` is `octo_<hex>` (the final attempt's id on a retry), not a history row id. Call records are
+  kept in memory only (4096 rows); the SQLite history has no request id yet.
+- A call with neither a reported cost nor a price entry reads `cost_usd: 0`, `cost_source: "estimated"`.
+- A plain sticky turn reports trigger `none` (the history column's value); `hint` is new; a budget clamp reports
+  `budget_cap`.
+- Errors raised before any upstream response exists (e.g. a connect failure → 502) carry no `x-octo-*` headers.
+- **Compaction for the client:** header `x-octo-trigger: compact`; the body is the upstream Messages JSON, never a
+  stream. It succeeded only on 2xx with `stop_reason == "compaction"`; the summary is the `content[]` block of
+  `type: "compaction"` (its `content` string), else the concatenated `text` blocks. If the next request is not
+  shorter the router forwards normally with trigger `compact_not_applied`.
+- Hints are also read on `/autoroute/v1/chat/completions`.
+
 ## I2 — a routing decision for delegation (after I1)
 
 `POST /autoroute/v1/route` — the harness asks before it spawns a sub-agent whose tier the orchestrator left open

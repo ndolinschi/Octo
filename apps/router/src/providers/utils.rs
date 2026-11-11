@@ -171,6 +171,8 @@ impl Capture {
                 hk_text_signal: observe.hk_text_signal,
                 auto: observe.auto.clone(),
                 on_response: observe.on_response.clone(),
+                request_id: observe.request_id.clone(),
+                budget_key: observe.budget_key.clone(),
             },
             model,
             message,
@@ -224,6 +226,7 @@ impl Capture {
         );
         let latency_ms = Millis::new(self.started.elapsed().as_millis() as u64);
         let generation_id = self.header_generation_id.or(usage.generation_id.clone());
+        let call_model = self.model.clone().unwrap_or_default();
         let parent = self
             .observe
             .session_id
@@ -270,10 +273,30 @@ impl Capture {
             bg_signal: self.observe.bg_signal,
             hk_text_signal: self.observe.hk_text_signal,
         });
-        if let (Some(auto), Some(session_id), Some(cost)) =
-            (&self.observe.auto, &self.observe.session_id, resolved.cost)
-        {
-            auto.add_session_cost(session_id, cost.0);
+        if let Some(auto) = &self.observe.auto {
+            if let Some(cost) = resolved.cost {
+                auto.add_cost(
+                    self.observe.session_id.as_deref(),
+                    self.observe.budget_key.as_deref(),
+                    cost.0,
+                );
+            }
+            if let Some(request_id) = &self.observe.request_id {
+                auto.record_call(
+                    request_id.clone(),
+                    crate::auto::CallRow {
+                        model: call_model,
+                        tier: self.observe.tier_after.clone().unwrap_or_default(),
+                        trigger: self.observe.trigger.clone(),
+                        input_tokens: usage.input_tokens.map_or(0, |t| t.0),
+                        output_tokens: usage.output_tokens.map_or(0, |t| t.0),
+                        cache_read_tokens: usage.cache_read_tokens.map_or(0, |t| t.0),
+                        cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
+                        cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
+                        cost_source: cost_source_label(resolved.source),
+                    },
+                );
+            }
         }
         if let Some(hook) = self.observe.on_response {
             let text = if tail_text.is_empty() {
@@ -453,4 +476,11 @@ pub fn apply_openai_request_headers(mut upstream: RequestBuilder, parts: &Parts)
         }
     }
     forward_content_type(upstream, parts)
+}
+
+pub fn cost_source_label(source: crate::history::CostSource) -> &'static str {
+    match source {
+        crate::history::CostSource::Upstream | crate::history::CostSource::OpenRouter => "reported",
+        crate::history::CostSource::Estimate | crate::history::CostSource::None => "estimated",
+    }
 }

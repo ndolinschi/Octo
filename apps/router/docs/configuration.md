@@ -49,7 +49,7 @@ Helpers (not loaded as Config fragments): `claude-code.env.example`, `experiment
 
 Invalid `classifier_failure_tier`, `session_budget_action`, or `default_max_tokens = 0` fail config load.
 
-Request header `x-octo-budget-key: <key>` (autoroute routes, 1-128 printable ASCII characters) tracks spend under that key instead of the session id, so several agent sessions share one `session_budget_usd`. The header is removed before the request goes upstream. It needs a session id in `metadata.user_id`; spend under a key lives in memory (1 hour idle expiry) and is not restored from the database.
+Request header `x-octo-budget-key: <key>` (autoroute routes, 1-128 printable ASCII characters) tracks spend under that key instead of the session id, so several agent sessions share one `session_budget_usd`. The header is removed before the request goes upstream. It works without a session id too; `x-octo-budget-usd` with the key lowers the budget for that key (smaller of header and `session_budget_usd`; a header budget always rejects, see [autoroute.md](./autoroute.md#harness-integration)). Spend under a key lives in memory (1 hour idle expiry) and is not restored from the database.
 
 `prices.toml` rates were verified against the OpenRouter catalogue on 2026-11-10: [ladder-cost-check.md](./ladder-cost-check.md). At startup Octo logs a warning when the ladder is not monotonic in price (a higher tier cheaper than a lower one for a 30k in / 500 out request) and when a ladder model has no usable price entry.
 

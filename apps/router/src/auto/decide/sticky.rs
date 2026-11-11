@@ -166,7 +166,17 @@ pub fn cap_for_budget_shaped(
     spent_micros: u64,
     shape: RequestShape,
 ) {
-    if tiers.session_budget_micros == 0 || spent_micros < tiers.session_budget_micros {
+    cap_for_budget_with(out, tiers, tiers.session_budget_micros, spent_micros, shape);
+}
+
+pub fn cap_for_budget_with(
+    out: &mut StickyOutcome,
+    tiers: &Tiers,
+    budget_micros: u64,
+    spent_micros: u64,
+    shape: RequestShape,
+) {
+    if budget_micros == 0 || spent_micros < budget_micros {
         return;
     }
     let target = tiers.cheapest_band(shape).unwrap_or("mid");

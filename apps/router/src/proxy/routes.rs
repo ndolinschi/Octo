@@ -52,4 +52,5 @@ pub fn router(config: &Config) -> Router<AppState> {
         .route("/autoroute/v1/messages", post(autoroute::messages))
         .route("/autoroute/v1/chat/completions", post(autoroute::chat))
         .route("/autoroute/status", get(autoroute::status))
+        .route("/autoroute/v1/calls/{request_id}", get(autoroute::call))
 }
