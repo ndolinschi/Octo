@@ -551,6 +551,17 @@ monochrome dithered illustration):
     and do not re-layout when a scrollbar appears. Start screens that fit do not scroll at all
     (`overscroll-behavior: none`; no stray overflow). A test asserts `scrollHeight === clientHeight` for Home, the
     empty project and the no-projects screen at 390, 768, 1440 and 1920.
+51. **Every dialog fits the window it is in** (owner's macOS screenshot: "New project" taller than a small window,
+    its bottom edge and a field cut off, content sliding under the title). Rules for all dialogs, sheets, popovers
+    and menus: the surface is never taller than the window minus 24px (never wider than it minus 24px); the title
+    row and the action row stay put and only the body scrolls, with a hairline under the title and above the
+    actions while there is more to scroll; nothing is ever clipped by the window edge. Below 560px of window
+    height or 600px of width a dialog becomes a full-window sheet (title and actions pinned, safe 16px gutters);
+    two-column field grids become one column below 520px of dialog width; popovers flip and shrink to stay
+    inside, with their own scroll. The quality bar of decision 42 gains **short windows**: every pass is checked
+    at 1440×900, 1100×700, 800×600, 640×480 and 390×700, and the screenshot script opens every dialog (New
+    project with "Models and delegation" expanded, Settings, the pickers) at each. The desktop window has a
+    minimum size of 640×480.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a

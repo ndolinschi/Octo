@@ -163,3 +163,9 @@ owner's design direction still stands: a premium desktop agent tool, balanced an
 own app with an embedded Monaco editor (not a VS Code fork), one orchestrator conversation per project, projects spanning
 several folders, sub-agent transcripts read-only; use references for structure and finish only, never copy another
 product's name, icons or assets.
+
+## Roles (owner, 2026-11-11, replaces earlier wording)
+
+Always delegate to the selected models: **Opus 5.5 — review** (and UI/design work the owner assigns to it),
+**Sonnet 5.5 — writing code and tests**, **Haiku 5.5 — research**. The orchestrator decides, writes contracts,
+re-runs the gates itself and commits; independent review of each pass goes to an Opus reviewer.
