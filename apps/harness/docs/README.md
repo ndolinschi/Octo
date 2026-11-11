@@ -7,7 +7,7 @@ Product docs for the Go agent harness (`apps/harness/`). Operational notes and b
 | [architecture.md](./architecture.md) | Modules, project server, data flow, tools, CLI, Octo integration |
 | [settings.md](./settings.md) | `GET`/`PUT /v1/settings`: the settings list (ids, kinds, apply mode), `harness.env` writing, router settings for the desktop shell, security rules |
 | [v7.md](./v7.md) | Changes per turn and diffs (bash snapshots, limits), approvals (built-in and ACP), the message queue, forms and secrets: exact API, events, decisions |
-| [acp-orchestrator.md](./acp-orchestrator.md) | Running a project's orchestrator as an ACP agent: config, sessions, harness tools over MCP, limits |
+| [acp-orchestrator.md](./acp-orchestrator.md) | Running a project's orchestrator as an ACP agent: config, sessions, harness tools over MCP, limits; Claude Code, Copilot and Grok setup; failure messages; `harness doctor`, `GET /v1/diagnostics`, the ACP wire trace |
 
 ## Security
 

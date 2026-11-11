@@ -161,3 +161,30 @@ func TestBuiltinRequires(t *testing.T) {
 		t.Fatalf("pi = %+v", pi)
 	}
 }
+
+// R1.3: the three agents the owner uses come first, each with install and login text.
+func TestBuiltinFirstThreeAgentsHaveInstallAndLoginText(t *testing.T) {
+	reg := plugins.Load(context.Background(), t.TempDir(), nil, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
+	got := reg.Agents()
+	for i, id := range []string{"claude-code", "copilot", "grok"} {
+		if got[i].ID != id {
+			t.Fatalf("agent %d = %s, want %s", i, got[i].ID, id)
+		}
+		if got[i].InstallHint == "" || got[i].Hint == "" {
+			t.Errorf("%s: install %q, login %q", id, got[i].InstallHint, got[i].Hint)
+		}
+	}
+	for id, want := range map[string][]string{
+		"claude-code": {"/login", "npm install -g @anthropic-ai/claude-code"},
+		"copilot":     {"/login", "COPILOT_GITHUB_TOKEN", "Copilot Requests", "npm install -g @github/copilot"},
+		"grok":        {"grok login", "XAI_API_KEY", "per-token billing"},
+	} {
+		a, _ := reg.Agent(id)
+		text := a.Hint + " " + a.InstallHint
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s: install+login text lacks %q: %s", id, w, text)
+			}
+		}
+	}
+}

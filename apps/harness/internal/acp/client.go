@@ -58,6 +58,7 @@ func Start(ctx context.Context, spec Spec) (*Client, error) {
 	}
 	c := &Client{proc: p, name: spec.Name}
 	c.conn = newConn(p.stdout, p.stdin, c)
+	c.conn.tr = p.trace
 	go c.conn.serve(context.Background(), func(readErr error) error {
 		msg := p.describeExit()
 		if readErr != nil {
@@ -115,6 +116,13 @@ func (c *Client) Capabilities() Capabilities { return c.caps }
 // closed its output).
 func (c *Client) Done() <-chan struct{} { return c.conn.Done() }
 
+// TracePath is the wire trace file of this agent process ("" when tracing is off).
+func (c *Client) TracePath() string { return c.proc.trace.Path() }
+
+// TraceHide makes the wire trace (when on) redact v, a value the harness
+// handed to the agent after it started, such as an MCP bearer token.
+func (c *Client) TraceHide(v string) { c.proc.trace.Hide(v) }
+
 // PID is the agent process id.
 func (c *Client) PID() int { return c.proc.pid() }
 
@@ -123,6 +131,7 @@ func (c *Client) PID() int { return c.proc.pid() }
 func (c *Client) Close() {
 	c.proc.closeAndWait(exitGrace)
 	c.conn.shutdown(ErrClosed)
+	c.proc.trace.Close()
 }
 
 // Run opens a session at cwd, sends one text prompt and returns the stop

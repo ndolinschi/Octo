@@ -135,11 +135,14 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	}
 	switch stop {
 	case acp.StopEndTurn:
+		if handler.nothing() {
+			return agent.Result{}, nothingError(target.agent)
+		}
 		return agent.Result{Text: handler.finalText()}, nil
 	case acp.StopCancelled:
 		return agent.Result{}, errAgentCancelled
 	}
-	return agent.Result{}, fmt.Errorf("ACP agent %q stopped: %s", target.agent.ID, stop)
+	return agent.Result{}, stopError(target.agent, stop)
 }
 
 // beginTurn makes the session ready for a turn: the turn state first (the agent
@@ -198,6 +201,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 		return false, fmt.Errorf("start ACP agent %q: %w", ag.ID, err)
 	}
 	token := s.h.tokens.Issue(mcp.Binding{ProjectID: rt.pid(), AgentID: orch.ID})
+	client.TraceHide(token)
 	s.mu.Lock()
 	s.client, s.token, s.pluginID, s.model, s.cwd, s.sessID = client, token, ag.ID, t.recorded(), cwd, ""
 	s.mu.Unlock()
@@ -267,7 +271,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 
 func refusedMCP(agentID string, e *acp.RPCError) string {
 	return fmt.Sprintf("ACP agent %q refused the harness's MCP server (%s); this session runs without harness tools "+
-		"(spawn_agent, notes)", agentID, e.Message)
+		"(spawn_agent, notes), so it cannot delegate: update the agent, or choose another one as orchestrator", agentID, e.Message)
 }
 
 // loadWithFallback resumes a stored session; an agent that refuses the MCP

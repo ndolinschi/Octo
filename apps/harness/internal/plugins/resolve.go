@@ -29,3 +29,7 @@ func isExecutable(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0
 }
+
+// Which resolves a command name the way agents are resolved (PATH lookup for a
+// bare name) and says whether it was found.
+func Which(command string) (string, bool) { return resolveCommand(command, "") }

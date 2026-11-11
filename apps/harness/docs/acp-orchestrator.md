@@ -71,6 +71,36 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
   cancel); `fs/read_text_file` and `fs/write_text_file` are confined to the project folders. The agent's own process is not sandboxed.
 - **Environment.** The agent gets the allow-listed environment (`internal/childenv`) plus the manifest `env`, never the harness's provider keys.
 
+## The agents to start with: Claude Code, Copilot, Grok
+
+The built-in manifest lists them first. `GET /v1/plugins` gives each `available`, `unavailable_reason`, `logged_in`, `hint` (the login instruction) and `install_hint`; `harness doctor` prints the same. The texts below are what the manifest says; **none of these CLIs was run by the author** (see "Not verified").
+
+| Agent | Install | Log in | Limits |
+| --- | --- | --- | --- |
+| `claude-code` | Node.js (the adapter runs through `npx`) and the Claude Code CLI: `npm install -g @anthropic-ai/claude-code` | run `claude` and type `/login` (or `claude auth login`); the entry's login probe is `claude auth status` | the harness hides its own `ANTHROPIC_API_KEY` from the agent so the subscription is used; to bill per token on purpose add env `{"ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"}` to a copy of the entry |
+| `copilot` | the GitHub Copilot CLI with `copilot` on PATH: `npm install -g @github/copilot` (Node.js 22 or newer, a Copilot plan) | run `copilot` and type `/login`, or start the harness with `COPILOT_GITHUB_TOKEN` set to a fine-grained token with the "Copilot Requests" permission | no login probe: the first failed turn says what to do |
+| `grok` | the Grok CLI with `grok` on PATH (from x.ai); the entry's command line (`grok agent stdio`) is unverified against a real install | run `grok login` (browser) | an `XAI_API_KEY` in the harness environment is forwarded to Grok and **switches it to per-token billing**; unset it to stay on the subscription |
+
+The wording is in `plugins-examples/subscription-agents/plugin.json` (`install` and `auth.hint` per entry); copy the plugin to change it.
+
+## A failure is never silent
+
+Every way an ACP agent can fail ends the turn (orchestrator) or the sub-agent (a tool error to the orchestrator) with a message that says what to do:
+
+| Failure | Message carries |
+| --- | --- |
+| program missing | `start ACP agent "x": ...` and the manifest's `unavailable_reason` / install hint in `/v1/plugins` |
+| not logged in, `authenticate` refused | `acp.ErrAuthRequired` plus the manifest's login hint |
+| MCP servers refused | warning: the session works without harness tools, "update the agent, or choose another one as orchestrator" |
+| crash or exit mid-turn | the exit and the agent's stderr tail (secrets scrubbed) |
+| `stopReason` refusal, max_tokens, max_turn_requests, unknown | "the agent declined the request; rephrase it or use another agent" (and so on) plus the login hint |
+| ends the turn with no text and no tool call | "the agent returned nothing (no text and no tool calls); if it is not logged in: <hint>"; this is a failed turn, never a success |
+
+## Diagnostics and the wire trace
+
+- `harness doctor [--data-dir D] [--json]` and `GET /v1/diagnostics` report: version, Go, OS, data dir, the PATH child processes get, the names (never values) of provider and router variables that are set, the built-in loop and router state (base URL without credentials or query), and per agent: resolved command or "not found", each `requires` command, the login probe (doctor runs it now: exit status only, its output is discarded; the endpoint reports the cached background result), the hints, and a problems list. The endpoint adds the last 200 log lines (scrubbed of tokens, keys, passwords, URL credentials) and the trace files. A test feeds secret-looking environment, URL and log content and asserts none appears.
+- **Wire trace.** `HARNESS_ACP_TRACE=1`, or the setting of the same name (`PUT /v1/settings`, takes effect for sessions that start afterwards). One JSON-lines file per agent process under `{data-dir}/traces/` (`<time>-<agent>-<n>.jsonl`, mode 0600): `{t, dir: "client->agent" | "agent->client" | "agent-stderr" | "meta", msg | text}`. Redacted before writing: values under keys named like a secret (key, token, secret, password, credential, authorization, cookie), the value of env and header entries (`{name, value}`) with an upper-case env name or a secret-like name, `Bearer`/`Basic` credentials, the agent's environment values from the manifest, the MCP bearer token the harness issued, project secret values, and `key=value` text in free-form lines. A file is capped at 5 MB (the oldest half is dropped, with a marker line) and at most 20 files are kept. Prompt text and file contents are in the trace (it is the wire): read it before sending it.
+
 ## Not verified
 
 Everything above was exercised only against the scripted agent (`internal/fakeacp`) over a real stdio pipe, a real HTTP bridge and

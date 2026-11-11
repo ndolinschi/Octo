@@ -226,3 +226,10 @@ test("sendOrQueueMessage tells a started turn from a queued message; sendMessage
     (e: unknown) => e instanceof BridgeError && e.code === "queue_full",
   );
 });
+
+test("http: diagnostics", async () => {
+  const { bridge, calls } = bridgeWith(200, '{"version":"1","agents":[],"problems":[]}');
+  const got = await bridge.getDiagnostics?.();
+  assert.equal(calls[0]?.url, "http://h:1/v1/diagnostics");
+  assert.equal(got?.version, "1");
+});

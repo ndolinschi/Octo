@@ -188,7 +188,7 @@ func (b *builder) populate(p *Plugin, m manifest) {
 		ag := Agent{
 			ID: a.ID, Label: labelOr(a.Label, a.ID), Available: ok, UnavailableReason: reason, Launch: l,
 			Models: append([]string{}, a.Models...), DefaultModel: a.DefaultModel, ModelArg: slices.Clone(a.ModelArg),
-			FlatRate: a.FlatRate != nil && *a.FlatRate, Strengths: slices.Clone(a.Strengths),
+			InstallHint: strings.TrimSpace(a.Install), Requires: slices.Clone(a.Requires), FlatRate: a.FlatRate != nil && *a.FlatRate, Strengths: slices.Clone(a.Strengths),
 		}
 		if a.Auth != nil {
 			ag.Hint = strings.TrimSpace(a.Auth.Hint)

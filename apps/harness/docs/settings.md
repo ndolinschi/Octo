@@ -16,6 +16,7 @@ The **id** of a setting is the variable name in `harness.env`, so the file stays
 | `HARNESS_MODEL_DEEP` | model | models | now | Deep tier. Default `claude-opus-5-5`. |
 | `OCTO_ROUTER_ENABLED` | bool | router | restart | `1` / `0`: the shell starts the bundled router and points the harness at it. **Read by the shell.** Default off. |
 | `OCTO_ROUTER_BASE_URL` | text | router | restart | Base URL of an **external** router. Empty or unset means the router bundled with the app. **Read by the shell.** |
+| `HARNESS_ACP_TRACE` | bool | advanced | now | Record an ACP wire trace: one JSON-lines file per agent session under `{data-dir}/traces/`, secrets removed, capped (see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace)). Takes effect for sessions that start afterwards. |
 | `HARNESS_CHILD_ENV_ALLOW` | list | advanced | now | Extra variable names / `PREFIX_*` patterns passed to every child process (see README "Child environment"). Stored comma separated. |
 
 The harness stores and reports the three `OCTO_ROUTER_*` settings and otherwise ignores them. They are never passed to child processes (`OCTO_ROUTER_` is on the child-environment deny list, which even `HARNESS_CHILD_ENV_ALLOW` cannot override).

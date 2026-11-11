@@ -12,6 +12,7 @@ export type Theme = "dark" | "light";
 export type HttpOnlyMethod =
   | "getSettings"
   | "putSettings"
+  | "getDiagnostics"
   | "sendOrQueueMessage"
   | "getQueue"
   | "editQueued"

@@ -3,6 +3,7 @@ package acp
 import (
 	"bytes"
 	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
 	"io"
 	"log/slog"
 	"os"
@@ -35,6 +36,8 @@ type Spec struct {
 }
 
 type process struct {
+	// trace is the session's wire trace (nil when tracing is off).
+	trace  *acptrace.Trace
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout *os.File
@@ -49,7 +52,8 @@ func startProcess(spec Spec) (*process, error) {
 	cmd.Env = childenv.Build(os.Environ(), spec.Env)
 	cmd.WaitDelay = waitDelay
 	setProcessGroup(cmd)
-	stderr := &stderrLog{name: spec.Name, redact: spec.Redact}
+	tr := acptrace.Begin(spec.Name, mapValues(spec.Env), spec.Redact)
+	stderr := &stderrLog{name: spec.Name, redact: spec.Redact, tr: tr}
 	cmd.Stderr = stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -68,7 +72,7 @@ func startProcess(spec Spec) (*process, error) {
 	if err := pw.Close(); err != nil {
 		slog.Debug("acp: close pipe writer", "err", err)
 	}
-	p := &process{cmd: cmd, stdin: stdin, stdout: pr, stderr: stderr, exited: make(chan struct{})}
+	p := &process{trace: tr, cmd: cmd, stdin: stdin, stdout: pr, stderr: stderr, exited: make(chan struct{})}
 	go func() {
 		p.err = cmd.Wait()
 		close(p.exited)
@@ -122,6 +126,7 @@ type stderrLog struct {
 	name string
 	// redact, when set, cleans each line before it is logged or kept.
 	redact func(string) string
+	tr     *acptrace.Trace
 	mu     sync.Mutex
 	buf    bytes.Buffer
 	last   []byte
@@ -152,6 +157,7 @@ func (s *stderrLog) line(l string) {
 	if len(l) > stderrLineCap {
 		l = l[:stderrLineCap] + "...(truncated)"
 	}
+	s.tr.Stderr(l)
 	slog.Debug("acp agent stderr", "agent", s.name, "line", l)
 	s.last = append(s.last, l...)
 	s.last = append(s.last, ' ')
@@ -167,4 +173,12 @@ func (s *stderrLog) tail() string {
 		s.line(string(s.buf.Next(s.buf.Len())))
 	}
 	return strings.TrimSpace(strings.ToValidUTF8(string(s.last), ""))
+}
+
+func mapValues(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for _, v := range m {
+		out = append(out, v)
+	}
+	return out
 }

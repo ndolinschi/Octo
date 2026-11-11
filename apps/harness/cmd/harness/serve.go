@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,10 +17,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
 	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
 	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/limits"
 	"github.com/ndolinschi/Octo/apps/harness/internal/lsp"
@@ -116,6 +119,16 @@ func serveConfig(args []string) (config.Config, string, error) {
 	return cfg, *addr, nil
 }
 
+// logRing keeps the last log lines for diagnostics; main installs it.
+var logRing = diag.NewLogRing(diag.LogLines)
+
+func init() {
+	base := diag.LegacyHandler(log.New(log.Writer(), log.Prefix(), log.Flags()))
+	slog.SetDefault(slog.New(logRing.Wrap(base)))
+}
+
+func traceOn(v string) bool { b, err := strconv.ParseBool(v); return err == nil && b }
+
 func serve(ctx context.Context, cfg config.Config, addr string) error {
 	access, approvalTimeout, err := v7Env()
 	if err != nil {
@@ -151,6 +164,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		slog.Info("built-in agent loop unavailable; ACP agents still work", "reason", builtinReason)
 	}
 
+	acptrace.Configure(cfg.DataDir, traceOn(os.Getenv("HARNESS_ACP_TRACE")))
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
@@ -201,6 +215,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 				orch.SetDefaultOrchestrator(o)
 			},
 			ChildEnvAllow: childenv.SetAllow,
+			ACPTrace:      acptrace.SetEnabled,
 		},
 		Notify: func(ids []string) { hub.PublishAll(events.SettingsChanged, map[string]any{"ids": ids}) },
 	})
@@ -210,7 +225,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
 			bridge.WithMCP(orch.MCPHandler(bridge.Version)),
 			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
-			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoop(builtinOK, builtinReason), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator)),
+			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoop(builtinOK, builtinReason), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
+			bridge.WithDiagnostics(func() any { return diagnostics(cfg, pluginReg, octo, builtinOK, builtinReason, logRing, nil) })),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
@@ -267,14 +283,15 @@ func portOf(a net.Addr) string {
 
 // v7Env reads the v7 settings from the environment (harness.env fills it):
 // HARNESS_DEFAULT_ACCESS, the access mode of projects created without one
-// ("supervised", the default, or "full"), and HARNESS_APPROVAL_TIMEOUT, how long
+// ("full", the default until the UI shows approval cards, or "supervised"), and HARNESS_APPROVAL_TIMEOUT, how long
 // an approval request waits for an answer before it is denied (a Go duration,
 // default 30m; "0" or negative: wait for ever).
 func v7Env() (access string, timeout time.Duration, err error) {
 	access = os.Getenv("HARNESS_DEFAULT_ACCESS")
 	switch access {
 	case "":
-		access = projectstore.AccessSupervised
+		// full until the UI shows approval cards; then this flips to supervised
+		access = projectstore.AccessFull
 	case projectstore.AccessSupervised, projectstore.AccessFull:
 	default:
 		return "", 0, fmt.Errorf("HARNESS_DEFAULT_ACCESS must be %q or %q", projectstore.AccessSupervised, projectstore.AccessFull)

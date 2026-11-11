@@ -47,6 +47,9 @@ type acpSession struct {
 	done     bool
 	// preOK counts edits the user allowed through session/request_permission,
 	// by absolute path; preAny those that named no path.
+	// said and acted count what the agent produced: non-blank text, tool calls.
+	said  bool
+	acted bool
 	// active is set once the agent has done anything in this session handler
 	// (text, a tool call, usage, a permission request).
 	active bool
@@ -82,6 +85,9 @@ func (s *acpSession) AgentText(_ context.Context, text string) {
 		return
 	}
 	s.active = true
+	if strings.TrimSpace(text) != "" {
+		s.said = true
+	}
 	s.pending.WriteString(text)
 	if safe := s.stream.Write(text); safe != "" {
 		s.sink.TextDelta(safe)
@@ -91,7 +97,7 @@ func (s *acpSession) AgentText(_ context.Context, text string) {
 func (s *acpSession) ToolCall(ctx context.Context, call acp.ToolCall) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.active = true
+	s.active, s.acted = true, true
 	if s.done {
 		return
 	}
@@ -105,7 +111,7 @@ func (s *acpSession) ToolCall(ctx context.Context, call acp.ToolCall) {
 func (s *acpSession) ToolCallUpdate(ctx context.Context, up acp.ToolCallUpdate) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.active = true
+	s.active, s.acted = true, true
 	if s.done {
 		return
 	}
@@ -156,6 +162,13 @@ func (s *acpSession) costDeltaLocked(c *acp.Cost) *float64 {
 		return nil
 	}
 	return &d
+}
+
+// nothing reports whether the agent produced no text and no tool call.
+func (s *acpSession) nothing() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.said && !s.acted
 }
 
 // idle reports whether the agent has done nothing yet in this handler.

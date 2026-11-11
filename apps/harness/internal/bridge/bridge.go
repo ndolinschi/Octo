@@ -32,6 +32,7 @@ type Server struct {
 	settingsLoopback bool
 	ping             time.Duration
 
+	diagnostics func() any
 	builtinOff  string        // reason the built-in loop is unavailable; "" = available
 	defaultOrch func() string // the orchestrator a project without a choice runs now
 }
@@ -77,6 +78,9 @@ func WithBuiltinLoop(available bool, reason string) Option {
 // Without it the server default model is reported.
 func WithDefaultOrchestrator(f func() string) Option { return func(s *Server) { s.defaultOrch = f } }
 
+// WithDiagnostics serves GET /v1/diagnostics from f (the report as a JSON value).
+func WithDiagnostics(f func() any) Option { return func(s *Server) { s.diagnostics = f } }
+
 // WithPingInterval overrides the SSE keep-alive period.
 func WithPingInterval(d time.Duration) Option { return func(s *Server) { s.ping = d } }
 
@@ -96,6 +100,9 @@ func (s *Server) routes() *http.ServeMux {
 	if s.settings != nil {
 		mux.HandleFunc("GET /v1/settings", s.getSettings)
 		mux.HandleFunc("PUT /v1/settings", s.putSettings)
+	}
+	if s.diagnostics != nil {
+		mux.HandleFunc("GET /v1/diagnostics", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, s.diagnostics()) })
 	}
 	mux.HandleFunc("GET /v1/usage", s.usage)
 	mux.HandleFunc("GET /v1/limits", s.listLimits)

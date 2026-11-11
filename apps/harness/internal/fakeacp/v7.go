@@ -27,6 +27,14 @@ const (
 	MarkerLeakEnv = "[leak-env]"
 )
 
+// Markers for the failure paths: the turn ends without text or tool calls
+// (MarkerSilent), or with stopReason refusal / max_tokens.
+const (
+	MarkerSilent    = "[silent]"
+	MarkerRefuse    = "[refuse]"
+	MarkerMaxTokens = "[max-tokens]"
+)
+
 // MarkerCumCost makes the agent report a session-wide cumulative usage: each
 // prompt adds 0.01 USD and 100 tokens to counters that live as long as the
 // process, the way real agents report.

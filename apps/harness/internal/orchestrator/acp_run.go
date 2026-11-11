@@ -45,11 +45,14 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	}
 	switch stop {
 	case acp.StopEndTurn:
+		if h.nothing() {
+			return "", nothingError(ag)
+		}
 		return h.finalText(), nil
 	case acp.StopCancelled:
 		return "", errAgentCancelled
 	}
-	return "", fmt.Errorf("ACP agent %q stopped: %s", ag.ID, stop)
+	return "", stopError(ag, stop)
 }
 
 func authPolicy(ag plugins.Agent) acp.AuthPolicy {

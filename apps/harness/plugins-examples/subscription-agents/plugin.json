@@ -7,50 +7,100 @@
       "id": "claude-code",
       "label": "Claude Code",
       "flatRate": true,
-      "strengths": ["easy", "medium", "hard"],
+      "strengths": [
+        "easy",
+        "medium",
+        "hard"
+      ],
       "command": "npx",
-      "args": ["-y", "@agentclientprotocol/claude-agent-acp"],
+      "args": [
+        "-y",
+        "@agentclientprotocol/claude-agent-acp"
+      ],
       "env": {},
       "auth": {
-        "probe": ["claude", "auth", "status"],
-        "hint": "Log in once with the Claude Code CLI (claude). The harness hides its own ANTHROPIC_API_KEY from the agent so the subscription is used; to bill per token on purpose, add env {\"ANTHROPIC_API_KEY\": \"${ANTHROPIC_API_KEY}\"} to this entry."
-      }
+        "probe": [
+          "claude",
+          "auth",
+          "status"
+        ],
+        "hint": "Log in once: run `claude` and type /login (or run `claude auth login`). The harness hides its own ANTHROPIC_API_KEY from the agent so the subscription is used; to bill per token on purpose, add env {\"ANTHROPIC_API_KEY\": \"${ANTHROPIC_API_KEY}\"} to this entry."
+      },
+      "install": "Install Node.js (the adapter runs through npx) and the Claude Code CLI: npm install -g @anthropic-ai/claude-code"
     },
     {
       "id": "copilot",
       "label": "GitHub Copilot",
       "flatRate": true,
-      "strengths": ["easy", "medium"],
+      "strengths": [
+        "easy",
+        "medium"
+      ],
       "command": "copilot",
-      "args": ["--acp", "--stdio"],
-      "env": { "COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}" },
+      "args": [
+        "--acp",
+        "--stdio"
+      ],
+      "env": {
+        "COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}"
+      },
       "auth": {
-        "hint": "Sign in with the Copilot CLI (see its docs), or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission."
-      }
+        "hint": "Log in once: run `copilot` and type /login, or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission."
+      },
+      "install": "Install the GitHub Copilot CLI so that `copilot` is on PATH: npm install -g @github/copilot (needs Node.js 22 or newer and a Copilot plan)"
     },
     {
       "id": "grok",
       "label": "Grok",
       "flatRate": false,
       "command": "grok",
-      "args": ["agent", "{modelArgs}", "stdio"],
-      "modelArg": ["-m", "{model}"],
-      "env": { "XAI_API_KEY": "${XAI_API_KEY}" },
+      "args": [
+        "agent",
+        "{modelArgs}",
+        "stdio"
+      ],
+      "modelArg": [
+        "-m",
+        "{model}"
+      ],
+      "env": {
+        "XAI_API_KEY": "${XAI_API_KEY}"
+      },
       "auth": {
-        "methods": [{ "id": "xai.api_key", "requiresEnv": "XAI_API_KEY" }, "cached_token"],
-        "hint": "Sign in with the Grok CLI (grok login). XAI_API_KEY is forwarded when the harness has it, but is billed per token, not on the subscription: unset it to use the cached subscription login."
-      }
+        "methods": [
+          {
+            "id": "xai.api_key",
+            "requiresEnv": "XAI_API_KEY"
+          },
+          "cached_token"
+        ],
+        "hint": "Log in once in the browser: run `grok login`. An XAI_API_KEY in the harness environment is forwarded to Grok and switches it to per-token billing: unset it to stay on the subscription."
+      },
+      "install": "Install the Grok CLI so that `grok` is on PATH (from x.ai; this entry's command line is unverified against a real install)"
     },
     {
       "id": "codex",
       "label": "Codex",
       "flatRate": true,
-      "strengths": ["easy", "medium", "hard"],
+      "strengths": [
+        "easy",
+        "medium",
+        "hard"
+      ],
       "command": "npx",
-      "args": ["-y", "@agentclientprotocol/codex-acp"],
-      "env": { "CODEX_HOME": "${OCTO_CODEX_HOME}" },
+      "args": [
+        "-y",
+        "@agentclientprotocol/codex-acp"
+      ],
+      "env": {
+        "CODEX_HOME": "${OCTO_CODEX_HOME}"
+      },
       "auth": {
-        "probe": ["codex", "login", "status"],
+        "probe": [
+          "codex",
+          "login",
+          "status"
+        ],
         "hint": "Log in with the Codex CLI (codex login, or codex login --device-auth on a headless machine); with OCTO_CODEX_HOME set, log in with CODEX_HOME pointing at the same folder."
       }
     },
@@ -58,13 +108,25 @@
       "id": "cursor",
       "label": "Cursor",
       "flatRate": true,
-      "strengths": ["easy", "medium"],
+      "strengths": [
+        "easy",
+        "medium"
+      ],
       "command": "cursor-agent",
-      "args": ["acp"],
-      "env": { "CURSOR_API_KEY": "${CURSOR_API_KEY}" },
+      "args": [
+        "acp"
+      ],
+      "env": {
+        "CURSOR_API_KEY": "${CURSOR_API_KEY}"
+      },
       "auth": {
-        "probe": ["cursor-agent", "status"],
-        "skip": ["cursor_login"],
+        "probe": [
+          "cursor-agent",
+          "status"
+        ],
+        "skip": [
+          "cursor_login"
+        ],
         "hint": "Run cursor-agent login once (browser), or start the harness with CURSOR_API_KEY set. Some installs name the binary agent."
       }
     },
@@ -73,7 +135,9 @@
       "label": "OpenCode",
       "flatRate": false,
       "command": "opencode",
-      "args": ["acp"],
+      "args": [
+        "acp"
+      ],
       "env": {},
       "auth": {
         "hint": "Start opencode once and connect a model provider with /connect; models are named provider/model. Provider keys in the harness environment are not forwarded: set them in OpenCode's own config or add them to this entry's env."
@@ -84,7 +148,9 @@
       "label": "Antigravity",
       "flatRate": true,
       "command": "agy",
-      "args": ["acp"],
+      "args": [
+        "acp"
+      ],
       "env": {},
       "auth": {
         "hint": "Needs Antigravity CLI 1.5.0 or newer (agy acp --help). Sign in once with agy, or agy acp --login, in a terminal."
@@ -95,12 +161,29 @@
       "label": "Devin CLI",
       "flatRate": true,
       "command": "devin",
-      "args": ["acp"],
-      "modelArg": ["--model", "{model}"],
-      "env": { "WINDSURF_API_KEY": "${WINDSURF_API_KEY}" },
+      "args": [
+        "acp"
+      ],
+      "modelArg": [
+        "--model",
+        "{model}"
+      ],
+      "env": {
+        "WINDSURF_API_KEY": "${WINDSURF_API_KEY}"
+      },
       "auth": {
-        "probe": ["devin", "auth", "status"],
-        "methods": [{ "id": "windsurf-api-key", "requiresEnv": "WINDSURF_API_KEY" }, "cached_token"],
+        "probe": [
+          "devin",
+          "auth",
+          "status"
+        ],
+        "methods": [
+          {
+            "id": "windsurf-api-key",
+            "requiresEnv": "WINDSURF_API_KEY"
+          },
+          "cached_token"
+        ],
         "hint": "Run devin auth login (add --force-manual-token-flow over SSH), or set WINDSURF_API_KEY. List models with devin models list --format json."
       }
     },
@@ -109,16 +192,30 @@
       "label": "Factory Droid",
       "flatRate": false,
       "command": "droid",
-      "args": ["exec", "--output-format", "acp"],
-      "modelArg": ["-m", "{model}"],
+      "args": [
+        "exec",
+        "--output-format",
+        "acp"
+      ],
+      "modelArg": [
+        "-m",
+        "{model}"
+      ],
       "env": {
         "FACTORY_API_KEY": "${FACTORY_API_KEY}",
         "DROID_DISABLE_AUTO_UPDATE": "true",
         "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
       },
       "auth": {
-        "methods": [{ "id": "factory-api-key", "requiresEnv": "FACTORY_API_KEY" }],
-        "skip": ["device-pairing"],
+        "methods": [
+          {
+            "id": "factory-api-key",
+            "requiresEnv": "FACTORY_API_KEY"
+          }
+        ],
+        "skip": [
+          "device-pairing"
+        ],
         "hint": "Start the harness with FACTORY_API_KEY set (needed on headless machines); the browser device pairing of droid cannot be completed by the harness."
       }
     },
@@ -127,8 +224,12 @@
       "label": "Oh My Pi",
       "flatRate": false,
       "command": "omp",
-      "args": ["acp"],
-      "env": { "PI_CODING_AGENT_DIR": "${OCTO_OMP_DIR}" },
+      "args": [
+        "acp"
+      ],
+      "env": {
+        "PI_CODING_AGENT_DIR": "${OCTO_OMP_DIR}"
+      },
       "auth": {
         "hint": "Run omp once and sign in (credentials in ~/.omp); omp models --json must list at least one model. Set OCTO_OMP_DIR to use a separate profile folder."
       }
@@ -137,9 +238,14 @@
       "id": "pi",
       "label": "Pi (community ACP adapter)",
       "flatRate": false,
-      "requires": ["pi"],
+      "requires": [
+        "pi"
+      ],
       "command": "npx",
-      "args": ["-y", "pi-acp"],
+      "args": [
+        "-y",
+        "pi-acp"
+      ],
       "env": {},
       "auth": {
         "hint": "Needs pi on PATH. Run pi and /login (or set a provider API key in pi's own config) first. pi-acp is a third-party MVP adapter and offers only a terminal login."

@@ -107,6 +107,14 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 	a.mu.Unlock()
 	has := func(m string) bool { return strings.Contains(request, m) }
 
+	switch {
+	case has(MarkerSilent):
+		return "end_turn" // says nothing, calls nothing: what a CLI that is not logged in can do
+	case has(MarkerRefuse):
+		return "refusal"
+	case has(MarkerMaxTokens):
+		return "max_tokens"
+	}
 	a.say("I'll look at the project first. ")
 	switch {
 	case has(MarkerCrash):

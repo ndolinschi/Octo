@@ -360,6 +360,8 @@ export type PluginAgent = {
   hint?: string;
   /** Why `available` is false (a required command is missing); absent when available. */
   unavailable_reason?: string;
+  /** One-line instruction for installing the agent (manifest `install`); absent when the manifest has none. */
+  install_hint?: string;
   /** The manifest says the agent runs on a flat-rate subscription (flatRate; false when absent). */
   flat_rate?: boolean;
   /** Difficulty bands the manifest says the agent suits (strengths); absent when none. */
@@ -597,3 +599,42 @@ export type InputRequest = {
 export type InputAnswer = { skip?: boolean; values?: Record<string, string | boolean> };
 /** A stored secret: its name only. Agents use it as `secret:<name>`. */
 export type SecretInfo = { name: string; updated_at: string };
+
+// --- R1: diagnostics ------------------------------------------------------------------------------------------
+
+export type DiagnosticsProbe = {
+  ran: boolean;
+  /** Null when the probe did not run or was inconclusive. */
+  logged_in: boolean | null;
+  reason: string;
+};
+export type DiagnosticsAgent = {
+  id: string;
+  label: string;
+  available: boolean;
+  /** Resolved path of the agent's program, or "not found". */
+  command: string;
+  unavailable_reason?: string;
+  requires: { command: string; found: string }[];
+  probe: DiagnosticsProbe;
+  login_hint?: string;
+  install_hint?: string;
+  flat_rate: boolean;
+};
+/** `GET /v1/diagnostics`: what a problem report needs, without secrets (names of variables, never values). */
+export type Diagnostics = {
+  generated_at: string;
+  version: string;
+  go_version: string;
+  os: string;
+  arch: string;
+  data_dir: string;
+  path_for_children: string;
+  env_set: string[];
+  builtin_loop: { available: boolean; reason?: string };
+  router: { base_url: string; detected: boolean; capabilities: string[] };
+  agents: DiagnosticsAgent[];
+  acp_trace: { enabled: boolean; dir: string; files: string[] };
+  log_tail: string[];
+  problems: string[];
+};

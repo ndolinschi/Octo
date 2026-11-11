@@ -23,7 +23,7 @@ cat >"$TMP/plugins/fake/plugin.json" <<JSON
  "env":{"OCTO_FAKEACP_UNIQUE_SESSIONS":"1"}}]}
 JSON
 BASE=http://127.0.0.1:8831
-HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8831 --data-dir "$TMP/data" \
+HARNESS_DEFAULT_ACCESS=supervised HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8831 --data-dir "$TMP/data" \
   --base-url http://127.0.0.1:8830 --plugins-dir "$TMP/plugins" >"$TMP/harness.log" 2>&1 & PIDS+=($!)
 for _ in $(seq 60); do curl -fsS "$BASE/health" >/dev/null 2>&1 && break; sleep 0.2; done
 curl -fsS "$BASE/health" >/dev/null 2>&1 || fail "harness did not start: $(cat "$TMP/harness.log")"
@@ -51,7 +51,7 @@ waitfor() { # description, command... : retries for ~30s
 count_of() { curl -fsS "$BASE/v1/projects/$1/$2" | jget "len(d[\"$2\"])"; }
 has_n() { [ "$(count_of "$1" "$2")" -ge "$3" ]; }
 
-echo "== default access"
+echo "== default access (HARNESS_DEFAULT_ACCESS=supervised is honoured)"
 P0=$(newproject default)
 [ "$(curl -fsS "$BASE/v1/projects/$P0" | jget 'd["access"]')" = supervised ] || fail "a new project is not supervised by default"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$BASE/v1/projects/$P0" -H 'content-type: application/json' -d '{"access":"root"}')

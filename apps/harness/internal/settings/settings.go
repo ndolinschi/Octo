@@ -57,6 +57,7 @@ const (
 	IDRouterEnabled  = "OCTO_ROUTER_ENABLED"
 	IDRouterBaseURL  = "OCTO_ROUTER_BASE_URL"
 	IDChildEnvAllow  = childenv.AllowEnvVar // HARNESS_CHILD_ENV_ALLOW
+	IDACPTrace       = "HARNESS_ACP_TRACE"
 )
 
 const (
@@ -137,6 +138,8 @@ var defs = []def{
 		hint: "Leave empty to use the router bundled with the app."},
 	{id: IDChildEnvAllow, kind: KindList, label: "Environment variables passed to agents and tools", group: GroupAdvanced, applies: AppliesNow,
 		hint: "Names or PREFIX_* patterns, on top of the built-in allow-list. Secrets of the harness itself are never passed."},
+	{id: IDACPTrace, kind: KindBool, label: "Record an ACP wire trace", group: GroupAdvanced, applies: AppliesNow,
+		hint: "One file per agent session under the data folder's traces directory, secrets removed, size-capped. Turn on to diagnose a failing agent, then send the file with the diagnostics report."},
 }
 
 // IDs returns every setting id, in display order.
@@ -163,6 +166,8 @@ type Applier struct {
 	Models func(orchestrator, fast, balanced, deep string)
 	// ChildEnvAllow swaps the operator allow-list for child processes.
 	ChildEnvAllow func(spec string)
+	// ACPTrace switches the ACP wire trace for sessions that start afterwards.
+	ACPTrace func(on bool)
 }
 
 // Options configures a Manager.
@@ -539,9 +544,11 @@ func (m *Manager) effective(id string, file map[string]string) string {
 
 // applyNow pushes the changed apply-now settings into the running process.
 func (m *Manager) applyNow(changed []string, file map[string]string) {
-	var models, allow bool
+	var models, allow, trace bool
 	for _, id := range changed {
 		switch id {
+		case IDACPTrace:
+			trace = true
 		case IDModelOrch, IDModelFast, IDModelBalanced, IDModelDeep:
 			models = true
 		case IDChildEnvAllow:
@@ -558,6 +565,9 @@ func (m *Manager) applyNow(changed []string, file map[string]string) {
 		}
 		m.opts.Apply.Models(pick(IDModelOrch, b.Orchestrator), pick(IDModelFast, b.Fast),
 			pick(IDModelBalanced, b.Balanced), pick(IDModelDeep, b.Deep))
+	}
+	if trace && m.opts.Apply.ACPTrace != nil {
+		m.opts.Apply.ACPTrace(routerOn(m.effective(IDACPTrace, file)))
 	}
 	if allow && m.opts.Apply.ChildEnvAllow != nil {
 		m.opts.Apply.ChildEnvAllow(m.effective(IDChildEnvAllow, file))

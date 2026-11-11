@@ -2,6 +2,7 @@ package projectstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
 
@@ -28,10 +29,53 @@ var columnsAdded = []struct {
 	{"compactions", []column{{"usage_id", "INTEGER"}}},
 }
 
+// SchemaVersion is the schema generation this binary writes and understands
+// (PRAGMA user_version). Databases without a stamp (0) are older and are
+// migrated forward; a higher number was written by a newer binary and is refused.
+const SchemaVersion = 1
+
+// NewerSchemaError says a database belongs to a newer version of the app. The
+// database is not touched.
+type NewerSchemaError struct {
+	Path    string
+	Version int
+}
+
+func (e *NewerSchemaError) Error() string {
+	return fmt.Sprintf("%s was written by a newer version of the app (database schema %d, this version understands %d up to): "+
+		"update the app; the database was left untouched", e.Path, e.Version, SchemaVersion)
+}
+
+func userVersion(ctx context.Context, db *sql.DB) (int, error) {
+	var v int
+	err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&v)
+	return v, err
+}
+
+// checkVersion refuses a database stamped by a newer binary.
+func checkVersion(ctx context.Context, db *sql.DB, path string) error {
+	v, err := userVersion(ctx, db)
+	if err != nil {
+		return err
+	}
+	if v > SchemaVersion {
+		return &NewerSchemaError{Path: path, Version: v}
+	}
+	return nil
+}
+
+func stampVersion(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion))
+	return err
+}
+
 // migrate brings a project database up to the current schema. It is
 // idempotent: new tables use IF NOT EXISTS and columns are added only when
 // missing, so it is safe on fresh, current and older databases alike.
 func (d *DB) migrate(ctx context.Context) error {
+	if err := checkVersion(ctx, d.sql, d.dir); err != nil {
+		return err
+	}
 	if _, err := d.sql.ExecContext(ctx, projectSchema); err != nil {
 		return fmt.Errorf("project schema: %w", err)
 	}
@@ -49,7 +93,7 @@ func (d *DB) migrate(ctx context.Context) error {
 			}
 		}
 	}
-	return nil
+	return stampVersion(ctx, d.sql)
 }
 
 func (d *DB) columns(ctx context.Context, table string) (map[string]bool, error) {

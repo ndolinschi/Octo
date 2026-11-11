@@ -37,7 +37,15 @@ func Open(dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkVersion(context.Background(), reg, filepath.Join(dataDir, "registry.sqlite")); err != nil {
+		_ = reg.Close()
+		return nil, err
+	}
 	if _, err := reg.Exec(registrySchema); err != nil {
+		_ = reg.Close()
+		return nil, err
+	}
+	if err := stampVersion(context.Background(), reg); err != nil {
 		_ = reg.Close()
 		return nil, err
 	}

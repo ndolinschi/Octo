@@ -1,5 +1,6 @@
 import type {
   Agent,
+  Diagnostics,
   Approval,
   ApprovalAnswer,
   ChangeDetail,
@@ -116,6 +117,8 @@ export interface Bridge {
   getSettings?(): Promise<SettingsView>;
   /** Validates the whole update, writes it atomically, applies what can apply at once. Secrets are write-only. */
   putSettings?(update: SettingsUpdate): Promise<SettingsView>;
+  /** R1: the diagnostics report (versions, PATH, per-agent resolution and login state, last 200 log lines). */
+  getDiagnostics?(): Promise<Diagnostics>;
   /*
    * v7 members. All optional (only the HTTP bridge implements them; the message and demo bridges do not), so a host
    * that predates them keeps compiling; hosts check for presence.
@@ -358,6 +361,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     deleteSecret: async (id, name) => {
       await request("DELETE", `${p(id)}/secrets/${encodeURIComponent(name)}`);
     },
+    getDiagnostics: () => request("GET", "/v1/diagnostics") as Promise<Diagnostics>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     openLanguageServer: (id, serverId) =>

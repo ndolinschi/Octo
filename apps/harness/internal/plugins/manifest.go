@@ -58,6 +58,9 @@ type manifestAgent struct {
 	// command) for the agent to count as available: for an adapter run through
 	// npx that drives a separately installed CLI.
 	Requires []string `json:"requires"`
+	// Install is a one-line instruction for installing what the agent needs,
+	// shown when it is not available.
+	Install string `json:"install"`
 }
 
 // Strength values a manifest may list.

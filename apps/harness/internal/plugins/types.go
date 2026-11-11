@@ -45,11 +45,16 @@ type Agent struct {
 	Models            []string `json:"models"`
 	DefaultModel      string   `json:"default_model,omitempty"`
 	Hint              string   `json:"hint,omitempty"`
+	// InstallHint says how to install the agent (manifest `install`).
+	InstallHint string `json:"install_hint,omitempty"`
 	// FlatRate: the agent runs on a flat-rate subscription; set by the manifest's
 	// flatRate (false when absent). Strengths are the bands it suits (optional).
 	FlatRate  bool     `json:"flat_rate"`
 	Strengths []string `json:"strengths,omitempty"`
 	Launch
+
+	// Requires are the manifest's extra commands (server-side; diagnostics).
+	Requires []string `json:"-"`
 
 	// ModelArg is the start-up argument template; "{model}" is replaced.
 	ModelArg     []string `json:"-"`

@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -120,4 +121,55 @@ func (a Agent) Probe(ctx context.Context) *bool {
 		return nil
 	}
 	return runProbe(ctx, a)
+}
+
+// ProbeReport is the outcome of one login probe, for diagnostics.
+type ProbeReport struct {
+	// Ran is false when there is no probe or the agent is not available.
+	Ran bool `json:"ran"`
+	// LoggedIn is nil when the probe was inconclusive or did not run.
+	LoggedIn *bool `json:"logged_in"`
+	// Reason says what happened, never including the probe's output.
+	Reason string `json:"reason"`
+}
+
+// ProbeNow runs the login probe once, synchronously, and says why it came out
+// as it did. Used by `harness doctor`; the server never calls it on a request.
+func (a Agent) ProbeNow(ctx context.Context) ProbeReport {
+	switch {
+	case a.ProbeCommand == "":
+		return ProbeReport{Reason: "this agent has no login probe"}
+	case !a.Available:
+		return ProbeReport{Reason: "not run: the agent is not available"}
+	}
+	pctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(pctx, a.ProbeCommand, a.ProbeArgs...)
+	cmd.Dir = a.Launch.Dir
+	cmd.Env = childenv.Build(os.Environ(), a.ResolvedEnv())
+	cmd.WaitDelay = time.Second
+	err := cmd.Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return ProbeReport{Ran: true, LoggedIn: boolPtr(true), Reason: "the probe exited 0"}
+	case errors.As(err, &exit) && pctx.Err() == nil:
+		return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: fmt.Sprintf("the probe exited with status %d", exit.ExitCode())}
+	case pctx.Err() != nil:
+		return ProbeReport{Ran: true, Reason: "the probe timed out"}
+	}
+	return ProbeReport{Ran: true, Reason: "the probe could not be started"}
+}
+
+// LastProbe describes the cached background result, without running anything.
+func (a Agent) LastProbe() ProbeReport {
+	switch {
+	case a.ProbeCommand == "":
+		return ProbeReport{Reason: "this agent has no login probe"}
+	case a.LoggedIn == nil:
+		return ProbeReport{Reason: "no result yet or inconclusive"}
+	case *a.LoggedIn:
+		return ProbeReport{Ran: true, LoggedIn: a.LoggedIn, Reason: "the last probe exited 0"}
+	}
+	return ProbeReport{Ran: true, LoggedIn: a.LoggedIn, Reason: "the last probe exited non-zero"}
 }

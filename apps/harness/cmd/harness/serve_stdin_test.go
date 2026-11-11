@@ -109,3 +109,25 @@ func (l *lockedBuf) String() string {
 	defer l.mu.Unlock()
 	return l.b.String()
 }
+
+func TestV7EnvDefaults(t *testing.T) {
+	t.Setenv("HARNESS_DEFAULT_ACCESS", "")
+	t.Setenv("HARNESS_APPROVAL_TIMEOUT", "")
+	if a, to, err := v7Env(); err != nil || a != "full" || to != 0 {
+		t.Fatalf("defaults: %q %v %v (new projects are full until the UI shows approval cards)", a, to, err)
+	}
+	t.Setenv("HARNESS_DEFAULT_ACCESS", "supervised")
+	t.Setenv("HARNESS_APPROVAL_TIMEOUT", "90s")
+	if a, to, err := v7Env(); err != nil || a != "supervised" || to != 90*time.Second {
+		t.Fatalf("supervised: %q %v %v", a, to, err)
+	}
+	t.Setenv("HARNESS_DEFAULT_ACCESS", "root")
+	if _, _, err := v7Env(); err == nil {
+		t.Fatal("a bad access value must be refused")
+	}
+	t.Setenv("HARNESS_DEFAULT_ACCESS", "full")
+	t.Setenv("HARNESS_APPROVAL_TIMEOUT", "0")
+	if _, to, err := v7Env(); err != nil || to >= 0 {
+		t.Fatalf("0 means wait for ever: %v %v", to, err)
+	}
+}

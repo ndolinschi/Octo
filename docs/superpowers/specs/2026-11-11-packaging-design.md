@@ -210,3 +210,16 @@ The bar below is what "ready" means; anything not on it waits.
 Out of R1: bots, I3 savings view, signed/notarised builds, auto-update, Windows.
 **What the orchestrator cannot do:** run or log in any of the three CLIs — every agent-specific path stays "not
 verified" until the owner's run; R1 makes that run cheap to do and to report.
+
+
+---
+
+## As built — R1 (harness)
+
+Details: [`apps/harness/docs/acp-orchestrator.md`](../../../apps/harness/docs/acp-orchestrator.md) (agents, failures, diagnostics, trace). Not run against any real CLI.
+
+- **R1.3.** The built-in manifest lists `claude-code`, `copilot`, `grok` first. Each has `install` (new manifest field, `install_hint` in `GET /v1/plugins`) and `auth.hint` with the login text of R1.3 (Copilot: `/login` or `COPILOT_GITHUB_TOKEN` with "Copilot Requests"; Grok: `grok login`, `XAI_API_KEY` switches to per-token billing). The Grok command line and install text are unverified; Copilot's `npm install -g @github/copilot` and Claude's `npm install -g @anthropic-ai/claude-code` come from memory of the vendors' docs, not from a run.
+- **R1.4.** `scripts` and tests cover: missing command, not logged in, authenticate refused, MCP servers refused, crash, `stopReason` refusal / max_tokens, and **no text and no tool call** (a failed turn "the agent returned nothing ...; if it is not logged in: <hint>", for an orchestrator turn and for a sub-agent). Fake agent markers: `[silent]`, `[refuse]`, `[max-tokens]`, `[crash]`. Remaining guess: the owner's silent Copilot turn was an `end_turn` with nothing in it (or a crash the harness reported but the UI did not show); if it recurs, the wire trace shows which.
+- **R1.5.** `harness doctor [--json]` and `GET /v1/diagnostics` (`internal/diag`): see the doc; the log tail is a ring of the last 200 records scrubbed of credentials. The ACP wire trace (`internal/acptrace`, `HARNESS_ACP_TRACE`, also the setting `HARNESS_ACP_TRACE`, applied at once): per-process files under `{data-dir}/traces/`, 5 MB cap per file (oldest half dropped), 20 files, redaction of secret-named values, env/header pairs, bearer tokens, manifest env values, the MCP token and project secrets. Doctor runs each agent's login probe (exit status only); the endpoint does not run anything. Not in the report: environment values, file contents of the project.
+- **R1.6.** `PRAGMA user_version` stamps `registry.sqlite` and every `project.sqlite` (`projectstore.SchemaVersion = 1`; databases without a stamp are older and migrate forward as before). A database stamped higher is refused before anything is changed: `... was written by a newer version of the app (database schema N, this version understands 1 up to): update the app; the database was left untouched` (`NewerSchemaError`; `harness serve` fails to start on a newer registry, a newer project fails to open with this message). Tests: migration from the schema of commit 20d4d6b (embedded as `testdata/project_schema_20d4d6b.sql`, with rows kept and the new tables usable), refusal of a newer project database (and that it was not touched) and of a newer registry.
+- Related: the server default access of new projects is `full` until the UI ships approval cards (`HARNESS_DEFAULT_ACCESS=supervised` still works).
