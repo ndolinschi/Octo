@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,6 +27,18 @@ type Digest struct {
 	Decisions   []string     `json:"decisions"`
 	Outcome     string       `json:"outcome"`
 	Facts       []DigestFact `json:"facts"`
+	// Continues is the id of an earlier task this exchange continues (a
+	// follow-up); empty when it is a new piece of work.
+	Continues string `json:"continues"`
+}
+
+// DigestOpts tunes ApplyDigest.
+type DigestOpts struct {
+	// DropIfEmpty deletes the turn's record, when the harness opened it and
+	// nobody edited it, if the digest found nothing worth keeping (no fact,
+	// decision, quote, constraint or acceptance criterion): a trivial exchange
+	// leaves no task record.
+	DropIfEmpty bool
 }
 
 // ParseDigest reads the model's answer: the JSON object in it, however it is wrapped.
@@ -73,11 +86,42 @@ func similar(a, b string) float64 {
 // changed or deleted. A fact that contradicts an earlier one marks that one
 // superseded (the text and date stay).
 func (s *Service) ApplyDigest(ctx context.Context, taskID string, messageID int64, d Digest) (projectstore.Task, error) {
+	return s.ApplyDigestOpts(ctx, taskID, messageID, d, DigestOpts{})
+}
+
+// ApplyDigestOpts is ApplyDigest with options. When the digest says the turn
+// continues another task, the turn's message joins that task, the turn's own
+// record (if untouched) is deleted and the digest is merged into the other
+// task, which is closed again (the turn is over) with the new outcome; the
+// returned task is the one the digest went to. A task deleted for being empty
+// is returned with its ID so the caller can tell.
+func (s *Service) ApplyDigestOpts(ctx context.Context, taskID string, messageID int64, d Digest, opts DigestOpts) (projectstore.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t, err := s.DB.Task(ctx, taskID)
 	if err != nil {
 		return t, err
+	}
+	if c := strings.TrimSpace(d.Continues); c != "" && c != taskID {
+		if target, terr := s.DB.Task(ctx, c); terr == nil && target.Status != projectstore.TaskDropped {
+			own := t
+			if !slices.Contains(target.MessageIDs, messageID) {
+				target.MessageIDs = append(target.MessageIDs, messageID)
+			}
+			target.Files, _ = addUnique(target.Files, own.Files, MaxItems)
+			if own.Auto {
+				if err := s.DB.DeleteTask(ctx, own.ID); err == nil {
+					s.publish("task.updated", map[string]any{"task_id": own.ID, "deleted": true})
+				}
+			}
+			t = target
+			t.Status = projectstore.TaskDone // the follow-up's turn is over
+			if o := strings.TrimSpace(s.redact(d.Outcome)); o != "" {
+				t.Outcome = clip(o, MaxOutcome)
+			}
+			d.Outcome = ""
+			opts.DropIfEmpty = false
+		}
 	}
 	if g := strings.TrimSpace(s.redact(d.Goal)); g != "" && (t.GoalBy == "harness" || t.GoalBy == "digest") {
 		t.Goal, t.GoalBy = clip(g, MaxGoal), "digest"
@@ -132,6 +176,12 @@ func (s *Service) ApplyDigest(ctx context.Context, taskID string, messageID int6
 			}
 		}
 		t.Facts = append(t.Facts, nf)
+	}
+	if opts.DropIfEmpty && t.Auto && len(t.Facts)+len(t.Decisions)+len(t.Quotes)+len(t.Constraints)+len(t.Acceptance) == 0 {
+		if err := s.DB.DeleteTask(ctx, t.ID); err == nil {
+			s.publish("task.updated", map[string]any{"task_id": t.ID, "deleted": true})
+		}
+		return t, nil
 	}
 	t, err = s.DB.SaveTask(ctx, t)
 	if err == nil {
@@ -206,13 +256,21 @@ const DigestPrompt = `You maintain the memory of a software project. You read on
  "constraints": ["..."], "acceptance": ["..."],
  "quotes": ["<exact words of the user's request that must not be paraphrased: names, numbers, paths, commands, acceptance criteria>"],
  "decisions": ["..."], "outcome": "<what was done, empty if nothing yet>",
+ "continues": "<the id of an earlier task listed above that this exchange continues (a follow-up, a correction, the next step of it), else empty>",
  "facts": [{"text": "<a short standalone statement, e.g. 'CI runs on Rust 1.88'>", "supersedes": "<text of an earlier fact it contradicts, else empty>"}]}
 Quotes must be copied character for character from the request. Facts must stand alone, without "it" or "this". Leave out what is already in the record. Never invent. Empty lists are fine.`
 
-// DigestInput builds the capped user message of the digest call.
-func DigestInput(t projectstore.Task, known []string, request, reply string) string {
+// DigestInput builds the capped user message of the digest call. candidates are
+// earlier tasks this exchange might continue.
+func DigestInput(t projectstore.Task, known []string, request, reply string, candidates ...projectstore.Task) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Task record so far:\ntitle: %s\ngoal: %s\n", t.Title, t.Goal)
+	if len(candidates) > 0 {
+		b.WriteString("Earlier tasks this exchange may continue:\n")
+		for _, c := range candidates {
+			fmt.Fprintf(&b, "- [%s] (%s) %s: %s\n", c.ID, c.Status, clip(c.Title, 80), clip(c.Goal, 160))
+		}
+	}
 	for _, f := range t.Facts {
 		if f.SupersededBy == "" {
 			fmt.Fprintf(&b, "fact (%s): %s\n", f.Date[:10], f.Text)

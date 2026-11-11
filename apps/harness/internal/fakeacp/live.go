@@ -24,11 +24,22 @@ const (
 	// MarkerQuiet thinks once and then sends nothing at all for 600 ms before
 	// answering.
 	MarkerQuiet = "[quiet]"
+	// MarkerLateInput announces a tool call with no input and sends the input
+	// (and a better title) in a tool_call_update, as real agents do.
+	MarkerLateInput = "[late-input]"
+	// MarkerSayHang writes some text and then waits to be cancelled.
+	MarkerSayHang = "[say-hang]"
+	// MarkerAuthRequired answers session/prompt with the JSON-RPC error -32000
+	// "Authentication required", as an agent whose login expired does.
+	MarkerAuthRequired = "[auth-required]"
 	// MarkerSecretThought is followed by a secret value ("[secret-thought:VALUE]"):
 	// the value is split across two thought chunks and put in a plan entry, as
 	// an agent that echoes what it was told would.
 	MarkerSecretThought = "[secret-thought:"
 )
+
+// stopAuthRequired is the pseudo stop reason that makes the prompt fail with an RPC error.
+const stopAuthRequired = "<auth-required>"
 
 func (a *agent) pause(ctx context.Context, d time.Duration) bool {
 	select {
@@ -73,6 +84,21 @@ func (a *agent) liveScript(ctx context.Context, cwd, request string) (stop strin
 		}
 		a.say("Done thinking.")
 		return "end_turn", true
+	case has(MarkerLateInput):
+		a.update(map[string]any{"sessionUpdate": "tool_call", "toolCallId": "call-late", "title": "Tool", "kind": "other", "status": "pending"})
+		a.update(map[string]any{
+			"sessionUpdate": "tool_call_update", "toolCallId": "call-late", "status": "in_progress", "title": "Review the change",
+			"rawInput": map[string]string{"task": "check the diff", "tier": "fast"},
+		})
+		a.toolUpdate("call-late", "completed", textContent("looks fine"))
+		a.say("Reviewed.")
+		return "end_turn", true
+	case has(MarkerSayHang):
+		a.say("Working on it, first the ")
+		<-ctx.Done()
+		return "cancelled", true
+	case has(MarkerAuthRequired):
+		return stopAuthRequired, true
 	case has(MarkerSecretThought):
 		i := strings.Index(request, MarkerSecretThought) + len(MarkerSecretThought)
 		secret, _, _ := strings.Cut(request[i:], "]")

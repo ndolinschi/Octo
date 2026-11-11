@@ -54,3 +54,22 @@ test("the agent row's plan seeds the state and a cleared plan removes it", () =>
   s = applyEvent(s, { type: "agent.updated", seq: 3, agent: { ...base, plan: null } });
   assert.deepEqual(s.plan, {});
 });
+
+test("message.updated replaces a stored message and turn.finished keeps the hint apart", () => {
+  const msg = (text: string, stopped?: boolean) => ({
+    id: 5,
+    agent_id: "a",
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text }],
+    created_at: "t",
+    ...(stopped ? { stopped } : {}),
+  });
+  let s = apply([{ type: "message.created", seq: 1, message: msg("partial") }]);
+  s = applyEvent(s, { type: "message.updated", seq: 2, message: msg("partial, now stopped", true) });
+  assert.equal(s.messages.a?.length, 1);
+  assert.equal(s.messages.a?.[0]?.stopped, true);
+  s = applyEvent(s, { type: "turn.finished", seq: 3, status: "failed", error: "Codex is not logged in", hint: "Run `codex login`." });
+  assert.deepEqual(s.lastTurn, { status: "failed", error: "Codex is not logged in", hint: "Run `codex login`." });
+  s = applyEvent(s, { type: "turn.finished", seq: 4, status: "completed", error: null });
+  assert.deepEqual(s.lastTurn, { status: "completed", error: null });
+});

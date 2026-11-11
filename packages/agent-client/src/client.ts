@@ -206,6 +206,7 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "agent.created",
   "agent.updated",
   "message.created",
+  "message.updated",
   "message.delta",
   "message.thinking_delta",
   "agent.plan",

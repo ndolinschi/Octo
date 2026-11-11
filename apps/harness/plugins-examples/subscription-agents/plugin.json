@@ -1,6 +1,6 @@
 {
   "name": "subscription-agents",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Ten coding-agent CLIs as sub-agents, on the subscriptions their own CLIs are logged in to. Only the scripted agent has been run against this harness; the commands for cursor, opencode, antigravity, devin, droid, omp and pi come from vendor docs, the ACP registry and secondary sources and are unverified.",
   "agents": [
     {
@@ -48,7 +48,7 @@
         "COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}"
       },
       "auth": {
-        "hint": "Log in once: run `copilot` and type /login, or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission."
+        "hint": "Log in once: run `copilot` and type /login, or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission. The harness has no non-interactive Copilot login check, so its login state shows as unknown."
       },
       "install": "Install the GitHub Copilot CLI so that `copilot` is on PATH: npm install -g @github/copilot (needs Node.js 22 or newer and a Copilot plan)"
     },
@@ -73,6 +73,11 @@
         "XAI_API_KEY": "${XAI_API_KEY}"
       },
       "auth": {
+        "probe": [
+          "grok",
+          "models"
+        ],
+        "notLoggedInPattern": "(?i)not authenticated",
         "methods": [
           {
             "id": "xai.api_key",
@@ -80,9 +85,9 @@
           },
           "cached_token"
         ],
-        "hint": "Log in once in the browser: run `grok login`. An XAI_API_KEY in the harness environment is forwarded to Grok and switches it to per-token billing: unset it to stay on the subscription."
+        "hint": "Log in once: run `grok login` (browser), or `grok login --device-auth` on a machine without a browser. An XAI_API_KEY in the harness environment is forwarded to Grok and switches it to per-token billing: unset it to stay on the subscription."
       },
-      "install": "Install the Grok CLI so that `grok` is on PATH (from x.ai; this entry's command line is unverified against a real install)"
+      "install": "Install the Grok CLI so that `grok` is on PATH: npm install -g @xai-official/grok (verified against Grok CLI 1.0.77). For scripts its documentation recommends `--no-auto-update` for `grok agent stdio`; it is not in this entry's args because its placement is unverified: add it to a copied manifest if wanted."
     },
     {
       "id": "codex",
@@ -108,7 +113,11 @@
           "status"
         ],
         "hint": "Log in with the Codex CLI (codex login, or codex login --device-auth on a headless machine); with OCTO_CODEX_HOME set, log in with CODEX_HOME pointing at the same folder."
-      }
+      },
+      "requires": [
+        "codex"
+      ],
+      "install": "Install the Codex CLI so that `codex` is on PATH: npm install -g @openai/codex (the ACP adapter @agentclientprotocol/codex-acp is fetched by npx and drives it; the entry is available only when `codex` is found)"
     },
     {
       "id": "cursor",

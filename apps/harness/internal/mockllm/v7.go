@@ -113,7 +113,9 @@ var (
 	goalMarker     = regexp.MustCompile(`\[goal:\s*([^\]]+?)\s*\]`)
 	quoteMarker    = regexp.MustCompile(`\[quote:\s*([^\]]+?)\s*\]`)
 	decisionMarker = regexp.MustCompile(`\[decision:\s*([^\]]+?)\s*\]`)
-	outcomeMarker  = regexp.MustCompile(`\[outcome:\s*([^\]]+?)\s*\]`)
+	// [continues: TEXT] attaches the exchange to the listed earlier task whose line holds TEXT.
+	continuesMarker = regexp.MustCompile(`\[continues:\s*([^\]]+?)\s*\]`)
+	outcomeMarker   = regexp.MustCompile(`\[outcome:\s*([^\]]+?)\s*\]`)
 )
 
 // digestReply answers the digest call: a JSON object built from the markers of
@@ -123,6 +125,7 @@ func digestReply(r *request) reply {
 	if n := len(r.Messages); n > 0 {
 		text = r.Messages[n-1].text()
 	}
+	full := text
 	if i := strings.Index(text, "User request:"); i >= 0 {
 		text = text[i:]
 	}
@@ -143,8 +146,18 @@ func digestReply(r *request) reply {
 	for _, m := range factMarker.FindAllStringSubmatch(text, -1) {
 		facts = append(facts, map[string]string{"text": m[1], "supersedes": m[2]})
 	}
+	continues := ""
+	if m := continuesMarker.FindStringSubmatch(text); m != nil {
+		for _, line := range strings.Split(full, "\n") {
+			if i := strings.Index(line, "["); strings.HasPrefix(line, "- [") && i >= 0 && strings.Contains(line, m[1]) {
+				continues = line[i+1 : strings.Index(line, "]")]
+				break
+			}
+		}
+	}
 	out := map[string]any{
-		"goal": first(goalMarker), "outcome": first(outcomeMarker), "quotes": all(quoteMarker), "decisions": all(decisionMarker),
+		"continues": continues,
+		"goal":      first(goalMarker), "outcome": first(outcomeMarker), "quotes": all(quoteMarker), "decisions": all(decisionMarker),
 		"constraints": []string{}, "acceptance": []string{}, "facts": facts,
 	}
 	b, _ := json.Marshal(out)

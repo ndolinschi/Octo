@@ -80,3 +80,26 @@ func TestAgentSectionSaysWhatIsMissing(t *testing.T) {
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
+
+func TestPathEntriesAreListedOnce(t *testing.T) {
+	r := Build(Inputs{Env: []string{"PATH=/usr/bin:/bin:/usr/bin::/bin:/opt/x"}, BuiltinOK: true})
+	if strings.Count(r.PathForChildren, "/usr/bin") != 1 || strings.Count(r.PathForChildren, "/bin") < 1 {
+		t.Fatalf("path = %q", r.PathForChildren)
+	}
+	for _, e := range strings.Split(r.PathForChildren, ":") {
+		if strings.Count(":"+r.PathForChildren+":", ":"+e+":") != 1 {
+			t.Fatalf("entry %q repeated in %q", e, r.PathForChildren)
+		}
+	}
+}
+
+func TestRouterPendingIsNotABrokenBuiltinLoop(t *testing.T) {
+	r := Build(Inputs{BuiltinOK: false, BuiltinWhy: "No API key", RouterPending: true, Env: []string{}})
+	if len(r.Problems) != 0 || r.Router.Note != RouterPendingNote || !strings.Contains(r.BuiltinLoop.Reason, "not checked") {
+		t.Fatalf("report = %+v", r)
+	}
+	r = Build(Inputs{BuiltinOK: false, BuiltinWhy: "No API key", Env: []string{}})
+	if len(r.Problems) != 1 || r.Router.Note != "" {
+		t.Fatalf("without the switch the problem stays: %+v", r)
+	}
+}

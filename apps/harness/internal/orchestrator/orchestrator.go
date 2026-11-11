@@ -116,8 +116,10 @@ type Orchestrator struct {
 	qmu     sync.Mutex
 	sendNow map[string]bool
 
-	mu     sync.Mutex
-	turns  map[string]context.CancelFunc
+	mu    sync.Mutex
+	turns map[string]context.CancelFunc
+	// live: a turn started and its turn.finished is not published yet (see finish).
+	live   map[string]bool
 	sides  map[string]*side
 	bridge string
 }
@@ -126,7 +128,7 @@ func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Option
 	ctx, stop := context.WithCancel(context.Background())
 	o := &Orchestrator{
 		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle),
-		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), sides: make(map[string]*side),
+		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), live: make(map[string]bool), sides: make(map[string]*side),
 		trackers: make(map[string]*changes.Tracker), memories: make(map[string]*memory.Service), sendNow: make(map[string]bool),
 	}
 	o.approvals = approval.New(o.hub.Publish, o.publishAttention, opts.ApprovalTimeout)
@@ -200,8 +202,7 @@ func (o *Orchestrator) Start(ctx context.Context, projectID, text string) (proje
 		defer cancel()
 		status, finished := o.runTurn(turnCtx, rt, orch)
 		o.qmu.Lock()
-		o.release(projectID)
-		o.hub.Publish(projectID, events.TurnFinished, finished)
+		o.finish(projectID, finished)
 		o.advance(projectID, status)
 		o.qmu.Unlock()
 	}()
@@ -215,6 +216,7 @@ func (o *Orchestrator) claim(projectID string, cancel context.CancelFunc) bool {
 		return false
 	}
 	o.turns[projectID] = cancel
+	o.live[projectID] = true
 	return true
 }
 
@@ -222,6 +224,31 @@ func (o *Orchestrator) release(projectID string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	delete(o.turns, projectID)
+	delete(o.live, projectID)
+}
+
+// finish ends a turn for the outside world in one step: the turn slot is
+// released (a client that reacts to turn.finished can start the next turn),
+// turn.finished is published, and the project stops being Active. All three
+// happen under o.mu, which Active also takes, so nobody can see the project as
+// idle (the agent row says idle before this) without turn.finished already
+// published: a client that polls for idle and then subscribes would otherwise
+// catch the previous turn's turn.finished as the next turn's.
+func (o *Orchestrator) finish(projectID string, finished map[string]any) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.turns, projectID)
+	o.hub.Publish(projectID, events.TurnFinished, finished)
+	delete(o.live, projectID)
+}
+
+// Active reports whether a turn has started and its turn.finished has not been
+// published yet. A project in that state is reported as running whatever its
+// orchestrator row says.
+func (o *Orchestrator) Active(projectID string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.live[projectID]
 }
 
 func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (projectstore.Message, *runtime, projectstore.Agent, error) {
@@ -270,13 +297,13 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 
 func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectstore.Agent) (projectstore.AgentStatus, map[string]any) {
 	res, err := rt.runOrchestrator(ctx, orch)
-	status, errText := projectstore.StatusCompleted, ""
+	status, errText, hint := projectstore.StatusCompleted, "", ""
 	switch {
 	case err == nil:
 	case ctx.Err() != nil, errors.Is(err, errAgentCancelled):
 		status = projectstore.StatusCancelled
 	default:
-		status, errText = projectstore.StatusFailed, err.Error()
+		status, errText, hint = projectstore.StatusFailed, err.Error(), hintOf(err)
 		if errText == "" {
 			errText = "the turn failed without a reason"
 		}
@@ -289,9 +316,10 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 		}
 	}
 	o.approvals.EndTurn(rt.pid(), rt.turnID)
-	finished := rt.finishTurn(orch.ID, status, res.Text, errText)
+	trivial, _ := o.closeTurnTask(rt, status, res.Text)
+	finished := rt.finishTurn(orch.ID, status, res.Text, errText, hint)
 	if status == projectstore.StatusCompleted {
-		o.digestTurn(rt, orch.ID, rt.currentTask(), rt.turnID, res.Text)
+		o.digestTurn(rt, orch.ID, rt.currentTask(), rt.turnID, res.Text, trivial)
 	}
 	return status, finished
 }

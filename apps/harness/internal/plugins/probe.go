@@ -86,26 +86,54 @@ func (p *prober) probe(ctx context.Context, a Agent, st *probeState) {
 	p.mu.Unlock()
 }
 
-// runProbe executes the manifest's probe command: exit 0 is logged in, a
-// non-zero exit is logged out, anything else (not startable, timed out) is
-// unknown. Its output is discarded.
+// runProbe executes the manifest's probe command: exit 0 is logged in (unless
+// its output matches the agent's notLoggedInPattern), a non-zero exit is logged
+// out, anything else (not startable, timed out) is unknown. Its output is never
+// kept or shown.
 func runProbe(ctx context.Context, a Agent) *bool {
-	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	r := probeOnce(ctx, a)
+	if r.LoggedIn == nil {
+		slog.Debug("agent login probe inconclusive", "agent", a.ID, "reason", r.Reason)
+	}
+	return r.LoggedIn
+}
+
+// probeOnce runs the probe and classifies the outcome.
+func probeOnce(ctx context.Context, a Agent) ProbeReport {
+	pctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, a.ProbeCommand, a.ProbeArgs...)
+	cmd := exec.CommandContext(pctx, a.ProbeCommand, a.ProbeArgs...)
 	cmd.Dir = a.Launch.Dir
 	cmd.Env = childenv.Build(os.Environ(), a.ResolvedEnv())
 	cmd.WaitDelay = time.Second
+	var out capped
+	if a.ProbeNotLoggedIn != nil {
+		cmd.Stdout, cmd.Stderr = &out, &out
+	}
 	err := cmd.Run()
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
-		return boolPtr(true)
-	case errors.As(err, &exit) && ctx.Err() == nil:
-		return boolPtr(false)
+		if a.ProbeNotLoggedIn != nil && a.ProbeNotLoggedIn.Match(out.b) {
+			return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: "the probe exited 0 but its output says the agent is not logged in"}
+		}
+		return ProbeReport{Ran: true, LoggedIn: boolPtr(true), Reason: "the probe exited 0"}
+	case errors.As(err, &exit) && pctx.Err() == nil:
+		return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: fmt.Sprintf("the probe exited with status %d", exit.ExitCode())}
+	case pctx.Err() != nil:
+		return ProbeReport{Ran: true, Reason: "the probe timed out"}
 	}
-	slog.Debug("agent login probe inconclusive", "agent", a.ID, "err", err)
-	return nil
+	return ProbeReport{Ran: true, Reason: "the probe could not be started"}
+}
+
+// capped keeps the first 64 KiB written to it.
+type capped struct{ b []byte }
+
+func (c *capped) Write(p []byte) (int, error) {
+	if room := 64<<10 - len(c.b); room > 0 {
+		c.b = append(c.b, p[:min(len(p), room)]...)
+	}
+	return len(p), nil
 }
 
 func boolPtr(v bool) *bool { return &v }
@@ -142,23 +170,7 @@ func (a Agent) ProbeNow(ctx context.Context) ProbeReport {
 	case !a.Available:
 		return ProbeReport{Reason: "not run: the agent is not available"}
 	}
-	pctx, cancel := context.WithTimeout(ctx, probeTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(pctx, a.ProbeCommand, a.ProbeArgs...)
-	cmd.Dir = a.Launch.Dir
-	cmd.Env = childenv.Build(os.Environ(), a.ResolvedEnv())
-	cmd.WaitDelay = time.Second
-	err := cmd.Run()
-	var exit *exec.ExitError
-	switch {
-	case err == nil:
-		return ProbeReport{Ran: true, LoggedIn: boolPtr(true), Reason: "the probe exited 0"}
-	case errors.As(err, &exit) && pctx.Err() == nil:
-		return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: fmt.Sprintf("the probe exited with status %d", exit.ExitCode())}
-	case pctx.Err() != nil:
-		return ProbeReport{Ran: true, Reason: "the probe timed out"}
-	}
-	return ProbeReport{Ran: true, Reason: "the probe could not be started"}
+	return probeOnce(ctx, a)
 }
 
 // LastProbe describes the cached background result, without running anything.

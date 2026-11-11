@@ -44,3 +44,9 @@ type PlanHandler interface {
 type UpdateObserver interface {
 	UpdateSeen(ctx context.Context, kind string)
 }
+
+// PromptUsageHandler is implemented by handlers that want the token usage an
+// agent reports with the end of a prompt, when it does.
+type PromptUsageHandler interface {
+	PromptUsage(ctx context.Context, u PromptUsage)
+}

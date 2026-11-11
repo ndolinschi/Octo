@@ -132,7 +132,7 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	case fatal != nil:
 		return agent.Result{}, fatal
 	case err != nil:
-		return agent.Result{}, fmt.Errorf("ACP agent %q: %w", target.agent.ID, err)
+		return agent.Result{}, acpFailure(target.agent, "ACP agent", err)
 	}
 	switch stop {
 	case acp.StopEndTurn:
@@ -199,7 +199,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
 	})
 	if err != nil {
-		return false, fmt.Errorf("start ACP agent %q: %w", ag.ID, err)
+		return false, acpFailure(ag, "start ACP agent", err)
 	}
 	token := s.h.tokens.Issue(mcp.Binding{ProjectID: rt.pid(), AgentID: orch.ID})
 	client.TraceHide(token)
@@ -256,7 +256,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 		sess, err = client.NewSession(ctx, cwd, nil, opts)
 	}
 	if err != nil {
-		return false, fmt.Errorf("ACP agent %q: %w", ag.ID, err)
+		return false, acpFailure(ag, "ACP agent", err)
 	}
 	s.mu.Lock()
 	s.sessID = sess.ID

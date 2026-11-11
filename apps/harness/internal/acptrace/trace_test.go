@@ -113,3 +113,21 @@ func itoa(n int) string {
 	}
 	return string(b)
 }
+
+func TestRedactsEmailAddresses(t *testing.T) {
+	tr := start(t, nil, nil)
+	tr.Received([]byte(`{"jsonrpc":"2.0","method":"session/update","params":{"update":{"text":"signed in as Jane.Doe+work@example.co.uk, see /home/jane/x","author":"bot@corp.example"}}}`))
+	tr.Received([]byte("not json: mail ivan@пример.рф and anna@mail.ru please"))
+	tr.Stderr("git author <dev@example.com>")
+	got := read(t, tr)
+	for _, leaked := range []string{"Jane.Doe", "example.co.uk", "bot@corp", "anna@mail.ru", "ivan@", "dev@example.com", "@example.com"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("an e-mail address survives (%q):\n%s", leaked, got)
+		}
+	}
+	for _, kept := range []string{"signed in as", "see /home/jane/x", "please", "git author"} {
+		if !strings.Contains(got, kept) {
+			t.Errorf("the trace lost %q:\n%s", kept, got)
+		}
+	}
+}

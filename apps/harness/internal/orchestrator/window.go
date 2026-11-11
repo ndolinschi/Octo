@@ -173,9 +173,12 @@ func (e exchange) reduced(perMessage int) (user, assistant string) {
 
 // assembly is the result of building the window-mode context.
 type assembly struct {
-	// lead are the blocks that precede the window (index, tasks); facts follow it.
+	// lead precedes the window (the memory index: it changes only when a memory
+	// file does); tasks and facts follow it, in front of the current turn, because
+	// they change every turn and must not break the stable prefix before them.
 	lead    []textBlock
 	window  []exchangeText
+	tasks   *textBlock
 	facts   *textBlock
 	receipt Receipt
 	// currentFrom is the index in the stored messages where the current turn starts.
@@ -252,15 +255,18 @@ func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st 
 	if len(taskIDs) == 0 {
 		n = 0
 	}
-	as.lead = append(as.lead, textBlock{ReceiptBlock{Name: BlockTasks, Tokens: tokensOf(text), Cap: CapTasks, Count: n, IDs: nonNil(taskIDs[:min(n, len(taskIDs))])}, text})
+	as.tasks = &textBlock{ReceiptBlock{Name: BlockTasks, Tokens: tokensOf(text), Cap: CapTasks, Count: n, IDs: nonNil(taskIDs[:min(n, len(taskIDs))])}, text}
 
-	// 3. the recent window: the last N exchanges before the current turn, each
-	// message cut to its share of the cap so the window is exactly N exchanges.
+	// 3. the recent window: the last N exchanges before the current turn, at
+	// least, and it advances N exchanges at a time (so it holds between N and
+	// 2N-1): the window's first exchange stays put for N turns in a row and
+	// everything before the current turn stays byte for byte the same, which is
+	// what a provider's prompt cache needs. Each message is cut to a fixed share
+	// of the cap (sized for the longest window) so its text never changes either.
 	ex := splitExchanges(stored[:from])
-	if len(ex) > st.RecentExchanges {
-		ex = ex[len(ex)-st.RecentExchanges:]
-	}
-	per := CapWindow * 4 / max(2*len(ex), 1) // characters per message
+	n0 := st.RecentExchanges
+	ex = ex[windowStart(len(ex), n0):]
+	per := CapWindow * 4 / (2 * (2*n0 - 1)) // characters per message
 	var winTokens int64
 	var winIDs []string
 	for _, e := range ex {
@@ -297,10 +303,21 @@ func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st 
 		as.receipt.add(b.ReceiptBlock)
 	}
 	as.receipt.add(ReceiptBlock{Name: BlockWindow, Tokens: winTokens, Cap: CapWindow, Count: len(ex), IDs: nonNil(winIDs)})
+	as.receipt.add(as.tasks.ReceiptBlock)
 	if as.facts != nil {
 		as.receipt.add(as.facts.ReceiptBlock)
 	}
 	return as, nil
+}
+
+// windowStart is the index of the first exchange the window shows when k
+// exchanges precede the current turn and it keeps at least n: 0 until there are
+// 2n of them, then n further each time k grows by n.
+func windowStart(k, n int) int {
+	if k <= n {
+		return 0
+	}
+	return n * ((k - n) / n)
 }
 
 func orNone(l []string) []string {
@@ -384,12 +401,25 @@ func (a *assembly) history() ([]anthropic.MessageParam, error) {
 		if role != "assistant" {
 			role = "user"
 		}
-		if i == 0 && a.facts != nil && role == "user" {
-			blocks = append([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(a.facts.Text)}, blocks...)
+		if i == 0 && role == "user" {
+			var front []anthropic.ContentBlockParamUnion
+			if a.tasks != nil {
+				front = append(front, anthropic.NewTextBlock(a.tasks.Text))
+			}
+			if a.facts != nil {
+				front = append(front, anthropic.NewTextBlock(a.facts.Text))
+			}
+			blocks = append(front, blocks...)
 		}
 		push(role, blocks...)
 	}
 	if len(pending) > 0 { // no current turn (a report of the context between turns)
+		if a.tasks != nil {
+			pending = append(pending, anthropic.NewTextBlock(a.tasks.Text))
+		}
+		if a.facts != nil {
+			pending = append(pending, anthropic.NewTextBlock(a.facts.Text))
+		}
 		out = append(out, msg{"user", pending})
 	}
 	res := make([]anthropic.MessageParam, len(out))
@@ -419,6 +449,9 @@ func (a *assembly) text() string {
 			}
 		}
 		b.WriteString("\n")
+	}
+	if a.tasks != nil {
+		b.WriteString(a.tasks.Text + "\n")
 	}
 	if a.facts != nil {
 		b.WriteString(a.facts.Text + "\n")

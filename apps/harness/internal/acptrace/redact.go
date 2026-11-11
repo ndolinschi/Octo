@@ -9,6 +9,9 @@ import (
 // header and field names.
 var secretKey = regexp.MustCompile(`(?i)(key|token|secret|password|passwd|credential|authorization|cookie|bearer)`)
 
+// email matches an e-mail address (a login name, a git author, an account in a path).
+var email = regexp.MustCompile(`[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}`)
+
 var bearer = regexp.MustCompile(`(?i)(bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}`)
 
 // redactValue walks a decoded JSON value. A string under a key that looks like
@@ -70,5 +73,6 @@ func (t *Trace) redactString(s string) string {
 		s = t.scrub(s)
 	}
 	s = assign.ReplaceAllString(s, "${1}${2}"+Redacted)
-	return bearer.ReplaceAllString(s, "$1 "+Redacted)
+	s = bearer.ReplaceAllString(s, "$1 "+Redacted)
+	return email.ReplaceAllString(s, Redacted)
 }

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -196,6 +197,9 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			if len(a.Auth.Probe) > 0 {
 				ag.ProbeCommand, _ = resolveCommand(a.Auth.Probe[0], p.Dir)
 				ag.ProbeArgs = slices.Clone(a.Auth.Probe[1:])
+				if a.Auth.NotLoggedInPattern != "" {
+					ag.ProbeNotLoggedIn, _ = regexp.Compile(a.Auth.NotLoggedInPattern) // validated with the manifest
+				}
 			}
 		}
 		b.reg.agents[ag.ID] = ag

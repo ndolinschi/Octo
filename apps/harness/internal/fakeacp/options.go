@@ -13,6 +13,10 @@ const (
 	// advertises auth methods: "ok" offers an interactive method first and then
 	// an unattended one, "interactive" only the interactive one.
 	EnvAuth = "OCTO_FAKEACP_AUTH"
+	// EnvPromptUsage="N" makes every session/prompt response carry
+	// usage {inputTokens, outputTokens: N, thoughtTokens: 0}, as an agent that
+	// reports per-prompt usage does. Unset: no usage in the response.
+	EnvPromptUsage = "OCTO_FAKEACP_PROMPT_USAGE"
 	// EnvLoginFile, when set, makes the unattended method succeed only while
 	// that file exists (a stand-in for stored credentials).
 	EnvLoginFile = "OCTO_FAKEACP_LOGIN_FILE"
@@ -54,16 +58,17 @@ const (
 )
 
 type options struct {
-	auth       string
-	loginFile  string
-	models     []string
-	viaConfig  bool
-	refuseUnk  bool
-	startModel string
-	methods    []any
-	authOK     []string
-	authLog    string
-	reportEnv  []string
+	auth        string
+	loginFile   string
+	models      []string
+	viaConfig   bool
+	refuseUnk   bool
+	startModel  string
+	methods     []any
+	authOK      []string
+	authLog     string
+	reportEnv   []string
+	promptUsage string
 
 	loadSession bool
 	mcpHTTP     bool
@@ -76,7 +81,7 @@ func optionsFromEnv(args []string) options {
 		auth: os.Getenv(EnvAuth), loginFile: os.Getenv(EnvLoginFile),
 		viaConfig: os.Getenv(EnvModelsVia) == "config", refuseUnk: os.Getenv(EnvRefuseModel) == "1",
 		loadSession: os.Getenv(EnvLoadSession) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
-		mcpReject: os.Getenv(EnvMCPReject) == "1", unique: os.Getenv(EnvUniqueSessions) == "1",
+		mcpReject: os.Getenv(EnvMCPReject) == "1", promptUsage: os.Getenv(EnvPromptUsage), unique: os.Getenv(EnvUniqueSessions) == "1",
 	}
 	for _, m := range strings.Split(os.Getenv(EnvModels), ",") {
 		if m = strings.TrimSpace(m); m != "" {

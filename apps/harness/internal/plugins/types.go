@@ -1,5 +1,7 @@
 package plugins
 
+import "regexp"
+
 // Plugin is one loaded manifest. The JSON form is the GET /v1/plugins shape;
 // commands, args and env stay server-side.
 type Plugin struct {
@@ -64,6 +66,8 @@ type Agent struct {
 	ModelArg     []string `json:"-"`
 	ProbeCommand string   `json:"-"` // resolved path; empty when there is no probe
 	ProbeArgs    []string `json:"-"`
+	// ProbeNotLoggedIn, when set, turns a probe whose output matches it into "logged out".
+	ProbeNotLoggedIn *regexp.Regexp `json:"-"`
 	// AuthMethods and AuthSkip steer which ACP auth methods are tried.
 	AuthMethods []AuthMethodRef `json:"-"`
 	AuthSkip    []string        `json:"-"`

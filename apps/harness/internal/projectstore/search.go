@@ -52,6 +52,9 @@ func putDoc(ctx context.Context, x execer, d Doc) error {
 			return err
 		}
 	}
+	if _, err := x.ExecContext(ctx, `INSERT INTO search_s (rowid, title, body) VALUES (?, ?, ?)`, id, StemText(d.Title), StemText(d.Body)); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -85,7 +88,7 @@ func delDoc(ctx context.Context, x execer, kind, ref string) error {
 		return err
 	}
 	for _, id := range ids {
-		for _, t := range []string{"search_u", "search_t"} {
+		for _, t := range []string{"search_u", "search_t", "search_s"} {
 			if _, err := x.ExecContext(ctx, `DELETE FROM `+t+` WHERE rowid = ?`, id); err != nil {
 				return err
 			}
@@ -158,9 +161,10 @@ func (d *DB) Search(ctx context.Context, q SearchQuery) ([]Hit, error) {
 	if limit <= 0 || limit > MaxHits {
 		limit = MaxHits
 	}
-	var exact, loose []string
+	var exact, loose, stems []string
 	for _, t := range terms {
 		exact = append(exact, ftsPhrase(t))
+		stems = append(stems, ftsPhrase(StemWord(t)))
 		if utf8.RuneCountInString(t) >= 3 {
 			loose = append(loose, ftsPhrase(Stem(t)))
 		}
@@ -191,18 +195,22 @@ func (d *DB) Search(ctx context.Context, q SearchQuery) ([]Hit, error) {
 	if err := run("search_u", exact, " AND ", true); err != nil {
 		return nil, err
 	}
+	if err := run("search_s", stems, " AND ", false); err != nil { // inflected forms: stems on both sides
+		return nil, err
+	}
 	if err := run("search_t", loose, " AND ", false); err != nil {
 		return nil, err
 	}
 	if len(hits) == 0 && len(terms) > 1 {
 		sig := significant(terms)
 		if len(sig) > 0 {
-			var sx, sl []string
+			var sx, sl, ss []string
 			for _, t := range sig {
-				sx, sl = append(sx, ftsPhrase(t)), append(sl, ftsPhrase(Stem(t)))
+				sx, sl, ss = append(sx, ftsPhrase(t)), append(sl, ftsPhrase(Stem(t))), append(ss, ftsPhrase(StemWord(t)))
 			}
 			before := len(hits)
 			_ = run("search_u", sx, " OR ", true)
+			_ = run("search_s", ss, " OR ", false)
 			_ = run("search_t", sl, " OR ", false)
 			need := (len(sig) + 1) / 2
 			kept := hits[:before]
@@ -296,14 +304,55 @@ func significant(terms []string) []string {
 	return out
 }
 
-// containsTerms counts the terms whose stem occurs in the document.
+// containsTerms counts the terms that occur in the document: as a substring of
+// the stem, or as the stem of one of its words.
 func containsTerms(d Doc, terms []string) int {
 	text := strings.ToLower(d.Title + " " + d.Body)
+	stemmed := " " + StemText(d.Title+" "+d.Body) + " "
 	n := 0
 	for _, t := range terms {
-		if strings.Contains(text, Stem(t)) {
+		if strings.Contains(text, Stem(t)) || strings.Contains(stemmed, " "+StemWord(t)+" ") {
 			n++
 		}
 	}
 	return n
+}
+
+// reindexStemmed rebuilds the stemmed index from the stored documents (the
+// migration to schema 5, and a repair).
+func (d *DB) reindexStemmed(ctx context.Context) error {
+	rows, err := d.sql.QueryContext(ctx, `SELECT id, title, body FROM search_docs ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	type row struct {
+		id          int64
+		title, body string
+	}
+	var all []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.title, &r.body); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		all = append(all, r)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM search_s`); err != nil {
+		return err
+	}
+	for _, r := range all {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO search_s (rowid, title, body) VALUES (?, ?, ?)`, r.id, StemText(r.title), StemText(r.body)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

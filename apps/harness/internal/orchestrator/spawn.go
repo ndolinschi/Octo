@@ -171,7 +171,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		rt.settle(ctx, child.ID, projectstore.StatusCancelled, "", "")
 		return "sub-agent cancelled", true, nil
 	default:
-		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
+		rt.settleHint(ctx, child.ID, projectstore.StatusFailed, "", err.Error(), hintOf(err))
 		return rt.redact("sub-agent failed: " + err.Error()), true, nil
 	}
 }

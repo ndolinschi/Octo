@@ -24,7 +24,7 @@ func TestACPOrchestratorStartFailuresEndTheTurnWithTheError(t *testing.T) {
 		want  string
 	}{
 		{"missing command", missing, "start ACP agent"},
-		{"auth refused", refusing, "Sign in with the Fake CLI first."},
+		{"auth refused", refusing, "is not logged in"},
 		{"exits at once", exits, "ACP agent"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -48,6 +48,14 @@ func TestACPOrchestratorStartFailuresEndTheTurnWithTheError(t *testing.T) {
 			orch, _ := db.Orchestrator(context.Background())
 			if orch.Error == nil || !contains(*orch.Error, tc.want) {
 				t.Fatalf("orchestrator error = %v", orch.Error)
+			}
+			if tc.name == "auth refused" {
+				if hint, _ := fin["hint"].(string); hint != "Sign in with the Fake CLI first." || contains(msg, "Sign in with") || contains(msg, "interactive") {
+					t.Fatalf("hint %q, message %q: want the plain message and the hint apart", hint, msg)
+				}
+				if orch.ErrorHint == nil || *orch.ErrorHint != "Sign in with the Fake CLI first." {
+					t.Fatalf("orchestrator error_hint = %v", orch.ErrorHint)
+				}
 			}
 			// The same end state as a failed built-in turn: orchestrator idle with the
 			// error, turn.finished carrying it (what the UI derives "failed" from).

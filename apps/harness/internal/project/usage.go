@@ -42,6 +42,8 @@ type UsageBucket struct {
 	// CostUSD (null when there is none).
 	SubscriptionEquivalentUSD *float64 `json:"subscription_equivalent_usd"`
 	FlatRate                  bool     `json:"flat_rate"`
+	// TokensEstimated: some token counts in the bucket are the harness's estimate (an ACP agent reported none).
+	TokensEstimated bool `json:"tokens_estimated"`
 }
 
 type UsageReport struct {
@@ -212,6 +214,7 @@ func addRow(b *UsageBucket, c *costSum, r projectstore.UsageRow, tab prices.Tabl
 	b.CacheReadTokens += r.CacheReadTokens
 	b.CacheWriteTokens += r.CacheWriteTokens
 	b.Requests += r.Requests
+	b.TokensEstimated = b.TokensEstimated || r.TokensEstimated
 	if r.Flat {
 		c.flat++
 	} else {
@@ -244,6 +247,7 @@ func sumTokens(t *UsageBucket, b UsageBucket) {
 	t.CacheReadTokens += b.CacheReadTokens
 	t.CacheWriteTokens += b.CacheWriteTokens
 	t.Requests += b.Requests
+	t.TokensEstimated = t.TokensEstimated || b.TokensEstimated
 }
 
 // sortBuckets orders days oldest first and the other groups by tokens, largest first.

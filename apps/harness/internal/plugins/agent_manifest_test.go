@@ -39,6 +39,9 @@ func TestAgentManifestAdditions(t *testing.T) {
 		{"duplicate strength", `{"id":"a","command":"sh","strengths":["easy","easy"]}`, "duplicate"},
 		{"empty auth", `{"id":"a","command":"sh","auth":{}}`, "auth needs"},
 		{"blank probe command", `{"id":"a","command":"sh","auth":{"probe":[" "]}}`, "probe[0]"},
+		{"notLoggedInPattern", `{"id":"a","command":"sh","auth":{"probe":["sh","-c","true"],"notLoggedInPattern":"(?i)not auth"}}`, ""},
+		{"notLoggedInPattern invalid", `{"id":"a","command":"sh","auth":{"probe":["sh"],"notLoggedInPattern":"("}}`, "notLoggedInPattern"},
+		{"notLoggedInPattern without probe", `{"id":"a","command":"sh","auth":{"hint":"h","notLoggedInPattern":"x"}}`, "needs a probe"},
 		{"malformed env ref", `{"id":"a","command":"sh","env":{"T":"${HOME"}}`, "malformed"},
 		{"bad env name", `{"id":"a","command":"sh","env":{"A=B":"x"}}`, "variable name"},
 	}

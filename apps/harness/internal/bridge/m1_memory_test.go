@@ -61,9 +61,9 @@ func TestTurnOpensATaskRecordAndTheSideModelDigestsIt(t *testing.T) {
 	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": ask}, http.StatusAccepted, &posted)
 	collectUntilTurnFinished(t, stream)
 
-	// The record exists at once with the harness's fallback goal ...
+	// The record exists at once, closed with the reply as its outcome, with the harness's fallback goal ...
 	first := e.tasks(t, pid)
-	if len(first) != 1 || first[0].MessageIDs[0] != posted.Message.ID || first[0].Status != "open" || first[0].Title == "" {
+	if len(first) != 1 || first[0].MessageIDs[0] != posted.Message.ID || first[0].Status != "done" || first[0].Outcome == "" || first[0].Title == "" {
 		t.Fatalf("tasks = %+v", first)
 	}
 	// ... and the digest (a side-model call after the turn) fills it in.

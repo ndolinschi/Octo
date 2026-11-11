@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -239,8 +240,13 @@ func TestWindowModeSendsExactlyNExchangesWithinTheCapsAndSearchFindsTurn12(t *te
 			t.Errorf("messages %d and %d have the same role %s", i-1, i, m.Role)
 		}
 	}
-	if first.Messages[0].Role != "user" || !strings.Contains(first.Messages[0].text(), "## Memory") || !strings.Contains(first.Messages[0].text(), "## Tasks") {
+	// The memory index leads; the tasks (which change every turn) come after the
+	// window, in front of the current turn, so the prefix before them stays put.
+	if first.Messages[0].Role != "user" || !strings.Contains(first.Messages[0].text(), "## Memory") || strings.Contains(first.Messages[0].text(), "## Tasks") {
 		t.Fatalf("first message = %q", clipS(first.Messages[0].text(), 200))
+	}
+	if last := first.Messages[len(first.Messages)-1]; !strings.Contains(last.text(), "## Tasks") || !strings.Contains(last.text(), ask) {
+		t.Fatalf("last message = %q", clipS(last.text(), 300))
 	}
 
 	// The caps: everything but the current turn stays under the sum of the caps
@@ -330,7 +336,7 @@ func TestReceiptsMatchWhatWasSent(t *testing.T) {
 		names = append(names, b.Name)
 		byName[b.Name] = b
 	}
-	if strings.Join(names, ",") != "memory_index,open_tasks,recent_window,facts,current_turn" {
+	if strings.Join(names, ",") != "memory_index,recent_window,open_tasks,facts,current_turn" {
 		t.Fatalf("blocks = %v", names)
 	}
 	// The window block names the first message of each of the five exchanges, newest last.
@@ -342,14 +348,14 @@ func TestReceiptsMatchWhatWasSent(t *testing.T) {
 		t.Fatalf("current turn block = %+v", cur)
 	}
 	// The ids of the open tasks and of the facts are the ones in the text the model got.
-	text := q.Messages[0].text()
+	text := q.Messages[len(q.Messages)-1].text() // tasks and facts sit in front of the current turn
 	for _, id := range byName["open_tasks"].IDs {
 		if !strings.Contains(text, id) {
 			t.Errorf("task %s is in the receipt but not in the request", id)
 		}
 	}
 	// Token counts are the harness's estimate of the texts that were sent.
-	tasksText := between(text, "## Tasks", "turn 296:")
+	tasksText := between(text, "## Tasks", "## Current facts")
 	if got := projectstore.EstimateTokens(len(tasksText)); abs(got-byName["open_tasks"].Tokens) > 40 {
 		t.Errorf("open_tasks tokens: receipt %d, request %d", byName["open_tasks"].Tokens, got)
 	}
@@ -566,5 +572,59 @@ func TestToolResultsAreClearedInBothModes(t *testing.T) {
 				t.Errorf("receipt says nothing was cleared: %+v", rc)
 			}
 		})
+	}
+}
+
+// The window advances N exchanges at a time, so for N consecutive requests
+// everything before the current turn is byte for byte what the request before
+// it carried (a provider's prompt cache keeps hitting), and it changes exactly
+// when the window steps.
+func TestWindowAdvancesInStepsSoThePrefixStaysTheSameBetweenSteps(t *testing.T) {
+	const n = 3
+	r, rec := newM2Rig(t, orchestrator.Options{})
+	pid := r.m2Project(t, "window")
+	r.setMemory(t, pid, memory.Settings{Context: "window", RecentExchanges: n})
+	start := func(k int) int { // the documented rule: 0 until 2N, then N further each N
+		if k <= n {
+			return 0
+		}
+		return n * ((k - n) / n)
+	}
+	var prev []recMessage
+	prevStart := -1
+	changes := 0
+	for turn := 1; turn <= 11; turn++ {
+		rec.reset()
+		if st := r.run(t, pid, fmt.Sprintf("quick: question number %d about the repository", turn), nil); st != "completed" {
+			t.Fatalf("turn %d = %s", turn, st)
+		}
+		first := rec.orchestrator()[0]
+		before := first.Messages[:len(first.Messages)-1] // everything but the current turn
+		k := turn - 1                                    // exchanges before this turn
+		if prev != nil {
+			shared := len(prev) // the previous request's own prefix, as it was sent
+			same := len(before) >= shared && reflect.DeepEqual(before[:shared], prev)
+			if want := start(k) == prevStart; same != want {
+				t.Fatalf("turn %d (window start %d, previous %d): prefix identical=%v, want %v", turn, start(k), prevStart, same, want)
+			}
+			if !same {
+				changes++
+			}
+		}
+		// The window holds at least the last N exchanges and fewer than 2N.
+		var seen strings.Builder
+		for _, m := range before {
+			if m.Role == "user" {
+				seen.WriteString(m.text() + "\n")
+			}
+		}
+		got := strings.Count(seen.String(), "question number")
+		if k >= n && (got < n || got >= 2*n) || k < n && got != k {
+			t.Fatalf("turn %d: window of %d exchanges with %d earlier ones", turn, got, k)
+		}
+		prev, prevStart = before, start(k)
+	}
+	if changes != 2 { // the window stepped at the 7th and the 10th turn
+		t.Fatalf("the prefix changed %d times in 11 turns, want 2 (one per step)", changes)
 	}
 }

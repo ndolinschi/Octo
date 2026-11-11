@@ -209,3 +209,88 @@ func contextWithCancel(t *testing.T) (context.Context, context.CancelFunc) {
 	t.Helper()
 	return context.WithCancel(context.Background())
 }
+
+// With no --data-dir the doctor looks at the desktop app's data (the app the
+// user runs), says so, reads its harness.env, reports the trace correctly,
+// explains a router that only the app starts, and lists PATH entries once.
+func TestDoctorUsesTheDesktopAppsDataDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "xdg"))
+	t.Setenv("APPDATA", filepath.Join(home, "appdata"))
+	data := desktopDataDir()
+	if data == "" {
+		t.Skip("no desktop data directory on this platform")
+	}
+	if err := os.MkdirAll(filepath.Join(data, "traces"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	trace := filepath.Join(data, "traces", "20260101T000000-claude-code-1.jsonl")
+	if err := os.WriteFile(trace, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := "HARNESS_ACP_TRACE=1\nOCTO_ROUTER_ENABLED=1\n"
+	if err := os.WriteFile(filepath.Join(data, "harness.env"), []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(extraArgs string, extraEnv ...string) string {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestHelperDoctor$")
+		cmd.Env = append([]string{
+			"HARNESS_TEST_HELPER_DOCTOR=1", "HARNESS_NO_BUILTIN_PLUGINS=1", "PATH=/bin:/usr/bin:/bin:/usr/bin",
+			"HARNESS_TEST_ARGS=" + extraArgs, "HOME=" + home, "XDG_DATA_HOME=" + filepath.Join(home, "xdg"), "APPDATA=" + filepath.Join(home, "appdata"),
+		}, extraEnv...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("doctor: %v\n%s", err, out)
+		}
+		return string(out)
+	}
+	text := run("")
+	for _, want := range []string{
+		"data dir: " + data, "used because: the desktop app's data directory exists",
+		"ACP wire trace: enabled=true dir=" + filepath.Join(data, "traces"), trace,
+		"the router is started by the desktop app; doctor does not start it",
+		"PATH for child processes: /bin:/usr/bin\n",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("doctor output lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "built-in agent loop is unavailable") || strings.Contains(text, "built-in loop: available=false No API key") {
+		t.Errorf("the built-in loop is reported as broken while the router is the app's to start:\n%s", text)
+	}
+	// An explicit --data-dir or HARNESS_DATA_DIR wins and the report says so.
+	other := t.TempDir()
+	if text := run("--data-dir " + other); !strings.Contains(text, "data dir: "+other) || !strings.Contains(text, "used because: --data-dir") ||
+		strings.Contains(text, data) {
+		t.Errorf("explicit --data-dir:\n%s", text)
+	}
+	if text := run("", "HARNESS_DATA_DIR="+other); !strings.Contains(text, "data dir: "+other) || !strings.Contains(text, "used because: HARNESS_DATA_DIR") {
+		t.Errorf("HARNESS_DATA_DIR:\n%s", text)
+	}
+	// Without the desktop app's directory the default applies and the report says why.
+	if err := os.RemoveAll(data); err != nil {
+		t.Fatal(err)
+	}
+	if text := run(""); !strings.Contains(text, "used because: the default") || !strings.Contains(text, "data dir: ./data/harness") {
+		t.Errorf("default:\n%s", text)
+	}
+}
+
+func TestDoctorRouterOnWithAnAddressStillReportsABrokenBuiltinLoop(t *testing.T) {
+	// The note is only for a router that has no address here: with a base URL the
+	// built-in loop's own state stands (no key, unreachable router: a real problem).
+	dir := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperDoctor$")
+	cmd.Env = []string{
+		"HARNESS_TEST_HELPER_DOCTOR=1", "HARNESS_NO_BUILTIN_PLUGINS=1", "PATH=/bin:/usr/bin", "HOME=" + dir,
+		"HARNESS_TEST_ARGS=--data-dir " + dir, "OCTO_ROUTER_ENABLED=1", "ANTHROPIC_BASE_URL=http://127.0.0.1:1",
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("doctor: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "doctor does not start it") {
+		t.Errorf("the pending-router note shows although a base URL is configured:\n%s", out)
+	}
+}

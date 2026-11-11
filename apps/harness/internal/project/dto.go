@@ -87,6 +87,11 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 			}
 		}
 	}
+	// Read last: a project whose orchestrator row says idle is still running until
+	// turn.finished has been published (see Orchestrator.finish).
+	if p.Status == "idle" && s.turns.Active(info.ID) {
+		p.Status = "running"
+	}
 	return p, nil
 }
 

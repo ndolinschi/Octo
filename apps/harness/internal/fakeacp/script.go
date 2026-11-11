@@ -114,7 +114,7 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		return "refusal"
 	case has(MarkerMaxTokens):
 		return "max_tokens"
-	case has(MarkerLive) || has(MarkerSlowTool) || has(MarkerQuiet) || has(MarkerSecretThought):
+	case has(MarkerLive) || has(MarkerSlowTool) || has(MarkerQuiet) || has(MarkerSecretThought) || has(MarkerAuthRequired) || has(MarkerLateInput) || has(MarkerSayHang):
 		stop, _ := a.liveScript(ctx, cwd, request)
 		return stop
 	}

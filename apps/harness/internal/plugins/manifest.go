@@ -91,10 +91,15 @@ func validateStrengths(in []string) error {
 // Methods lists the ACP auth method ids to try, in preference order (each a
 // string or {"id", "requiresEnv"}); Skip lists ids never to try.
 type manifestAuth struct {
-	Probe   []string        `json:"probe"`
-	Hint    string          `json:"hint"`
-	Methods []AuthMethodRef `json:"methods"`
-	Skip    []string        `json:"skip"`
+	Probe []string `json:"probe"`
+	// NotLoggedInPattern is an optional regular expression: when the probe's
+	// output (stdout or stderr) matches it, the agent counts as logged out even
+	// if the probe exited 0 (a CLI that says "You are not authenticated." and
+	// exits 0).
+	NotLoggedInPattern string          `json:"notLoggedInPattern"`
+	Hint               string          `json:"hint"`
+	Methods            []AuthMethodRef `json:"methods"`
+	Skip               []string        `json:"skip"`
 }
 
 // AuthMethodRef names an ACP auth method. RequiresEnv, when set, makes the
@@ -184,6 +189,14 @@ func (a manifestAgent) validate() error {
 	if a.Auth != nil {
 		if len(a.Auth.Probe) == 0 && strings.TrimSpace(a.Auth.Hint) == "" {
 			return fmt.Errorf("auth needs a probe, a hint or both")
+		}
+		if a.Auth.NotLoggedInPattern != "" {
+			if len(a.Auth.Probe) == 0 {
+				return fmt.Errorf("auth.notLoggedInPattern needs a probe")
+			}
+			if _, err := regexp.Compile(a.Auth.NotLoggedInPattern); err != nil {
+				return fmt.Errorf("auth.notLoggedInPattern: %w", err)
+			}
 		}
 		if len(a.Auth.Probe) > 0 && strings.TrimSpace(a.Auth.Probe[0]) == "" {
 			return fmt.Errorf("auth.probe[0] must be a command")

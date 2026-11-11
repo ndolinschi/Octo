@@ -193,6 +193,20 @@ type promptParams struct {
 
 type promptResult struct {
 	StopReason StopReason `json:"stopReason"`
+	// Usage is the token usage of the prompt, which agents that implement the
+	// usage extension of session/prompt put in its response.
+	Usage *PromptUsage `json:"usage"`
+}
+
+// PromptUsage is the per-prompt token usage an agent may report with its
+// stopReason.
+type PromptUsage struct {
+	InputTokens       int64 `json:"inputTokens"`
+	OutputTokens      int64 `json:"outputTokens"`
+	ThoughtTokens     int64 `json:"thoughtTokens"`
+	CachedReadTokens  int64 `json:"cachedReadTokens"`
+	CachedWriteTokens int64 `json:"cachedWriteTokens"`
+	TotalTokens       int64 `json:"totalTokens"`
 }
 
 type cancelParams struct {

@@ -11,6 +11,8 @@ const (
 	AgentUpdated   = "agent.updated"
 	MessageCreated = "message.created"
 	MessageDelta   = "message.delta"
+	// MessageUpdated carries a stored message that changed (a tool call whose input arrived late).
+	MessageUpdated = "message.updated"
 	ToolStarted    = "tool.started"
 	ToolFinished   = "tool.finished"
 	NoteChanged    = "note.changed"

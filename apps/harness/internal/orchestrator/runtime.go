@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
@@ -31,12 +32,16 @@ type runtime struct {
 	// actMu guards lastAct, the last agent.activity published per agent.
 	actMu   sync.Mutex
 	lastAct map[string]string
-	o       *Orchestrator
-	db      *projectstore.DB
-	info    projectstore.Project
-	models  config.Models
-	folders []projectstore.Folder
-	notes   []projectstore.Note
+	// turnTools counts the turn's tool calls; touched are the files they read or changed.
+	turnTools atomic.Int32
+	touchMu   sync.Mutex
+	touched   []string
+	o         *Orchestrator
+	db        *projectstore.DB
+	info      projectstore.Project
+	models    config.Models
+	folders   []projectstore.Folder
+	notes     []projectstore.Note
 	// turnID is the id of the user message that started the turn (0 outside a turn).
 	turnID int64
 	// taskID is the task record of the turn's request ("" when none was opened).
@@ -211,11 +216,20 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		loop.Clear = &agent.ClearPolicy{WindowTokens: w}
 		sink.onCleared = rt.addCleared
 	}
-	return loop.Run(ctx, history)
+	res, err := loop.Run(ctx, history)
+	if err != nil && ctx.Err() != nil {
+		sink.keepPartial(ctx) // what a cancelled turn had written is kept, flagged stopped
+	}
+	return res, err
 }
 
 // settle records an agent's final state and announces it.
 func (rt *runtime) settle(ctx context.Context, id string, status projectstore.AgentStatus, result, errText string) {
+	rt.settleHint(ctx, id, status, result, errText, "")
+}
+
+// settleHint is settle with the hint that goes with the error.
+func (rt *runtime) settleHint(ctx context.Context, id string, status projectstore.AgentStatus, result, errText, hint string) {
 	c, cancel := dbCtx(ctx)
 	defer cancel()
 	now := projectstore.Now()
@@ -226,6 +240,9 @@ func (rt *runtime) settle(ctx context.Context, id string, status projectstore.Ag
 	}
 	if errText != "" {
 		patch.Error = &errText
+		if hint = rt.redact(hint); hint != "" {
+			patch.ErrorHint = &hint
+		}
 	}
 	a, err := rt.db.UpdateAgent(c, id, patch)
 	if err != nil {
@@ -240,7 +257,7 @@ func (rt *runtime) settle(ctx context.Context, id string, status projectstore.Ag
 // the turn.finished payload; the caller publishes it once the turn's slot is
 // released, so a client that reacts to turn.finished never meets "turn already
 // in progress".
-func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, text, errText string) map[string]any {
+func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, text, errText, hint string) map[string]any {
 	ctx := context.Background()
 	c, cancel := dbCtx(ctx)
 	defer cancel()
@@ -261,6 +278,9 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	}
 	if errText != "" {
 		patch.Error = &errText
+		if hint = rt.redact(hint); hint != "" {
+			patch.ErrorHint = &hint
+		}
 	}
 	if a, err := rt.db.UpdateAgent(c, orchID, patch); err == nil {
 		rt.publishAgent(events.AgentUpdated, a)
@@ -276,5 +296,9 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	if errText != "" {
 		e = errText
 	}
-	return map[string]any{"status": string(status), "error": e}
+	out := map[string]any{"status": string(status), "error": e}
+	if hint != "" && errText != "" {
+		out["hint"] = hint
+	}
+	return out
 }

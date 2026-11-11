@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
@@ -24,7 +23,7 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: t.processEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
 	})
 	if err != nil {
-		return "", fmt.Errorf("start ACP agent %q: %w", ag.ID, err)
+		return "", acpFailure(ag, "start ACP agent", err)
 	}
 	defer client.Close()
 
@@ -42,7 +41,7 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	})
 	h.finish(ctx, err != nil)
 	if err != nil {
-		return "", fmt.Errorf("ACP agent %q: %w", ag.ID, err)
+		return "", acpFailure(ag, "ACP agent", err)
 	}
 	switch stop {
 	case acp.StopEndTurn:

@@ -142,12 +142,12 @@ func TestACPLoginRequiredFailsWithHint(t *testing.T) {
 		t.Fatalf("a failed sub-agent must not fail the turn: %s", got.status)
 	}
 	child := r.acpChild(t, pid)
-	if child.Status != projectstore.StatusFailed || child.Error == nil ||
-		!strings.Contains(*child.Error, hint) || !strings.Contains(*child.Error, "not logged in") {
-		t.Fatalf("child = %+v", child)
+	if child.Status != projectstore.StatusFailed || child.Error == nil || *child.Error != "Fake fake is not logged in" ||
+		child.ErrorHint == nil || *child.ErrorHint != hint {
+		t.Fatalf("child = %+v (error %v, hint %v)", child, child.Error, child.ErrorHint)
 	}
-	if res, isErr := orchestratorToolResult(t, r, pid); !isErr || !strings.Contains(res, hint) {
-		t.Fatalf("parent saw %q (error=%v)", res, isErr)
+	if res, isErr := orchestratorToolResult(t, r, pid); !isErr || !strings.Contains(res, "not logged in") || strings.Contains(res, hint) {
+		t.Fatalf("parent saw %q (error=%v): want the message without the hint", res, isErr)
 	}
 }
 

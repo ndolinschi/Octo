@@ -223,6 +223,7 @@ func (c *Client) Prompt(ctx context.Context, sessionID, prompt string, h Handler
 
 	select {
 	case o := <-done:
+		reportPromptUsage(h, runCtx, o.res)
 		return finish(o.res, o.err)
 	case <-ctx.Done():
 	}
@@ -232,6 +233,7 @@ func (c *Client) Prompt(ctx context.Context, sessionID, prompt string, h Handler
 	}
 	select {
 	case o := <-done:
+		reportPromptUsage(h, runCtx, o.res)
 		if stop, err := finish(o.res, o.err); err == nil {
 			return stop, nil
 		}
@@ -240,6 +242,13 @@ func (c *Client) Prompt(ctx context.Context, sessionID, prompt string, h Handler
 		c.proc.kill()
 	}
 	return "", ctx.Err()
+}
+
+// reportPromptUsage hands the usage a prompt's response carried to a handler that wants it.
+func reportPromptUsage(h Handler, ctx context.Context, res promptResult) {
+	if u, ok := h.(PromptUsageHandler); ok && res.Usage != nil {
+		u.PromptUsage(ctx, *res.Usage)
+	}
 }
 
 func finish(res promptResult, err error) (StopReason, error) {

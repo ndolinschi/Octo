@@ -83,26 +83,28 @@ type Folder struct {
 }
 
 type Agent struct {
-	ID             string      `json:"id"`
-	ProjectID      string      `json:"project_id"`
-	ParentID       *string     `json:"parent_id"`
-	Depth          int         `json:"depth"`
-	Role           string      `json:"role"`
-	Title          string      `json:"title"`
-	Task           string      `json:"task"`
-	Model          string      `json:"model"`
-	Tier           *Tier       `json:"tier"`
-	Status         AgentStatus `json:"status"`
-	Result         *string     `json:"result"`
-	Error          *string     `json:"error"`
-	SpawnToolUseID *string     `json:"spawn_tool_use_id"`
-	InputTokens    int64       `json:"input_tokens"`
-	OutputTokens   int64       `json:"output_tokens"`
-	CreatedAt      string      `json:"created_at"`
-	StartedAt      *string     `json:"started_at"`
-	FinishedAt     *string     `json:"finished_at"`
-	ContextUsed    *int64      `json:"context_used"`
-	ContextSize    *int64      `json:"context_size"`
+	ID        string      `json:"id"`
+	ProjectID string      `json:"project_id"`
+	ParentID  *string     `json:"parent_id"`
+	Depth     int         `json:"depth"`
+	Role      string      `json:"role"`
+	Title     string      `json:"title"`
+	Task      string      `json:"task"`
+	Model     string      `json:"model"`
+	Tier      *Tier       `json:"tier"`
+	Status    AgentStatus `json:"status"`
+	Result    *string     `json:"result"`
+	Error     *string     `json:"error"`
+	// ErrorHint says what to do about Error (for a login problem, how to log in); never part of its text.
+	ErrorHint      *string `json:"error_hint"`
+	SpawnToolUseID *string `json:"spawn_tool_use_id"`
+	InputTokens    int64   `json:"input_tokens"`
+	OutputTokens   int64   `json:"output_tokens"`
+	CreatedAt      string  `json:"created_at"`
+	StartedAt      *string `json:"started_at"`
+	FinishedAt     *string `json:"finished_at"`
+	ContextUsed    *int64  `json:"context_used"`
+	ContextSize    *int64  `json:"context_size"`
 	// ServedModel and RoutedTier come from the agent's newest main-thread API
 	// usage row: the model the Octo router answered with and the router tier it
 	// chose. Both are null with no router in the path or nothing recorded yet.
@@ -156,6 +158,7 @@ type AgentPatch struct {
 	Model      *string
 	Result     *string
 	Error      *string
+	ErrorHint  *string
 	StartedAt  *string
 	FinishedAt *string
 	// Reset clears result, error and finished_at before applying the other fields.

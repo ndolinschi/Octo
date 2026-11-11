@@ -72,7 +72,7 @@ export type ProjectState = {
   /** v7: bumped when secrets were stored or deleted (refetch listSecrets). */
   secretsRevision: number;
   lastSeq: number;
-  lastTurn: { status: TurnStatus; error: string | null } | null;
+  lastTurn: { status: TurnStatus; error: string | null; hint?: string } | null;
 };
 
 export function emptySide(): SideState {
@@ -158,6 +158,11 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
       return upsertAgent(state, event.agent);
     case "message.created":
       return addMessage(state, event.message);
+    case "message.updated": {
+      const list = state.messages[event.message.agent_id] ?? [];
+      const next = list.map((m) => (m.id === event.message.id ? event.message : m));
+      return { ...state, messages: { ...state.messages, [event.message.agent_id]: next } };
+    }
     case "message.delta":
       return {
         ...state,
@@ -217,7 +222,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         activeTools: {},
         thinking: {},
         activity: {},
-        lastTurn: { status: event.status, error: event.error },
+        lastTurn: { status: event.status, error: event.error, ...(event.hint ? { hint: event.hint } : {}) },
       };
     case "agent.compacted": {
       const marker: CompactionMarker = { upto_message_id: event.upto_message_id, at: event.at };

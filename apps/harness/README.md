@@ -218,6 +218,8 @@ When `--stream` is on, assistant text and `session: <id>` are written to **stder
 ```bash
 ./octo-harness doctor            # versions, data dir, the PATH agents get, each agent: command found or not, required commands, login probe (run now), install and login hints, problems
 ./octo-harness doctor --json     # the same as GET /v1/diagnostics, without the log tail
+
+`doctor` describes the app you run: with no `--data-dir` and no `HARNESS_DATA_DIR` it uses the desktop app's data directory when it exists (Tauri's app data directory plus `harness`: `~/.local/share/com.ndolinschi.octo.desktop/harness` on Linux, `~/Library/Application Support/com.ndolinschi.octo.desktop/harness` on macOS, `%APPDATA%\com.ndolinschi.octo.desktop\harness` on Windows) and prints which directory it used and why, reads its `harness.env`, reports the ACP wire trace setting and files from it, lists each PATH entry once, and, when `OCTO_ROUTER_ENABLED` is set but no base URL is known, says `the router is started by the desktop app; doctor does not start it` instead of reporting the built-in loop as broken.
 ```
 
 `GET /v1/diagnostics` serves the report of a running harness and adds the last 200 log lines (scrubbed) and the trace files. Neither shows a secret (environment variable *names* only, URLs without credentials; tested). Paste the report into a bug report. Details: [docs/acp-orchestrator.md](./docs/acp-orchestrator.md#diagnostics-and-the-wire-trace).
@@ -306,7 +308,7 @@ Under `--data-dir` (default `./data/harness`):
 
 - `harness.sqlite` — legacy CLI sessions and message JSON
 - `registry.sqlite` — project index (`serve`)
-- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes, usage, tasks, memory files, search indexes, changes, queue (schema version 4 via `PRAGMA user_version`; an older database migrates forward, a newer one is refused with a message)
+- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes, usage, tasks, memory files, search indexes, changes, queue (schema version 5 via `PRAGMA user_version`; an older database migrates forward, a newer one is refused with a message)
 - `projects/{id}/secrets.json` — the project's secret store (mode 0600; see [docs/v7.md](./docs/v7.md))
 - `projects/{id}/shadow/` — pre-image copies for change tracking (rebuilt at every start)
 - `traces/` — ACP wire traces when `HARNESS_ACP_TRACE` is on

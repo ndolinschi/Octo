@@ -108,6 +108,8 @@ export type Agent = {
   status: AgentStatus;
   result: string | null;
   error: string | null;
+  /** What to do about `error`, kept apart from its text; null when there is none. */
+  error_hint?: string | null;
   spawn_tool_use_id: string | null;
   input_tokens: number;
   output_tokens: number;
@@ -147,6 +149,8 @@ export type Message = {
   role: "user" | "assistant";
   content: ContentBlock[];
   created_at: string;
+  /** An assistant message cut short because the turn was cancelled. */
+  stopped?: boolean;
 };
 
 /** A transcript marker: the history up to and including message `upto_message_id` was replaced by a summary at `at`. */
@@ -215,6 +219,8 @@ export type TurnStatus = "completed" | "failed" | "cancelled";
 export type AgentCreatedEvent = { type: "agent.created"; seq: number; agent: Agent };
 export type AgentUpdatedEvent = { type: "agent.updated"; seq: number; agent: Agent };
 export type MessageCreatedEvent = { type: "message.created"; seq: number; message: Message };
+/** A stored message changed (a tool call whose input arrived after it was announced). */
+export type MessageUpdatedEvent = { type: "message.updated"; seq: number; message: Message };
 export type MessageDeltaEvent = { type: "message.delta"; seq: number; agent_id: string; text: string };
 export type ToolStartedEvent = {
   type: "tool.started";
@@ -254,6 +260,8 @@ export type TurnFinishedEvent = {
   seq: number;
   status: TurnStatus;
   error: string | null;
+  /** What to do about `error` (for a login problem: how to log in). Never part of the error text. */
+  hint?: string;
 };
 
 export type AgentCompactedEvent = {
@@ -325,6 +333,7 @@ export type BridgeEvent =
   | AgentCreatedEvent
   | AgentUpdatedEvent
   | MessageCreatedEvent
+  | MessageUpdatedEvent
   | MessageDeltaEvent
   | ToolStartedEvent
   | ToolFinishedEvent
@@ -417,6 +426,8 @@ export type PluginAgent = {
   install_hint?: string;
   /** The manifest says the agent runs on a flat-rate subscription (flatRate; false when absent). */
   flat_rate?: boolean;
+  /** Some token counts in the bucket are the harness's estimate (an ACP agent reported none). */
+  tokens_estimated?: boolean;
   /** Difficulty bands the manifest says the agent suits (strengths); absent when none. */
   strengths?: ("easy" | "medium" | "hard")[];
 };

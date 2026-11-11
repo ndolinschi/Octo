@@ -16,7 +16,7 @@ func lastRowOf(col string) string {
 
 var agentCols = `id, parent_id, depth, role, title, task, model, tier, status, result, error,
 	spawn_tool_use_id, input_tokens, output_tokens, created_at, started_at, finished_at,
-	context_used, context_size, route_reason, route_band, route_request_id, route_choice, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier") + `, plan_json`
+	context_used, context_size, route_reason, route_band, route_request_id, route_choice, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier") + `, plan_json, error_hint`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -25,16 +25,17 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	var tier sql.NullString
 	var parent, result, errText, spawn, started, finished sql.NullString
 	var ctxUsed, ctxSize sql.NullInt64
-	var served, routed, rReason, rBand, rReq, rChoice, plan sql.NullString
+	var served, routed, rReason, rBand, rReq, rChoice, plan, errHint sql.NullString
 	err := r.Scan(&a.ID, &parent, &a.Depth, &a.Role, &a.Title, &a.Task, &a.Model, &tier, &a.Status,
 		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished, &ctxUsed, &ctxSize,
-		&rReason, &rBand, &rReq, &rChoice, &served, &routed, &plan)
+		&rReason, &rBand, &rReq, &rChoice, &served, &routed, &plan, &errHint)
 	if err != nil {
 		return a, err
 	}
 	a.ParentID = nullStr(parent)
 	a.Result = nullStr(result)
 	a.Error = nullStr(errText)
+	a.ErrorHint = nullStr(errHint)
 	a.SpawnToolUseID = nullStr(spawn)
 	a.StartedAt = nullStr(started)
 	a.FinishedAt = nullStr(finished)
@@ -138,6 +139,7 @@ func (d *DB) UpdateAgent(ctx context.Context, id string, p AgentPatch) (Agent, e
 		set.add("error", nil)
 		set.add("finished_at", nil)
 		set.add("plan_json", nil)
+		set.add("error_hint", nil)
 	}
 	if p.Status != nil {
 		set.add("status", string(*p.Status))
@@ -145,6 +147,7 @@ func (d *DB) UpdateAgent(ctx context.Context, id string, p AgentPatch) (Agent, e
 	set.str("model", p.Model)
 	set.str("result", p.Result)
 	set.str("error", p.Error)
+	set.str("error_hint", p.ErrorHint)
 	set.str("started_at", p.StartedAt)
 	set.str("finished_at", p.FinishedAt)
 	if err := set.exec(ctx, d.sql, "agents", "id = ?", id); err != nil {

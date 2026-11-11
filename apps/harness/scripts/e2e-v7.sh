@@ -190,6 +190,30 @@ w=[b for b in r["blocks"] if b["name"]=="recent_window"][0]
 assert w["count"]==2, w' || fail "context receipt wrong"
 post PATCH "/v1/projects/$P6" '{"memory":{"context":"full"}}' >/dev/null
 
+echo "== memory (live run 2): trivial exchange, closed record, Russian word forms"
+ntasks() { curl -fsS "$BASE/v1/projects/$P6/tasks" | jget 'len(d["tasks"])'; }
+before=$(ntasks)
+post POST "/v1/projects/$P6/messages" '{"text":"quick: hello there"}' >/dev/null
+idle "$P6"
+sleep 1
+[ "$(ntasks)" = "$before" ] || fail "a trivial exchange left a task record"
+facts_before=$(curl -fsS "$BASE/v1/projects/$P6/tasks" | jget 'sum(len(t["facts"]) for t in d["tasks"])')
+post POST "/v1/projects/$P6/messages" '{"text":"quick: Заказчик в Кишинёве, нужен калькулятор со скобками [fact: Заказчик находится в Кишинёве]"}' >/dev/null
+idle "$P6"
+waitfor "the Russian digest" nfacts $(( facts_before + 1 ))
+sleep 1
+python3 - "$BASE" "$P6" <<'PY' || fail "a Russian word form was not found, or the task is not closed"
+import json, sys, urllib.parse, urllib.request
+base, pid = sys.argv[1], sys.argv[2]
+def get(path):
+    return json.load(urllib.request.urlopen(base + path))
+for q, want in [("Кишинев", "Кишинёв"), ("калькуляторами", "калькулятор"), ("скобок", "скобками")]:
+    hits = get("/v1/projects/%s/memory/search?q=%s" % (pid, urllib.parse.quote(q)))["hits"]
+    assert any(want in (h.get("snippet") or "") for h in hits), (q, hits)
+t = [t for t in get("/v1/projects/%s/tasks" % pid)["tasks"] if any("Кишинёв" in f["text"] for f in t["facts"])][0]
+assert t["status"] == "done" and t["outcome"], t
+PY
+
 echo "== no leftover processes"
 kill "${PIDS[@]}" 2>/dev/null || true
 sleep 1

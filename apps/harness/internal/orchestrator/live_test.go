@@ -499,3 +499,169 @@ func TestAdvertisedModelsAreExposedWithACallback(t *testing.T) {
 		mu.Unlock()
 	}
 }
+
+// Output tokens: an agent that reports them with the end of its prompt is
+// recorded as reported; one that does not gets an estimate from what it wrote,
+// marked as estimated. (They were 0 for every Claude Code turn.)
+func TestACPOutputTokensAreRecorded(t *testing.T) {
+	outOf := func(r *rig, pid string) (out int64, estimated bool) {
+		for _, e := range r.usageLog(t, pid) {
+			out += e.OutputTokens
+			estimated = estimated || e.TokensEstimated
+		}
+		return
+	}
+	t.Run("reported", func(t *testing.T) {
+		r := newACPRig(t, mockllm.New(0), modelAgent(map[string]string{fakeacp.EnvPromptUsage: "321"}, nil))
+		pid := r.supervisedProject(t, t.TempDir(), "acp:fake")
+		if got := r.runCollect(t, pid, "[live] go", nil); got.status != "completed" {
+			t.Fatalf("turn = %s", got.status)
+		}
+		out, est := outOf(r, pid)
+		if out != 321 || est {
+			t.Fatalf("output tokens = %d estimated=%v, want 321 reported", out, est)
+		}
+		if a := r.agents(t, pid)[0]; a.OutputTokens != 321 {
+			t.Fatalf("agent row output_tokens = %d", a.OutputTokens)
+		}
+	})
+	t.Run("estimated", func(t *testing.T) {
+		r := newACPRig(t, mockllm.New(0), modelAgent(nil, nil))
+		pid := r.supervisedProject(t, t.TempDir(), "acp:fake")
+		if got := r.runCollect(t, pid, "[live] go", nil); got.status != "completed" {
+			t.Fatalf("turn = %s", got.status)
+		}
+		out, est := outOf(r, pid)
+		// 20 chunks of about 25 characters, plus two short thoughts.
+		if out < 100 || out > 400 || !est {
+			t.Fatalf("output tokens = %d estimated=%v, want an estimate", out, est)
+		}
+		rep, err := r.svc.Usage(context.Background(), project.UsageQuery{ProjectID: pid, Group: "project"})
+		if err != nil || !rep.Total.TokensEstimated || rep.Total.OutputTokens != out {
+			t.Fatalf("usage total = %+v (%v)", rep.Total, err)
+		}
+	})
+	t.Run("nothing written, nothing recorded", func(t *testing.T) {
+		r := newACPRig(t, mockllm.New(0), modelAgent(nil, nil))
+		pid := r.supervisedProject(t, t.TempDir(), "acp:fake")
+		r.runCollect(t, pid, "[silent] go", nil)
+		if out, _ := outOf(r, pid); out != 0 {
+			t.Fatalf("output tokens = %d for a silent agent", out)
+		}
+	})
+}
+
+func waitFor(t *testing.T, ch <-chan events.Event, typ string) {
+	t.Helper()
+	deadline := time.After(20 * time.Second)
+	for {
+		select {
+		case ev := <-ch:
+			if ev.Type == typ {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("no %s event", typ)
+		}
+	}
+}
+
+func lastAssistant(t *testing.T, r *rig, pid, agentID string) projectstoreMessage {
+	t.Helper()
+	msgs := r.transcript(t, pid, agentID)
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "assistant" {
+			return msgs[i]
+		}
+	}
+	t.Fatal("no assistant message")
+	return projectstoreMessage{}
+}
+
+type projectstoreMessage = projectstore.Message
+
+// A cancelled turn keeps the text the agent had written, flagged stopped, and
+// turn.finished says cancelled.
+func TestCancelledTurnKeepsItsPartialTextFlaggedStopped(t *testing.T) {
+	t.Run("ACP orchestrator", func(t *testing.T) {
+		r := liveRigWith(t, 0)
+		pid := r.acpOrchProject(t)
+		got := r.runCollect(t, pid, "[say-hang] go", func(ch <-chan events.Event) {
+			waitFor(t, ch, events.MessageDelta)
+			r.orch.Cancel(pid)
+		})
+		if got.status != "cancelled" {
+			t.Fatalf("status = %s", got.status)
+		}
+		orch := r.agents(t, pid)[0]
+		m := lastAssistant(t, r, pid, orch.ID)
+		if !m.Stopped || len(m.Content) == 0 || m.Content[0].Text == nil || !strings.Contains(*m.Content[0].Text, "Working on it") {
+			t.Fatalf("last assistant message = %+v", m)
+		}
+		// The announcement carried the flag too.
+		var flagged bool
+		for _, e := range got.of(events.MessageCreated) {
+			if msg, _ := e["message"].(map[string]any); msg != nil && msg["role"] == "assistant" && msg["stopped"] == true {
+				flagged = true
+			}
+		}
+		if !flagged {
+			t.Fatal("the message.created of the stopped message lacks stopped: true")
+		}
+	})
+	t.Run("built-in loop", func(t *testing.T) {
+		r := newRigWith(t, mockllm.New(60*time.Millisecond), orchestrator.Options{Stream: true})
+		pid := r.projectAt(t, t.TempDir())
+		got := r.runCollect(t, pid, "quick: tell me a long story about the repository layout", func(ch <-chan events.Event) {
+			waitFor(t, ch, events.MessageDelta)
+			time.Sleep(80 * time.Millisecond)
+			r.orch.Cancel(pid)
+		})
+		if got.status != "cancelled" {
+			t.Fatalf("status = %s", got.status)
+		}
+		orch := r.agents(t, pid)[0]
+		m := lastAssistant(t, r, pid, orch.ID)
+		if !m.Stopped || len(m.Content) == 0 || m.Content[0].Text == nil || strings.TrimSpace(*m.Content[0].Text) == "" {
+			t.Fatalf("last assistant message = %+v", m)
+		}
+	})
+	t.Run("a finished turn is not stopped", func(t *testing.T) {
+		r := liveRigWith(t, 0)
+		pid := r.acpOrchProject(t)
+		r.runCollect(t, pid, "[live] go", nil)
+		orch := r.agents(t, pid)[0]
+		if m := lastAssistant(t, r, pid, orch.ID); m.Stopped {
+			t.Fatalf("a completed turn's message is flagged stopped: %+v", m)
+		}
+	})
+}
+
+// A tool call announced with no input and given it in a tool_call_update keeps
+// its input in the stored row (spawn_agent rows of an ACP orchestrator were "").
+func TestACPToolInputThatArrivesLateIsStored(t *testing.T) {
+	r := liveRigWith(t, 0)
+	pid := r.acpOrchProject(t)
+	got := r.runCollect(t, pid, "[late-input] go", nil)
+	if got.status != "completed" {
+		t.Fatalf("status = %s", got.status)
+	}
+	orch := r.agents(t, pid)[0]
+	var found bool
+	for _, m := range r.transcript(t, pid, orch.ID) {
+		b, _ := json.Marshal(m.Content)
+		if strings.Contains(string(b), `"call-late"`) && m.Role == "assistant" {
+			found = true
+			if !strings.Contains(string(b), "check the diff") || !strings.Contains(string(b), "Review the change") {
+				t.Fatalf("the tool_use row lost its input: %s", b)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no tool row")
+	}
+	updated := got.of(events.MessageUpdated)
+	if len(updated) != 1 {
+		t.Fatalf("message.updated events = %d, want one for the late input", len(updated))
+	}
+}

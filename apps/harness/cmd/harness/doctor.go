@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
@@ -17,13 +20,16 @@ import (
 
 // diagnostics builds the report for GET /v1/diagnostics and `harness doctor`.
 func diagnostics(cfg config.Config, reg *plugins.Registry, octo *router.Router, builtinOK bool, builtinWhy string,
-	ring *diag.LogRing, probe func(plugins.Agent) plugins.ProbeReport) diag.Report {
+	ring *diag.LogRing, probe func(plugins.Agent) plugins.ProbeReport, tune ...func(*diag.Inputs)) diag.Report {
 	in := diag.Inputs{
 		Version: bridge.Version, DataDir: cfg.DataDir, Agents: reg.Agents(), BuiltinOK: builtinOK, BuiltinWhy: builtinWhy,
 		BaseURL: cfg.BaseURL, Log: ring, Probe: probe,
 	}
 	if octo != nil {
 		in.RouterOn, in.RouterCaps = octo.Enabled(), octo.Capabilities()
+	}
+	for _, t := range tune {
+		t(&in)
 	}
 	return diag.Build(in)
 }
@@ -42,10 +48,16 @@ func cmdDoctor(args []string) error {
 		}
 		rest = append(rest, a)
 	}
+	chosen, dirWhy := doctorDataDir(rest)
+	if chosen != "" {
+		rest = append(rest, "--data-dir", chosen)
+	}
 	cfg, _, err := serveConfig(rest)
 	if err != nil {
 		return err
 	}
+	// The same trace configuration serve makes, so the report's trace line and file list are right.
+	acptrace.Configure(cfg.DataDir, traceOn(os.Getenv("HARNESS_ACP_TRACE")))
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	reg := loadPlugins(ctx, cfg, tools.NewRegistry())
@@ -54,7 +66,14 @@ func cmdDoctor(args []string) error {
 	if cfg.BaseURL != "" {
 		octo = router.New(ctx, cfg.BaseURL, cfg.OctoKey, router.WithAPIKey(cfg.APIKey))
 	}
-	rep := diagnostics(cfg, reg, octo, ok, why, nil, func(a plugins.Agent) plugins.ProbeReport { return a.ProbeNow(ctx) })
+	rep := diagnostics(cfg, reg, octo, ok, builtinWhy(why), nil, func(a plugins.Agent) plugins.ProbeReport { return a.ProbeNow(ctx) },
+		func(in *diag.Inputs) {
+			in.DataDirWhy = dirWhy
+			// The desktop app starts the router and gives the harness its address;
+			// doctor starts nothing, so with the router switched on and no address
+			// the built-in loop is simply not checked, not broken.
+			in.RouterPending = routerSwitchedOn() && cfg.BaseURL == ""
+		})
 	if asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -62,4 +81,13 @@ func cmdDoctor(args []string) error {
 	}
 	_, err = fmt.Fprint(os.Stdout, rep.Text())
 	return err
+}
+
+// builtinWhy is the reason as is; kept as a seam for the report.
+func builtinWhy(why string) string { return why }
+
+// routerSwitchedOn reads OCTO_ROUTER_ENABLED (set by harness.env or the environment).
+func routerSwitchedOn() bool {
+	b, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("OCTO_ROUTER_ENABLED")))
+	return err == nil && b
 }

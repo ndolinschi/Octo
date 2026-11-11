@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -49,7 +50,12 @@ type RouterReport struct {
 	BaseURL      string   `json:"base_url"`
 	Detected     bool     `json:"detected"`
 	Capabilities []string `json:"capabilities"`
+	// Note explains a router that is switched on but not running here.
+	Note string `json:"note,omitempty"`
 }
+
+// RouterPendingNote is what doctor says when the router is switched on and no base URL is known.
+const RouterPendingNote = "the router is started by the desktop app; doctor does not start it"
 
 // Report is the whole diagnostics report.
 type Report struct {
@@ -59,6 +65,8 @@ type Report struct {
 	OS          string `json:"os"`
 	Arch        string `json:"arch"`
 	DataDir     string `json:"data_dir"`
+	// DataDirWhy says why this directory was inspected (doctor only).
+	DataDirWhy string `json:"data_dir_why,omitempty"`
 	// PathForChildren is the PATH child processes (agents, bash) get.
 	PathForChildren string `json:"path_for_children"`
 	// EnvSet names the provider and router variables that are set in the
@@ -101,6 +109,12 @@ type Inputs struct {
 	// cached background result is reported.
 	Probe func(plugins.Agent) plugins.ProbeReport
 	Env   []string
+	// DataDirWhy says why DataDir was chosen (doctor).
+	DataDirWhy string
+	// RouterPending: OCTO_ROUTER_ENABLED is set but no base URL is known, because the
+	// desktop app starts the router and doctor does not. The built-in loop is then
+	// not reported as broken.
+	RouterPending bool
 }
 
 // secretNamed marks environment names whose presence is worth reporting.
@@ -114,14 +128,14 @@ func Build(in Inputs) Report {
 	}
 	r := Report{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339), Version: in.Version, GoVersion: runtime.Version(),
-		OS: runtime.GOOS, Arch: runtime.GOARCH, DataDir: in.DataDir, EnvSet: []string{}, Problems: []string{},
+		OS: runtime.GOOS, Arch: runtime.GOARCH, DataDir: in.DataDir, DataDirWhy: in.DataDirWhy, EnvSet: []string{}, Problems: []string{},
 		BuiltinLoop: BuiltinReport{Available: in.BuiltinOK, Reason: in.BuiltinWhy},
 		Router:      RouterReport{BaseURL: StripURL(in.BaseURL), Detected: in.RouterOn, Capabilities: append([]string{}, in.RouterCaps...)},
 		Agents:      []AgentReport{}, LogTail: []string{},
 	}
 	for _, kv := range childenv.Build(env, nil) {
 		if v, ok := strings.CutPrefix(kv, "PATH="); ok {
-			r.PathForChildren = v
+			r.PathForChildren = dedupePath(v)
 		}
 	}
 	for _, kv := range env {
@@ -158,14 +172,34 @@ func Build(in Inputs) Report {
 			r.Problems = append(r.Problems, fmt.Sprintf("%s: not logged in. %s", a.ID, a.Hint))
 		}
 	}
-	if !in.BuiltinOK {
+	switch {
+	case !in.BuiltinOK && in.RouterPending:
+		r.Router.Note = RouterPendingNote
+		r.BuiltinLoop = BuiltinReport{Available: false, Reason: "not checked: " + RouterPendingNote}
+	case !in.BuiltinOK:
 		r.Problems = append(r.Problems, "the built-in agent loop is unavailable: "+in.BuiltinWhy)
+	case in.RouterPending:
+		r.Router.Note = RouterPendingNote
 	}
 	r.ACPTrace = TraceReport{Enabled: acptrace.Enabled(), Dir: acptrace.Dir(), Files: acptrace.Files()}
 	if in.Log != nil {
 		r.LogTail = in.Log.Lines(LogLines)
 	}
 	return r
+}
+
+// dedupePath drops repeated entries of a PATH, keeping the first of each.
+func dedupePath(p string) string {
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range filepath.SplitList(p) {
+		if e == "" || seen[e] {
+			continue
+		}
+		seen[e] = true
+		out = append(out, e)
+	}
+	return strings.Join(out, string(filepath.ListSeparator))
 }
 
 // StripURL removes credentials, query and fragment from a URL; text that is
@@ -187,10 +221,16 @@ func (r Report) Text() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Octo harness diagnostics (%s)\n", r.GeneratedAt)
 	fmt.Fprintf(&b, "version %s, %s, %s/%s\ndata dir: %s\n", r.Version, r.GoVersion, r.OS, r.Arch, r.DataDir)
+	if r.DataDirWhy != "" {
+		fmt.Fprintf(&b, "  (used because: %s)\n", r.DataDirWhy)
+	}
 	fmt.Fprintf(&b, "PATH for child processes: %s\n", r.PathForChildren)
 	fmt.Fprintf(&b, "provider/router variables set: %s\n", strings.Join(r.EnvSet, ", "))
 	fmt.Fprintf(&b, "built-in loop: available=%v %s\n", r.BuiltinLoop.Available, r.BuiltinLoop.Reason)
 	fmt.Fprintf(&b, "router: base url %q, detected=%v, capabilities=%s\n", r.Router.BaseURL, r.Router.Detected, strings.Join(r.Router.Capabilities, ","))
+	if r.Router.Note != "" {
+		fmt.Fprintf(&b, "  note: %s\n", r.Router.Note)
+	}
 	fmt.Fprintf(&b, "\nAgents\n")
 	for _, a := range r.Agents {
 		state := "ready"

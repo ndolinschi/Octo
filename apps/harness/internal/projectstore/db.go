@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS search_docs (
 CREATE INDEX IF NOT EXISTS search_docs_ref ON search_docs (kind, ref);
 CREATE VIRTUAL TABLE IF NOT EXISTS search_u USING fts5(title, body, tokenize = 'unicode61 remove_diacritics 2');
 CREATE VIRTUAL TABLE IF NOT EXISTS search_t USING fts5(title, body, tokenize = 'trigram');
+-- Schema 5: the same documents as stems (Russian Snowball, ё folded to е), searched with stemmed queries.
+CREATE VIRTUAL TABLE IF NOT EXISTS search_s USING fts5(title, body, tokenize = 'unicode61');
 CREATE TABLE IF NOT EXISTS context_receipts (
 	turn_id INTEGER PRIMARY KEY,
 	mode TEXT NOT NULL,

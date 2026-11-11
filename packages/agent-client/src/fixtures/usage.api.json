@@ -14,7 +14,8 @@
       "cost_usd": 0.0123,
       "cost_estimated": false,
       "subscription_equivalent_usd": null,
-      "flat_rate": false
+      "flat_rate": false,
+      "tokens_estimated": false
     }
   ],
   "total": {
@@ -28,6 +29,7 @@
     "cost_usd": 0.0123,
     "cost_estimated": false,
     "subscription_equivalent_usd": null,
-    "flat_rate": false
+    "flat_rate": false,
+    "tokens_estimated": false
   }
 }

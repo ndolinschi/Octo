@@ -18,6 +18,8 @@ var columnsAdded = []struct {
 		{"route_reason", "TEXT"}, {"route_band", "TEXT"}, {"route_request_id", "TEXT"}, {"route_choice", "TEXT"},
 		// Schema 4: the latest plan of an ACP agent (JSON array).
 		{"plan_json", "TEXT"},
+		// Schema 5: what to do about the error (a login hint), kept apart from its text.
+		{"error_hint", "TEXT"},
 	}},
 	{"project", []column{
 		{"budget_usd", "REAL"},
@@ -28,14 +30,18 @@ var columnsAdded = []struct {
 	{"usage", []column{
 		{"served_model", "TEXT"}, {"tier", "TEXT"}, {"route_trigger", "TEXT"}, {"router_request_id", "TEXT"},
 		{"cost_estimated", "INTEGER NOT NULL DEFAULT 0"}, {"role", "TEXT"}, {"flat_rate", "INTEGER NOT NULL DEFAULT 0"},
+		// Schema 5: the token counts of the row are the harness's estimate (an ACP agent reported none).
+		{"tokens_estimated", "INTEGER NOT NULL DEFAULT 0"},
 	}},
 	{"compactions", []column{{"usage_id", "INTEGER"}}},
+	// Schema 5: an assistant message cut short by cancelling the turn.
+	{"messages", []column{{"stopped", "INTEGER NOT NULL DEFAULT 0"}}},
 }
 
 // SchemaVersion is the schema generation this binary writes and understands
 // (PRAGMA user_version). Databases without a stamp (0) are older and are
 // migrated forward; a higher number was written by a newer binary and is refused.
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.
@@ -102,6 +108,14 @@ func (d *DB) migrate(ctx context.Context) error {
 		// Schema 2 added the search indexes: index what the project already says.
 		if err := d.backfillMessages(ctx); err != nil {
 			return fmt.Errorf("index existing messages: %w", err)
+		}
+	}
+	if v, err := userVersion(ctx, d.sql); err != nil {
+		return err
+	} else if v < 5 {
+		// Schema 5 added the stemmed index: index what the project already says.
+		if err := d.reindexStemmed(ctx); err != nil {
+			return fmt.Errorf("index stems: %w", err)
 		}
 	}
 	return stampVersion(ctx, d.sql)

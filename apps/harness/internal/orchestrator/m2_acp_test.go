@@ -53,7 +53,7 @@ func TestACPRecapUsesTheWindowAssemblyAndALiveSessionGetsChangedTasks(t *testing
 	db, _ := r.store.Get(ctx, pid)
 	orch, _ := db.Orchestrator(ctx)
 	mem, _ := r.orch.Memory(ctx, pid)
-	for i := 1; i <= 9; i++ {
+	for i := 1; i <= 12; i++ { // 12 earlier exchanges, window of 5: it shows the last 7 (it advances 5 at a time)
 		for _, m := range []struct{ role, text string }{{"user", fmt.Sprintf("old request %d", i)}, {"assistant", fmt.Sprintf("old answer %d", i)}} {
 			b, _ := json.Marshal([]map[string]any{{"type": "text", "text": m.text}})
 			if _, err := db.AppendMessage(ctx, orch.ID, m.role, b); err != nil {
@@ -64,12 +64,12 @@ func TestACPRecapUsesTheWindowAssemblyAndALiveSessionGetsChangedTasks(t *testing
 	// First turn of a fresh session: the assembled context, not the 40-text recap.
 	got := r.runCollect(t, pid, "[echo] first", nil)
 	first := r.echoOf(t, pid, got)
-	for _, want := range []string{"assembled by the harness", "## Memory", "## Tasks", "## Recent exchanges", "old request 9", "old request 5", "User request:", "[echo] first>>"} {
+	for _, want := range []string{"assembled by the harness", "## Memory", "## Tasks", "## Recent exchanges", "old request 12", "old request 6", "User request:", "[echo] first>>"} {
 		if !strings.Contains(first, want) {
 			t.Errorf("first prompt lacks %q in %q", want, first[max(len(first)-1500, 0):])
 		}
 	}
-	for _, not := range []string{"old request 4", "old request 1", "recap built by the harness"} {
+	for _, not := range []string{"user: old request 5\n", "user: old request 1\n", "recap built by the harness"} {
 		if strings.Contains(first, not) {
 			t.Errorf("first prompt holds %q", not)
 		}
@@ -84,8 +84,8 @@ func TestACPRecapUsesTheWindowAssemblyAndALiveSessionGetsChangedTasks(t *testing
 	// A task record changes while the session lives (the user or a digest edited it):
 	// the next request of the same session carries it.
 	tasks, _ := mem.Tasks(ctx)
-	goal := "Ship the changed goal"
-	if _, err := mem.UpdateTask(ctx, memory.UpdateInput{ID: tasks[0].ID, Goal: &goal}, memory.Turn{}); err != nil {
+	goal, open := "Ship the changed goal", "open" // a finished turn closes its record; keeping one open is the user's choice
+	if _, err := mem.UpdateTask(ctx, memory.UpdateInput{ID: tasks[0].ID, Goal: &goal, Status: &open}, memory.Turn{}); err != nil {
 		t.Fatal(err)
 	}
 	got = r.runCollect(t, pid, "[echo] second", nil)

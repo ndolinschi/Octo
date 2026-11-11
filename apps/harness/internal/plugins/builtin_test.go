@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -187,5 +188,36 @@ func TestBuiltinFirstThreeAgentsHaveInstallAndLoginText(t *testing.T) {
 				t.Errorf("%s: install+login text lacks %q: %s", id, w, text)
 			}
 		}
+	}
+}
+
+// Facts from the real Grok CLI 1.0.77 and the Codex adapter live in the manifest.
+func TestBuiltinGrokAndCodexFacts(t *testing.T) {
+	reg := plugins.Load(context.Background(), t.TempDir(), nil, nil, plugins.WithBuiltin(subscriptionagents.Manifest))
+	byID := map[string]plugins.Agent{}
+	for _, a := range reg.Agents() {
+		byID[a.ID] = a
+	}
+	g := byID["grok"]
+	if !strings.Contains(g.InstallHint, "npm install -g @xai-official/grok") || strings.Contains(g.InstallHint, "curl") {
+		t.Errorf("grok install = %q", g.InstallHint)
+	}
+	for _, want := range []string{"grok login", "grok login --device-auth"} {
+		if !strings.Contains(g.Hint, want) {
+			t.Errorf("grok hint %q lacks %q", g.Hint, want)
+		}
+	}
+	if g.ProbeNotLoggedIn == nil || !g.ProbeNotLoggedIn.MatchString("You are not authenticated.") || g.ProbeNotLoggedIn.MatchString("grok-4 grok-4-fast") {
+		t.Errorf("grok not-logged-in pattern = %v", g.ProbeNotLoggedIn)
+	}
+	if got := strings.Join(append([]string{g.Command}, g.Launch.Args...), " "); got != "grok agent {modelArgs} stdio" && !strings.HasSuffix(got, "agent {modelArgs} stdio") {
+		t.Errorf("grok command = %q, the verified command line must stay", got)
+	}
+	c := byID["codex"]
+	if !slices.Contains(c.Requires, "codex") || !strings.Contains(c.InstallHint, "npm install -g @openai/codex") {
+		t.Errorf("codex requires %v, install %q", c.Requires, c.InstallHint)
+	}
+	if byID["copilot"].ProbeCommand != "" {
+		t.Errorf("copilot has a login probe the harness cannot source: %q", byID["copilot"].ProbeCommand)
 	}
 }

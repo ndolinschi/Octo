@@ -236,7 +236,16 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		go func() {
 			defer cancel()
 			stop := a.runScript(pctx, text)
-			a.respond(m.ID, map[string]string{"stopReason": stop})
+			if stop == stopAuthRequired {
+				// What a CLI that is not logged in answers to session/prompt.
+				a.respondError(m.ID, -32000, "Authentication required")
+				return
+			}
+			res := map[string]any{"stopReason": stop}
+			if n, err := strconv.ParseInt(a.opts.promptUsage, 10, 64); err == nil {
+				res["usage"] = map[string]int64{"inputTokens": 100, "outputTokens": n, "thoughtTokens": 0, "totalTokens": 100 + n}
+			}
+			a.respond(m.ID, res)
 		}()
 	default:
 		a.respondError(m.ID, -32601, "method not found: "+m.Method)

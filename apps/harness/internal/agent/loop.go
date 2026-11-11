@@ -219,6 +219,9 @@ func (l *Loop) runTools(ctx context.Context, uses []anthropic.ToolUseBlock) ([]a
 		g.Go(func() error {
 			l.Sink.ToolStarted(tu.ID, tu.Name)
 			l.activity(activity.Tool, activity.ForTool(tu.Name, tu.Input), tu.ID)
+			if s, ok := l.Sink.(ToolInputSink); ok {
+				s.ToolInput(tu.ID, tu.Name, tu.Input)
+			}
 			block, isError, err := dispatchTool(tools.WithToolUseID(gctx, tu.ID), l.Registry, tu, l.Limits)
 			if err != nil {
 				return err

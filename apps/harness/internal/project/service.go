@@ -36,6 +36,8 @@ type Turns interface {
 	SendNow(ctx context.Context, projectID, queueID string) error
 	Cancel(projectID string)
 	Running(projectID string) bool
+	// Active: a turn started and its turn.finished has not been published yet.
+	Active(projectID string) bool
 	Context(ctx context.Context, projectID, agentID string) (orchestrator.ContextReport, error)
 	Side(ctx context.Context, projectID, text string) (orchestrator.SideStart, error)
 	// Complete answers one inline-completion request (no turn, no transcript).
