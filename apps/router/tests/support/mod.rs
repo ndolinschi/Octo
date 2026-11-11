@@ -8,6 +8,11 @@ use octo::config::Config;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
+/// Upstream URLs a test does not override point at a closed local port, so a
+/// call a test did not mock fails at once on every machine instead of reaching
+/// a real host (which answers, or hangs, differently in CI).
+const UNMOCKED: &str = "http://127.0.0.1:9";
+
 pub fn sample_config(max_body_bytes: usize) -> Config {
     Config {
         bind_addr: "127.0.0.1:8080".to_string(),
@@ -18,13 +23,13 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         openai_chat_completions_url: "https://api.openai.com/v1/chat/completions".to_string(),
         openrouter_chat_completions_url: "https://openrouter.example/chat".to_string(),
         openrouter_chat_completions_path: "/v1/chat/completions".to_string(),
-        openrouter_decisions_url: "https://example.com/decisions".to_string(),
+        openrouter_decisions_url: format!("{UNMOCKED}/decisions"),
         openrouter_decisions_path: "/v1/decisions".to_string(),
         openrouter_http_referer: None,
         openrouter_title: None,
         openrouter_messages_url: "https://openrouter.example/messages".to_string(),
         openrouter_messages_path: "/v1/messages".to_string(),
-        anthropic_messages_url: "https://example.com/messages".to_string(),
+        anthropic_messages_url: format!("{UNMOCKED}/messages"),
         anthropic_api_version: "2023-06-01".to_string(),
         anthropic_messages_path: "/v1/messages".to_string(),
         max_body_bytes,
