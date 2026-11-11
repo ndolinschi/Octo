@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
 	"net/http"
 	"slices"
 	"strings"
@@ -115,6 +116,7 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 			// reach the stored history.
 			send.Messages = withMessageBreakpoint(messages)
 		}
+		l.activity(activity.Thinking, "Thinking", "")
 		resp, routed, err := l.request(ctx, send)
 		if err != nil {
 			return res, err
@@ -164,6 +166,12 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 	return res, ErrMaxTurns
 }
 
+func (l *Loop) activity(kind, label, toolID string) {
+	if s, ok := l.Sink.(ActivitySink); ok {
+		s.Activity(kind, label, toolID)
+	}
+}
+
 func (l *Loop) call(ctx context.Context, params anthropic.MessageNewParams, opts []option.RequestOption, httpResp **http.Response) (anthropic.Message, error) {
 	if l.Stream {
 		return l.streamMessage(ctx, params, opts, httpResp)
@@ -184,10 +192,15 @@ func (l *Loop) streamMessage(ctx context.Context, params anthropic.MessageNewPar
 		return readJSONMessage((*httpResp).Body)
 	}
 	var message anthropic.Message
+	wrote := false
 	for stream.Next() {
 		event := stream.Current()
 		if e, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 			if delta, ok := e.Delta.AsAny().(anthropic.TextDelta); ok && delta.Text != "" {
+				if !wrote {
+					wrote = true
+					l.activity(activity.Text, "Writing", "")
+				}
 				l.Sink.TextDelta(delta.Text)
 			}
 		}
@@ -205,6 +218,7 @@ func (l *Loop) runTools(ctx context.Context, uses []anthropic.ToolUseBlock) ([]a
 	for i, tu := range uses {
 		g.Go(func() error {
 			l.Sink.ToolStarted(tu.ID, tu.Name)
+			l.activity(activity.Tool, activity.ForTool(tu.Name, tu.Input), tu.ID)
 			block, isError, err := dispatchTool(tools.WithToolUseID(gctx, tu.ID), l.Registry, tu, l.Limits)
 			if err != nil {
 				return err

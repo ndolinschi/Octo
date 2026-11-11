@@ -164,6 +164,35 @@ orch = [a for a in d["agents"] if not a["parent_id"]][0]
 assert orch["model"] == "acp:scripted" and orch["status"] == "idle" and orch["error"] is None, orch
 ' || fail "the orchestrator did not run on acp:scripted"
 
+  echo "-- live activity: thinking, plan, activity line and a tool row that appears before it ends"
+  curl -sN "$base/v1/projects/$PID/events" >"$TMP/$name-sse.txt" 2>/dev/null & SSE_PID=$!
+  sleep 0.3
+  ask "$base" "$PID" "[live] go" >/dev/null
+  sleep 0.3; kill "$SSE_PID" 2>/dev/null || true
+  python3 - "$TMP/$name-sse.txt" <<'PY' || fail "live activity events missing or out of order"
+import json, sys
+evs = []
+etype = None
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.rstrip("\n")
+    if line.startswith("event: "):
+        etype = line[7:]
+    elif line.startswith("data: ") and etype:
+        evs.append((etype, json.loads(line[6:])))
+        etype = None
+types = [t for t, _ in evs]
+def first(t, pred=lambda d: True):
+    return next(i for i, (x, d) in enumerate(evs) if x == t and pred(d))
+assert "message.thinking_delta" in types, "no thinking_delta"
+plans = [d for t, d in evs if t == "agent.plan"]
+assert len(plans) == 2 and plans[-1]["entries"][0]["status"] == "completed", plans
+acts = [(d["kind"], d["label"]) for t, d in evs if t == "agent.activity"]
+assert ("tool", "Reading README.md") in acts and ("text", "Writing") in acts and acts[-1][0] == "idle", acts
+row = first("message.created", lambda d: "call-live" in json.dumps(d["message"]["content"]))
+done = first("tool.finished", lambda d: d["tool_use_id"] == "call-live")
+assert row < done, (row, done)
+assert any(t == "tool.updated" and d.get("title") == "Read README.md" for t, d in evs), "no tool.updated"
+PY
   echo "-- built-in work fails with the one message"
   BPID=$(curl -fsS -X POST "$base/v1/projects" -H 'content-type: application/json' \
     -d "{\"name\":\"builtin\",\"folders\":[{\"path\":\"$TMP/$name-ws\"}],\"models\":{\"orchestrator\":\"claude-opus-5-5\"}}" | jget 'd["id"]')

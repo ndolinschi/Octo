@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AgentActivity,
   Approval,
   BridgeEvent,
   CompactionMarker,
@@ -8,6 +9,7 @@ import type {
   InputRequest,
   Message,
   Note,
+  PlanEntry,
   QueuedMessage,
   SideMessage,
   SideStarted,
@@ -34,12 +36,21 @@ export type AnsweredInput = {
   values: Record<string, string | boolean>;
 };
 
+/** A tool call in flight; the optional fields come from tool.updated (ACP). */
+export type ActiveTool = { name: string; status?: string; title?: string; locations?: string[]; summary?: string };
+
 export type ProjectState = {
   agents: Record<string, Agent>;
   agentOrder: string[];
   messages: Record<string, Message[]>;
   streaming: Record<string, string>;
-  activeTools: Record<string, Record<string, { name: string }>>;
+  activeTools: Record<string, Record<string, ActiveTool>>;
+  /** What each agent is doing now (agent.activity); `idle` once its turn ended. */
+  activity: Record<string, AgentActivity>;
+  /** The reasoning streamed during the running turn, per agent; dropped at turn.finished. */
+  thinking: Record<string, string>;
+  /** The latest plan per agent (agent.plan, or the agent row's). */
+  plan: Record<string, PlanEntry[]>;
   notes: Note[];
   /** Compaction markers per agent id, ordered by `upto_message_id`. */
   compactions: Record<string, CompactionMarker[]>;
@@ -75,6 +86,9 @@ export function emptyProjectState(): ProjectState {
     messages: {},
     streaming: {},
     activeTools: {},
+    activity: {},
+    thinking: {},
+    plan: {},
     notes: [],
     compactions: {},
     side: emptySide(),
@@ -99,8 +113,12 @@ function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
 
 function upsertAgent(state: ProjectState, agent: Agent): ProjectState {
   const known = agent.id in state.agents;
+  // The agent row carries the stored plan (null once a new turn cleared it): the state follows it when it is present.
+  let plan = state.plan;
+  if (agent.plan !== undefined) plan = agent.plan && agent.plan.length > 0 ? { ...state.plan, [agent.id]: agent.plan } : omitKey(state.plan, agent.id);
   return {
     ...state,
+    plan,
     agents: { ...state.agents, [agent.id]: agent },
     agentOrder: known ? state.agentOrder : [...state.agentOrder, agent.id],
   };
@@ -159,6 +177,26 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
           },
         },
       };
+    case "message.thinking_delta":
+      return { ...state, thinking: { ...state.thinking, [event.agent_id]: (state.thinking[event.agent_id] ?? "") + event.text } };
+    case "agent.plan":
+      return { ...state, plan: { ...state.plan, [event.agent_id]: event.entries } };
+    case "agent.activity": {
+      const { kind, label, tool_use_id } = event;
+      const next: AgentActivity = tool_use_id === undefined ? { kind, label } : { kind, label, tool_use_id };
+      return { ...state, activity: { ...state.activity, [event.agent_id]: next } };
+    }
+    case "tool.updated": {
+      const tools = state.activeTools[event.agent_id] ?? {};
+      const known = tools[event.tool_use_id];
+      if (!known) return state;
+      const merged: ActiveTool = { ...known };
+      if (event.status !== undefined) merged.status = event.status;
+      if (event.title !== undefined) merged.title = event.title;
+      if (event.locations !== undefined) merged.locations = event.locations;
+      if (event.summary !== undefined) merged.summary = event.summary;
+      return { ...state, activeTools: { ...state.activeTools, [event.agent_id]: { ...tools, [event.tool_use_id]: merged } } };
+    }
     case "tool.finished":
       return {
         ...state,
@@ -177,6 +215,8 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         ...state,
         streaming: {},
         activeTools: {},
+        thinking: {},
+        activity: {},
         lastTurn: { status: event.status, error: event.error },
       };
     case "agent.compacted": {

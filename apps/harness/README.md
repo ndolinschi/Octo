@@ -306,7 +306,7 @@ Under `--data-dir` (default `./data/harness`):
 
 - `harness.sqlite` — legacy CLI sessions and message JSON
 - `registry.sqlite` — project index (`serve`)
-- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes, usage, tasks, memory files, search indexes, changes, queue (schema version 3 via `PRAGMA user_version`; an older database migrates forward, a newer one is refused with a message)
+- `projects/{id}/project.sqlite` — everything for one project: folders, agents, messages, notes, usage, tasks, memory files, search indexes, changes, queue (schema version 4 via `PRAGMA user_version`; an older database migrates forward, a newer one is refused with a message)
 - `projects/{id}/secrets.json` — the project's secret store (mode 0600; see [docs/v7.md](./docs/v7.md))
 - `projects/{id}/shadow/` — pre-image copies for change tracking (rebuilt at every start)
 - `traces/` — ACP wire traces when `HARNESS_ACP_TRACE` is on

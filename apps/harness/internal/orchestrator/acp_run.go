@@ -38,6 +38,7 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	defer endSpan()
 	stop, err := client.RunWith(ctx, cwd, child.Task, h, acp.RunOptions{
 		Model: t.model, ModelRequired: t.requested, ModelApplied: t.model != "" && len(ag.ModelArg) > 0, AuthHint: ag.Hint, Auth: authPolicy(ag),
+		OnModels: func(m []acp.AdvertisedModel, cur string) { rt.o.noteAdvertised(ag.ID, m, cur) },
 	})
 	h.finish(ctx, err != nil)
 	if err != nil {

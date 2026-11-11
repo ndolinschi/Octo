@@ -26,9 +26,17 @@ const (
 	QueueUpdated = "queue.updated"
 	// SecretsChanged carries the names (never values) of secrets that were stored or deleted.
 	SecretsChanged = "secrets.changed"
-	SideDelta      = "side.delta"
-	SideDone       = "side.done"
-	SideError      = "side.error"
+	// AgentActivity says what an agent is doing now (kind, label, tool id).
+	AgentActivity = "agent.activity"
+	// ThinkingDelta streams an ACP agent's reasoning; it is never stored.
+	ThinkingDelta = "message.thinking_delta"
+	// AgentPlan carries an ACP agent's whole current plan.
+	AgentPlan = "agent.plan"
+	// ToolUpdated carries what an ACP tool_call_update changed on a tool row.
+	ToolUpdated = "tool.updated"
+	SideDelta   = "side.delta"
+	SideDone    = "side.done"
+	SideError   = "side.error"
 	// SettingsChanged carries the ids of settings a PUT /v1/settings changed
 	// (never values). It is delivered on every project stream.
 	SettingsChanged = "settings.changed"

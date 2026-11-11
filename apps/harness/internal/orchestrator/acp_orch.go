@@ -246,6 +246,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	opts := acp.RunOptions{
 		Model: t.model, ModelRequired: t.requested, ModelApplied: t.model != "" && len(ag.ModelArg) > 0,
 		AuthHint: ag.Hint, Auth: authPolicy(ag),
+		OnModels: func(m []acp.AdvertisedModel, cur string) { rt.o.noteAdvertised(ag.ID, m, cur) },
 	}
 	sess, err := client.NewSession(ctx, cwd, servers, opts)
 	var rpcErr *acp.RPCError

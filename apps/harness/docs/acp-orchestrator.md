@@ -64,7 +64,7 @@ curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/a
   message and the final assistant text are stored as for the built-in loop. A sub-agent created by an MCP `spawn_agent` call gets
   `spawn_tool_use_id` of the agent's matching tool-call row when one can be matched by tool name. `usage_update` becomes a usage row
   with `source: "acp"` (cost only when the agent reports USD) and the context window. Thinking chunks and `plan` updates are
-  **ignored**: the UI has no place for them yet.
+  published as `message.thinking_delta` and `agent.plan`, and every transition of what an agent does as `agent.activity`; see "Live activity" below.
 - **Cancel.** `POST /v1/projects/{pid}/cancel` sends `session/cancel`; the turn ends `cancelled` and the session stays usable (an agent
   that ignores the cancel for 3 s is killed and restarted by the next request).
 - **Permissions.** `session/request_permission` goes through `permission.Decide`, today auto-approve (the first `allow_once`, else `allow_always`, else
@@ -107,3 +107,16 @@ Everything above was exercised only against the scripted agent (`internal/fakeac
 a real relay process. **No real agent CLI was run** (Claude Code and its ACP adapter, Copilot, Grok, Codex ...): their handling of
 `mcpServers`, `session/load`, the tool-call titles used to link a spawned sub-agent, and the permission and usage updates they send is
 unverified. Run `scripts/e2e-acp-orchestrator.sh` for the scripted end-to-end check.
+
+## Live activity (decision 55)
+
+An agent at work is never just a spinner. For ACP orchestrators, ACP sub-agents and the built-in loop alike the project stream carries:
+
+- `agent.activity {agent_id, kind, label, tool_use_id?}` on every transition. `kind` is `thinking` (before each model request / ACP "Thinking"), `tool` (label from the tool: "Reading src/x.go", "Writing a.txt", "Listing the project folder", "Running `pnpm test`", `Searching for "budget"`, "Delegating: title"; for ACP built from the call's kind, title and first location, paths shown relative to the project folder; a later `tool_call_update` with a new title refreshes it), `text` ("Writing", first streamed token), `waiting_approval` ("Waiting for your approval" for an approval card or ACP permission request, "Waiting for your answer" for a form), `idle` (the agent's run ended) and `quiet`. The same state twice in a row is one event. `quiet` is sent once when nothing at all (no session/update of any kind, no permission or fs request) arrived from an ACP agent for 10 s (`Options.ACPQuietAfter`; not while it waits for the user); its label is the agent's id and the UI says "Still working — no output from <agent> yet". The first event of an ACP run, "Starting <agent>", is sent before the process has said anything.
+- `message.thinking_delta {agent_id, text}`: the agent's reasoning. Scrubbed with the same stream scrubber as text (holds back at most the longest stored secret's length minus one byte, nothing when there are no secrets), never stored, not in messages, not indexed.
+- `agent.plan {agent_id, entries:[{content, status, priority}]}`: the agent's whole plan each time; the latest is on the agent row as `plan` (null when none; cleared when the next turn starts; schema version 4).
+- `tool.updated {agent_id, tool_use_id, status?, title?, locations?, summary?}`: what a `tool_call_update` changed. The tool row itself (`message.created` with the `tool_use`, and `tool.started`) is published when the agent announces the call, not when it ends (this was already so; it is now tested with a 400 ms tool).
+
+Text chunks are published as they arrive (no batching at all, so well inside the 50 ms bound); with no stored secret nothing is held back, with one at most its length minus one byte, until the next chunk or the end of the message. `available_commands_update` and `current_mode_update` are ignored without error.
+
+The scripted agent has markers for these flows: `[live]` (thought, plan, a tool with title/status updates, 20 text chunks 20 ms apart, each carrying its send time), `[slow-tool]`, `[quiet]`, `[secret-thought:VALUE]`. Tests measure the first event reaching an SSE subscriber within 100 ms of the agent sending it and the 20 chunks arriving over about 400 ms.

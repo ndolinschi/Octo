@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,9 @@ func (rt *runtime) ask(ctx context.Context, agentID, label string, ap approval.A
 		return true, ""
 	}
 	ap.AgentID, ap.AgentLabel, ap.TurnID = agentID, label, rt.turnID
+	rt.activity(agentID, activity.WaitingApproval, "Waiting for your approval", "")
 	res := m.Request(ctx, rt.pid(), ap)
+	rt.activity(agentID, activity.Thinking, "Thinking", "")
 	switch res.Decision {
 	case approval.AllowForTurn:
 		m.Grant(rt.pid(), rt.turnID, agentID, grantKey)

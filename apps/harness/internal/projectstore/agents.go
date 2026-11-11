@@ -3,6 +3,7 @@ package projectstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 )
 
 // lastRowOf selects one column of the agent's newest main-thread API usage row
@@ -15,7 +16,7 @@ func lastRowOf(col string) string {
 
 var agentCols = `id, parent_id, depth, role, title, task, model, tier, status, result, error,
 	spawn_tool_use_id, input_tokens, output_tokens, created_at, started_at, finished_at,
-	context_used, context_size, route_reason, route_band, route_request_id, route_choice, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier")
+	context_used, context_size, route_reason, route_band, route_request_id, route_choice, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier") + `, plan_json`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -24,10 +25,10 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	var tier sql.NullString
 	var parent, result, errText, spawn, started, finished sql.NullString
 	var ctxUsed, ctxSize sql.NullInt64
-	var served, routed, rReason, rBand, rReq, rChoice sql.NullString
+	var served, routed, rReason, rBand, rReq, rChoice, plan sql.NullString
 	err := r.Scan(&a.ID, &parent, &a.Depth, &a.Role, &a.Title, &a.Task, &a.Model, &tier, &a.Status,
 		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished, &ctxUsed, &ctxSize,
-		&rReason, &rBand, &rReq, &rChoice, &served, &routed)
+		&rReason, &rBand, &rReq, &rChoice, &served, &routed, &plan)
 	if err != nil {
 		return a, err
 	}
@@ -42,6 +43,9 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	a.ServedModel = nullStr(served)
 	a.RoutedTier = nullStr(routed)
 	a.RouteReason, a.RouteBand, a.RouteRequestID, a.RouteChoice = nullStr(rReason), nullStr(rBand), nullStr(rReq), nullStr(rChoice)
+	if plan.Valid && plan.String != "" {
+		_ = json.Unmarshal([]byte(plan.String), &a.Plan) // a bad value is no plan
+	}
 	if tier.Valid {
 		t := Tier(tier.String)
 		a.Tier = &t
@@ -133,6 +137,7 @@ func (d *DB) UpdateAgent(ctx context.Context, id string, p AgentPatch) (Agent, e
 		set.add("result", nil)
 		set.add("error", nil)
 		set.add("finished_at", nil)
+		set.add("plan_json", nil)
 	}
 	if p.Status != nil {
 		set.add("status", string(*p.Status))
@@ -167,4 +172,25 @@ func (d *DB) RecoverInterrupted(ctx context.Context) error {
 	_, err := d.sql.ExecContext(ctx,
 		`UPDATE project SET queue_paused = 1 WHERE EXISTS (SELECT 1 FROM queue)`)
 	return err
+}
+
+// SetPlan stores the agent's latest plan (an ACP plan update replaces the whole
+// plan); an empty plan clears it.
+func (d *DB) SetPlan(ctx context.Context, id string, plan []PlanEntry) (Agent, error) {
+	var val any
+	if len(plan) > 0 {
+		b, err := json.Marshal(plan)
+		if err != nil {
+			return Agent{}, err
+		}
+		val = string(b)
+	}
+	res, err := d.sql.ExecContext(ctx, `UPDATE agents SET plan_json = ? WHERE id = ?`, val, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Agent{}, ErrNotFound
+	}
+	return d.Agent(ctx, id)
 }

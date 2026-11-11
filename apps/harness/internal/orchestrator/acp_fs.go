@@ -18,6 +18,9 @@ import (
 
 // ReadTextFile serves fs/read_text_file confined to the project's folders.
 func (s *acpSession) ReadTextFile(_ context.Context, req acp.ReadTextFileParams) (string, error) {
+	s.mu.Lock()
+	s.touch()
+	s.mu.Unlock()
 	root, label, rel, err := s.rt.locate(req.Path)
 	if err != nil {
 		s.deny(req.Path, err)
@@ -33,6 +36,9 @@ func (s *acpSession) ReadTextFile(_ context.Context, req acp.ReadTextFileParams)
 // WriteTextFile serves fs/write_text_file: confined, atomic, missing parent
 // directories created, and announced as file.changed.
 func (s *acpSession) WriteTextFile(ctx context.Context, req acp.WriteTextFileParams) error {
+	s.mu.Lock()
+	s.touch()
+	s.mu.Unlock()
 	root, label, rel, err := s.rt.locate(req.Path)
 	if err != nil {
 		s.deny(req.Path, err)

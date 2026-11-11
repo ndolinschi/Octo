@@ -126,3 +126,34 @@ no real CLI, no real MCP client.**
 2. Grok on a subscription in automated tests has no documented headless login. Options: test Grok with an API key in
    CI and on the subscription only on a developer machine; or accept copying the CLI's credential file to the test
    runner. Default: the former.
+
+## As built — live ACP activity (harness, decision 55 of the UI spec)
+
+What was silent: for ACP agents the harness already published `agent_message_chunk` text and, at `tool_call`, the tool row
+(`message.created` + `tool.started`, so rows did appear at the start, not at completion). It dropped `agent_thought_chunk`,
+`plan`, every non-terminal `tool_call_update`, and had no notion of "what is the agent doing now". Now published (details in
+`apps/harness/docs/acp-orchestrator.md`, "Live activity"):
+
+- `message.thinking_delta {agent_id, text}` — scrubbed of secrets, never stored or indexed.
+- `agent.plan {agent_id, entries}` — also stored on the agent row (`plan`; schema version 4, `agents.plan_json`; cleared when
+  the next turn starts).
+- `tool.updated {agent_id, tool_use_id, status?, title?, locations?, summary?}`.
+- `agent.activity {agent_id, kind: thinking|tool|text|waiting_approval|idle|quiet, label, tool_use_id?}` for the built-in loop
+  and ACP (orchestrator and sub-agents). `quiet` after 10 s (`Options.ACPQuietAfter`) without any session/update, permission or
+  fs request; not while waiting for the user.
+- `available_commands_update` and `current_mode_update` are ignored without error but count as signs of life.
+- agent-client: the four event types, `Agent.plan?`, and reducer state `activity`, `thinking` (dropped at `turn.finished`),
+  `plan`, and tool details merged into `activeTools`.
+
+Verified here (scripted agent, mock model): first thought reaches an SSE subscriber within 100 ms of being sent; 20 text chunks
+sent 20 ms apart arrive as 20 deltas over about 400 ms, each within 100 ms; the tool row exists 150–400 ms before it finishes; a
+silent agent is reported quiet exactly once and an agent waiting for an approval never; secrets split across two thought chunks
+and put in a plan never leave the harness; the built-in loop publishes the same activity kinds.
+
+Not verifiable without the real thing: a real Claude Code may send no chunks of any kind until its answer is complete, or only
+`usage_update`s, or batch its text into a few large chunks; none of that can be fixed in the harness. The wire trace
+(`HARNESS_ACP_TRACE=1`, `docs/diagnostics` / R1) shows it exactly: look at the timestamps of the `session/update` lines of one
+turn: no `agent_thought_chunk` or `agent_message_chunk` lines until the end means the agent itself is silent (the UI then shows
+"Starting …", "Thinking…" and, after 10 s, "Still working — no output from <agent> yet"); a few chunks of many characters means
+the agent batches. Whether the Claude Code adapter sends `agent_thought_chunk` and `plan` at all depends on its version and the
+model's thinking setting.

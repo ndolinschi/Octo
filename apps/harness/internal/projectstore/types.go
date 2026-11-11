@@ -118,6 +118,15 @@ type Agent struct {
 	RouteBand      *string `json:"route_band"`
 	RouteRequestID *string `json:"route_request_id"`
 	RouteChoice    *string `json:"route_choice"`
+	// Plan is the latest plan an ACP agent published (null when none).
+	Plan []PlanEntry `json:"plan"`
+}
+
+// PlanEntry is one line of an agent's plan.
+type PlanEntry struct {
+	Content  string `json:"content"`
+	Status   string `json:"status"`
+	Priority string `json:"priority"`
 }
 
 type NewAgent struct {

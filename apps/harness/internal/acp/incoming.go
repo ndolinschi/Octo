@@ -35,7 +35,26 @@ func (c *Client) notify(_ context.Context, method string, params json.RawMessage
 }
 
 func (c *Client) applyUpdate(r *run, kind string, raw json.RawMessage) {
+	if o, ok := r.h.(UpdateObserver); ok {
+		o.UpdateSeen(r.ctx, kind)
+	}
 	switch kind {
+	case "agent_thought_chunk":
+		var chunk contentChunk
+		if h, ok := r.h.(ThoughtHandler); ok {
+			if err := json.Unmarshal(raw, &chunk); err == nil && chunk.Content.Type == "text" && chunk.Content.Text != "" {
+				h.AgentThought(r.ctx, chunk.Content.Text)
+			}
+		}
+	case "plan":
+		if h, ok := r.h.(PlanHandler); ok {
+			var p struct {
+				Entries []PlanEntry `json:"entries"`
+			}
+			if err := json.Unmarshal(raw, &p); err == nil {
+				h.Plan(r.ctx, p.Entries)
+			}
+		}
 	case "agent_message_chunk":
 		var chunk contentChunk
 		if err := json.Unmarshal(raw, &chunk); err == nil && chunk.Content.Type == "text" && chunk.Content.Text != "" {

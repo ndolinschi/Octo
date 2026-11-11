@@ -16,6 +16,8 @@ var columnsAdded = []struct {
 	{"agents", []column{
 		{"context_used", "INTEGER"}, {"context_size", "INTEGER"},
 		{"route_reason", "TEXT"}, {"route_band", "TEXT"}, {"route_request_id", "TEXT"}, {"route_choice", "TEXT"},
+		// Schema 4: the latest plan of an ACP agent (JSON array).
+		{"plan_json", "TEXT"},
 	}},
 	{"project", []column{
 		{"budget_usd", "REAL"},
@@ -33,7 +35,7 @@ var columnsAdded = []struct {
 // SchemaVersion is the schema generation this binary writes and understands
 // (PRAGMA user_version). Databases without a stamp (0) are older and are
 // migrated forward; a higher number was written by a newer binary and is refused.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.

@@ -131,8 +131,11 @@ Subscription agents (Copilot, Grok, Codex; [`plugins-examples/subscription-agent
 | ACP | Harness |
 | --- | --- |
 | `agent_message_chunk` (text) | `message.delta`; accumulated, flushed as a persisted assistant text message before each tool call and at the end |
-| `agent_thought_chunk`, plans, unknown variants | ignored |
+| `agent_thought_chunk` (text) | `message.thinking_delta {agent_id, text}`, secrets scrubbed; never stored, indexed or part of the transcript |
+| `plan` | the whole plan is stored on the agent row (`plan`, schema 4; cleared when the next turn starts) and published as `agent.plan {agent_id, entries:[{content,status,priority}]}` |
+| `available_commands_update`, `current_mode_update`, unknown variants | ignored (they still count as a sign of life for the silence watcher) |
 | `tool_call` | persisted assistant `tool_use` (`id` = toolCallId, `name` = kind or `tool`, `input` = `{title, raw_input?, locations?}`); `tool.started` |
+| `tool_call_update` (any) | `tool.updated {agent_id, tool_use_id, status?, title?, locations?, summary?}` with the fields that changed (summary: first 300 characters of the content); the activity label follows a new title |
 | `tool_call_update` completed/failed (or a `tool_call` already terminal) | persisted user `tool_result` (text content and diffs flattened to text, `is_error` when failed); `tool.finished`. Tool calls still open at the end get an error result |
 | `usage_update` | ACP reports tokens in context (`used`), not input/output: growth of `used` is added to `input_tokens`; output tokens stay 0 |
 | `session/request_permission` | `selected` with the first `allow_once` (else first `allow_always`); logged with the tool title; `cancelled` once cancellation started |

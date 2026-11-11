@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
+	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -67,15 +69,139 @@ type acpSession struct {
 	rawIn   map[string]json.RawMessage
 	// stream scrubs stored secrets out of the text deltas published while the agent talks.
 	stream *secrets.Stream
+	// thought does the same for the reasoning deltas.
+	thought *secrets.Stream
+	// lastEvent is when anything last arrived from the agent; quiet says
+	// agent.activity already reported the silence; waiting that the agent
+	// waits for the user; stopWatch ends the silence watcher.
+	lastEvent time.Time
+	quiet     bool
+	waiting   bool
+	stopWatch chan struct{}
 }
 
+// quietAfter is the silence after which an ACP agent is reported as quiet.
+const defaultQuietAfter = 10 * time.Second
+
 func newACPSession(rt *runtime, agentID, label, model string) *acpSession {
-	return &acpSession{
+	s := &acpSession{
 		rt: rt, sink: &agentSink{rt: rt, agentID: agentID, source: projectstore.SourceACP},
 		agentID: agentID, label: label, model: model,
 		open: map[string]bool{}, seen: map[string]bool{}, titles: map[string]string{}, claimed: map[string]bool{},
 		preOK: map[string]int{}, calls: map[string]acp.ToolCall{}, stream: rt.o.secrets.NewStream(rt.pid()), mapped: map[string]string{}, rawIn: map[string]json.RawMessage{},
+		thought: rt.o.secrets.NewStream(rt.pid()), lastEvent: time.Now(), stopWatch: make(chan struct{}),
 	}
+	rt.activity(agentID, activity.Thinking, "Starting "+label, "")
+	go s.watchSilence()
+	return s
+}
+
+// touch records a sign of life from the agent.
+func (s *acpSession) touch() {
+	s.lastEvent, s.quiet = time.Now(), false
+}
+
+// watchSilence publishes agent.activity "quiet" once when nothing at all has
+// arrived from the agent for the quiet period (not while it waits for the user).
+func (s *acpSession) watchSilence() {
+	after := s.rt.o.opts.ACPQuietAfter
+	if after <= 0 {
+		after = defaultQuietAfter
+	}
+	tick := time.NewTicker(max(after/4, 5*time.Millisecond))
+	defer tick.Stop()
+	for {
+		select {
+		case <-s.stopWatch:
+			return
+		case <-tick.C:
+		}
+		s.mu.Lock()
+		fire := !s.done && !s.waiting && !s.quiet && time.Since(s.lastEvent) >= after
+		if fire {
+			s.quiet = true
+		}
+		s.mu.Unlock()
+		if fire {
+			s.rt.activity(s.agentID, activity.Quiet, s.label, "")
+		}
+	}
+}
+
+// UpdateSeen implements acp.UpdateObserver: every session/update is a sign of life.
+func (s *acpSession) UpdateSeen(_ context.Context, _ string) {
+	s.mu.Lock()
+	s.touch()
+	s.mu.Unlock()
+}
+
+// AgentThought implements acp.ThoughtHandler: the reasoning streams to the UI
+// (secrets scrubbed) and is stored nowhere.
+func (s *acpSession) AgentThought(_ context.Context, text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	s.rt.activity(s.agentID, activity.Thinking, "Thinking", "")
+	if safe := s.thought.Write(text); safe != "" {
+		s.rt.publish(events.ThinkingDelta, map[string]any{"agent_id": s.agentID, "text": safe})
+	}
+}
+
+// flushThoughtLocked publishes what the secret scrubber still holds back.
+func (s *acpSession) flushThoughtLocked() {
+	if rest := s.thought.Flush(); rest != "" {
+		s.rt.publish(events.ThinkingDelta, map[string]any{"agent_id": s.agentID, "text": rest})
+	}
+}
+
+// Plan implements acp.PlanHandler: the agent's whole plan replaces the stored
+// one and is published.
+func (s *acpSession) Plan(ctx context.Context, entries []acp.PlanEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done {
+		return
+	}
+	s.active = true
+	plan := make([]projectstore.PlanEntry, 0, len(entries))
+	for _, e := range entries {
+		e.Content = strings.TrimSpace(s.rt.redact(e.Content))
+		if e.Content == "" {
+			continue
+		}
+		if e.Status == "" {
+			e.Status = "pending"
+		}
+		if e.Priority == "" {
+			e.Priority = "medium"
+		}
+		plan = append(plan, projectstore.PlanEntry{Content: e.Content, Status: e.Status, Priority: e.Priority})
+	}
+	c, cancel := dbCtx(ctx)
+	defer cancel()
+	if _, err := s.rt.db.SetPlan(c, s.agentID, plan); err != nil {
+		s.rt.logErr("store plan", err)
+	}
+	s.rt.publish(events.AgentPlan, map[string]any{"agent_id": s.agentID, "entries": plan})
+}
+
+// toolLabelLocked is the activity label of an announced tool call.
+func (s *acpSession) toolLabelLocked(call acp.ToolCall) string {
+	if tool, ok := s.mapped[call.ID]; ok {
+		return activity.ForTool(tool, call.RawInput)
+	}
+	loc := ""
+	if len(call.Locations) > 0 {
+		loc = call.Locations[0].Path
+	}
+	cwd := ""
+	if len(s.rt.folders) > 0 {
+		cwd = s.rt.folders[0].Path
+	}
+	return activity.ForACP(call.Kind, call.Title, loc, cwd)
 }
 
 func (s *acpSession) AgentText(_ context.Context, text string) {
@@ -85,6 +211,8 @@ func (s *acpSession) AgentText(_ context.Context, text string) {
 		return
 	}
 	s.active = true
+	s.rt.activity(s.agentID, activity.Text, "Writing", "")
+	s.flushThoughtLocked()
 	if strings.TrimSpace(text) != "" {
 		s.said = true
 	}
@@ -115,12 +243,54 @@ func (s *acpSession) ToolCallUpdate(ctx context.Context, up acp.ToolCallUpdate) 
 	if s.done {
 		return
 	}
-	if !s.seen[up.ID] {
+	fresh := !s.seen[up.ID]
+	if fresh {
 		s.flushLocked(ctx)
 		s.startLocked(ctx, up)
+	} else {
+		s.updateToolLocked(up)
 	}
 	if up.Status.Terminal() && s.open[up.ID] {
 		s.finishToolLocked(ctx, up)
+	}
+}
+
+// updateToolLocked merges a tool_call_update into what was announced and
+// publishes tool.updated with the fields that changed.
+func (s *acpSession) updateToolLocked(up acp.ToolCallUpdate) {
+	known := s.calls[up.ID]
+	fields := map[string]any{"agent_id": s.agentID, "tool_use_id": up.ID}
+	if up.Status != "" && up.Status != known.Status {
+		known.Status = up.Status
+		fields["status"] = string(up.Status)
+	}
+	if up.Title != "" && up.Title != known.Title {
+		known.Title = up.Title
+		fields["title"] = s.rt.redact(up.Title)
+	}
+	if up.Kind != "" {
+		known.Kind = up.Kind
+	}
+	if len(up.Locations) > 0 {
+		known.Locations = up.Locations
+		paths := make([]string, 0, len(up.Locations))
+		for _, l := range up.Locations {
+			paths = append(paths, l.Path)
+		}
+		fields["locations"] = paths
+	}
+	if len(up.RawInput) > 0 && string(up.RawInput) != "null" {
+		known.RawInput = up.RawInput
+	}
+	if sum := activity.Clip(s.rt.redact(flattenContent(up.Content)), 300); sum != "" {
+		fields["summary"] = sum
+	}
+	s.calls[up.ID] = known
+	if len(fields) > 2 {
+		s.rt.publish(events.ToolUpdated, fields)
+	}
+	if s.open[up.ID] && !up.Status.Terminal() {
+		s.rt.activity(s.agentID, activity.Tool, s.toolLabelLocked(known), up.ID)
 	}
 }
 
@@ -181,8 +351,23 @@ func (s *acpSession) idle() bool {
 func (s *acpSession) RequestPermission(ctx context.Context, req acp.PermissionRequest) string {
 	s.mu.Lock()
 	s.active = true
+	s.touch()
+	asks := s.rt.supervised(ctx)
+	if asks {
+		s.waiting = true
+	}
 	s.mu.Unlock()
 	req.ToolCall = s.completed(req.ToolCall)
+	if asks {
+		s.rt.activity(s.agentID, activity.WaitingApproval, "Waiting for your approval", "")
+		defer func() {
+			s.mu.Lock()
+			s.waiting = false
+			s.touch()
+			s.mu.Unlock()
+			s.rt.activity(s.agentID, activity.Thinking, "Thinking", "")
+		}()
+	}
 	d := permission.Decide(ctx, permission.Request{
 		ProjectID: s.rt.pid(), Agent: s.label, Orchestrator: s.orchestrator, ACP: req,
 		AgentID: s.agentID, TurnID: s.rt.turnID, Policy: approvalPolicy{rt: s.rt},
@@ -258,6 +443,8 @@ func (s *acpSession) finish(ctx context.Context, failed bool) {
 		return
 	}
 	s.flushLocked(ctx)
+	s.flushThoughtLocked()
+	close(s.stopWatch)
 	reason := "the agent ended its turn before this tool call finished"
 	if failed {
 		reason = "the agent stopped before this tool call finished"
@@ -325,6 +512,8 @@ func (s *acpSession) startLocked(ctx context.Context, call acp.ToolCall) {
 	s.tail = ""
 	s.persist(ctx, "assistant", anthropic.NewAssistantMessage(anthropic.NewToolUseBlock(call.ID, persistedInput, name)))
 	s.sink.ToolStarted(call.ID, name)
+	s.flushThoughtLocked()
+	s.rt.activity(s.agentID, activity.Tool, s.toolLabelLocked(call), call.ID)
 }
 
 func (s *acpSession) finishToolLocked(ctx context.Context, up acp.ToolCallUpdate) {
@@ -339,6 +528,9 @@ func (s *acpSession) resultLocked(ctx context.Context, id, text string, isErr bo
 	delete(s.open, id)
 	s.persist(ctx, "user", anthropic.NewUserMessage(anthropic.NewToolResultBlock(id, s.rt.o.opts.Limits.CapResult(text), isErr)))
 	s.sink.ToolFinished(id, isErr)
+	if len(s.open) == 0 {
+		s.rt.activity(s.agentID, activity.Thinking, "Thinking", "")
+	}
 }
 
 func (s *acpSession) persist(ctx context.Context, role string, msg anthropic.MessageParam) {

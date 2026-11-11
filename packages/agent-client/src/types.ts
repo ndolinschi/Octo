@@ -94,6 +94,8 @@ export type Project = ProjectSummary & {
 };
 
 export type Agent = {
+  /** The latest plan an ACP agent published (absent on a harness that predates plans). */
+  plan?: PlanEntry[] | null;
   id: string;
   project_id: string;
   parent_id: string | null;
@@ -197,6 +199,17 @@ export type Note = {
   updated_at: string;
 };
 
+/** One line of an ACP agent's plan. */
+export type PlanEntry = {
+  content: string;
+  status: "pending" | "in_progress" | "completed" | (string & {});
+  priority: "high" | "medium" | "low" | (string & {});
+};
+
+/** What an agent is doing now; `quiet`: nothing at all has arrived from it for a while (label is the agent's name). */
+export type ActivityKind = "thinking" | "tool" | "text" | "waiting_approval" | "idle" | "quiet";
+export type AgentActivity = { kind: ActivityKind; label: string; tool_use_id?: string };
+
 export type TurnStatus = "completed" | "failed" | "cancelled";
 
 export type AgentCreatedEvent = { type: "agent.created"; seq: number; agent: Agent };
@@ -209,6 +222,23 @@ export type ToolStartedEvent = {
   agent_id: string;
   tool_use_id: string;
   name: string;
+};
+/** An ACP agent's reasoning, streamed; never stored (not in messages, not searchable). */
+export type ThinkingDeltaEvent = { type: "message.thinking_delta"; seq: number; agent_id: string; text: string };
+/** An ACP agent's whole current plan (each event replaces the previous one). */
+export type AgentPlanEvent = { type: "agent.plan"; seq: number; agent_id: string; entries: PlanEntry[] };
+/** What an agent is doing now, on every transition (built-in loop and ACP alike). */
+export type AgentActivityEvent = { type: "agent.activity"; seq: number; agent_id: string } & AgentActivity;
+/** What a `tool_call_update` changed on an ACP tool row; only the fields that changed are present. */
+export type ToolUpdatedEvent = {
+  type: "tool.updated";
+  seq: number;
+  agent_id: string;
+  tool_use_id: string;
+  status?: string;
+  title?: string;
+  locations?: string[];
+  summary?: string;
 };
 export type ToolFinishedEvent = {
   type: "tool.finished";
@@ -298,6 +328,10 @@ export type BridgeEvent =
   | MessageDeltaEvent
   | ToolStartedEvent
   | ToolFinishedEvent
+  | ThinkingDeltaEvent
+  | AgentPlanEvent
+  | AgentActivityEvent
+  | ToolUpdatedEvent
   | NoteChangedEvent
   | ProjectUpdatedEvent
   | FileChangedEvent

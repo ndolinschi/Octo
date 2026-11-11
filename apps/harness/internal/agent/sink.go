@@ -17,6 +17,14 @@ type Sink interface {
 	Usage(u Usage)
 }
 
+// ActivitySink is implemented by sinks that publish what the agent is doing
+// now. The loop calls Activity on every transition: "thinking" before each
+// model request, "text" when the answer starts streaming, "tool" when a tool
+// starts (label built from its name and arguments).
+type ActivitySink interface {
+	Activity(kind, label, toolID string)
+}
+
 // Compactor is implemented by sinks that keep compaction summaries; the loop
 // calls Compacted when an Octo router answered with one (see compactionSummary).
 type Compactor interface {

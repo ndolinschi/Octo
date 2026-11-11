@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
 	"sync"
 	"time"
 
@@ -27,6 +28,9 @@ const defaultClearWindow = 200_000
 // runtime is a snapshot of one project taken at turn start, plus helpers
 // shared by every agent in the turn's tree.
 type runtime struct {
+	// actMu guards lastAct, the last agent.activity published per agent.
+	actMu   sync.Mutex
+	lastAct map[string]string
 	o       *Orchestrator
 	db      *projectstore.DB
 	info    projectstore.Project
@@ -81,6 +85,28 @@ func (rt *runtime) pid() string { return rt.db.ID() }
 
 func (rt *runtime) publish(typ string, fields map[string]any) {
 	rt.o.hub.Publish(rt.pid(), typ, fields)
+}
+
+// activity publishes agent.activity when the agent's state changed since the
+// last one (the same kind, label and tool id twice is one event).
+func (rt *runtime) activity(agentID, kind, label, toolID string) {
+	label = rt.redact(label)
+	key := kind + "\x00" + label + "\x00" + toolID
+	rt.actMu.Lock()
+	if rt.lastAct == nil {
+		rt.lastAct = map[string]string{}
+	}
+	if rt.lastAct[agentID] == key {
+		rt.actMu.Unlock()
+		return
+	}
+	rt.lastAct[agentID] = key
+	rt.actMu.Unlock()
+	fields := map[string]any{"agent_id": agentID, "kind": kind, "label": label}
+	if toolID != "" {
+		fields["tool_use_id"] = toolID
+	}
+	rt.publish(events.AgentActivity, fields)
 }
 
 func (rt *runtime) publishAgent(typ string, a projectstore.Agent) {
@@ -207,6 +233,7 @@ func (rt *runtime) settle(ctx context.Context, id string, status projectstore.Ag
 		return
 	}
 	rt.publishAgent(events.AgentUpdated, a)
+	rt.activity(id, activity.Idle, "", "")
 }
 
 // finishTurn settles the orchestrator and cancels any stragglers. It returns
@@ -237,6 +264,7 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	}
 	if a, err := rt.db.UpdateAgent(c, orchID, patch); err == nil {
 		rt.publishAgent(events.AgentUpdated, a)
+		rt.activity(orchID, activity.Idle, "", "")
 	} else {
 		rt.logErr("settle orchestrator", err)
 	}

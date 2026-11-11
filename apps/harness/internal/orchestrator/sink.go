@@ -49,6 +49,11 @@ func (s *agentSink) TextDelta(text string) {
 	s.rt.publish(events.MessageDelta, map[string]any{"agent_id": s.agentID, "text": text})
 }
 
+// Activity implements agent.ActivitySink.
+func (s *agentSink) Activity(kind, label, toolID string) {
+	s.rt.activity(s.agentID, kind, label, toolID)
+}
+
 func (s *agentSink) ToolStarted(id, name string) {
 	s.rt.publish(events.ToolStarted, map[string]any{"agent_id": s.agentID, "tool_use_id": id, "name": name})
 }

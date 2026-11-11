@@ -23,6 +23,10 @@ type RunOptions struct {
 	ModelApplied bool
 	// AuthHint is appended to the error when the agent needs a login.
 	AuthHint string
+	// OnModels, when set, is told the models the agent advertised in the
+	// session it just opened (its model config option or model list) and the
+	// one it currently uses; it is not called for an agent that advertises none.
+	OnModels func(models []AdvertisedModel, current string)
 	// Auth restricts and orders the auth methods tried when the agent
 	// refuses the session.
 	Auth AuthPolicy
@@ -32,7 +36,53 @@ type modelState struct {
 	CurrentModelID  string `json:"currentModelId"`
 	AvailableModels []struct {
 		ModelID string `json:"modelId"`
+		Name    string `json:"name"`
 	} `json:"availableModels"`
+}
+
+// AdvertisedModel is a model an agent says a session can use.
+type AdvertisedModel struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// advertised lists what a new session offers: the model config option's values,
+// else the session's model list; with the one in use.
+func advertised(sess newSessionResult) ([]AdvertisedModel, string) {
+	if opt, ok := modelOption(sess.ConfigOptions); ok {
+		var out []AdvertisedModel
+		var walk func([]optionEntry)
+		walk = func(es []optionEntry) {
+			for _, e := range es {
+				if e.Value != "" {
+					out = append(out, AdvertisedModel{ID: e.Value, Label: cmpLabel(e.Name, e.Value)})
+				}
+				walk(e.Options)
+			}
+		}
+		walk(opt.Options)
+		if len(out) > 0 {
+			return out, opt.current()
+		}
+	}
+	var ms modelState
+	if len(sess.Models) > 0 && json.Unmarshal(sess.Models, &ms) == nil {
+		var out []AdvertisedModel
+		for _, m := range ms.AvailableModels {
+			if m.ModelID != "" {
+				out = append(out, AdvertisedModel{ID: m.ModelID, Label: cmpLabel(m.Name, m.ModelID)})
+			}
+		}
+		return out, ms.CurrentModelID
+	}
+	return nil, ""
+}
+
+func cmpLabel(name, id string) string {
+	if strings.TrimSpace(name) != "" {
+		return name
+	}
+	return id
 }
 
 type configOption struct {
@@ -45,6 +95,7 @@ type configOption struct {
 // optionEntry is a select value, or a group holding values.
 type optionEntry struct {
 	Value   string        `json:"value"`
+	Name    string        `json:"name"`
 	Options []optionEntry `json:"options"`
 }
 
@@ -88,6 +139,11 @@ func modelOption(raw []json.RawMessage) (configOption, bool) {
 // selectModel makes the session use opts.Model through what the agent
 // advertises: a model config option first, then session/set_model.
 func (c *Client) selectModel(ctx context.Context, sess newSessionResult, opts RunOptions) error {
+	if opts.OnModels != nil {
+		if models, cur := advertised(sess); len(models) > 0 {
+			opts.OnModels(models, cur)
+		}
+	}
 	want := opts.Model
 	if want == "" {
 		return nil

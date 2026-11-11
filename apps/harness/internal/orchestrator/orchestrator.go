@@ -81,6 +81,9 @@ type Options struct {
 	// record with one side-model call (M1). `harness serve` turns it on; it is
 	// off here so that embedders and tests that count model requests see none.
 	MemoryDigest bool
+	// ACPQuietAfter is how long an ACP agent may send nothing at all during a
+	// prompt before agent.activity says "quiet" (zero: 10 s).
+	ACPQuietAfter time.Duration
 	// Secrets is the project secret store; nil makes one under each project's data directory.
 	Secrets *secrets.Manager
 }
@@ -97,6 +100,8 @@ type Orchestrator struct {
 	wg      sync.WaitGroup
 
 	acp *acpHost
+	// adv holds what ACP agents advertised (AdvertisedModels).
+	adv advertisedStore
 
 	trackers  map[string]*changes.Tracker // guarded by mu
 	memories  map[string]*memory.Service  // guarded by mu

@@ -247,3 +247,35 @@ func TestMigrateFromSchema2AddsMemorySettingsAndReceipts(t *testing.T) {
 		t.Fatalf("version = %d", v)
 	}
 }
+
+// Schema 4 added agents.plan_json: an old agent has no plan, and a plan can be
+// stored, read back and cleared (a new turn resets it).
+func TestMigratedAgentCanCarryAPlan(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	seedPrevious(t, dir, "prj_plan")
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	db, err := s.Get(ctx, "prj_plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := db.Agent(ctx, "agt_1")
+	if err != nil || a.Plan != nil {
+		t.Fatalf("migrated agent = %+v %v, want no plan", a, err)
+	}
+	want := []PlanEntry{{Content: "Read it", Status: "in_progress", Priority: "high"}}
+	if a, err = db.SetPlan(ctx, "agt_1", want); err != nil || len(a.Plan) != 1 || a.Plan[0] != want[0] {
+		t.Fatalf("after SetPlan = %+v %v", a.Plan, err)
+	}
+	reset := StatusIdle
+	if a, err = db.UpdateAgent(ctx, "agt_1", AgentPatch{Status: &reset, Reset: true}); err != nil || a.Plan != nil {
+		t.Fatalf("after a reset = %+v %v, want no plan", a.Plan, err)
+	}
+	if _, err := db.SetPlan(ctx, "agt_missing", want); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing agent: %v", err)
+	}
+}
