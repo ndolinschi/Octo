@@ -86,3 +86,40 @@ macOS; the installed app was never launched; shellcheck was not available.
   lets the next launch remove a leftover after a crash.
 - Test scripts set `HARNESS_NO_BUILTIN_PLUGINS=1` so they never probe or start a real agent CLI. (One e2e run
   before this was added let the router choose `acp:claude-code` and the harness fetched the adapter with `npx`.)
+
+## Everything from the desktop app, with no extra steps (owner, 2026-11-11)
+
+"There must be a simple way to run everything through the desktop app without additional actions." After
+`scripts/install.sh` the user opens Octo and works: no terminal, no environment variables, no config files.
+
+**P7 — settings through the API (harness).** `GET /v1/settings` and `PUT /v1/settings` read and write
+`{data-dir}/harness.env` for a fixed list of settings: provider keys (`ANTHROPIC_API_KEY`, the router's upstream
+key), default models per tier and the default orchestrator, the router on/off switch and its base URL, the
+child-environment allow list. Secrets are **write-only**: `GET` returns `{ set: true, hint: "…last 4" }`, never the
+value; values are never logged or put in events. A write is atomic (temp file, 0600, rename). Each setting says
+whether it applies at once or needs a restart; the response lists `restart_required`. Settings that can apply at
+once do (models, default orchestrator, allow list); keys and the router switch need a restart of the sidecars,
+which the desktop shell performs. Loopback only, and refused when the bridge was started with a remote bind.
+
+**P8 — the router as a second sidecar (desktop).** The app bundles the `octo` router binary next to the harness.
+At launch, when the router is switched on in the settings and has an upstream key, the shell starts the router on a
+free loopback port with a generated client key and its data under the app data dir, waits for `/health`, and
+starts the harness with `--base-url http://127.0.0.1:<port>/autoroute` and that key. Router off or no key → the
+harness alone (ACP agents work; the built-in loop works when an Anthropic key is set). A router that fails to start
+does not block the app: the harness starts without it and the UI shows a notice with the log tail. Both stop on
+quit. `bridge_restart` restarts both with the current settings. `scripts/install.sh` and `scripts/dev.sh
+--router` build and bundle the router too.
+
+**P9 — first run and Settings in the UI.** First launch shows one screen, not a wizard: "How should Octo run
+agents?" with what was found on this machine — each subscription agent with its state (ready / not logged in, with
+the one-line way to log in / not installed), and "Use an API key" (a secret field, decision 43 styling). One choice
+is preselected (the first ready agent); "Continue" stores it and opens Home. Nothing found and no key → the screen
+says exactly what to do and re-checks when the window regains focus. Settings → "Models and keys" holds the same
+controls later, plus the router switch with its key and a "Restart to apply" action when needed. In a browser
+(no Tauri) the restart action is replaced by a sentence saying the server must be restarted.
+
+Acceptance: (7) settings round-trip with secrets never returned or logged, atomic write, restart flags; (8) unit
+tests for the two-sidecar start order, the router-failure path and shutdown; a scripted Linux check that
+`scripts/dev.sh --router` brings up router, harness and UI and leaves nothing behind; (9) the first-run screen in
+every state in the demo (`?demo=1&firstrun=…`), decision 42's bar. The installed macOS app remains for the owner
+to try.
