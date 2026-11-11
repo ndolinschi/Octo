@@ -208,6 +208,23 @@ no proxy. **Not verified:** a real upstream or classifier; behaviour against a l
   (the `auto` control does escalate); `fixed` serves the hint every turn with no classifier call; a compaction round
   trip applied by the client is not repeated; one ignored by the client is forwarded once as `compact_not_applied`.
 
+## Decisions after the owner's live run (2026-11-11)
+
+The owner ran the branch with real Claude Code over ACP, a real router and the real classifier (`typesafe/jev-1.13`
+answered in 49–93 ms; an easy task went to Claude Code on the subscription, a hard one to the deep tier).
+
+1. **Never pay more for less** (closes the open "ladder inverted by price" decision). Measured for 30k in / 500
+   out: low $0.0096, mid $0.0048, high $0.00043. The ladder's order stays (it is by capability); the router serves
+   the cheapest tier at or above the decided one (`[autoroute] never_pay_more_for_less`, default on; `ceiling`
+   bounds it, `fixed` turns it off). The stale `low` price in `prices.toml` is corrected.
+2. **A flat-rate agent's cost estimate is not spend.** It is stored as an estimate, shown as "≈ $X on your
+   subscription", and excluded from the project's spend, budget checks and paid totals.
+3. **One budget number.** With a router in the path its spend is authoritative; the orchestrator's own turn and
+   delegation stop on the same condition.
+4. **Hard tasks may go to a subscription.** Built-in manifest: `strengths` easy/medium/hard for claude-code and
+   codex, easy/medium for copilot and cursor. Changeable in a copied manifest.
+5. The app's sidecars exit when the app dies (stdin close), not only on a clean quit.
+
 ## I3 — showing the savings (after I2)
 
 Usage → Cost gains "Auto-routing": actual cost vs. what the same tokens would have cost at the hinted tier
