@@ -26,6 +26,14 @@ func TestAgentManifestAdditions(t *testing.T) {
 		{"flag-like model", `{"id":"a","command":"sh","models":["-rf"]}`, "must match"},
 		{"model with space", `{"id":"a","command":"sh","models":["a b"]}`, "must match"},
 		{"modelArg without placeholder", `{"id":"a","command":"sh","modelArg":["-m","fixed"]}`, "{model}"},
+		{"methods in both forms", `{"id":"a","command":"sh","auth":{"hint":"h","methods":["cached_token",{"id":"k","requiresEnv":"K_API_KEY"}],"skip":["device-pairing"]}}`, ""},
+		{"method object without id", `{"id":"a","command":"sh","auth":{"hint":"h","methods":[{"requiresEnv":"K"}]}}`, "id is required"},
+		{"duplicate method", `{"id":"a","command":"sh","auth":{"hint":"h","methods":["x","x"]}}`, "duplicate id"},
+		{"bad requiresEnv", `{"id":"a","command":"sh","auth":{"hint":"h","methods":[{"id":"x","requiresEnv":"A=B"}]}}`, "requiresEnv"},
+		{"empty skip id", `{"id":"a","command":"sh","auth":{"hint":"h","skip":[""]}}`, "auth.skip"},
+		{"modelArgs placeholder", `{"id":"a","command":"sh","args":["agent","{modelArgs}","stdio"],"modelArg":["-m","{model}"]}`, ""},
+		{"modelArgs without modelArg", `{"id":"a","command":"sh","args":["agent","{modelArgs}"]}`, "modelArg is not set"},
+		{"modelArgs twice", `{"id":"a","command":"sh","args":["{modelArgs}","{modelArgs}"],"modelArg":["-m","{model}"]}`, "only once"},
 		{"empty auth", `{"id":"a","command":"sh","auth":{}}`, "auth needs"},
 		{"blank probe command", `{"id":"a","command":"sh","auth":{"probe":[" "]}}`, "probe[0]"},
 		{"malformed env ref", `{"id":"a","command":"sh","env":{"T":"${HOME"}}`, "malformed"},
@@ -75,6 +83,13 @@ func TestArgsFor(t *testing.T) {
 		{"no model", plugins.Agent{Launch: plugins.Launch{Args: []string{"agent", "stdio"}}, ModelArg: []string{"-m", "{model}"}}, "", []string{"agent", "stdio"}},
 		{"template", plugins.Agent{Launch: plugins.Launch{Args: []string{"agent"}}, ModelArg: []string{"-m", "{model}"}}, "x-1", []string{"agent", "-m", "x-1"}},
 		{"joined", plugins.Agent{ModelArg: []string{"--model={model}"}}, "x", []string{"--model=x"}},
+		{"placeholder in the middle", plugins.Agent{Launch: plugins.Launch{Args: []string{"agent", "{modelArgs}", "stdio"}}, ModelArg: []string{"-m", "{model}"}}, "g-1",
+			[]string{"agent", "-m", "g-1", "stdio"}},
+		{"placeholder removed without a model", plugins.Agent{Launch: plugins.Launch{Args: []string{"agent", "{modelArgs}", "stdio"}}, ModelArg: []string{"-m", "{model}"}}, "",
+			[]string{"agent", "stdio"}},
+		{"placeholder first", plugins.Agent{Launch: plugins.Launch{Args: []string{"{modelArgs}", "acp"}}, ModelArg: []string{"--model={model}"}}, "x",
+			[]string{"--model=x", "acp"}},
+		{"placeholder without template is dropped", plugins.Agent{Launch: plugins.Launch{Args: []string{"a", "{modelArgs}"}}}, "x", []string{"a"}},
 		{"no template", plugins.Agent{Launch: plugins.Launch{Args: []string{"a"}}}, "x", []string{"a"}},
 	}
 	for _, tc := range tests {
@@ -87,6 +102,17 @@ func TestArgsFor(t *testing.T) {
 				t.Fatalf("ArgsFor(%q) = %v, want %v", tc.model, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAuthPolicyLoaded(t *testing.T) {
+	data := t.TempDir()
+	writePlugin(t, filepath.Join(data, "plugins"), "p", `{"name":"p","version":"1","agents":[
+	  {"id":"a","command":"sh","auth":{"hint":"h","methods":["cached_token",{"id":"k","requiresEnv":"K_API_KEY"}],"skip":["device-pairing"]}}]}`)
+	a, _ := plugins.Load(context.Background(), data, nil, nil).Agent("a")
+	want := []plugins.AuthMethodRef{{ID: "cached_token"}, {ID: "k", RequiresEnv: "K_API_KEY"}}
+	if !reflect.DeepEqual(a.AuthMethods, want) || !reflect.DeepEqual(a.AuthSkip, []string{"device-pairing"}) {
+		t.Fatalf("agent = %+v", a)
 	}
 }
 

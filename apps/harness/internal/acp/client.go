@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -90,6 +91,17 @@ func (c *Client) initialize(ctx context.Context) error {
 	return nil
 }
 
+// childHas reports whether the agent's environment sets name to a non-empty value.
+func (c *Client) childHas(name string) bool {
+	env := c.proc.cmd.Env
+	for i := len(env) - 1; i >= 0; i-- {
+		if k, v, ok := strings.Cut(env[i], "="); ok && k == name {
+			return v != ""
+		}
+	}
+	return false
+}
+
 // PID is the agent process id.
 func (c *Client) PID() int { return c.proc.pid() }
 
@@ -112,7 +124,7 @@ func (c *Client) Run(ctx context.Context, cwd, prompt string, h Handler) (StopRe
 // the agent refuses the session and advertised auth methods, it logs in with
 // the first one that needs no interaction.
 func (c *Client) RunWith(ctx context.Context, cwd, prompt string, h Handler, opts RunOptions) (StopReason, error) {
-	sess, err := c.newSession(ctx, cwd, opts.AuthHint)
+	sess, err := c.newSession(ctx, cwd, opts.AuthHint, opts.Auth)
 	if err != nil {
 		return "", err
 	}

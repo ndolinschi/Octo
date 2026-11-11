@@ -23,6 +23,9 @@ type RunOptions struct {
 	ModelApplied bool
 	// AuthHint is appended to the error when the agent needs a login.
 	AuthHint string
+	// Auth restricts and orders the auth methods tried when the agent
+	// refuses the session.
+	Auth AuthPolicy
 }
 
 type modelState struct {

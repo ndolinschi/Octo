@@ -39,13 +39,13 @@ func (m AuthMethod) Unattended() bool {
 
 // newSession opens a session; when the agent refuses and has advertised
 // authentication methods, it authenticates once and retries.
-func (c *Client) newSession(ctx context.Context, cwd, hint string) (newSessionResult, error) {
+func (c *Client) newSession(ctx context.Context, cwd, hint string, policy AuthPolicy) (newSessionResult, error) {
 	var sess newSessionResult
 	params := newSessionParams{Cwd: cwd, MCPServers: []json.RawMessage{}}
 	err := c.conn.call(ctx, methodSessionNew, params, &sess)
 	var rpcErr *RPCError
 	if err != nil && errors.As(err, &rpcErr) && len(c.authMethods) > 0 {
-		if authErr := c.authenticate(ctx, rpcErr, hint); authErr != nil {
+		if authErr := c.authenticate(ctx, rpcErr, hint, policy); authErr != nil {
 			return sess, authErr
 		}
 		sess = newSessionResult{}
@@ -57,13 +57,11 @@ func (c *Client) newSession(ctx context.Context, cwd, hint string) (newSessionRe
 	return sess, nil
 }
 
-// authenticate tries each unattended method in the order offered.
-func (c *Client) authenticate(ctx context.Context, refusal *RPCError, hint string) error {
+// authenticate tries the methods the policy allows, in order, until one works.
+func (c *Client) authenticate(ctx context.Context, refusal *RPCError, hint string, policy AuthPolicy) error {
 	var tried, failures []string
-	for _, m := range c.authMethods {
-		if !m.Unattended() {
-			continue
-		}
+	methods, unusable := policy.candidates(c.authMethods, c.childHas)
+	for _, m := range methods {
 		tried = append(tried, m.ID)
 		actx, cancel := context.WithTimeout(ctx, authTimeout)
 		err := c.conn.call(actx, methodAuth, map[string]string{"methodId": m.ID}, nil)
@@ -77,9 +75,12 @@ func (c *Client) authenticate(ctx context.Context, refusal *RPCError, hint strin
 		failures = append(failures, fmt.Sprintf("%s: %v", m.ID, err))
 	}
 	msg := fmt.Sprintf("the agent refused the session (%s)", refusal.Message)
-	if len(tried) == 0 {
+	switch {
+	case len(tried) == 0 && len(policy.Methods) > 0:
+		msg += "; none of the preferred auth methods could be used (" + strings.Join(unusable, "; ") + ")"
+	case len(tried) == 0:
 		msg += "; it offers only interactive login methods (" + methodNames(c.authMethods) + ")"
-	} else {
+	default:
 		msg += "; authenticate failed (" + strings.Join(failures, "; ") + ")"
 	}
 	if hint = strings.TrimSpace(hint); hint != "" {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -28,7 +29,7 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 
 	h := newACPSession(rt, child.ID, ag.ID, child.Model)
 	stop, err := client.RunWith(ctx, cwd, child.Task, h, acp.RunOptions{
-		Model: t.model, ModelRequired: t.requested, ModelApplied: t.model != "" && len(ag.ModelArg) > 0, AuthHint: ag.Hint,
+		Model: t.model, ModelRequired: t.requested, ModelApplied: t.model != "" && len(ag.ModelArg) > 0, AuthHint: ag.Hint, Auth: authPolicy(ag),
 	})
 	h.finish(ctx, err != nil)
 	if err != nil {
@@ -41,4 +42,12 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 		return "", errAgentCancelled
 	}
 	return "", fmt.Errorf("ACP agent %q stopped: %s", ag.ID, stop)
+}
+
+func authPolicy(ag plugins.Agent) acp.AuthPolicy {
+	p := acp.AuthPolicy{Skip: ag.AuthSkip}
+	for _, m := range ag.AuthMethods {
+		p.Methods = append(p.Methods, acp.AuthPref{ID: m.ID, RequiresEnv: m.RequiresEnv})
+	}
+	return p
 }

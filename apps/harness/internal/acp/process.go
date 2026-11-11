@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 )
 
 const (
@@ -18,8 +20,8 @@ const (
 	waitDelay     = 2 * time.Second
 )
 
-// Spec says how to start an agent process. Env entries are added to the
-// inherited environment; Dir is the process's working directory.
+// Spec says how to start an agent process. Env entries are added after the
+// inherited environment has been scrubbed of provider keys (see childenv); Dir is the process's working directory.
 type Spec struct {
 	Command string
 	Args    []string
@@ -41,10 +43,7 @@ type process struct {
 func startProcess(spec Spec) (*process, error) {
 	cmd := exec.Command(spec.Command, spec.Args...)
 	cmd.Dir = spec.Dir
-	cmd.Env = os.Environ()
-	for k, v := range spec.Env {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
+	cmd.Env = childenv.Build(os.Environ(), spec.Env)
 	cmd.WaitDelay = waitDelay
 	setProcessGroup(cmd)
 	stderr := &stderrLog{name: spec.Name}

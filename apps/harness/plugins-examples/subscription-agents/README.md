@@ -1,16 +1,12 @@
 # subscription-agents
 
-GitHub Copilot (`copilot --acp --stdio`), Grok (`grok agent stdio`) and Codex (`npx -y @agentclientprotocol/codex-acp`) as ACP sub-agents. Each runs on the subscription its own CLI is logged in to; the harness never reads the CLIs' credential files.
+Claude Code, GitHub Copilot, Grok, Codex, Cursor, OpenCode, Antigravity, Devin, Factory Droid, Oh My Pi and Pi as ACP sub-agents. Each runs on the subscription its own CLI is logged in to; the harness never reads the CLIs' credential files.
 
 ```bash
 go run ./cmd/harness serve --plugins-dir plugins-examples/subscription-agents
 curl localhost:8790/v1/plugins    # available, logged_in (null without a probe), models, hint
 ```
 
-| Agent | Needs | Login | Env the manifest forwards |
-| --- | --- | --- | --- |
-| `copilot` | Copilot CLI on `PATH` | CLI login, or a fine-grained token with "Copilot Requests" | `COPILOT_GITHUB_TOKEN` |
-| `grok` | Grok CLI on `PATH` | CLI login | none |
-| `codex` | `npx` (Node.js); `codex` on `PATH` for the probe | `codex login` | `CODEX_HOME` from `OCTO_CODEX_HOME` |
+**Only the scripted fake agent has been run against this harness.** Copilot, Grok and Codex follow vendor docs; the other entries come from vendor docs, the ACP registry and secondary sources and are unverified (binary names, flags, probe exit codes, auth method ids).
 
-The commands come from the vendors' documentation and the ACP registry and could not be run in this repository's CI. None of the manifests lists `models`; each agent advertises its own over ACP. The `codex login status` probe is the only one; check it against your Codex version. Full steps, costs and the live tests: harness `README.md`, "Running on subscriptions".
+The harness hides its own `ANTHROPIC_*`, `OPENAI_*`, `XAI_*`, `GEMINI_*` ... variables from these processes so a subscription is not pushed onto per-token billing; an entry's `env` (for example `"XAI_API_KEY": "${XAI_API_KEY}"`) passes a variable on purpose. The commands, logins and env vars per agent are tabulated in the harness `README.md`, "Running on subscriptions" (with the scrub rules); `auth.methods` / `auth.skip` and the `{modelArgs}` placeholder are described in `../README.md`.

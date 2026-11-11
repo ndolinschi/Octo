@@ -23,12 +23,22 @@ const (
 	EnvModelsVia = "OCTO_FAKEACP_MODELS_VIA"
 	// EnvRefuseModel makes set-model refuse ids outside EnvModels.
 	EnvRefuseModel = "OCTO_FAKEACP_REFUSE_MODEL"
+	// EnvAuthMethods is a JSON array of auth methods to advertise verbatim;
+	// session/new then refuses until one listed in EnvAuthOK is accepted.
+	EnvAuthMethods = "OCTO_FAKEACP_AUTH_METHODS"
+	// EnvAuthOK is a comma-separated list of method ids authenticate accepts.
+	EnvAuthOK = "OCTO_FAKEACP_AUTH_OK"
+	// EnvAuthLog is a file each authenticate attempt's method id is appended to.
+	EnvAuthLog = "OCTO_FAKEACP_AUTH_LOG"
+	// EnvReportEnv is a comma-separated list of variable names; the final
+	// summary says for each whether the agent's environment has it set.
+	EnvReportEnv = "OCTO_FAKEACP_REPORT_ENV"
 )
 
 // Auth method ids offered under EnvAuth.
 const (
 	AuthInteractive = "browser-login"
-	AuthUnattended  = "stored-login"
+	AuthUnattended  = "stored-credentials"
 )
 
 type options struct {
@@ -38,6 +48,10 @@ type options struct {
 	viaConfig  bool
 	refuseUnk  bool
 	startModel string
+	methods    []any
+	authOK     []string
+	authLog    string
+	reportEnv  []string
 }
 
 func optionsFromEnv(args []string) options {
@@ -50,6 +64,7 @@ func optionsFromEnv(args []string) options {
 			o.models = append(o.models, m)
 		}
 	}
+	o.loadAuthMethods()
 	for i, a := range args {
 		if (a == "--model" || a == "-m") && i+1 < len(args) {
 			o.startModel = args[i+1]
@@ -61,6 +76,9 @@ func optionsFromEnv(args []string) options {
 func (o options) any() bool { return o.auth != "" || len(o.models) > 0 || o.startModel != "" }
 
 func (o options) authMethods() []any {
+	if o.auth == authCustom {
+		return o.methods
+	}
 	interactive := map[string]any{"id": AuthInteractive, "name": "Browser login", "type": "terminal"}
 	if o.auth == "interactive" {
 		return []any{interactive}

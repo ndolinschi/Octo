@@ -171,6 +171,7 @@ func (a *agent) defaultScript(ctx context.Context, cwd, extra, currency string) 
 	if model := a.currentModel(); model != "" {
 		extra += " Model in use: " + model + "."
 	}
+	extra += a.envReport()
 	a.say("Summary: " + summary + "; I wrote " + NoteFile + " with a short note." + extra)
 	return "end_turn"
 }

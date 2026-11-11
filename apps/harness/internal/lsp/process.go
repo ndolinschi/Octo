@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 )
 
 const (
@@ -39,10 +41,7 @@ type process struct {
 func startProcess(spec Spec) (*process, error) {
 	cmd := exec.Command(spec.Command, spec.Args...)
 	cmd.Dir = spec.Dir
-	cmd.Env = os.Environ()
-	for k, v := range spec.Env {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
+	cmd.Env = childenv.Build(os.Environ(), spec.Env)
 	cmd.WaitDelay = waitDelay
 	setProcessGroup(cmd)
 	cmd.Stderr = &stderrLog{name: spec.Name}

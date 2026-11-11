@@ -42,6 +42,10 @@ func (a *agent) handleAuthenticate(m message) {
 	var p struct {
 		MethodID string `json:"methodId"`
 	}
+	if err := json.Unmarshal(m.Params, &p); err == nil && a.opts.auth == authCustom {
+		a.authenticateCustom(m, p.MethodID)
+		return
+	}
 	if err := json.Unmarshal(m.Params, &p); err != nil || p.MethodID != AuthUnattended || a.opts.auth != "ok" {
 		a.respondError(m.ID, -32602, "unknown or unsupported auth method")
 		return

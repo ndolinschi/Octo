@@ -47,6 +47,9 @@ type Agent struct {
 	ModelArg     []string `json:"-"`
 	ProbeCommand string   `json:"-"` // resolved path; empty when there is no probe
 	ProbeArgs    []string `json:"-"`
+	// AuthMethods and AuthSkip steer which ACP auth methods are tried.
+	AuthMethods []AuthMethodRef `json:"-"`
+	AuthSkip    []string        `json:"-"`
 }
 
 type ToolServer struct {

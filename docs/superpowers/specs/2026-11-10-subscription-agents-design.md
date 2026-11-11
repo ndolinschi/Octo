@@ -47,6 +47,23 @@ on its behalf. The harness already runs ACP agents; the router is an HTTP proxy 
    the Integrations view says so with the hint; the three live tests pass on a machine with the subscriptions
    (to be run by the owner or in an environment with credentials — this repository's CI has none).
 
+## As built — agent hygiene and the ten agents (2026-11-11)
+
+From the Synara research ([`../research/2026-11-11-synara-gap.md`](../research/2026-11-11-synara-gap.md)):
+
+- **Environment scrub** (`internal/childenv`): ACP agents, language servers and auth probes no longer inherit the
+  harness's provider keys and base URLs (`ANTHROPIC_`, `OPENAI_`, `XAI_`, `GEMINI_`, `OPENROUTER_`, `HARNESS_`,
+  `*_BASE_URL`, router secrets). A manifest passes a key on purpose with `"env": {"XAI_API_KEY": "${XAI_API_KEY}"}`.
+  The orchestrator's own `bash` tool still sees the full environment.
+- **Auth preference**: `auth.methods` (ids, or `{id, requiresEnv}`), `auth.skip`; interactive methods (device
+  pairing, terminal, browser) are never attempted unattended.
+- **`{modelArgs}`** inside `args` places the model flag (Grok: before `stdio`).
+- **`subscription-agents` 0.2.0** lists eleven agents: claude-code, copilot, grok, codex, cursor, opencode,
+  antigravity, devin, droid, omp, pi. **Only the scripted agent has been run**; the seven new entries come from
+  vendor docs, the ACP registry or secondary sources. Live tests: `OCTO_TEST_<ID>=1` with `-tags subscription`.
+- Where a manifest forwards a vendor API key (Grok, Cursor, Devin, Droid), a key set in the harness environment
+  wins over the cached subscription login — unset it to stay on the subscription.
+
 ## S2 — the orchestrator on a subscription (design; build after S1 is proven live)
 
 A project's `models.orchestrator` may be `acp:<agent>[/<model>]`. The orchestrator then runs as an ACP session

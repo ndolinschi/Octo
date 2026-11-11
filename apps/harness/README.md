@@ -68,33 +68,58 @@ ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:87
 # create a project on a folder with a README.md, then post: "[acp] summarize this repo"
 ```
 
-Manifest format and more examples (gopls, TypeScript, Claude Code, Gemini CLI): [`plugins-examples/README.md`](plugins-examples/README.md).
+Manifest format and more examples (gopls, TypeScript, Gemini CLI, the subscription agents): [`plugins-examples/README.md`](plugins-examples/README.md).
 
-For GitHub Copilot, Grok and Codex on a subscription, see [Running on subscriptions](#running-on-subscriptions).
+For Claude Code, Copilot, Grok, Codex and seven more agent CLIs on a subscription, see [Running on subscriptions](#running-on-subscriptions).
 
 **Trust:** an ACP agent is a separate program that runs with your user's privileges. The harness **auto-approves** its permission requests and serves its file requests only inside the project's folders; the agent process itself is not sandboxed, and a plugin manifest is a list of commands the harness will run. Only install plugins you trust.
 
 ## Running on subscriptions
 
-The supported way to use a Copilot, Grok or ChatGPT/Codex subscription is to run the vendor's own agent CLI, which the harness drives over ACP as a sub-agent (design: [`docs/superpowers/specs/2026-11-10-subscription-agents-design.md`](../../docs/superpowers/specs/2026-11-10-subscription-agents-design.md)). Nothing is proxied and the harness never reads a vendor's credential files: the CLI finds its own login, and the harness only runs the commands in the manifest.
+The supported way to use a Claude, Copilot, Grok, ChatGPT/Codex or similar subscription is to run the vendor's own agent CLI, which the harness drives over ACP as a sub-agent (design: [`docs/superpowers/specs/2026-11-10-subscription-agents-design.md`](../../docs/superpowers/specs/2026-11-10-subscription-agents-design.md)). Nothing is proxied and the harness never reads a vendor's credential files: the CLI finds its own login, and the harness only runs the commands in the manifest.
+
+**Verification status: only the scripted fake agent has been run against this harness.** No vendor CLI has been started from this repository's tooling. The Copilot, Grok and Codex entries were checked against vendor docs; the commands for **cursor, opencode, antigravity, devin, droid, omp and pi** (and the Claude Code adapter's login probe) come from vendor docs, the [ACP registry](https://agentclientprotocol.com) and secondary sources, and are **unverified**: binary names, flags, probe exit codes and auth method ids may be wrong for your version. Treat each entry as a starting point and run `scripts/test-subscriptions.sh <id>` on a machine where you are logged in.
+
+Plugin `subscription-agents` ships these agents (the research report's ten, plus Copilot):
+
+| id | Command | How to log in | Env var (forwarded from the harness) | Auth methods tried | Confidence |
+| --- | --- | --- | --- | --- | --- |
+| `claude-code` | `npx -y @agentclientprotocol/claude-agent-acp` | `claude` (Claude login); probe `claude auth status` | none; `ANTHROPIC_API_KEY` is hidden (per-token) | default | ACP registry; probe unverified |
+| `copilot` | `copilot --acp --stdio` | CLI login, or token in `COPILOT_GITHUB_TOKEN` | `COPILOT_GITHUB_TOKEN` | default | vendor docs (preview) |
+| `grok` | `grok agent [-m M] stdio` | `grok login`; `XAI_API_KEY` is per-token | `XAI_API_KEY` | `xai.api_key` (only if `XAI_API_KEY` set), `cached_token` | registry + secondary |
+| `codex` | `npx -y @agentclientprotocol/codex-acp` | `codex login [--device-auth]`; probe `codex login status` | `CODEX_HOME` from `OCTO_CODEX_HOME` | default | registry + vendor docs |
+| `cursor` | `cursor-agent acp` (docs also show `agent acp`) | `cursor-agent login` (browser), or `CURSOR_API_KEY`; probe `cursor-agent status` | `CURSOR_API_KEY` | default, `cursor_login` skipped | vendor docs + registry; probe exit code unverified |
+| `opencode` | `opencode acp` | `/connect` inside opencode (provider credentials) | none | default | vendor docs + registry |
+| `antigravity` | `agy acp` (needs agy 1.5.0+) | interactive `agy` sign-in, or `agy acp --login` in a terminal | none | default | vendor docs; registry ships a different server |
+| `devin` | `devin acp [--model M]` | `devin auth login`, or `WINDSURF_API_KEY`; probe `devin auth status` | `WINDSURF_API_KEY` | `windsurf-api-key` (only if set), `cached_token` | vendor docs + registry; probe unverified |
+| `droid` | `droid exec --output-format acp [-m M]` | `FACTORY_API_KEY` (headless); browser pairing is never attempted | `FACTORY_API_KEY` (plus two auto-update opt-outs) | `factory-api-key` (only if set); `device-pairing` skipped | registry + secondary; `acp` vs `acp-daemon` unverified |
+| `omp` | `omp acp` | interactive `omp` sign-in (credentials in `~/.omp`) | `PI_CODING_AGENT_DIR` from `OCTO_OMP_DIR` | default | secondary only; not in the registry |
+| `pi` | `npx -y pi-acp` (needs `pi` on PATH) | `pi` then `/login`, or provider keys in pi's config | none | default (the adapter offers terminal login only) | registry; third-party MVP adapter |
+
+"Default" auth methods means: every advertised method that needs no interaction, in the agent's own order, never one whose id contains `device`, `pairing`, `terminal`, `browser` or `login` unless the manifest lists it.
 
 1. Install and log in to each CLI you want, following the vendor's documentation (commands change between versions, so they are not copied here):
    - GitHub Copilot CLI: [GitHub Copilot docs](https://docs.github.com/en/copilot) (search for the Copilot CLI). Its ACP mode (`copilot --acp --stdio`) is in public preview. Headless login: a fine-grained personal access token with the **Copilot Requests** permission in `COPILOT_GITHUB_TOKEN` (the CLI's documentation describes creating it). Start the harness with that variable set and the manifest forwards it (`"COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}"`).
    - Grok CLI (`grok agent stdio`): [xAI docs](https://docs.x.ai). Log in with the CLI. `XAI_API_KEY` is the documented headless path but is billed per token, not on the subscription, and the harness does not copy the CLI's own login file.
    - Codex: [OpenAI docs](https://developers.openai.com/codex). The example runs the adapter `@agentclientprotocol/codex-acp` through `npx`, which needs Node.js; log in with the Codex CLI (`codex login`, or its device-code option on a headless machine).
+   - The other agents: see the table above and each manifest's `auth.hint` (shown by `GET /v1/plugins`).
 2. Load the example plugin: `go run ./cmd/harness serve --plugins-dir plugins-examples/subscription-agents`. Copy and edit the manifest to change commands, add `models`, or add an `auth.probe`; nothing in `plugins-examples` loads by itself.
 3. `GET /v1/plugins` shows each agent with `available` (command found), `logged_in` (`true`/`false`, or `null` when the manifest has no probe or it has not run yet) and the manifest `hint`. In a project, ask the orchestrator to delegate to the agent, optionally naming a model; a CLI that is logged out fails that sub-agent with the hint in its error and the orchestrator carries on.
+
+**Environment scrub.** An agent process (and a language server, and a login probe) does not inherit the harness's provider settings. From the harness's own environment the harness removes every variable whose name starts with `ANTHROPIC_`, `OPENAI_`, `XAI_`, `GROK_CODE_`, `GEMINI_`, `GOOGLE_GENAI_`, `GOOGLE_API_KEY`, `OPENROUTER_` or `HARNESS_`, ends with `_BASE_URL` or `_API_BASE`, or is one of the Octo router secrets `OCTO_KEY`, `OCTO_HISTORY_TOKEN_KEY`, `OCTO_CONFIG`; everything else (`PATH`, `HOME`, proxies, ...) is kept. Without this, the harness's `ANTHROPIC_API_KEY` (often `mock` in development), `XAI_API_KEY` or an `OPENAI_*` variable would reach a subscription CLI and could switch it to per-token billing or to a mock endpoint. To pass a key **on purpose**, declare it in the manifest's `env`: `"env": {"XAI_API_KEY": "${XAI_API_KEY}"}` forwards the harness's value (the `${NAME}` reference is resolved against the unscrubbed harness environment, and the entry is dropped when the variable is unset or empty), and a literal value also works. Manifest `env` is applied after the scrub, so it always wins. Note the shipped Grok, Devin, Droid, Cursor, Copilot and Gemini entries do forward their own key variable this way; unset it in the harness environment to stay on the subscription. This is also why `requiresEnv` in `auth.methods` looks at the agent's environment, after the scrub and the manifest `env`.
 
 **`CODEX_HOME` isolation.** Codex keeps its login and state in `$CODEX_HOME` (default `~/.codex`). The example manifest sets `CODEX_HOME` from `OCTO_CODEX_HOME`, so starting the harness with `OCTO_CODEX_HOME=/path/to/dir` gives the harness its own Codex home; log in once with `CODEX_HOME=/path/to/dir codex login` and the sub-agent and the probe both use that folder. Without `OCTO_CODEX_HOME` the entry is left unset and Codex uses its default.
 
 **What a run costs.** Sub-agent runs are charged to the plan, not to an API key: a Copilot run consumes premium requests (model multipliers apply, see GitHub's billing page), Grok and Codex runs count against the subscription's usage limits, and all three can be rate-limited or refused when a limit is hit (the error shows in the sub-agent). The harness records the agent as `acp:<id>[/<model>]` and shows token and cost figures only when the agent reports them in `usage_update`; plan usage is not readable from here. The orchestrator itself still calls the Messages API configured with `--base-url`, which is billed as before.
 
-**Live tests.** They are off by default, need the real CLIs and use a little quota. One sub-agent per CLI reads a marker file in a temporary project and answers; the test checks for an assistant message, the marker (or a tool call on that file) and a clean completion. A missing CLI or a logged-out probe skips the test and prints why.
+**Live tests.** They are off by default, need the real CLIs and use a little quota. One sub-agent per CLI reads a marker file in a temporary project and answers; the test checks for an assistant message, the marker (or a tool call on that file) and a clean completion. A missing CLI (for the npx adapters, the CLI they wrap: `claude`, `pi`) or a logged-out probe skips the test and prints why.
 
 ```bash
 scripts/test-subscriptions.sh                 # copilot, grok, codex
 scripts/test-subscriptions.sh codex           # only Codex
-# or directly
+scripts/test-subscriptions.sh cursor droid    # any of the unverified ones
+scripts/test-subscriptions.sh all             # every agent in the table
+# or directly; the switch is OCTO_TEST_<ID>=1 (upper-case, "-" as "_", e.g. OCTO_TEST_CLAUDE_CODE)
 OCTO_TEST_COPILOT=1 go test -tags subscription ./internal/orchestrator -run TestSubscriptionAgents -v
 ```
 

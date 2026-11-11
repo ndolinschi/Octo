@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 )
 
 // Probe pacing: a probe for one agent runs at most once per ProbeInterval and
@@ -91,10 +93,7 @@ func runProbe(ctx context.Context, a Agent) *bool {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, a.ProbeCommand, a.ProbeArgs...)
 	cmd.Dir = a.Launch.Dir
-	cmd.Env = os.Environ()
-	for k, v := range a.ResolvedEnv() {
-		cmd.Env = append(cmd.Env, k+"="+v)
-	}
+	cmd.Env = childenv.Build(os.Environ(), a.ResolvedEnv())
 	cmd.WaitDelay = time.Second
 	err := cmd.Run()
 	var exit *exec.ExitError

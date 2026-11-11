@@ -61,15 +61,22 @@ func expandEnv(env map[string]string, lookup func(string) (string, bool)) map[st
 	return out
 }
 
-// ArgsFor returns the launch arguments with the modelArg template appended
-// for model; with no model, or no template, the plain arguments.
+// ArgsFor returns the launch arguments with the expanded modelArg template
+// for model. A literal "{modelArgs}" element in args marks where it goes (and
+// is dropped when no model is chosen); without one the template is appended.
 func (a Agent) ArgsFor(model string) []string {
-	args := slices.Clone(a.Args)
-	if model == "" {
-		return args
+	var expanded []string
+	if model != "" {
+		for _, t := range a.ModelArg {
+			expanded = append(expanded, strings.ReplaceAll(t, ModelPlaceholder, model))
+		}
 	}
-	for _, t := range a.ModelArg {
-		args = append(args, strings.ReplaceAll(t, ModelPlaceholder, model))
+	at := slices.Index(a.Args, ModelArgsPlaceholder)
+	if at < 0 {
+		return append(slices.Clone(a.Args), expanded...)
 	}
-	return args
+	args := make([]string, 0, len(a.Args)+len(expanded))
+	args = append(args, a.Args[:at]...)
+	args = append(args, expanded...)
+	return append(args, slices.DeleteFunc(slices.Clone(a.Args[at+1:]), func(s string) bool { return s == ModelArgsPlaceholder })...)
 }

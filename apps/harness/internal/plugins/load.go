@@ -134,6 +134,7 @@ func (b *builder) populate(p *Plugin, m manifest) {
 		}
 		if a.Auth != nil {
 			ag.Hint = strings.TrimSpace(a.Auth.Hint)
+			ag.AuthMethods, ag.AuthSkip = slices.Clone(a.Auth.Methods), slices.Clone(a.Auth.Skip)
 			if len(a.Auth.Probe) > 0 {
 				ag.ProbeCommand, _ = resolveCommand(a.Auth.Probe[0], p.Dir)
 				ag.ProbeArgs = slices.Clone(a.Auth.Probe[1:])

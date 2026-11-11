@@ -26,6 +26,9 @@ var (
 // ModelPlaceholder is replaced by the model id in a modelArg template.
 const ModelPlaceholder = "{model}"
 
+// ModelArgsPlaceholder is an args element replaced by the expanded modelArg.
+const ModelArgsPlaceholder = "{modelArgs}"
+
 type manifest struct {
 	Name            string           `json:"name"`
 	Version         string           `json:"version"`
@@ -51,9 +54,37 @@ type manifestAgent struct {
 // manifestAuth describes how to tell whether an agent's CLI is logged in:
 // Probe exits 0 when it is (it must never log in or start a session) and Hint
 // is the one-line instruction shown when it is not.
+//
+// Methods lists the ACP auth method ids to try, in preference order (each a
+// string or {"id", "requiresEnv"}); Skip lists ids never to try.
 type manifestAuth struct {
-	Probe []string `json:"probe"`
-	Hint  string   `json:"hint"`
+	Probe   []string        `json:"probe"`
+	Hint    string          `json:"hint"`
+	Methods []AuthMethodRef `json:"methods"`
+	Skip    []string        `json:"skip"`
+}
+
+// AuthMethodRef names an ACP auth method. RequiresEnv, when set, makes the
+// method eligible only while that variable is set in the agent's environment.
+type AuthMethodRef struct {
+	ID          string `json:"id"`
+	RequiresEnv string `json:"requiresEnv,omitempty"`
+}
+
+// UnmarshalJSON accepts "id" or {"id": "...", "requiresEnv": "NAME"}.
+func (r *AuthMethodRef) UnmarshalJSON(data []byte) error {
+	var id string
+	if err := json.Unmarshal(data, &id); err == nil {
+		*r = AuthMethodRef{ID: id}
+		return nil
+	}
+	type plain AuthMethodRef
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return fmt.Errorf("auth method must be a string or an object with id and requiresEnv: %w", err)
+	}
+	*r = AuthMethodRef(p)
+	return nil
 }
 
 type manifestCommand struct {
@@ -105,12 +136,21 @@ func (a manifestAgent) validate() error {
 	if len(a.ModelArg) > 0 && !slices.ContainsFunc(a.ModelArg, func(s string) bool { return strings.Contains(s, ModelPlaceholder) }) {
 		return fmt.Errorf("modelArg must contain %s", ModelPlaceholder)
 	}
+	switch n := countOf(a.Args, ModelArgsPlaceholder); {
+	case n > 1:
+		return fmt.Errorf("args may contain %s only once", ModelArgsPlaceholder)
+	case n == 1 && len(a.ModelArg) == 0:
+		return fmt.Errorf("args contains %s but modelArg is not set", ModelArgsPlaceholder)
+	}
 	if a.Auth != nil {
 		if len(a.Auth.Probe) == 0 && strings.TrimSpace(a.Auth.Hint) == "" {
 			return fmt.Errorf("auth needs a probe, a hint or both")
 		}
 		if len(a.Auth.Probe) > 0 && strings.TrimSpace(a.Auth.Probe[0]) == "" {
 			return fmt.Errorf("auth.probe[0] must be a command")
+		}
+		if err := a.Auth.validateMethods(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -155,4 +195,33 @@ func (s ToolServer) validate() error {
 		return fmt.Errorf("url %q must be an http(s) URL", s.URL)
 	}
 	return nil
+}
+
+func (a manifestAuth) validateMethods() error {
+	seen := map[string]bool{}
+	for _, m := range a.Methods {
+		switch {
+		case strings.TrimSpace(m.ID) == "":
+			return fmt.Errorf("auth.methods: id is required")
+		case seen[m.ID]:
+			return fmt.Errorf("auth.methods: duplicate id %q", m.ID)
+		case m.RequiresEnv != "" && !envKeyPat.MatchString(m.RequiresEnv):
+			return fmt.Errorf("auth.methods %q: requiresEnv %q is not a valid variable name", m.ID, m.RequiresEnv)
+		}
+		seen[m.ID] = true
+	}
+	if slices.Contains(a.Skip, "") {
+		return fmt.Errorf("auth.skip: ids must not be empty")
+	}
+	return nil
+}
+
+func countOf(list []string, v string) int {
+	n := 0
+	for _, s := range list {
+		if s == v {
+			n++
+		}
+	}
+	return n
 }

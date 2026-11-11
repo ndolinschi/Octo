@@ -166,3 +166,22 @@ func deref(b *bool) any {
 	}
 	return *b
 }
+
+func TestProbeEnvironmentIsScrubbed(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "mock")
+	t.Setenv("XAI_API_KEY", "declared")
+	data := t.TempDir()
+	dir := filepath.Join(data, "plugins", "p")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"name":"p","version":"1","agents":[{"id":"a","command":"sh","env":{"XAI_API_KEY":"${XAI_API_KEY}"},
+	  "auth":{"probe":["sh","-c","test -z \"$ANTHROPIC_API_KEY\" && test \"$XAI_API_KEY\" = declared"]}}]}`
+	if err := os.WriteFile(filepath.Join(dir, ManifestName), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := Load(context.Background(), data, nil, nil).Agent("a")
+	if got := runProbe(context.Background(), a); got == nil || !*got {
+		t.Fatalf("probe = %v, want logged in (scrubbed, declared key kept)", deref(got))
+	}
+}
