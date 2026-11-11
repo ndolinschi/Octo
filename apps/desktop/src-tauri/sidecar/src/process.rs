@@ -74,9 +74,9 @@ impl Sidecar {
     /// Some(description) once the leader has exited.
     pub fn exited(&mut self) -> Option<String> {
         match self.child.try_wait() {
-            Ok(Some(status)) => Some(format!("the harness exited ({status})")),
+            Ok(Some(status)) => Some(format!("it exited ({status})")),
             Ok(None) => None,
-            Err(e) => Some(format!("cannot query the harness process: {e}")),
+            Err(e) => Some(format!("cannot query the process: {e}")),
         }
     }
 
@@ -153,8 +153,13 @@ pub fn group_alive(pgid: i32) -> bool {
 
 /// True when a `ps -o comm=` value names the harness binary (`harness`, `/path/to/harness`, `harness.exe`).
 pub fn looks_like_harness(comm: &str) -> bool {
+    looks_like(comm, &["harness", "harness.exe"])
+}
+
+/// True when the base name of a `ps -o comm=` value is one of `names`.
+pub fn looks_like(comm: &str, names: &[&str]) -> bool {
     let base = comm.trim().rsplit(['/', '\\']).next().unwrap_or("");
-    base == "harness" || base == "harness.exe"
+    names.contains(&base)
 }
 
 pub fn parse_pid(text: &str) -> Option<u32> {
@@ -169,6 +174,12 @@ pub fn write_pidfile(path: &Path, pid: u32) -> io::Result<()> {
 /// Safe against pid reuse: only a live process whose command name is `harness` is signalled.
 #[cfg(unix)]
 pub fn kill_stale(pidfile: &Path) -> bool {
+    kill_stale_named(pidfile, &["harness", "harness.exe"])
+}
+
+/// [`kill_stale`] for any sidecar: only a live process whose command name is in `names` is signalled.
+#[cfg(unix)]
+pub fn kill_stale_named(pidfile: &Path, names: &[&str]) -> bool {
     let Some(pid) = std::fs::read_to_string(pidfile)
         .ok()
         .as_deref()
@@ -183,7 +194,7 @@ pub fn kill_stale(pidfile: &Path) -> bool {
         .output()
         .ok();
     let named = comm
-        .map(|o| looks_like_harness(&String::from_utf8_lossy(&o.stdout)))
+        .map(|o| looks_like(&String::from_utf8_lossy(&o.stdout), names))
         .unwrap_or(false);
     if !named {
         return false;
@@ -202,6 +213,11 @@ pub fn kill_stale(pidfile: &Path) -> bool {
 
 #[cfg(not(unix))]
 pub fn kill_stale(pidfile: &Path) -> bool {
+    kill_stale_named(pidfile, &["harness", "harness.exe"])
+}
+
+#[cfg(not(unix))]
+pub fn kill_stale_named(pidfile: &Path, _names: &[&str]) -> bool {
     let _ = std::fs::remove_file(pidfile);
     false
 }

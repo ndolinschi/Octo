@@ -10,6 +10,7 @@ Tauri 2 **shell** for shared UI. Product screens live in [`packages/ui`](../../.
 | Client | `packages/agent-client` | Bridge HTTP + SSE client, state reducer |
 | Shell | `apps/desktop` | Webview host, OS integration |
 | Agent | `apps/harness/` (`harness serve`) | Orchestrator + sub-agent loops, per-project SQLite |
+| Router (optional) | `apps/router/` (`octo`) | Model routing and history; a second sidecar the shell starts before the harness when switched on |
 
 ## Data flow
 
@@ -27,7 +28,7 @@ sequenceDiagram
 
 ## Running
 
-Desktop loads `OctoApp` with an HTTP bridge at `resolveBridgeUrl()` (default `http://127.0.0.1:8790`), or the in-memory demo bridge when the URL has `?demo=1`. Inside Tauri the shell starts the bundled `harness` sidecar (crate `src-tauri/sidecar`) and the UI asks the `bridge_url` command for its address; in a browser start `harness serve` yourself or run `pnpm dev:all`.
+Desktop loads `OctoApp` with an HTTP bridge at `resolveBridgeUrl()` (default `http://127.0.0.1:8790`), or the in-memory demo bridge when the URL has `?demo=1`. Inside Tauri the shell starts the bundled `harness` sidecar (crate `src-tauri/sidecar`) and the UI asks the `bridge_url` command for its address. When `harness.env` switches the router on, the same crate first starts the bundled `octo` router (loopback port, generated client key, data under `<app data>/router`) and points the harness at `/autoroute`; a router failure becomes a `bridge_notices` entry, not a blocked start; in a browser start `harness serve` yourself or run `pnpm dev:all`.
 
 ## Security
 

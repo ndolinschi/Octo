@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage } from "./errorMessage";
+import { parseNotices, type HostNotice } from "./hostNotices";
 
-/** Where the Tauri shell's harness is: still starting, up at `url`, or failed with its message and log tail. */
-export type HostState = { phase: "starting" } | { phase: "ready"; url: string } | { phase: "failed"; message: string; log: string };
+/** Where the Tauri shell's harness is: still starting, up at `url` (with any notices, e.g. the router did not start), or failed with its message and log tail. */
+export type HostState = { phase: "starting" } | { phase: "ready"; url: string; notices: HostNotice[] } | { phase: "failed"; message: string; log: string };
 
 const LOG_LINES = 20;
 
@@ -10,6 +11,15 @@ async function invoke<T>(command: string, args?: Record<string, unknown>): Promi
   // Loaded on demand: a browser start (and the initial bundle) never pulls the Tauri API in.
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<T>(command, args);
+}
+
+/** Notices are a courtesy: a shell without the command, or a failing call, means none. */
+async function notices(): Promise<HostNotice[]> {
+  try {
+    return parseNotices(await invoke<unknown>("bridge_notices"));
+  } catch {
+    return [];
+  }
 }
 
 async function failure(e: unknown): Promise<HostState> {
@@ -37,7 +47,7 @@ export function useHostBridge(enabled: boolean): { state: HostState; retry: () =
       let next: HostState;
       try {
         const url = await invoke<string>(attempt === 0 ? "bridge_url" : "bridge_restart");
-        next = { phase: "ready", url };
+        next = { phase: "ready", url, notices: await notices() };
       } catch (e) {
         next = await failure(e);
       }

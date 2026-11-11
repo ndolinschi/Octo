@@ -1,25 +1,36 @@
 #!/usr/bin/env bash
 # One command for development: builds and starts the harness (no API key needed) and the UI dev server,
-# prints the URL, and stops both (and their children) on Ctrl+C.
+# prints the URL, and stops both (and their children) on Ctrl+C. With --router the Octo router runs in front of
+# the harness the way the desktop app runs it (design P8).
 set -euo pipefail
 
 BRIDGE_PORT="${OCTO_DEV_BRIDGE_PORT:-8790}"
 MOCK_PORT=8791
+ROUTER_PORT="${OCTO_DEV_ROUTER_PORT:-8792}"
+ROUTER=0
 UI_PORT=1420 # fixed by apps/desktop/vite.config.ts (strictPort)
 MOCK=0
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/dev.sh [--mock] [--bridge-port PORT] [--help]
+Usage: scripts/dev.sh [--mock] [--router] [--bridge-port PORT] [--help]
 
 Starts, from the repository root:
   1. the harness bridge   (go build, then `harness serve`)   http://127.0.0.1:8790
   2. the UI dev server    (pnpm --filter @octo/desktop dev)  http://localhost:1420
+  with --router, before the harness:
+     the Octo router     (cargo build -p octo, then the binary) http://127.0.0.1:8792
 
-Ctrl+C stops both. Runs `pnpm install` first when node_modules is missing.
+Ctrl+C stops everything. Runs `pnpm install` first when node_modules is missing.
 
   --mock               also start the mock model server (examples/mockllm, port 8791) and point the
                        harness at it with a fake ANTHROPIC_API_KEY (set for this mode only)
+  --router             also start the Octo router (apps/router) on 127.0.0.1:8792 (or $OCTO_DEV_ROUTER_PORT) with a
+                       generated client key, and start the harness with --base-url http://127.0.0.1:8792/autoroute.
+                       Needs an upstream key in $OCTO_ROUTER_UPSTREAM_KEY (or $OPENROUTER_API_KEY), or --mock, where
+                       the router's upstream is the mock model server instead of OpenRouter. The router keeps its
+                       history database under ${OCTO_DEV_ROUTER_DIR:-~/.local/share/octo-dev/router} (a temporary
+                       directory with --mock); its log goes to router.log there.
   --bridge-port PORT   harness port (default 8790, or $OCTO_DEV_BRIDGE_PORT); the UI is pointed at it
   -h, --help           this text
 
@@ -31,6 +42,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h | --help) usage; exit 0 ;;
     --mock) MOCK=1 ;;
+    --router) ROUTER=1 ;;
     --bridge-port)
       shift
       BRIDGE_PORT="${1:-}"
@@ -46,6 +58,12 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+UPSTREAM_KEY="${OCTO_ROUTER_UPSTREAM_KEY:-${OPENROUTER_API_KEY:-}}"
+if [[ "$ROUTER" -eq 1 && "$MOCK" -eq 0 && -z "$UPSTREAM_KEY" ]]; then
+  echo "dev.sh: --router needs an upstream key: set OCTO_ROUTER_UPSTREAM_KEY (or OPENROUTER_API_KEY), or add --mock." >&2
+  exit 2
+fi
+
 need() { # tool, hint
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "dev.sh: '$1' is not installed. $2" >&2
@@ -56,10 +74,12 @@ need go "Install Go 1.26+ (macOS: brew install go; Linux: bash scripts/install-g
 need pnpm "Install pnpm 10+ (corepack enable, or npm install -g pnpm)."
 need node "Install Node.js 22+ (https://nodejs.org or your version manager)."
 need curl "Install curl with your package manager."
+[[ "$ROUTER" -eq 1 ]] && need cargo "Install Rust from https://rustup.rs (the router is built from apps/router)."
 
 port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 ports=("$BRIDGE_PORT" "$UI_PORT")
 [[ "$MOCK" -eq 1 ]] && ports+=("$MOCK_PORT")
+[[ "$ROUTER" -eq 1 ]] && ports+=("$ROUTER_PORT")
 for p in "${ports[@]}"; do
   if port_in_use "$p"; then
     echo "dev.sh: port $p is already in use. Stop what is using it (is another dev.sh running?)." >&2
@@ -78,6 +98,34 @@ echo "dev.sh: building the harness"
 (cd "$BIN_DIR" && go build -o octo-harness ./cmd/harness)
 if [[ "$MOCK" -eq 1 ]]; then
   (cd "$BIN_DIR" && go build -o octo-mockllm ./examples/mockllm)
+fi
+
+ROUTER_TMP=""
+ROUTER_DIR=""
+ROUTER_BIN=""
+if [[ "$ROUTER" -eq 1 ]]; then
+  echo "dev.sh: building the router (cargo build -p octo)"
+  (cd "$ROOT" && cargo build -p octo)
+  ROUTER_BIN="$ROOT/target/debug/octo"
+  [[ -x "$ROUTER_BIN" ]] || { echo "dev.sh: the router build finished but $ROUTER_BIN is missing" >&2; exit 1; }
+  if [[ "$MOCK" -eq 1 ]]; then
+    ROUTER_TMP="$(mktemp -d "${TMPDIR:-/tmp}/octo-dev-router.XXXXXX")"
+    ROUTER_DIR="$ROUTER_TMP"
+  else
+    ROUTER_DIR="${OCTO_DEV_ROUTER_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/octo-dev/router}"
+  fi
+  mkdir -p "$ROUTER_DIR/config"
+  # The same three fragments the desktop shell writes (apps/desktop/src-tauri/sidecar/src/router.rs); the key is
+  # random per run and lives in a 0600 file, never on a command line.
+  CLIENT_KEY="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  (umask 077; printf '[server]\nbind_addr = "127.0.0.1:%s"\nallow_remote = false\nclient_auth_key = "%s"\n' "$ROUTER_PORT" "$CLIENT_KEY" >"$ROUTER_DIR/config/server.toml")
+  printf '[limits]\nmax_body_bytes = 33554432\n' >"$ROUTER_DIR/config/limits.toml"
+  printf '[history]\ndatabase_path = "%s/history.sqlite"\n' "$ROUTER_DIR" >"$ROUTER_DIR/config/history.toml"
+  rm -f "$ROUTER_DIR/config/openrouter.toml"
+  if [[ "$MOCK" -eq 1 ]]; then
+    # Router -> mock model, as apps/harness/scripts/e2e-router.sh wires it.
+    printf '[openrouter]\nmessages_url = "http://127.0.0.1:%s/v1/messages"\ndecisions_url = "http://127.0.0.1:%s/decisions"\n' "$MOCK_PORT" "$MOCK_PORT" >"$ROUTER_DIR/config/openrouter.toml"
+  fi
 fi
 
 # Each background job gets its own process group (job control), so one signal reaches a job's children too.
@@ -104,18 +152,43 @@ cleanup() {
     for pid in "${PIDS[@]}"; do wait "$pid" 2>/dev/null || true; done
   fi
 }
-trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+cleanup_router_tmp() { [[ -n "$ROUTER_TMP" ]] && rm -rf "$ROUTER_TMP"; return 0; }
+trap 'cleanup; cleanup_router_tmp' EXIT
 
 if [[ "$MOCK" -eq 1 ]]; then
   "$BIN_DIR/octo-mockllm" &
   PIDS+=("$!")
   for _ in $(seq 1 50); do port_in_use "$MOCK_PORT" && break; sleep 0.2; done
   port_in_use "$MOCK_PORT" || { echo "dev.sh: the mock model server did not start on port $MOCK_PORT" >&2; exit 1; }
-  ANTHROPIC_API_KEY=mock "$BIN_DIR/octo-harness" serve --addr "127.0.0.1:$BRIDGE_PORT" --base-url "http://127.0.0.1:$MOCK_PORT" &
+fi
+
+HARNESS_ARGS=(serve --addr "127.0.0.1:$BRIDGE_PORT")
+if [[ "$ROUTER" -eq 1 ]]; then
+  # The router first, then the harness behind it. Like the app, the router needs only OCTO_CONFIG; it forwards the
+  # caller's credential upstream, so the harness's API key IS the upstream key, and the router's own gate is the client key.
+  OCTO_CONFIG="$ROUTER_DIR/config" "$ROUTER_BIN" >"$ROUTER_DIR/router.log" 2>&1 &
+  PIDS+=("$!")
+  ROUTER_PID="$!"
+  router_up=0
+  for _ in $(seq 1 100); do # 20 s
+    if curl -fsS -o /dev/null "http://127.0.0.1:$ROUTER_PORT/health" 2>/dev/null; then router_up=1; break; fi
+    if ! kill -0 "$ROUTER_PID" 2>/dev/null; then break; fi
+    sleep 0.2
+  done
+  if [[ "$router_up" -ne 1 ]]; then
+    echo "dev.sh: the router did not come up on port $ROUTER_PORT; the end of $ROUTER_DIR/router.log:" >&2
+    tail -n 20 "$ROUTER_DIR/router.log" >&2 || true
+    exit 1
+  fi
+  HARNESS_ARGS+=(--base-url "http://127.0.0.1:$ROUTER_PORT/autoroute")
+  if [[ "$MOCK" -eq 1 ]]; then HARNESS_UPSTREAM=mock; else HARNESS_UPSTREAM="$UPSTREAM_KEY"; fi
+  HARNESS_OCTO_KEY="$CLIENT_KEY" ANTHROPIC_API_KEY="$HARNESS_UPSTREAM" "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}" &
+elif [[ "$MOCK" -eq 1 ]]; then
+  ANTHROPIC_API_KEY=mock "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}" --base-url "http://127.0.0.1:$MOCK_PORT" &
 else
-  "$BIN_DIR/octo-harness" serve --addr "127.0.0.1:$BRIDGE_PORT" &
+  "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}" &
 fi
 PIDS+=("$!")
 HARNESS_PID="$!"
@@ -151,6 +224,7 @@ echo
 echo "dev.sh: ready"
 echo "  UI      http://localhost:$UI_PORT"
 echo "  bridge  http://127.0.0.1:$BRIDGE_PORT"
+[[ "$ROUTER" -eq 1 ]] && echo "  router  http://127.0.0.1:$ROUTER_PORT/autoroute   (log: $ROUTER_DIR/router.log)"
 echo "  Ctrl+C to stop"
 
 while true; do

@@ -49,14 +49,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
       - uses: dtolnay/rust-toolchain@1.90.0
-      # tauri-build requires the bundle.externalBin file to exist; the real one is built by scripts/build-sidecar.sh.
-      - name: Placeholder sidecar for cargo check
+      # tauri-build requires every bundle.externalBin file (harness and the octo router) to exist; the real ones are
+      # built by scripts/build-sidecar.sh.
+      - name: Placeholder sidecars for cargo check
         run: |
           triple="$(rustc -vV | sed -n 's/^host: //p')"
           mkdir -p apps/desktop/src-tauri/binaries
           touch "apps/desktop/src-tauri/binaries/harness-$triple"
+          touch "apps/desktop/src-tauri/binaries/octo-$triple"
       - working-directory: apps/desktop/src-tauri
         run: cargo check
-      # Port choice, login-shell PATH parsing, health wait, log cap, process-group shutdown (no WebKit needed).
+      # Port choice, login-shell PATH parsing, health wait, log cap, process-group shutdown, harness.env parsing and the
+      # two-sidecar start order with fake binaries (router off / on / failing, shutdown order, restart) - no WebKit needed.
       - working-directory: apps/desktop/src-tauri
         run: cargo test -p octo-sidecar

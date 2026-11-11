@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds Octo (harness sidecar + Tauri app) and installs it.
+# Builds Octo (harness and router sidecars + Tauri app) and installs it.
 #   macOS  -> /Applications/Octo.app  (--user: ~/Applications/Octo.app), ad-hoc signed
 #   Linux  -> ~/.local/bin/octo (the AppImage) + ~/.local/share/applications/octo.desktop
 set -euo pipefail
@@ -9,7 +9,8 @@ usage() {
 Usage: scripts/install.sh [--user] [--sudo] [--no-install] [--help]
 
 Checks the toolchains (pnpm, Node, Go, Rust; Xcode command-line tools on macOS; the WebKitGTK development
-packages on Linux), builds the harness for this machine, runs the Tauri build and installs the app.
+packages on Linux), builds the harness and the Octo router for this machine (both are bundled into the app),
+runs the Tauri build and installs the app.
 
   --user         macOS: install to ~/Applications instead of /Applications
   --sudo         macOS: use sudo when the destination is not writable (otherwise the script stops and says so)
@@ -85,8 +86,8 @@ if [[ ! -d node_modules ]]; then
   pnpm install --frozen-lockfile
 fi
 
-echo "install.sh: building the harness sidecar"
-bash "$ROOT/scripts/build-sidecar.sh"
+echo "install.sh: building the sidecars (harness and router; the router needs a full Rust build the first time)"
+env -u OCTO_NO_ROUTER bash "$ROOT/scripts/build-sidecar.sh"
 
 if [[ "$OS" == Darwin ]]; then BUNDLES=app; else BUNDLES=appimage; fi
 echo "install.sh: building the app (tauri build --bundles $BUNDLES); this takes a while the first time"

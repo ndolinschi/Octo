@@ -76,15 +76,15 @@ pnpm --filter @octo/agent-client test
 pnpm --filter @octo/ui test
 pnpm --filter @octo/desktop build
 node scripts/check-bundle-size.mjs         # after the build: initial JS (gzip) within its budget
-cd apps/desktop/src-tauri && cargo check   # needs binaries/harness-<triple> (bash scripts/build-sidecar.sh) and WebKitGTK on Linux
-cd apps/desktop/src-tauri && cargo test -p octo-sidecar   # port, login-shell PATH, health, log cap, process-group stop (no WebKit needed)
-pnpm dev:all                               # scripts/dev.sh: harness (no key needed) + UI dev server; Ctrl+C stops both; `-- --mock` adds the mock model
-pnpm install:app                           # scripts/install.sh: build harness sidecar + Tauri app, install (macOS /Applications, Linux ~/.local/bin/octo); `-- --user`, `-- --no-install`
-pnpm test:dev-sh                           # scripts/test-dev-sh.sh: dev.sh comes up, answers, leaves no process after SIGINT (Linux/macOS)
+cd apps/desktop/src-tauri && cargo check   # needs binaries/harness-<triple> and binaries/octo-<triple> (bash scripts/build-sidecar.sh [--no-router]) and WebKitGTK on Linux
+cd apps/desktop/src-tauri && cargo test -p octo-sidecar   # port, login-shell PATH, health, log cap, process-group stop, harness.env parsing, harness + router start order with fake binaries (no WebKit needed)
+pnpm dev:all                               # scripts/dev.sh: harness (no key needed) + UI dev server; Ctrl+C stops both; `-- --mock` adds the mock model, `-- --router` runs the Octo router in front of the harness (needs `OCTO_ROUTER_UPSTREAM_KEY` or `--mock`)
+pnpm install:app                           # scripts/install.sh: build harness + router sidecars and the Tauri app, install (macOS /Applications, Linux ~/.local/bin/octo); `-- --user`, `-- --no-install`
+pnpm test:dev-sh                           # scripts/test-dev-sh.sh: dev.sh comes up, answers, leaves no process after SIGINT (Linux/macOS); `-- --router --mock` also checks the router
 ```
 
-The desktop app bundles the harness as a Tauri sidecar and starts it itself (free loopback port, login-shell `PATH`,
-`/health` wait, stopped on quit); see [`apps/desktop/AGENTS.md`](./apps/desktop/AGENTS.md). Packaging design:
+The desktop app bundles the harness and the Octo router as Tauri sidecars and starts them itself (router first, only when
+switched on in `harness.env`; free loopback ports, login-shell `PATH`, `/health` waits, harness then router stopped on quit); see [`apps/desktop/AGENTS.md`](./apps/desktop/AGENTS.md). Packaging design:
 [`docs/superpowers/specs/2026-11-11-packaging-design.md`](./docs/superpowers/specs/2026-11-11-packaging-design.md).
 
 The UI talks only to the harness bridge (`harness serve`, default `http://127.0.0.1:8790`; override with `VITE_HARNESS_BRIDGE_URL`). Open the app with `?demo=1` to run against the in-memory demo bridge with no backend.

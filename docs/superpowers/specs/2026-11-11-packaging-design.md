@@ -123,3 +123,23 @@ tests for the two-sidecar start order, the router-failure path and shutdown; a s
 `scripts/dev.sh --router` brings up router, harness and UI and leaves nothing behind; (9) the first-run screen in
 every state in the demo (`?demo=1&firstrun=…`), decision 42's bar. The installed macOS app remains for the owner
 to try.
+
+## As built — P8 (2026-11-11)
+
+Verified: 61 `octo-sidecar` tests (fake harness/router binaries for router off, on and healthy, failing to start, never healthy, missing binary, external
+URL, shutdown order, restart with a changed settings file, leftover router cleanup); `scripts/test-dev-sh.sh` and `scripts/test-dev-sh.sh --router --mock`
+(router + harness + UI up, router enforces its client key, harness reports `router: true`, nothing left after SIGINT); desktop lint, format, tests, build.
+**Not verified:** the Tauri glue (`bridge_notices`, the second `externalBin`) was not compiled here (no WebKitGTK); the `HostNotice` component was not looked at
+in a running app; the macOS bundle and `install.sh` were not run.
+
+- The router has no flag or environment variable for its bind address, client key or database path: only `OCTO_CONFIG` (a directory of TOML fragments; `[server]`
+  and `[limits]` are required, everything else has defaults). The shell writes `server.toml` (0600), `limits.toml`, `history.toml` into `{app data}/router/config` at
+  every start, with `database_path = {app data}/router/history.sqlite`.
+- The router does not hold a provider key: it forwards the caller's `Authorization` / `x-api-key` upstream and gates callers with `x-octo-key`. So
+  `OCTO_ROUTER_UPSTREAM_KEY` reaches the harness as `ANTHROPIC_API_KEY` (process environment beats `harness.env`), the generated client key as `HARNESS_OCTO_KEY`;
+  neither is on a command line. With the router enabled but no upstream key nothing is started and no notice is shown (harness alone, as designed).
+- The second binary is `binaries/octo-<triple>`, installed next to the executable as `octo`; the main binary is `octo-desktop` (Tauri uses the Cargo output name).
+- `bridge_notices()` returns `[{ kind: "router_failed", message, log_tail }]` or `[]`, computed from the last start; Retry is `bridge_restart`. A router that dies after a
+  successful start is not watched (the harness's calls then fail upstream); a restart fixes it.
+- `scripts/build-sidecar.sh --no-router` (or `OCTO_NO_ROUTER=1`) writes an executable placeholder so `tauri-build` finds the file; a real binary is never overwritten
+  by it. `scripts/install.sh` always builds the real router.

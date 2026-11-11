@@ -1,8 +1,14 @@
 [package]
 name = "octo-sidecar"
 version = "0.1.0"
-description = "Starts, watches and stops the bundled harness (no Tauri dependency, so it is unit-testable anywhere)"
+description = "Starts, watches and stops the bundled harness and router (no Tauri dependency, so it is unit-testable anywhere)"
 edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+serde_json = "1"
