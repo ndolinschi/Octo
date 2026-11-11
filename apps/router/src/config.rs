@@ -45,6 +45,10 @@ pub struct Config {
     pub history_database_path: String,
     pub history_token_key: String,
     pub history_store_payloads: bool,
+    pub history_calls_max_age_days: u64,
+    pub history_calls_max_rows: u64,
+    pub history_budget_spend_max_age_days: u64,
+    pub history_prune_interval_secs: u64,
     pub autoroute_low_model: String,
     pub autoroute_mid_model: String,
     pub autoroute_high_model: String,
@@ -327,6 +331,14 @@ struct HistorySection {
     token_key: String,
     #[serde(default = "default_history_store_payloads")]
     store_payloads: bool,
+    #[serde(default = "default_calls_max_age_days")]
+    calls_max_age_days: u64,
+    #[serde(default = "default_calls_max_rows")]
+    calls_max_rows: u64,
+    #[serde(default = "default_budget_spend_max_age_days")]
+    budget_spend_max_age_days: u64,
+    #[serde(default = "default_prune_interval_secs")]
+    prune_interval_secs: u64,
 }
 
 impl Default for HistorySection {
@@ -335,8 +347,28 @@ impl Default for HistorySection {
             database_path: default_history_database_path(),
             token_key: String::new(),
             store_payloads: default_history_store_payloads(),
+            calls_max_age_days: default_calls_max_age_days(),
+            calls_max_rows: default_calls_max_rows(),
+            budget_spend_max_age_days: default_budget_spend_max_age_days(),
+            prune_interval_secs: default_prune_interval_secs(),
         }
     }
+}
+
+fn default_calls_max_age_days() -> u64 {
+    30
+}
+
+fn default_calls_max_rows() -> u64 {
+    100_000
+}
+
+fn default_budget_spend_max_age_days() -> u64 {
+    90
+}
+
+fn default_prune_interval_secs() -> u64 {
+    600
 }
 
 fn default_history_store_payloads() -> bool {
@@ -696,6 +728,10 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         history_database_path: file.history.database_path,
         history_token_key: file.history.token_key,
         history_store_payloads: file.history.store_payloads,
+        history_calls_max_age_days: file.history.calls_max_age_days,
+        history_calls_max_rows: file.history.calls_max_rows,
+        history_budget_spend_max_age_days: file.history.budget_spend_max_age_days,
+        history_prune_interval_secs: file.history.prune_interval_secs,
         autoroute_low_model: file.autoroute.low,
         autoroute_mid_model: file.autoroute.mid,
         autoroute_high_model: file.autoroute.high,

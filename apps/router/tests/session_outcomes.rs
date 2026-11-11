@@ -143,6 +143,7 @@ fn finished(session_id: &str, input: &str) -> FinishedCall {
         client_tool_names: None,
         bg_signal: None,
         hk_text_signal: None,
+        request_id: None,
         cache_read_tokens: None,
         cache_write_tokens: None,
         generation_id: None,

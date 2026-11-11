@@ -138,7 +138,8 @@ pub(in crate::auto) fn record(plan: RecordPlan<'_>) -> Recorded {
         crate::providers::utils::cost_source_label(resolved.source)
     };
     if let (Some(session_id), Some(cost)) = (&plan.session_id, cost) {
-        plan.auto.add_session_cost(session_id, cost.0);
+        plan.auto
+            .charge(plan.history, Some(session_id.as_str()), None, cost.0);
     }
     plan.history.record_decision(DecisionRow {
         session_id: plan.session_id,

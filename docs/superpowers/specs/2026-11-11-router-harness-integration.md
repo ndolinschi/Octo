@@ -191,6 +191,23 @@ classifier, real agent CLIs.
 - `flatRate` in the built-in manifest is a judgement: true for claude-code, codex, copilot, cursor, antigravity,
   devin; false for grok, droid, opencode, omp, pi.
 
+## As built — call records and spend survive a restart; I1 acceptance 3 and 4 over HTTP (2026-11-11)
+
+Supersedes "call records are kept in memory only" above. Verified by the orchestrator: fmt, clippy, 264 tests with
+no proxy. **Not verified:** a real upstream or classifier; behaviour against a large database.
+
+- Call records are written to the history database (`autoroute_calls`; no prompt text) and read back by
+  `GET /autoroute/v1/calls/{id}` when not in the in-memory cache; the history row of a proxied call carries the
+  request id.
+- Spend per budget key has its own table and is restored on the key's first request in a process, so
+  `x-octo-spent-usd` and budget rejection are right after a restart (and after an idle hour, which used to reset
+  it). It is not derived from the records, which are pruned (30 days / 100 000 rows by default; spend 90 days idle).
+- Writes are off the response path; a kill within milliseconds of a call finishing loses that call's record and
+  spend increment.
+- New HTTP-level tests: `ceiling` never serves above the hint across a stalled session the classifier calls hard
+  (the `auto` control does escalate); `fixed` serves the hint every turn with no classifier call; a compaction round
+  trip applied by the client is not repeated; one ignored by the client is forwarded once as `compact_not_applied`.
+
 ## I3 — showing the savings (after I2)
 
 Usage → Cost gains "Auto-routing": actual cost vs. what the same tokens would have cost at the hinted tier

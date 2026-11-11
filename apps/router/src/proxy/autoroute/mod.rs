@@ -74,6 +74,9 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
     let hints = Hints::take(&mut parts.headers);
     let value: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
     let session = session_key(&value);
+    if let Some(key) = hints.budget_key.as_deref() {
+        state.auto.restore_budget_key(&state.history, key).await;
+    }
     state.auto.bind_hints(session.as_deref(), &hints);
     let signals = client_signals(&value, &state.config.autoroute_background_model_patterns);
     let server_tools = server_tool_types(&value);

@@ -943,3 +943,201 @@ async fn compaction_response_is_identifiable_by_trigger_header() {
     assert_eq!(row["input_tokens"], 12000);
     assert_eq!(row["cost_source"], "estimated");
 }
+
+struct Served {
+    models: Vec<String>,
+    tiers: Vec<String>,
+    triggers: Vec<String>,
+    classifier_hits: u32,
+}
+
+async fn serve_stalled_session(policy: &str, turns: usize) -> Served {
+    let mock = spawn_mock(vec![], JEV_HIGH).await;
+    let mut config = config_for(mock.addr);
+    config.autoroute_escalate_turns = 3;
+    let state = AppState::new(config).unwrap();
+    let mut served = Served {
+        models: Vec::new(),
+        tiers: Vec::new(),
+        triggers: Vec::new(),
+        classifier_hits: 0,
+    };
+    for _ in 0..turns {
+        let response = send(
+            &state,
+            &stall_body(),
+            &[
+                AUTH,
+                ("x-octo-tier-hint", "fast"),
+                ("x-octo-tier-policy", policy),
+            ],
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        served.models.push(hv(&response, "x-octo-model"));
+        served.tiers.push(hv(&response, "x-octo-tier"));
+        served.triggers.push(hv(&response, "x-octo-trigger"));
+        let _ = body_json(response).await;
+    }
+    served.classifier_hits = *mock.jev_hits.lock().unwrap();
+    assert_eq!(
+        served_models(&mock),
+        served.models,
+        "headers match upstream"
+    );
+    served
+}
+
+#[tokio::test]
+async fn ceiling_never_serves_above_the_hint_across_a_session_that_would_escalate() {
+    let control = serve_stalled_session("auto", 5).await;
+    assert!(
+        control.models.iter().any(|model| model != "low-model"),
+        "control: without a ceiling the stalled, hard session escalates: {:?}",
+        control.models
+    );
+    assert!(control.triggers.iter().any(|t| t.starts_with("stall:")));
+
+    let ceiling = serve_stalled_session("ceiling", 5).await;
+    assert_eq!(ceiling.models, ["low-model"; 5], "{:?}", ceiling.triggers);
+    assert_eq!(ceiling.tiers, ["low"; 5]);
+}
+
+#[tokio::test]
+async fn fixed_serves_the_hint_tier_on_every_turn_and_never_classifies() {
+    let fixed = serve_stalled_session("fixed", 5).await;
+    assert_eq!(fixed.models, ["low-model"; 5]);
+    assert_eq!(fixed.tiers, ["low"; 5]);
+    assert_eq!(fixed.triggers, ["hint"; 5]);
+    assert_eq!(fixed.classifier_hits, 0);
+}
+
+fn compaction_summary() -> Reply {
+    json_reply(
+        &json!({
+            "type": "message",
+            "role": "assistant",
+            "stop_reason": "compaction",
+            "content": [{"type": "compaction", "content": "summary of the conversation"}],
+            "usage": {"input_tokens": 12000, "output_tokens": 300}
+        })
+        .to_string(),
+    )
+}
+
+fn long_history(session: &str) -> Value {
+    let mut body = session_turn(session);
+    body["messages"] = json!([{"role": "user", "content": "x".repeat(60_000)}]);
+    body["tools"] = json!([{"name": "Read"}]);
+    body
+}
+
+fn compacted_history(session: &str, summary: &str, extra_rounds: usize) -> Value {
+    let mut body = session_turn(session);
+    let mut messages = vec![
+        json!({"role": "user", "content": format!("Summary of the conversation so far:\n{summary}")}),
+        json!({"role": "user", "content": "continue with the next step"}),
+    ];
+    for i in 0..extra_rounds {
+        messages.push(json!({"role": "assistant", "content": [{"type": "tool_use", "id": format!("t{i}"), "name": "Read", "input": {"n": i}}]}));
+        messages.push(json!({"role": "user", "content": [{"type": "tool_result", "tool_use_id": format!("t{i}"), "content": "ok"}]}));
+    }
+    body["messages"] = json!(messages);
+    body["tools"] = json!([{"name": "Read"}]);
+    body
+}
+
+const COMPACT_HINTS: [(&str, &str); 2] = [
+    ("x-octo-tier-hint", "balanced"),
+    ("x-octo-budget-key", "proj-round-trip"),
+];
+
+fn compaction_requests(mock: &Mock) -> usize {
+    mock.messages
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, body)| body.get("compaction").is_some())
+        .count()
+}
+
+#[tokio::test]
+async fn compaction_round_trip_applied_by_the_client_is_not_repeated() {
+    let mock = spawn_mock(vec![compaction_summary()], JEV_LOW).await;
+    let state = priced_state(mock.addr);
+    state.auto.seed_catalog(catalog(16_000)).await;
+
+    let response = send(&state, &long_history("round-trip"), &COMPACT_HINTS).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(hv(&response, "x-octo-trigger"), "compact");
+    let summary = body_json(response).await;
+    assert_eq!(summary["stop_reason"], "compaction");
+    let text = summary["content"][0]["content"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(text, "summary of the conversation");
+
+    let shortened = compacted_history("round-trip", &text, 0);
+    let response = send(&state, &shortened, &COMPACT_HINTS).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let trigger = hv(&response, "x-octo-trigger");
+    assert!(
+        trigger != "compact" && trigger != "compact_not_applied",
+        "applied compaction is forwarded normally: {trigger}"
+    );
+    let _ = body_json(response).await;
+
+    let rows = mock.messages.lock().unwrap().clone();
+    assert_eq!(rows.len(), 2, "one compaction call, one normal call");
+    assert!(rows[1].1.get("compaction").is_none());
+    assert_eq!(rows[1].1["messages"], shortened["messages"]);
+
+    for rounds in 1..=3 {
+        let next = compacted_history("round-trip", &text, rounds);
+        let response = send(&state, &next, &COMPACT_HINTS).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let trigger = hv(&response, "x-octo-trigger");
+        assert!(
+            trigger != "compact" && trigger != "compact_not_applied",
+            "round {rounds}: {trigger}"
+        );
+        let _ = body_json(response).await;
+    }
+    assert_eq!(compaction_requests(&mock), 1, "never compacted again");
+    assert_eq!(mock.messages.lock().unwrap().len(), 5);
+}
+
+#[tokio::test]
+async fn compaction_ignored_by_the_client_is_forwarded_as_not_applied_once() {
+    let mock = spawn_mock(vec![compaction_summary()], JEV_LOW).await;
+    let state = priced_state(mock.addr);
+    state.auto.seed_catalog(catalog(16_000)).await;
+
+    let response = send(&state, &long_history("ignored"), &COMPACT_HINTS).await;
+    assert_eq!(hv(&response, "x-octo-trigger"), "compact");
+    let _ = body_json(response).await;
+
+    let same = long_history("ignored");
+    let response = send(&state, &same, &COMPACT_HINTS).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(hv(&response, "x-octo-trigger"), "compact_not_applied");
+    let _ = body_json(response).await;
+    let rows = mock.messages.lock().unwrap().clone();
+    assert_eq!(rows.len(), 2);
+    assert!(rows[1].1.get("compaction").is_none());
+    assert_eq!(
+        rows[1].1["messages"], same["messages"],
+        "the long history is forwarded untouched"
+    );
+
+    let response = send(&state, &same, &COMPACT_HINTS).await;
+    assert_ne!(hv(&response, "x-octo-trigger"), "compact");
+    assert_ne!(hv(&response, "x-octo-trigger"), "compact_not_applied");
+    let _ = body_json(response).await;
+    assert_eq!(
+        compaction_requests(&mock),
+        1,
+        "not asked again while ignored"
+    );
+}

@@ -92,4 +92,5 @@ pub struct FinishedCall {
     pub client_tool_names: Option<String>,
     pub bg_signal: Option<bool>,
     pub hk_text_signal: Option<bool>,
+    pub request_id: Option<String>,
 }

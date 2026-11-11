@@ -226,6 +226,63 @@ impl Auto {
         }
     }
 
+    pub async fn restore_budget_key(&self, history: &History, budget_key: &str) {
+        if !history.enabled() {
+            return;
+        }
+        let known = self
+            .ledger
+            .lock()
+            .map(|mut ledger| ledger.has_spend(budget_key))
+            .unwrap_or(true);
+        if known {
+            return;
+        }
+        match history.budget_spent_micros(budget_key).await {
+            Ok(Some(micros)) => {
+                if let Ok(mut ledger) = self.ledger.lock() {
+                    ledger.seed(budget_key, micros);
+                }
+            }
+            Ok(None) => {}
+            Err(err) => tracing::warn!(%err, "budget spend restore failed"),
+        }
+    }
+
+    pub fn charge(
+        &self,
+        history: &History,
+        session_key: Option<&str>,
+        budget_key: Option<&str>,
+        micros: u64,
+    ) {
+        if micros == 0 {
+            return;
+        }
+        let key = budget_key
+            .map(str::to_string)
+            .or_else(|| session_key.and_then(|id| self.budget_key_of(id)));
+        self.add_cost(session_key, budget_key, micros);
+        if let Some(key) = key {
+            history.add_budget_spend(key, micros);
+        }
+    }
+
+    pub fn record_call_persisted(&self, history: &History, call: super::calls::PersistedCall) {
+        let key = call.budget_key.clone().or_else(|| {
+            call.session_id
+                .as_deref()
+                .and_then(|id| self.budget_key_of(id))
+        });
+        history.record_call_row(
+            &call.request_id,
+            call.session_id.as_deref(),
+            key.as_deref(),
+            &call.row,
+        );
+        self.record_call(call.request_id, call.row);
+    }
+
     pub fn record_call(&self, request_id: String, row: super::calls::CallRow) {
         if let Ok(mut calls) = self.calls.lock() {
             calls.insert(request_id, row);

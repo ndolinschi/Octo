@@ -4,7 +4,7 @@ use std::time::Duration;
 use reqwest::Client;
 use serde_json::json;
 
-use crate::auto::calls::{CallRow, RouteRecord};
+use crate::auto::calls::{CallRow, PersistedCall, RouteRecord};
 use crate::auto::decide::classify::{bump_tool_inspection_off_easy, record, RecordPlan};
 use crate::auto::{body, jev, new_request_id, valid_budget_key, Auto, Hints, Reject};
 use crate::history::{usage_from_output, History};
@@ -51,6 +51,7 @@ pub async fn route(
     let tiers = auto.tiers();
     let policy = &tiers.route;
     let key = request.budget_key.clone();
+    auto.restore_budget_key(input.history, &key).await;
     auto.bind_hints(
         None,
         &Hints {
@@ -97,7 +98,7 @@ pub async fn route(
         (classified, selection)
     };
     if classified.cost_micros > 0 {
-        auto.add_cost(None, Some(&key), classified.cost_micros);
+        auto.charge(input.history, None, Some(&key), classified.cost_micros);
     }
 
     let chosen = &candidates[selection.index];
@@ -116,30 +117,36 @@ pub async fn route(
         ),
         Candidate::Agent { .. } => (None, "agent".to_string()),
     };
-    auto.record_call(
-        request_id.clone(),
-        CallRow {
-            model: model.clone().unwrap_or_else(|| chosen.id().to_string()),
-            tier,
-            trigger: "route".to_string(),
-            input_tokens: classified.input_tokens,
-            output_tokens: classified.output_tokens,
-            cache_read_tokens: 0,
-            cache_write_tokens: 0,
-            cost_usd: classified.cost_micros as f64 / 1_000_000.0,
-            cost_source: classified.cost_source,
-            route: Some(RouteRecord {
-                choice: chosen.id().to_string(),
-                band: classified.band.as_str(),
-                reason: reason.clone(),
-                classifier: match classified.how {
-                    Classification::Used => "used",
-                    Classification::NotUsed(_) => "fallback",
-                    Classification::BudgetReached => "skipped",
-                },
-                depth: request.task.depth,
-                budget_key: key,
-            }),
+    let row = CallRow {
+        model: model.clone().unwrap_or_else(|| chosen.id().to_string()),
+        tier,
+        trigger: "route".to_string(),
+        input_tokens: classified.input_tokens,
+        output_tokens: classified.output_tokens,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        cost_usd: classified.cost_micros as f64 / 1_000_000.0,
+        cost_source: classified.cost_source,
+        route: Some(RouteRecord {
+            choice: chosen.id().to_string(),
+            band: classified.band.as_str(),
+            reason: reason.clone(),
+            classifier: match classified.how {
+                Classification::Used => "used",
+                Classification::NotUsed(_) => "fallback",
+                Classification::BudgetReached => "skipped",
+            },
+            depth: request.task.depth,
+            budget_key: key.clone(),
+        }),
+    };
+    auto.record_call_persisted(
+        input.history,
+        PersistedCall {
+            request_id: request_id.clone(),
+            session_id: None,
+            budget_key: Some(key),
+            row,
         },
     );
     Ok(RouteResponse {

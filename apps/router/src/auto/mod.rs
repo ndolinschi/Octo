@@ -23,7 +23,7 @@ pub use body::{
     subagent_task_hash, trim_housekeeping, with_model, with_online_suffix, HousekeepingTrim,
     ShapePlan, ShapeResult, DEFAULT_MAX_TOKENS, PROTECTED_STRIP_FIELDS,
 };
-pub use calls::{new_request_id, CallRow, RouteRecord};
+pub use calls::{new_request_id, CallRow, PersistedCall, RouteRecord};
 pub use catalog::{
     band_rank, bare_id, bump_band, complexity_band, context_length, larger_fit,
     max_completion_tokens, strip_model_marker, supports_reasoning, LargerFit,

@@ -974,6 +974,7 @@ async fn r7_spend_is_restored_from_history_without_a_budget() {
         client_tool_names: None,
         bg_signal: None,
         hk_text_signal: None,
+        request_id: None,
         cache_read_tokens: None,
         cache_write_tokens: None,
         generation_id: None,

@@ -16,7 +16,7 @@ Loader: `src/config.rs` merges known fragment names; missing files are skipped.
 | `anthropic.toml` | `[anthropic]` | Messages URL/path, default API version |
 | `llm.toml` | `[llm.chat]` / `[llm.messages]` | Default backends |
 | `decision.toml` | `[decision]` | Decisions backend |
-| `history.toml` | `[history]` | SQLite path, token key, `store_payloads` |
+| `history.toml` | `[history]` | SQLite path, token key, `store_payloads`, call-record / budget-spend retention |
 | `autoroute.toml` | `[autoroute]` | Ladder, sticky/stall, budget, strip/require, observe flags |
 | `prices.toml` | `[prices."<slug>"]` | USD/1M rates (four required) + optional `billed_as` |
 

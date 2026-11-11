@@ -199,6 +199,8 @@ Budget rules apply inside these bounds: a budget cap may still pick a cheaper ti
 
 The effective budget for a budget key is the smaller of `x-octo-budget-usd` and `autoroute.session_budget_usd` (0 means the configured one is off, so the header alone applies). Spend accumulates per budget key from every call (reported cost first, then the price estimate) including compaction calls and classifier calls made with a session id.
 
+**Spend survives a restart.** Every charge to a budget key is also added (off the request path) to the `budget_spend` table of the SQLite history database. The first request that names a key the process does not hold (after a restart, or after the key was idle for an hour and left memory) reads that key's persisted total once and seeds the in-memory ledger with it, so `x-octo-spent-usd` and budget rejection are correct from then on. Chosen over deriving spend from the call records because records are pruned by age and count while a project's spend must not shrink with them, and over a start-up scan because keys are unbounded and the in-memory ledger forgets idle keys anyway. Cost: one primary-key read on the first request per key per process. Spend of sessions without a budget key is unchanged: it is restored from the history `calls` and `decisions` rows of that session. Without a history database (`history disabled`) spend is in memory only, as before.
+
 Action when spend reaches the budget:
 
 - the budget came from the header (header is smaller than or equal to the configured budget, or the configured one is off): always **reject**, because the harness's project budget is a hard cap;
@@ -233,7 +235,11 @@ Set on the response head, so they are available before a streamed body starts. S
 - 404 `{"error":"unknown or unfinished request",...}` until the response body has ended (the row is written when the stream finishes, before the client sees the end of the body), and for ids that were evicted or never existed.
 - `cost_source` is `reported` when the cost came from the upstream (OpenRouter `usage.cost` or BYOK upstream cost) and `estimated` otherwise (`prices.toml`; when nothing is priced `cost_usd` is `0` and the source is `estimated`).
 - Failed responses (non-2xx) and cancelled ones (client dropped the stream) get a row too, with the tokens known so far (estimated for dropped streams) and no cost when unknown.
-- Storage: a bounded in-memory store of the most recent 4096 calls. Rows are lost on restart. The SQLite history keeps its own `calls` rows (without the request id).
+- Storage: a read-through pair. The most recent 4096 calls are cached in memory and answered first; every finished call is also written (off the response path, after the stream ends) to the `autoroute_calls` table of the SQLite history database, and a miss in the cache is answered from there. Records therefore survive a restart. With the history database disabled or `sqlite::memory:` the persistence lasts as long as the process (memory) or is absent (disabled), and only the cache answers.
+- A record is the JSON shown above (plus `route` for routing decisions). It holds no prompt text, and it is written whatever `history.store_payloads` says; the only free text in it is the `route.reason`, which the router builds from fixed phrases and the candidates' ids and labels.
+- The history `calls` row of a proxied call has a `request_id` column with the same `octo_...` id, so the two can be joined. Route decisions and compactions are in `autoroute_calls` (compactions in `calls` too, with their id).
+- Retention (`config/history.toml`): `calls_max_age_days` (30), `calls_max_rows` (100000), `budget_spend_max_age_days` (90, counted from the last charge), `0` disables a limit. A background pass every `prune_interval_secs` (600; `0` = never prune) deletes in batches of 500 with a pause between batches, so it holds the database's single writer only briefly and no request waits for it. The `calls` / `decisions` history tables are not pruned.
+- What a crash loses: writes are queued after the response body ends. A process kill within a few milliseconds of a call finishing, or a burst that fills the 32-insert queue for more than 5 seconds (the existing history rule, counted in `dropped_inserts`), loses that call's record and its spend increment; a graceful shutdown drains them. The in-memory spend is not affected until the next restart.
 - Cost per call also feeds the budget ledger above; the harness does not have to sum anything itself.
 
 ### Compaction
@@ -328,7 +334,7 @@ Band to tier: `easy` -> `fast`, `medium` -> `balanced`, `hard` -> `deep`.
 
 ### Call record
 
-The decision is stored as a call record (in memory, same store as the proxy calls) and readable through `GET /autoroute/v1/calls/{request_id}`: `trigger: "route"`, `model` is the ladder slug (API choice) or the agent id, `tier` is `low`/`mid`/`high` or `agent`, token counts and `cost_usd` are those of the classifier call (zero when it did not run), and an extra `route` object carries `choice`, `band`, `reason`, `classifier` (`used`, `fallback`, `skipped`), `depth` and `budget_key`. The classifier call is also written to the SQLite history as a decision row with purpose `route`.
+The decision is stored as a call record (same read-through store as the proxy calls) and readable through `GET /autoroute/v1/calls/{request_id}`: `trigger: "route"`, `model` is the ladder slug (API choice) or the agent id, `tier` is `low`/`mid`/`high` or `agent`, token counts and `cost_usd` are those of the classifier call (zero when it did not run), and an extra `route` object carries `choice`, `band`, `reason`, `classifier` (`used`, `fallback`, `skipped`), `depth` and `budget_key`. The classifier call is also written to the SQLite history as a decision row with purpose `route`.
 
 ### Config (`[autoroute.route]`, `config/autoroute.toml`)
 

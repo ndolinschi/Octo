@@ -6,3 +6,15 @@ token_key = ""
 # When false, omit request/response text fields (store NULL) while keeping
 # tokens, costs, model, tier, triggers, client_* and session_outcomes.
 store_payloads = true
+
+# Autoroute call records (GET /autoroute/v1/calls/{id}) and per-budget-key spend
+# are persisted here so they survive a restart. 0 disables that limit.
+# Call records older than this many days are deleted.
+calls_max_age_days = 30
+# At most this many call records are kept (oldest deleted first).
+calls_max_rows = 100000
+# A budget key's persisted spend is forgotten after this many days without a charge.
+budget_spend_max_age_days = 90
+# Seconds between background prune passes (0 = never prune). Pruning runs in small
+# batches off the request path.
+prune_interval_secs = 600

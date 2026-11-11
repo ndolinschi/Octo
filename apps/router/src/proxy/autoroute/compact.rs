@@ -7,7 +7,9 @@ use axum::{
 };
 use serde_json::Value;
 
-use crate::auto::{new_request_id, parent_session_id, session_key, CallRow, Compact, Hints};
+use crate::auto::{
+    new_request_id, parent_session_id, session_key, CallRow, Compact, Hints, PersistedCall,
+};
 use crate::history::{
     describe_input, request_payload, resolve_cost, response_payload, token_from_headers,
     usage_from_output, CallKind, CallProvider, FinishedCall, Millis,
@@ -172,24 +174,33 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         .and_then(parent_session_id)
         .map(str::to_string);
     if let Some(cost) = resolved.cost {
-        plan.state
-            .auto
-            .add_cost(session.as_deref(), plan.hints.budget_key.as_deref(), cost.0);
+        plan.state.auto.charge(
+            &plan.state.history,
+            session.as_deref(),
+            plan.hints.budget_key.as_deref(),
+            cost.0,
+        );
     }
     let served = model.clone().unwrap_or_default();
-    plan.state.auto.record_call(
-        plan.request_id.to_string(),
-        CallRow {
-            model: served.clone(),
-            tier: plan.state.auto.tiers().band(&served).to_string(),
-            trigger: "compact".to_string(),
-            input_tokens: usage.input_tokens.map_or(0, |t| t.0),
-            output_tokens: usage.output_tokens.map_or(0, |t| t.0),
-            cache_read_tokens: usage.cache_read_tokens.map_or(0, |t| t.0),
-            cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
-            cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
-            cost_source: crate::providers::utils::cost_source_label(resolved.source),
-            route: None,
+    let row = CallRow {
+        model: served.clone(),
+        tier: plan.state.auto.tiers().band(&served).to_string(),
+        trigger: "compact".to_string(),
+        input_tokens: usage.input_tokens.map_or(0, |t| t.0),
+        output_tokens: usage.output_tokens.map_or(0, |t| t.0),
+        cache_read_tokens: usage.cache_read_tokens.map_or(0, |t| t.0),
+        cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
+        cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
+        cost_source: crate::providers::utils::cost_source_label(resolved.source),
+        route: None,
+    };
+    plan.state.auto.record_call_persisted(
+        &plan.state.history,
+        PersistedCall {
+            request_id: plan.request_id.to_string(),
+            session_id: session.clone(),
+            budget_key: plan.hints.budget_key.clone(),
+            row,
         },
     );
     let generation_id = plan.header_generation_id.or(usage.generation_id.clone());
@@ -238,6 +249,7 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         tier_before: None,
         tier_after: None,
         trigger: "compact".to_string(),
+        request_id: Some(plan.request_id.to_string()),
     });
     Recorded { model: served }
 }

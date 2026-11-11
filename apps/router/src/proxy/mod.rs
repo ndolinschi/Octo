@@ -5,13 +5,25 @@ pub mod handler;
 pub mod routes;
 pub mod select;
 
+use std::time::Duration;
+
 use tracing::info;
 
 use crate::config::Config;
-use crate::history::History;
+use crate::history::{History, Retention};
 use crate::proxy::select::{ChatCompatProvider, MessagesProvider};
 use crate::routes::router;
 use crate::state::AppState;
+
+fn retention_from(config: &Config) -> Retention {
+    let days = |n: u64| (n > 0).then(|| Duration::from_secs(n.saturating_mul(86_400)));
+    Retention {
+        calls_max_age: days(config.history_calls_max_age_days),
+        calls_max_rows: (config.history_calls_max_rows > 0)
+            .then_some(config.history_calls_max_rows),
+        spend_max_age: days(config.history_budget_spend_max_age_days),
+    }
+}
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config = Config::load()?;
@@ -39,7 +51,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Ok(history) => {
             state.history = history
                 .with_prices(config.prices.clone())
-                .with_store_payloads(config.history_store_payloads);
+                .with_store_payloads(config.history_store_payloads)
+                .with_retention(retention_from(&config));
+            state
+                .history
+                .spawn_pruner(Duration::from_secs(config.history_prune_interval_secs));
             info!(
                 database = %config.history_database_path,
                 "history database ready"

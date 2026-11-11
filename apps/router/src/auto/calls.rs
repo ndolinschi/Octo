@@ -21,6 +21,14 @@ pub struct CallRow {
     pub route: Option<RouteRecord>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PersistedCall {
+    pub request_id: String,
+    pub session_id: Option<String>,
+    pub budget_key: Option<String>,
+    pub row: CallRow,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RouteRecord {
     pub choice: String,
