@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
@@ -83,6 +84,8 @@ type Orchestrator struct {
 
 	acp *acpHost
 
+	defaultOrch atomic.Pointer[string] // the server default orchestrator (SetDefaultOrchestrator)
+
 	mu     sync.Mutex
 	turns  map[string]context.CancelFunc
 	sides  map[string]*side
@@ -95,6 +98,8 @@ func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Option
 		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle),
 		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), sides: make(map[string]*side),
 	}
+	def := opts.DefaultOrchestrator
+	o.defaultOrch.Store(&def)
 	o.wg.Add(1)
 	go func() {
 		defer o.wg.Done()

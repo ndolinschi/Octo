@@ -5,6 +5,7 @@ Product docs for the Go agent harness (`apps/harness/`). Operational notes and b
 | Doc | Contents |
 | --- | --- |
 | [architecture.md](./architecture.md) | Modules, project server, data flow, tools, CLI, Octo integration |
+| [settings.md](./settings.md) | `GET`/`PUT /v1/settings`: the settings list (ids, kinds, apply mode), `harness.env` writing, router settings for the desktop shell, security rules |
 | [acp-orchestrator.md](./acp-orchestrator.md) | Running a project's orchestrator as an ACP agent: config, sessions, harness tools over MCP, limits |
 
 ## Security

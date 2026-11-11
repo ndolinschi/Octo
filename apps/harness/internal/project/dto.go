@@ -45,7 +45,7 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 	if err != nil {
 		return Project{}, err
 	}
-	models := s.defaults.Models
+	models := s.Defaults().Models
 	if err := json.Unmarshal([]byte(info.ModelsJSON), &models); err != nil {
 		return Project{}, err
 	}

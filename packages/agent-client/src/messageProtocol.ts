@@ -8,7 +8,7 @@ export type MessagePortLike = {
 };
 
 export type Theme = "dark" | "light";
-export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer">;
+export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer" | "getSettings" | "putSettings">;
 export type WireError = { status: number; code: string; message: string };
 
 export type ClientMessage =

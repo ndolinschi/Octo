@@ -21,6 +21,9 @@ const (
 	SideDelta      = "side.delta"
 	SideDone       = "side.done"
 	SideError      = "side.error"
+	// SettingsChanged carries the ids of settings a PUT /v1/settings changed
+	// (never values). It is delivered on every project stream.
+	SettingsChanged = "settings.changed"
 )
 
 // Sources of a file.changed event.
@@ -79,6 +82,21 @@ func (h *Hub) Publish(projectID, typ string, fields map[string]any) {
 			delete(s.subs, ch)
 			close(ch)
 		}
+	}
+}
+
+// PublishAll delivers an event that belongs to no project (settings.changed) on
+// every project stream that exists, each stamped with its own seq. There is no
+// global stream: a client watching any project hears it.
+func (h *Hub) PublishAll(typ string, fields map[string]any) {
+	h.mu.Lock()
+	ids := make([]string, 0, len(h.projects))
+	for id := range h.projects {
+		ids = append(ids, id)
+	}
+	h.mu.Unlock()
+	for _, id := range ids {
+		h.Publish(id, typ, fields)
 	}
 }
 

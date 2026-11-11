@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 // AllowEnvVar names the operator's extra allow-list: comma separated exact
@@ -71,7 +72,7 @@ var endpointSuffixes = []string{"_BASE_URL", "_API_BASE"}
 var (
 	denyPrefixes = []string{
 		"ANTHROPIC_", "OPENAI_", "XAI_", "GROK_CODE_", "GEMINI_", "GOOGLE_GENAI_",
-		"GOOGLE_API_KEY", "OPENROUTER_", "HARNESS_",
+		"GOOGLE_API_KEY", "OPENROUTER_", "HARNESS_", "OCTO_ROUTER_",
 	}
 	denyExact = map[string]bool{"OCTO_KEY": true, "OCTO_HISTORY_TOKEN_KEY": true, "OCTO_CONFIG": true}
 )
@@ -111,19 +112,32 @@ func (a Allow) has(upper string) bool {
 	return false
 }
 
-// operator is read once, when the process starts.
-var operator = func() Allow {
-	spec := os.Getenv(AllowEnvVar)
+// operator is the live operator allow-list. It starts from the process
+// environment and is swapped by SetAllow (after harness.env is read, and when
+// the settings API changes HARNESS_CHILD_ENV_ALLOW), so it is an atomic pointer.
+var operator = func() *atomic.Pointer[Allow] {
+	var p atomic.Pointer[Allow]
+	a := ParseAllow(os.Getenv(AllowEnvVar))
+	p.Store(&a)
+	return &p
+}()
+
+// SetAllow replaces the operator allow-list with spec ("NAME,PREFIX_*"). Safe
+// to call while children are being started; a child already running keeps the
+// environment it was given.
+func SetAllow(spec string) {
 	a := ParseAllow(spec)
+	operator.Store(&a)
 	if len(a.exact)+len(a.prefixes) > 0 {
 		slog.Info("child processes also get these environment variables", "allow", spec)
 	}
-	return a
-}()
+}
+
+func currentAllow() Allow { return *operator.Load() }
 
 // Scrub returns the entries of environ (KEY=VALUE) a child may see, using the
 // operator allow-list read at start-up. The input is not changed.
-func Scrub(environ []string) []string { return ScrubWith(environ, operator) }
+func Scrub(environ []string) []string { return ScrubWith(environ, currentAllow()) }
 
 // ScrubWith is Scrub with an explicit operator allow-list.
 func ScrubWith(environ []string, op Allow) []string {
@@ -190,7 +204,7 @@ func secretLike(upper string) bool {
 // resolved env), so extra deliberately wins and can pass a key. The bash tool
 // calls it with no extra.
 func Build(environ []string, extra map[string]string) []string {
-	return BuildWith(environ, extra, operator)
+	return BuildWith(environ, extra, currentAllow())
 }
 
 // BuildWith is Build with an explicit operator allow-list.

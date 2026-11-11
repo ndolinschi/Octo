@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/budget"
@@ -45,6 +46,7 @@ type Service struct {
 	store    *projectstore.Store
 	hub      *events.Hub
 	turns    Turns
+	mu       sync.RWMutex // guards defaults.Models (SetDefaultTiers)
 	defaults Defaults
 	prices   prices.Table
 	router   *router.Router
@@ -118,7 +120,27 @@ func NewService(store *projectstore.Store, hub *events.Hub, turns Turns, default
 	return s
 }
 
-func (s *Service) Defaults() Defaults { return s.defaults }
+// Defaults returns a copy of the current defaults (they can change while the
+// server runs, see SetDefaultTiers).
+func (s *Service) Defaults() Defaults {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	d := s.defaults
+	d.Models.AutoCandidates = slices.Clone(d.Models.AutoCandidates)
+	return d
+}
+
+// SetDefaultTiers swaps the default orchestrator and tier models used for
+// projects created from now on (and for fields a stored project lacks). The
+// caller has validated them. Safe concurrently with every other method.
+func (s *Service) SetDefaultTiers(orchestrator, fast, balanced, deep string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.defaults.Models.Orchestrator = orchestrator
+	s.defaults.Models.Fast = fast
+	s.defaults.Models.Balanced = balanced
+	s.defaults.Models.Deep = deep
+}
 
 // Recover settles agents a previous process left running.
 func (s *Service) Recover(ctx context.Context) error {
@@ -175,7 +197,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if in.Name == nil || strings.TrimSpace(*in.Name) == "" {
 		return Project{}, invalid("name is required")
 	}
-	depth := s.defaults.MaxDepth
+	depth := s.Defaults().MaxDepth
 	if in.MaxDepth != nil {
 		depth = *in.MaxDepth
 	}
@@ -193,7 +215,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err := s.ValidateModels(in.Models); err != nil {
 		return Project{}, err
 	}
-	models, err := mergeModels(s.defaults.Models, in.Models)
+	models, err := mergeModels(s.Defaults().Models, in.Models)
 	if err != nil {
 		return Project{}, err
 	}

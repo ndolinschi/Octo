@@ -190,3 +190,37 @@ func TestDefaultOrchestratorRunsTurnOnACPAgentWithoutKey(t *testing.T) {
 		t.Fatalf("%d upstream requests, want 0", n)
 	}
 }
+
+func TestSetDefaultOrchestratorAppliesToTheNextLookupUnderConcurrency(t *testing.T) {
+	agents := []plugins.Agent{agentWith("claude-code", true, bp(true))}
+	r := newRigWith(t, &upstreamCounter{}, orchestrator.Options{
+		BuiltinUnavailable: config.NoBuiltinLoopMessage, DefaultOrchestrator: "old-default",
+		AgentSource: func() []plugins.Agent { return agents },
+	})
+	// A project holding the old default runs on the ready ACP agent.
+	if got := r.orch.EffectiveOrchestrator("old-default"); got != "acp:claude-code" {
+		t.Fatalf("effective(old) = %q", got)
+	}
+	r.orch.SetDefaultOrchestrator("new-default")
+	if got := r.orch.EffectiveOrchestrator("new-default"); got != "acp:claude-code" {
+		t.Fatalf("effective(new) = %q", got)
+	}
+	// What was the default is now an explicit choice and stays as it is.
+	if got := r.orch.EffectiveOrchestrator("old-default"); got != "old-default" {
+		t.Fatalf("effective(old) after swap = %q", got)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 300; i++ {
+			r.orch.SetDefaultOrchestrator("a")
+			r.orch.SetDefaultOrchestrator("b")
+		}
+	}()
+	for i := 0; i < 300; i++ {
+		_ = r.orch.DefaultOrchestrator()
+		_ = r.orch.EffectiveOrchestrator("a")
+	}
+	<-done
+}

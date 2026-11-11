@@ -17,6 +17,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
+	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/limits"
@@ -26,6 +27,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+	"github.com/ndolinschi/Octo/apps/harness/internal/settings"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/remote"
 )
@@ -64,7 +66,9 @@ func serveConfig(args []string) (config.Config, string, error) {
 
 	// The settings file fills only variables the process environment lacks,
 	// so it is read before the environment becomes a Config.
-	config.LoadEnvFile(config.ResolveDataDir(*dataDir))
+	fromFile := config.LoadEnvFile(config.ResolveDataDir(*dataDir))
+	// The operator allow-list of child processes was read before the file was.
+	childenv.SetAllow(os.Getenv(childenv.AllowEnvVar))
 	cfg, err := config.Load()
 	if err != nil {
 		return config.Config{}, "", err
@@ -91,6 +95,7 @@ func serveConfig(args []string) (config.Config, string, error) {
 		cfg.RemoteBases = remoteBases
 	}
 	cfg.PluginDirs = append(cfg.PluginDirs, pluginDirs...)
+	cfg.EnvFromFile = fromFile
 	return cfg, *addr, nil
 }
 
@@ -148,8 +153,13 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth},
 		project.WithPrices(priceTable), project.WithRouter(octo), project.WithACPAgents(pluginReg))
 	// A model setting that names an ACP agent must name a loaded, available one.
+	// A settings file written earlier can name an agent that has since gone
+	// away; the app must still start so the setting can be fixed in it.
 	if err := svc.ValidateModels(&cfg.Models); err != nil {
-		return fmt.Errorf("default models: %w", err)
+		slog.Warn("default models ignored: falling back to the built-in models", "err", err)
+		cfg.Models = config.BuiltinModels()
+		svc.SetDefaultTiers(cfg.Models.Orchestrator, cfg.Models.Fast, cfg.Models.Balanced, cfg.Models.Deep)
+		orch.SetDefaultOrchestrator(cfg.Models.Orchestrator)
 	}
 	if err := svc.Recover(ctx); err != nil {
 		return fmt.Errorf("restart recovery: %w", err)
@@ -161,13 +171,24 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		return err
 	}
 	orch.SetBridgeURL("http://" + net.JoinHostPort(loopbackHost(ln.Addr()), portOf(ln.Addr())))
+	settingsMgr := settings.New(settings.Options{
+		DataDir: cfg.DataDir, FromFile: cfg.EnvFromFile, ValidateModels: svc.ValidateModels,
+		Apply: settings.Applier{
+			Models: func(o, f, b, d string) {
+				svc.SetDefaultTiers(o, f, b, d)
+				orch.SetDefaultOrchestrator(o)
+			},
+			ChildEnvAllow: childenv.SetAllow,
+		},
+		Notify: func(ids []string) { hub.PublishAll(events.SettingsChanged, map[string]any{"ids": ids}) },
+	})
 	baseCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
 			bridge.WithMCP(orch.MCPHandler(bridge.Version)),
 			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
-			bridge.WithBuiltinLoop(builtinOK, builtinReason), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator)),
+			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoop(builtinOK, builtinReason), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator)),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
@@ -205,6 +226,13 @@ func loopbackHost(a net.Addr) string {
 		return t.IP.String()
 	}
 	return "127.0.0.1"
+}
+
+// isLoopbackAddr is true for a listener bound to a loopback IP; 0.0.0.0 and
+// :: (every interface) are not.
+func isLoopbackAddr(a net.Addr) bool {
+	t, ok := a.(*net.TCPAddr)
+	return ok && t.IP != nil && t.IP.IsLoopback()
 }
 
 func portOf(a net.Addr) string {

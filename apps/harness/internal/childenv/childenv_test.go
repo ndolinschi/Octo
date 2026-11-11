@@ -121,3 +121,36 @@ func TestBuildExtraPassesUnlistedKey(t *testing.T) {
 		t.Fatalf("Build = %v, want %v", got, want)
 	}
 }
+
+func TestSetAllowSwapsTheOperatorListSafelyUnderConcurrency(t *testing.T) {
+	t.Cleanup(func() { childenv.SetAllow("") })
+	environ := []string{"PATH=/bin", "MY_TOOL_HOME=/x", "OCTO_ROUTER_UPSTREAM_KEY=secret", "OCTO_ROUTER_ENABLED=1"}
+	childenv.SetAllow("MY_TOOL_*, OCTO_ROUTER_*")
+	got := childenv.Scrub(environ)
+	if !slices.Contains(got, "MY_TOOL_HOME=/x") {
+		t.Fatalf("operator entry not passed: %v", got)
+	}
+	// The router's settings never reach a child, not even by allow-list.
+	for _, kv := range got {
+		if kv == "OCTO_ROUTER_UPSTREAM_KEY=secret" || kv == "OCTO_ROUTER_ENABLED=1" {
+			t.Fatalf("router setting leaked: %v", got)
+		}
+	}
+	childenv.SetAllow("")
+	if got := childenv.Scrub(environ); slices.Contains(got, "MY_TOOL_HOME=/x") {
+		t.Fatalf("allow-list not cleared: %v", got)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 500; i++ {
+			childenv.SetAllow("MY_TOOL_*")
+			childenv.SetAllow("")
+		}
+	}()
+	for i := 0; i < 500; i++ {
+		_ = childenv.Build(environ, nil)
+	}
+	<-done
+}

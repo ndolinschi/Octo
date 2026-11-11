@@ -143,3 +143,22 @@ in a running app; the macOS bundle and `install.sh` were not run.
   successful start is not watched (the harness's calls then fail upstream); a restart fixes it.
 - `scripts/build-sidecar.sh --no-router` (or `OCTO_NO_ROUTER=1`) writes an executable placeholder so `tauri-build` finds the file; a real binary is never overwritten
   by it. `scripts/install.sh` always builds the real router.
+
+## As built — P7 (2026-11-11)
+
+`GET` / `PUT /v1/settings` (guide: `apps/harness/docs/settings.md`). Verified by the orchestrator: Go gates, both
+e2e scripts, agent-client lint and 64 tests. **Not verified:** a hand-run server with a browser or the Tauri shell;
+the shell and the harness writing `harness.env` at the same moment.
+
+- Setting ids are the variable names: `ANTHROPIC_API_KEY`, `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP`,
+  `HARNESS_CHILD_ENV_ALLOW`, and the router group `OCTO_ROUTER_ENABLED`, `OCTO_ROUTER_UPSTREAM_KEY`,
+  `OCTO_ROUTER_BASE_URL` (stored and reported by the harness, used by the shell; never passed to child processes).
+- The router holds no provider key: with the bundled router on, the shell starts the harness with
+  `ANTHROPIC_API_KEY` = the upstream key, so that setting reads `editable: false` with a `note` saying why.
+- Models and the allow list apply at once (running turns keep what they started with); keys and the router
+  settings list themselves in `restart_required` until the process is restarted.
+- Refused (403) on a non-loopback bind, peer or `Host`, and for any foreign `Origin`.
+- `settings.changed` (ids only) is published on every project stream — there is no global stream.
+- A settings file naming an `acp:` agent that no longer exists logs a warning and falls back instead of stopping
+  the server. A project created before a default change keeps its stored models.
+- `Bridge.getSettings` / `putSettings` are optional interface members (the demo bridge does not have them yet).

@@ -99,11 +99,24 @@ func (m Models) ForTier(tier string) string {
 func DefaultModels() Models { return defaultModels() }
 
 func defaultModels() Models {
+	b := BuiltinModels()
 	return Models{
-		Orchestrator: envOr("HARNESS_MODEL_ORCHESTRATOR", "claude-sonnet-5-5"),
-		Fast:         envOr("HARNESS_MODEL_FAST", "claude-haiku-5-5"),
-		Balanced:     envOr("HARNESS_MODEL_BALANCED", "claude-sonnet-5-5"),
-		Deep:         envOr("HARNESS_MODEL_DEEP", "claude-opus-5-5"),
+		Orchestrator: envOr("HARNESS_MODEL_ORCHESTRATOR", b.Orchestrator),
+		Fast:         envOr("HARNESS_MODEL_FAST", b.Fast),
+		Balanced:     envOr("HARNESS_MODEL_BALANCED", b.Balanced),
+		Deep:         envOr("HARNESS_MODEL_DEEP", b.Deep),
+		TierPolicy:   TierPolicyAuto,
+	}
+}
+
+// BuiltinModels returns the compiled-in tiers, with no environment applied: what
+// a setting falls back to once its HARNESS_MODEL_* value is removed.
+func BuiltinModels() Models {
+	return Models{
+		Orchestrator: "claude-sonnet-5-5",
+		Fast:         "claude-haiku-5-5",
+		Balanced:     "claude-sonnet-5-5",
+		Deep:         "claude-opus-5-5",
 		TierPolicy:   TierPolicyAuto,
 	}
 }
@@ -138,6 +151,9 @@ type Config struct {
 	// HARNESS_READ_FILE_LINES).
 	Limits tools.Limits
 	Models Models
+	// EnvFromFile names the variables harness.env supplied (set by the serve
+	// command, used by the settings API to tell them from the environment's own).
+	EnvFromFile []string
 	// ACPIdle is how long an ACP-run orchestrator's agent process may sit idle
 	// before it is shut down (HARNESS_ACP_IDLE, a Go duration such as 90s or
 	// 30m; default 30m).

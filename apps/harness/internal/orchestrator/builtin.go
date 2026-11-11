@@ -42,7 +42,7 @@ var preferredAgents = []string{"claude-code", "codex", "copilot"}
 // so, or it has no probe. With no such agent the built-in default stays and its
 // turn fails with the unavailable message.
 func (o *Orchestrator) EffectiveOrchestrator(model string) string {
-	if o.opts.BuiltinUnavailable == "" || plugins.IsACPRef(model) || model != o.opts.DefaultOrchestrator {
+	if o.opts.BuiltinUnavailable == "" || plugins.IsACPRef(model) || model != o.serverDefault() {
 		return model
 	}
 	if a, ok := o.readyAgent(); ok {
@@ -71,10 +71,16 @@ func (o *Orchestrator) readyAgent() (plugins.Agent, bool) {
 	return plugins.Agent{}, false
 }
 
+// SetDefaultOrchestrator swaps the server default orchestrator model; turns
+// that start afterwards see it. Safe concurrently with running turns.
+func (o *Orchestrator) SetDefaultOrchestrator(model string) { o.defaultOrch.Store(&model) }
+
+func (o *Orchestrator) serverDefault() string { return *o.defaultOrch.Load() }
+
 // DefaultOrchestrator is what a project without an explicit orchestrator runs
 // on right now (EffectiveOrchestrator of the server default).
 func (o *Orchestrator) DefaultOrchestrator() string {
-	return o.EffectiveOrchestrator(o.opts.DefaultOrchestrator)
+	return o.EffectiveOrchestrator(o.serverDefault())
 }
 
 // loggedIn: the probe says true, or the agent has no probe.

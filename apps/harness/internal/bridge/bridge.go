@@ -27,7 +27,10 @@ type Server struct {
 	limits  LimitSource
 	router  RouterInfo
 	mcp     http.Handler
-	ping    time.Duration
+
+	settings         SettingsStore
+	settingsLoopback bool
+	ping             time.Duration
 
 	builtinOff  string        // reason the built-in loop is unavailable; "" = available
 	defaultOrch func() string // the orchestrator a project without a choice runs now
@@ -90,6 +93,10 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /v1/config", s.config)
 	mux.HandleFunc("GET /v1/plugins", s.listPlugins)
+	if s.settings != nil {
+		mux.HandleFunc("GET /v1/settings", s.getSettings)
+		mux.HandleFunc("PUT /v1/settings", s.putSettings)
+	}
 	mux.HandleFunc("GET /v1/usage", s.usage)
 	mux.HandleFunc("GET /v1/limits", s.listLimits)
 	mux.HandleFunc("GET /v1/projects", s.listProjects)

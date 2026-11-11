@@ -17,6 +17,8 @@ import type {
   ProjectInput,
   ProjectSummary,
   SideMessage,
+  SettingsUpdate,
+  SettingsView,
   SideStarted,
   Transcript,
   UsageParams,
@@ -95,6 +97,14 @@ export interface Bridge {
   getUsage(params?: UsageParams): Promise<UsageReport>;
   getLimits(): Promise<Limit[]>;
   listLanguageServers(projectId: string): Promise<LanguageServerInfo[]>;
+  /**
+   * Settings (provider keys, default models, router switch, child-env allow list) stored in the harness's
+   * `harness.env`. Optional: only the HTTP bridge implements them (the message bridge and the demo bridge do not);
+   * hosts check for presence. The harness answers 403 unless it listens on loopback and the caller is loopback.
+   */
+  getSettings?(): Promise<SettingsView>;
+  /** Validates the whole update, writes it atomically, applies what can apply at once. Secrets are write-only. */
+  putSettings?(update: SettingsUpdate): Promise<SettingsView>;
   openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
@@ -120,6 +130,7 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "side.delta",
   "side.done",
   "side.error",
+  "settings.changed",
 ];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -165,7 +176,10 @@ function parseEvent(data: unknown): BridgeEvent | undefined {
   return parsed as BridgeEvent;
 }
 
-export function createHttpBridge(options: HttpBridgeOptions): Bridge {
+/** What {@link createHttpBridge} returns: every method is implemented, the optional ones included. */
+export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSettings">>;
+
+export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
 
   async function request(method: string, path: string, body?: unknown): Promise<unknown> {
@@ -252,6 +266,8 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
     getUsage: (params) => request("GET", `/v1/usage${usageQuery(params)}`) as Promise<UsageReport>,
     getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
     listLanguageServers: (id) => unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
+    getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
+    putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     openLanguageServer: (id, serverId) =>
       openLspSession(
         {

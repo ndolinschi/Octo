@@ -236,6 +236,12 @@ export type FileChangedEvent = {
   source: "user" | "agent";
 };
 
+/**
+ * Settings were changed through PUT /v1/settings: the ids that changed, never values. The harness has no global
+ * stream, so it arrives on the stream of every project; refetch GET /v1/settings (and /v1/config) when it does.
+ */
+export type SettingsChangedEvent = { type: "settings.changed"; seq: number; ids: string[] };
+
 export type BridgeEvent =
   | AgentCreatedEvent
   | AgentUpdatedEvent
@@ -250,7 +256,8 @@ export type BridgeEvent =
   | AgentCompactedEvent
   | SideDeltaEvent
   | SideDoneEvent
-  | SideErrorEvent;
+  | SideErrorEvent
+  | SettingsChangedEvent;
 
 export type BridgeEventType = BridgeEvent["type"];
 
@@ -398,3 +405,59 @@ export type Limit = {
   resets_at: string | null;
   observed_at: string;
 };
+
+/** How a setting is edited: `secret` is write-only (never returned), `model` is a model id or an {@link AcpModelRef}. */
+export type SettingKind = "secret" | "text" | "bool" | "model" | "list";
+export type SettingGroup = "keys" | "models" | "router" | "advanced";
+/**
+ * Where the effective value comes from. `environment` and `flag` win over the settings file, so such a setting is
+ * shown with `editable: false`.
+ */
+export type SettingSource = "file" | "environment" | "flag" | "default";
+export type SettingValue = string | boolean | string[];
+
+export type Setting = {
+  /** The variable name in `harness.env`. */
+  id: string;
+  kind: SettingKind;
+  label: string;
+  group: SettingGroup;
+  /** Absent for secrets and for a text or list setting that is not set. bool: boolean, list: string[], else string. */
+  value?: SettingValue;
+  /** A value exists (in the file or the environment). For a secret this is all there is to know besides `hint`. */
+  set?: boolean;
+  /** A secret: "…" and its last four characters (only for a long secret). Otherwise a one-line help text. */
+  hint?: string;
+  /** Why the setting is locked, when not obvious (for example "set by the app while the bundled router is on"). */
+  note?: string;
+  source: SettingSource;
+  /** `now`: takes effect without a restart. `restart`: the harness (and the shell's sidecars) must be restarted. */
+  applies: "now" | "restart";
+  editable: boolean;
+};
+
+export type SettingsView = {
+  settings: Setting[];
+  /** Ids written in this process's lifetime whose new value is not applied yet. */
+  restart_required: string[];
+};
+
+/** Everything is validated before anything is written; `set` of a text or list setting to "" / [] removes it. */
+export type SettingsUpdate = {
+  set?: Record<string, SettingValue>;
+  /** Removes the line: the setting returns to its default. */
+  unset?: string[];
+};
+
+/** The setting ids, as written in `harness.env`. The router ones are read by the desktop shell, not by the harness. */
+export const SETTING_IDS = {
+  anthropicApiKey: "ANTHROPIC_API_KEY",
+  routerUpstreamKey: "OCTO_ROUTER_UPSTREAM_KEY",
+  modelOrchestrator: "HARNESS_MODEL_ORCHESTRATOR",
+  modelFast: "HARNESS_MODEL_FAST",
+  modelBalanced: "HARNESS_MODEL_BALANCED",
+  modelDeep: "HARNESS_MODEL_DEEP",
+  routerEnabled: "OCTO_ROUTER_ENABLED",
+  routerBaseUrl: "OCTO_ROUTER_BASE_URL",
+  childEnvAllow: "HARNESS_CHILD_ENV_ALLOW",
+} as const;

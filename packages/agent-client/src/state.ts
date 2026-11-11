@@ -160,6 +160,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     }
     case "project.updated":
     case "file.changed":
+    case "settings.changed": // not about this project
       return state;
   }
 }
