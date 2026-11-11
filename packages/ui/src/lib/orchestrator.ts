@@ -77,3 +77,42 @@ export function agentActivity(state: ProjectState, agentId: string): string {
   if (tool) return ACTIVITY[tool.name] ?? `Using ${tool.name}…`;
   return state.streaming[agentId] ? "Writing…" : "Thinking…";
 }
+
+/**
+ * The agents of the orchestrator's latest turn (decision 34's team line): every sub-agent that started at or after the
+ * orchestrator's last turn began, in start order. Empty before the first turn.
+ */
+export function lastTeam(agents: readonly Agent[]): Agent[] {
+  const root = agents.find((a) => a.parent_id === null);
+  const since = root?.started_at ? Date.parse(root.started_at) : NaN;
+  if (Number.isNaN(since)) return [];
+  return agents.filter((a) => a.parent_id !== null && Date.parse(a.started_at ?? a.created_at) >= since).sort(byStart);
+}
+
+/** The idle team line: "Last ran 3 agents, 1h ago", "Worked alone, 2h ago" (no "·" joiners: craft rule). */
+export function teamLine(count: number, at: string | null, now: number): string {
+  const what = count === 0 ? "Worked alone" : `Last ran ${count} ${count === 1 ? "agent" : "agents"}`;
+  return at ? `${what}, ${timeAgo(at, now)}` : what;
+}
+
+export type TeamRole = { role: string; count: number; status: Agent["status"]; agent: Agent };
+
+/**
+ * The team grouped by role for the header chips ("Code explorer ×4"): first-seen order; the group's status is the most
+ * urgent of its agents (running, then failed, then the rest); `agent` is the one a click opens — the running one, else
+ * the latest.
+ */
+export function teamRoles(team: readonly Agent[]): TeamRole[] {
+  const rank = (s: Agent["status"]) => (s === "running" ? 2 : s === "failed" ? 1 : 0);
+  const out: TeamRole[] = [];
+  for (const a of team) {
+    const g = out.find((x) => x.role === a.role);
+    if (!g) out.push({ role: a.role, count: 1, status: a.status, agent: a });
+    else {
+      g.count += 1;
+      if (rank(a.status) > rank(g.status)) g.status = a.status;
+      if (rank(a.status) >= rank(g.agent.status)) g.agent = a;
+    }
+  }
+  return out;
+}

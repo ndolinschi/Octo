@@ -12,19 +12,22 @@ function firstWords(text: string, n = 6): string {
   return words.length > n ? `${words.slice(0, n).join(" ")}…` : words.join(" ");
 }
 
-/** Marker pitch: 8px while the rail fits, compressed down to 3px, then the rail scrolls (current kept in view). */
-const PITCH = 8;
+/**
+ * Marker pitch: 24px while the rail fits (decision 36: each marker a 24×24 target), compressed down to 3px for long
+ * conversations, then the rail scrolls (current kept in view).
+ */
+const PITCH = 24;
 const MIN_PITCH = 3;
 
 /**
  * One slim marker per request, stacked in the conversation's left padding (never over the column, 12px
- * clear of it). The rail never grows past the visible height (`maxHeight`): the pitch compresses from 8px
+ * clear of it). The rail never grows past the visible height (`maxHeight`): the pitch compresses from 24px
  * to 3px, and beyond that the rail scrolls with the request in view kept inside it. Inactive ticks are
  * quiet (`line-strong`); the request in view is emphasised (reuses the sidebar's in-view tracking). Hover
  * or focus shows a compact card with the request's first lines and its state, kept inside the rail's
- * height; click / Enter scrolls to it. One tab stop (roving focus, ↑/↓/Home/End). Markers sit below the
- * 24px hit-area rule, like the dividers: the rail is a skimming aid, and every request is also reachable
- * from the sidebar and the palette.
+ * height; click / Enter scrolls to it. One tab stop (roving focus, ↑/↓/Home/End). Each marker is a 24px-wide
+ * target as tall as the pitch: 24×24 while the rail fits; a compressed rail trades height for fitting (every request
+ * is also reachable from the palette).
  */
 export function TurnRail({ requests, projectId, now, maxHeight }: { requests: RequestSummary[]; projectId: string; now: number; maxHeight: number }) {
   const nav = useNav();
@@ -99,7 +102,8 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
                   setShown(req.id);
                 }}
                 onBlur={() => setShown((s) => (s === req.id ? null : s))}
-                className="group/mark grid h-full w-3 place-items-center rounded-2xs"
+                // Decision 36: 24px wide (it grows leftwards, away from the column) × the pitch (24 while the rail fits).
+                className="group/mark relative grid h-full w-3 place-items-center rounded-2xs before:absolute before:inset-y-0 before:right-0 before:w-6 before:content-['']"
               >
                 <span
                   aria-hidden

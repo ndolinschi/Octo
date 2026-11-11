@@ -1,7 +1,9 @@
 import type { Limit } from "@octo/agent-client";
 import { useMemo } from "react";
 import { cn } from "../../lib/cn";
-import { useNow } from "../../lib/hooks";
+import { useNow, usePageVisible } from "../../lib/hooks";
+import { toolTab } from "../../state/workspace/layout";
+import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { isStale, limitKindLabel, observedLabel, remainingShare, remainingText, resetLabel, sortLimits } from "../../lib/usage";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
@@ -22,7 +24,7 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
       data-limit
       data-stale={stale ? "" : undefined}
       title={`${limit.model} on ${limit.provider}: ${limitKindLabel(limit.kind).toLowerCase()}${stale ? " — stale: no response with these headers for over 10 minutes" : ""}`}
-      className={cn("flex flex-col gap-1 rounded-sm px-2 py-2", stale && "opacity-60")}
+      className="flex flex-col gap-1 rounded-sm px-2 py-2"
     >
       <div className="flex h-5 min-w-0 items-center gap-2 text-sm">
         {/* The model, then the kind muted: two runs with a gap, no "·" joiner. */}
@@ -33,11 +35,9 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
         <span className="shrink-0 text-xs text-fg-2 tabular-nums">{remainingText(limit)}</span>
       </div>
       <span
-        role="meter"
-        aria-label={`${name} remaining`}
-        aria-valuemin={0}
-        aria-valuemax={limit.limit ?? 0}
-        aria-valuenow={limit.remaining ?? 0}
+        {...(limit.limit
+          ? { role: "meter", "aria-label": `${name} remaining`, "aria-valuemin": 0, "aria-valuemax": limit.limit, "aria-valuenow": limit.remaining ?? 0 }
+          : { "aria-hidden": true })}
         className="h-1 overflow-hidden rounded-full bg-line"
       >
         {share !== null && <span className={cn("block h-full rounded-full", share < LOW ? "bg-err" : "bg-fg-3")} style={{ width: `${share * 100}%` }} />}
@@ -45,7 +45,8 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
       <div className="flex h-4 items-center gap-3 text-xs text-fg-3 tabular-nums">
         {reset && <span>{reset}</span>}
         <span>{observedLabel(limit.observed_at, now)}</span>
-        {stale && <span className="ml-auto">stale</span>}
+        {/* Stale is said, not dimmed (decision 36: a dimmed block fell under 4.5:1). */}
+        {stale && <span className="ml-auto text-fg-2">Stale</span>}
       </div>
     </div>
   );
@@ -53,13 +54,17 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
 
 /**
  * Limits: one row per provider + model + kind from `getLimits()` (the latest rate-limit headers the harness saw) with
- * a bar of remaining / limit, a live reset countdown and when it was observed; rows older than 10 minutes are dimmed.
+ * a bar of remaining / limit, a live reset countdown and when it was observed; rows older than 10 minutes say "Stale".
  * Plan limits of external (ACP) agents are not readable by the harness, so that section names the agents and says
  * where those limits are shown, without numbers.
  */
 export function UsageLimits() {
-  const { limits, agents } = useLimits();
-  const now = useNow(true);
+  const ws = useWorkspace();
+  // Decision 36: nothing polls or ticks while the Usage tab is hidden (it stays mounted) or the page is.
+  const pageVisible = usePageVisible();
+  const shown = ws.isVisible(toolTab("usage")) && pageVisible;
+  const { limits, agents } = useLimits(shown);
+  const now = useNow(true, undefined, !shown);
   const groups = useMemo(() => {
     if (limits.status !== "ok") return [];
     const by = new Map<string, Limit[]>();

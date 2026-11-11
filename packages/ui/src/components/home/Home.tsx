@@ -2,6 +2,7 @@ import type { ProjectSummary } from "@octo/agent-client";
 import { Plus } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { cn } from "../../lib/cn";
+import { focusSoon, visibleComposer } from "../../lib/focus";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { formatRelative } from "../../lib/format";
 import { useNow, useRowKeys } from "../../lib/hooks";
@@ -36,8 +37,6 @@ export function Home({ onNewProject, onSearch, onUsage }: { onNewProject(): void
       <StreakLayer preset={STREAK_HOME} theme={theme} />
       <div className="relative mx-auto flex w-full max-w-home flex-col gap-6 px-6 pt-10 pb-8 max-sm:px-4">
         <div className="relative">
-          {/* The title sits on the band: a soft local scrim keeps it ≥ 4.5:1 (the band is not dimmed). */}
-          <div aria-hidden className="octo-streak-scrim" />
           <h1 id="home-title" className="relative text-center text-display text-fg">
             What should we work on?
           </h1>
@@ -80,7 +79,7 @@ function Projects({ data, now, onNewProject, onSearch }: { data: ReturnType<type
   const shown = rows.slice(0, PROJECT_ROWS);
   const rest = rows.length - shown.length;
   return (
-    <div ref={list} role="group" aria-label="Projects and their orchestrators" className="octo-card flex flex-col rounded-lg p-1">
+    <div ref={list} role="group" aria-label="Projects and their orchestrators" className="octo-card octo-card-dense flex flex-col rounded-lg p-1">
       {data.projects === null && <SkeletonRows count={3} />}
       {shown.map(({ p, s }) => (
         <ProjectRow key={p.id} project={p} state={s} reply={data.requests.replies.get(p.id)} loaded={data.requests.replies.has(p.id)} now={now} />
@@ -130,7 +129,11 @@ function ProjectRow({
     <button
       type="button"
       data-row
-      onClick={() => navigate(project.id)}
+      onClick={() => {
+        navigate(project.id);
+        // Decision 35: the opened project's composer takes focus (the row that had it is gone with Home).
+        focusSoon(visibleComposer, { timeout: 3000 });
+      }}
       title={`${project.name} — ${line}${second ? `\n${second}` : ""}`}
       className="flex h-bar w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left press-row focus-inset hover:bg-hover"
     >

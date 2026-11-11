@@ -184,8 +184,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     : pendingComments > 0
       ? "Add a message (optional)"
       : props.followUp
-        ? "Send follow-up"
-        : "Message the orchestrator";
+        ? "Next request…"
+        : "Ask the orchestrator…";
   const folders = props.folders.map((f) => f.label).join(", ");
   const model = props.model;
   const chooseModel = (next: string) => {
@@ -297,7 +297,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onClick={() => void props.onCancel()}
             aria-label="Stop the current turn"
             title="Stop"
-            className={cn(control, "bg-primary text-primary-fg hover:opacity-90")}
+            className={cn(control, "bg-hover text-fg hover:bg-active")}
           >
             <Glyph icon={Square} size={14} fill="currentColor" />
           </button>
@@ -307,7 +307,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             disabled={!canSend}
             aria-label="Send message"
             title="Send"
-            className={cn(control, "bg-primary text-primary-fg hover:opacity-90 disabled:bg-active disabled:text-fg-3 disabled:opacity-100")}
+            className={cn(
+              control,
+              // Decision 33: quiet (fg on the hover fill) while there is nothing to send; solid only when there is.
+              canSend ? "bg-primary text-primary-fg hover:opacity-90" : "bg-hover text-fg-3 disabled:opacity-100",
+            )}
           >
             <Glyph icon={ArrowUp} size={16} />
           </button>

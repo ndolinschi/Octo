@@ -248,7 +248,8 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
   } catch (e) {
     status = e === CANCELLED ? "cancelled" : "failed";
     error = e === CANCELLED ? null : errorMessage(e);
-    ctx.t = Math.max(ctx.t, Date.now());
+    // A cancel happens now; a scripted failure in the past keeps its own time.
+    if (status === "cancelled") ctx.t = Math.max(ctx.t, Date.now());
     for (const a of rec.agents) {
       if (a.status === "running" && a.parent_id !== null) {
         updateAgent(ctx, a.id, { status: "cancelled", error: "Cancelled by user", finished_at: iso(ctx) });
@@ -257,7 +258,8 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
     rec.streaming.clear();
     rec.activeTools.clear();
   }
-  updateAgent(ctx, orch.id, { status: "idle", finished_at: iso(ctx) });
+  // Like the harness: a failed turn leaves the orchestrator `failed` with its error ("Needs you"); otherwise idle.
+  updateAgent(ctx, orch.id, status === "failed" ? { status: "failed", error, finished_at: iso(ctx) } : { status: "idle", error: null, finished_at: iso(ctx) });
   rec.project.status = "idle";
   rec.turn = null;
   touch(ctx);

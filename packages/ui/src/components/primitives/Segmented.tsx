@@ -5,8 +5,9 @@ import { listKeyTarget } from "../../lib/focus";
 export type Segment<T extends string | number> = { id: T; label: string; title?: string };
 
 /**
- * A segmented control: one hairline track (radius 8, 2px inset) holding equal segments (radius 6), the chosen
- * one filled with `active` (the selected-row fill). `size` 28 (the Usage tab's Tokens | Cost | Limits) or 24 (range, scope). One tab stop;
+ * A segmented control (decision 33): 24px, text only, no track or border; the chosen segment is marked by the
+ * `hover` fill (never an accent or a solid fill). Segments are as wide as their labels and never truncate — a
+ * panel holds at most one of these, and a control that does not fit folds into a menu instead. One tab stop;
  * ←/→ / Home / End move and choose (a radio group).
  */
 export function Segmented<T extends string | number>(props: {
@@ -14,7 +15,6 @@ export function Segmented<T extends string | number>(props: {
   options: readonly Segment<T>[];
   value: T;
   onChange(value: T): void;
-  size?: 24 | 28;
   className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -38,7 +38,7 @@ export function Segmented<T extends string | number>(props: {
       tabIndex={-1}
       aria-label={props.label}
       onKeyDown={onKeyDown}
-      className={cn("flex shrink-0 rounded-md border border-line p-0.5", props.size === 24 ? "h-chip" : "h-row", props.className)}
+      className={cn("flex h-chip shrink-0 gap-0.5", props.className)}
     >
       {props.options.map((o) => {
         const on = o.id === props.value;
@@ -51,11 +51,7 @@ export function Segmented<T extends string | number>(props: {
             tabIndex={on ? 0 : -1}
             title={o.title}
             onClick={() => props.onChange(o.id)}
-            className={cn(
-              "min-w-0 flex-1 truncate rounded-sm px-2 press-row focus-inset",
-              props.size === 24 ? "text-xs" : "text-sm",
-              on ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg-2",
-            )}
+            className={cn("shrink-0 rounded-sm px-2 text-sm whitespace-nowrap press-row focus-inset", on ? "bg-hover text-fg" : "text-fg-3 hover:text-fg-2")}
           >
             {o.label}
           </button>

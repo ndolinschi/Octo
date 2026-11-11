@@ -19,14 +19,27 @@ export function useLatest<T>(value: T): RefObject<T> {
  * stable between ticks, so memoised children that take it (the transcript) don't re-render on
  * unrelated updates such as scrolling.
  */
-export function useNow(active: boolean, intervalMs = NOW_ACTIVE_MS): number {
+export function useNow(active: boolean, intervalMs = NOW_ACTIVE_MS, paused = false): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    // Paused (a hidden tab or page): no timer at all; the clock catches up when it shows again.
+    if (paused) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), active ? intervalMs : CLOCK_IDLE_MS);
     return () => window.clearInterval(id);
-  }, [active, intervalMs]);
+  }, [active, intervalMs, paused]);
   return now;
+}
+
+/** Whether the page is visible (`document.visibilityState`); polling and clocks stop while it is not (decision 36). */
+export function usePageVisible(): boolean {
+  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
+  useEffect(() => {
+    const on = () => setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", on);
+    return () => document.removeEventListener("visibilitychange", on);
+  }, []);
+  return visible;
 }
 
 export function useMediaQuery(query: string): boolean {

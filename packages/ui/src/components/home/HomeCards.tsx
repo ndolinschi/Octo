@@ -92,7 +92,7 @@ function TeamRow({ project, agent, now }: { project: ProjectSummary; agent: Agen
 
 /* ---------- activity ---------- */
 
-const TONES = ["bg-hover", "octo-heat-1", "octo-heat-2", "octo-heat-3", "octo-heat-4"] as const;
+const TONES = ["octo-heat-0", "octo-heat-1", "octo-heat-2", "octo-heat-3", "octo-heat-4"] as const;
 
 /** Integer cell sizes (measured) so the 26 × 7 grid is crisp at DPR 1. */
 function useCell(columns: number): [React.RefObject<HTMLDivElement | null>, number] {

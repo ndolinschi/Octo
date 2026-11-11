@@ -1,4 +1,36 @@
-# Handover — status when work was paused (2026-11-10, later session)
+# Handover — status on 2026-11-11
+
+**Branch:** `claude/harness-ui-v6-completion-8ynrkq`, to be merged to `main` by pull request; follow-up work starts
+from fresh `main`. The sections below are earlier handovers; "How to run" and "How the work was orchestrated" are
+still accurate, their status tables are superseded by this one.
+
+| Area | State | Verified by the orchestrator | Not verified |
+| --- | --- | --- | --- |
+| UI v6.2 and v6.3 part 1 (`specs/2026-11-10-project-harness-ui.md`, decisions 23, 25, 29, 32–36) | Built | Frontend gates, screenshots | Touch, screen reader, Tauri shell, live backend |
+| Frontend quality Q1–Q4 (`plans/2026-11-10-frontend-code-quality.md`) | Layer rule as lint errors, no cycles, `@octo/ui/demo` | Gates | Pixel comparison (executor's numbers only) |
+| Router ↔ harness I1 (`specs/2026-11-11-router-harness-integration.md`) | Hints, result headers, one ledger, project budget, compaction applied | Both apps' gates, `apps/harness/scripts/e2e-router.sh` | Compaction and `ceiling`/`fixed` jointly on the real router; a real upstream |
+| Harness: context breakdown, side question, compaction markers | Built (API); UI not yet | Go gates | — |
+| Child environment allow-list (bash tool, ACP agents, language servers, probes); `served_model` on agents | Built | Go gates | `HARNESS_CHILD_ENV_ALLOW` on a running server |
+| Orchestrator on an ACP agent — S2 (`specs/2026-11-10-subscription-agents-design.md`, `apps/harness/docs/acp-orchestrator.md`) | Built | Go gates, `scripts/e2e-acp-orchestrator.sh` | **Any real CLI or MCP client** — scripted agent only |
+| Eleven agent manifests (`plugins-examples/subscription-agents`) | Written | — | None was run |
+
+## Next, in order
+
+1. Owner's live run: `harness serve` with a logged-in Claude Code and `models.orchestrator: "acp:claude-code"`;
+   `apps/harness/scripts/test-subscriptions.sh`.
+2. UI part 2: decisions 24, 26–28, 30, 31, 37–40; show `served_model`; thinking / plan updates of ACP agents; the
+   open majors of `research/2026-11-11-ui-review-v6.2.md`; decision 42 is the bar for every pass.
+3. v7 (`specs/2026-11-10-v7-changes-queue-approvals.md`): changes and diffs (incl. files changed through bash, by
+   a before/after snapshot of the folder), queue, approvals — which also receive ACP permission requests
+   (`internal/permission`) and the forms of decision 43; tables (decision 44).
+4. Q5; bots (`specs/2026-11-11-bots-design.md`); I2 / I3; the harness items of
+   `research/2026-11-11-synara-gap.md`; SQLite persistence of router call records.
+
+Open owner decisions: router ladder (inverted by price); S3 a or b (default a); Grok in tests; bots questions 1–2.
+
+---
+
+# Earlier handover (2026-11-10, later session)
 
 **Branch:** `claude/harness-ui-v6-completion-8ynrkq` (continues `claude/project-harness-ui-redesign-qdnem2`; no pull request opened).
 The section below this one is the earlier handover and is still accurate for how to run things and how the work is orchestrated.

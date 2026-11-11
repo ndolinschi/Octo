@@ -112,6 +112,7 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
       <GroupProvider group={group}>
         <TabStrip
           label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`}
+          groupId={group.id}
           tabs={strip.tabs}
           active={strip.active}
           focused={focused}
@@ -127,9 +128,10 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
                   key={t}
                   id={`${domId(t)}-panel`}
                   role="tabpanel"
+                  tabIndex={-1}
                   aria-labelledby={`${domId(t)}-tab`}
                   hidden={t !== group.active}
-                  className="absolute inset-0 flex flex-col"
+                  className="absolute inset-0 flex flex-col focus:outline-none focus-visible:shadow-none"
                 >
                   <TabView tab={t} />
                 </div>

@@ -6,7 +6,7 @@
  * system. Exit code 1 when there are violations (or skipped states with --strict), 0 otherwise.
  *
  *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--only <state>] [--json <path>]
- *                                              [--strict] [--selftest] [--query "demo=1"] [--list]
+ *                                              [--strict] [--selftest] [--query "demo=1"] [--list] [--help]
  *
  * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance (see RULES below).
  * States that cannot be reached are reported as `skipped` with a reason, never as a crash.
@@ -45,6 +45,25 @@ const JSON_OUT = opt("--json", null);
 const STRICT = flag("--strict");
 const SELFTEST = flag("--selftest");
 const QUERY = opt("--query", "demo=1");
+const HELP = `Spacing audit — drives the running UI (demo data) and reports spacing violations.
+
+Usage: node packages/ui/scripts/spacing-audit.mjs [options]
+
+  --url <base>      dev server to audit (default http://localhost:1420); demo data is required
+  --query <q>       query string for the app (default "demo=1")
+  --only <state>    audit one state (see --list)
+  --json <path>     also write the full report as JSON
+  --strict          exit 1 when a state is skipped (unreachable), not only on violations
+  --selftest        run the in-page rules against a synthetic page first
+  --list            print the states and their viewports, then exit
+  --help, -h        this text
+
+Exit code: 0 = total 0, 1 = violations (or skips with --strict), 2 = bad arguments.
+Rules: ${RULES.join(", ")}.`;
+if (flag("--help") || flag("-h")) {
+  console.log(HELP);
+  process.exit(0);
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Playwright resolution: local, then the global node path.
@@ -95,9 +114,12 @@ const settle = (page, ms = 250) => page.waitForTimeout(ms);
 async function openProject(page, ctx, name) {
   const href = ctx.hrefs[name];
   if (!href) skip(`project "${name}" not found in the sidebar`);
-  await page.evaluate((h) => {
-    window.location.hash = h;
-  }, href.slice(href.indexOf("#")));
+  await page.evaluate(
+    (h) => {
+      window.location.hash = h;
+    },
+    href.slice(href.indexOf("#")),
+  );
   try {
     await page.locator("[data-dock-group]").first().waitFor({ timeout: T });
   } catch {
@@ -169,7 +191,81 @@ async function openFileMatching(page, re, what) {
 }
 
 /** @type {{ id: string; viewports: {width:number;height:number}[]; run(page, ctx): Promise<void>; checks?: string[] }[]} */
+/** Opens a tool tab from the header strip, or through the folded "Project tools" menu in a narrow group. */
+async function openTool(page, label) {
+  const btn = page.getByRole("button", { name: label, exact: true }).first();
+  if ((await btn.count()) && (await btn.isVisible())) await btn.click({ timeout: T });
+  else {
+    const menu = page.getByRole("button", { name: "Project tools" }).last();
+    if (!(await menu.count())) skip(`button "${label}" not found`);
+    await menu.click({ timeout: T });
+    await page.getByRole("menuitem", { name: label }).click({ timeout: T });
+  }
+  await settle(page, 900);
+}
+
+const HOME_VPS = [...WIDE, { width: 390, height: 844 }];
+
 const STATES = [
+  {
+    id: "home",
+    viewports: HOME_VPS,
+    async run(page) {
+      await page.evaluate(() => {
+        window.location.hash = "#/";
+      });
+      try {
+        await page.locator("[data-home]").first().waitFor({ timeout: T });
+      } catch {
+        skip("Home did not render");
+      }
+      await settle(page, 1500);
+    },
+  },
+  {
+    id: "empty-project",
+    viewports: HOME_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Design system tokens");
+      await waitChat(page);
+      await settle(page, 900);
+    },
+  },
+  {
+    id: "usage",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Orbit mobile");
+      await openTool(page, "Show usage");
+      if (!(await page.locator("[data-usage]").count())) skip("Usage tab did not render");
+    },
+  },
+  {
+    id: "details-tab",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await openTool(page, "Show project details");
+      await settle(page, 1200);
+    },
+  },
+  {
+    id: "integrations",
+    viewports: HOME_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.keyboard.press("Control+k");
+      try {
+        await page.getByRole("dialog", { name: "Command palette" }).waitFor({ timeout: T });
+      } catch {
+        skip("Ctrl+K did not open the command palette");
+      }
+      await page.keyboard.type("Open integrations");
+      await settle(page, 400);
+      await page.keyboard.press("Enter");
+      await settle(page, 1200);
+    },
+  },
   {
     id: "chat-idle",
     viewports: CHAT_VPS,
@@ -231,7 +327,11 @@ const STATES = [
     async run(page, ctx) {
       await openProject(page, ctx, "Atlas API");
       await openFileMatching(page, /\.ts$/, ".ts file");
-      await page.locator(".monaco-editor").first().waitFor({ timeout: T }).catch(() => {});
+      await page
+        .locator(".monaco-editor")
+        .first()
+        .waitFor({ timeout: T })
+        .catch(() => {});
       await settle(page, 600);
     },
   },
@@ -309,8 +409,7 @@ function auditInPage(cfg) {
     if (r.width <= 1 && r.height <= 1) return false; // sr-only / clipped-away helpers
     return r.width > 0 || r.height > 0;
   };
-  const skipSubtree = (el) =>
-    el.closest(".monaco-editor, svg, [data-audit-ignore], vite-error-overlay") !== null || el instanceof SVGElement;
+  const skipSubtree = (el) => el.closest(".monaco-editor, svg, [data-audit-ignore], vite-error-overlay") !== null || el instanceof SVGElement;
   const text = (el) => (el.innerText || el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 32);
   const seg = (el) => {
     let s = el.tagName.toLowerCase();
@@ -318,7 +417,11 @@ function auditInPage(cfg) {
     const role = el.getAttribute("role");
     if (role) s += `[role=${role}]`;
     for (const a of el.getAttributeNames()) {
-      if (a.startsWith("data-") && !["data-state", "data-tab-id", "data-label", "data-dragging", "data-turn-id", "data-dock-group"].includes(a) && !/^data-(radix|react)/.test(a)) {
+      if (
+        a.startsWith("data-") &&
+        !["data-state", "data-tab-id", "data-label", "data-dragging", "data-turn-id", "data-dock-group"].includes(a) &&
+        !/^data-(radix|react)/.test(a)
+      ) {
         s += `[${a}]`;
         break;
       }
@@ -352,17 +455,8 @@ function auditInPage(cfg) {
   // ---- row sets
   const SIDEBAR_ROW =
     'nav[aria-label="Projects"] li > a, nav[aria-label="Projects"] li > button, nav[aria-label="Projects"] li > div > a, nav[aria-label="Projects"] li > div > button';
-  const DELEGATION_ROW =
-    'section[aria-label^="Delegated"] a[aria-label^="Open "], section[aria-label$="in parallel"] a[aria-label^="Open "]';
-  const ROW_SEL = [
-    '[role="tab"]',
-    '[role="treeitem"]',
-    '[role="menuitem"]',
-    '[role="menuitemradio"]',
-    '[role="option"]',
-    "[data-row]",
-    SIDEBAR_ROW,
-  ].join(",");
+  const DELEGATION_ROW = 'section[aria-label^="Delegated"] a[aria-label^="Open "], section[aria-label$="in parallel"] a[aria-label^="Open "]';
+  const ROW_SEL = ['[role="tab"]', '[role="treeitem"]', '[role="menuitem"]', '[role="menuitemradio"]', '[role="option"]', "[data-row]", SIDEBAR_ROW].join(",");
   const isRow = (el) => el.matches(ROW_SEL);
   const isDelegationRow = (el) => el.matches(DELEGATION_ROW);
 
@@ -403,7 +497,8 @@ function auditInPage(cfg) {
       check("row-gap", pxOf(el, cs, "row-gap"));
       check("column-gap", pxOf(el, cs, "column-gap"));
       if (/^(absolute|fixed|sticky)$/.test(cs.position)) {
-        const centred = (cs.translate && cs.translate !== "none") || (cs.transform && cs.transform !== "none" && !/^matrix\(1, 0, 0, 1, 0, 0\)$/.test(cs.transform));
+        const centred =
+          (cs.translate && cs.translate !== "none") || (cs.transform && cs.transform !== "none" && !/^matrix\(1, 0, 0, 1, 0, 0\)$/.test(cs.transform));
         if (!centred) {
           for (const s of SIDES) {
             if (el.style.getPropertyValue(s)) continue; // JS-positioned (popover coordinates), not authored spacing
@@ -472,7 +567,13 @@ function auditInPage(cfg) {
         const dl = r.left - ref[2].left;
         const dr = r.right - ref[2].right;
         if (Math.abs(dl) > TOL || Math.abs(dr) > TOL)
-          report("edges", e, `${n} vs ${ref[0]}`, `left ${r1(r.left)} right ${r1(r.right)} (d ${r1(dl)} / ${r1(dr)})`, `left ${r1(ref[2].left)} right ${r1(ref[2].right)} (±${TOL})`);
+          report(
+            "edges",
+            e,
+            `${n} vs ${ref[0]}`,
+            `left ${r1(r.left)} right ${r1(r.right)} (d ${r1(dl)} / ${r1(dr)})`,
+            `left ${r1(ref[2].left)} right ${r1(ref[2].right)} (±${TOL})`,
+          );
       }
     }
   }
@@ -557,10 +658,24 @@ function auditInPage(cfg) {
         const first = texts.map((t) => t.rect.top).sort((a, b) => a - b)[0];
         if (first !== undefined) measures.overlap.firstTextTop = r1(first);
         for (const t of texts) {
-          if (hit(hr, t.rect)) report("overlap", t.node, "chat header vs transcript text", `text "${t.snippet}" ${r1(t.rect.top)}..${r1(t.rect.bottom)}`, `no intersection with header ${r1(hr.top)}..${r1(hr.bottom)}`);
+          if (hit(hr, t.rect))
+            report(
+              "overlap",
+              t.node,
+              "chat header vs transcript text",
+              `text "${t.snippet}" ${r1(t.rect.top)}..${r1(t.rect.bottom)}`,
+              `no intersection with header ${r1(hr.top)}..${r1(hr.bottom)}`,
+            );
         }
         // The header must also sit above the scroll area.
-        if (hr.bottom > sr.top + TOL) report("overlap", header, "chat header vs transcript area", `header bottom ${r1(hr.bottom)} > transcript top ${r1(sr.top)}`, "header ends where the transcript starts");
+        if (hr.bottom > sr.top + TOL)
+          report(
+            "overlap",
+            header,
+            "chat header vs transcript area",
+            `header bottom ${r1(hr.bottom)} > transcript top ${r1(sr.top)}`,
+            "header ends where the transcript starts",
+          );
       }
       const jump = [...document.querySelectorAll('button[aria-label="Jump to latest"]')].find(visible);
       if (jump) {
@@ -568,7 +683,14 @@ function auditInPage(cfg) {
         measures.overlap.jump = "present";
         for (const t of texts) {
           if (jump.contains(t.node)) continue;
-          if (hit(jr, t.rect)) report("overlap", t.node, "Jump to latest vs transcript text", `text "${t.snippet}" ${r1(t.rect.left)},${r1(t.rect.top)}`, `no intersection with button ${r1(jr.left)},${r1(jr.top)} ${r1(jr.width)}x${r1(jr.height)}`);
+          if (hit(jr, t.rect))
+            report(
+              "overlap",
+              t.node,
+              "Jump to latest vs transcript text",
+              `text "${t.snippet}" ${r1(t.rect.left)},${r1(t.rect.top)}`,
+              `no intersection with button ${r1(jr.left)},${r1(jr.top)} ${r1(jr.width)}x${r1(jr.height)}`,
+            );
         }
       } else measures.overlap.jump = "absent";
     }
@@ -596,12 +718,19 @@ function auditInPage(cfg) {
       if (!(pl > 0 || pr > 0)) continue;
       const transparent = (c) => !c || c === "transparent" || /rgba\(.*,\s*0\)$/.test(c);
       const hasBg = !transparent(cs.backgroundColor) || cs.backgroundImage !== "none";
-      const hasBorder = ["Top", "Right", "Bottom", "Left"].some((s) => parseFloat(cs[`border${s}Width`]) > 0 && cs[`border${s}Style`] !== "none" && !transparent(cs[`border${s}Color`]));
+      const hasBorder = ["Top", "Right", "Bottom", "Left"].some(
+        (s) => parseFloat(cs[`border${s}Width`]) > 0 && cs[`border${s}Style`] !== "none" && !transparent(cs[`border${s}Color`]),
+      );
       if (!hasBg && !hasBorder) continue;
       const diff = Math.abs(pl - pr);
-      const hasIcon = [...el.querySelectorAll("svg, [data-meta]")].some(visible) || [...el.children].some((c) => visible(c) && c.getBoundingClientRect().width <= 16 && c.getBoundingClientRect().height <= 16 && !(c.textContent ?? "").trim());
+      const hasIcon =
+        [...el.querySelectorAll("svg, [data-meta]")].some(visible) ||
+        [...el.children].some(
+          (c) => visible(c) && c.getBoundingClientRect().width <= 16 && c.getBoundingClientRect().height <= 16 && !(c.textContent ?? "").trim(),
+        );
       const allowedDiff = hasIcon ? 4 : TOL;
-      if (diff > allowedDiff + 1e-6) report("inset-balance", el, "padding-left vs padding-right", `${r1(pl)} / ${r1(pr)}`, hasIcon ? "equal, or differ by <= 4 with an icon slot" : "equal");
+      if (diff > allowedDiff + 1e-6)
+        report("inset-balance", el, "padding-left vs padding-right", `${r1(pl)} / ${r1(pr)}`, hasIcon ? "equal, or differ by <= 4 with an icon slot" : "equal");
     }
   }
 
@@ -643,6 +772,10 @@ function injectBad() {
 // Runner
 // ---------------------------------------------------------------------------------------------------------------
 async function main() {
+  if (flag("--list")) {
+    for (const st of STATES) console.log(`${st.id.padEnd(18)} ${st.viewports.map((v) => `${v.width}x${v.height}`).join(" ")}`);
+    return;
+  }
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch();
   const report = { base: BASE, strict: STRICT, selftest: SELFTEST, allowList: ALLOW, results: [], totals: {}, skipped: [] };
@@ -687,7 +820,17 @@ async function main() {
 
   for (const state of states) {
     for (const vp of state.viewports) {
-      const entry = { state: state.id, viewport: `${vp.width}x${vp.height}`, status: "ok", reason: null, counts: {}, violations: [], suppressed: {}, measures: {}, scanned: 0 };
+      const entry = {
+        state: state.id,
+        viewport: `${vp.width}x${vp.height}`,
+        status: "ok",
+        reason: null,
+        counts: {},
+        violations: [],
+        suppressed: {},
+        measures: {},
+        scanned: 0,
+      };
       const ctx = await browser.newContext({ viewport: vp });
       await ctx.addInitScript(() => {
         try {
@@ -765,7 +908,9 @@ async function main() {
           entry.reason = e.message;
         } else {
           entry.status = "skipped";
-          entry.reason = `error: ${String(e.message ?? e).split("\n")[0].slice(0, 200)}`;
+          entry.reason = `error: ${String(e.message ?? e)
+            .split("\n")[0]
+            .slice(0, 200)}`;
         }
       }
       await ctx.close();

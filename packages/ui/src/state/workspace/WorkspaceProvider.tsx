@@ -1,4 +1,4 @@
-import { focusSoon } from "../../lib/focus";
+import { focusSoon, focusSurfaceSoon } from "../../lib/focus";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
@@ -19,6 +19,8 @@ import {
 } from "../../lib/constants";
 import { createRequiredContext } from "../../lib/context";
 import { TabMemory, USAGE_VIEW } from "./tabMemory";
+import { jumpIndex, mruOrder, mruTouch, pushClosed, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
+import { useTabKeys } from "./useTabKeys";
 import { domId, tabButton } from "./ids";
 import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
 import { type FileKey, keyFolder } from "../../lib/files";
@@ -83,7 +85,20 @@ export type WorkspaceValue = {
   /** Moves divider `index` (between group index and index+1) by `px`. */
   resize(index: number, px: number): void;
   equalize(): void;
-  cycle(delta: 1 | -1): void;
+  /** Activates the `step`-th tab of the focused group in most-recently-used order (Ctrl+Tab while Ctrl is held). */
+  cycle(step: number, order: TabId[]): void;
+  /** The focused group's tabs in most-recently-used order (taken when a Ctrl+Tab walk starts). */
+  mruOrder(): TabId[];
+  /** Ends a Ctrl+Tab walk: the tab it stopped on becomes the most recent. */
+  endCycle(): void;
+  /** Ctrl/Cmd+1…8 by position, 9 the last (decision 25). */
+  jump(digit: number): void;
+  /** Moves a tab one slot left / right in its group (Ctrl/Cmd+Shift+PageUp/PageDown). */
+  moveBy(tab: TabId, delta: -1 | 1): void;
+  closeRight(tab: TabId): void;
+  canReopen: boolean;
+  /** Ctrl/Cmd+Shift+T: the last closed tab returns to its group and slot (a stack of 20 per project). */
+  reopenClosed(): void;
   attachCode(link: CodeLink | null): void;
 };
 
@@ -138,6 +153,9 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const [closing, setClosing] = useState<Closing | null>(null);
   const [memory] = useState(() => new TabMemory());
   const code = useRef<CodeLink | null>(null);
+  const mru = useRef<TabId[]>([]);
+  const cycling = useRef(false);
+  const [closedTabs, setClosedTabs] = useState<Closed<TabId>[]>([]);
   const selfNav = useRef<string | null>(null);
 
   const n = layout.groups.length;
@@ -154,6 +172,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       const { focusTab } = options;
       if (focusTab) setFocusRequest((r) => ({ tab: focusTab, n: (r?.n ?? 0) + 1 }));
       const active = L.focusedGroup(next).active;
+      if (!cycling.current) mru.current = mruTouch(mru.current, active);
       const agent = conversationOf(active);
       if (agent === undefined) return;
       setLastConversation(active);
@@ -186,13 +205,19 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
 
   const doClose = useCallback(
     (tabs: TabId[]) => {
-      const hadFocus = focusedTab() !== null;
+      const current = layoutRef.current;
+      const entries = tabs.flatMap((t) => {
+        const g = L.groupOf(current, t);
+        return g && L.closable(t) ? [{ tab: t, group: g.id, index: g.tabs.indexOf(t) }] : [];
+      });
       for (const t of tabs) {
         const ref = L.parseTab(t);
         if (ref?.kind === "file") code.current?.close(ref.key);
       }
-      const next = L.close(layoutRef.current, tabs);
-      commit(next, hadFocus ? { focusTab: L.focusedGroup(next).active } : {});
+      setClosedTabs((stack) => pushClosed(stack, entries));
+      const next = L.close(current, tabs);
+      // Decision 35: focus never falls to the page — the tab that becomes active takes it (also after a pointer close).
+      commit(next, { focusTab: L.focusedGroup(next).active });
     },
     [commit],
   );
@@ -211,15 +236,21 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     [doClose],
   );
 
+  // Decision 34: an agent opens in a split to the right of the orchestrator, never over it (in one strip when narrow).
   const openAgent = useCallback(
     (agentId: string, options: { otherSide?: boolean; route?: boolean } = {}) => {
       const current = layoutRef.current;
       const tab = L.agentTab(agentId);
       const home = L.chatGroupOf(current);
-      const target = options.otherSide && !L.groupOf(current, tab) ? L.otherSide(current, home.id) : null;
-      commit(L.open(current, tab, target ?? { group: home.id }), options.route === undefined ? {} : { route: options.route });
+      const where = L.groupOf(current, tab);
+      const route = options.route === undefined ? {} : { route: options.route };
+      if (narrowRef.current) return commit(L.open(current, tab, { group: home.id }), route);
+      if (where && where.id !== home.id) return commit(L.activate(current, tab), route);
+      const target = L.besideChat(current);
+      if (where) return commit("group" in target ? L.move(current, tab, target.group) : L.split(current, tab, home.id, "right"), route);
+      commit(L.open(current, tab, options.otherSide ? (L.otherSide(current, home.id) ?? target) : target), route);
     },
-    [commit],
+    [commit, narrowRef],
   );
 
   const value = useMemo<WorkspaceValue>(() => {
@@ -255,6 +286,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       // The Files tab is a file view (editor + tree column): it opens at half the row like a file.
       openTool: (tool) => {
         const tab = L.toolTab(tool);
+        // Decision 35: the opened tool takes focus (the header button that opened it may re-mount in another strip).
+        if (tool !== "files") focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
         openSide(tab, tool === "files" ? undefined : toolFraction());
         if (tool === "files") {
           const g = L.groupOf(layoutRef.current, tab);
@@ -293,7 +326,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
       moveToOtherSide: (tab) => {
         if (narrowRef.current) return;
-        commit(L.moveToOtherSide(layoutRef.current, tab), focusedTab() ? { focusTab: tab } : {});
+        commit(L.moveToOtherSide(layoutRef.current, tab), { focusTab: tab });
       },
       canSplitRight: (tab) => {
         const g = L.groupOf(layout, tab);
@@ -302,7 +335,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       splitRight: (tab) => {
         const g = L.groupOf(layoutRef.current, tab);
         if (!g || narrowRef.current) return;
-        commit(L.split(layoutRef.current, tab, g.id, "right"), focusedTab() ? { focusTab: tab } : {});
+        // Decision 35: the moved tab keeps focus in its new group (a menu's opener is gone after the split).
+        commit(L.split(layoutRef.current, tab, g.id, "right"), { focusTab: tab });
       },
       canDrop: (tab, target) => {
         const from = L.groupOf(layout, tab);
@@ -329,12 +363,52 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         commit(L.resize(layoutRef.current, index, px / inner, MIN_GROUP / inner));
       },
       equalize: () => commit(L.equalize(layoutRef.current)),
-      cycle: (delta) => {
+      mruOrder: () => {
+        const current = layoutRef.current;
+        return mruOrder(mru.current, narrowRef.current ? L.allTabs(current) : L.focusedGroup(current).tabs);
+      },
+      cycle: (step, order) => {
+        const next = order[((step % order.length) + order.length) % order.length];
+        if (!next) return;
+        cycling.current = true;
+        commit(L.activate(layoutRef.current, next), focusedTab() ? { focusTab: next } : {});
+      },
+      endCycle: () => {
+        if (!cycling.current) return;
+        cycling.current = false;
+        mru.current = mruTouch(mru.current, L.focusedGroup(layoutRef.current).active);
+      },
+      jump: (digit) => {
         const current = layoutRef.current;
         const tabs = narrowRef.current ? L.allTabs(current) : L.focusedGroup(current).tabs;
-        const i = tabs.indexOf(L.focusedGroup(current).active);
-        const next = tabs[(i + delta + tabs.length) % tabs.length];
+        const i = jumpIndex(digit, tabs.length);
+        const next = i === null ? undefined : tabs[i];
         if (next) commit(L.activate(current, next), focusedTab() ? { focusTab: next } : {});
+      },
+      moveBy: (tab, delta) => {
+        const current = layoutRef.current;
+        const g = L.groupOf(current, tab);
+        if (!g || !L.closable(tab)) return;
+        const from = g.tabs.indexOf(tab);
+        const to = Math.max(g.tabs.includes(L.CHAT) ? 1 : 0, Math.min(g.tabs.length - 1, from + delta));
+        if (to !== from) commit(L.move(current, tab, g.id, toMoveIndex(from, to)), { focusTab: tab });
+      },
+      closeRight: (tab) => {
+        const g = L.groupOf(layoutRef.current, tab);
+        if (g) requestClose(g.tabs.slice(g.tabs.indexOf(tab) + 1));
+      },
+      canReopen: closedTabs.length > 0,
+      reopenClosed: () => {
+        const { entry, rest } = takeClosed(closedTabs, (t) => Boolean(L.groupOf(layoutRef.current, t)));
+        setClosedTabs(rest);
+        if (!entry) return;
+        const ref = L.parseTab(entry.tab);
+        if (ref?.kind === "file") code.current?.restore(ref.key);
+        const current = layoutRef.current;
+        const group =
+          L.groupOf(current, L.CHAT)?.id === entry.group || current.groups.some((g) => g.id === entry.group) ? entry.group : L.chatGroupOf(current).id;
+        const opened = L.open(current, entry.tab, { group });
+        commit(L.move(opened, entry.tab, group, entry.index), { focusTab: entry.tab });
       },
       attachCode: (link) => {
         code.current = link;
@@ -351,6 +425,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     focusRequest,
     memory,
     closing,
+    closedTabs,
     onSettings,
     commit,
     openAgent,
@@ -413,30 +488,11 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     if (next !== layoutRef.current) commit(next, { route: false });
   }, [agentsLoaded, project, state.agents, commit]);
 
-  /* ---------- keyboard ---------- */
+  /* ---------- keyboard (decision 25) ---------- */
 
   const valueRef = useLatest(value);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || document.querySelector('[aria-modal="true"], [role="menu"]')) return;
-      const ws = valueRef.current;
-      // A focused tab button is the tab the shortcut means; otherwise the focused group's active tab.
-      const active = focusedTab() ?? L.focusedGroup(layoutRef.current).active;
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && !e.altKey && !e.shiftKey && e.key === "\\") {
-        e.preventDefault();
-        ws.moveToOtherSide(active);
-      } else if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "w") {
-        e.preventDefault();
-        ws.requestClose([active]);
-      } else if (e.ctrlKey && !e.altKey && !e.metaKey && e.key === "Tab") {
-        e.preventDefault();
-        ws.cycle(e.shiftKey ? -1 : 1);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [valueRef]);
+  const keyTarget = useCallback(() => focusedTab() ?? L.focusedGroup(layoutRef.current).active, []);
+  useTabKeys(valueRef, keyTarget);
 
   /* ---------- palette ---------- */
 

@@ -112,6 +112,11 @@ function normalize(layout: Layout): Layout {
     if (head) groups[0] = { ...head, tabs: [CHAT, ...head.tabs] };
     else groups.push(chatGroup());
   }
+  // Decision 25: the Orchestrator tab is pinned first in whichever group holds it.
+  for (const [i, g] of groups.entries()) {
+    const at = g.tabs.indexOf(CHAT);
+    if (at > 0) groups[i] = { ...g, tabs: [CHAT, ...g.tabs.filter((t) => t !== CHAT)] };
+  }
   const valid = groups.every((g) => Number.isFinite(g.size) && g.size > 0);
   const total = groups.reduce((n, g) => n + g.size, 0);
   const sized = groups.map((g) => ({ ...g, size: valid && Number.isFinite(total) ? g.size / total : 1 / groups.length }));
@@ -203,7 +208,7 @@ export function move(layout: Layout, tab: TabId, groupId: string, index?: number
     const tabs = to.tabs.filter((t) => t !== tab);
     const at = Math.max(0, Math.min(tabs.length, index > to.tabs.indexOf(tab) ? index - 1 : index));
     tabs.splice(at, 0, tab);
-    return { ...withGroup(layout, to.id, (g) => ({ ...g, tabs, active: tab })), focused: to.id };
+    return normalize({ ...withGroup(layout, to.id, (g) => ({ ...g, tabs, active: tab })), focused: to.id });
   }
   const removed = removeTab(layout, tab);
   const dest = removed.groups.find((g) => g.id === groupId);
@@ -261,6 +266,37 @@ export function moveToOtherSide(layout: Layout, tab: TabId): Layout {
   if (!target) return layout;
   if ("group" in target) return move(layout, tab, target.group);
   return from.tabs.length < 2 ? layout : insertGroup(layout, tab, from.id, "right", target.size);
+}
+
+/**
+ * Where an agent opens (decision 34): the group right of the orchestrator's, else a new group to its right taking half
+ * of it; at the group cap, the last group.
+ */
+export function besideChat(layout: Layout): Target {
+  const home = chatGroupOf(layout);
+  const i = indexOfGroup(layout, home.id);
+  const right = layout.groups[i + 1];
+  if (right) return { group: right.id };
+  if (layout.groups.length >= MAX_GROUPS) return { group: layout.groups[layout.groups.length - 1]?.id ?? home.id };
+  return { newAfter: home.id, size: home.size / 2 };
+}
+
+/**
+ * The one tool the header strip marks as open (decision 33: one selected state at a time): the focused group's active
+ * tab when it is a tool or a file (a file view counts as "files"), else the rightmost group's; null when neither is.
+ */
+export function shownTool(layout: Layout): ToolTab | null {
+  const kind = (tab: TabId): ToolTab | null => {
+    const ref = parseTab(tab);
+    return ref?.kind === "tool" ? ref.tool : ref?.kind === "file" ? "files" : null;
+  };
+  const focused = kind(focusedGroup(layout).active);
+  if (focused) return focused;
+  for (const g of [...layout.groups].reverse()) {
+    const k = kind(g.active);
+    if (k) return k;
+  }
+  return null;
 }
 
 /** The group beside Chat's (right, else left), where files and tools open. */

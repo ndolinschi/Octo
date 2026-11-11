@@ -23,3 +23,8 @@ export function contextText(used: number | null | undefined, size: number | null
   if (typeof used !== "number" || typeof size !== "number" || size <= 0) return null;
   return `context ${formatTokens(used)} / ${formatTokens(size)}`;
 }
+
+/** The Usage range / scope menu button's text (decision 33): "30 days", or "30 days, all projects". */
+export function usageRangeText(view: Pick<UsageView, "days" | "scope">): string {
+  return view.scope === "all" ? `${view.days} days, all projects` : `${view.days} days`;
+}

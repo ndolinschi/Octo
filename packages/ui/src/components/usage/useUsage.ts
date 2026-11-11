@@ -42,12 +42,16 @@ export function useUsageReports(view: UsageView): Load<UsageData> {
   return load;
 }
 
-/** Rate limits from `getLimits()` (re-read every 15 s) and the available ACP agents (for the plan-limits note). */
-export function useLimits(): { limits: Load<Limit[]>; agents: PluginAgent[] } {
+/**
+ * Rate limits from `getLimits()` (re-read every 15 s while `shown`: the tab visible and the page not hidden — decision
+ * 36) and the available ACP agents (for the plan-limits note).
+ */
+export function useLimits(shown: boolean): { limits: Load<Limit[]>; agents: PluginAgent[] } {
   const { bridge } = useApp();
   const [limits, setLimits] = useState<Load<Limit[]>>({ status: "loading" });
   const [agents, setAgents] = useState<PluginAgent[]>([]);
   useEffect(() => {
+    if (!shown) return;
     let cancelled = false;
     const read = () =>
       bridge.getLimits().then(
@@ -56,6 +60,13 @@ export function useLimits(): { limits: Load<Limit[]>; agents: PluginAgent[] } {
       );
     void read();
     const id = window.setInterval(() => void read(), LIMITS_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [bridge, shown]);
+  useEffect(() => {
+    let cancelled = false;
     // Without the plugin list the note simply names no agents.
     bridge.listPlugins().then(
       (plugins) => !cancelled && setAgents(plugins.flatMap((p) => p.agents).filter((a) => a.available)),
@@ -63,7 +74,6 @@ export function useLimits(): { limits: Load<Limit[]>; agents: PluginAgent[] } {
     );
     return () => {
       cancelled = true;
-      window.clearInterval(id);
     };
   }, [bridge]);
   return { limits, agents };

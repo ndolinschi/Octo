@@ -358,7 +358,7 @@ export function EditorComments(props: {
         if (!(e.relatedTarget as Element | null)?.closest?.(".monaco-editor")) setHover(null);
       }}
       onClick={onPlus}
-      className="octo-ring-panel absolute z-[5] grid press place-items-center rounded-xs bg-primary text-primary-fg shadow-panel before:absolute before:-inset-[3px] before:content-[''] hover:opacity-90"
+      className="octo-ring-panel absolute z-[5] grid press place-items-center rounded-xs bg-overlay text-fg shadow-panel before:absolute before:-inset-[3px] before:content-[''] hover:bg-active"
     >
       <Glyph icon={Plus} size={14} />
     </button>

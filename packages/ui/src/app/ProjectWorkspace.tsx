@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { navigate } from "../lib/route";
 import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";
@@ -12,9 +12,11 @@ import { Dock } from "../components/dock/Dock";
 import { Button } from "../components/primitives/Button";
 import { Dialog } from "../components/primitives/Dialog";
 import { Presence } from "../components/primitives/Presence";
-import { ProjectDialog } from "../components/project/ProjectDialog";
 import { Panel } from "../components/shell/Panel";
 import { PanelBar } from "../components/shell/SidebarToggle";
+
+/** The project dialog loads on first use (its own chunk). */
+const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
 
 /** One project: header row, then the dock of tab groups. */
 export function ProjectWorkspace(props: { agentId: string | null }) {
@@ -104,21 +106,23 @@ function SettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
   return (
     <Presence show={show && project !== null}>
       {project && (
-        <ProjectDialog
-          project={project}
-          onClose={onClose}
-          onSubmit={async (input) => {
-            await update(input);
-            onClose();
-          }}
-          onDelete={async () => {
-            await bridge.deleteProject(projectId);
-            onClose();
-            const next = projects?.find((p) => p.id !== projectId);
-            navigate(next?.id ?? null);
-            await refreshProjects();
-          }}
-        />
+        <Suspense fallback={null}>
+          <ProjectDialog
+            project={project}
+            onClose={onClose}
+            onSubmit={async (input) => {
+              await update(input);
+              onClose();
+            }}
+            onDelete={async () => {
+              await bridge.deleteProject(projectId);
+              onClose();
+              const next = projects?.find((p) => p.id !== projectId);
+              navigate(next?.id ?? null);
+              await refreshProjects();
+            }}
+          />
+        </Suspense>
       )}
     </Presence>
   );

@@ -29,6 +29,8 @@ import {
   replace,
   resize,
   serialize,
+  shownTool,
+  besideChat,
   sideGroup,
   split,
   type Group,
@@ -199,7 +201,8 @@ test("move: across groups (default after active, or at an index), within a group
   const after = move(l, NOTES, "b");
   assert.deepEqual(must(after.groups[1]).tabs, [AGENTS, NOTES, DETAILS]);
   const within = move(l, CHAT, "a", 3);
-  assert.deepEqual(must(within.groups[0]).tabs, [FILES, NOTES, CHAT]);
+  assert.deepEqual(must(within.groups[0]).tabs, [CHAT, FILES, NOTES], "the Orchestrator tab stays pinned first");
+  assert.deepEqual(must(move(l, NOTES, "a", 0).groups[0]).tabs, [CHAT, NOTES, FILES], "nothing goes before the pinned tab");
   const inPlace = move(l, NOTES, "a", 3);
   assert.deepEqual(must(inPlace.groups[0]).tabs, [CHAT, FILES, NOTES]);
   assert.equal(move(l, NOTES, "zzz"), l);
@@ -593,4 +596,19 @@ test("randomised operation sequences keep every invariant (seeded)", () => {
       check(l, `seed ${seed} step ${step} [${log.slice(-4).join(" ")}]`);
     }
   }
+});
+
+test("shownTool: the focused group's tool or file, else the rightmost group's; one at a time", () => {
+  const l = layoutOf([group("a", [CHAT, NOTES], 0.5, NOTES), group("b", [DETAILS, f("x.ts")], 0.5, f("x.ts"))], "a");
+  assert.equal(shownTool(l), "notes");
+  assert.equal(shownTool({ ...l, focused: "b" }), "files");
+  assert.equal(shownTool(layoutOf([group("a", [CHAT, NOTES], 0.5), group("b", [DETAILS], 0.5)], "a")), "details");
+  assert.equal(shownTool(layoutOf([group("a", [CHAT], 1)])), null);
+});
+
+test("besideChat: the group right of the orchestrator's, else a new half-width group to its right", () => {
+  assert.deepEqual(besideChat(layoutOf([group("a", [CHAT], 1)])), { newAfter: "a", size: 0.5 });
+  assert.deepEqual(besideChat(layoutOf([group("a", [NOTES], 0.3), group("b", [CHAT], 0.4), group("c", [DETAILS], 0.3)])), { group: "c" });
+  const full = layoutOf([group("a", [NOTES], 0.25), group("b", [AGENTS], 0.25), group("c", [DETAILS], 0.25), group("d", [CHAT], 0.25)]);
+  assert.deepEqual(besideChat(full), { group: "d" }, "at the cap, the last group");
 });

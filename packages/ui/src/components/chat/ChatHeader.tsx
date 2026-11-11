@@ -4,19 +4,20 @@ import { useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { formatTokens } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
-import { agentStack, liveOrchestratorState, stateLine } from "../../lib/orchestrator";
+import { liveOrchestratorState, stateLine } from "../../lib/orchestrator";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { modelLabel, OrchestratorGlyph } from "../primitives/Status";
+import { TeamLine } from "./TeamLine";
 
 /**
  * The orchestrator's header (decision 23): one 40px row on the conversation column's edges, outside the scroll area.
- * Left: the project's name and its orchestrator's live state ("Working · 2 agents", "Needs you", "Idle · 2h").
- * Right: the running agents as one compact stack ("Dependency auditor, Test runner +1") that opens the Agents tab,
- * the orchestrator's model, the project's tokens, and a `…` menu. No request breadcrumb: the request in view is
+ * Left: the project's name, its orchestrator's state ring and words ("Working", "Needs you", "Idle, 2h ago"), then the
+ * team line (decision 34: live, last run or who it can call on). Right: the orchestrator's model, the project's tokens
+ * and a `…` menu. No request breadcrumb: the request in view is
  * shown by the rail and the pinned prompt. `transparent` on the empty project, where the streak runs behind it.
  */
 export function ChatHeader({ transparent = false }: { transparent?: boolean }) {
@@ -34,7 +35,7 @@ export function ChatHeader({ transparent = false }: { transparent?: boolean }) {
   return (
     <div data-chat-header className={cn("relative shrink-0 overflow-hidden px-(--pad) scroll-quiet", !transparent && "bg-panel")}>
       <div data-column-edge className="mx-auto flex h-bar w-full max-w-measure min-w-0 items-center gap-3 text-sm">
-        <p className="flex min-w-0 flex-1 items-center gap-2">
+        <p className="flex max-w-[50%] min-w-0 shrink-0 items-center gap-2">
           <span className="min-w-0 shrink truncate font-medium text-fg" title={project.name}>
             {project.name}
           </span>
@@ -42,32 +43,13 @@ export function ChatHeader({ transparent = false }: { transparent?: boolean }) {
             className={cn("flex shrink-0 items-center gap-1.5 text-xs", orchestrator.kind === "needs" ? "text-warn" : running ? "text-fg-2" : "text-fg-3")}
             title={orchestrator.kind === "needs" ? (orchestrator.error ?? "The last turn failed") : `Orchestrator: ${line}`}
           >
-            {orchestrator.kind !== "idle" && orchestrator.kind !== "new" && <OrchestratorGlyph state={orchestrator.kind} />}
+            <OrchestratorGlyph state={orchestrator.kind} />
             <span className="sr-only">Orchestrator: </span>
             {/* The agent count is in the stack when there is room; the state word stays. */}
-            <span className={cn(agents.length > 0 && "@max-[420px]/conv:hidden")}>{agents.length ? "Working" : line}</span>
+            <span className="@max-[420px]/conv:hidden">{agents.length ? "Working" : line}</span>
           </span>
         </p>
-        {agents.length > 0 && (
-          <button
-            type="button"
-            onClick={() => ws?.openTool("agents")}
-            title={`Show agents: ${agents.map((a) => a.role).join(", ")}`}
-            className="flex h-chip max-w-[40%] min-w-0 shrink-[4] items-center gap-1.5 rounded-sm px-2 text-xs text-fg-2 press-row focus-inset hover:bg-hover hover:text-fg"
-          >
-            <span aria-hidden className="flex shrink-0 -space-x-1">
-              {agents.slice(0, 3).map((a) => (
-                <span key={a.id} className="grid size-3.5 place-items-center rounded-full bg-active ring-1 ring-panel">
-                  <span className="size-1.5 rounded-full bg-accent" />
-                </span>
-              ))}
-            </span>
-            {/* The names show while there is room; under 640px of conversation the stack is its dots and "+N", so the
-                project name never truncates first. */}
-            <span className="min-w-0 truncate @max-[640px]/conv:hidden">{agentStack(agents.map((a) => a.role))}</span>
-            <span className="hidden shrink-0 tabular-nums @max-[640px]/conv:inline">+{agents.length}</span>
-          </button>
-        )}
+        <TeamLine orchestrator={orchestrator} />
         <span className="shrink-0 text-xs text-fg-3 @max-[560px]/conv:hidden" title={`Orchestrator model: ${project.models.orchestrator}`}>
           {modelLabel(project.models.orchestrator)}
         </span>

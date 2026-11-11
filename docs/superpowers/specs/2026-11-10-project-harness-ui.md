@@ -864,6 +864,35 @@ light; D22 four cards → Orchestrators at work, This month, Tokens, Activity; "
 column left over; "a recent request opens its project" → a project row opens its orchestrator; header tool clicks go
 through the folded "Project tools" menu when a group folds; palette typing waits for the lazy palette.
 
+
+### As built (v6.3 part 1, 2026-11-11)
+
+Decisions 33, 29, 25, 34, 35, 32, 36. Verified by the orchestrator: lint (0 errors, 80 warnings), format, no
+cycles, 262 UI + 8 desktop tests, build, bundle 196.66 kB (budget raised to 196.8: dialogs moved to lazy chunks,
+tabs / rings / team line added), four screenshots viewed. By the executor only: its acceptance script (103 of 104),
+the spacing audit at 0, contrast ≥ 4.5:1. **Not verified:** touch drag, screen reader, forced colours, Tauri shell,
+a live backend.
+
+- **33**: `Segmented` is 24px text-only; Usage has one segmented control; range and scope are one `MenuButton`;
+  the send and Stop buttons are quiet until there is text.
+- **29**: one ring glyph everywhere (`lib/stateGlyph.ts`, `primitives/StateGlyph.tsx`); idle ring 1px; a project
+  with no requests shows the dashed ring; CSS-only motion, none under reduced motion.
+- **25**: pointer-event tab drag with sliding neighbours, detach, split zones, Esc; 200 → 96 → 40px icon-only
+  sizing; middle-click, reopen (stack of 20), MRU Ctrl+Tab, Ctrl+1…9; Orchestrator pinned first. **Not built:**
+  the "+" picker and the all-tabs list (with decision 24, part 2).
+- **34**: team line in the orchestrator header (live chips / "Last ran N agents" / what it can call on); an agent
+  always opens in a split beside the orchestrator.
+- **35**: the five focus paths of the review pass.
+- **32**: streak rewritten (thin near-white core, exponential glow, dithered grain, specks); drawn once, redrawn
+  only after resize or theme change. **Deviations:** cards are 85% opaque, not 72% (muted text measured 3.4:1 over
+  the core); the ≤ 4 ms draw target at 1440 is met only on a quiet machine (median 2.7–3.7 ms quiet, 4.9 ms loaded).
+- **36**: contrast, 24×24 targets, scroll memory (also fixed: moving a conversation tab lost the scroll position),
+  Limits polling stops while hidden.
+- Seen in the screenshots, for part 2: the right group shows icon-only tabs next to the tool icons (two rows of
+  the same glyphs — decision 24 removes this); while working, the team appears both in the header and above the
+  composer; the header still shows the requested model, not `served_model`; "orchestrator" capitalisation.
+- Debt: `WorkspaceProvider.tsx` 543 lines, `lib/streak.ts` 354 (Q5).
+
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)

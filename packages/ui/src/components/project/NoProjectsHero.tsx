@@ -11,7 +11,6 @@ export function NoProjectsHero({ onCreate }: { onCreate(): void }) {
     <section aria-labelledby="hero-title" className="relative grid h-full place-items-center overflow-x-hidden overflow-y-auto px-6">
       <StreakLayer preset={STREAK_HERO} theme={theme} />
       <div className="relative w-full max-w-[440px] text-center">
-        <div aria-hidden className="octo-streak-scrim" />
         <h1 id="hero-title" className="relative text-display text-fg">
           No projects yet
         </h1>

@@ -11,11 +11,13 @@ import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
 import { useRequests } from "../../state/requests";
 import { usePresence } from "../primitives/Presence";
+import { StateGlyph } from "../primitives/StateGlyph";
+import { agentGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { useModal } from "../primitives/useModal";
 
 export type PaletteAction = { id: string; label: string; hint?: string; shortcut?: string; run(): void };
 
-type Item = { id: string; label: string; detail?: string | undefined; shortcut?: string | undefined; run(): void };
+type Item = { id: string; label: string; detail?: string | undefined; shortcut?: string | undefined; glyph?: GlyphState; run(): void };
 type Group = { title: string; items: Item[] };
 
 /** Rows per group with an empty query, and when filtering. */
@@ -94,6 +96,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
             id: `p:${p.id}`,
             label: p.name,
             detail: p.status === "running" ? "working" : formatRelative(p.updated_at, now),
+            glyph: p.status === "running" ? ("working" as const) : ("idle" as const),
             run: go(() => navigate(p.id)),
           })),
           (i) => i.label,
@@ -126,6 +129,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
                   id: `a:${a.id}`,
                   label: root ? "Orchestrator" : a.role,
                   detail: root ? undefined : a.title,
+                  glyph: agentGlyph(a.status),
                   run: go(() => {
                     if (!workspace) return navigate(pid, root ? null : a.id);
                     if (root) workspace.api.focusChat();
@@ -239,6 +243,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
                       isSelected ? "bg-active text-fg" : "text-fg hover:bg-hover",
                     )}
                   >
+                    {item.glyph && <StateGlyph state={item.glyph} box={16} />}
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {item.detail && <span className={cn("max-w-[45%] shrink-0 truncate text-xs", isSelected ? "text-fg-2" : "text-fg-3")}>{item.detail}</span>}
                     {item.shortcut && <kbd className="shrink-0 rounded-2xs bg-active px-1 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}

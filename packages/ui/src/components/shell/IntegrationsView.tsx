@@ -153,7 +153,8 @@ export function IntegrationsView() {
                 )}
               >
                 {k.label}
-                <span className="text-fg-3 tabular-nums">{count}</span>
+                {/* On the selected chip's fill, fg-3 fell under 4.5:1 (decision 36): the count takes fg-2 there. */}
+                <span className={cn("tabular-nums", on ? "text-fg-2" : "text-fg-3")}>{count}</span>
               </button>
             );
           })}

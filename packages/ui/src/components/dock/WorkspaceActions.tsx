@@ -4,7 +4,7 @@ import { cn } from "../../lib/cn";
 import { GLYPH } from "../primitives/glyphs";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
-import { toolTab, type ToolTab } from "../../state/workspace/layout";
+import { shownTool, type ToolTab } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
 import { Menu, type MenuItem } from "../primitives/Menu";
@@ -34,6 +34,8 @@ export function WorkspaceActions({ folded = false }: { folded?: boolean }) {
   const button = useRef<HTMLButtonElement>(null);
   if (!project) return null;
   const editorTitle = project.folders.length ? "Open project folders in the editor" : "Add a folder to the project to open it in the editor";
+  // Decision 33: one pressed tool at a time — the one the user is looking at.
+  const pressed = ws.narrow ? null : shownTool(ws.layout);
   const show = (tool: ToolTab) => (tool === "files" ? files.show() : ws.openTool(tool));
 
   if (folded) {
@@ -68,11 +70,13 @@ export function WorkspaceActions({ folded = false }: { folded?: boolean }) {
 
   return (
     <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
+      {/* A hairline between the tabs and the tools: crowded icon-only tabs never read as more tool buttons. */}
+      <span aria-hidden className="mr-1 h-4 w-px bg-line-strong" />
       {TOOLS.map((t) =>
         t.tool === "files" ? (
-          <IconButton key={t.tool} icon={t.icon} label={t.label} pressed={files.shown} onClick={files.show} />
+          <IconButton key={t.tool} icon={t.icon} label={t.label} pressed={pressed === "files" && files.shown} onClick={files.show} />
         ) : (
-          <IconButton key={t.tool} icon={t.icon} label={t.label} pressed={ws.isVisible(toolTab(t.tool))} onClick={() => ws.openTool(t.tool)} />
+          <IconButton key={t.tool} icon={t.icon} label={t.label} pressed={pressed === t.tool} onClick={() => ws.openTool(t.tool)} />
         ),
       )}
       <span aria-hidden className="mx-1 h-4 w-px bg-line-strong" />

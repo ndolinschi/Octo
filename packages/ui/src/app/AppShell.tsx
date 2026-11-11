@@ -12,11 +12,10 @@ import { Button } from "../components/primitives/Button";
 import { Dialog } from "../components/primitives/Dialog";
 import { Presence, usePresence } from "../components/primitives/Presence";
 import { NoProjectsHero } from "../components/project/NoProjectsHero";
-import { ProjectDialog } from "../components/project/ProjectDialog";
 import type { PaletteAction } from "../components/shell/CommandPalette";
 import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
-import { SettingsDialog, type SettingsView } from "../components/shell/SettingsDialog";
+import type { SettingsView } from "../components/shell/SettingsDialog";
 import { Sidebar } from "../components/shell/Sidebar";
 import { PanelBar } from "../components/shell/SidebarToggle";
 import { ProjectWorkspace } from "./ProjectWorkspace";
@@ -28,6 +27,10 @@ import { DRAWER_QUERY } from "../lib/constants";
 const loadPalette = () => import("../components/shell/CommandPalette");
 const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
+/** The project and settings dialogs load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
+const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/shell/SettingsDialog")]);
+const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
+const SettingsDialog = lazy(() => import("../components/shell/SettingsDialog").then((m) => ({ default: m.SettingsDialog })));
 
 /** Below this width the sidebar becomes an overlay drawer, closed by default. */
 
@@ -81,7 +84,10 @@ function Shell() {
   // Warm the palette's chunk once the app is idle, so Ctrl/Cmd+K opens it without a wait.
   useEffect(() => {
     // A failed warm-up is retried by the first Ctrl/Cmd+K (which shows the error if it fails again).
-    const id = window.setTimeout(() => void loadPalette().catch(() => undefined), 1500);
+    const id = window.setTimeout(() => {
+      void loadPalette().catch(() => undefined);
+      void loadDialogs().catch(() => undefined);
+    }, 1500);
     return () => window.clearTimeout(id);
   }, []);
 
@@ -187,20 +193,24 @@ function Shell() {
           </SidebarDrawer>
         </Presence>
         <Presence show={creating}>
-          <ProjectDialog
-            onClose={() => setCreating(false)}
-            onSubmit={async (input) => {
-              const project = await bridge.createProject(input);
-              await refreshProjects();
-              setCreating(false);
-              navigate(project.id);
-              // The new project's composer takes focus once the dialog is gone and the project is in.
-              focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
-            }}
-          />
+          <Suspense fallback={null}>
+            <ProjectDialog
+              onClose={() => setCreating(false)}
+              onSubmit={async (input) => {
+                const project = await bridge.createProject(input);
+                await refreshProjects();
+                setCreating(false);
+                navigate(project.id);
+                // The new project's composer takes focus once the dialog is gone and the project is in.
+                focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
+              }}
+            />
+          </Suspense>
         </Presence>
         <Presence show={settings !== null}>
-          <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
+          <Suspense fallback={null}>
+            <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
+          </Suspense>
         </Presence>
         <Presence show={palette}>
           <Suspense fallback={null}>

@@ -40,8 +40,8 @@ export const EDGES = "scroll-quiet overflow-hidden px-(--pad)";
 const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyTitle })));
 const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyFacts })));
 
-/** The turn rail appears from this many requests on. */
-const RAIL_MIN_REQUESTS = 3;
+/** The turn rail appears from the first request (decision 34). */
+const RAIL_MIN_REQUESTS = 1;
 
 /**
  * A conversation (the orchestrator's Chat tab or a sub-agent's Agent tab). The header, transcript
@@ -134,14 +134,20 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
     const el = scroll.ref.current;
     if (restored.current || !el || messages === undefined) return;
     restored.current = true;
-    if (saved && !saved.atBottom) {
+    // Read now, not at render: the instance this one replaces saves its position in its cleanup, which runs in the
+    // same commit after this render (a moved tab).
+    const at = memory?.get(tab, SCROLL_MEMORY);
+    if (at && !at.atBottom) {
       scroll.release();
-      el.scrollTop = saved.top;
+      el.scrollTop = at.top;
     }
-  }, [messages, saved, scroll]);
-  useEffect(() => {
-    const el = scroll.ref.current;
+  }, [messages, memory, tab, scroll]);
+  // Saved on unmount from the scroller as it is then — it may have appeared after mount (a project that started
+  // empty: decision 36), so the element is read at cleanup, before the DOM goes.
+  useLayoutEffect(() => {
+    const ref = scroll.ref;
     return () => {
+      const el = ref.current;
       if (el && memory) memory.set(tab, SCROLL_MEMORY, { top: el.scrollTop, atBottom: el.scrollHeight - el.scrollTop - el.clientHeight <= 2 });
     };
   }, [memory, tab, scroll.ref]);

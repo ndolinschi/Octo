@@ -410,6 +410,33 @@
   }
 }
 
+/* No tooltip while a tab is dragged (dock/drag.ts sets the attribute). */
+:root[data-dragging] [data-tooltip] {
+  display: none;
+}
+
+/* Decision 29: the working ring's arc turns, the needs-you dot pulses — never under reduced motion (static arc / dot). */
+@media (prefers-reduced-motion: no-preference) {
+  .octo-ring-turn {
+    transform-origin: center;
+    transform-box: view-box;
+    animation: octo-ring-turn 1s linear infinite;
+  }
+  .octo-ring-pulse {
+    animation: octo-ring-pulse 2s ease-in-out infinite;
+  }
+}
+@keyframes octo-ring-turn {
+  to {
+    rotate: 360deg;
+  }
+}
+@keyframes octo-ring-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -736,10 +763,11 @@
   font-family: var(--font-sans);
 }
 
-/* Streak (decision 21b, supersedes 21 and the glow of decision 12): a bold dithered band of light on the start
-   screens only — Home, the empty project (behind its whole group), the no-projects hero. The canvas is drawn at
-   3px cells (4 from 1920 wide) and scaled with `pixelated`; it overhangs by 12px for the optional 20s drift (no
-   drift under reduced motion or while the page is hidden). Its colours are the ramp in `lib/streak.ts`. */
+/* Streak (decision 32, third pass; supersedes 21/21b and the glow of decision 12): a thin white-hot line with a
+   long-tail glow and grain everywhere, on the start screens only — Home, the empty project (behind its whole group),
+   the no-projects hero. The canvas is drawn at 2px cells (3 above a 1600px window) and scaled with `pixelated`; it
+   overhangs by 12px for the optional 20s drift (no drift under reduced motion or while the page is hidden). Its
+   colours are the looks in `lib/streak.ts`. */
 .octo-streak-layer {
   animation: octo-fade-in 240ms ease-out both;
 }
@@ -772,9 +800,9 @@
     translate: 12px -6px;
   }
 }
-/* Surfaces over the streak (Home cards, the project list): the panel at 72% (dark) / 80% (light) with a 16px blur
-   and a little saturation, so the band tints them; a 1px `line-strong` edge and a 1px inner top highlight. Opaque
-   panel where backdrop filters are unsupported and under forced colours. */
+/* Surfaces over the streak (Home cards, the project list): the panel at 85% (decision 32 asks 72%; see below; light 80%) with a 12px
+   blur and a little saturation, so the band reads through; a 1px `line-strong` edge and a 1px inner top highlight.
+   Opaque panel where backdrop filters are unsupported and under forced colours. */
 .octo-card {
   background: var(--octo-panel);
   border: 1px solid var(--octo-line-strong);
@@ -782,19 +810,25 @@
 }
 :root,
 :root[data-theme="dark"] {
-  /* 72% (decision 21b) left fg-3 at 4.47:1 over the core's brightest pixel: raised to 78% (measured ≥ 4.5). */
-  --octo-card-alpha: 78%;
+  /* 72% (decision 32) left 12px fg-3 at 3.4–3.6:1 where the core passes behind a card: raised to 85% (measured
+     ≥ 4.5 at the worst pixel; decision 21b: raise the surface before dimming the band). */
+  --octo-card-alpha: 85%;
   --octo-card-highlight: rgb(255 255 255 / 0.06);
 }
 :root[data-theme="light"] {
   --octo-card-alpha: 80%;
   --octo-card-highlight: rgb(255 255 255 / 0.7);
 }
-@supports (backdrop-filter: blur(16px)) {
+@supports (backdrop-filter: blur(12px)) {
   .octo-card {
     background: color-mix(in srgb, var(--octo-panel) var(--octo-card-alpha), transparent);
-    backdrop-filter: blur(16px) saturate(1.2);
+    backdrop-filter: blur(12px) saturate(1.2);
   }
+}
+/* The project list holds the densest small text (12px fg-3 second lines): raised locally to 86% so it keeps ≥ 4.5:1
+   where the core passes behind it (decision 36; the band is never dimmed). */
+.octo-card-dense {
+  --octo-card-alpha: 88%;
 }
 @media (forced-colors: active) {
   .octo-card {
@@ -807,6 +841,10 @@
   .bg-fg-3 {
     forced-color-adjust: none;
   }
+}
+/* An empty day is opaque: over the streak a translucent cell would take the band's colour and read as activity. */
+.octo-heat-0 {
+  background: color-mix(in srgb, var(--octo-fg) 7%, var(--octo-panel));
 }
 .octo-heat-1 {
   background: color-mix(in srgb, var(--octo-accent) 28%, var(--octo-panel));

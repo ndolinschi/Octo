@@ -1,7 +1,6 @@
 import type { AgentStatus, Tier } from "@octo/agent-client";
-import { Check, CircleAlert, CircleX } from "lucide-react";
-import { Glyph } from "./Glyph";
-import { cn } from "../../lib/cn";
+import { agentGlyph, orchestratorGlyph } from "../../lib/stateGlyph";
+import { StateGlyph } from "./StateGlyph";
 
 const LABEL: Record<AgentStatus, string> = {
   idle: "Idle",
@@ -16,60 +15,29 @@ export function statusLabel(status: AgentStatus): string {
 }
 
 /**
- * Animated loading indicator. Only for transient loading and the single live turn being
- * watched; a steady "running" state elsewhere is a static <RunningDot>.
- * `className` replaces the default colour (`text-fg-2`) when given.
+ * Loading (transient work: a file opening, a server starting) uses the same working ring as everything else
+ * (decision 29: no other spinner shape exists). `className` replaces the default colour (`text-fg-2`).
  */
 export function Spinner({ size = 12, className = "text-fg-2" }: { size?: number; className?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden data-spinner="" className={cn("shrink-0 animate-spin", className)}>
-      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
-      <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
+  return <StateGlyph state="working" size={size >= 14 ? 14 : 12} box={size} className={className} />;
 }
 
-/** Static accent dot centred in a `box`-sized square: something is running (or new, in the sidebar). */
+/** Something is running: the working ring centred in a `box`-sized square. */
 export function RunningDot({ box = 12, className }: { box?: number; className?: string }) {
-  return (
-    <span aria-hidden className={cn("grid shrink-0 place-items-center", className)} style={{ width: box, height: box }}>
-      <span className="size-1.5 rounded-full bg-accent" />
-    </span>
-  );
+  return <StateGlyph state="working" size={box >= 16 ? 14 : 12} box={box} {...(className === undefined ? {} : { className })} />;
 }
 
-/** One glyph per status: accent dot (running), green check, red circled cross (the error glyph), grey dot. */
-export function StatusIcon({ status, size = 14 }: { status: AgentStatus; size?: 14 | 16 }) {
-  if (status === "running") return <RunningDot box={size} />;
-  if (status === "completed") return <Glyph icon={Check} size={size} className="shrink-0 text-ok" />;
-  if (status === "failed") return <Glyph icon={CircleX} size={size} className="shrink-0 text-err" />;
-  return (
-    <span aria-hidden className="grid shrink-0 place-items-center" style={{ width: size, height: size }}>
-      <span className="size-[5px] rounded-full bg-fg-3" />
-    </span>
-  );
+/** An agent's state as its ring (decision 29): working, failed, or the quiet done / idle ring. */
+export function StatusIcon({ status, size = 14, unseen = false }: { status: AgentStatus; size?: 14 | 16; unseen?: boolean }) {
+  return <StateGlyph state={agentGlyph(status, unseen)} size={size === 16 ? 14 : 12} box={size} />;
 }
 
 /**
- * The orchestrator's state in one 16px slot (sidebar rows, Home): working = the accent dot, needs you = the alert glyph
- * in `warn`, unseen activity = a filled accent dot with a ring (it replaces the idle mark: one mark per row), idle /
- * new = a quiet ring.
+ * The orchestrator's state in one 16px slot (sidebar rows, Home, the header): its ring at 14px — working (turning arc),
+ * needs you (pulsing dot, `warn`), unseen activity (accent disc), not started (dashed), idle (thin ring).
  */
 export function OrchestratorGlyph({ state, unseen = false }: { state: "working" | "needs" | "idle" | "new"; unseen?: boolean }) {
-  if (state === "working") return <RunningDot box={16} />;
-  if (state === "needs") return <Glyph icon={CircleAlert} size={14} className="mx-px shrink-0 text-warn" />;
-  if (unseen)
-    return (
-      <span className="grid size-4 shrink-0 place-items-center" title="New activity">
-        <span aria-hidden className="size-2 rounded-full bg-accent ring-2 ring-accent/25" />
-        <span className="sr-only">New activity</span>
-      </span>
-    );
-  return (
-    <span aria-hidden className="grid size-4 shrink-0 place-items-center">
-      <span className="size-1.5 rounded-full border border-fg-3" />
-    </span>
-  );
+  return <StateGlyph state={orchestratorGlyph(state, unseen)} size={14} box={16} label />;
 }
 
 const TIER_LABEL: Record<Tier, string> = { fast: "fast", balanced: "balanced", deep: "deep" };

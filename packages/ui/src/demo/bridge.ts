@@ -1,4 +1,15 @@
-import { BridgeError, type Agent, type Bridge, type Models, type Note, type Project, type ProjectInput, type ProjectSummary } from "@octo/agent-client";
+import {
+  BridgeError,
+  type Agent,
+  type Bridge,
+  type Models,
+  type Note,
+  type Project,
+  type ProjectInput,
+  type ProjectSummary,
+  type SideMessage,
+  type CompactionMarker,
+} from "@octo/agent-client";
 import { basename } from "../lib/format";
 import { atlasHistory } from "./atlas";
 import { backgroundTurn, docsHistory } from "./extra";
@@ -8,7 +19,7 @@ import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
 import { orbitLive } from "./orbit";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
-import type { Ctx } from "./runtime";
+import { act, say, sleep, turn, type Ctx } from "./runtime";
 import { clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store";
 
 /** full: the regular demo (plus a Stress test project) · empty: no projects · one: a single project ·
@@ -234,6 +245,35 @@ function seed(): ProjectRecord[] {
     )(ctx);
   });
 
+  // A turn that failed (the provider gave up): the "Needs you" state.
+  const webhooks = makeProject(
+    {
+      name: "Billing webhooks",
+      description: "Stripe webhook handler and its retry queue",
+      folders: [{ path: "/Users/maya/code/webhooks", label: "webhooks" }],
+    },
+    now - 4 * 24 * HOUR,
+  );
+  startScript(webhooks, now - 30 * HOUR, async (ctx) => {
+    await turn(ctx, "List the webhook events we handle and which ones we ignore.", async (c, orch) => {
+      await act(c, orch, [{ name: "grep", input: { pattern: 'case "', path: "src/handler.ts" }, result: "14 matches", ms: 500 }]);
+      await say(c, orch, "We handle 14 event types; `charge.dispute.*` and `payout.*` fall through to the default branch and are ignored.");
+    });
+    await sleep(ctx, 40 * 60_000);
+    await turn(ctx, "Replay yesterday's failed webhooks against staging.", async (c, orch) => {
+      await act(c, orch, [
+        {
+          name: "bash",
+          input: { command: "pnpm replay --since yesterday --target staging" },
+          result: "error: staging rejected the signing secret (401)",
+          ms: 900,
+          error: true,
+        },
+      ]);
+      throw new Error("Staging rejected the webhook signing secret (401). Rotate STAGING_WEBHOOK_SECRET, then ask again.");
+    });
+  });
+
   const tokens = makeProject(
     {
       name: "Design system tokens",
@@ -251,7 +291,7 @@ function seed(): ProjectRecord[] {
     now - 40 * 24 * HOUR,
   );
   startScript(stress, now - 30 * HOUR, stressHistory);
-  return [orbit, atlas, docs, payments, infra, tokens, stress];
+  return [orbit, atlas, docs, payments, infra, webhooks, tokens, stress];
 }
 
 function seedMany(): ProjectRecord[] {
@@ -272,6 +312,8 @@ function seedOne(): ProjectRecord[] {
 
 const SEEDERS: Record<DemoSeed, () => ProjectRecord[]> = { full: seed, empty: () => [], one: seedOne, many: seedMany };
 
+const SIDE_ANSWER = "The orchestrator is between steps: it is waiting on its agents. Nothing you ask here is added to its conversation.";
+
 export function createDemoBridge(options: DemoOptions = {}): Bridge {
   const lspMode = options.lsp ?? "ok";
   const pluginsOn = options.plugins ?? true;
@@ -280,6 +322,14 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
   for (const rec of SEEDERS[options.seed ?? "full"]()) records.set(rec.project.id, rec);
 
   const delay = () => new Promise((r) => setTimeout(r, LATENCY_MS));
+  const sides: { project: string; message: SideMessage }[] = [];
+  // One compacted history, so the marker's state exists in the demo: Atlas API's orchestrator (the longest seeded
+  // transcript; histories are played in, so the marker is computed when read) had its first exchange summarised.
+  const compacted = [...records.values()].find((r) => r.project.name.startsWith("Atlas"))?.project.orchestrator_agent_id;
+  const compactions = (rec: ProjectRecord, agentId: string): CompactionMarker[] => {
+    const upto = agentId === compacted ? rec.messages.filter((m) => m.agent_id === agentId)[1] : undefined;
+    return upto ? [{ upto_message_id: upto.id, at: upto.created_at, summary_tokens: 1_850 }] : [];
+  };
   const get = (id: string) => {
     const rec = records.get(id);
     if (!rec) throw new BridgeError(404, "not_found", "project not found");
@@ -305,7 +355,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     },
     createProject: async (input) => {
       await delay();
-      if (!input.name?.trim()) throw new BridgeError(400, "invalid", "name is required");
+      if (!input.name.trim()) throw new BridgeError(400, "invalid", "name is required");
       const rec = makeProject(input, Date.now());
       records.set(rec.project.id, rec);
       return clone(rec.project);
@@ -339,6 +389,58 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       return clone(agent);
     },
     listMessages: async (id, agentId) => (await delay(), clone(get(id).messages.filter((m) => m.agent_id === agentId))),
+    // An estimate from the stored text (≈ 4 characters a token) in the harness's six parts, summing to `used_tokens`.
+    getContext: async (id, agentId) => {
+      await delay();
+      const rec = get(id);
+      const agent = agentId ?? rec.project.orchestrator_agent_id;
+      const msgs = rec.messages.filter((m) => m.agent_id === agent);
+      const text = Math.round(msgs.reduce((n, m) => n + JSON.stringify(m.content).length, 0) / 4);
+      const summary = compactions(rec, agent).reduce((n, c) => n + (c.summary_tokens ?? 0), 0);
+      const parts = [
+        { key: "system" as const, tokens: 2_400 },
+        { key: "tools" as const, tokens: 3_100 },
+        { key: "notes" as const, tokens: rec.notes.length * 180 },
+        { key: "messages" as const, tokens: Math.round(text * 0.45) },
+        { key: "tool_results" as const, tokens: Math.round(text * 0.55) },
+        { key: "summary" as const, tokens: summary },
+      ];
+      const used = parts.reduce((n, p) => n + p.tokens, 0);
+      return { agent_id: agent, model: rec.project.models.orchestrator, window_tokens: 1_000_000, used_tokens: used, estimated: true, parts };
+    },
+    // Side questions (decision 40): stored apart from the orchestrator's messages; the answer streams as side.delta
+    // events and ends with side.done, like the harness.
+    askSide: async (id, text) => {
+      await delay();
+      const rec = get(id);
+      const sideId = newId("side");
+      const message = { id: (sides.at(-1)?.message.id ?? 0) + 1, side_id: sideId, role: "user" as const, text, created_at: new Date().toISOString() };
+      sides.push({ project: id, message });
+      const answer = SIDE_ANSWER.split(/(?<= )/);
+      answer.forEach((chunk, i) =>
+        setTimeout(
+          () => {
+            if (!sides.some((x) => x.message.side_id === sideId)) return;
+            emit(rec, { type: "side.delta", side_id: sideId, text: chunk });
+            if (i < answer.length - 1) return;
+            const done = { id: message.id + 1, side_id: sideId, role: "assistant" as const, text: SIDE_ANSWER, created_at: new Date().toISOString() };
+            sides.push({ project: id, message: done });
+            emit(rec, { type: "side.done", side_id: sideId, message: clone(done) });
+          },
+          300 + i * 40,
+        ),
+      );
+      return { side_id: sideId, message: clone(message) };
+    },
+    listSide: async (id) => (await delay(), clone(sides.filter((x) => x.project === id).map((x) => x.message))),
+    clearSide: async (id) => {
+      await delay();
+      for (let i = sides.length - 1; i >= 0; i--) if (sides[i]?.project === id) sides.splice(i, 1);
+    },
+    getTranscript: async (id, agentId) => (
+      await delay(),
+      { messages: clone(get(id).messages.filter((m) => m.agent_id === agentId)), compactions: compactions(get(id), agentId) }
+    ),
     sendMessage: async (id, text) => {
       await delay();
       const rec = get(id);
