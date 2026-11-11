@@ -72,8 +72,15 @@ export type ProjectState = {
   /** v7: bumped when secrets were stored or deleted (refetch listSecrets). */
   secretsRevision: number;
   lastSeq: number;
-  lastTurn: { status: TurnStatus; error: string | null; hint?: string } | null;
+  lastTurn: TurnOutcome | null;
+  /**
+   * How each finished orchestrator turn ended, by the id of the request that started it, so failed and stopped turns
+   * keep their own line when several end in a row. Only turns seen live are here.
+   */
+  turnOutcomes: Record<number, TurnOutcome>;
 };
+
+export type TurnOutcome = { status: TurnStatus; error: string | null; hint?: string };
 
 export function emptySide(): SideState {
   return { messages: [], pending: null, error: null };
@@ -103,6 +110,7 @@ export function emptyProjectState(): ProjectState {
     secretsRevision: 0,
     lastSeq: 0,
     lastTurn: null,
+    turnOutcomes: {},
   };
 }
 
@@ -149,6 +157,17 @@ function upsertNote(notes: Note[], note: Note): Note[] {
   const i = notes.findIndex((n) => n.id === note.id);
   if (i === -1) return [...notes, note];
   return notes.map((n, idx) => (idx === i ? note : n));
+}
+
+/** The id of the orchestrator's latest request (a user message with text, not a tool result). */
+function lastRequestId(state: ProjectState): number | null {
+  const root = state.agentOrder.find((id) => state.agents[id]?.parent_id === null);
+  const list = root ? (state.messages[root] ?? []) : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (m?.role === "user" && m.content.some((b) => b.type === "text")) return m.id;
+  }
+  return null;
 }
 
 function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
@@ -215,15 +234,19 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         ...state,
         notes: event.note ? upsertNote(state.notes, event.note) : state.notes.filter((n) => n.id !== event.note_id),
       };
-    case "turn.finished":
+    case "turn.finished": {
+      const outcome: TurnOutcome = event.hint ? { status: event.status, error: event.error, hint: event.hint } : { status: event.status, error: event.error };
+      const request = lastRequestId(state);
       return {
         ...state,
         streaming: {},
         activeTools: {},
         thinking: {},
         activity: {},
-        lastTurn: { status: event.status, error: event.error, ...(event.hint ? { hint: event.hint } : {}) },
+        lastTurn: outcome,
+        turnOutcomes: request === null ? state.turnOutcomes : { ...state.turnOutcomes, [request]: outcome },
       };
+    }
     case "agent.compacted": {
       const marker: CompactionMarker = { upto_message_id: event.upto_message_id, at: event.at };
       if (event.summary_tokens !== undefined) marker.summary_tokens = event.summary_tokens;

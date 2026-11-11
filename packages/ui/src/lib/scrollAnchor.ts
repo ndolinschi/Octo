@@ -68,10 +68,10 @@ export function trackScrollAnchor(scroller: HTMLElement, itemSelector: string): 
   };
 }
 
-/** `trackScrollAnchor` for the scroller in `ref` (mounted for the component's life). */
-export function useScrollAnchor(ref: RefObject<HTMLElement | null>, itemSelector: string): void {
+/** `trackScrollAnchor` for the scroller in `ref`; `rebind` changes when the scroller element may have been replaced or only now appeared. */
+export function useScrollAnchor(ref: RefObject<HTMLElement | null>, itemSelector: string, rebind?: unknown): void {
   useEffect(() => {
     const el = ref.current;
     return el ? trackScrollAnchor(el, itemSelector) : undefined;
-  }, [ref, itemSelector]);
+  }, [ref, itemSelector, rebind]);
 }

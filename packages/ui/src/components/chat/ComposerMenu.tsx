@@ -21,7 +21,9 @@ type Entry = { id: string; group: string; label: string; detail?: string; hint: 
 const VISIBLE = 8;
 const ROW = 28;
 const FILES_SHOWN = 6;
+/** Above the composer box when typed; 4px above the "+" chip when opened by it (decision 56). */
 const GAP = 6;
+const CHIP_GAP = 4;
 
 const plugins = new WeakMap<Bridge, Promise<PluginAgent[]>>();
 function availableAgents(bridge: Bridge): Promise<PluginAgent[]> {
@@ -53,6 +55,8 @@ export const ComposerMenu = forwardRef<
   ComposerMenuHandle,
   {
     anchor: RefObject<HTMLElement | null>;
+    /** The composer box: the menu is as wide as it (up to 480px); when it is the anchor too, the menu sits above it. */
+    box: RefObject<HTMLElement | null>;
     /** Query typed in the composer after the trigger; null when opened by the button (own search field). */
     query: string | null;
     listId: string;
@@ -149,16 +153,20 @@ export const ComposerMenu = forwardRef<
     if (current >= 0) panel.current?.querySelector(`#${CSS.escape(optionId(current))}`)?.scrollIntoView({ block: "nearest" });
   });
 
-  // Above the composer box, on its left edge and as wide (up to 480px).
+  // Above its anchor, on the anchor's left edge, as wide as the composer box (up to 480px) and never past the window.
   useLayoutEffect(() => {
     const place = () => {
       const r = props.anchor.current?.getBoundingClientRect();
-      if (r) setPos({ left: r.left, bottom: window.innerHeight - r.top + GAP, width: Math.min(r.width, 480) });
+      const b = props.box.current?.getBoundingClientRect();
+      if (!r || !b) return;
+      const width = Math.min(b.width, 480, window.innerWidth - 16);
+      const gap = props.anchor.current === props.box.current ? GAP : CHIP_GAP;
+      setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), bottom: window.innerHeight - r.top + gap, width });
     };
     place();
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
-  }, [props.anchor]);
+  }, [props.anchor, props.box]);
 
   // Opened by the button, the search field takes focus once the panel exists (it renders after `pos`).
   const placed = pos !== null;
@@ -168,11 +176,11 @@ export const ComposerMenu = forwardRef<
   useEffect(() => {
     const outside = (e: PointerEvent) => {
       const t = e.target as Node;
-      if (!panel.current?.contains(t) && !props.anchor.current?.contains(t)) onClose();
+      if (!panel.current?.contains(t) && !props.anchor.current?.contains(t) && !props.box.current?.contains(t)) onClose();
     };
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
-  }, [onClose, props.anchor]);
+  }, [onClose, props.anchor, props.box]);
 
   const choose = (e: Entry | undefined) => e && props.onPick(e.pick);
 

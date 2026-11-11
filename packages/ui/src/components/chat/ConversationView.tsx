@@ -1,3 +1,4 @@
+import { useScrollAnchor } from "../../lib/scrollAnchor";
 import type { Agent } from "@octo/agent-client";
 import { ArrowDown } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
@@ -8,7 +9,12 @@ import { hrefFor } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { CHAT, type TabId } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { roleName } from "../../lib/orchestrator";
+import { roleName as baseRoleName } from "../../lib/orchestrator";
+import { useNav, useNavState } from "../../state/nav";
+import { useComposerAnchor } from "./useComposerAnchor";
+
+/** Decision 63: the project's own agent goes by the project's name in its conversation, never "Orchestrator". */
+const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
 import { showRail, turnWarning } from "../../lib/transcript";
 import { TurnBanner, useLoginHint } from "./Transcript";
 
@@ -16,7 +22,6 @@ import { TurnBanner, useLoginHint } from "./Transcript";
 const AgentHeader = lazy(() => import("./AgentHeader").then((m) => ({ default: m.AgentHeader })));
 import { requestTitle } from "../../lib/comments";
 import { buildTurns, promptText, requestSummaries } from "../../lib/transcript";
-import { ChatHeader } from "./ChatHeader";
 import { CommentsControl } from "./CommentsControlLazy";
 import { Composer, type ComposerHandle } from "./Composer";
 import { TurnRail } from "./TurnRail";
@@ -118,6 +123,22 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   });
   const { onScroll: measureStuck } = stuck;
   useEffect(measureStuck, [messages, streaming, measureStuck]);
+  // Decision 56: "Jump to latest" hides while a popover of the composer is open.
+  const [overlay, setOverlay] = useState(false);
+  const composerRow = useRef<HTMLDivElement>(null);
+  useComposerAnchor(scroll.ref, composerRow, scroll.atBottom);
+  const nav = useNav();
+  const { viewTurn } = useNavState();
+  // Decision 57: Alt+↑/↓ anywhere in the conversation jumps between requests.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || requests.length === 0) return;
+    const at = viewTurn?.projectId === projectId ? requests.findIndex((r) => r.id === viewTurn.messageId) : -1;
+    const to = at < 0 ? requests.length - 1 : at + (e.key === "ArrowDown" ? 1 : -1);
+    const target = requests[Math.max(0, Math.min(requests.length - 1, to))];
+    if (!target) return;
+    e.preventDefault();
+    nav.requestTurn({ projectId, messageId: target.id });
+  };
 
   // The empty project's streak runs behind the whole group (strip and header too), not only this view.
   const backdrop = useBackdrop();
@@ -146,6 +167,9 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
       el.scrollTop = at.top;
     }
   }, [messages, memory, tab, scroll]);
+  // Opening a file narrows the conversation and the text re-wraps: keep the reader's place (decision 60). The scroller only
+  // exists once there are messages, so the tracker is bound again when that changes.
+  useScrollAnchor(scroll.ref, "article, article :is(p, li, pre, h1, h2, h3, h4, blockquote, tr)", messages === undefined ? 0 : messages.length === 0 ? 1 : 2);
   // Saved on unmount from the scroller as it is then — it may have appeared after mount (a project that started
   // empty: decision 36), so the element is read at cleanup, before the DOM goes.
   useLayoutEffect(() => {
@@ -157,6 +181,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   }, [memory, tab, scroll.ref]);
 
   if (!project) return null;
+  const roleName = nameIn(project.name);
   if (!agent) {
     return (
       <div className="grid h-full place-items-center text-center">
@@ -187,13 +212,14 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   // messages arrive. The empty project centres title + composer + facts between two flexible halves.
   return (
     <div
+      data-conv
+      onKeyDown={onKeyDown}
       className={cn(
         "@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]",
         // Decision 50: the empty project's streak is on the dock group (never in this scroller); no rubber-band either.
         empty && "overflow-x-hidden overflow-y-auto overscroll-none",
       )}
     >
-      {isOrchestrator && <ChatHeader transparent={empty} />}
       {empty ? (
         <div data-empty-project className="flex flex-[1_0_auto] flex-col justify-end px-(--pad) pt-8 pb-6">
           {!backdrop && appBackdrop !== "off" && <StreakLayer preset={STREAK_EMPTY} theme={theme} mono={appBackdrop === "mono"} />}
@@ -251,7 +277,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
               </div>
             </div>
           </div>
-          {!scroll.atBottom && (
+          {!scroll.atBottom && !overlay && (
             // Scrolled up, the view ends 40px higher: the button gets its own room below the transcript
             // (4 + 32 + 4), so it never sits on text, and the last 12px of text fade out above that room.
             // The content does not move (the scroll position is kept); at the bottom the room goes again.
@@ -273,9 +299,9 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
         </div>
       )}
 
-      <div className={cn(EDGES, "relative shrink-0", !empty && "pb-3")}>
+      <div ref={composerRow} className={cn(EDGES, "relative shrink-0", !empty && "pt-2 pb-3")}>
         <div data-column-edge className={cn("mx-auto w-full", empty ? "max-w-float" : "max-w-measure")}>
-          {isOrchestrator ? <Composer ref={composer} {...composerProps} comments={commentsSlot} /> : <ObserverBar />}
+          {isOrchestrator ? <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} /> : <ObserverBar />}
         </div>
       </div>
       {empty && (

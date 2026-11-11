@@ -213,11 +213,6 @@
   #root {
     height: 100%;
   }
-  /* Interim (decision 54): the title bar row shows what the conversation header showed. Delete this rule together with
-     components/chat/ChatHeader.tsx (it only hides the old header until chat stops rendering it). */
-  [data-chat-header] {
-    display: none;
-  }
   body {
     margin: 0;
     background: var(--octo-window);
@@ -977,4 +972,281 @@
 /* Decision 56: no "Jump to latest" under an open composer popover. */
 :root[data-composer-popover] [data-jump-room] button {
   visibility: hidden;
+}
+
+/* composer — decision 62: one container (radius 14, raised, a hairline that brightens on focus), 15px text. */
+.octo-composer {
+  border-radius: 14px;
+  outline: 1px solid var(--octo-line);
+  outline-offset: -1px;
+  transition: outline-color 100ms;
+}
+.octo-composer:focus-within {
+  outline-color: var(--octo-input-border);
+}
+.octo-composer[data-floating] {
+  outline-color: transparent;
+  box-shadow: var(--octo-shadow-float);
+}
+.octo-composer[data-floating]:focus-within {
+  outline-color: var(--octo-input-border);
+}
+.octo-composer[data-drop] {
+  outline: 1px dashed var(--octo-drop-edge);
+  background-color: color-mix(in srgb, var(--octo-raised) 100%, var(--octo-drop));
+}
+.octo-composer-input {
+  font-size: 15px;
+  line-height: 22px;
+  min-height: 22px;
+}
+/* Touch screens: 16px so iOS does not zoom into the field. */
+@media (pointer: coarse) {
+  .octo-composer-input {
+    font-size: 16px;
+  }
+}
+
+/* compact conversation — decision 61: the conversation column adapts to its own width (container `conv`). */
+@container conv (max-width: 479.98px) {
+  [data-conv] > * {
+    --pad: 12px;
+  }
+  [data-conv] [data-time-sep],
+  [data-conv] [data-rail] {
+    display: none;
+  }
+  /* Requests become right-aligned bubbles; answers stay full width with no card. */
+  [data-conv] [data-prompt] {
+    display: flex;
+    justify-content: flex-end;
+  }
+  [data-conv] [data-prompt] > [data-bubble] {
+    max-width: 86%;
+    border-radius: 14px;
+  }
+  [data-conv] .octo-prose {
+    overflow-wrap: anywhere;
+  }
+  [data-conv] .octo-prose :not(pre) > code {
+    word-break: break-all;
+  }
+  [data-conv] .octo-prose ul,
+  [data-conv] .octo-prose ol {
+    padding-left: 16px;
+  }
+  /* Copy and time under a reply: on hover or tap only. */
+  [data-conv] [data-turn-footer] {
+    opacity: 0;
+    transition: opacity 100ms;
+  }
+  [data-conv] article:hover [data-turn-footer],
+  [data-conv] article:focus-within [data-turn-footer],
+  [data-conv] article:active [data-turn-footer] {
+    opacity: 1;
+  }
+}
+/* Below 360: the composer's chips are icons only. */
+@container conv (max-width: 359.98px) {
+  [data-conv] [data-composer-chip] {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+  [data-conv] [data-composer-chip] [data-chip-label] {
+    display: none;
+  }
+}
+
+/* aurora — decision 45 (a) the composer edge while the orchestrator works, (b) the streaming line and the activity
+   shimmer. Only transform and opacity animate (the gradient layer turns, the glow breathes); the glow is painted once;
+   everything pauses while hidden or off-screen ([data-paused]) and stands still under reduced motion. */
+@property --octo-aurora-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 200deg;
+}
+:root,
+:root[data-theme="dark"] {
+  --octo-aurora: conic-gradient(from var(--octo-aurora-angle), #ffc45a, #ff6a1a, #d8144a, #7a2ae0, #2a78ff, #7cc8ff, #ffc45a);
+  --octo-aurora-glow: 0.35;
+}
+:root[data-theme="light"] {
+  --octo-aurora: conic-gradient(from var(--octo-aurora-angle), #ff9a1a, #ff4a10, #f01e4a, #c01a9a, #244af0, #1e9aff, #ff9a1a);
+  --octo-aurora-glow: 0.22;
+}
+.octo-aurora-frame {
+  position: relative;
+  isolation: isolate;
+}
+.octo-aurora-glow {
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: 14px;
+  background: var(--octo-aurora);
+  filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms var(--ease-out-quint);
+}
+.octo-aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  padding: 1px;
+  border-radius: 14px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms var(--ease-out-quint);
+  /* Only the 1px ring shows. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+.octo-aurora-spin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 110%;
+  aspect-ratio: 1;
+  background: var(--octo-aurora);
+  transform: translate(-50%, -50%);
+}
+[data-aurora="working"] > .octo-composer {
+  outline-color: transparent;
+}
+[data-aurora="working"] > .octo-aurora,
+[data-aurora="failed"] > .octo-aurora {
+  opacity: 1;
+}
+[data-aurora="working"] > .octo-aurora-glow {
+  opacity: var(--octo-aurora-glow);
+}
+[data-aurora="failed"] > .octo-aurora .octo-aurora-spin {
+  background: var(--octo-err);
+}
+[data-aurora="failed"] > .octo-aurora {
+  animation: octo-aurora-drain 1200ms var(--ease-out-quint) forwards;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-aurora="working"] > .octo-aurora .octo-aurora-spin {
+    animation: octo-aurora-turn 6s linear infinite;
+  }
+  [data-aurora="working"] > .octo-aurora-glow {
+    animation: octo-aurora-breathe 1.5s ease-in-out infinite alternate;
+  }
+  :root[data-theme="light"] [data-aurora="working"] > .octo-aurora-glow {
+    animation-name: octo-aurora-breathe-light;
+  }
+}
+[data-paused] > .octo-aurora .octo-aurora-spin,
+[data-paused] > .octo-aurora-glow,
+[data-paused] .octo-shimmer-sweep,
+[data-paused] .octo-shimmer-text {
+  animation-play-state: paused;
+}
+@keyframes octo-aurora-turn {
+  to {
+    transform: translate(-50%, -50%) rotate(1turn);
+  }
+}
+/* ±15% around the theme's glow opacity (0.35 dark, 0.22 light). */
+@keyframes octo-aurora-breathe {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 0.4;
+  }
+}
+@keyframes octo-aurora-breathe-light {
+  from {
+    opacity: 0.19;
+  }
+  to {
+    opacity: 0.25;
+  }
+}
+@keyframes octo-aurora-drain {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* (b) The line being written fades in over its last 24px (replaces the blinking caret); static, so never animated
+   behind text. */
+.octo-prose[data-streaming] > :last-child:not(ul, ol, pre, table, div)::after,
+.octo-prose[data-streaming] > :is(ul, ol):last-child > li:last-child::after {
+  width: 24px;
+  height: 1.3em;
+  margin-left: -24px;
+  vertical-align: -0.3em;
+  background: linear-gradient(to right, transparent, var(--octo-panel));
+  animation: none;
+}
+
+/* The activity line's shimmer: a bright copy of the label seen through a moving soft window. The window and the
+   copy move in opposite directions by the same amount, so the copy stays on the label: transform only. */
+.octo-shimmer {
+  position: relative;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.octo-shimmer-sweep {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent 30%, #000 50%, transparent 70%);
+  transform: translateX(-100%);
+}
+.octo-shimmer-text {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--octo-fg);
+  transform: translateX(100%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .octo-shimmer-sweep {
+    animation: octo-shimmer-sweep 1.8s linear infinite;
+  }
+  .octo-shimmer-text {
+    animation: octo-shimmer-hold 1.8s linear infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .octo-shimmer-sweep {
+    display: none;
+  }
+}
+@keyframes octo-shimmer-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes octo-shimmer-hold {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(-100%);
+  }
 }

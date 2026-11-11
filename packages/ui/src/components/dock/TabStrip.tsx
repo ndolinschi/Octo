@@ -59,7 +59,13 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
   const [menu, setMenu] = useState<{ tab: TabId; x: number; y: number } | null>(null);
   const drag = useDrag();
   const counts = useOptionalComments()?.counts;
-  const ctx = { state, orchestratorId: project?.orchestrator_agent_id, file: code.file, comments: (key: FileKey) => counts?.get(key) ?? 0 };
+  const ctx = {
+    state,
+    projectName: project?.name,
+    orchestratorId: project?.orchestrator_agent_id,
+    file: code.file,
+    comments: (key: FileKey) => counts?.get(key) ?? 0,
+  };
 
   const activeIndex = props.tabs.indexOf(props.active);
   // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer. The tabs get the

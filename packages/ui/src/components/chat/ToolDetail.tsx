@@ -19,7 +19,10 @@ export function ToolDetail({ use }: { use: ToolUse }) {
   const result = ctx.results.get(use.id);
   return (
     <div className="overflow-hidden rounded-md bg-code-bg text-xs">
-      <ToolSection label="Input" body={formatInput(use)} action={acpCall(use.name, use.input) ? <AcpLocations use={use} /> : <PathLink use={use} />} />
+      {/* Decision 63: no "Input" section with nothing to say (no arguments, `{}`). */}
+      {formatInput(use) && (
+        <ToolSection label="Input" body={formatInput(use)} action={acpCall(use.name, use.input) ? <AcpLocations use={use} /> : <PathLink use={use} />} />
+      )}
       {result && <ToolSection label={result.is_error ? "Error" : "Result"} body={result.content} error={result.is_error} structured={!result.is_error} />}
     </div>
   );
@@ -149,7 +152,8 @@ function ToolSection({
 function formatInput(use: ToolUse): string {
   const input = use.input as Record<string, unknown> | null;
   // ACP: the title is the row; what the agent passed is `raw_input`.
-  if (acpCall(use.name, use.input)) return input?.raw_input === undefined ? use.name : JSON.stringify(input.raw_input, null, 2);
+  const json = (v: unknown) => (v === undefined || v === null || (typeof v === "object" && Object.keys(v).length === 0) ? "" : JSON.stringify(v, null, 2));
+  if (acpCall(use.name, use.input)) return json(input?.raw_input);
   if (use.name === "bash" && input && typeof input.command === "string") return input.command;
-  return JSON.stringify(use.input, null, 2);
+  return json(use.input);
 }

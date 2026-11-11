@@ -1,157 +1,118 @@
-import type { Folder, Models, TierPolicy } from "@octo/agent-client";
-import { ArrowUp, Ellipsis, Plus, Route, Square } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
-import { GLYPH } from "../primitives/glyphs";
-import {
-  forwardRef,
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useId,
-  useImperativeHandle,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import type { Folder, TierPolicy } from "@octo/agent-client";
+import { ArrowUp, Clock, Plus, Square } from "lucide-react";
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { Button } from "../primitives/Button";
-import { Presence } from "../primitives/Presence";
-import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
-
-/** The folder picker loads when first opened (decision 49; its own chunk). */
-const FolderPicker = lazy(() => import("../shared/FolderPicker").then((m) => ({ default: m.FolderPicker })));
-/** The "+" menu loads when first opened (prefetched when the composer takes focus): its own chunk. */
-const loadMenu = () => import("./ComposerMenu");
-const ComposerMenu = lazy(() => loadMenu().then((m) => ({ default: m.ComposerMenu })));
-import { ModelPicker } from "../shared/ModelPicker";
 import { errorMessage } from "../../lib/format";
-import { policyLabel, TIER_POLICIES } from "../../lib/models";
-import { Menu, type MenuItem } from "../primitives/Menu";
-import { IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { Glyph } from "../primitives/Glyph";
+import { Presence } from "../primitives/Presence";
+import { withAttachments } from "./attachments";
+import { ComposerMenu, type ComposerMenuHandle, type MenuPick } from "./ComposerMenu";
+import { FolderChip, ModelChip, TierChip, useShedLabels } from "./ComposerChips";
+import { ComposerPills, type QueuedMessage } from "./ComposerPills";
+import { ContextRing } from "./ContextRing";
+import { useAnimationGate, useAuroraState } from "./useAnimationGate";
+import { useAttachments } from "./useAttachments";
+import { useComposerText, type ComposerDraft } from "./useComposerText";
 
 export type ComposerHandle = { focus(): void; fill(text: string): void };
 
 export type ComposerProps = {
   running: boolean;
+  /** The last turn failed (the edge drains to danger once). */
+  failed: boolean;
   disabledReason: string | null;
-  /** The conversation already has messages: the placeholder invites a follow-up. */
-  followUp: boolean;
   folders: Folder[];
-  /** The orchestrator model picker (choose rejects to roll back): the project's tiers and the model ids the harness knows. */
-  model: {
-    value: string;
-    known: string[];
-    tiers: Pick<Models, "fast" | "balanced" | "deep"> | null;
-    /** Decision 48: the tooltip when a router served another model ("Sonnet 5.5 → deepseek-v4.1-flash"). */
-    title?: string | undefined;
-    choose(model: string): Promise<void>;
-  } | null;
-  /** The project's routing policy, when a router is detected (decision 37). */
-  policy?: { value: TierPolicy; onChange(policy: TierPolicy): void } | null;
-  /** The folders button: opens the project's settings. */
-  onFolders?: (() => void) | undefined;
-  /** Decision 49: the folder chip opens the folder picker; choosing adds the folder to the project. */
+  /** The orchestrator's model or agent (choose rejects to roll back). */
+  model: { value: string; title?: string | undefined; choose(model: string): Promise<void> } | null;
+  /** One quiet line above the box (no API key), with the reason in its tooltip. */
+  notice?: { text: string; title?: string } | null;
+  /** Decision 49: the folder chip's picker adds the chosen folder to the project. */
   onAddFolder?: ((path: string) => void) | undefined;
-  /** One quiet line above the box (no API key: decision ACP), with an optional way forward. */
-  notice?: { text: string; title?: string; action?: { label: string; run(): void } } | null;
+  /** The router's tier policy; null without a router. */
+  tier: { value: TierPolicy; choose(policy: TierPolicy): Promise<void> } | null;
+  /** The orchestrator's context window, for the meter. */
+  context: { used: number | null | undefined; size: number | null | undefined };
+  /** The newest request, recalled by ↑ in an empty field. */
+  lastRequest: string | null;
   onSend(text: string): Promise<void>;
   onCancel(): Promise<void>;
+  /** Messages written while a turn runs; sent one by one when it ends. */
+  queue: { items: QueuedMessage[]; add(text: string): void; remove(id: string): void };
   /** Keeps an unsent draft across remounts and shares it with the other composer on the same key. */
-  draft?: { initial: string; save(text: string): void; subscribe?(cb: (text: string) => void): () => void } | undefined;
+  draft?: ComposerDraft | undefined;
   /** Pending code comments go out with the next message (which may then have no text). */
   comments?: { count: number; render(open: boolean, setOpen: (open: boolean) => void): ReactNode } | undefined;
-  /** Opens the pending-comments list from the "+" menu when it lives elsewhere (the floating composer's chip). */
-  onOpenComments?(): void;
-  /** Floating over a file view: a shadow instead of the hairline, the model inside the box, no footer. */
+  /** Floating over a file view: a shadow instead of the hairline. */
   floating?: boolean;
+  /** A popover of the composer opened or closed (the conversation hides "Jump to latest" meanwhile, decision 56). */
+  onOverlay?(open: boolean): void;
 };
 
-const MAX_HEIGHT_VH = 0.4;
 /** `/` or `@` at the start of a word, up to the caret: the "+" menu's inline query. */
 const TRIGGER = /(^|\s)([/@])([^\s/@]*)$/;
 
 type MenuState = { mode: "button" } | { mode: "inline"; start: number; query: string };
 
+/** Chips that can shed their label (tier, folder, model). */
+const SHEDDABLE = 3;
+
 /**
- * Decision 30 — two fused layers in one outline (radius 12, a hairline between): the input row — [28px "+"] 8 [text]
- * 8 [28px send / stop], growing with the text (controls stay on the last line) — and under it a 28px context bar of
- * quiet buttons: folders (opens project settings), model (the picker of decision 27), routing (when a router is
- * detected), pending comments; on the right the key hint while the box is empty and focused. Under 420px the bar
- * keeps the model and folds folders and routing into `…`. The floating composer has the same two layers. The "+"
- * menu (button, or `/` / `@` at a word start) inserts file paths and agent hints, or runs an action.
+ * The composer (decision 62): one container (radius 14, raised, hairline that brightens on focus; the aurora edge
+ * while the orchestrator works). Inside: the pills (queued messages, line comments, attached files), the text area
+ * (1–10 lines), and the control row — "+", the model / folder / tier chips (labels shed tier → folder → model when
+ * narrow), the context ring and one round button that is Send, Stop, or Queue.
  */
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(props, handle) {
-  const [text, setText] = useState(() => props.draft?.initial ?? "");
-  const saveDraft = props.draft?.save;
-  useEffect(() => {
-    saveDraft?.(text);
-  }, [text, saveDraft]);
-  const subscribe = props.draft?.subscribe;
-  useEffect(() => subscribe?.((t) => setText((cur) => (cur === t ? cur : t))), [subscribe]);
+  const { text, setText, area, place } = useComposerText(props.draft);
+  const attach = useAttachments();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelError, setModelError] = useState<{ model: string; message: string } | null>(null);
-  const [focused, setFocused] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [activeOption, setActiveOption] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [busyHint, setBusyHint] = useState(false);
-  useEffect(() => {
-    if (!props.running) setBusyHint(false);
-  }, [props.running]);
-  const area = useRef<HTMLTextAreaElement>(null);
+  const [chipOpen, setChipOpen] = useState(0);
   const box = useRef<HTMLFormElement>(null);
+  const plus = useRef<HTMLButtonElement>(null);
+  const row = useRef<HTMLDivElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
   const listId = useId();
+  const aurora = useAuroraState(props.running, props.failed);
+  const frame = useRef<HTMLDivElement>(null);
+  const paused = useAnimationGate(frame, aurora !== "off");
 
-  useImperativeHandle(handle, () => ({
-    focus: () => area.current?.focus(),
-    fill: (value) => {
-      setText(value);
-      requestAnimationFrame(() => {
-        area.current?.focus();
-        area.current?.setSelectionRange(value.length, value.length);
-      });
-    },
-  }));
+  useImperativeHandle(handle, () => ({ focus: () => area.current?.focus(), fill: (value) => place(value) }));
 
-  const fit = useCallback(() => {
-    const el = area.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${Math.min(el.scrollHeight, Math.round(window.innerHeight * MAX_HEIGHT_VH))}px`;
-  }, []);
-
-  useLayoutEffect(fit, [text, fit]);
-
-  // Wrapping changes when the width does (window resize, side panel toggling), so refit then too.
-  useEffect(() => {
-    const el = area.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    let width = el.clientWidth;
-    const observer = new ResizeObserver(() => {
-      if (el.clientWidth === width) return;
-      width = el.clientWidth;
-      fit();
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [fit]);
+  const overlay = menu !== null || commentsOpen || chipOpen > 0;
+  const onOverlay = props.onOverlay;
+  useEffect(() => onOverlay?.(overlay), [overlay, onOverlay]);
+  useEffect(() => () => onOverlay?.(false), [onOverlay]);
+  const onChip = useCallback((open: boolean) => setChipOpen((n) => Math.max(0, n + (open ? 1 : -1))), []);
 
   const disabled = props.disabledReason !== null;
   const pendingComments = props.comments?.count ?? 0;
-  const canSend = !disabled && !props.running && !sending && (text.trim().length > 0 || pendingComments > 0);
+  const hasContent = text.trim().length > 0 || attach.files.length > 0 || pendingComments > 0;
+  const canSend = !disabled && !sending && hasContent;
+  const shed = useShedLabels(row, SHEDDABLE, `${props.model?.value}|${props.folders.length}|${props.tier?.value}`);
 
+  const outgoing = () => withAttachments(text.trim(), attach.files);
+  const queue = () => {
+    const message = outgoing();
+    if (!message || disabled) return;
+    props.queue.add(message);
+    setText("");
+    attach.clear();
+  };
   const submit = async () => {
     if (!canSend) return;
+    if (props.running) return queue();
     setSending(true);
     setError(null);
     try {
-      await props.onSend(text.trim());
+      await props.onSend(outgoing());
       setText("");
+      attach.clear();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -166,16 +127,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (query !== undefined) setMenu({ mode: "inline", start: caret - query.length - 1, query });
     else setMenu((cur) => (cur?.mode === "inline" ? null : cur));
   };
-
   // Closing the button-opened menu (Esc, a pick) gives focus back to the text.
   const closeMenu = useCallback(() => {
     setMenu((cur) => {
       if (cur?.mode === "button") requestAnimationFrame(() => area.current?.focus());
       return null;
     });
-  }, []);
-  const onOpenComments = props.onOpenComments;
-  const openComments = useCallback(() => (onOpenComments ? onOpenComments() : setCommentsOpen(true)), [onOpenComments]);
+  }, [area]);
+  const openComments = useCallback(() => setCommentsOpen(true), []);
 
   const pick = (p: MenuPick) => {
     const el = area.current;
@@ -195,13 +154,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const lead = before && !/\s$/.test(before) ? " " : "";
     // Never two spaces: the pick's trailing space is dropped when a space already follows.
     const insert = /^\s/.test(after) ? p.insert.replace(/\s+$/, "") : p.insert;
-    const next = before + lead + insert + after;
-    setText(next);
-    const at = (before + lead + insert).length + (insert === p.insert ? 0 : 1);
-    requestAnimationFrame(() => {
-      area.current?.focus();
-      area.current?.setSelectionRange(at, at);
-    });
+    place(before + lead + insert + after, (before + lead + insert).length + (insert === p.insert ? 0 : 1));
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -211,115 +164,91 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      // A running turn takes no new message (queueing is a harness feature to come): say so, quietly.
-      if (props.running && text.trim()) setBusyHint(true);
-      void submit();
+      if (e.metaKey || e.ctrlKey) {
+        if (props.running) queue();
+        else void submit();
+      } else void submit();
+      return;
+    }
+    if (e.key === "ArrowUp" && !text && props.lastRequest && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      place(props.lastRequest);
+      return;
+    }
+    if (e.key === "Escape" && props.running && !menu) {
+      e.preventDefault();
+      void props.onCancel();
     }
   };
 
-  const placeholder = disabled
-    ? props.disabledReason!
-    : pendingComments > 0
-      ? "Add a message (optional)"
-      : props.followUp
-        ? "Next request…"
-        : "Ask the orchestrator…";
-  const folders = props.folders.map((f) => f.label).join(", ");
   const model = props.model;
   const chooseModel = (next: string) => {
     if (!model) return;
     setModelError(null);
     model.choose(next).catch((e: unknown) => setModelError({ model: next, message: errorMessage(e) }));
   };
-  const policy = props.policy ?? null;
-  const [folderPicker, setFolderPicker] = useState(false);
-  const folderChip = useRef<HTMLButtonElement>(null);
-  const control = "press grid size-7 shrink-0 place-items-center rounded-sm";
-  const quiet = "flex h-chip min-w-0 shrink-0 press items-center gap-1.5 rounded-sm px-1.5 text-xs text-fg-2 whitespace-nowrap hover:bg-hover hover:text-fg";
   const inlineOpen = menu?.mode === "inline";
+  const action = props.running ? (hasContent ? "queue" : "stop") : "send";
 
   return (
-    <div data-composer>
+    <div data-composer-wrap>
       {error && (
-        <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 text-sm">
-          <p className="min-w-0 flex-1 text-fg-2">
-            <span className="text-err">Couldn't send.</span> {error.replace(/\.$/, "")}. Your message is still in the box.
-          </p>
-          <Button size="sm" onClick={() => void submit()} disabled={!canSend}>
+        <Notice>
+          <span className="text-err">Couldn't send.</span> {error.replace(/\.$/, "")}. Your message is still in the box.
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => void submit()} disabled={!canSend}>
             Retry
           </Button>
-        </div>
+        </Notice>
       )}
       {modelError && (
-        <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 text-sm">
-          <p className="min-w-0 flex-1 text-fg-2">
-            <span className="text-err">Couldn't switch the orchestrator model.</span> {modelError.message.replace(/\.$/, "")}. It still uses{" "}
-            {model?.value ?? "the previous model"}.
-          </p>
-          <Button size="sm" onClick={() => chooseModel(modelError.model)}>
+        <Notice>
+          <span className="text-err">Couldn't switch the model.</span> {modelError.message.replace(/\.$/, "")}. The orchestrator keeps its previous one.
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => chooseModel(modelError.model)}>
             Retry
           </Button>
-        </div>
-      )}
-      {busyHint && (
-        <p role="status" className="mb-2 px-4 text-sm text-fg-2">
-          The orchestrator is still working. Send this when the turn ends, or stop it first.
-        </p>
+        </Notice>
       )}
       {props.notice && (
-        <p data-composer-notice title={props.notice.title} className="mb-2 flex flex-wrap items-center gap-x-2 px-1.5 text-sm text-fg-2">
-          <span className="min-w-0">{props.notice.text}</span>
-          {props.notice.action && (
-            <button
-              type="button"
-              onClick={props.notice.action.run}
-              className="h-chip press rounded-sm px-1.5 text-sm text-fg underline-offset-2 hover:bg-hover"
-            >
-              {props.notice.action.label}
-            </button>
-          )}
+        <p className="mb-2 px-3 text-sm text-fg-3" title={props.notice.title}>
+          {props.notice.text}
         </p>
       )}
-      <div
-        data-composer-box
-        className={cn(
-          "@container/composer rounded-xl bg-raised outline -outline-offset-1 transition-[outline-color] duration-100",
-          props.floating ? "shadow-float outline-line" : "outline-line",
-          !disabled && "focus-within:outline-focus",
-        )}
-      >
+      {attach.note && (
+        <Notice>
+          <span className="text-fg-2">{attach.note}</span>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={attach.dismissNote}>
+            Dismiss
+          </Button>
+        </Notice>
+      )}
+      <div ref={frame} className="octo-aurora-frame" data-aurora={aurora === "off" ? undefined : aurora} data-paused={paused || undefined}>
+        <span aria-hidden className="octo-aurora-glow" />
         <form
           ref={box}
+          data-composer
+          data-drop={attach.dragging || undefined}
+          data-floating={props.floating || undefined}
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
-          className="flex items-end gap-2 p-1.5"
           onMouseDown={(e) => {
-            // Clicking the padding around the textarea still puts the caret in it.
+            // A click on the container's padding still puts the caret in the text.
             if (e.target === e.currentTarget) {
               e.preventDefault();
               area.current?.focus();
             }
           }}
+          {...attach.dropProps}
+          className={cn("octo-composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
         >
-          <button
-            type="button"
-            aria-label="Insert a file, agent or action"
-            title="Insert a file, agent or action"
-            data-shortcut="/"
-            aria-haspopup="listbox"
-            aria-expanded={menu?.mode === "button"}
-            disabled={disabled}
-            onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
-            className={cn(
-              control,
-              "text-fg-3 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40",
-              menu?.mode === "button" && "bg-active text-fg",
-            )}
-          >
-            <Glyph icon={Plus} size={16} />
-          </button>
+          <ComposerPills
+            files={attach.files}
+            onRemoveFile={attach.remove}
+            queue={props.queue.items}
+            onUnqueue={props.queue.remove}
+            comments={pendingComments > 0 ? props.comments?.render(commentsOpen, setCommentsOpen) : null}
+          />
           <label htmlFor={props.floating ? "octo-composer-float" : "octo-composer"} className="sr-only">
             Message the orchestrator
           </label>
@@ -331,209 +260,109 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             disabled={disabled}
             onChange={(e) => {
               setText(e.target.value);
-              setBusyHint(false);
               syncTrigger(e.target.value, e.target.selectionStart);
             }}
             onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
             onKeyDown={onKeyDown}
-            onFocus={() => {
-              setFocused(true);
-              // A failed prefetch is retried by the first open (the menu's own import).
-              loadMenu().catch(() => undefined);
-            }}
-            onBlur={() => {
-              setFocused(false);
-              if (inlineOpen) setMenu(null);
-            }}
-            placeholder={placeholder}
+            onPaste={attach.onPaste}
+            onBlur={() => inlineOpen && setMenu(null)}
+            placeholder={props.disabledReason ?? "Ask anything, @ to mention a file"}
             aria-autocomplete="list"
             aria-expanded={inlineOpen}
             aria-controls={inlineOpen ? listId : undefined}
             aria-activedescendant={inlineOpen && activeOption ? activeOption : undefined}
-            aria-describedby={props.floating ? undefined : `${listId}-hint`}
-            className="block max-h-[40vh] min-w-0 flex-1 resize-none self-center overscroll-contain bg-transparent py-0.5 text-base leading-6 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
+            aria-keyshortcuts="Enter Shift+Enter Control+Enter Escape"
+            className="octo-composer-input block w-full resize-none overscroll-contain bg-transparent px-3 pt-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
           />
-          {props.running ? (
+          <div ref={row} data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">
             <button
+              ref={plus}
               type="button"
-              onClick={() => void props.onCancel()}
-              aria-label="Stop the current turn"
-              title="Stop"
-              className={cn(control, "bg-hover text-fg hover:bg-active")}
-            >
-              <Glyph icon={Square} size={14} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!canSend}
-              aria-label="Send message"
-              title="Send"
+              aria-label="Attach, mention or run"
+              title="Attach a file, mention, or run an action ( / or @ )"
+              aria-haspopup="listbox"
+              aria-expanded={menu?.mode === "button"}
+              disabled={disabled}
+              onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
               className={cn(
-                control,
-                // Decision 33: quiet (fg on the hover fill) while there is nothing to send; solid only when there is.
-                canSend ? "bg-primary text-primary-fg hover:opacity-90" : "bg-hover text-fg-3 disabled:opacity-100",
+                "grid size-7 shrink-0 press place-items-center rounded-sm text-fg-2 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50",
+                menu?.mode === "button" && "bg-active text-fg",
               )}
             >
-              <Glyph icon={ArrowUp} size={16} />
+              <Glyph icon={Plus} size={16} />
             </button>
-          )}
-        </form>
-        {/* The context bar, 28px under a hairline: controls start on the box's inner edge (6) and the hint ends on it. */}
-        <div data-context-bar className="flex h-row min-w-0 items-center gap-1 border-t border-line px-1.5 text-xs max-md:h-bar [&_button]:max-md:min-h-10">
-          {model && (
-            <ModelPicker
-              label="Orchestrator model"
-              value={model.value}
-              known={model.known}
-              {...(model.tiers ? { tiers: model.tiers } : {})}
-              policy={policy}
-              {...(model.title ? { title: model.title } : {})}
-              onChoose={chooseModel}
-              disabled={disabled}
-              className="min-w-0 shrink"
-            />
-          )}
-          {/* The folders the orchestrator works in (glyph = the Files meaning); opens the folder picker (decision 49). */}
-          <button
-            ref={folderChip}
-            type="button"
-            aria-haspopup={props.onAddFolder ? "dialog" : undefined}
-            aria-expanded={props.onAddFolder ? folderPicker : undefined}
-            onClick={() => (props.onAddFolder ? setFolderPicker((o) => !o) : props.onFolders?.())}
-            disabled={!props.onFolders && !props.onAddFolder}
-            title={props.folders.map((f) => f.path).join("\n") || "No folders attached: choose one"}
-            aria-label={`Folders: ${folders || "none"}`}
-            className={cn(quiet, "min-w-0 shrink text-fg-3 disabled:pointer-events-none @max-[420px]/composer:hidden")}
-          >
-            <Glyph icon={GLYPH.files} size={14} className="shrink-0" />
-            <span className="min-w-0 truncate">{folders || "No folders attached"}</span>
-          </button>
-          <Presence show={folderPicker && !!props.onAddFolder} exitMs={0}>
-            {folderPicker && props.onAddFolder && (
-              <Suspense fallback={null}>
-                <FolderPicker
-                  anchor={folderChip}
-                  label="Add a folder to the project"
-                  side="top"
-                  current={props.folders.map((f) => f.path)}
-                  onChoose={props.onAddFolder}
-                  onClose={() => setFolderPicker(false)}
-                />
-              </Suspense>
+            {model && <ModelChip value={model.value} title={model.title} onChoose={chooseModel} bare={shed >= 3} disabled={disabled} onOpenChange={onChip} />}
+            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 2} disabled={disabled} onOpenChange={onChip} />
+            {props.tier && (
+              <TierChip
+                value={props.tier.value}
+                onChoose={(p) => void props.tier?.choose(p).catch(() => undefined)}
+                bare={shed >= 1}
+                disabled={disabled}
+                onOpenChange={onChip}
+              />
             )}
-          </Presence>
-          {policy && <RoutingButton policy={policy} />}
-          {(props.onFolders || policy) && <FoldMenu folders={folders} onFolders={props.onFolders} policy={policy} />}
-          {pendingComments > 0 && props.comments?.render(commentsOpen, setCommentsOpen)}
-          <p id={`${listId}-hint`} className={cn("ml-auto flex shrink-0 items-center gap-3 pl-2 text-fg-3 max-sm:hidden", !(focused && !text) && "hidden")}>
-            <span>
-              <kbd className="font-sans">↵</kbd> send
-            </span>
-            <span>
-              <kbd className="font-sans">⇧↵</kbd> new line
-            </span>
-            <span>
-              <kbd className="font-sans">/</kbd> insert
-            </span>
-          </p>
-        </div>
+            <span className="min-w-0 flex-1" />
+            <ContextRing used={props.context.used} size={props.context.size} />
+            <SendButton action={action} enabled={action === "stop" ? !disabled : canSend} onStop={() => void props.onCancel()} />
+          </div>
+        </form>
+        <span aria-hidden className="octo-aurora">
+          <span className="octo-aurora-spin" />
+        </span>
       </div>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
-          <Suspense fallback={null}>
-            <ComposerMenu
-              ref={menuRef}
-              anchor={box}
-              query={menu.mode === "inline" ? menu.query : null}
-              listId={listId}
-              onActive={setActiveOption}
-              pendingComments={pendingComments}
-              onOpenComments={openComments}
-              onPick={pick}
-              onClose={closeMenu}
-            />
-          </Suspense>
+          <ComposerMenu
+            ref={menuRef}
+            anchor={menu.mode === "button" ? plus : box}
+            box={box}
+            query={menu.mode === "inline" ? menu.query : null}
+            listId={listId}
+            onActive={setActiveOption}
+            pendingComments={pendingComments}
+            onOpenComments={openComments}
+            onPick={pick}
+            onClose={closeMenu}
+          />
         )}
       </Presence>
     </div>
   );
 });
 
-/** The routing policy in the context bar (decision 30): a quiet button whose menu sets Auto / Ceiling / Fixed. */
-function RoutingButton({ policy }: { policy: { value: TierPolicy; onChange(policy: TierPolicy): void } }) {
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const button = useRef<HTMLButtonElement>(null);
+function Notice({ children }: { children: ReactNode }) {
   return (
-    <>
-      <button
-        ref={button}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={menu !== null}
-        aria-label={`Routing: ${policyLabel(policy.value)}`}
-        title="How the router treats the tier: Auto may go lower or higher, Ceiling never above, Fixed exactly"
-        onClick={() => {
-          const r = button.current?.getBoundingClientRect();
-          if (r) setMenu(menu ? null : { x: r.left, y: r.top - 4 });
-        }}
-        className={cn(
-          "flex h-chip shrink-0 press items-center gap-1.5 rounded-sm px-1.5 text-xs whitespace-nowrap hover:bg-hover hover:text-fg @max-[420px]/composer:hidden",
-          menu ? "bg-active text-fg" : "text-fg-3",
-        )}
-      >
-        <Glyph icon={Route} size={14} className="shrink-0" />
-        {policyLabel(policy.value)}
-      </button>
-      <Presence show={menu !== null} exitMs={0}>
-        {menu && (
-          <Menu
-            label="Routing policy"
-            x={menu.x}
-            y={menu.y}
-            above
-            onClose={() => setMenu(null)}
-            items={TIER_POLICIES.map((p) => ({
-              id: p.value,
-              label: `${p.label} — ${p.detail.toLowerCase()}`,
-              checked: p.value === policy.value,
-              run: () => policy.onChange(p.value),
-            }))}
-          />
-        )}
-      </Presence>
-    </>
+    <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 text-sm text-fg-2">
+      {children}
+    </div>
   );
 }
 
-/** Under 420px the bar keeps the model; folders and routing fold into this `…` (decision 30). */
-function FoldMenu(props: { folders: string; onFolders: (() => void) | undefined; policy: { value: TierPolicy; onChange(policy: TierPolicy): void } | null }) {
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  const items: MenuItem[] = [];
-  if (props.onFolders) items.push({ id: "folders", label: `Folders: ${props.folders || "none"}`, run: props.onFolders });
-  if (props.policy) {
-    const p = props.policy;
-    if (items.length) items.push({ id: "sep", separator: true });
-    for (const t of TIER_POLICIES) items.push({ id: t.value, label: `Routing: ${t.label}`, checked: t.value === p.value, run: () => p.onChange(t.value) });
-  }
+const SEND = {
+  send: { icon: ArrowUp, label: "Send (Enter)" },
+  queue: { icon: Clock, label: "Queue: send when this turn ends (Enter)" },
+  stop: { icon: Square, label: "Stop the turn (Esc)" },
+} as const;
+
+/** One 28px round button: Send (dim while empty), Stop while working, Queue while working with text (decision 62). */
+function SendButton({ action, enabled, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; onStop(): void }) {
+  const { icon, label } = SEND[action];
+  const solid = enabled && action !== "stop";
   return (
-    <span className="hidden @max-[420px]/composer:flex">
-      <IconButton
-        ref={button}
-        icon={Ellipsis}
-        size="sm"
-        label="Folders and routing"
-        aria-haspopup="menu"
-        aria-expanded={menu !== null}
-        onClick={() => {
-          const r = button.current?.getBoundingClientRect();
-          if (r) setMenu(menu ? null : { x: r.left, y: r.top - 4 });
-        }}
-      />
-      <Presence show={menu !== null} exitMs={0}>
-        {menu && <Menu label="Folders and routing" x={menu.x} y={menu.y} above items={items} onClose={() => setMenu(null)} />}
-      </Presence>
-    </span>
+    <button
+      type={action === "stop" ? "button" : "submit"}
+      onClick={action === "stop" ? onStop : undefined}
+      disabled={!enabled}
+      aria-label={label}
+      title={label}
+      data-action={action}
+      className={cn(
+        "grid size-7 shrink-0 press place-items-center rounded-full transition-[background-color,color] duration-100",
+        solid ? "bg-primary text-primary-fg hover:opacity-90" : action === "stop" ? "bg-active text-fg hover:bg-line-strong" : "bg-hover text-fg-3",
+      )}
+    >
+      <Glyph icon={icon} size={action === "stop" ? 14 : 16} fill={action === "stop" ? "currentColor" : "none"} />
+    </button>
   );
 }

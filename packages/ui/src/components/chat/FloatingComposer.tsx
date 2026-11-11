@@ -1,6 +1,6 @@
 import { Check, CircleX } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { formatDuration } from "../../lib/format";
 import { useNow, useLatest } from "../../lib/hooks";
@@ -27,7 +27,6 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
   const ws = useWorkspace();
   const { project, state, running, ensureMessages } = useProject();
   const composer = useOrchestratorComposer(CHAT);
-  const [commentsOpen, setCommentsOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const orchestratorId = project?.orchestrator_agent_id;
   const messages = orchestratorId ? state.messages[orchestratorId] : undefined;
@@ -80,7 +79,7 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
       </>
     );
   }
-  const chips = turn !== null || agentsRunning > 0 || composer.commentCount > 0;
+  const chips = turn !== null || agentsRunning > 0;
 
   return (
     <div
@@ -103,7 +102,6 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
                 {agentsRunning}&nbsp;{agentsRunning === 1 ? "agent" : "agents"} running
               </button>
             )}
-            {composer.commentCount > 0 && <CommentsControl variant="chip" open={commentsOpen} onOpenChange={setCommentsOpen} />}
           </div>
         )}
         {/* State changes only (not the ticking timer) are announced. */}
@@ -113,8 +111,14 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
         <Composer
           {...composer}
           floating
-          comments={composer.commentCount ? { count: composer.commentCount, render: () => null } : undefined}
-          onOpenComments={() => setCommentsOpen(true)}
+          comments={
+            composer.commentCount
+              ? {
+                  count: composer.commentCount,
+                  render: (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} />,
+                }
+              : undefined
+          }
         />
       </div>
     </div>

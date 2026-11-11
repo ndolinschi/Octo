@@ -40,7 +40,7 @@ export function Breadcrumb({ agent }: { agent: Agent }) {
               }}
               className="inline-block h-6 max-w-[200px] truncate rounded-sm py-0.5 leading-5 hover:text-fg"
             >
-              {roleName(a)}
+              {a.parent_id === null ? project?.name : roleName(a)}
             </a>
           </li>
         ))}

@@ -149,7 +149,7 @@ export type Message = {
   role: "user" | "assistant";
   content: ContentBlock[];
   created_at: string;
-  /** An assistant message cut short because the turn was cancelled. */
+  /** The turn was stopped while this reply was being written (its text is cut). */
   stopped?: boolean;
 };
 
@@ -260,7 +260,7 @@ export type TurnFinishedEvent = {
   seq: number;
   status: TurnStatus;
   error: string | null;
-  /** What to do about `error` (for a login problem: how to log in). Never part of the error text. */
+  /** What the user can do about `error`, sent apart from it (older harnesses put it inside the text). */
   hint?: string;
 };
 

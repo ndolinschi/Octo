@@ -12,23 +12,16 @@ function firstWords(text: string, n = 6): string {
   return words.length > n ? `${words.slice(0, n).join(" ")}…` : words.join(" ");
 }
 
-/**
- * Marker pitch: 24px while the rail fits (decision 36: each marker a 24×24 target), compressed down to 3px for long
- * conversations, then the rail scrolls (current kept in view).
- */
-// Decision 57: ticks 6px apart, 8px wide (the hover card and the palette carry the detail).
+/** Decision 57: ticks 6px apart; the rail takes at most 60% of the conversation's height, then scrolls. */
 const PITCH = 6;
-const MIN_PITCH = 3;
+const MAX_SHARE = 0.6;
 
 /**
- * One slim marker per request, stacked in the conversation's left padding (never over the column, 12px
- * clear of it). The rail never grows past the visible height (`maxHeight`): the pitch compresses from 24px
- * to 3px, and beyond that the rail scrolls with the request in view kept inside it. Inactive ticks are
- * quiet (`line-strong`); the request in view is emphasised (reuses the sidebar's in-view tracking). Hover
- * or focus shows a compact card with the request's first lines and its state, kept inside the rail's
- * height; click / Enter scrolls to it. One tab stop (roving focus, ↑/↓/Home/End). Each marker is a 24px-wide
- * target as tall as the pitch: 24×24 while the rail fits; a compressed rail trades height for fitting (every request
- * is also reachable from the palette).
+ * The request rail (decision 57): one tick per request, 6px apart, in the conversation's left padding (never over the
+ * column), centred on the conversation's height. Ticks are 8px wide and 1px thick in a quiet tone, the request in view
+ * 12px in `fg`; past 60% of the height the rail scrolls itself to keep the current tick centred. Hover or focus shows
+ * the request's first line beside its tick; click / Enter jumps (Alt+↑/↓ from the conversation too). One tab stop
+ * (roving focus, ↑/↓/Home/End); each tick's target is 24px wide, so the rail is reachable with a pointer despite its pitch.
  */
 export function TurnRail({ requests, projectId, now, maxHeight }: { requests: RequestSummary[]; projectId: string; now: number; maxHeight: number }) {
   const nav = useNav();
@@ -42,8 +35,8 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
   const current = viewTurn?.projectId === projectId ? viewTurn.messageId : null;
   const tabStop = focus ?? current ?? requests[requests.length - 1]?.id;
   const n = requests.length;
-  const avail = Math.max(MIN_PITCH * 3, Math.floor(maxHeight));
-  const pitch = Math.max(MIN_PITCH, Math.min(PITCH, Math.floor(avail / Math.max(1, n))));
+  const avail = Math.max(PITCH * 3, Math.floor(maxHeight * MAX_SHARE));
+  const pitch = PITCH;
   const height = Math.min(avail, pitch * n);
 
   // The request in view stays inside a scrolling rail.
@@ -51,8 +44,7 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
   useLayoutEffect(() => {
     const el = list.current;
     if (!el || currentIndex < 0 || el.scrollHeight <= el.clientHeight) return;
-    const y = currentIndex * pitch;
-    if (y < el.scrollTop || y + pitch > el.scrollTop + el.clientHeight) el.scrollTop = y - el.clientHeight / 2;
+    el.scrollTop = currentIndex * pitch + pitch / 2 - el.clientHeight / 2;
   }, [currentIndex, pitch]);
 
   // The card is centred on its marker, then clamped inside the rail's box (never under the header).
@@ -63,8 +55,8 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
     if (!el || !c || shownIndex < 0) return;
     const centre = shownIndex * pitch + pitch / 2 - el.scrollTop;
     const h = c.getBoundingClientRect().height;
-    setCardTop(Math.round(Math.max(0, Math.min(Math.max(height, avail) - h, centre - h / 2))));
-  }, [shownIndex, pitch, height, avail]);
+    setCardTop(Math.round(centre - h / 2));
+  }, [shownIndex, pitch]);
 
   const go = (id: number) => nav.requestTurn({ projectId, messageId: id });
   const onKeyDown = (e: KeyboardEvent, i: number) => {
@@ -73,13 +65,12 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
     e.preventDefault();
     refs.current.get(requests[to].id)?.focus();
   };
-  const tick = pitch >= 4 ? "h-0.5" : "h-px";
   const r = shownIndex >= 0 ? requests[shownIndex] : null;
   const duration = r ? (r.endedAt !== null ? r.endedAt - r.startedAt : r.state === "working" ? now - r.startedAt : null) : null;
 
   return (
-    <div className="relative">
-      <ul ref={list} aria-label="Requests to the orchestrator" className="flex flex-col overflow-hidden" style={{ height }}>
+    <div data-rail className="relative">
+      <ul ref={list} aria-label="Requests in this conversation" className="flex flex-col overflow-hidden" style={{ height }}>
         {requests.map((req, i) => {
           const active = req.id === current;
           return (
@@ -104,14 +95,13 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
                 }}
                 onBlur={() => setShown((s) => (s === req.id ? null : s))}
                 // Decision 36: 24px wide (it grows leftwards, away from the column) × the pitch (24 while the rail fits).
-                className="group/mark relative grid h-full w-2 place-items-center rounded-2xs before:absolute before:inset-y-0 before:right-0 before:w-6 before:content-['']"
+                className="group/mark relative flex h-full w-3 items-center justify-end before:absolute before:inset-y-0 before:right-0 before:w-6 before:content-[''] focus-visible:shadow-none focus-visible:after:absolute focus-visible:after:-inset-x-1 focus-visible:after:-inset-y-0.5 focus-visible:after:rounded-2xs focus-visible:after:shadow-[0_0_0_1px_var(--octo-focus)] focus-visible:after:content-['']"
               >
                 <span
                   aria-hidden
                   className={cn(
-                    tick,
-                    "rounded-full transition-[width,background-color] duration-100",
-                    active ? "w-2 bg-fg-2" : "w-2 bg-line-strong group-hover/mark:bg-fg-3",
+                    "h-px transition-[width,background-color] duration-100",
+                    active ? "w-3 bg-fg" : "w-2 bg-line-strong group-hover/mark:bg-fg-3",
                     req.state === "working" && !active && "bg-accent",
                     req.state === "failed" && !active && "bg-err",
                   )}
@@ -127,7 +117,7 @@ export function TurnRail({ requests, projectId, now, maxHeight }: { requests: Re
           id="octo-rail-card"
           role="tooltip"
           style={{ top: cardTop }}
-          className="pointer-events-none absolute left-full z-30 ml-2 w-[min(320px,60vw)] rounded-md bg-overlay p-3 text-sm shadow-pop"
+          className="pointer-events-none absolute left-full z-30 ml-3 w-[min(320px,60vw)] rounded-md bg-overlay p-3 text-sm shadow-pop"
         >
           <p className="line-clamp-3 wrap-anywhere whitespace-pre-wrap text-fg">{requestTitle(r.text).replace(/\n\s*\n+/g, "\n")}</p>
           <p className={cn("mt-1 flex gap-2 text-xs tabular-nums", r.state === "failed" ? "text-err" : "text-fg-3")}>

@@ -325,3 +325,20 @@ test("withSideCleared empties the conversation", () => {
   s = withSideCleared(s);
   assert.deepEqual(s.side, { messages: [], pending: null, error: null });
 });
+test("turn.finished keeps each failed turn's outcome under its request, with the hint apart", () => {
+  let s = applyEvent(emptyProjectState(), { type: "agent.created", seq: 1, agent: agent("o", null) });
+  s = applyEvent(s, { type: "message.created", seq: 2, message: msg(1, "o", "user") });
+  s = applyEvent(s, { type: "turn.finished", seq: 3, status: "failed", error: "budget reached", hint: "Raise the budget in project settings." });
+  s = applyEvent(s, { type: "message.created", seq: 4, message: msg(2, "o", "user") });
+  s = applyEvent(s, {
+    type: "message.created",
+    seq: 5,
+    message: { id: 3, agent_id: "o", role: "user", created_at: "t", content: [{ type: "tool_result", tool_use_id: "x", content: "", is_error: false }] },
+  });
+  s = applyEvent(s, { type: "turn.finished", seq: 6, status: "failed", error: "budget reached again" });
+  assert.deepEqual(s.turnOutcomes, {
+    1: { status: "failed", error: "budget reached", hint: "Raise the budget in project settings." },
+    2: { status: "failed", error: "budget reached again" },
+  });
+  assert.deepEqual(s.lastTurn, { status: "failed", error: "budget reached again" });
+});

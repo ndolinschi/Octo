@@ -243,11 +243,13 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
 
   let status: "completed" | "failed" | "cancelled" = "completed";
   let error: string | null = null;
+  let hint: string | undefined;
   try {
     await body(ctx, orch.id);
   } catch (e) {
     status = e === CANCELLED ? "cancelled" : "failed";
     error = e === CANCELLED ? null : errorMessage(e);
+    if (e instanceof Error && "hint" in e && typeof e.hint === "string") hint = e.hint;
     // A cancel happens now; a scripted failure in the past keeps its own time.
     if (status === "cancelled") ctx.t = Math.max(ctx.t, Date.now());
     for (const a of rec.agents) {
@@ -264,5 +266,5 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
   rec.turn = null;
   touch(ctx);
   emit(rec, { type: "project.updated", project: clone(rec.project) });
-  emit(rec, { type: "turn.finished", status, error });
+  emit(rec, { type: "turn.finished", status, error, ...(hint ? { hint } : {}) });
 }

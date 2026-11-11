@@ -34,21 +34,35 @@ const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> 
   side: { label: "Side question", icon: GLYPH.side, title: "Ask about this project without interrupting the orchestrator" },
 };
 
+function firstWords(text: string, n = 6): string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  return words.length > n ? `${words.slice(0, n).join(" ")}…` : words.join(" ");
+}
+
 /** The tool tabs as the "+" picker lists them (decision 25), in that order. */
 export const TOOL_TABS = TOOLS;
 
 export function tabInfo(
   tab: TabId,
-  ctx: { state: ProjectState; orchestratorId: string | undefined; file(key: FileKey): OpenFile | undefined; comments(key: FileKey): number },
+  ctx: {
+    state: ProjectState;
+    projectName?: string | undefined;
+    orchestratorId: string | undefined;
+    file(key: FileKey): OpenFile | undefined;
+    comments(key: FileKey): number;
+  },
 ): TabInfo {
   const ref = parseTab(tab);
   if (!ref) return { label: tab, title: tab, icon: File, status: null, glyph: null, comments: 0 };
   if (ref.kind === "chat") {
     const status = ctx.orchestratorId ? ctx.state.agents[ctx.orchestratorId]?.status : undefined;
     const running = status === "running";
+    // Decision 63: named after what is in it — the project's conversation.
+    const name = ctx.projectName || "Conversation";
     return {
-      label: "Orchestrator",
-      title: "The project's orchestrator: give it work, follow its agents",
+      label: middleTruncate(name, 28),
+      name,
+      title: `${name}: the project's conversation`,
       icon: GLYPH.chat,
       status: running ? "running" : null,
       glyph: running ? "working" : status === "failed" ? "needs" : null,
@@ -61,10 +75,12 @@ export function tabInfo(
   }
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];
-    const label = roleText(agent?.role);
+    // Decision 63: a sub-agent's tab is its task title (else the first words of its task), the role in the tooltip.
+    const task = agent?.title || firstWords(agent?.task ?? "") || roleText(agent?.role);
     return {
-      label,
-      title: agent?.title ? `${label}: ${agent.title}` : label,
+      label: middleTruncate(task, 28),
+      name: task,
+      title: `${roleText(agent?.role)}: ${task}`,
       icon: GLYPH.agent,
       status: agent?.status === "running" ? "running" : null,
       glyph: agent?.status === "running" ? "working" : agent?.status === "failed" ? "failed" : null,

@@ -1,4 +1,4 @@
-import type { Agent, Message } from "@octo/agent-client";
+import type { Agent, Message, PlanEntry, TurnOutcome } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
 import { lazy, memo, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
@@ -13,13 +13,16 @@ import { Glyph } from "../primitives/Glyph";
 import { useProject } from "../../state/project";
 import { useActivity } from "../../state/activity";
 import { Button, IconButton } from "../primitives/Button";
-import { RunningDot, Spinner } from "../primitives/Status";
 import { DelegationGroup } from "./DelegationGroup";
-import { Markdown } from "../shared/Markdown";
+import { LazyMarkdown as Markdown } from "./LazyMarkdown";
 /** Code comments sent with a prompt render with the first such prompt (their own chunk). */
+const PlanList = lazy(() => import("./LivePanels").then((m) => ({ default: m.PlanList })));
+const ThinkingRow = lazy(() => import("./LivePanels").then((m) => ({ default: m.ThinkingRow })));
 const SentComments = lazy(() => import("./SentComments").then((m) => ({ default: m.SentComments })));
 import { ToolGroup } from "./ToolGroup";
 import { TranscriptContext, type ToolResult, type TranscriptCtx } from "./transcriptContext";
+import { ActivityLine, useBatched } from "./LiveActivity";
+import { runRetry, sentence, splitHint } from "./outcome";
 
 /** Memoised: the conversation re-renders on scroll (pinned prompt, jump button); the transcript need not. */
 export const Transcript = memo(function Transcript(props: {
@@ -34,7 +37,11 @@ export const Transcript = memo(function Transcript(props: {
 }) {
   const { agent, messages, now } = props;
   const { state } = useProject();
-  const streaming = state.streaming[agent.id] ?? "";
+  // Decision 55 e: streamed text shows at most every 50 ms.
+  const streaming = useBatched(state.streaming[agent.id] ?? "");
+  const thinking = state.thinking[agent.id] ?? "";
+  const plan = state.plan[agent.id] ?? null;
+  const stoppedIds = useMemo(() => new Set(messages.filter((m) => m.stopped).map((m) => m.id)), [messages]);
   const running = agent.status === "running";
   const turns = useMemo(() => buildTurns(messages), [messages]);
 
@@ -61,7 +68,7 @@ export const Transcript = memo(function Transcript(props: {
   // that is not a warning: an ACP orchestrator that could not start). Its login hint comes along when the agent has one.
   const failure =
     lastTurn && lastTurn.status !== "completed"
-      ? { status: lastTurn.status, error: lastTurn.error }
+      ? { status: lastTurn.status, error: lastTurn.error, hint: lastTurn.hint }
       : isOrchestrator && (agent.status === "failed" || (agent.error && !turnWarning(agent.error)))
         ? { status: "failed" as const, error: agent.error }
         : null;
@@ -81,6 +88,13 @@ export const Transcript = memo(function Transcript(props: {
           const prev = turns[i - 1];
           const separator =
             isOrchestrator && turn.prompt && needsSeparator(prev ? (prev.lastAt ?? prev.prompt?.created_at ?? null) : null, turn.prompt.created_at);
+          // An earlier turn keeps its own ending (several can fail in a row); the newest one's is the banner below. A reply
+          // cut by a stop is marked even when the ending was not seen live.
+          const ended: TurnOutcome | null =
+            !isOrchestrator || last
+              ? null
+              : ((turn.prompt ? state.turnOutcomes[turn.prompt.id] : undefined) ??
+                (turn.items.some((it) => stoppedIds.has(Number(it.key.split(".")[0]))) ? { status: "cancelled", error: null } : null));
           return (
             <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-4">
               {slots.get(i)?.map((m) => (
@@ -93,11 +107,15 @@ export const Transcript = memo(function Transcript(props: {
                 speaker={props.speaker}
                 live={last && running}
                 watched={props.watched}
+                agentId={agent.id}
                 streaming={last ? streaming : ""}
+                thinking={last && running ? thinking : ""}
+                plan={last && running ? plan : null}
                 startedAt={started}
                 now={last ? now : minute}
                 footer={isOrchestrator}
               />
+              {ended && ended.status !== "completed" && <TurnBanner status={ended.status} error={ended.error} retryText={null} hint={ended.hint ?? null} />}
             </section>
           );
         })}
@@ -107,7 +125,10 @@ export const Transcript = memo(function Transcript(props: {
             speaker={props.speaker}
             live
             watched={props.watched}
+            agentId={agent.id}
             streaming={streaming}
+            thinking={thinking}
+            plan={plan}
             startedAt={agent.started_at}
             now={now}
           />
@@ -122,7 +143,7 @@ export const Transcript = memo(function Transcript(props: {
           </p>
         )}
         {failure && !running && (
-          <TurnBanner status={failure.status} error={failure.error} retryText={lastPrompt ? promptText(lastPrompt) : null} hint={loginHint} />
+          <TurnBanner status={failure.status} error={failure.error} retryText={lastPrompt ? promptText(lastPrompt) : null} hint={failure.hint ?? loginHint} />
         )}
       </div>
     </TranscriptContext.Provider>
@@ -180,31 +201,33 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
   }, [text, expanded]);
 
   return (
-    <div data-prompt className="rounded-md border border-line bg-raised p-card text-base text-fg transition-[box-shadow] duration-300">
-      {external ? <div className="mb-0.5 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
-      {text && (
-        <div ref={box} id={id} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
-          {text}
-        </div>
-      )}
-      {text && (overflows || expanded) && (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={id}
-          onClick={() => setExpanded((x) => !x)}
-          className="mt-1 -ml-1.5 inline-flex h-6 press items-center rounded-sm px-1.5 text-sm text-fg-2 hover:bg-hover hover:text-fg"
-        >
-          {expanded ? "Show less" : "Show more"}
-        </button>
-      )}
-      {comments.length > 0 && (
-        <div className={cn(text && "mt-3")}>
-          <Suspense fallback={null}>
-            <SentComments comments={comments} />
-          </Suspense>
-        </div>
-      )}
+    <div data-prompt>
+      <div data-bubble className="rounded-md border border-line bg-raised p-card text-base text-fg transition-[box-shadow] duration-300">
+        {external ? <div className="mb-0.5 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
+        {text && (
+          <div ref={box} id={id} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
+            {text}
+          </div>
+        )}
+        {text && (overflows || expanded) && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={id}
+            onClick={() => setExpanded((x) => !x)}
+            className="mt-1 -ml-1.5 inline-flex h-6 press items-center rounded-sm px-1.5 text-sm text-fg-2 hover:bg-hover hover:text-fg"
+          >
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        )}
+        {comments.length > 0 && (
+          <div className={cn(text && "mt-3")}>
+            <Suspense fallback={null}>
+              <SentComments comments={comments} />
+            </Suspense>
+          </div>
+        )}
+      </div>
     </div>
   );
 });
@@ -214,13 +237,16 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   speaker: string;
   live: boolean;
   watched: boolean;
+  agentId: string;
   streaming: string;
+  thinking: string;
+  plan: PlanEntry[] | null;
   startedAt: string | null;
   now: number;
   footer?: boolean;
 }) {
   const { turn, live, streaming } = props;
-  const empty = turn.items.length === 0 && !streaming;
+  const empty = turn.items.length === 0 && !streaming && !props.thinking;
   if (empty && !live) return null;
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
   const end = turn.lastAt ? Date.parse(turn.lastAt) : null;
@@ -230,18 +256,17 @@ const AssistantTurn = memo(function AssistantTurn(props: {
     // Blocks of a reply (prose, tool lines, delegation cards, the live line, the footer) sit 12 apart.
     <article aria-label={`${props.speaker} response`} className="flex flex-col gap-3">
       {worked !== null && <p className="text-base text-fg-3 tabular-nums">Worked for {formatDuration(worked)}</p>}
+      <Suspense fallback={null}>
+        {live && props.plan && <PlanList entries={props.plan} />}
+        {live && <ThinkingRow text={props.thinking} />}
+      </Suspense>
       {turn.items.map((item) => {
         if (item.kind === "text") return <Markdown key={item.key} text={item.text} className="octo-prose" fileLinks />;
         if (item.kind === "tools") return <ToolGroup key={item.key} uses={item.uses} />;
         return <DelegationGroup key={item.key} uses={item.uses} />;
       })}
       {streaming && <Markdown text={streaming} className="octo-prose" streaming fileLinks />}
-      {live && (
-        <p className="flex h-6 items-center gap-2 text-sm text-fg-3 tabular-nums">
-          {props.watched ? <Spinner className="text-accent" /> : <RunningDot />}
-          Working…{start !== null && <span>{formatDuration(props.now - start)}</span>}
-        </p>
-      )}
+      {live && <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} now={props.now} watched={props.watched} />}
       {props.footer && !live && reply && turn.lastAt && <TurnFooter reply={reply} at={turn.lastAt} now={props.now} />}
     </article>
   );
@@ -251,7 +276,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
 function TurnFooter({ reply, at, now }: { reply: string; at: string; now: number }) {
   const [copied, copy] = useCopy();
   return (
-    <div className="-ml-1 flex h-6 items-center gap-1.5 text-sm text-fg-3">
+    <div data-turn-footer className="-ml-1 flex h-6 items-center gap-1.5 text-sm text-fg-3">
       <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : "Copy reply"} size="sm" onClick={() => copy(reply)} />
       <time dateTime={at} title={new Date(at).toLocaleString()} className="tabular-nums">
         {timeAgo(at, now)}
@@ -291,26 +316,20 @@ export function TurnBanner(props: { status: "failed" | "cancelled"; error: strin
 
   const retry = async () => {
     if (!props.retryText) return;
-    setBusy(true);
     setRetryError(null);
-    try {
-      await send(props.retryText);
-    } catch (e) {
-      setRetryError(errorMessage(e));
-      setBusy(false);
-    }
+    await runRetry(send, props.retryText, { setBusy, onError: (e) => setRetryError(errorMessage(e)) });
   };
 
-  const detail = failed
-    ? `${(props.error ?? "No error details were reported").replace(/\.$/, "")}. ${canRetry ? "Retry the last message, or send a new one." : "Send a message to try again."}`
-    : "Running agents were cancelled. Send a message to continue.";
+  // The hint is said once, on its own line, even when the error text already ends with it (owner, live run).
+  const { error, hint } = splitHint(props.error, props.hint ?? undefined);
+  const detail = failed ? sentence(error || "No error details were reported") : props.retryText !== null ? "Send a message to continue." : "";
 
   return (
-    <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+    <div role="status" data-turn-outcome={props.status} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
       <p className="min-w-0 flex-1 text-fg-2">
-        <span className={failed ? "text-err" : "text-fg"}>{failed ? "Turn failed." : "Turn stopped."}</span> {detail}
-        {props.hint && <span className="block text-fg-3">{props.hint}</span>}
-        {retryError && <span className="text-err"> Retry failed: {retryError}</span>}
+        <span className={failed ? "text-err" : "text-fg"}>{failed ? "Failed." : "Stopped."}</span> {detail}
+        {hint && <span className="mt-1 block text-fg-3">{hint}</span>}
+        {retryError && <span className="text-err"> Retry failed: {sentence(retryError)}</span>}
       </p>
       {canRetry && (
         <Button size="sm" onClick={() => void retry()} disabled={busy || running}>
