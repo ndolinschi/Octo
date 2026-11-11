@@ -14,6 +14,15 @@ screens live in [`packages/ui`](../../packages/ui/AGENTS.md), the bridge client 
 - `src/styles.css` imports Tailwind and then `@octo/ui/styles.css`.
 - `src-tauri/` is Rust and Tauri configuration only.
 
+- Inside Tauri the shell runs the harness (design P5). `src/hostBridge.ts` (`useHostBridge`) calls the Rust commands
+  `bridge_url` / `bridge_restart` / `bridge_log_tail` (the Tauri API is `import()`ed on demand), `src/HostStatus.tsx` is the
+  "Starting Octo…" / failure screen (message, last 20 log lines, Retry), and `chooseBridge(search, env, hostUrl)` takes the URL.
+  `usesHostBridge` (pure) decides: only inside Tauri, not `?demo=`, and no `VITE_HARNESS_BRIDGE_URL`. In a browser nothing changes.
+- `src-tauri/sidecar/` is the `octo-sidecar` crate (no `tauri` dependency, so `cargo test -p octo-sidecar` runs anywhere):
+  `port` (free port), `shellenv` (login-shell PATH, parser, fallback dirs), `process` (own process group, SIGTERM, 3 s, SIGKILL; pid file for crash cleanup),
+  `logfile` (capped `harness.log`, tail), `health` (`GET /health` wait), `bridge` (the sequence; `OCTO_BRIDGE_URL` starts nothing).
+  `src-tauri/src/lib.rs` is only glue: three commands and the exit hook.
+
 Keep logic out of components: selection logic (query parameters → bridge options) is the pure `chooseBridge`; extend it with a test.
 
 ## Commands

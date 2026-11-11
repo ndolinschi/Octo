@@ -27,7 +27,7 @@ sequenceDiagram
 
 ## Running
 
-Desktop loads `OctoApp` with an HTTP bridge at `resolveBridgeUrl()` (default `http://127.0.0.1:8790`), or the in-memory demo bridge when the URL has `?demo=1`. Start `harness serve` manually; sidecar auto-spawn is not implemented.
+Desktop loads `OctoApp` with an HTTP bridge at `resolveBridgeUrl()` (default `http://127.0.0.1:8790`), or the in-memory demo bridge when the URL has `?demo=1`. Inside Tauri the shell starts the bundled `harness` sidecar (crate `src-tauri/sidecar`) and the UI asks the `bridge_url` command for its address; in a browser start `harness serve` yourself or run `pnpm dev:all`.
 
 ## Security
 

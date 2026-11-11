@@ -2297,11 +2297,19 @@ dependencies = [
 name = "octo-desktop"
 version = "0.1.0"
 dependencies = [
+ "octo-sidecar",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+]
+
+[[package]]
+name = "octo-sidecar"
+version = "0.1.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
