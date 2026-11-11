@@ -140,6 +140,8 @@ pub async fn route(
         cache_write_tokens: 0,
         cost_usd: classified.cost_micros as f64 / 1_000_000.0,
         cost_source: classified.cost_source,
+        estimate_ratio: None,
+        upstream_id: None,
         route: Some(RouteRecord {
             choice: chosen.id().to_string(),
             band: classified.band.as_str(),

@@ -71,7 +71,18 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
         .await
         .map_err(ProxyError::from_read_body)?;
     let api_key = token_from_headers(&parts.headers);
-    let hints = Hints::take(&mut parts.headers);
+    let hints = Hints::take(&mut parts.headers).map_err(|err| {
+        let err = ProxyError::anthropic(
+            StatusCode::BAD_REQUEST,
+            "invalid_request_error",
+            err.message(),
+        );
+        if chat {
+            err
+        } else {
+            err.as_anthropic_messages()
+        }
+    })?;
     let value: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
     let session = session_key(&value);
     if let Some(key) = hints.budget_key.as_deref() {

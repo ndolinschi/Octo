@@ -11,6 +11,29 @@ pub const TASK_HEADER: &str = "x-octo-task";
 const BUDGET_KEY_MAX_LEN: usize = 128;
 const TASK_MAX_CHARS: usize = 200;
 
+/// `x-octo-tier-hint` carried a value that is none of the accepted ones.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidTierHint {
+    value: String,
+}
+
+impl InvalidTierHint {
+    pub fn message(&self) -> String {
+        format!(
+            "invalid {TIER_HINT_HEADER} `{}`: accepted values are low, mid, high (or fast, balanced, deep), case-insensitive",
+            self.value
+        )
+    }
+}
+
+impl std::fmt::Display for InvalidTierHint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+
+impl std::error::Error for InvalidTierHint {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TierPolicy {
     #[default]
@@ -45,7 +68,9 @@ impl Hints {
         self.tier.is_some()
     }
 
-    pub fn take(headers: &mut HeaderMap) -> Self {
+    /// Reads and removes every hint header. Invalid budget/role/depth/policy/task values are ignored; an invalid
+    /// tier hint is an error (the caller answers 400). All hint headers are removed either way.
+    pub fn take(headers: &mut HeaderMap) -> Result<Self, InvalidTierHint> {
         let budget_key = text(headers, BUDGET_KEY_HEADER).and_then(|value| {
             if !valid_budget_key(&value) {
                 tracing::debug!(header = BUDGET_KEY_HEADER, "ignored invalid hint");
@@ -81,17 +106,21 @@ impl Hints {
             }
             parsed
         });
-        let tier = text(headers, TIER_HINT_HEADER).and_then(|value| {
-            match value.to_ascii_lowercase().as_str() {
-                "fast" => Some("low"),
-                "balanced" => Some("mid"),
-                "deep" => Some("high"),
+        let mut invalid_tier = None;
+        let tier = match text(headers, TIER_HINT_HEADER) {
+            None => None,
+            Some(value) => match value.to_ascii_lowercase().as_str() {
+                "low" | "fast" => Some("low"),
+                "mid" | "balanced" => Some("mid"),
+                "high" | "deep" => Some("high"),
                 _ => {
-                    tracing::debug!(header = TIER_HINT_HEADER, "ignored invalid hint");
+                    invalid_tier = Some(InvalidTierHint {
+                        value: value.chars().filter(|c| !c.is_control()).take(40).collect(),
+                    });
                     None
                 }
-            }
-        });
+            },
+        };
         let policy = text(headers, TIER_POLICY_HEADER)
             .and_then(|value| match value.to_ascii_lowercase().as_str() {
                 "auto" => Some(TierPolicy::Auto),
@@ -110,7 +139,10 @@ impl Hints {
             }
             decoded
         });
-        Self {
+        if let Some(err) = invalid_tier {
+            return Err(err);
+        }
+        Ok(Self {
             budget_micros: budget_key.as_ref().and(budget_micros),
             budget_key,
             role,
@@ -118,7 +150,7 @@ impl Hints {
             tier,
             policy,
             task,
-        }
+        })
     }
 }
 

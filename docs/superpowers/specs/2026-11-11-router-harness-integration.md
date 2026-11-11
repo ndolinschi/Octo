@@ -334,3 +334,31 @@ Decisions (each becomes a fix with a test):
     (the provider actually used was dearer than the catalogue price); the upstream generation id is stored when
     the upstream returns one.
 11. **Traces** redact e-mail addresses.
+
+## As built — live run 2 (router)
+
+Items 1 and 10 of the findings above, in `apps/router/`.
+
+1. **Embedded default configuration.** `src/config.rs` embeds the shipped `config/openrouter.toml`, `autoroute.toml`
+   and `prices.toml` (`include_str!`). A config directory missing any of the three uses the embedded text for it; a
+   file on disk replaces the embedded one as a whole (no merge with the embedded text). The other fragments keep their
+   serde defaults; `server.toml`, `limits.toml` and `history.toml` stay the shell's (the desktop shell writes exactly
+   those three). Start-up logs one INFO line naming the embedded files. `Config::load_directory_with_report` returns
+   the list. Tests: `tests/embedded_defaults.rs` (shell-shaped directory loads prices, ladder, provider settings and
+   swaps `low` to `high` like the full dev config; an on-disk `prices.toml` and a partial `autoroute.toml` win).
+2. **Tier hint.** `x-octo-tier-hint` accepts `low|mid|high` and `fast|balanced|deep`, case-insensitive; any other
+   non-empty value is a 400 `invalid_request_error` naming the accepted values (nothing reaches the upstream). The
+   harness only sends `fast`, `balanced` or `deep` (`projectstore.Tier`, `apps/harness/internal/orchestrator/route.go`),
+   so nothing it sends starts failing. `Hints::take` now returns a `Result`.
+3. **Prices.** low `cache_read` 0.018 (dated comment in `prices.toml`); `docs/ladder-cost-check.md` updated.
+4. **Estimate vs bill.** When an upstream-reported cost differs from the table estimate by more than 25%, the call
+   record has `estimate_ratio` (reported / estimated, 2 decimals) and one WARN per model per process is logged. The
+   charge is unchanged (reported wins).
+5. **Generation id.** The call record has `upstream_id`: the OpenRouter generation id (`gen-...`, from the
+   `x-generation-id` header or the response `id`). On a response that carries only an Anthropic-style `msg_...` id
+   that id is stored as it is and is not a generation id; no mapping is invented.
+
+Existing tests changed: `tests/harness_integration.rs` (`Hints::take` returns a `Result`; the case "invalid tier hint is
+ignored" now is a 400, covered by new tests; the ignore-test keeps the other invalid hints) and `tests/call_persistence.rs`
+(new `CallRow` fields). Not verified: nothing was run against a real upstream; that OpenRouter's Messages path returns
+a `gen-` id in the response `id` is assumed from the existing parsing, not observed.

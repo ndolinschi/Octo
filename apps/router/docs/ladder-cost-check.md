@@ -6,11 +6,13 @@ Comparison of `config/prices.toml` against the public OpenRouter catalogue (`GET
 
 | Model | Tier | Catalogue in / out / cache read | `prices.toml` before | `prices.toml` after | 30k in / 500 out |
 | --- | --- | --- | --- | --- | --- |
-| `deepseek/deepseek-v4.1-flash` | low | 0.051 / 0.567 (owner-reported 2026-11-11); cache read 0.006 | 0.30 / 1.20 / 0.006 | 0.051 / 0.567 / 0.006 | before 9,600 ($0.0096) -> after 1,813 ($0.0018) |
+| `deepseek/deepseek-v4.1-flash` | low | 0.051 / 0.567 (owner-reported 2026-11-11); cache read 0.018 (owner-reported 2026-11-11) | 0.30 / 1.20 / 0.006 | 0.051 / 0.567 / 0.018 | before 9,600 ($0.0096) -> after 1,813 ($0.0018) |
 | `minimax/minimax-m3.1-flash` | mid | peak 0.15 / 0.60 / 0.015; off-peak (UTC 15:00-01:00) 0.075 / 0.30 / 0.0075 | 0.15 / 0.60 / 0.015 | unchanged (peak rate kept) | 4,800 peak, 2,400 off-peak |
 | `deepseek/deepseek-v4.1-flash-1017` | high | 0.006 / 0.50 / 0.005 | 0.006 / 0.50 / 0.005 | unchanged | 430 ($0.00043) |
 
 The catalogue publishes no cache-write price for any of them; `cache_write` stays `0.0`.
+
+**Cache read (2026-11-11).** The low model's `cache_read` is now 0.018 (owner-reported from the catalogue; it was 0.006). The 30k in / 500 out column ignores cache, so it does not change. With a cached prefix it does: for 30,000 input tokens of which 24,000 are cache reads plus 500 out, the estimate is 6,000 x 0.051 + 24,000 x 0.018 + 500 x 0.567 = 306 + 432 + 283.5 = about 1,022 micro-USD (was 306 + 144 + 283.5 = about 734). The low-vs-high order in the finding below is unchanged (high is 430 without cache).
 
 **Correction (2026-11-11).** The 2026-11-10 version of this page recorded 0.30 / 1.20 for the low model as the catalogue figure and 0.051 / 0.567 as the stale repo value. The owner, measuring the ladder live, reported the opposite: the catalogue says 0.051 input / 0.567 output (USD per million tokens) and `prices.toml` was stale at 0.30 / 1.20. `prices.toml` now carries the owner-reported figures (comment dated 2026-11-11); the cache fields were left as they were. This was not re-fetched from the catalogue by the agent that made the change (see "Not verified").
 

@@ -27,7 +27,13 @@ fn retention_from(config: &Config) -> Retention {
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let config = Config::load()?;
+    let (config, embedded) = Config::load_with_report()?;
+    if !embedded.is_empty() {
+        info!(
+            files = %embedded.join(", "),
+            "config files missing from the config directory; using the defaults embedded in the binary"
+        );
+    }
     let addr = config.ensure_bind_allowed()?;
     if config.allow_remote && !addr.ip().is_loopback() {
         info!(

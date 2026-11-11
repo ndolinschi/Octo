@@ -198,6 +198,14 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         );
     }
     let served = model.clone().unwrap_or_default();
+    let estimate_ratio = crate::history::estimate_ratio(&resolved);
+    if let Some(ratio) = estimate_ratio {
+        crate::history::warn_estimate_ratio_once(&served, ratio);
+    }
+    let generation_id = plan
+        .header_generation_id
+        .clone()
+        .or(usage.generation_id.clone());
     let row = CallRow {
         model: served.clone(),
         tier: plan.state.auto.tiers().band(&served).to_string(),
@@ -209,6 +217,8 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
         cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
         cost_source: crate::providers::utils::cost_source_label(resolved.source),
+        estimate_ratio,
+        upstream_id: generation_id.clone(),
         route: None,
     };
     plan.state.auto.record_call_persisted(
@@ -220,7 +230,6 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
             row,
         },
     );
-    let generation_id = plan.header_generation_id.or(usage.generation_id.clone());
     plan.state.history.record(FinishedCall {
         kind: CallKind::Messages,
         provider: CallProvider::OpenRouter,

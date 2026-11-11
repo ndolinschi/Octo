@@ -40,7 +40,7 @@ pub use delegate::{
     route as delegate_route, Alternative, ApiTier, Band, Candidate, RouteError, RouteInput,
     RoutePolicy, RouteRequest, RouteResponse, Task,
 };
-pub use hints::{valid_budget_key, AgentRole, Hints, TierPolicy};
+pub use hints::{valid_budget_key, AgentRole, Hints, InvalidTierHint, TierPolicy};
 pub use jev::{
     asks_file_or_repo_inspection, choice, choice_from_scores, classified, inspect, needed_tools,
     payload, Complexity, ContextFacts, PayloadPlan, Thresholds, ToolNeed,

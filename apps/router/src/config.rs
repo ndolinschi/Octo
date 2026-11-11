@@ -19,6 +19,14 @@ const CONFIG_DIR_FILES: &[&str] = &[
     "prices.toml",
 ];
 
+/// Shipped files compiled into the binary. A config directory that lacks one of them (the desktop shell writes only
+/// `server.toml`, `limits.toml` and `history.toml`) is completed from this text; a file on disk always wins.
+const EMBEDDED_DEFAULTS: &[(&str, &str)] = &[
+    ("openrouter.toml", include_str!("../config/openrouter.toml")),
+    ("autoroute.toml", include_str!("../config/autoroute.toml")),
+    ("prices.toml", include_str!("../config/prices.toml")),
+];
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub bind_addr: String,
@@ -558,21 +566,45 @@ fn default_autoroute_down_confirm() -> u32 {
 
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
+        Self::load_with_report().map(|(config, _)| config)
+    }
+
+    /// Like [`Config::load`], also naming the files that came from the embedded defaults (empty for a legacy
+    /// single-file config).
+    pub fn load_with_report() -> Result<(Self, Vec<&'static str>), ConfigError> {
         match config_location()? {
-            ConfigLocation::Directory(dir) => Self::load_from_directory(&dir),
-            ConfigLocation::File(path) => Self::load_from_path(&path),
+            ConfigLocation::Directory(dir) => Self::load_directory_with_report(&dir),
+            ConfigLocation::File(path) => {
+                Self::load_from_path(&path).map(|config| (config, vec![]))
+            }
         }
     }
 
     pub fn load_from_directory(dir: &Path) -> Result<Self, ConfigError> {
+        Self::load_directory_with_report(dir).map(|(config, _)| config)
+    }
+
+    /// Loads a config directory; every embedded default file missing from it is used instead and listed in the result.
+    pub fn load_directory_with_report(
+        dir: &Path,
+    ) -> Result<(Self, Vec<&'static str>), ConfigError> {
         use std::io::ErrorKind;
 
         let mut merged = Map::new();
+        let mut embedded = Vec::new();
         for name in CONFIG_DIR_FILES {
             let path = dir.join(name);
             let contents = match std::fs::read_to_string(&path) {
                 Ok(contents) => contents,
-                Err(source) if source.kind() == ErrorKind::NotFound => continue,
+                Err(source) if source.kind() == ErrorKind::NotFound => {
+                    match EMBEDDED_DEFAULTS.iter().find(|(file, _)| file == name) {
+                        Some((file, text)) => {
+                            embedded.push(*file);
+                            text.to_string()
+                        }
+                        None => continue,
+                    }
+                }
                 Err(source) => {
                     return Err(ConfigError::Read {
                         path: path.clone(),
@@ -596,7 +628,7 @@ impl Config {
                     path: dir.to_path_buf(),
                     source,
                 })?;
-        config_from_file(file)
+        Ok((config_from_file(file)?, embedded))
     }
 
     pub fn load_from_path(path: &Path) -> Result<Self, ConfigError> {

@@ -227,6 +227,11 @@ impl Capture {
         );
         let latency_ms = Millis::new(self.started.elapsed().as_millis() as u64);
         let generation_id = self.header_generation_id.or(usage.generation_id.clone());
+        let generation_id_for_row = generation_id.clone();
+        let estimate_ratio = crate::history::estimate_ratio(&resolved);
+        if let Some(ratio) = estimate_ratio {
+            crate::history::warn_estimate_ratio_once(self.model.as_deref().unwrap_or(""), ratio);
+        }
         let call_model = self.model.clone().unwrap_or_default();
         let parent = self
             .observe
@@ -296,6 +301,8 @@ impl Capture {
                     cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
                     cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
                     cost_source: cost_source_label(resolved.source),
+                    estimate_ratio,
+                    upstream_id: generation_id_for_row,
                     route: None,
                 };
                 auto.record_call_persisted(

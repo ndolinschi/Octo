@@ -405,6 +405,8 @@ fn row(model: &str, cost_usd: f64) -> CallRow {
         cache_write_tokens: 0,
         cost_usd,
         cost_source: "reported",
+        estimate_ratio: None,
+        upstream_id: None,
         route: Some(RouteRecord {
             choice: "c".to_string(),
             band: "easy",

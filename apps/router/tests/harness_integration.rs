@@ -220,7 +220,7 @@ fn hints_parse_valid_values_and_ignore_invalid_ones() {
     ] {
         headers.insert(name, HeaderValue::from_static(value));
     }
-    let hints = Hints::take(&mut headers);
+    let hints = Hints::take(&mut headers).unwrap();
     assert!(headers.is_empty(), "every hint header is consumed");
     assert_eq!(hints.budget_key.as_deref(), Some("proj-1"));
     assert_eq!(hints.budget_micros, Some(250_000));
@@ -236,13 +236,12 @@ fn hints_parse_valid_values_and_ignore_invalid_ones() {
         ("x-octo-budget-usd", "abc"),
         ("x-octo-agent-role", "boss"),
         ("x-octo-agent-depth", "-1"),
-        ("x-octo-tier-hint", "ultra"),
         ("x-octo-tier-policy", "maybe"),
         ("x-octo-task", "%zz"),
     ] {
         bad.insert(name, HeaderValue::from_static(value));
     }
-    let hints = Hints::take(&mut bad);
+    let hints = Hints::take(&mut bad).unwrap();
     assert_eq!(hints, Hints::default());
 
     let mut long = HeaderMap::new();
@@ -250,12 +249,20 @@ fn hints_parse_valid_values_and_ignore_invalid_ones() {
         "x-octo-task",
         HeaderValue::from_str(&"a".repeat(500)).unwrap(),
     );
-    assert_eq!(Hints::take(&mut long).task.unwrap().chars().count(), 200);
+    assert_eq!(
+        Hints::take(&mut long)
+            .unwrap()
+            .task
+            .unwrap()
+            .chars()
+            .count(),
+        200
+    );
 
     let mut orphan = HeaderMap::new();
     orphan.insert("x-octo-budget-usd", HeaderValue::from_static("1.0"));
     assert_eq!(
-        Hints::take(&mut orphan).budget_micros,
+        Hints::take(&mut orphan).unwrap().budget_micros,
         None,
         "a budget needs a budget key"
     );
@@ -855,14 +862,13 @@ async fn config_budget_below_the_header_keeps_the_configured_action() {
 }
 
 #[tokio::test]
-async fn invalid_hint_values_are_ignored_never_rejected() {
+async fn invalid_hint_values_other_than_the_tier_are_ignored_never_rejected() {
     let mock = spawn_mock(vec![], JEV_LOW).await;
     let state = AppState::new(config_for(mock.addr)).unwrap();
     let response = send(
         &state,
         &session_turn("bad-hints"),
         &[
-            ("x-octo-tier-hint", "ultra"),
             ("x-octo-tier-policy", "maybe"),
             ("x-octo-agent-role", "boss"),
             ("x-octo-agent-depth", "deep"),
@@ -1139,5 +1145,136 @@ async fn compaction_ignored_by_the_client_is_forwarded_as_not_applied_once() {
         compaction_requests(&mock),
         1,
         "not asked again while ignored"
+    );
+}
+
+// ---- live run 2: tier hint aliases, estimate ratio, upstream id ----
+
+#[tokio::test]
+async fn tier_hint_accepts_low_mid_high_aliases_case_insensitively() {
+    let mock = spawn_mock(vec![], JEV_LOW).await;
+    let state = AppState::new(config_for(mock.addr)).unwrap();
+    for (hint, session, model, tier) in [
+        ("low", "a-low", "low-model", "low"),
+        ("MID", "a-mid", "mid-model", "mid"),
+        ("High", "a-high", "high-model", "high"),
+        ("FAST", "a-fast", "low-model", "low"),
+        ("Balanced", "a-bal", "mid-model", "mid"),
+        ("deep", "a-deep", "high-model", "high"),
+    ] {
+        let response = send(
+            &state,
+            &session_turn(session),
+            &[("x-octo-tier-hint", hint)],
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK, "{hint}");
+        assert_eq!(hv(&response, "x-octo-model"), model, "{hint}");
+        assert_eq!(hv(&response, "x-octo-tier"), tier, "{hint}");
+        assert_eq!(hv(&response, "x-octo-trigger"), "hint", "{hint}");
+    }
+}
+
+#[tokio::test]
+async fn an_unknown_tier_hint_is_a_400_naming_the_accepted_values() {
+    let mock = spawn_mock(vec![], JEV_LOW).await;
+    let state = AppState::new(config_for(mock.addr)).unwrap();
+    for uri in ["/autoroute/v1/messages", "/autoroute/v1/chat/completions"] {
+        let request = HttpRequest::builder()
+            .method("POST")
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("x-octo-tier-hint", "ultra")
+            .body(Body::from(
+                serde_json::to_vec(&session_turn("bad-hint")).unwrap(),
+            ))
+            .unwrap();
+        let response = routes::router(state.clone())
+            .oneshot(request)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{uri}");
+        let text = body_json(response).await.to_string();
+        for needle in ["ultra", "low", "mid", "high", "fast", "balanced", "deep"] {
+            assert!(text.contains(needle), "{uri}: {text}");
+        }
+    }
+    assert!(
+        mock.messages.lock().unwrap().is_empty(),
+        "nothing reached the upstream"
+    );
+}
+
+#[tokio::test]
+async fn call_record_carries_estimate_ratio_and_upstream_id() {
+    // priced_state: 1.0 / 2.0 per 1M tokens, so 1000 in + 500 out is 2000 micro-USD estimated.
+    let dear = r#"{"id":"gen-abc123","type":"message","role":"assistant","content":[],"usage":{"input_tokens":1000,"output_tokens":500,"cost":0.0045}}"#;
+    let near = r#"{"id":"gen-near","type":"message","role":"assistant","content":[],"usage":{"input_tokens":1000,"output_tokens":500,"cost":0.0024}}"#;
+    let mock = spawn_mock(vec![json_reply(dear), json_reply(near)], JEV_LOW).await;
+    let state = priced_state(mock.addr);
+    let mut rows = Vec::new();
+    for session in ["ratio-dear", "ratio-near"] {
+        let response = send(
+            &state,
+            &session_turn(session),
+            &[("x-octo-tier-hint", "fast"), ("x-octo-budget-key", session)],
+        )
+        .await;
+        let id = hv(&response, "x-octo-request-id");
+        let _ = body_json(response).await;
+        let (status, row) = get(&state, &format!("/autoroute/v1/calls/{id}")).await;
+        assert_eq!(status, StatusCode::OK);
+        rows.push(row);
+    }
+    // reported wins for the charge; the ratio is 4500 / 2000 = 2.25
+    assert_eq!(rows[0]["cost_usd"], 0.0045);
+    assert_eq!(rows[0]["estimate_ratio"], 2.25);
+    assert_eq!(rows[0]["upstream_id"], "gen-abc123");
+    // within 25% of the estimate: no ratio
+    assert_eq!(rows[1]["cost_usd"], 0.0024);
+    assert!(rows[1].get("estimate_ratio").is_none(), "{}", rows[1]);
+    assert_eq!(rows[1]["upstream_id"], "gen-near");
+}
+
+#[test]
+fn estimate_ratio_needs_a_reported_cost_and_a_gap_over_25_percent() {
+    use octo::history::{estimate_ratio, CostMicros, CostSource, ResolvedCost};
+    let resolved = |cost: u64, estimated: Option<u64>, source| ResolvedCost {
+        cost: Some(CostMicros(cost)),
+        or_cost: None,
+        upstream_cost: None,
+        estimated_cost: estimated.map(CostMicros),
+        source,
+        is_byok: None,
+        upstream_provider: None,
+    };
+    assert_eq!(
+        estimate_ratio(&resolved(2500, Some(1000), CostSource::OpenRouter)),
+        Some(2.5)
+    );
+    assert_eq!(
+        estimate_ratio(&resolved(1400, Some(1000), CostSource::Upstream)),
+        Some(1.4)
+    );
+    assert_eq!(
+        estimate_ratio(&resolved(500, Some(1000), CostSource::OpenRouter)),
+        Some(0.5)
+    );
+    assert_eq!(
+        estimate_ratio(&resolved(1250, Some(1000), CostSource::OpenRouter)),
+        None
+    );
+    assert_eq!(
+        estimate_ratio(&resolved(800, Some(1000), CostSource::OpenRouter)),
+        None
+    );
+    assert_eq!(
+        estimate_ratio(&resolved(2500, None, CostSource::OpenRouter)),
+        None
+    );
+    assert_eq!(
+        estimate_ratio(&resolved(2500, Some(1000), CostSource::Estimate)),
+        None,
+        "an estimate is not compared with itself"
     );
 }

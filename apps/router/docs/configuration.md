@@ -2,7 +2,7 @@
 
 Operational defaults live under **`config/`** (one focused TOML file per area). Run from `apps/router`, or set **`OCTO_CONFIG`** to another directory or a legacy monolithic TOML file.
 
-Loader: `src/config.rs` merges known fragment names; missing files are skipped.
+Loader: `src/config.rs` merges known fragment names; missing files are skipped, except three that are **embedded in the binary** (`include_str!` of the shipped `config/openrouter.toml`, `config/autoroute.toml`, `config/prices.toml`): when one of them is missing from the config directory the embedded text is used in its place, so a directory holding only `server.toml`, `limits.toml` and `history.toml` (what the desktop app writes) still has the price table, the ladder and the OpenRouter settings. A file present on disk always wins and replaces the embedded one as a whole (the replacement is per file, not a merge with the embedded text; a partial `autoroute.toml` falls back to the serde defaults for what it omits). Start-up logs one INFO line naming the files that came from the embedded defaults (`config files missing from the config directory; using the defaults embedded in the binary`, `files = openrouter.toml, autoroute.toml, prices.toml`). The other fragments keep their serde defaults when absent. A legacy single `config.toml` (`OCTO_CONFIG` pointing at a file) is never completed from embedded text. Tests: `tests/embedded_defaults.rs`.
 
 ## Fragment map
 
@@ -52,7 +52,7 @@ Invalid `classifier_failure_tier`, `session_budget_action`, or `default_max_toke
 
 Request header `x-octo-budget-key: <key>` (autoroute routes, 1-128 printable ASCII characters) tracks spend under that key instead of the session id, so several agent sessions share one `session_budget_usd`. The header is removed before the request goes upstream. It works without a session id too; `x-octo-budget-usd` with the key lowers the budget for that key (smaller of header and `session_budget_usd`; a header budget always rejects, see [autoroute.md](./autoroute.md#harness-integration)). Spend under a key lives in memory (1 hour idle expiry) and is not restored from the database.
 
-`prices.toml` rates were verified against the OpenRouter catalogue on 2026-11-10, except the low model's input/output, which were updated on 2026-11-11 from the owner-reported catalogue figures: [ladder-cost-check.md](./ladder-cost-check.md). At startup Octo logs a warning when the ladder is not monotonic in price (a higher tier cheaper than a lower one for a 30k in / 500 out request), followed by one line saying whether `never_pay_more_for_less` is on (and which tiers it then swaps for that request shape) or off, and a warning when a ladder model has no usable price entry. A monotonic, fully priced ladder logs nothing.
+`prices.toml` rates were verified against the OpenRouter catalogue on 2026-11-10, except the low model's input/output and cache read (0.018), which were updated on 2026-11-11 from the owner-reported catalogue figures: [ladder-cost-check.md](./ladder-cost-check.md). At startup Octo logs a warning when the ladder is not monotonic in price (a higher tier cheaper than a lower one for a 30k in / 500 out request), followed by one line saying whether `never_pay_more_for_less` is on (and which tiers it then swaps for that request shape) or off, and a warning when a ladder model has no usable price entry. A monotonic, fully priced ladder logs nothing.
 
 ## Environment
 

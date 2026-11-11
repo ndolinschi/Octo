@@ -102,6 +102,41 @@ pub fn resolve_cost(usage: &ParsedUsage, model: Option<&str>, prices: &PriceTabl
     }
 }
 
+/// Reported cost over table estimate beyond this relative gap is flagged (`estimate_ratio`, one WARN per model).
+const ESTIMATE_RATIO_TOLERANCE: f64 = 0.25;
+
+/// `reported / estimated` (2 decimals) when an upstream-reported cost (`upstream` or `openrouter` source) differs from
+/// the price-table estimate for the same call by more than 25%. `None` when there is no estimate or no reported cost.
+pub fn estimate_ratio(resolved: &ResolvedCost) -> Option<f64> {
+    if !matches!(
+        resolved.source,
+        CostSource::Upstream | CostSource::OpenRouter
+    ) {
+        return None;
+    }
+    let reported = resolved.cost?.0 as f64;
+    let estimated = resolved.estimated_cost.filter(|c| c.0 > 0)?.0 as f64;
+    let ratio = reported / estimated;
+    ((ratio - 1.0).abs() > ESTIMATE_RATIO_TOLERANCE).then(|| (ratio * 100.0).round() / 100.0)
+}
+
+/// Logs one WARN per model per process when [`estimate_ratio`] fires.
+pub fn warn_estimate_ratio_once(model: &str, ratio: f64) {
+    static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let Ok(mut seen) = SEEN.lock() else {
+        return;
+    };
+    if seen.iter().any(|m| m == model) {
+        return;
+    }
+    seen.push(model.to_string());
+    tracing::warn!(
+        model,
+        ratio,
+        "reported cost is {ratio:.2}x the price table for {model}; the table or provider routing is off"
+    );
+}
+
 pub fn blended_cost_micros(price: &ModelPrice, input_tokens: u64, output_tokens: u64) -> u128 {
     token_micros(input_tokens, price.input) + token_micros(output_tokens, price.output)
 }
