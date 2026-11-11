@@ -97,6 +97,11 @@ Protected keys (`tools`, `tool_choice`, `system`, `messages`, `max_tokens`, `sto
 | Unpriced tiers | A tier without a usable price (missing, partial or all-zero rates) is never preferred over a priced one; if T itself is unpriced, T is served |
 | `tier-policy: ceiling` | Candidates are T up to the ceiling only |
 | `tier-policy: fixed` | The rule does not apply |
+| Context windows | A cheaper tier is a swap candidate only if its model window holds the request (same 75% fill rule as the fill check); when the decided tier does not hold it either, a candidate with a window no smaller is allowed. A model chosen by the fill `upgrade` (`larger_fit`) is never swapped. Unknown windows count as fitting |
+| Unavailable model (retry) | A swapped call whose served model is reported unavailable retries once on the decided tier's model (there is nothing above the swap target); an unswapped call escalates to the next tier up as before, with the rule applied to it. Ceiling and budget checks compare the tier that would be served after the rule |
+| Compaction fallback | The larger-window fallback model for a compaction stays within the ceiling; there is none under `fixed` |
+| Partial price rows | A row without all four rates (`rates_complete`) is unpriced: it takes no part in the rule or in budget routing |
+| `POST /autoroute/v1/route` | The swap is limited to tiers present among the request's API candidates; the reported model and estimate are those of the offered tier that is served |
 | `custom` (client-preferred high model via `high_allow`), passthrough without a tier decision | Not swapped |
 | Rule off | Today's behaviour: the decided tier is served |
 
@@ -202,7 +207,7 @@ All are optional and stripped before the upstream request (upstream headers are 
 | `x-octo-budget-usd` | positive decimal, e.g. `0.50` | Budget for that key; ignored without a budget key. Latest value sent for a key wins |
 | `x-octo-agent-role` | `orchestrator` or `sub` | `sub` (or any depth above 0) makes a new session start at `min(hint, classifier)` |
 | `x-octo-agent-depth` | integer, `0`, `1`, ... | See above |
-| `x-octo-tier-hint` | `low`, `mid`, `high` or the aliases `fast`, `balanced`, `deep` (same tiers, in that order); case-insensitive; any other non-empty value is a 400; an empty value is ignored | Starting tier of a new session (see below). The harness sends `fast`, `balanced` or `deep` |
+| `x-octo-tier-hint` | `low`, `mid`, `high` or the aliases `fast`, `balanced`, `deep` (same tiers, in that order); case-insensitive; any other non-empty value, a value that is not visible ASCII, or repeated headers that disagree or include an invalid value is a 400; an empty value is ignored | Starting tier of a new session (see below). The harness sends `fast`, `balanced` or `deep` |
 | `x-octo-tier-policy` | `auto` (default), `ceiling`, `fixed` | How binding the hint is |
 | `x-octo-task` | URL-encoded text, truncated to 200 characters | Prefixed to the classifier input as `Task: ...`; only used when the classifier runs |
 
@@ -259,6 +264,7 @@ A call that reached an upstream may also carry `upstream_id` and `estimate_ratio
 
 - `decided_tier` is present only when the price rule served another tier than the one decided (then `tier` is the served one).
 - `estimate_ratio` (reported cost / price-table estimate for the same call, 2 decimals) is present only when an upstream-reported cost (OpenRouter `usage.cost` or BYOK upstream cost) differs from the table estimate by more than 25%, in either direction. It means the table or the provider routing is off (the owner measured 1.4-2.5x for the low model when a dearer provider served it). The first such call per model per process also logs one WARN: `reported cost is N.NNx the price table for <model>; the table or provider routing is off`. The reported cost is still what is charged to the budget and written to `cost_usd`; the ratio changes nothing but the record and the log.
+- The estimate is made from the model the response names when that model has a price row (else from the requested one); no `estimate_ratio` is set below an estimate of 100 micro-USD (integer truncation), or when the response named a different, unpriced model. The WARN repeats at most once per model per hour.
 - `upstream_id` is the id the upstream gave the call: on the OpenRouter paths (`/autoroute/v1/chat/completions`, and `/autoroute/v1/messages` served through OpenRouter) the generation id (`gen-...`, from the `x-generation-id` header or the response/stream `id`), which is what OpenRouter's generation lookup (`GET /api/v1/generation?id=...`) takes. If the response carries only an Anthropic-style `msg_...` id (direct Anthropic) that is stored as is; it is **not** a generation id and no mapping to one is attempted. Absent when the upstream returned no id (errors, dropped streams without a head) and on route decisions.
 - 404 `{"error":"unknown or unfinished request",...}` until the response body has ended (the row is written when the stream finishes, before the client sees the end of the body), and for ids that were evicted or never existed.
 - `cost_source` is `reported` when the cost came from the upstream (OpenRouter `usage.cost` or BYOK upstream cost) and `estimated` otherwise (`prices.toml`; when nothing is priced `cost_usd` is `0` and the source is `estimated`).

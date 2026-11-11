@@ -362,3 +362,26 @@ Existing tests changed: `tests/harness_integration.rs` (`Hints::take` returns a 
 ignored" now is a 400, covered by new tests; the ignore-test keeps the other invalid hints) and `tests/call_persistence.rs`
 (new `CallRow` fields). Not verified: nothing was run against a real upstream; that OpenRouter's Messages path returns
 a `gen-` id in the response `id` is assumed from the existing parsing, not observed.
+
+## As built — review fixes (router)
+
+Ten defects from an independent review of the price rule, embedded configuration and stdin code, all in `apps/router/`;
+tests in `tests/review_fixes.rs`, `tests/embedded_defaults.rs`, `tests/price_rule.rs`, `tests/route_api.rs`.
+
+1. **Windows.** The price swap only targets a tier whose window holds the request (75% fill rule), or, when the decided
+   tier does not hold it either, one with a window no smaller; a model chosen by the fill `upgrade` is never swapped
+   (`Limits.no_swap`). The no-swap guard is defensive: with the window check it is hard to reach, so only the window
+   behaviour has a behavioural test.
+2. **Retry.** A swapped call whose model is unavailable retries on the decided tier's model before `next_up`.
+3. **Compaction fallback** honours the ceiling and is absent under `fixed` (`RepeatCompact.limits`).
+4. **Merge order.** Embedded fragments first, then every on-disk file: a key on disk wins whichever file holds it.
+5. **Stdin.** `Interrupted` retried, `WouldBlock` polled (50 ms), only EOF or a hard error stops.
+6. **Partial rows** (`rates_complete` false) are unpriced in `blended_cost_micros`.
+7. **Route endpoint:** the swap is limited to offered API tiers.
+8. **Budget check on escalation** compares the band the rule would serve (`EscalationShape`).
+9. **Estimate ratio:** none under 100 micro-USD, estimate from the response's model when it has a price row (none when it
+   names an unpriced different model), WARN at most once per model per hour.
+10. **Tier hint:** a non-ASCII value is a 400; repeated headers must all be valid and agree.
+
+Existing tests changed: `route_api.rs` (the single-low-candidate swap test now asserts no swap to an unoffered tier),
+`harness_integration.rs` (`ResolvedCost` literal). Not verified: no live upstream; `no_swap` has no dedicated behavioural test.
