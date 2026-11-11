@@ -2,6 +2,7 @@ import type { Folder, TierPolicy } from "@octo/agent-client";
 import { ArrowUp, Clock, Plus, Square } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { useChatSlots } from "../../state/chatSlots";
 import { errorMessage } from "../../lib/format";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
@@ -37,6 +38,8 @@ export type ComposerProps = {
   lastRequest: string | null;
   onSend(text: string): Promise<void>;
   onCancel(): Promise<void>;
+  /** The harness keeps the queue (`sendOrQueueMessage`): a message written while a turn runs goes through `onSend`, not the local queue. */
+  serverQueue?: boolean;
   /** Messages written while a turn runs; sent one by one when it ends. */
   queue: { items: QueuedMessage[]; add(text: string): void; remove(id: string): void };
   /** Keeps an unsent draft across remounts and shares it with the other composer on the same key. */
@@ -78,6 +81,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const row = useRef<HTMLDivElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
   const listId = useId();
+  const slots = useChatSlots();
+  const [queuedCount, setQueuedCount] = useState(0);
   const aurora = useAuroraState(props.running, props.failed);
   const frame = useRef<HTMLDivElement>(null);
   const paused = useAnimationGate(frame, aurora !== "off");
@@ -106,7 +111,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
   const submit = async () => {
     if (!canSend) return;
-    if (props.running) return queue();
+    if (props.running && !props.serverQueue) return queue();
     setSending(true);
     setError(null);
     try {
@@ -165,7 +170,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) {
-        if (props.running) queue();
+        if (props.running && !props.serverQueue) queue();
         else void submit();
       } else void submit();
       return;
@@ -242,6 +247,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {...attach.dropProps}
           className={cn("octo-composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
         >
+          {slots?.queue?.({ onCount: setQueuedCount })}
           <ComposerPills
             files={attach.files}
             onRemoveFile={attach.remove}
@@ -285,7 +291,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               disabled={disabled}
               onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
               className={cn(
-                "grid size-7 shrink-0 press place-items-center rounded-sm text-fg-2 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50",
+                "relative grid size-7 shrink-0 press place-items-center rounded-sm text-fg-2 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50",
                 menu?.mode === "button" && "bg-active text-fg",
               )}
             >
@@ -304,7 +310,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             )}
             <span className="min-w-0 flex-1" />
             <ContextRing used={props.context.used} size={props.context.size} />
-            <SendButton action={action} enabled={action === "stop" ? !disabled : canSend} onStop={() => void props.onCancel()} />
+            <SendButton
+              action={action}
+              enabled={action === "stop" ? !disabled : canSend}
+              onStop={() => void props.onCancel()}
+              badge={slots?.badge?.(queuedCount)}
+            />
           </div>
         </form>
         <span aria-hidden className="octo-aurora">
@@ -346,7 +357,7 @@ const SEND = {
 } as const;
 
 /** One 28px round button: Send (dim while empty), Stop while working, Queue while working with text (decision 62). */
-function SendButton({ action, enabled, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; onStop(): void }) {
+function SendButton({ action, enabled, onStop, badge }: { action: "send" | "queue" | "stop"; enabled: boolean; onStop(): void; badge?: ReactNode }) {
   const { icon, label } = SEND[action];
   const solid = enabled && action !== "stop";
   return (
@@ -363,6 +374,7 @@ function SendButton({ action, enabled, onStop }: { action: "send" | "queue" | "s
       )}
     >
       <Glyph icon={icon} size={action === "stop" ? 14 : 16} fill={action === "stop" ? "currentColor" : "none"} />
+      {badge}
     </button>
   );
 }

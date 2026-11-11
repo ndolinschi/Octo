@@ -82,7 +82,7 @@ function useQueue(memory: TabMemory | undefined, tab: TabId) {
  * (optimistic, rolled back on failure), the router's tier policy and the context meter.
  */
 export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number } {
-  const { health, config } = useApp();
+  const { health, config, bridge } = useApp();
   const { project, state, running, send, cancel, live, update } = useProject();
   const comments = useOptionalComments();
   const memory = useOptionalWorkspace()?.memory;
@@ -152,6 +152,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
     commentCount: comments?.comments.length ?? 0,
     lastRequest,
     context: { used: orchestrator?.context_used, size: orchestrator?.context_size },
+    serverQueue: bridge.sendOrQueueMessage !== undefined,
     queue: { items: queue.items, add: queue.add, remove: queue.remove },
     model: current
       ? {

@@ -522,6 +522,23 @@ const STATES = [
       await settle(page, 300);
     },
   },
+  {
+    // v7 components in every state (demo-only page; the route is read at render, so the page reloads on it)
+    id: "v7-gallery",
+    viewports: [...WIDE, { width: 390, height: 844 }],
+    async run(page) {
+      await page.evaluate(() => {
+        window.location.hash = "#/__v7";
+      });
+      await page.reload({ waitUntil: "domcontentloaded" });
+      try {
+        await page.locator("[data-v7-gallery]").first().waitFor({ timeout: T });
+      } catch {
+        skip("the v7 gallery did not render");
+      }
+      await settle(page, 2500);
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -19,6 +19,7 @@ import { genericTurn } from "./generic";
 import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
 import { orbitLive } from "./orbit";
+import { withDemoV7 } from "./v7";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
 import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
 import { act, say, sleep, turn, type Ctx } from "./runtime";
@@ -419,7 +420,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     updated_at: p.updated_at,
   });
 
-  return {
+  const bridge: Bridge = {
     health: async () => (await delay(), { ok: true, version: "demo" }),
     getConfig: async () => {
       await delay();
@@ -675,4 +676,5 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
+  return withDemoV7(bridge, records);
 }

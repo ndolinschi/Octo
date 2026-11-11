@@ -6,6 +6,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { cn } from "../../lib/cn";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
+import { useChatSlots } from "../../state/chatSlots";
 import { useProject } from "../../state/project";
 import { CHAT, type TabId } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
@@ -62,6 +63,7 @@ const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m
  */
 export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: TabId }) {
   const ws = useOptionalWorkspace();
+  const slots = useChatSlots();
   const { theme, backdrop: appBackdrop } = useApp();
   const { project, state, running, ensureMessages, projectId } = useProject();
   const agent = state.agents[agentId];
@@ -274,6 +276,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
                   promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
                   hideFirstPrompt={!isOrchestrator}
                 />
+                {isOrchestrator && slots?.approvals?.({ onOpenAgent: (id) => ws?.openAgent(id) })}
               </div>
             </div>
           </div>

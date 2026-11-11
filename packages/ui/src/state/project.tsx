@@ -124,6 +124,12 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         if (!loaded.current.has(agentId)) void fetchMessages(agentId);
       },
       send: async (text) => {
+        // While a turn runs the harness queues the message (`queue.updated` shows it); `sendMessage` would refuse it.
+        if (running && bridge.sendOrQueueMessage) {
+          const sent = await bridge.sendOrQueueMessage(projectId, text);
+          if (sent.message) dispatch({ type: "messages", agentId: sent.message.agent_id, messages: [sent.message] });
+          return;
+        }
         dispatch({ type: "clearTurn" });
         const message = await bridge.sendMessage(projectId, text);
         dispatch({ type: "messages", agentId: message.agent_id, messages: [message] });

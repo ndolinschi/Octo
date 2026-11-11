@@ -557,6 +557,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           { id: "tool-notes", label: "Show notes", run: () => ws.openTool("notes") },
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
           { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
+          { id: "tool-changes", label: "Show changes", detail: "what the agents changed", run: () => ws.openTool("changes") },
           { id: "tool-usage", label: "Show usage", detail: "tokens, cost, limits", run: () => ws.openTool("usage") },
           { id: "tool-side", label: "Ask a side question", detail: "not added to the orchestrator", shortcut: `${MOD_LABEL};`, run: () => ws.openTool("side") },
           { id: "new-tab", label: "Open a tab…", detail: "tools, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },

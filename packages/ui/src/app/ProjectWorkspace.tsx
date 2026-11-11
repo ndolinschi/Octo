@@ -12,11 +12,35 @@ import { Dock } from "../components/dock/Dock";
 import { Button } from "../components/primitives/Button";
 import { Dialog } from "../components/primitives/Dialog";
 import { Presence } from "../components/primitives/Presence";
+import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
 import { TitleBarProject } from "../components/shell/TitleBarProject";
 
 /** The project dialog loads on first use (its own chunk). */
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
+
+/** The v7 pieces the conversation and the composer show (approvals, forms, the harness queue); each renders nothing when the bridge lacks its methods. */
+const ApprovalsSlot = lazy(() => import("../components/v7/ApprovalsSlot").then((m) => ({ default: m.ApprovalsSlot })));
+const QueueSlot = lazy(() => import("../components/v7/QueueSlot").then((m) => ({ default: m.QueueSlot })));
+const QueueBadge = lazy(() => import("../components/v7/QueueList").then((m) => ({ default: m.QueueBadge })));
+const CHAT_SLOTS: ChatSlots = {
+  approvals: ({ onOpenAgent }) => (
+    <Suspense fallback={null}>
+      <ApprovalsSlot onOpenAgent={onOpenAgent} />
+    </Suspense>
+  ),
+  queue: ({ onCount }) => (
+    <Suspense fallback={null}>
+      <QueueSlot onCount={onCount} />
+    </Suspense>
+  ),
+  badge: (count) =>
+    count > 0 ? (
+      <Suspense fallback={null}>
+        <QueueBadge count={count} />
+      </Suspense>
+    ) : null,
+};
 
 /** One project: header row, then the dock of tab groups. */
 export function ProjectWorkspace(props: { agentId: string | null }) {
@@ -27,8 +51,10 @@ export function ProjectWorkspace(props: { agentId: string | null }) {
     <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
       <FileViewProvider projectId={projectId}>
         <Files>
-          <TitleBarProject />
-          <Body />
+          <ChatSlotsProvider value={CHAT_SLOTS}>
+            <TitleBarProject />
+            <Body />
+          </ChatSlotsProvider>
           <SettingsDialog show={settings} onClose={() => setSettings(false)} />
           <CloseDialog />
         </Files>
