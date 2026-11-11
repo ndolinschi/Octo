@@ -214,6 +214,25 @@ t = [t for t in get("/v1/projects/%s/tasks" % pid)["tasks"] if any("Кишинё
 assert t["status"] == "done" and t["outcome"], t
 PY
 
+echo "== inline completion: off until a model is chosen, a suggestion, never-sent files, usage role"
+P7=$(newproject completion full)
+code=$(curl -s -o "$TMP/c.json" -w '%{http_code}' -X POST "$BASE/v1/projects/$P7/complete" -H 'content-type: application/json' \
+  -d '{"path":"main.go","language":"go","prefix":"func f() {\n\t[complete: return 42]","suffix":"\n}\n"}')
+[ "$code" = 409 ] && grep -q completion_off "$TMP/c.json" || fail "completion was not off without a model ($code): $(cat "$TMP/c.json")"
+post PATCH "/v1/projects/$P7" '{"models":{"completion":"fast"}}' >/dev/null
+out=$(post POST "/v1/projects/$P7/complete" '{"path":"main.go","language":"go","prefix":"func f() {\n\t[complete: return 42]","suffix":"\n}\n"}')
+[ "$(jget 'd["text"]' <<<"$out")" = "return 42" ] || fail "no suggestion: $out"
+[ "$(jget 'type(d["ms"]).__name__' <<<"$out")" = int ] || fail "no ms in $out"
+code=$(curl -s -o /dev/null -D "$TMP/h.txt" -w '%{http_code}' -X POST "$BASE/v1/projects/$P7/complete" -H 'content-type: application/json' -d '{"path":".env","prefix":"TOKEN="}')
+[ "$code" = 204 ] && grep -qi '^x-completion-skipped:' "$TMP/h.txt" || fail ".env was not skipped ($code)"
+curl -fsS "$BASE/v1/usage?group=agent&project=$P7" | python3 -c '
+import json,sys
+b=json.load(sys.stdin)["buckets"]
+assert any(x["key"]=="completion" for x in b), b' || fail "completion usage is not its own bucket"
+post PATCH "/v1/projects/$P7" '{"models":{"completion":"off"}}' >/dev/null
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/v1/projects/$P7/complete" -H 'content-type: application/json' -d '{"path":"a.go","prefix":"x"}')
+[ "$code" = 409 ] || fail "completion still on after off ($code)"
+
 echo "== no leftover processes"
 kill "${PIDS[@]}" 2>/dev/null || true
 sleep 1
