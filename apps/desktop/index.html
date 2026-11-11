@@ -1,10 +1,40 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/octo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>Octo</title>
+    <!-- First paint, before any CSS or script bundle: the window colour of the chosen theme (same values as
+         --octo-window in packages/ui). Without JS, the media queries follow the system. -->
+    <style>
+      html { background: #0a0a0a; color-scheme: dark; }
+      @media (prefers-color-scheme: light) { html { background: #ececec; color-scheme: light; } }
+      html[data-theme="dark"] { background: #0a0a0a; color-scheme: dark; }
+      html[data-theme="light"] { background: #ececec; color-scheme: light; }
+    </style>
+    <script>
+      // Sets data-theme on <html> before the first paint: the stored choice (`octo.theme`, written by the UI) when it
+      // is "light" or "dark", otherwise the system theme, which it then follows. The UI takes over afterwards.
+      (function () {
+        var root = document.documentElement;
+        function stored() {
+          try {
+            var v = window.localStorage.getItem("octo.theme");
+            return v === "light" || v === "dark" ? v : null;
+          } catch (e) {
+            return null;
+          }
+        }
+        var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+        function apply() {
+          root.setAttribute("data-theme", stored() || (mq && mq.matches ? "light" : "dark"));
+        }
+        apply();
+        if (mq && mq.addEventListener) mq.addEventListener("change", apply);
+      })();
+    </script>
   </head>
 
   <body>

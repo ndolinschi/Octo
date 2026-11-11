@@ -12,7 +12,7 @@ const FAKE_PY: &str = r#"
 import http.server, json, os, re, signal, sys, time
 role, mode, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
 args = sys.argv[4:]
-rec = {"role": role, "args": args, "env": {k: os.environ.get(k) for k in ("HARNESS_OCTO_KEY", "ANTHROPIC_API_KEY", "OCTO_CONFIG")}}
+rec = {"role": role, "args": args, "env": {k: os.environ.get(k) for k in ("HARNESS_OCTO_KEY", "ANTHROPIC_API_KEY", "OCTO_CONFIG", "HARNESS_EXIT_ON_STDIN_CLOSE", "OCTO_EXIT_ON_STDIN_CLOSE")}}
 cfg = os.environ.get("OCTO_CONFIG")
 if cfg:
     for name in ("server.toml", "history.toml", "limits.toml"):
@@ -182,6 +182,23 @@ fn router_off_starts_the_harness_alone() {
     assert!(e.record("router").is_none(), "no router must be started");
     assert!(b.notices().is_empty());
     assert!(!e.router_dir().exists());
+    b.stop();
+}
+
+#[test]
+fn both_sidecars_are_told_to_exit_when_their_stdin_closes() {
+    need_python!();
+    let e = Env::new("eofenv");
+    e.settings(ON);
+    let b = e.bridge(Some("ok"));
+    b.url().unwrap();
+    for role in ["harness", "router"] {
+        let rec = e.record(role).unwrap_or_else(|| panic!("{role} ran"));
+        assert_eq!(rec["env"]["HARNESS_EXIT_ON_STDIN_CLOSE"], "1", "{role}");
+        assert_eq!(rec["env"]["OCTO_EXIT_ON_STDIN_CLOSE"], "1", "{role}");
+        // Environment form only: an older binary that rejects unknown flags must still start.
+        assert!(!args_of(&rec).iter().any(|a| a.contains("stdin")), "{rec}");
+    }
     b.stop();
 }
 

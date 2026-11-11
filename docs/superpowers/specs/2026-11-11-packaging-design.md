@@ -162,3 +162,19 @@ the shell and the harness writing `harness.env` at the same moment.
 - A settings file naming an `acp:` agent that no longer exists logs a warning and falls back instead of stopping
   the server. A project created before a default change keeps its stored models.
 - `Bridge.getSettings` / `putSettings` are optional interface members (the demo bridge does not have them yet).
+
+## As built — P8b, first-run fixes (2026-11-11)
+
+Defects from the owner's first Linux run. **Verified:** sidecar crate (fmt, clippy, 64 tests incl. `tests/stdin_close.rs`), `install.sh` prerequisite output with
+and without `pkg-config` (stub PATH), `test-dev-sh.sh` (plain and `--router --mock`) with the default bridge port occupied, desktop lint/format/test. **Not verified:** the Tauri
+window itself (no WebKitGTK here), light theme in a real webview, and the real harness/router honouring the stdin settings if their binaries predate them.
+
+- A killed app no longer leaves sidecars: each is spawned with a piped, never-written stdin held open by `Sidecar`, and with `HARNESS_EXIT_ON_STDIN_CLOSE=1` and
+  `OCTO_EXIT_ON_STDIN_CLOSE=1` in the environment (env form only: an older binary ignores it). Pid-file cleanup remains the second net.
+- `install.sh` reports pkg-config and the Tauri libraries in one pass; `--no-install` on Linux prints the AppImage path. All icons named in `tauri.conf.json` existed; the
+  PNGs were 8-bit palette images (Tauri wants RGBA), so they were regenerated from `icon.png` with `tauri icon` (works offline); `icon.icns`/`icon.ico` unchanged.
+- `dev.sh` moves busy default ports (bridge, UI, mock, router) to the next free one, passes the chosen bridge to the UI, prints one block; explicit ports stay errors naming the
+  process. The UI port is read from `OCTO_DEV_UI_PORT` in `vite.config.ts` (default 1420, which `tauri dev` still uses). Output produced after dev.sh signals its children is dropped.
+- Host theme: `index.html` hard-coded `data-theme="dark"`, so `HostStatus`'s follow-the-system hook (which returns when a theme is set) never ran and the host screens were dark on a
+  light system. Now a first-paint script plus colours and `color-scheme` meta in `index.html`; the hook is gone.
+- Closing the last window exits the app (Tauri default, `prevent_exit` is never called) and `RunEvent::Exit` stops both sidecars; documented per platform in the README.

@@ -1,27 +1,7 @@
-import { useEffect } from "react";
 import type { HostState } from "./hostBridge";
-
-/** Until the first screen of the UI owns the theme, follow the system (the UI sets `data-theme` itself later). */
-function useSystemTheme() {
-  useEffect(() => {
-    const root = document.documentElement;
-    if (root.dataset.theme) return;
-    const mq = window.matchMedia("(prefers-color-scheme: light)");
-    const apply = () => {
-      root.dataset.theme = mq.matches ? "light" : "dark";
-    };
-    apply();
-    mq.addEventListener("change", apply);
-    return () => {
-      mq.removeEventListener("change", apply);
-      if (root.dataset.theme === (mq.matches ? "light" : "dark")) delete root.dataset.theme;
-    };
-  }, []);
-}
 
 /** The desktop app's own start-up screen: "Starting Octo…", or what went wrong with the log tail and Retry. */
 export function HostStatus({ state, retrying, onRetry }: { state: Exclude<HostState, { phase: "ready" }>; retrying: boolean; onRetry: () => void }) {
-  useSystemTheme();
   if (state.phase === "starting") {
     return (
       <main className="grid h-full place-items-center bg-window px-6 text-fg" role="status" aria-live="polite">

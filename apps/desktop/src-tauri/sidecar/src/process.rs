@@ -1,19 +1,32 @@
 //! The harness child process: spawn in its own process group, pump its output to the log, stop the whole group.
 //!
-//! Not covered (documented in `apps/desktop/README.md`): if the app is SIGKILLed or crashes hard, nothing here runs.
-//! Two partial nets exist. The child's stdout/stderr are pipes the app reads, so after the app dies the harness
-//! gets SIGPIPE/EPIPE at its next log line and exits (its agent children in the same group then outlive it until
-//! they finish). And the next launch reads `harness.pid` and, if that process is still alive and still named
-//! `harness`, terminates its group before starting a new one. Windows has neither (no process groups here).
+//! If the app is SIGKILLed or crashes hard, none of the code here runs. Three nets cover that (see
+//! `apps/desktop/README.md`):
+//!
+//! 1. **stdin pipe (primary).** Every child is spawned with a piped stdin whose write end the app keeps open, in
+//!    [`Sidecar`], for the child's whole life and never writes to. When the app dies, however it dies, the OS closes
+//!    that end and the child reads EOF. The sidecars exit on it when asked to: `HARNESS_EXIT_ON_STDIN_CLOSE=1` and
+//!    `OCTO_EXIT_ON_STDIN_CLOSE=1` (see [`EXIT_ON_STDIN_CLOSE_ENV`]; the environment form so that an older binary that
+//!    does not know the setting just ignores it). Works on every platform.
+//! 2. stdout/stderr are pipes the app reads, so a child that logs gets SIGPIPE/EPIPE after the app died.
+//! 3. The next launch reads `harness.pid` / `router.pid` and, if that process is still alive and still has the
+//!    sidecar's name, terminates its group before starting a new one (Unix only).
 
 use crate::logfile::{pump, SharedLog};
 use std::io;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 pub const STOP_GRACE: Duration = Duration::from_secs(3);
+
+/// Environment variables that switch the sidecars into "exit when stdin closes" mode (harness, router). Both are
+/// set on both children: each binary reads only its own and ignores the other.
+pub const EXIT_ON_STDIN_CLOSE_ENV: [(&str, &str); 2] = [
+    ("HARNESS_EXIT_ON_STDIN_CLOSE", "1"),
+    ("OCTO_EXIT_ON_STDIN_CLOSE", "1"),
+];
 
 pub struct SpawnSpec<'a> {
     pub program: &'a Path,
@@ -25,6 +38,9 @@ pub struct SpawnSpec<'a> {
 
 pub struct Sidecar {
     child: Child,
+    /// The write end of the child's stdin. Held open, never written: its closing (when this process dies) is the
+    /// child's signal to exit. Dropped last, after the child is gone.
+    _stdin: Option<ChildStdin>,
     pumps: Vec<JoinHandle<()>>,
     stopped: bool,
 }
@@ -33,9 +49,12 @@ impl Sidecar {
     pub fn spawn(spec: SpawnSpec<'_>) -> io::Result<Self> {
         let mut cmd = Command::new(spec.program);
         cmd.args(&spec.args)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        for (k, v) in EXIT_ON_STDIN_CLOSE_ENV {
+            cmd.env(k, v);
+        }
         for (k, v) in &spec.env {
             cmd.env(k, v);
         }
@@ -51,6 +70,7 @@ impl Sidecar {
             cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         }
         let mut child = cmd.spawn()?;
+        let stdin = child.stdin.take();
         let mut pumps = Vec::new();
         if let Some(out) = child.stdout.take() {
             let log = spec.log.clone();
@@ -62,6 +82,7 @@ impl Sidecar {
         }
         Ok(Self {
             child,
+            _stdin: stdin,
             pumps,
             stopped: false,
         })
@@ -281,6 +302,26 @@ mod tests {
             text.contains("out-hello") && text.contains("err-line"),
             "{text}"
         );
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn children_get_the_exit_on_stdin_close_settings_and_an_open_stdin() {
+        let d = tmp("stdin-env");
+        // `read` returns only at EOF; the child must see an open (not closed, not /dev/null) stdin, so it waits.
+        let (mut sc, log) = spawn_sh(
+            &d,
+            "echo h=$HARNESS_EXIT_ON_STDIN_CLOSE o=$OCTO_EXIT_ON_STDIN_CLOSE; read -r _; echo eof",
+        );
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(
+            sc.exited().is_none(),
+            "stdin must stay open while the app lives"
+        );
+        sc.stop(Duration::from_millis(500));
+        let path = log.lock().unwrap().path().to_path_buf();
+        let text = tail_lines(&path, 10);
+        assert!(text.contains("h=1 o=1"), "{text}");
         let _ = std::fs::remove_dir_all(d);
     }
 

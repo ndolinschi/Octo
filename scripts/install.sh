@@ -58,20 +58,30 @@ if [[ "$OS" == Darwin ]]; then
   xcode-select -p >/dev/null 2>&1 || MISSING+=("Xcode command-line tools: run  xcode-select --install")
   have codesign || MISSING+=("codesign: comes with the Xcode command-line tools (xcode-select --install)")
 else
-  if ! have pkg-config; then
-    MISSING+=("pkg-config: install it (Debian/Ubuntu: sudo apt install pkg-config)")
-  else
-    WEBKIT_MISSING=()
+  # One pass: when pkg-config itself is missing the libraries cannot be probed, but they will be needed, so say so
+  # now and give one command that installs everything (otherwise the next run would report them one step later).
+  WEBKIT_MISSING=()
+  PKGCONFIG_MISSING=0
+  if have pkg-config; then
     pkg-config --exists webkit2gtk-4.1 || WEBKIT_MISSING+=("webkit2gtk-4.1")
     pkg-config --exists gtk+-3.0 || WEBKIT_MISSING+=("gtk+-3.0")
     pkg-config --exists librsvg-2.0 || WEBKIT_MISSING+=("librsvg-2.0")
-    if [[ ${#WEBKIT_MISSING[@]} -gt 0 ]]; then
-      MISSING+=("Tauri system libraries (pkg-config cannot find: ${WEBKIT_MISSING[*]}). Install them:
-      Debian/Ubuntu: sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev patchelf build-essential curl wget file
-      Fedora:        sudo dnf install webkit2gtk4.1-devel gtk3-devel librsvg2-devel openssl-devel patchelf
-      Arch:          sudo pacman -S webkit2gtk-4.1 gtk3 librsvg openssl patchelf base-devel
-      (see https://v2.tauri.app/start/prerequisites/#linux)")
+  else
+    PKGCONFIG_MISSING=1
+  fi
+  if [[ "$PKGCONFIG_MISSING" -eq 1 || ${#WEBKIT_MISSING[@]} -gt 0 ]]; then
+    if [[ "$PKGCONFIG_MISSING" -eq 1 ]]; then
+      WHAT="pkg-config is missing, and the Tauri system libraries (webkit2gtk-4.1, gtk+-3.0, librsvg-2.0) are also needed (could not be checked without pkg-config)"
+      APT_PC="pkg-config "; DNF_PC="pkgconf-pkg-config "; PACMAN_PC="pkgconf "
+    else
+      WHAT="Tauri system libraries (pkg-config cannot find: ${WEBKIT_MISSING[*]})"
+      APT_PC=""; DNF_PC=""; PACMAN_PC=""
     fi
+    MISSING+=("$WHAT. Install everything in one go:
+      Debian/Ubuntu: sudo apt install ${APT_PC}libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev patchelf build-essential curl wget file
+      Fedora:        sudo dnf install ${DNF_PC}webkit2gtk4.1-devel gtk3-devel librsvg2-devel openssl-devel patchelf
+      Arch:          sudo pacman -S ${PACMAN_PC}webkit2gtk-4.1 gtk3 librsvg openssl patchelf base-devel
+      (see https://v2.tauri.app/start/prerequisites/#linux)")
   fi
 fi
 if [[ ${#MISSING[@]} -gt 0 ]]; then
@@ -149,7 +159,12 @@ install_linux() {
     exit 1
   fi
   echo "install.sh: built $src"
-  [[ "$DO_INSTALL" -eq 1 ]] || return 0
+  if [[ "$DO_INSTALL" -ne 1 ]]; then
+    echo "install.sh: --no-install: not installed. The AppImage is at:"
+    echo "  $src"
+    echo "  run it with: chmod +x '$src' && '$src'   (or re-run without --no-install to install it to ~/.local/bin/octo)"
+    return 0
+  fi
 
   bin_dir="$HOME/.local/bin"
   apps_dir="$HOME/.local/share/applications"

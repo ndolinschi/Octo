@@ -10,3 +10,11 @@ declare module "node:assert/strict" {
   };
   export default assert;
 }
+
+declare module "node:fs" {
+  export function readFileSync(path: URL, encoding: "utf8"): string;
+}
+
+declare module "node:vm" {
+  export function runInNewContext(code: string, context: object): unknown;
+}

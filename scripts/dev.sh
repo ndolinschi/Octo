@@ -4,11 +4,13 @@
 # the harness the way the desktop app runs it (design P8).
 set -euo pipefail
 
-BRIDGE_PORT="${OCTO_DEV_BRIDGE_PORT:-8790}"
-MOCK_PORT=8791
-ROUTER_PORT="${OCTO_DEV_ROUTER_PORT:-8792}"
+# Default ports. A default that is busy is replaced by the next free port; a port asked for explicitly (flag or
+# environment variable) that is busy is an error.
+BRIDGE_PORT="${OCTO_DEV_BRIDGE_PORT:-8790}"; BRIDGE_EXPLICIT=0; [[ -n "${OCTO_DEV_BRIDGE_PORT:-}" ]] && BRIDGE_EXPLICIT=1
+MOCK_PORT="${OCTO_DEV_MOCK_PORT:-8791}"; MOCK_EXPLICIT=0; [[ -n "${OCTO_DEV_MOCK_PORT:-}" ]] && MOCK_EXPLICIT=1
+ROUTER_PORT="${OCTO_DEV_ROUTER_PORT:-8792}"; ROUTER_EXPLICIT=0; [[ -n "${OCTO_DEV_ROUTER_PORT:-}" ]] && ROUTER_EXPLICIT=1
+UI_PORT="${OCTO_DEV_UI_PORT:-1420}"; UI_EXPLICIT=0; [[ -n "${OCTO_DEV_UI_PORT:-}" ]] && UI_EXPLICIT=1 # read by apps/desktop/vite.config.ts
 ROUTER=0
-UI_PORT=1420 # fixed by apps/desktop/vite.config.ts (strictPort)
 MOCK=0
 
 usage() {
@@ -20,6 +22,12 @@ Starts, from the repository root:
   2. the UI dev server    (pnpm --filter @octo/desktop dev)  http://localhost:1420
   with --router, before the harness:
      the Octo router     (cargo build -p octo, then the binary) http://127.0.0.1:8792
+
+The addresses above are the defaults. When a default port is busy the next free port is used instead, and the
+final "ready" block lists the addresses actually chosen (the UI is pointed at the chosen bridge through
+VITE_HARNESS_BRIDGE_URL). A port you ask for explicitly (--bridge-port, or $OCTO_DEV_BRIDGE_PORT,
+$OCTO_DEV_ROUTER_PORT, $OCTO_DEV_MOCK_PORT, $OCTO_DEV_UI_PORT) is never replaced: if it is busy, dev.sh stops and
+names the process that holds it.
 
 Ctrl+C stops everything. Runs `pnpm install` first when node_modules is missing.
 
@@ -46,15 +54,18 @@ while [[ $# -gt 0 ]]; do
     --bridge-port)
       shift
       BRIDGE_PORT="${1:-}"
+      BRIDGE_EXPLICIT=1
       ;;
     *) echo "dev.sh: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
   shift
 done
-if ! [[ "$BRIDGE_PORT" =~ ^[0-9]+$ ]]; then
-  echo "dev.sh: --bridge-port needs a number (got '$BRIDGE_PORT')" >&2
-  exit 2
-fi
+for pair in "bridge port:$BRIDGE_PORT" "router port:$ROUTER_PORT" "mock port:$MOCK_PORT" "UI port:$UI_PORT"; do
+  if ! [[ "${pair#*:}" =~ ^[0-9]+$ ]]; then
+    echo "dev.sh: the ${pair%%:*} needs a number (got '${pair#*:}')" >&2
+    exit 2
+  fi
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -77,15 +88,62 @@ need curl "Install curl with your package manager."
 [[ "$ROUTER" -eq 1 ]] && need cargo "Install Rust from https://rustup.rs (the router is built from apps/router)."
 
 port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
-ports=("$BRIDGE_PORT" "$UI_PORT")
-[[ "$MOCK" -eq 1 ]] && ports+=("$MOCK_PORT")
-[[ "$ROUTER" -eq 1 ]] && ports+=("$ROUTER_PORT")
-for p in "${ports[@]}"; do
-  if port_in_use "$p"; then
-    echo "dev.sh: port $p is already in use. Stop what is using it (is another dev.sh running?)." >&2
-    exit 1
+
+# Who listens on a port, as far as the machine will tell us (lsof, then ss); empty when unknown.
+port_owner() {
+  local out=""
+  if command -v lsof >/dev/null 2>&1; then
+    out="$(lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | awk 'NR==2 {print $1 " (pid " $2 ")"}')"
   fi
-done
+  if [[ -z "$out" ]] && command -v ss >/dev/null 2>&1; then
+    out="$(ss -ltnp "sport = :$1" 2>/dev/null | sed -n 's/.*users:(("\([^"]*\)",pid=\([0-9]*\).*/\1 (pid \2)/p' | head -n 1)"
+  fi
+  printf '%s' "$out"
+}
+
+# Port selection. Explicit ports must be free; defaults that are free are kept; busy defaults move to the next free
+# port that is neither busy nor wanted by another service here.
+RESERVED=" "
+NOTES=()
+reserve_port() { RESERVED="$RESERVED$1 "; }
+port_reserved() { [[ "$RESERVED" == *" $1 "* ]]; }
+choose_ports() { # entries "VAR:label:explicit"
+  local entry var label explicit cur owner
+  for entry in "$@"; do
+    IFS=: read -r var label explicit <<<"$entry"
+    cur="${!var}"
+    if port_in_use "$cur"; then
+      if [[ "$explicit" -eq 1 ]]; then
+        owner="$(port_owner "$cur")"
+        echo "dev.sh: the $label port $cur is already in use${owner:+ by $owner}. Stop it, or choose another port." >&2
+        exit 1
+      fi
+      continue # a busy default: second pass
+    fi
+    reserve_port "$cur"
+  done
+  for entry in "$@"; do
+    IFS=: read -r var label explicit <<<"$entry"
+    cur="${!var}"
+    port_reserved "$cur" && continue
+    local next=$((cur + 1)) tries=0
+    while { port_in_use "$next" || port_reserved "$next"; } && [[ $tries -lt 200 ]]; do
+      next=$((next + 1))
+      tries=$((tries + 1))
+    done
+    owner="$(port_owner "$cur")"
+    NOTES+=("$label port $cur is busy${owner:+ ($owner)}; using $next")
+    printf -v "$var" '%s' "$next"
+    reserve_port "$next"
+  done
+}
+SPECS=("BRIDGE_PORT:bridge:$BRIDGE_EXPLICIT" "UI_PORT:UI:$UI_EXPLICIT")
+[[ "$MOCK" -eq 1 ]] && SPECS+=("MOCK_PORT:mock:$MOCK_EXPLICIT")
+[[ "$ROUTER" -eq 1 ]] && SPECS+=("ROUTER_PORT:router:$ROUTER_EXPLICIT")
+choose_ports "${SPECS[@]}"
+if [[ ${#NOTES[@]} -gt 0 ]]; then
+  for n in "${NOTES[@]}"; do echo "dev.sh: $n"; done
+fi
 
 cd "$ROOT"
 if [[ ! -d node_modules ]]; then
@@ -132,10 +190,25 @@ fi
 set -m
 PIDS=()
 CLEANED=0
+# Created the moment this script starts stopping its children. Output the children print after that (pnpm's
+# ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL, "Command failed with signal SIGTERM", shutdown lines) is the expected result
+# of our own signal and is dropped; everything printed before it, including every real error, is shown.
+STOP_MARK="$(mktemp -u "${TMPDIR:-/tmp}/octo-dev-stop.XXXXXX")"
+quiet_after_stop() {
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -e "$STOP_MARK" ]] || printf '%s\n' "$line"
+  done
+}
+# bg_quiet CMD ARGS...: run in the background (own process group), output filtered by quiet_after_stop.
+bg_quiet() {
+  "$@" > >(quiet_after_stop) 2> >(quiet_after_stop >&2) &
+}
 cleanup() {
   [[ "$CLEANED" -eq 1 ]] && return
   CLEANED=1
   trap '' INT TERM
+  : >"$STOP_MARK"
   local pid
   if [[ ${#PIDS[@]} -gt 0 ]]; then
     echo
@@ -155,10 +228,11 @@ cleanup() {
 trap 'exit 130' INT
 trap 'exit 143' TERM
 cleanup_router_tmp() { [[ -n "$ROUTER_TMP" ]] && rm -rf "$ROUTER_TMP"; return 0; }
-trap 'cleanup; cleanup_router_tmp' EXIT
+cleanup_all() { cleanup; cleanup_router_tmp; rm -f "$STOP_MARK"; }
+trap cleanup_all EXIT
 
 if [[ "$MOCK" -eq 1 ]]; then
-  "$BIN_DIR/octo-mockllm" &
+  bg_quiet "$BIN_DIR/octo-mockllm" --addr "127.0.0.1:$MOCK_PORT"
   PIDS+=("$!")
   for _ in $(seq 1 50); do port_in_use "$MOCK_PORT" && break; sleep 0.2; done
   port_in_use "$MOCK_PORT" || { echo "dev.sh: the mock model server did not start on port $MOCK_PORT" >&2; exit 1; }
@@ -184,11 +258,11 @@ if [[ "$ROUTER" -eq 1 ]]; then
   fi
   HARNESS_ARGS+=(--base-url "http://127.0.0.1:$ROUTER_PORT/autoroute")
   if [[ "$MOCK" -eq 1 ]]; then HARNESS_UPSTREAM=mock; else HARNESS_UPSTREAM="$UPSTREAM_KEY"; fi
-  HARNESS_OCTO_KEY="$CLIENT_KEY" ANTHROPIC_API_KEY="$HARNESS_UPSTREAM" "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}" &
+  bg_quiet env HARNESS_OCTO_KEY="$CLIENT_KEY" ANTHROPIC_API_KEY="$HARNESS_UPSTREAM" "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}"
 elif [[ "$MOCK" -eq 1 ]]; then
-  ANTHROPIC_API_KEY=mock "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}" --base-url "http://127.0.0.1:$MOCK_PORT" &
+  bg_quiet env ANTHROPIC_API_KEY=mock "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}" --base-url "http://127.0.0.1:$MOCK_PORT"
 else
-  "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}" &
+  bg_quiet "$BIN_DIR/octo-harness" "${HARNESS_ARGS[@]}"
 fi
 PIDS+=("$!")
 HARNESS_PID="$!"
@@ -207,7 +281,7 @@ if [[ "$healthy" -ne 1 ]]; then
   exit 1
 fi
 
-VITE_HARNESS_BRIDGE_URL="http://127.0.0.1:$BRIDGE_PORT" pnpm --filter @octo/desktop dev &
+bg_quiet env VITE_HARNESS_BRIDGE_URL="http://127.0.0.1:$BRIDGE_PORT" OCTO_DEV_UI_PORT="$UI_PORT" pnpm --filter @octo/desktop dev
 PIDS+=("$!")
 UI_PID="$!"
 
@@ -224,7 +298,11 @@ echo
 echo "dev.sh: ready"
 echo "  UI      http://localhost:$UI_PORT"
 echo "  bridge  http://127.0.0.1:$BRIDGE_PORT"
+[[ "$MOCK" -eq 1 ]] && echo "  mock    http://127.0.0.1:$MOCK_PORT"
 [[ "$ROUTER" -eq 1 ]] && echo "  router  http://127.0.0.1:$ROUTER_PORT/autoroute   (log: $ROUTER_DIR/router.log)"
+if [[ ${#NOTES[@]} -gt 0 ]]; then
+  for n in "${NOTES[@]}"; do echo "  note    $n"; done
+fi
 echo "  Ctrl+C to stop"
 
 while true; do
