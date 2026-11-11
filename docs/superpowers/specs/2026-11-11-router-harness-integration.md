@@ -173,6 +173,24 @@ no network. **Not verified:** a real classifier — its latency and the quality 
 - **The harness waits 2500 ms**, not the 300 ms first written above: a sub-agent runs for minutes, and a timeout
   shorter than the classifier's would make the harness fall back most of the time.
 
+## As built — I2, harness side (2026-11-11)
+
+Verified by the orchestrator: Go gates, `scripts/e2e-router.sh` case 6 against the real router (the decision and its
+call record; the mock upstream cannot classify, so the router used its text rule). **Not verified:** a real
+classifier, real agent CLIs.
+
+- `spawn_agent` takes `tier: "auto"`, the default when the router announces `route_api` (`GET /v1/config`
+  `route_api`). An explicit tier or an explicit `agent` is never routed.
+- Candidates: the API tiers (when the built-in loop is available and the tier is not itself mapped to an agent) and
+  every available ACP agent (`acp:<id>`; logged-out agents are sent as such, agents whose probe has not answered
+  are left out). Manifest fields `flatRate` and `strengths`; `models.auto_candidates` restricts and orders the set.
+- The agent records `route_choice`, `route_reason`, `route_band`, `route_request_id`. The classifier's cost is a
+  usage row with role `route`.
+- Fallbacks never fail a turn: no router, timeout, 5xx, 422 or an unknown choice → the balanced tier (or the first
+  logged-in agent when there is no key), with the reason recorded; 402 → the budget failure.
+- `flatRate` in the built-in manifest is a judgement: true for claude-code, codex, copilot, cursor, antigravity,
+  devin; false for grok, droid, opencode, omp, pi.
+
 ## I3 — showing the savings (after I2)
 
 Usage → Cost gains "Auto-routing": actual cost vs. what the same tokens would have cost at the hinted tier

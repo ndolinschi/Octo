@@ -28,6 +28,9 @@ type Server struct {
 	router  RouterInfo
 	mcp     http.Handler
 	ping    time.Duration
+
+	builtinOff  string        // reason the built-in loop is unavailable; "" = available
+	defaultOrch func() string // the orchestrator a project without a choice runs now
 }
 
 // PluginSource is the read-only plugin view GET /v1/plugins serves.
@@ -53,6 +56,23 @@ func WithPlugins(src PluginSource) Option { return func(s *Server) { s.plugins =
 // WithMCP mounts the harness's MCP server (for ACP orchestrators) at
 // mcp.PathPrefix. It authenticates by per-session bearer token itself.
 func WithMCP(h http.Handler) Option { return func(s *Server) { s.mcp = h } }
+
+// WithBuiltinLoop reports in GET /v1/config whether the built-in agent loop
+// can run (reason says why not). Without it the loop is reported available.
+func WithBuiltinLoop(available bool, reason string) Option {
+	return func(s *Server) {
+		if !available {
+			s.builtinOff = reason
+			if reason == "" {
+				s.builtinOff = "unavailable"
+			}
+		}
+	}
+}
+
+// WithDefaultOrchestrator supplies default_orchestrator of GET /v1/config.
+// Without it the server default model is reported.
+func WithDefaultOrchestrator(f func() string) Option { return func(s *Server) { s.defaultOrch = f } }
 
 // WithPingInterval overrides the SSE keep-alive period.
 func WithPingInterval(d time.Duration) Option { return func(s *Server) { s.ping = d } }

@@ -15,12 +15,19 @@ const ACPModelPrefix = "acp:"
 // acpAgents returns the available ACP agents, in plugin load order.
 func (rt *runtime) acpAgents() []plugins.Agent {
 	var out []plugins.Agent
-	for _, a := range rt.o.opts.Agents {
+	for _, a := range rt.o.agents() {
 		if a.Available {
 			out = append(out, a)
 		}
 	}
 	return out
+}
+
+func (o *Orchestrator) agents() []plugins.Agent {
+	if o.opts.AgentSource != nil {
+		return o.opts.AgentSource()
+	}
+	return o.opts.Agents
 }
 
 // acpTarget is an ACP agent with the model one delegation will use: the
@@ -94,6 +101,17 @@ func modelChoices(agents []plugins.Agent) (enum []string, desc string) {
 // spawnSchema is the spawn_agent input schema; `agent` appears only when
 // at least one ACP agent is available.
 func spawnSchema(agents []plugins.Agent) (json.RawMessage, error) {
+	return spawnSchemaFor(agents, false)
+}
+
+// spawnTierAutoDescription describes the tier property while the router can
+// choose (route_api): auto is accepted and is the default.
+const spawnTierAutoDescription = "Who does the task. auto (the default): the router picks the model tier or a flat-rate local agent " +
+	"by task difficulty and price. Or choose a model tier by task difficulty."
+
+// spawnSchemaFor is spawnSchema; with auto the tier property gains "auto" and
+// becomes optional (its default).
+func spawnSchemaFor(agents []plugins.Agent, auto bool) (json.RawMessage, error) {
 	props := map[string]any{
 		"role":  map[string]any{"type": "string", "description": "Specialist role, e.g. Code explorer"},
 		"title": map[string]any{"type": "string", "description": "Short task title"},
@@ -124,8 +142,15 @@ func spawnSchema(agents []plugins.Agent) (json.RawMessage, error) {
 				"another harness suits a self-contained coding task. Available: " + agentList(agents) + ". Omit for a normal sub-agent.",
 		}
 	}
+	required := []string{"role", "title", "task", "tier"}
+	if auto {
+		props["tier"] = map[string]any{
+			"type": "string", "enum": []string{TierAuto, "fast", "balanced", "deep"}, "description": spawnTierAutoDescription,
+		}
+		required = required[:3]
+	}
 	return json.Marshal(map[string]any{
-		"type": "object", "properties": props, "required": []string{"role", "title", "task", "tier"},
+		"type": "object", "properties": props, "required": required,
 	})
 }
 

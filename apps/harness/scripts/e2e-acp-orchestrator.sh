@@ -3,6 +3,7 @@
 # (examples/fakeacp) as a project's orchestrator, driven only through the bridge with curl.
 #   scenario 1 (:8821): agent without HTTP MCP  -> the harness binary itself is the stdio relay (`harness mcp-relay`)
 #   scenario 2 (:8822): agent with HTTP MCP and loadSession -> HTTP entry, session/load after a crash
+#   scenario 3 (:8823): no API key at all (see `nokey` below)
 # Needs Go and python3. Touches only a temp dir. No model, no network, no third-party agent CLI.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -25,7 +26,7 @@ plugin() { # $1 dir, $2 extra env json members (may be empty)
 JSON
 }
 serve() { # $1 port, $2 data dir, $3 plugins dir; env HARNESS_ACP_IDLE optional
-  ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr "127.0.0.1:$1" --data-dir "$2" --base-url http://127.0.0.1:8820 \
+  HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr "127.0.0.1:$1" --data-dir "$2" --base-url http://127.0.0.1:8820 \
     --plugins-dir "$3" >"$2.log" 2>&1 & PIDS+=($!)
   SERVE_PID=$!
   for _ in $(seq 60); do curl -fsS "http://127.0.0.1:$1/health" >/dev/null 2>&1 && return; sleep 0.2; done
@@ -117,6 +118,77 @@ assert orch["model"] == "acp:scripted" and orch["error"] is None, orch
   ! pgrep -f "$TMP/fakeacp" >/dev/null || fail "fakeacp processes remain"
 }
 
+# scenario 3 (:8823): no key anywhere. ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL and HARNESS_OCTO_KEY are unset, there is no
+# upstream to call (mockllm is not passed), PATH holds no agent CLI (so no login probe runs), and {data-dir}/harness.env
+# supplies a setting. `harness serve` must start, list the built-in agents, report the built-in loop unavailable, run
+# the ACP orchestrator (chosen as the default, nobody named it) and fail built-in work with the one message.
+nokey() {
+  local name=nokey port=8823 base=http://127.0.0.1:8823 msg
+  msg="No API key is configured for the built-in agent loop. Set ANTHROPIC_API_KEY (or a router), or choose an ACP agent for this project."
+  echo "== scenario $name"
+  mkdir -p "$TMP/$name-ws" "$TMP/$name-data" "$TMP/$name-bin" && printf '# E2E workspace\n' >"$TMP/$name-ws/README.md"
+  plugin "$TMP/$name-plugins" ""
+  printf 'HARNESS_MODEL_FAST=env-file-fast\nHARNESS_MODEL_BALANCED=env-file-balanced\n' >"$TMP/$name-data/harness.env"
+  chmod 600 "$TMP/$name-data/harness.env"
+  env -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL -u HARNESS_OCTO_KEY -u HARNESS_PLUGINS_DIR -u HARNESS_DATA_DIR \
+    PATH="$TMP/$name-bin" HARNESS_MODEL_BALANCED=from-process \
+    "$TMP/harness" serve --addr "127.0.0.1:$port" --data-dir "$TMP/$name-data" --plugins-dir "$TMP/$name-plugins" >"$TMP/$name-data.log" 2>&1 & PIDS+=($!)
+  local serve_pid=$!
+  for _ in $(seq 60); do curl -fsS "$base/health" >/dev/null 2>&1 && break; sleep 0.2; done
+  curl -fsS "$base/health" >/dev/null 2>&1 || fail "harness without a key did not start: $(cat "$TMP/$name-data.log")"
+
+  cfg=$(curl -fsS "$base/v1/config")
+  [ "$(jget 'd["builtin_loop"]["available"]' <<<"$cfg")" = False ] || fail "builtin_loop.available is not false: $cfg"
+  [ "$(jget 'd["builtin_loop"]["reason"]' <<<"$cfg")" = "$msg" ] || fail "builtin_loop.reason differs: $cfg"
+  [ "$(jget 'd["default_orchestrator"]' <<<"$cfg")" = "acp:scripted" ] || fail "default_orchestrator is not acp:scripted: $cfg"
+  [ "$(jget 'd["default_models"]["fast"]' <<<"$cfg")" = env-file-fast ] || fail "harness.env was not read: $cfg"
+  [ "$(jget 'd["default_models"]["balanced"]' <<<"$cfg")" = from-process ] || fail "the process environment must win over harness.env: $cfg"
+  curl -fsS "$base/v1/plugins" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+b = [p for p in d["plugins"] if p["name"] == "subscription-agents"]
+assert len(b) == 1 and b[0]["builtin"] is True and not b[0]["errors"] and len(b[0]["agents"]) >= 10, d
+' || fail "/v1/plugins does not list the built-in subscription agents"
+
+  echo "-- turn on the default orchestrator (no key, no explicit choice)"
+  PID=$(curl -fsS -X POST "$base/v1/projects" -H 'content-type: application/json' \
+    -d "{\"name\":\"nokey\",\"folders\":[{\"path\":\"$TMP/$name-ws\"}]}" | jget 'd["id"]')
+  ORCH=$(curl -fsS "$base/v1/projects/$PID" | jget 'd["orchestrator_agent_id"]')
+  t1=$(ask "$base" "$PID" "[echo] no key needed")
+  echo "$t1"
+  grep -q "no key needed" <<<"$t1" || fail "the ACP orchestrator did not answer without a key: $t1"
+  curl -fsS "$base/v1/projects/$PID/agents" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+orch = [a for a in d["agents"] if not a["parent_id"]][0]
+assert orch["model"] == "acp:scripted" and orch["status"] == "idle" and orch["error"] is None, orch
+' || fail "the orchestrator did not run on acp:scripted"
+
+  echo "-- built-in work fails with the one message"
+  BPID=$(curl -fsS -X POST "$base/v1/projects" -H 'content-type: application/json' \
+    -d "{\"name\":\"builtin\",\"folders\":[{\"path\":\"$TMP/$name-ws\"}],\"models\":{\"orchestrator\":\"claude-opus-5-5\"}}" | jget 'd["id"]')
+  curl -fsS -X POST "$base/v1/projects/$BPID/messages" -H 'content-type: application/json' -d '{"text":"hello"}' >/dev/null
+  for _ in $(seq 100); do
+    [ "$(curl -fsS "$base/v1/projects/$BPID" | jget 'd["status"]')" = idle ] && break
+    sleep 0.2
+  done
+  curl -fsS "$base/v1/projects/$BPID/agents" | python3 -c '
+import json, sys
+msg = sys.argv[1]
+orch = [a for a in json.load(sys.stdin)["agents"] if not a["parent_id"]][0]
+assert orch["status"] == "idle" and orch["error"] == msg, orch
+' "$msg" || fail "a built-in turn did not fail with the message"
+  t2=$(ask "$base" "$PID" "[mcp-spawn-builtin] spawn without agent")
+  grep -qF "$msg" <<<"$t2" || fail "a built-in sub-agent did not fail with the message: $t2"
+  ! grep -qi "upstream\|connection refused" "$TMP/$name-data.log" || fail "the harness tried to reach an upstream: $(grep -i 'upstream\|connection refused' "$TMP/$name-data.log")"
+
+  kill -TERM "$serve_pid"
+  for _ in $(seq 100); do kill -0 "$serve_pid" 2>/dev/null || break; sleep 0.1; done
+  ! kill -0 "$serve_pid" 2>/dev/null || fail "harness did not stop"
+  ! pgrep -f "$TMP/fakeacp" >/dev/null || fail "fakeacp processes remain"
+}
+
 scenario stdio 8821 "" stdio no
 scenario http 8822 ',"OCTO_FAKEACP_MCP_HTTP":"1","OCTO_FAKEACP_LOAD_SESSION":"1"' http yes
+nokey
 echo "OK: ACP orchestrator e2e passed"

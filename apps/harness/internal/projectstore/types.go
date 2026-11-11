@@ -85,6 +85,15 @@ type Agent struct {
 	// (Tier above is the tier the agent was spawned at, not the router's.)
 	ServedModel *string `json:"served_model"`
 	RoutedTier  *string `json:"routed_tier"`
+	// The router's decision for a sub-agent spawned with tier "auto"; all null
+	// for an agent whose tier was chosen explicitly. RouteChoice is the
+	// candidate that was started (also after a fallback), RouteReason why,
+	// RouteBand the router's difficulty class (easy|medium|hard) and
+	// RouteRequestID the router's id of the route call.
+	RouteReason    *string `json:"route_reason"`
+	RouteBand      *string `json:"route_band"`
+	RouteRequestID *string `json:"route_request_id"`
+	RouteChoice    *string `json:"route_choice"`
 }
 
 type NewAgent struct {
@@ -98,6 +107,14 @@ type NewAgent struct {
 	Status         AgentStatus
 	SpawnToolUseID *string
 	Started        bool
+	// Route is the router decision recorded on the agent (nil: tier was explicit).
+	Route *RouteInfo
+}
+
+// RouteInfo is what the agent row keeps of an automatic choice; empty fields
+// are stored as null.
+type RouteInfo struct {
+	Reason, Band, RequestID, Choice string
 }
 
 // AgentPatch updates only the non-nil fields.

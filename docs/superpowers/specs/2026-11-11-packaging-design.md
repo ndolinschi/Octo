@@ -68,3 +68,21 @@ survives reinstalling.
 6. `cargo check` in `src-tauri` passes; unit tests for port choice, PATH resolution parsing, health wait and
    shutdown. **The built app itself (macOS bundle, install into Applications, first launch) cannot be run in the
    build environment and must be tried by the owner.**
+
+## As built — P1–P6 (2026-11-11)
+
+Verified by the orchestrator: Go gates; `harness serve` started by hand with an empty environment (11 built-in
+agents listed, `builtin_loop.available: false`); `scripts/e2e-acp-orchestrator.sh` (no-key scenario);
+`scripts/test-dev-sh.sh`; 42 tests of the `octo-sidecar` crate; desktop lint and tests. **Not verified:** the Tauri
+glue (`src-tauri/src/lib.rs`) was not compiled here (no WebKitGTK) — CI compiles it; `install.sh` was never run on
+macOS; the installed app was never launched; shellcheck was not available.
+
+- The built-in loop counts as available when an API key, an Octo key or a non-default base URL is configured (no
+  network check).
+- `harness.env`: flags > process environment > file; `HARNESS_DATA_DIR` cannot come from the file.
+- P4's default applies when a project's orchestrator equals the server default; an agent whose login probe has not
+  answered yet is skipped, so a turn in the first seconds after start may pick the next agent.
+- The sidecar is started with `std::process` in its own process group (not the shell plugin); a `harness.pid` file
+  lets the next launch remove a leftover after a crash.
+- Test scripts set `HARNESS_NO_BUILTIN_PLUGINS=1` so they never probe or start a real agent CLI. (One e2e run
+  before this was added let the router choose `acp:claude-code` and the harness fetched the adapter with `npx`.)

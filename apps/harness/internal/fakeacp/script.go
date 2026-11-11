@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -23,6 +24,9 @@ const (
 	// call spawn_agent (on the first external agent the schema offers), then
 	// save_note, and report pid, session and transport.
 	MarkerMCPSpawn = "[mcp-spawn]"
+	// MarkerMCPSpawnBuiltin is MarkerMCPSpawn but asks for a built-in sub-agent
+	// (no `agent` argument), the one that needs the Messages API.
+	MarkerMCPSpawnBuiltin = "[mcp-spawn-builtin]"
 	// MarkerEcho makes the agent answer with pid, session and the prompt it got.
 	MarkerEcho = "[echo]"
 	// MarkerMCPInfo reports the MCP server entry the client gave (url and
@@ -124,8 +128,10 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		a.mu.Unlock()
 		a.say(fmt.Sprintf("pid=%d session=%s loaded=%v prompt<<%s>>", os.Getpid(), a.sid(), loaded, prompt))
 		return "end_turn"
+	case has(MarkerMCPSpawnBuiltin):
+		return a.mcpSpawn(ctx, true)
 	case has(MarkerMCPSpawn):
-		return a.mcpSpawn(ctx)
+		return a.mcpSpawn(ctx, false)
 	case has(MarkerMCPInfo):
 		a.say(a.mcpInfo())
 		return "end_turn"
@@ -252,7 +258,7 @@ func (a *agent) mcpToolCall(id, title string, args map[string]any) {
 }
 
 // mcpSpawn is the [mcp-spawn] script.
-func (a *agent) mcpSpawn(ctx context.Context) string {
+func (a *agent) mcpSpawn(ctx context.Context, builtin bool) string {
 	a.say("Using the harness tools. ")
 	c, err := a.harnessMCP(ctx)
 	if err != nil {
@@ -266,10 +272,11 @@ func (a *agent) mcpSpawn(ctx context.Context) string {
 		return "end_turn"
 	}
 	names := make([]string, len(tools))
-	spawnAgent := ""
+	spawnAgent, autoTier := "", false
 	for i, t := range tools {
 		names[i] = t.Name
 		if t.Name == "spawn_agent" {
+			autoTier = slices.Contains(t.InputSchema.Properties["tier"].Enum, "auto")
 			if enum := t.InputSchema.Properties["agent"].Enum; len(enum) > 0 {
 				spawnAgent = enum[0]
 			}
@@ -278,7 +285,10 @@ func (a *agent) mcpSpawn(ctx context.Context) string {
 	a.say("Tools: " + strings.Join(names, ",") + ". ")
 
 	args := map[string]any{"role": "Explorer", "title": "Look around", "task": "Report that you are ready.", "tier": "fast"}
-	if spawnAgent != "" {
+	if autoTier {
+		// The schema offers tier auto (a router can choose): leave the choice to it.
+		args["tier"] = "auto"
+	} else if spawnAgent != "" && !builtin {
 		args["agent"] = spawnAgent
 	}
 	a.mcpToolCall("mcp-spawn-1", "octo-harness: spawn_agent", args)

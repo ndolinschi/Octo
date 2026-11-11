@@ -11,7 +11,7 @@ The **`bash`** tool runs real shell commands as the user running the harness. It
 ## Prerequisites
 
 - Go 1.26+ (`bash scripts/install-go-toolchain.sh` from the monorepo root)
-- `ANTHROPIC_API_KEY` (sent upstream; for Octo, use the same key your client would send to Messages)
+- Optional: `ANTHROPIC_API_KEY` (sent upstream; for Octo, use the same key your client would send to Messages). `harness serve` starts without any key; the built-in Messages-API loop is then unavailable (see "Running without a key") and projects run on an ACP agent such as Claude Code on its subscription.
 
 Coding standards (agents/editors): `.cursor/rules/octo-go.mdc`, `go-pr-checklist.mdc`, `verify-go.mdc`.
 
@@ -33,7 +33,26 @@ ANTHROPIC_API_KEY=mock go run ./cmd/harness serve --base-url http://127.0.0.1:87
 
 Then `curl -XPOST localhost:8790/v1/projects -d '{"name":"Demo","folders":[{"path":"'$PWD'"}]}'`, post a message to `/v1/projects/{id}/messages`, follow `/v1/projects/{id}/events`, and browse or edit project files via `/v1/projects/{id}/files` (see [`docs/architecture.md`](docs/architecture.md#file-api)). API contract: [`docs/superpowers/specs/2026-11-10-project-harness-design.md`](../../docs/superpowers/specs/2026-11-10-project-harness-design.md). Against a real endpoint, drop `--base-url` (or point it at Octo) and set a real key.
 
-`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--plugins-dir` (repeatable), `--max-turns`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Defaults: orchestrator `claude-sonnet-5-5` (the balanced model; it was opus before 2026-11-10 because the longest-lived thread should not run on the dearest model; projects created earlier keep their stored models), fast `claude-haiku-5-5`, balanced `claude-sonnet-5-5`, deep `claude-opus-5-5`. Say "quick" in a message to make mockllm answer without delegating.
+`serve` flags: `--addr` (default `127.0.0.1:8790`), `--data-dir`, `--base-url`, `--octo-key`, `--remote` (repeatable, sub-agents only), `--plugins-dir` (repeatable), `--no-builtin-plugins`, `--max-turns`. Tier models come from `HARNESS_MODEL_ORCHESTRATOR|FAST|BALANCED|DEEP` or per project. Defaults: orchestrator `claude-sonnet-5-5` (the balanced model; it was opus before 2026-11-10 because the longest-lived thread should not run on the dearest model; projects created earlier keep their stored models), fast `claude-haiku-5-5`, balanced `claude-sonnet-5-5`, deep `claude-opus-5-5`. Say "quick" in a message to make mockllm answer without delegating.
+
+### Running without a key, and `harness.env`
+
+```bash
+go run ./cmd/harness serve        # no ANTHROPIC_API_KEY, no --plugins-dir: this is the whole command
+```
+
+`harness serve` never requires a provider key. The **built-in loop** (the harness's own Messages-API tool loop) is *available* when configuration provides a way to call a Messages endpoint: `ANTHROPIC_API_KEY` is non-empty, or an Octo key (`--octo-key`, `HARNESS_OCTO_KEY`) is set, or `--base-url` / `ANTHROPIC_BASE_URL` names a host other than `api.anthropic.com` (an Octo router or other gateway that holds the credentials). This is decided from configuration alone; the harness makes no network call to check a key, and a wrong key is still the upstream's `401` on the first request. `GET /v1/config` reports it as `builtin_loop: {available, reason?}`.
+
+While it is unavailable, anything that needs it (an orchestrator turn on a built-in model, a built-in sub-agent, a side question) ends with one error and sends no request: "No API key is configured for the built-in agent loop. Set ANTHROPIC_API_KEY (or a router), or choose an ACP agent for this project." A project that names no orchestrator of its own (its model is still the server default) runs on the first ACP agent that is **available and logged in** (a login probe says `true`, or the agent has no probe), in the order `claude-code`, `codex`, `copilot`, then the rest in load order; with none, the built-in default stays and its turn fails with the message above. The choice is made when a turn starts, is not stored in the project, and is reported as `default_orchestrator` in `GET /v1/config` (`acp:<id>`, or the built-in model when it applies). Agents that were not probed yet (the first seconds after start-up, or an agent whose manifest has a probe the harness cannot run) count as not logged in.
+
+**Settings file.** At start `harness serve` reads `{data-dir}/harness.env` when it exists: `KEY=VALUE` lines (an optional `export ` prefix, one pair of surrounding quotes, `#` comment lines; no inline comments). Values fill only variables that are **not already set** in the process environment (set but empty counts as set), so the environment and flags always win. It is where an installed app keeps `ANTHROPIC_API_KEY`, `HARNESS_MODEL_*`, `HARNESS_CHILD_ENV_ALLOW`, `ANTHROPIC_BASE_URL`, `HARNESS_OCTO_KEY` and the like (`HARNESS_DATA_DIR` cannot be set there: the file lives in the data directory). On Unix a file that is readable by group or others is **refused** with a warning that names the fix (`chmod 600 <path>`). A malformed line is skipped with a warning that carries its line number, never its content; values are never logged (the names that were set are). The file is read once, before configuration is parsed.
+
+```bash
+umask 077; printf 'ANTHROPIC_API_KEY=sk-...\nHARNESS_MODEL_FAST=claude-haiku-5-5\n' > ~/octo-data/harness.env
+harness serve --data-dir ~/octo-data
+```
+
+**Built-in agents.** The `subscription-agents` manifest is embedded in the binary and loaded as the built-in plugin of that name (`GET /v1/plugins` marks it `"builtin": true`). A plugin of the same name in `{data-dir}/plugins` or `--plugins-dir` replaces it (a copy of `plugins-examples/subscription-agents` that you edited, for instance); an agent id that another plugin already provides is skipped without an error. `--no-builtin-plugins` or `HARNESS_NO_BUILTIN_PLUGINS=1` turns the built-in plugin off.
 
 ### Cost controls
 
@@ -43,7 +62,7 @@ Then `curl -XPOST localhost:8790/v1/projects -d '{"name":"Demo","folders":[{"pat
 
 ## Plugins and ACP agents
 
-Plugins are local directories with a `plugin.json` naming language servers, [Agent Client Protocol](https://agentclientprotocol.com) agents and tool servers. They are read at startup from `{data-dir}/plugins/*/plugin.json` and from `--plugins-dir` (repeatable) / `HARNESS_PLUGINS_DIR`; `GET /v1/plugins` lists them with `available` flags and manifest `errors`. There is no endpoint to add a plugin.
+Plugins are local directories with a `plugin.json` (plus the `subscription-agents` plugin embedded in the binary, see "Running without a key") naming language servers, [Agent Client Protocol](https://agentclientprotocol.com) agents and tool servers. They are read at startup from `{data-dir}/plugins/*/plugin.json` and from `--plugins-dir` (repeatable) / `HARNESS_PLUGINS_DIR`; `GET /v1/plugins` lists them with `available` flags and manifest `errors` (and `builtin: true` for an embedded one). There is no endpoint to add a plugin.
 
 ### Language servers (gopls)
 
@@ -80,7 +99,7 @@ The supported way to use a Claude, Copilot, Grok, ChatGPT/Codex or similar subsc
 
 **Verification status: only the scripted fake agent has been run against this harness.** No vendor CLI has been started from this repository's tooling. The Copilot, Grok and Codex entries were checked against vendor docs; the commands for **cursor, opencode, antigravity, devin, droid, omp and pi** (and the Claude Code adapter's login probe) come from vendor docs, the [ACP registry](https://agentclientprotocol.com) and secondary sources, and are **unverified**: binary names, flags, probe exit codes and auth method ids may be wrong for your version. Treat each entry as a starting point and run `scripts/test-subscriptions.sh <id>` on a machine where you are logged in.
 
-Plugin `subscription-agents` ships these agents (the research report's ten, plus Copilot):
+Plugin `subscription-agents` is built into the binary (nothing to load; `--no-builtin-plugins` turns it off) and ships these agents (the research report's ten, plus Copilot):
 
 | id | Command | How to log in | Env var (forwarded from the harness) | Auth methods tried | Confidence |
 | --- | --- | --- | --- | --- | --- |
@@ -103,7 +122,7 @@ Plugin `subscription-agents` ships these agents (the research report's ten, plus
    - Grok CLI (`grok agent stdio`): [xAI docs](https://docs.x.ai). Log in with the CLI. `XAI_API_KEY` is the documented headless path but is billed per token, not on the subscription, and the harness does not copy the CLI's own login file.
    - Codex: [OpenAI docs](https://developers.openai.com/codex). The example runs the adapter `@agentclientprotocol/codex-acp` through `npx`, which needs Node.js; log in with the Codex CLI (`codex login`, or its device-code option on a headless machine).
    - The other agents: see the table above and each manifest's `auth.hint` (shown by `GET /v1/plugins`).
-2. Load the example plugin: `go run ./cmd/harness serve --plugins-dir plugins-examples/subscription-agents`. Copy and edit the manifest to change commands, add `models`, or add an `auth.probe`; nothing in `plugins-examples` loads by itself.
+2. Start `go run ./cmd/harness serve`: the agents are built in, no key and no plugin directory are needed. To change commands, add `models` or add an `auth.probe`, copy `plugins-examples/subscription-agents` into `{data-dir}/plugins/` (or point `--plugins-dir` at the copy) and edit it: a plugin of the same name replaces the built-in one. Nothing else in `plugins-examples` loads by itself.
 3. `GET /v1/plugins` shows each agent with `available` (command found), `logged_in` (`true`/`false`, or `null` when the manifest has no probe or it has not run yet) and the manifest `hint`. In a project, ask the orchestrator to delegate to the agent, optionally naming a model; a CLI that is logged out fails that sub-agent with the hint in its error and the orchestrator carries on.
 
 **Child environment (allow-list).** Every process the harness starts (the `bash` tool, an agent, a language server, a login probe) gets only permitted variables from the harness's own environment; everything else is dropped, so an unlisted provider key (`MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `AWS_*`, `GITHUB_TOKEN`, `HF_TOKEN` ...) never reaches a shell command or a CLI. Always passed: `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LANGUAGE`, `LC_*`, `TERM`, `COLORTERM`, `TZ`, `TMPDIR`, `TEMP`, `TMP`, `PWD`, `HOSTNAME`, `XDG_*`, `DISPLAY`, `WAYLAND_DISPLAY`, `SSH_AUTH_SOCK` (git over ssh; the one deliberate exception to the secret rule), proxy and TLS settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `ALL_PROXY` in either case, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `GIT_SSL_CAINFO`), toolchain locations and switches (`GOPATH`, `GOROOT`, `GOCACHE`, `GOMODCACHE`, `GOFLAGS`, `GOTOOLCHAIN`, `GOPROXY`, `GONOPROXY`, `GOSUMDB`, `GONOSUMDB`, `GOPRIVATE`, `GOOS`, `GOARCH`, `CGO_ENABLED`, `CC`, `CXX`, `CARGO_HOME`, `RUSTUP_HOME`, `CARGO_TARGET_DIR`, `NVM_DIR`, `NODE_PATH`, `PNPM_HOME`, `npm_config_*`, `JAVA_HOME`, `PYTHONPATH`, `VIRTUAL_ENV`, `CONDA_PREFIX`), `CI`, `NO_COLOR`, `FORCE_COLOR` and `CODEX_HOME`. Never passed, even when a rule above matches: a name containing `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD` or `CREDENTIAL` (for `npm_config_*` also `AUTH`), or ending in `_BASE_URL` or `_API_BASE`, and, as a second guard, names starting with `ANTHROPIC_`, `OPENAI_`, `XAI_`, `GROK_CODE_`, `GEMINI_`, `GOOGLE_GENAI_`, `GOOGLE_API_KEY`, `OPENROUTER_` or `HARNESS_`, or the Octo router secrets `OCTO_KEY`, `OCTO_HISTORY_TOKEN_KEY`, `OCTO_CONFIG`. Without this, the harness's `ANTHROPIC_API_KEY` (often `mock` in development), `XAI_API_KEY` or an `OPENAI_*` variable would reach a subscription CLI and could switch it to per-token billing or to a mock endpoint, and any key in the shell that started the harness would be readable by a model-written `env`. **Operator allow-list:** `HARNESS_CHILD_ENV_ALLOW="GITHUB_TOKEN,AWS_*"` (comma separated exact names and `PREFIX_*` patterns, case-insensitive, read once at start-up) passes more variables to every child process, including the `bash` tool; this is the only way to give `bash` a `GITHUB_TOKEN`. It lifts the key/token/secret/`_BASE_URL` rule for the names it lists, but never the second-guard names (`ANTHROPIC_*`, `HARNESS_*`, ...), and a bare `*` is ignored. To pass a key to one agent **on purpose**, declare it in the manifest's `env`: `"env": {"XAI_API_KEY": "${XAI_API_KEY}"}` forwards the harness's value (the `${NAME}` reference is resolved against the harness's real, unfiltered environment, and the entry is dropped when the variable is unset or empty), and a literal value also works. Manifest `env` is applied after the filter, so it always wins. Note the shipped Grok, Devin, Droid, Cursor, Copilot and Gemini entries do forward their own key variable this way; unset it in the harness environment to stay on the subscription. This is also why `requiresEnv` in `auth.methods` looks at the agent's environment, after the filter and the manifest `env`.
@@ -131,7 +150,7 @@ Besides sub-agents, a project's **orchestrator** can run on an ACP agent such as
 
 ```bash
 bash scripts/install-go-toolchain.sh   # once, see above
-go run ./cmd/harness serve --plugins-dir plugins-examples/subscription-agents   # needs a logged-in `claude` for real use
+go run ./cmd/harness serve   # no key needed; a logged-in `claude` is needed for real use
 curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/abs/path"}],"models":{"orchestrator":"acp:claude-code"}}'
 ```
 
@@ -181,6 +200,7 @@ export ANTHROPIC_API_KEY="your-key"
 | `--octo-key` | `HARNESS_OCTO_KEY` | Sent as `x-octo-key` when Octo `client_auth_key` is set |
 | `--stream` | `HARNESS_STREAM` or true | Stream assistant text deltas to stderr |
 | (env only) | `HARNESS_ACP_IDLE` | Idle time (Go duration, default `30m`) before an ACP-run orchestrator's agent process is shut down |
+| (env only) | `HARNESS_ROUTE_TIMEOUT` | How long the router's route call for `tier: auto` may take (Go duration, default `2500ms`; keep it above the router's `classifier_timeout_ms`) |
 | (env only) | `HARNESS_CHILD_ENV_ALLOW` | Extra variable names (`NAME,PREFIX_*`) passed to child processes and the `bash` tool; read once at start-up |
 
 When `--stream` is on, assistant text and `session: <id>` are written to **stderr** during `run`; final assistant text is printed to stdout. Errors go to stderr with exit code 1.
@@ -231,9 +251,30 @@ When `--base-url` points at an Octo router (detected through `GET /health`; use 
 
 API additions:
 
-- `GET /v1/config` also returns `router` (bool) and `router_capabilities` (string array, empty without a router).
+- `GET /v1/config` also returns `router` (bool), `router_capabilities` (string array, empty without a router) and `route_api` (bool, the router announced `route_api`).
 - Project JSON (`GET/POST/PATCH /v1/projects`) gains `budget_usd` (number or null) and `spent_usd` (number or null, last known spend), and `models.tier_policy` (`auto` | `ceiling` | `fixed`, default `auto`). `POST` and `PATCH` accept `budget_usd` (> 0; `null` on PATCH removes it) and `models.tier_policy`; invalid values are 400 `invalid_request`.
 - `/v1/usage` with a router: `group=model` buckets are keyed by the served model; `cost_usd` is the router's figure (`cost_estimated` true when the router estimated it).
+
+## Automatic choice of who does a task (I2)
+
+When the router announces `route_api` in `GET /health` (`GET /v1/config` then has `route_api: true`), `spawn_agent` gets a tier `auto`, and it is the default: the orchestrator's prompt says "leave the tier to auto unless you have a reason", and `tier` is optional in the tool schema (also for an ACP orchestrator calling `spawn_agent` over MCP). Without `route_api` the prompt, the schema and the default are exactly as before (`tier` required; a hand-written `tier: "auto"` still works and resolves to the fallback below).
+
+On `auto` the harness asks the router, once per sub-agent, `POST {origin}/autoroute/v1/route` with the project id as budget key, the task title and brief (brief capped at 4000 characters), the names of the tools the sub-agent will have and its depth, and these **candidates**:
+
+- the three API tiers `fast`, `balanced`, `deep` (ids are the tier names), only when the built-in loop is available (`builtin_loop.available`) and the tier is not mapped to an ACP agent;
+- every loaded ACP agent that is available, when the project has a folder: id `acp:<id>`, `label`, `flat_rate` (manifest `flatRate`, `false` when absent), `logged_in` from the login probe, and `strengths` (manifest `strengths`, a list of `easy`/`medium`/`hard`; omitted when absent). An agent with a probe whose result is not in yet is left out; an agent without a probe counts as logged in; a known logged-out agent is sent with `logged_in: false` (the router never chooses it).
+
+The project setting `models.auto_candidates` (`POST`/`PATCH /v1/projects`, a list of `fast|balanced|deep|acp:<id>[/<model>]`) restricts and orders the set; entries are validated like the other model fields (unknown or unavailable agents and malformed entries are `400 invalid_request`; `[]` clears it). An `acp:<id>/<model>` entry pins the model.
+
+The router classifies the task and answers with `choice`, `band`, `reason`, and `request_id`. The harness starts the choice: an API tier as a normal built-in sub-agent with that tier (the tier hint and the project's `models.tier_policy` carry it; the router serves the model and the answer's `model` is informational), or the ACP agent through the usual ACP sub-agent path (recorded as `acp:<id>[/<model>]`; the tier recorded on the agent follows the band; a `model` in the answer is used only when the agent offers it). The agent JSON, `agent.created` and `agent.updated` carry `route_choice` (the candidate that was started), `route_reason`, `route_band` and `route_request_id`; all are `null` for an explicit tier.
+
+**Fallbacks** never block or fail a turn. The sub-agent starts on today's default, tier `balanced` (or, with the built-in loop unavailable, the first ready ACP agent in the order claude-code, codex, copilot, rest), and `route_reason` says why: `no router` (no router, or one without `route_api`), `router did not answer: ...` (timeout, connection failure, 5xx, unreadable answer), `router found no usable candidate` (422), `router did not accept the route request` (other 4xx), `router chose "x", which is not a candidate` or `... which cannot be started: ...`. A 402 is the existing budget failure: the sub-agent is created, settled as failed with `Project budget reached ($X of $Y)` and the turn ends.
+
+The route call waits at most `HARNESS_ROUTE_TIMEOUT` (Go duration, default `2500ms`). The default is generous on purpose: the router's classifier timeout is 2000 ms and a sub-agent runs for minutes, so waiting is cheaper than a wrong choice. Keep it above the router's `[autoroute.route] classifier_timeout_ms`. The harness sends its `ANTHROPIC_API_KEY` as `x-api-key` on the route call (the router uses it for the classifier; without one the router falls back to its text rule).
+
+**Cost.** The classifier call belongs to the project: the harness reads the route call's record (`GET /autoroute/v1/calls/{request_id}`, as for any call) while the sub-agent runs and writes a usage row with role `route`, attributed to the spawning agent (not added to its token totals, counted in `/v1/usage` and the project's spend; `group=agent` shows a `route` bucket). A record without cost writes nothing.
+
+Check it with `bash scripts/e2e-router.sh` (case 6 needs a router that announces `route_api`; otherwise it prints SKIPPED). The mock upstream cannot classify, so the real router answers from its text rule there.
 
 ## Compaction marker, context breakdown and side question
 

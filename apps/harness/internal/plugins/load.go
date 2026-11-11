@@ -17,7 +17,11 @@ type Connector func(ctx context.Context, baseURL string) error
 // Load reads {dataDir}/plugins/*/plugin.json and every extra dir (either a
 // plugin directory itself or a directory of plugin directories). Earlier
 // plugins win id clashes. Problems are recorded per plugin; Load never fails.
-func Load(ctx context.Context, dataDir string, extraDirs []string, connect Connector) *Registry {
+//
+// Built-in plugins (WithBuiltin) load last: a plugin of the same name from a
+// directory replaces one, and a built-in agent whose id is already taken is
+// skipped without an error.
+func Load(ctx context.Context, dataDir string, extraDirs []string, connect Connector, opts ...LoadOption) *Registry {
 	b := &builder{
 		ctx: ctx, connect: connect,
 		reg:   &Registry{plugins: []Plugin{}, agents: map[string]Agent{}, servers: map[string]LanguageServer{}, probes: newProber()},
@@ -27,8 +31,25 @@ func Load(ctx context.Context, dataDir string, extraDirs []string, connect Conne
 	for _, d := range extraDirs {
 		b.scan(d, true)
 	}
+	var lo loadOptions
+	for _, o := range opts {
+		o(&lo)
+	}
+	for _, bi := range lo.builtins {
+		b.loadBuiltin(bi)
+	}
 	slog.Info("plugins loaded", "plugins", len(b.reg.plugins), "agents", len(b.reg.agents), "language_servers", len(b.reg.servers))
 	return b.reg
+}
+
+// LoadOption customizes Load.
+type LoadOption func(*loadOptions)
+
+type loadOptions struct{ builtins [][]byte }
+
+// WithBuiltin adds a plugin manifest embedded in the binary.
+func WithBuiltin(manifest []byte) LoadOption {
+	return func(o *loadOptions) { o.builtins = append(o.builtins, manifest) }
 }
 
 type builder struct {
@@ -103,6 +124,29 @@ func (b *builder) load(dir string) {
 	b.reg.plugins = append(b.reg.plugins, p)
 }
 
+func (b *builder) loadBuiltin(data []byte) {
+	p := Plugin{LanguageServers: []LanguageServer{}, Agents: []Agent{}, ToolServers: []ToolServer{}, Errors: []string{}, Builtin: true}
+	m, err := parseManifest(data)
+	if err == nil {
+		p.Name, p.Version, p.Description = m.Name, m.Version, m.Description
+		err = m.validate()
+	}
+	if err != nil {
+		// A programming error: the embedded manifest is checked by a test.
+		p.Errors = append(p.Errors, err.Error())
+		slog.Warn("built-in plugin disabled", "name", p.Name, "err", err)
+		b.reg.plugins = append(b.reg.plugins, p)
+		return
+	}
+	if first, dup := b.names[m.Name]; dup {
+		slog.Info("built-in plugin replaced by a plugin directory", "name", m.Name, "dir", first)
+		return
+	}
+	b.names[m.Name] = "(built in)"
+	b.populate(&p, m)
+	b.reg.plugins = append(b.reg.plugins, p)
+}
+
 func (b *builder) populate(p *Plugin, m manifest) {
 	for i, s := range m.LanguageServers {
 		if err := s.validate(); err != nil {
@@ -124,6 +168,10 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			continue
 		}
 		if _, dup := b.reg.agents[a.ID]; dup {
+			if p.Builtin {
+				slog.Info("built-in agent skipped: id already provided by another plugin", "agent", a.ID)
+				continue
+			}
 			p.Errors = append(p.Errors, fmt.Sprintf("agents[%d]: duplicate agent id %q", i, a.ID))
 			continue
 		}
@@ -131,6 +179,7 @@ func (b *builder) populate(p *Plugin, m manifest) {
 		ag := Agent{
 			ID: a.ID, Label: labelOr(a.Label, a.ID), Available: ok, Launch: l,
 			Models: append([]string{}, a.Models...), DefaultModel: a.DefaultModel, ModelArg: slices.Clone(a.ModelArg),
+			FlatRate: a.FlatRate != nil && *a.FlatRate, Strengths: slices.Clone(a.Strengths),
 		}
 		if a.Auth != nil {
 			ag.Hint = strings.TrimSpace(a.Auth.Hint)

@@ -64,11 +64,15 @@ func (r *Registry) agentsWithState(in []Agent) []Agent {
 	return out
 }
 
-// Agents lists every ACP agent in load order, available or not.
+// Agents lists every ACP agent in load order, available or not. Like Plugins
+// it lets stale login probes refresh in the background.
 func (r *Registry) Agents() []Agent {
 	out := []Agent{}
 	if r == nil {
 		return out
+	}
+	if r.probes != nil {
+		r.probes.refresh(r.allAgents())
 	}
 	for _, p := range r.plugins {
 		out = append(out, r.agentsWithState(p.Agents)...)

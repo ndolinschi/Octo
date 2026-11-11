@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
@@ -78,6 +79,10 @@ func mergeModels(base config.Models, over *config.Models) (config.Models, error)
 		if src != "" {
 			*dst = src
 		}
+	}
+	if over.AutoCandidates != nil {
+		// An empty list clears the restriction.
+		base.AutoCandidates = slices.Clone(over.AutoCandidates)
 	}
 	return base, nil
 }

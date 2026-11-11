@@ -10,6 +10,8 @@ type Plugin struct {
 	Agents          []Agent          `json:"agents"`
 	ToolServers     []ToolServer     `json:"tool_servers"`
 	Errors          []string         `json:"errors"`
+	// Builtin marks a plugin embedded in the harness binary.
+	Builtin bool `json:"builtin,omitempty"`
 
 	Dir string `json:"-"`
 }
@@ -41,6 +43,10 @@ type Agent struct {
 	Models       []string `json:"models"`
 	DefaultModel string   `json:"default_model,omitempty"`
 	Hint         string   `json:"hint,omitempty"`
+	// FlatRate: the agent runs on a flat-rate subscription; set by the manifest's
+	// flatRate (false when absent). Strengths are the bands it suits (optional).
+	FlatRate  bool     `json:"flat_rate"`
+	Strengths []string `json:"strengths,omitempty"`
 	Launch
 
 	// ModelArg is the start-up argument template; "{model}" is replaced.

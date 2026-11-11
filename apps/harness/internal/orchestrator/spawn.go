@@ -31,7 +31,7 @@ type spawnInput struct {
 }
 
 func (rt *runtime) spawnDef(parent projectstore.Agent) (tools.Def, error) {
-	schema, err := spawnSchema(rt.acpAgents())
+	schema, err := spawnSchemaFor(rt.acpAgents(), rt.routeEnabled())
 	if err != nil {
 		return tools.Def{}, fmt.Errorf("spawn_agent schema: %w", err)
 	}
@@ -53,12 +53,42 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		return "invalid spawn_agent input: " + err.Error(), true, nil
 	}
 	in.Role, in.Title, in.Task = strings.TrimSpace(in.Role), strings.TrimSpace(in.Title), strings.TrimSpace(in.Task)
+	routed := rt.routeEnabled()
+	if in.Tier == "" && routed {
+		in.Tier = TierAuto // the default while the router can choose
+	}
+	auto := in.Tier == TierAuto
+	if auto && in.Agent != "" {
+		// An agent named by the caller is an explicit choice: nothing to route.
+		in.Tier, auto = string(projectstore.TierBalanced), false
+	}
 	tier := projectstore.Tier(in.Tier)
-	if in.Role == "" || in.Title == "" || in.Task == "" || !tier.Valid() {
+	if in.Role == "" || in.Title == "" || in.Task == "" || !(auto || tier.Valid()) {
+		if routed {
+			return "spawn_agent requires role, title and task, and tier if given (auto|fast|balanced|deep)", true, nil
+		}
 		return "spawn_agent requires role, title, task and tier (fast|balanced|deep)", true, nil
 	}
 	if be := rt.budgetReached(ctx); be != nil {
 		return be.Error(), true, nil
+	}
+	var route *projectstore.RouteInfo
+	var budgetErr error
+	if auto {
+		plan := rt.resolveAuto(ctx, parent, in)
+		tier, in.Tier, route, budgetErr = plan.tier, string(plan.tier), &plan.info, plan.budget
+		if plan.agent != "" {
+			in.Agent, in.Model = plan.agent, plan.model
+		}
+		if plan.info.RequestID != "" {
+			// The classifier's cost is fetched while the sub-agent runs.
+			done := make(chan struct{})
+			defer func() { <-done }()
+			go func() {
+				defer close(done)
+				rt.recordRouteCost(ctx, parent.ID, plan.info.RequestID)
+			}()
+		}
 	}
 	var ext *acpTarget
 	model := rt.models.ForTier(in.Tier)
@@ -85,13 +115,18 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	child, err := rt.db.CreateAgent(c, projectstore.NewAgent{
 		ParentID: &parent.ID, Depth: parent.Depth + 1, Role: in.Role, Title: in.Title, Task: in.Task,
 		Model: model, Tier: &tier, Status: projectstore.StatusRunning,
-		SpawnToolUseID: &toolUseID, Started: true,
+		SpawnToolUseID: &toolUseID, Started: true, Route: route,
 	})
 	cancel()
 	if err != nil {
 		return "", false, fmt.Errorf("create agent: %w", err)
 	}
 	rt.publishAgent(events.AgentCreated, child)
+	if budgetErr != nil {
+		// The router's 402: the same failure as a budget stop mid-run.
+		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", budgetErr.Error())
+		return "", false, budgetErr
+	}
 
 	task := anthropic.NewUserMessage(anthropic.NewTextBlock(in.Task))
 	sink := &agentSink{rt: rt, agentID: child.ID}

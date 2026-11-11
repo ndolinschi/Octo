@@ -36,6 +36,8 @@ func (o *Orchestrator) newRuntime(ctx context.Context, db *projectstore.DB) (*ru
 	if err := json.Unmarshal([]byte(info.ModelsJSON), &models); err != nil {
 		return nil, fmt.Errorf("project models: %w", err)
 	}
+	// Chosen per turn, never stored.
+	models.Orchestrator = o.EffectiveOrchestrator(models.Orchestrator)
 	folders, err := db.Folders(ctx)
 	if err != nil {
 		return nil, err
@@ -139,7 +141,7 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		Limits:          rt.o.opts.Limits,
 		Router:          rt.o.opts.Router,
 		Hints:           rt.hints(a),
-		Gate:            rt.gate(),
+		Gate:            rt.loopGate(),
 	}
 	return loop.Run(ctx, history)
 }

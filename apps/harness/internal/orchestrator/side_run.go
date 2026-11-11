@@ -87,7 +87,7 @@ func (rt *runtime) answerSide(ctx context.Context, run *side, history []anthropi
 		Limits:          rt.o.opts.Limits,
 		Router:          rt.o.opts.Router,
 		Hints:           rt.sideHints(),
-		Gate:            rt.gate(),
+		Gate:            rt.loopGate(),
 	}
 	res, err := loop.Run(ctx, history)
 	if errors.Is(err, agent.ErrMaxTurns) {

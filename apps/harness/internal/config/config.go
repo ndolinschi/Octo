@@ -2,9 +2,11 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -18,6 +20,9 @@ const (
 	MaxDepthLimit   = 8
 	DefaultAddr     = "127.0.0.1:8790"
 	DefaultACPIdle  = 30 * time.Minute
+	// DefaultRouteTimeout is how long the route call may take before the
+	// harness falls back to its own default tier.
+	DefaultRouteTimeout = 2500 * time.Millisecond
 )
 
 // Tier policies: how an Octo router treats the tier hint (see docs).
@@ -43,6 +48,21 @@ type Models struct {
 	TierPolicy string `json:"tier_policy"`
 	// Side optionally overrides the model of side questions; empty means Fast.
 	Side string `json:"side,omitempty"`
+	// AutoCandidates optionally restricts and orders what spawn_agent tier
+	// "auto" may choose from: fast, balanced, deep or acp:<id>[/<model>].
+	// Empty means every API tier and every ready ACP agent.
+	AutoCandidates []string `json:"auto_candidates,omitempty"`
+}
+
+// ValidAutoCandidate reports whether s has the shape of an auto candidate: a
+// tier name or an acp:<id>[/<model>] reference (existence is checked against
+// the loaded agents elsewhere).
+func ValidAutoCandidate(s string) bool {
+	switch s {
+	case "fast", "balanced", "deep":
+		return true
+	}
+	return strings.HasPrefix(s, "acp:")
 }
 
 // SideModel is the model side questions run on: the project's fast tier unless
@@ -104,8 +124,11 @@ type Config struct {
 	Workspace   string
 	RemoteBases []string
 	PluginDirs  []string
-	MaxTurns    int
-	Stream      bool
+	// NoBuiltinPlugins skips the plugins embedded in the binary
+	// (--no-builtin-plugins, HARNESS_NO_BUILTIN_PLUGINS=1).
+	NoBuiltinPlugins bool
+	MaxTurns         int
+	Stream           bool
 	// PromptCaching adds cache_control breakpoints to Messages requests
 	// (HARNESS_PROMPT_CACHING, default true). Turn it off for a gateway that
 	// rejects the field.
@@ -119,6 +142,9 @@ type Config struct {
 	// before it is shut down (HARNESS_ACP_IDLE, a Go duration such as 90s or
 	// 30m; default 30m).
 	ACPIdle time.Duration
+	// RouteTimeout bounds the router's route call that picks who does a
+	// delegated task (HARNESS_ROUTE_TIMEOUT, a Go duration; default 2500ms).
+	RouteTimeout time.Duration
 	// ContextWindows are per-model context sizes in tokens
 	// (HARNESS_CONTEXT_WINDOWS="model=tokens,..."), on top of the built-in table.
 	ContextWindows ContextWindows
@@ -152,6 +178,13 @@ func Load() (Config, error) {
 			cfg.PluginDirs = append(cfg.PluginDirs, d)
 		}
 	}
+	if v := os.Getenv("HARNESS_NO_BUILTIN_PLUGINS"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("HARNESS_NO_BUILTIN_PLUGINS: want bool, got %q", v)
+		}
+		cfg.NoBuiltinPlugins = b
+	}
 	if v := os.Getenv("HARNESS_DATA_DIR"); v != "" {
 		cfg.DataDir = v
 	}
@@ -168,6 +201,13 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("HARNESS_ACP_IDLE: want a positive duration such as 90s or 30m, got %q", v)
 		}
 		cfg.ACPIdle = d
+	}
+	if v := os.Getenv("HARNESS_ROUTE_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return Config{}, fmt.Errorf("HARNESS_ROUTE_TIMEOUT: want a positive duration such as 500ms or 4s, got %q", v)
+		}
+		cfg.RouteTimeout = d
 	}
 	if v := os.Getenv("HARNESS_STREAM"); v != "" {
 		b, err := strconv.ParseBool(v)
@@ -202,4 +242,49 @@ func Load() (Config, error) {
 		*c.dst = n
 	}
 	return cfg, nil
+}
+
+// NoBuiltinLoopMessage is the one error every request that needs the built-in
+// agent loop ends with while no API key or router is configured.
+const NoBuiltinLoopMessage = "No API key is configured for the built-in agent loop. " +
+	"Set ANTHROPIC_API_KEY (or a router), or choose an ACP agent for this project."
+
+// DefaultAPIHost is the host of the Anthropic API, the base URL used when none
+// is configured.
+const DefaultAPIHost = "api.anthropic.com"
+
+// BuiltinLoop reports whether the built-in agent loop (the Messages API) is
+// available, decided from configuration alone, never by calling anything: an
+// API key is set, or an Octo key is set, or a base URL names a host other than
+// the default Anthropic API (a router or gateway that holds the credentials).
+// The reason is empty when available and NoBuiltinLoopMessage otherwise.
+func (c Config) BuiltinLoop() (available bool, reason string) {
+	if c.APIKey != "" || c.OctoKey != "" || customBaseURL(c.BaseURL) {
+		return true, ""
+	}
+	return false, NoBuiltinLoopMessage
+}
+
+func customBaseURL(base string) bool {
+	if base == "" {
+		return false
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	return u.Hostname() != DefaultAPIHost
+}
+
+// ResolveDataDir is the data directory before the settings file is read: the
+// flag value when given, else HARNESS_DATA_DIR, else the default. (harness.env
+// lives in it, so it cannot move it.)
+func ResolveDataDir(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if v := os.Getenv("HARNESS_DATA_DIR"); v != "" {
+		return v
+	}
+	return defaultDataDir
 }

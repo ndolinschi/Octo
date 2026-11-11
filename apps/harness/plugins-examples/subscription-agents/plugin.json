@@ -6,6 +6,7 @@
     {
       "id": "claude-code",
       "label": "Claude Code",
+      "flatRate": true,
       "command": "npx",
       "args": ["-y", "@agentclientprotocol/claude-agent-acp"],
       "env": {},
@@ -17,6 +18,7 @@
     {
       "id": "copilot",
       "label": "GitHub Copilot",
+      "flatRate": true,
       "command": "copilot",
       "args": ["--acp", "--stdio"],
       "env": { "COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}" },
@@ -27,6 +29,7 @@
     {
       "id": "grok",
       "label": "Grok",
+      "flatRate": false,
       "command": "grok",
       "args": ["agent", "{modelArgs}", "stdio"],
       "modelArg": ["-m", "{model}"],
@@ -39,6 +42,7 @@
     {
       "id": "codex",
       "label": "Codex",
+      "flatRate": true,
       "command": "npx",
       "args": ["-y", "@agentclientprotocol/codex-acp"],
       "env": { "CODEX_HOME": "${OCTO_CODEX_HOME}" },
@@ -50,6 +54,7 @@
     {
       "id": "cursor",
       "label": "Cursor",
+      "flatRate": true,
       "command": "cursor-agent",
       "args": ["acp"],
       "env": { "CURSOR_API_KEY": "${CURSOR_API_KEY}" },
@@ -62,6 +67,7 @@
     {
       "id": "opencode",
       "label": "OpenCode",
+      "flatRate": false,
       "command": "opencode",
       "args": ["acp"],
       "env": {},
@@ -72,6 +78,7 @@
     {
       "id": "antigravity",
       "label": "Antigravity",
+      "flatRate": true,
       "command": "agy",
       "args": ["acp"],
       "env": {},
@@ -82,6 +89,7 @@
     {
       "id": "devin",
       "label": "Devin CLI",
+      "flatRate": true,
       "command": "devin",
       "args": ["acp"],
       "modelArg": ["--model", "{model}"],
@@ -95,6 +103,7 @@
     {
       "id": "droid",
       "label": "Factory Droid",
+      "flatRate": false,
       "command": "droid",
       "args": ["exec", "--output-format", "acp"],
       "modelArg": ["-m", "{model}"],
@@ -112,6 +121,7 @@
     {
       "id": "omp",
       "label": "Oh My Pi",
+      "flatRate": false,
       "command": "omp",
       "args": ["acp"],
       "env": { "PI_CODING_AGENT_DIR": "${OCTO_OMP_DIR}" },
@@ -122,6 +132,7 @@
     {
       "id": "pi",
       "label": "Pi (community ACP adapter)",
+      "flatRate": false,
       "command": "npx",
       "args": ["-y", "pi-acp"],
       "env": {},

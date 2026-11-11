@@ -32,7 +32,8 @@ done
 
 # Job control gives dev.sh its own process group, so the whole stack can be found and signalled.
 set -m
-"$ROOT/scripts/dev.sh" "$@" >"$LOG" 2>&1 &
+# No built-in agent plugins here: the check must not probe or start any real agent CLI on this machine.
+HARNESS_NO_BUILTIN_PLUGINS=1 "$ROOT/scripts/dev.sh" "$@" >"$LOG" 2>&1 &
 DEV_PID=$!
 set +m
 

@@ -40,7 +40,7 @@ type acpEnv struct {
 
 // newACPEnv starts the stack; flags are extra environment switches of the
 // scripted agent (fakeacp.Env*), tune adjusts the orchestrator options.
-func newACPEnv(t *testing.T, flags map[string]string, tune func(*orchestrator.Options)) *acpEnv {
+func newACPEnv(t *testing.T, flags map[string]string, tune func(*orchestrator.Options), bridgeOpts ...bridge.Option) *acpEnv {
 	t.Helper()
 	agentEnv := map[string]string{fakeacp.EnvChild: "1", "GORACE": "atexit_sleep_ms=0", fakeacp.EnvUniqueSessions: "1"}
 	for k, v := range flags {
@@ -78,7 +78,7 @@ func newACPEnv(t *testing.T, flags map[string]string, tune func(*orchestrator.Op
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: config.DefaultMaxDepth},
 		project.WithACPAgents(reg))
 	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub),
-		bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithPlugins(reg)))
+		append([]bridge.Option{bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithPlugins(reg)}, bridgeOpts...)...))
 	t.Cleanup(srv.Close)
 	orch.SetBridgeURL(srv.URL)
 
@@ -188,6 +188,9 @@ type apiAgentFull struct {
 	Error          *string `json:"error"`
 	SpawnToolUseID *string `json:"spawn_tool_use_id"`
 	ContextUsed    *int64  `json:"context_used"`
+	RouteReason    *string `json:"route_reason"`
+	RouteChoice    *string `json:"route_choice"`
+	RouteBand      *string `json:"route_band"`
 }
 
 func (e *acpEnv) agents(t *testing.T, p projectJSON) []apiAgentFull {

@@ -345,7 +345,7 @@ func (rt *runtime) acpBriefing() string {
 	b.WriteString(`
 Harness tools: the harness gives you an MCP server named "octo-harness" with spawn_agent, save_note, delete_note and list_dir.
 - Keep your own context small; delegate self-contained work with spawn_agent. A sub-agent sees none of this conversation, so each task brief must be self-contained and say what report you expect. Its final report is returned as the tool result.
-- Choose the tier by difficulty: fast for lookups and simple edits, balanced for normal engineering, deep for hard design or debugging. Issue several spawn_agent calls in one message to run independent sub-tasks in parallel.
+- ` + rt.tierGuidance() + ` Issue several spawn_agent calls in one message to run independent sub-tasks in parallel.
 - Record durable intent, decisions and facts with save_note (upserts by title); delete stale notes with delete_note. Keep notes short.
 - Your own file and shell tools work only inside the project folders.
 - Answer the user concisely in markdown: what was found or changed, and what remains.

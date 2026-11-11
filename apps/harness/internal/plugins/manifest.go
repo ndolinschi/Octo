@@ -49,6 +49,28 @@ type manifestAgent struct {
 	DefaultModel string        `json:"defaultModel"`
 	ModelArg     []string      `json:"modelArg"`
 	Auth         *manifestAuth `json:"auth"`
+	// FlatRate says the agent runs on a flat-rate subscription (no per-token
+	// charge at the margin); absent means false. Strengths lists the difficulty
+	// bands (easy, medium, hard) the agent suits, for automatic routing.
+	FlatRate  *bool    `json:"flatRate"`
+	Strengths []string `json:"strengths"`
+}
+
+// Strength values a manifest may list.
+var validStrengths = []string{"easy", "medium", "hard"}
+
+func validateStrengths(in []string) error {
+	seen := map[string]bool{}
+	for _, s := range in {
+		switch {
+		case !slices.Contains(validStrengths, s):
+			return fmt.Errorf("strengths: %q must be one of easy, medium, hard", s)
+		case seen[s]:
+			return fmt.Errorf("strengths: duplicate %q", s)
+		}
+		seen[s] = true
+	}
+	return nil
 }
 
 // manifestAuth describes how to tell whether an agent's CLI is logged in:
@@ -131,6 +153,9 @@ func (a manifestAgent) validate() error {
 		return err
 	}
 	if err := validateModels(a.Models, a.DefaultModel); err != nil {
+		return err
+	}
+	if err := validateStrengths(a.Strengths); err != nil {
 		return err
 	}
 	if len(a.ModelArg) > 0 && !slices.ContainsFunc(a.ModelArg, func(s string) bool { return strings.Contains(s, ModelPlaceholder) }) {

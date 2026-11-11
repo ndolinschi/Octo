@@ -43,6 +43,18 @@ type Options struct {
 	Remote []tools.Def
 	// Agents are the plugin-provided ACP agents; only available ones are offered.
 	Agents []plugins.Agent
+	// AgentSource, when set, supplies the agents (with their current login
+	// state) in place of Agents each time one is needed.
+	AgentSource func() []plugins.Agent
+	// BuiltinUnavailable, when non-empty, says the built-in Messages-API loop
+	// cannot run (no key, no router); it is the error every agent, sub-agent
+	// and side question that needs it ends with, and no request is sent.
+	BuiltinUnavailable string
+	// DefaultOrchestrator is the server's default orchestrator model. While
+	// the built-in loop is unavailable, a project whose orchestrator equals it
+	// runs on the first available, logged-in ACP agent instead (see
+	// EffectiveOrchestrator).
+	DefaultOrchestrator string
 	// Router is the detected Octo router (nil: the base URL is not one).
 	Router *router.Router
 	// Prices estimate cost for the harness's own budget enforcement.

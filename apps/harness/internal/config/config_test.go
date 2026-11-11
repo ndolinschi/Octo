@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 )
@@ -167,5 +168,17 @@ func TestContextWindows(t *testing.T) {
 	t.Setenv("HARNESS_CONTEXT_WINDOWS", "m=oops")
 	if _, err := config.Load(); err == nil {
 		t.Error("Load accepted a bad HARNESS_CONTEXT_WINDOWS")
+	}
+}
+
+func TestRouteTimeoutEnv(t *testing.T) {
+	t.Setenv("HARNESS_ROUTE_TIMEOUT", "750ms")
+	cfg, err := config.Load()
+	if err != nil || cfg.RouteTimeout != 750*time.Millisecond {
+		t.Fatalf("timeout = %v, %v", cfg.RouteTimeout, err)
+	}
+	t.Setenv("HARNESS_ROUTE_TIMEOUT", "soon")
+	if _, err := config.Load(); err == nil {
+		t.Fatal("bad HARNESS_ROUTE_TIMEOUT accepted")
 	}
 }

@@ -32,6 +32,10 @@ type ContextWindow struct{ Used, Size int64 }
 // RoleSide is the usage role of side-question requests.
 const RoleSide = "side"
 
+// RoleRoute is the usage role of the router's classifier call that chose who
+// does a delegated task (tier "auto"); the row belongs to the spawning agent.
+const RoleRoute = "route"
+
 // UsageRecord is one model response (api) or one ACP usage delta (acp).
 type UsageRecord struct {
 	AgentID          string
@@ -54,7 +58,7 @@ type UsageRecord struct {
 	// CostEstimated marks CostUSD as the router's own estimate, not a reported price.
 	CostEstimated bool
 	// Role marks a row that belongs to no agent's own thread ("side": a side
-	// question); empty for an agent's own requests. Such a row is attributed to
+	// question; "route": the router's classifier call for a delegation); empty for an agent's own requests. Such a row is attributed to
 	// AgentID but not added to the agent's token totals.
 	Role string
 	// CreatedAt overrides the row time (RFC 3339 UTC, as Now returns); empty means now.
@@ -209,7 +213,7 @@ type UsageEntry struct {
 	OutputTokens    int64
 	CostUSD         *float64
 	CostEstimated   bool
-	// Role is "side" for side-question rows, empty for an agent's own requests.
+	// Role is "side" or "route" for rows outside an agent's own thread, empty for an agent's own requests.
 	Role      string
 	CreatedAt string
 }

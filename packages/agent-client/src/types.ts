@@ -28,6 +28,11 @@ export type Models = {
   tier_policy?: TierPolicy;
   /** Model for side questions; absent means the fast tier. Cannot be cleared once set. */
   side?: string;
+  /**
+   * Restricts and orders what a delegation with tier `auto` may choose from: `fast`, `balanced`, `deep` or
+   * `acp:<id>[/<model>]`. Absent or empty: every API tier and every ready ACP agent. Send `[]` to clear.
+   */
+  auto_candidates?: string[];
 };
 export type Folder = { id: string; label: string; path: string };
 
@@ -94,6 +99,16 @@ export type Agent = {
    */
   served_model?: string | null;
   routed_tier?: string | null;
+  /**
+   * The decision for a sub-agent spawned with tier `auto`; all null for an explicit tier. `route_choice` is the
+   * candidate that was started (`fast|balanced|deep` or `acp:<id>[/<model>]`, also after a fallback), `route_reason`
+   * why (the router's words, or "no router" / "router did not answer: ..." on a fallback), `route_band` the router's
+   * difficulty class, `route_request_id` the router's id of the route call.
+   */
+  route_reason?: string | null;
+  route_band?: "easy" | "medium" | "hard" | null;
+  route_request_id?: string | null;
+  route_choice?: string | null;
 };
 
 export type ContentBlock =
@@ -246,8 +261,26 @@ export type BridgeConfig = {
   router?: boolean;
   /** Capabilities the router announced (autoroute, route_hints, result_headers, budget_key). */
   router_capabilities?: string[];
+  /** The router announced `route_api`: spawn_agent defaults to tier `auto` and the router chooses who does a task. */
+  route_api?: boolean;
   /** ACP agents that can run a project's orchestrator (or a tier): the valid `acp:` settings. */
   acp_orchestrators?: AcpOrchestratorChoice[];
+  /**
+   * Whether the harness's own Messages-API loop can run: false while no API key and no router is configured. Anything
+   * that needs it then fails with `reason`; ACP agents are unaffected.
+   */
+  builtin_loop?: BuiltinLoopStatus;
+  /**
+   * What a project without an orchestrator of its own runs on right now: `acp:<id>` of the first available, logged-in
+   * agent while the built-in loop is unavailable, else the default orchestrator model.
+   */
+  default_orchestrator?: string;
+};
+
+export type BuiltinLoopStatus = {
+  available: boolean;
+  /** Present when `available` is false. */
+  reason?: string;
 };
 
 export type AcpOrchestratorChoice = {
@@ -278,6 +311,10 @@ export type PluginAgent = {
   default_model?: string;
   /** One-line login instruction from the manifest. */
   hint?: string;
+  /** The manifest says the agent runs on a flat-rate subscription (flatRate; false when absent). */
+  flat_rate?: boolean;
+  /** Difficulty bands the manifest says the agent suits (strengths); absent when none. */
+  strengths?: ("easy" | "medium" | "hard")[];
 };
 export type PluginToolServer = { url: string };
 
@@ -289,6 +326,8 @@ export type Plugin = {
   agents: PluginAgent[];
   tool_servers: PluginToolServer[];
   errors: string[];
+  /** True for a plugin embedded in the harness binary (absent otherwise). */
+  builtin?: boolean;
 };
 
 export type LanguageServerInfo = {

@@ -54,6 +54,9 @@ type Options struct {
 	IgnoreBudget bool
 	// CostSource is the call record's cost_source (default "reported").
 	CostSource string
+	// Route scripts the I2 route endpoint (POST /autoroute/v1/route). When set
+	// and Capabilities is nil, route_api is announced too.
+	Route *RouteScript
 }
 
 // Request is what the fake saw and decided for one Messages request.
@@ -86,19 +89,24 @@ type Router struct {
 	spent     map[string]float64
 	records   map[string]*record
 	compacted map[string]bool
+	route     *RouteScript
+	routeSeen []RouteSeen
 }
 
 // New puts a fake router in front of upstream.
 func New(upstream http.Handler, opts Options) *Router {
 	if opts.Capabilities == nil {
 		opts.Capabilities = []string{"autoroute", "route_hints", "result_headers", "budget_key"}
+		if opts.Route != nil {
+			opts.Capabilities = append(opts.Capabilities, "route_api")
+		}
 	}
 	if opts.CostSource == "" {
 		opts.CostSource = "reported"
 	}
 	return &Router{
 		up: upstream, opts: opts, spent: map[string]float64{},
-		records: map[string]*record{}, compacted: map[string]bool{},
+		records: map[string]*record{}, compacted: map[string]bool{}, route: opts.Route,
 	}
 }
 
@@ -129,6 +137,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"service": "octo", "capabilities": r.opts.Capabilities})
 	case req.Method == http.MethodGet && len(req.URL.Path) > len("/autoroute/v1/calls/") && req.URL.Path[:len("/autoroute/v1/calls/")] == "/autoroute/v1/calls/":
 		r.callRecord(w, req.URL.Path[len("/autoroute/v1/calls/"):])
+	case req.Method == http.MethodPost && req.URL.Path == "/autoroute/v1/route":
+		r.routeEndpoint(w, req)
 	case req.Method == http.MethodPost && req.URL.Path == "/v1/messages":
 		r.messages(w, req)
 	default:

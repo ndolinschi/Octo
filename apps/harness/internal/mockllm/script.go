@@ -59,6 +59,9 @@ func orchestratorReply(r *request) reply {
 	}
 	switch r.assistantCountFrom(anchor) {
 	case 0:
+		if strings.Contains(ask, autoMarker) {
+			return reply{Text: "I will delegate this and leave the choice of who does it to the router.", Calls: autoSpawnCalls(ask)}
+		}
 		return reply{Text: planningText(ask), Calls: spawnCalls(ask)}
 	case 1:
 		return reply{

@@ -2,10 +2,11 @@ package bridge
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
-
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 )
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -18,9 +19,19 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	if s.router != nil && s.router.Enabled() {
 		caps = s.router.Capabilities()
 	}
+	builtin := map[string]any{"available": s.builtinOff == ""}
+	if s.builtinOff != "" {
+		builtin["reason"] = s.builtinOff
+	}
+	defOrch := d.Models.Orchestrator
+	if s.defaultOrch != nil {
+		defOrch = s.defaultOrch()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
+		"builtin_loop": builtin, "default_orchestrator": defOrch,
 		"default_models": d.Models, "default_max_depth": d.MaxDepth,
 		"router": s.router != nil && s.router.Enabled(), "router_capabilities": caps,
+		"route_api":         slices.Contains(caps, router.CapRouteAPI),
 		"acp_orchestrators": s.acpOrchestrators(),
 	})
 }

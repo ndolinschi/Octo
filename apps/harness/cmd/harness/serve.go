@@ -31,24 +31,43 @@ import (
 )
 
 func cmdServe(args []string) error {
-	cfg, err := config.Load()
+	cfg, addr, err := serveConfig(args)
 	if err != nil {
 		return err
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return serve(ctx, cfg, addr)
+}
+
+// serveConfig parses the serve flags and builds the configuration: the
+// process environment on top of {data-dir}/harness.env, flags on top of both.
+func serveConfig(args []string) (config.Config, string, error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	addr := fs.String("addr", config.DefaultAddr, "Listen address")
-	dataDir := fs.String("data-dir", "", "Harness data directory")
+	dataDir := fs.String("data-dir", "", "Harness data directory (settings file: harness.env inside it)")
 	baseURL := fs.String("base-url", "", "Anthropic Messages API base URL")
 	octoKey := fs.String("octo-key", "", "Octo x-octo-key (or HARNESS_OCTO_KEY)")
 	maxTurns := fs.Int("max-turns", 0, "Max loop iterations per agent (0 = config default)")
-	promptCaching := fs.Bool("prompt-caching", cfg.PromptCaching, "Send cache_control breakpoints (or HARNESS_PROMPT_CACHING); disable for gateways that reject them")
+	promptCaching := fs.Bool("prompt-caching", true, "Send cache_control breakpoints (or HARNESS_PROMPT_CACHING, default true); disable for gateways that reject them")
+	noBuiltin := fs.Bool("no-builtin-plugins", false, "Do not load the plugins embedded in the binary (or HARNESS_NO_BUILTIN_PLUGINS=1)")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable; sub-agents only)")
 	var pluginDirs multiFlag
 	fs.Var(&pluginDirs, "plugins-dir", "Extra plugins directory (repeatable; also HARNESS_PLUGINS_DIR); a plugin dir or a dir of plugin dirs")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return config.Config{}, "", err
+	}
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+
+	// The settings file fills only variables the process environment lacks,
+	// so it is read before the environment becomes a Config.
+	config.LoadEnvFile(config.ResolveDataDir(*dataDir))
+	cfg, err := config.Load()
+	if err != nil {
+		return config.Config{}, "", err
 	}
 	if *dataDir != "" {
 		cfg.DataDir = *dataDir
@@ -62,18 +81,17 @@ func cmdServe(args []string) error {
 	if *maxTurns > 0 {
 		cfg.MaxTurns = *maxTurns
 	}
-	cfg.PromptCaching = *promptCaching
+	if set["prompt-caching"] {
+		cfg.PromptCaching = *promptCaching
+	}
+	if *noBuiltin {
+		cfg.NoBuiltinPlugins = true
+	}
 	if len(remoteBases) > 0 {
 		cfg.RemoteBases = remoteBases
 	}
 	cfg.PluginDirs = append(cfg.PluginDirs, pluginDirs...)
-	if cfg.APIKey == "" {
-		return fmt.Errorf("ANTHROPIC_API_KEY is required")
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	return serve(ctx, cfg, *addr)
+	return cfg, *addr, nil
 }
 
 func serve(ctx context.Context, cfg config.Config, addr string) error {
@@ -100,8 +118,12 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		slog.Warn("ignoring price table; costs will be unknown", "err", err)
 	}
 	limitStore := limits.NewStore()
-	octo := router.New(ctx, cfg.BaseURL, cfg.OctoKey)
+	octo := router.New(ctx, cfg.BaseURL, cfg.OctoKey, router.WithRouteTimeout(cfg.RouteTimeout), router.WithAPIKey(cfg.APIKey))
 	slog.Info("octo router", "detected", octo.Enabled(), "capabilities", octo.Capabilities())
+	builtinOK, builtinReason := cfg.BuiltinLoop()
+	if !builtinOK {
+		slog.Info("built-in agent loop unavailable; ACP agents still work", "reason", builtinReason)
+	}
 
 	hub := events.NewHub()
 	notes := project.NewNotes(store, hub)
@@ -114,10 +136,14 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Limits:          cfg.Limits,
 		Remote:          remoteReg.All(),
 		Agents:          pluginReg.Agents(),
+		AgentSource:     pluginReg.Agents,
 		Router:          octo,
 		Prices:          priceTable,
 		Windows:         cfg.ContextWindows,
 		ACPIdle:         cfg.ACPIdle,
+
+		BuiltinUnavailable:  builtinReason,
+		DefaultOrchestrator: cfg.Models.Orchestrator,
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth},
 		project.WithPrices(priceTable), project.WithRouter(octo), project.WithACPAgents(pluginReg))
@@ -140,7 +166,8 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
 			bridge.WithMCP(orch.MCPHandler(bridge.Version)),
-			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo)),
+			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
+			bridge.WithBuiltinLoop(builtinOK, builtinReason), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator)),
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}

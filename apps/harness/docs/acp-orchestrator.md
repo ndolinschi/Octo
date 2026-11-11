@@ -14,17 +14,23 @@ A project's orchestrator normally runs the harness's own Messages-API loop. It c
 - The tiers (`fast`, `balanced`, `deep`) take the same form: `spawn_agent` with that tier then starts that ACP agent as the
   sub-agent (the existing ACP sub-agent path, recorded as `acp:<id>[/<model>]`). `models.side` cannot be an ACP agent.
 
+- With a router that announces `route_api`, `spawn_agent` also takes `tier: "auto"` (the default, `tier` optional), over MCP as well: the router then picks among the API tiers and the loaded ACP agents, so an ACP orchestrator's delegations are classified like any other. A chosen ACP agent is started through this same path. `models.auto_candidates` restricts the set. See the harness `README.md`, "Automatic choice of who does a task".
+
 `GET /v1/config` lists the valid settings in `acp_orchestrators` (`value: "acp:<id>"`, `id`, `label`, `models`, `default_model`).
 The orchestrator agent's `model` reads `acp:<id>[/<model>]` (the manifest default model included). Types:
 `BridgeConfig.acp_orchestrators`, `AcpModelRef` in `@octo/agent-client`.
 
 ```bash
-# claude-code is the entry of plugins-examples/subscription-agents/plugin.json
+# claude-code is the entry of the built-in plugin subscription-agents (plugins-examples/subscription-agents/plugin.json)
 # (command `npx -y @agentclientprotocol/claude-agent-acp`; log in once with the Claude Code CLI, `claude`)
-harness serve --plugins-dir plugins-examples/subscription-agents
+harness serve          # the subscription agents are built in; no API key and no plugin directory needed
 curl -XPOST localhost:8790/v1/projects -d '{"name":"demo","folders":[{"path":"/abs/path"}],
   "models":{"orchestrator":"acp:claude-code","fast":"acp:claude-code"}}'
 ```
+
+## Without an API key
+
+`harness serve` starts without a key; `GET /v1/config` then has `builtin_loop: {available: false, reason}`. A project whose orchestrator is still the server default runs on the first available, logged-in ACP agent (claude-code, codex, copilot, then the rest in load order; "logged in" = the login probe says so, or the agent has no probe), chosen when the turn starts and reported as `default_orchestrator`; the orchestrator agent's `model` shows `acp:<id>`. Anything that needs the built-in loop (a built-in orchestrator model, `spawn_agent` without `agent` on a built-in tier, a side question) fails with "No API key is configured for the built-in agent loop. Set ANTHROPIC_API_KEY (or a router), or choose an ACP agent for this project." and sends no request. Details: the harness `README.md`, "Running without a key, and `harness.env`".
 
 ## What happens
 

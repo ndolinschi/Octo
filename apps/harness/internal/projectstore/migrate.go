@@ -12,7 +12,10 @@ var columnsAdded = []struct {
 	table   string
 	columns []column
 }{
-	{"agents", []column{{"context_used", "INTEGER"}, {"context_size", "INTEGER"}}},
+	{"agents", []column{
+		{"context_used", "INTEGER"}, {"context_size", "INTEGER"},
+		{"route_reason", "TEXT"}, {"route_band", "TEXT"}, {"route_request_id", "TEXT"}, {"route_choice", "TEXT"},
+	}},
 	{"project", []column{{"budget_usd", "REAL"}}},
 	{"usage", []column{
 		{"served_model", "TEXT"}, {"tier", "TEXT"}, {"route_trigger", "TEXT"}, {"router_request_id", "TEXT"},

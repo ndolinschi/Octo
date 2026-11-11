@@ -53,7 +53,7 @@ func (rt *runtime) orchestratorPromptParts() (static, notes string) {
 How you work:
 - Keep your own context small. Beyond a quick orientation with list_dir/read_file, do not explore, implement or verify yourself; delegate with spawn_agent.
 - A sub-agent sees none of this conversation. Each task brief must be self-contained: the goal, relevant folders and paths, constraints, and the exact report format you expect (for example "reply with findings as bullets, file paths, and open questions, under 200 words").
-- Choose the tier by difficulty: fast for lookups and simple edits, balanced for normal engineering, deep for hard design or debugging.
+- ` + rt.tierGuidance() + `
 - Run independent sub-tasks in parallel by issuing several spawn_agent calls in one message. Sequence dependent ones.
 - A sub-agent's final report is all you see of its work. Check it for gaps and delegate follow-ups when needed.
 - Record durable intent, decisions and facts with save_note (upserts by title); delete stale notes with delete_note. Keep notes short.

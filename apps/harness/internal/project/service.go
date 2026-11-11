@@ -86,6 +86,25 @@ func (s *Service) ValidateModels(m *config.Models) error {
 	if plugins.IsACPRef(m.Side) {
 		return invalid("models.side: side questions use the Messages API and cannot run on an ACP agent")
 	}
+	return validateAutoCandidates(m.AutoCandidates, agents)
+}
+
+// validateAutoCandidates checks models.auto_candidates: tier names or `acp:`
+// settings of loaded, available agents, without duplicates.
+func validateAutoCandidates(list []string, agents []plugins.Agent) error {
+	seen := map[string]bool{}
+	for _, c := range list {
+		switch {
+		case !config.ValidAutoCandidate(c):
+			return invalid("models.auto_candidates: %q must be fast, balanced, deep or acp:<agent-id>[/<model>]", c)
+		case seen[c]:
+			return invalid("models.auto_candidates: duplicate %q", c)
+		}
+		seen[c] = true
+		if err := plugins.ValidateACPRef(c, agents); err != nil {
+			return invalid("models.auto_candidates: %s", err)
+		}
+	}
 	return nil
 }
 

@@ -15,7 +15,7 @@ func lastRowOf(col string) string {
 
 var agentCols = `id, parent_id, depth, role, title, task, model, tier, status, result, error,
 	spawn_tool_use_id, input_tokens, output_tokens, created_at, started_at, finished_at,
-	context_used, context_size, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier")
+	context_used, context_size, route_reason, route_band, route_request_id, route_choice, ` + lastRowOf("u.served_model") + `, ` + lastRowOf("u.tier")
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -24,9 +24,10 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	var tier sql.NullString
 	var parent, result, errText, spawn, started, finished sql.NullString
 	var ctxUsed, ctxSize sql.NullInt64
-	var served, routed sql.NullString
+	var served, routed, rReason, rBand, rReq, rChoice sql.NullString
 	err := r.Scan(&a.ID, &parent, &a.Depth, &a.Role, &a.Title, &a.Task, &a.Model, &tier, &a.Status,
-		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished, &ctxUsed, &ctxSize, &served, &routed)
+		&result, &errText, &spawn, &a.InputTokens, &a.OutputTokens, &a.CreatedAt, &started, &finished, &ctxUsed, &ctxSize,
+		&rReason, &rBand, &rReq, &rChoice, &served, &routed)
 	if err != nil {
 		return a, err
 	}
@@ -40,6 +41,7 @@ func (d *DB) scanAgent(r scanner) (Agent, error) {
 	a.ContextSize = nullInt(ctxSize)
 	a.ServedModel = nullStr(served)
 	a.RoutedTier = nullStr(routed)
+	a.RouteReason, a.RouteBand, a.RouteRequestID, a.RouteChoice = nullStr(rReason), nullStr(rBand), nullStr(rReq), nullStr(rChoice)
 	if tier.Valid {
 		t := Tier(tier.String)
 		a.Tier = &t
@@ -72,10 +74,16 @@ func (d *DB) CreateAgent(ctx context.Context, in NewAgent) (Agent, error) {
 	if in.Tier != nil {
 		tier = string(*in.Tier)
 	}
+	var route RouteInfo
+	if in.Route != nil {
+		route = *in.Route
+	}
 	_, err := d.sql.ExecContext(ctx,
-		`INSERT INTO agents (id, parent_id, depth, role, title, task, model, tier, status, spawn_tool_use_id, created_at, started_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, in.ParentID, in.Depth, in.Role, in.Title, in.Task, in.Model, tier, string(in.Status), in.SpawnToolUseID, now, started)
+		`INSERT INTO agents (id, parent_id, depth, role, title, task, model, tier, status, spawn_tool_use_id, created_at, started_at,
+			route_reason, route_band, route_request_id, route_choice)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, in.ParentID, in.Depth, in.Role, in.Title, in.Task, in.Model, tier, string(in.Status), in.SpawnToolUseID, now, started,
+		nullable(route.Reason), nullable(route.Band), nullable(route.RequestID), nullable(route.Choice))
 	if err != nil {
 		return Agent{}, err
 	}
