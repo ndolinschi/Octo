@@ -294,6 +294,7 @@ impl Capture {
                         cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
                         cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
                         cost_source: cost_source_label(resolved.source),
+                        route: None,
                     },
                 );
             }

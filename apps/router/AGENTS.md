@@ -83,7 +83,7 @@ Operational defaults live under **`config/`** (one focused TOML file per area), 
 | `config/llm.toml` | `[llm.chat]` / `[llm.messages]` backend defaults |
 | `config/decision.toml` | `[decision]` backend |
 | `config/history.toml` | `[history]` — SQLite path, optional token HMAC key, `store_payloads` (default true) |
-| `config/autoroute.toml` | `[autoroute]` — ladder, stall/sticky, budget, housekeeping trim, optional `provider_order`, `strip_fields`, `require_parameters`, `background_*`, `server_tool_mode` |
+| `config/autoroute.toml` | `[autoroute]` — ladder, stall/sticky, budget, housekeeping trim, optional `provider_order`, `strip_fields`, `require_parameters`, `background_*`, `server_tool_mode`; `[autoroute.route]` — delegation routing (`classifier_timeout_ms`, `prefer_flat_rate_for_hard`, nominal tokens) |
 | `config/prices.toml` | `[prices."<slug>"]` — USD/1M token rates (all four required for estimate) + optional `billed_as` |
 
 - **Default load:** merge present files in `./config/` (known fragment names; missing files are skipped). Run with cwd = `apps/router`.
@@ -159,6 +159,7 @@ Full map: [docs/architecture.md](./docs/architecture.md). Quick index:
 | `src/proxy/error.rs` | `ProxyError` → JSON (400/413/502); Anthropic-shaped remap |
 | `src/proxy/select.rs` | Chat/messages `type` / path provider resolution → `CallProvider` |
 | `src/auto/` | Decide pipeline: JEV, sticky, stall, catalog, `shape()`, routing meta |
+| `src/auto/delegate/` | `POST /autoroute/v1/route` decision: types, choice policy, fallback band, classifier glue |
 | `src/history/` | SQLite pool, HMAC token hash, async inserts, cost, session outcomes, payloads |
 | `src/providers/llm/` | Wired OpenAI / OpenRouter chat / Claude messages |
 | `src/providers/decision/` | OpenRouter Decisions forward |

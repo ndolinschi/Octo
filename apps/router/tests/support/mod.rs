@@ -62,6 +62,7 @@ pub fn sample_config(max_body_bytes: usize) -> Config {
         autoroute_default_max_tokens: 8192,
         autoroute_retry_after_max_secs: 10,
         autoroute_session_budget_action: "downgrade".to_string(),
+        autoroute_route: octo::auto::RoutePolicy::default(),
         prices: octo::history::PriceTable::default(),
     }
 }

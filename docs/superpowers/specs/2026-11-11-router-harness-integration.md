@@ -155,6 +155,24 @@ tier by the price table; never choose an agent that is logged out. The harness r
 on the agent (`route_reason`), shows it in the Agent tab, and falls back to the orchestrator's own choice if the
 router is unreachable (300 ms timeout).
 
+## As built — I2, router side (2026-11-11)
+
+`POST /autoroute/v1/route` (capability `route_api`; details and the policy table: `apps/router/docs/autoroute.md`,
+"Routing decision for delegation"). Verified by the orchestrator: fmt, clippy, 252 tests (33 new) with no proxy and
+no network. **Not verified:** a real classifier — its latency and the quality of its bands.
+
+- One classifier (JEV) call per decision, 2 s timeout (`[autoroute.route] classifier_timeout_ms`; 0 = never call).
+  When it cannot run the band comes from a text rule (stack trace or two signals → hard; short with no signals →
+  easy; else medium) and `reason` says the classifier was not used. The request never fails because of it.
+- Ranking among able candidates: logged-in flat-rate agents (most limit left first), then API tiers by blended
+  price, then other agents. An agent with no `strengths` is able for easy and medium; hard goes to the deep tier
+  unless `prefer_flat_rate_for_hard`. Logged-out or exhausted agents are never chosen.
+- Budget reached: no classification; a flat-rate agent if any, else 402 (header budget) or the configured action.
+- The decision is a call record (`trigger: "route"`, a `route` object) and its classifier cost counts against the
+  budget key.
+- **The harness waits 2500 ms**, not the 300 ms first written above: a sub-agent runs for minutes, and a timeout
+  shorter than the classifier's would make the harness fall back most of the time.
+
 ## I3 — showing the savings (after I2)
 
 Usage → Cost gains "Auto-routing": actual cost vs. what the same tokens would have cost at the hinted tier

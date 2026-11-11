@@ -195,7 +195,13 @@ async fn health_reports_service_and_capabilities() {
     assert_eq!(value["service"], "octo");
     assert_eq!(
         value["capabilities"],
-        json!(["autoroute", "route_hints", "result_headers", "budget_key"])
+        json!([
+            "autoroute",
+            "route_hints",
+            "result_headers",
+            "budget_key",
+            "route_api"
+        ])
     );
     assert_eq!(value["status"], "ok");
 }

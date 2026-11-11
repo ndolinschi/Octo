@@ -1,4 +1,4 @@
-mod classify;
+pub(in crate::auto) mod classify;
 mod gate;
 mod models;
 mod route;

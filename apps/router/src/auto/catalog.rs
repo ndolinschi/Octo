@@ -108,6 +108,7 @@ pub struct Tiers {
     pub retry_after_max_secs: u64,
     pub session_budget_action: BudgetAction,
     pub prices: PriceTable,
+    pub route: super::delegate::RoutePolicy,
 }
 
 impl Tiers {
@@ -137,6 +138,7 @@ impl Tiers {
             retry_after_max_secs: 10,
             session_budget_action: BudgetAction::Downgrade,
             prices: PriceTable::default(),
+            route: super::delegate::RoutePolicy::default(),
         }
     }
 

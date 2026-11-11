@@ -196,7 +196,13 @@ pub async fn decisions(
         .await
 }
 
-pub const CAPABILITIES: [&str; 4] = ["autoroute", "route_hints", "result_headers", "budget_key"];
+pub const CAPABILITIES: [&str; 5] = [
+    "autoroute",
+    "route_hints",
+    "result_headers",
+    "budget_key",
+    "route_api",
+];
 
 pub async fn health() -> impl IntoResponse {
     axum::Json(serde_json::json!({

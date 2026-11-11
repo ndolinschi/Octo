@@ -47,7 +47,7 @@ impl Hints {
 
     pub fn take(headers: &mut HeaderMap) -> Self {
         let budget_key = text(headers, BUDGET_KEY_HEADER).and_then(|value| {
-            if value.len() > BUDGET_KEY_MAX_LEN || !value.chars().all(|c| c.is_ascii_graphic()) {
+            if !valid_budget_key(&value) {
                 tracing::debug!(header = BUDGET_KEY_HEADER, "ignored invalid hint");
                 None
             } else {
@@ -120,6 +120,12 @@ impl Hints {
             task,
         }
     }
+}
+
+pub fn valid_budget_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= BUDGET_KEY_MAX_LEN
+        && value.chars().all(|c| c.is_ascii_graphic())
 }
 
 fn text(headers: &mut HeaderMap, name: &str) -> Option<String> {

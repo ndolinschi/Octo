@@ -87,6 +87,7 @@ impl AppState {
                     crate::auto::BudgetAction::parse(&config.autoroute_session_budget_action)
                         .unwrap_or(crate::auto::BudgetAction::Downgrade);
                 tiers.prices = config.prices.clone();
+                tiers.route = config.autoroute_route.clone();
                 tiers
             }),
             config,

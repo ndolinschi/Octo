@@ -10,6 +10,7 @@ Autoroute is the session-aware model ladder for Claude Code → OpenRouter. It l
 | `POST` | `/autoroute/v1/chat/completions` | Same decide/shape; **no** Messages compact API; no text-tool-call hook |
 | `GET` | `/autoroute/status` | JSON for statusline (`?session=` optional) |
 | `GET` | `/autoroute/v1/calls/{request-id}` | Final tokens and cost of one finished call (see [Harness integration](#harness-integration)) |
+| `POST` | `/autoroute/v1/route` | Routing decision for a delegated task: which candidate (API tier or subscription agent) should do it (see [Routing decision for delegation](#routing-decision-for-delegation)) |
 
 Ladder slugs and policy: `config/autoroute.toml` (default: `deepseek/deepseek-v4.1-flash` → `minimax/minimax-m3.1-flash` → `deepseek/deepseek-v4.1-flash-1017`; no `provider_order` pin; `allow_fallbacks = true`).
 
@@ -165,10 +166,10 @@ Integration I1 of [`docs/superpowers/specs/2026-11-11-router-harness-integration
 `GET /health` (no auth, even with `client_auth_key`) returns HTTP 200 and JSON:
 
 ```json
-{"status":"ok","service":"octo","version":"0.1.0","capabilities":["autoroute","route_hints","result_headers","budget_key"]}
+{"status":"ok","service":"octo","version":"0.1.0","capabilities":["autoroute","route_hints","result_headers","budget_key","route_api"]}
 ```
 
-`route_api` (the I2 routing-decision endpoint) is not advertised yet.
+`route_api` means `POST /autoroute/v1/route` exists.
 
 ### Request headers (harness to router)
 
@@ -248,3 +249,94 @@ How the harness detects and applies it:
 5. If the next request is not shorter than the compacted one, the router logs `compaction was not applied`, forwards normally with trigger `compact_not_applied` and will not compact that session again until its request falls below the fill threshold and rises again (or after `compact_cooldown_requests` requests).
 
 Compaction only exists on `/autoroute/v1/messages`. On `/autoroute/v1/chat/completions` an overflow is forwarded as a normal chat call.
+
+## Routing decision for delegation
+
+Integration I2 of the same spec. Before the harness starts a sub-agent it asks the router which candidate should do the task. Candidates are API tiers and agents (for example ACP agents on a flat-rate subscription); an agent's traffic never passes through the router, so this endpoint is the only place the classifier can help it. The call makes **no upstream model call except one classifier (Decisions) call**.
+
+`POST /autoroute/v1/route` — auth as for the other autoroute endpoints (`x-octo-key` when `client_auth_key` is set). The `Authorization` / `x-api-key` token is used for the classifier call, like on the proxy path.
+
+```json
+{
+  "budget_key": "proj-9",
+  "task": {"title": "Fix the flaky test", "brief": "...", "tools": ["Read", "Edit", "Bash"], "depth": 1},
+  "candidates": [
+    {"id": "api-fast", "kind": "api", "tier": "fast"},
+    {"id": "api-deep", "kind": "api", "tier": "deep"},
+    {"id": "claude-sub", "kind": "agent", "label": "Claude (subscription)", "flat_rate": true,
+     "logged_in": true, "limit_remaining": 12, "strengths": ["medium", "hard"]}
+  ]
+}
+```
+
+```json
+{
+  "choice": "claude-sub",
+  "band": "hard",
+  "reason": "Hard task; Claude (subscription) (claude-sub) is flat-rate and logged in, so it adds no API cost.",
+  "estimated_cost_usd": 0.0,
+  "alternatives": [{"id": "api-deep", "estimated_cost_usd": 0.151}],
+  "request_id": "octo_18c2..."
+}
+```
+
+`model` is present only for an API choice: the ladder slug of the tier (`fast` = `autoroute.low`, `balanced` = `mid`, `deep` = `high`). `request_id` is the key for `GET /autoroute/v1/calls/{id}`.
+
+Request fields: `task.title` or `task.brief` must be non-empty; `task.tools`, `task.brief` and `task.depth` default to `[]`, `""` and `0`; `budget_key` follows the header rules (1 to 128 printable ASCII characters). `limit_remaining` may be omitted or `null` (unknown). Candidate `id`s must be non-empty and unique.
+
+### Errors
+
+| Status | When |
+| --- | --- |
+| 400 `invalid_request_error` | Body is not JSON of the shape above (unknown `kind` or `tier`, missing `task`, ...) |
+| 422 `invalid_request_error` | Parses but cannot be served: empty `candidates`, duplicate or empty ids, bad `budget_key`, empty task, or no usable candidate (no API candidate and every agent logged out or at `limit_remaining` 0) |
+| 402 `billing_error` | Budget reached, `reject` action in force and no usable flat-rate agent (same message as the proxy path) |
+
+A failing classifier is never an error (see below). Errors are Anthropic-shaped (`{"type":"error","error":{...}}`).
+
+### Classification
+
+One JEV call on `title` + blank line + `brief` (capped to 2000 characters, head and tail kept, like the proxy path). `task.tools` are sent as the tool names; `depth` and `budget_key` are recorded on the call record. The result maps `Low`, `Mid`, `High` to the band `easy`, `medium`, `hard`; as on the proxy path, an `easy` verdict on a task that asks to inspect files or the repo while tools are available is raised to `medium`.
+
+The call has its own timeout, `[autoroute.route].classifier_timeout_ms` (default 2000; `0` = never call it). When the classifier cannot run (no API key, timeout, connection or HTTP failure, unparsable answer) the band comes from a **deterministic text rule** and `reason` says `classifier not used: <why>` (`no API key`, `timed out`, `call failed`, `disabled`). The rule uses the facts `jev::inspect` already computes on the text:
+
+1. If the offered candidates are only API candidates of one single tier (plus agents that are unusable), the band is that tier's band (nothing to decide).
+2. Signals: the text mentions several files (the phrase, or two or more paths), mentions tests, or is longer than 1500 characters.
+3. `hard` when the text mentions a stack trace / traceback / exception, or two or more signals hold. `easy` when no signal holds, the text is at most 280 characters and does not ask to inspect files or the repo. Otherwise `medium`.
+
+Classifier spend (reported cost, else the price estimate) is added to the `budget_key`'s spend like any classifier call.
+
+**Latency.** The decision is one classifier round trip plus in-memory work. Expect the latency of one Decisions call (typically a few hundred milliseconds to about a second; not measured against the real classifier here) when it runs, and well under 10 ms when it does not (no key, `0`, a reached budget, or after a timeout). The harness waits 300 ms by default, so against a real classifier it will often fall back on its own choice; raise the harness wait or lower `classifier_timeout_ms`, whichever fits. The router's worst case is `classifier_timeout_ms`.
+
+### Choice policy
+
+Band to tier: `easy` -> `fast`, `medium` -> `balanced`, `hard` -> `deep`.
+
+| Rule | Behaviour |
+| --- | --- |
+| API candidate is *able* | its tier is the band's tier or higher |
+| Agent candidate is *able* | it is usable and lists the band in `strengths`, or has no recognised `strengths` and the band is `easy` or `medium`; for `hard` an agent without `strengths` is able only when `prefer_flat_rate_for_hard = true` |
+| Usable agent | `logged_in: true` and `limit_remaining` not `0` (or not above 0); an unusable agent is never chosen, not even as a last resort, and never listed as an alternative |
+| Preference order among able candidates | 1. agents with `flat_rate: true` (most `limit_remaining` first, unknown counts as plenty); 2. API candidates by estimated cost (lowest first; unpriced after priced; then lower tier first); 3. agents with `flat_rate: false` (same limit order). Remaining ties by request order |
+| Nothing able | the highest API tier offered (first on ties), else the first usable agent; `reason` says no candidate was rated for the task; `alternatives` is empty |
+| Nothing usable | 422 |
+| Budget reached | no classifier call (band from the text rule). A usable flat-rate agent is chosen (one able for the band if any, else the first by the order above), reason `Budget reached`. With none: if the budget's action is `reject` (always for a harness `x-octo-budget-usd`) 402; with `downgrade` the cheapest offered API tier (else the first usable agent) |
+
+`strengths` vocabulary: `easy`, `medium`, `hard` (case-insensitive). Other words are ignored; a list with no recognised word counts as no `strengths`.
+
+`estimated_cost_usd` is the blended cost of a nominal request through the price table, for the candidate's ladder model: `nominal_input_tokens` in and `nominal_output_tokens` out (default 30000 / 500, the same shape budget routing uses). It is `null` for an API tier whose ladder model has no usable price (missing, partial or all-zero rates), `0` for a flat-rate agent and `null` for an agent that is not flat-rate. The estimate is of the delegated work only, not of the classifier call.
+
+### Call record
+
+The decision is stored as a call record (in memory, same store as the proxy calls) and readable through `GET /autoroute/v1/calls/{request_id}`: `trigger: "route"`, `model` is the ladder slug (API choice) or the agent id, `tier` is `low`/`mid`/`high` or `agent`, token counts and `cost_usd` are those of the classifier call (zero when it did not run), and an extra `route` object carries `choice`, `band`, `reason`, `classifier` (`used`, `fallback`, `skipped`), `depth` and `budget_key`. The classifier call is also written to the SQLite history as a decision row with purpose `route`.
+
+### Config (`[autoroute.route]`, `config/autoroute.toml`)
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `classifier_timeout_ms` | `2000` | Timeout of the classifier call; `0` disables it |
+| `prefer_flat_rate_for_hard` | `false` | Let an agent without `strengths` take hard tasks |
+| `nominal_input_tokens` | `30000` | Token assumption for API cost estimates |
+| `nominal_output_tokens` | `500` | Token assumption for API cost estimates |
+
+Tests: `tests/route_api.rs`.

@@ -17,6 +17,18 @@ pub struct CallRow {
     pub cache_write_tokens: u64,
     pub cost_usd: f64,
     pub cost_source: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route: Option<RouteRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RouteRecord {
+    pub choice: String,
+    pub band: &'static str,
+    pub reason: String,
+    pub classifier: &'static str,
+    pub depth: u32,
+    pub budget_key: String,
 }
 
 #[derive(Debug, Default)]

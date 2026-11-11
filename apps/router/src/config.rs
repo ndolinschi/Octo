@@ -68,6 +68,7 @@ pub struct Config {
     pub autoroute_default_max_tokens: u64,
     pub autoroute_retry_after_max_secs: u64,
     pub autoroute_session_budget_action: String,
+    pub autoroute_route: crate::auto::RoutePolicy,
     pub prices: crate::history::PriceTable,
 }
 
@@ -394,6 +395,8 @@ struct AutorouteSection {
     retry_after_max_secs: u64,
     #[serde(default = "default_autoroute_session_budget_action")]
     session_budget_action: String,
+    #[serde(default)]
+    route: crate::auto::RoutePolicy,
 }
 
 impl Default for AutorouteSection {
@@ -422,6 +425,7 @@ impl Default for AutorouteSection {
             default_max_tokens: default_autoroute_default_max_tokens(),
             retry_after_max_secs: default_autoroute_retry_after_max_secs(),
             session_budget_action: default_autoroute_session_budget_action(),
+            route: crate::auto::RoutePolicy::default(),
         }
     }
 }
@@ -715,6 +719,7 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         autoroute_default_max_tokens: file.autoroute.default_max_tokens,
         autoroute_retry_after_max_secs: file.autoroute.retry_after_max_secs,
         autoroute_session_budget_action: file.autoroute.session_budget_action,
+        autoroute_route: file.autoroute.route,
         prices: {
             use crate::history::{ModelPrice, PriceTable};
             let rows = file

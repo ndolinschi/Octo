@@ -3,6 +3,7 @@ mod body;
 mod calls;
 mod catalog;
 mod decide;
+mod delegate;
 mod hints;
 mod jev;
 mod ladder;
@@ -22,7 +23,7 @@ pub use body::{
     subagent_task_hash, trim_housekeeping, with_model, with_online_suffix, HousekeepingTrim,
     ShapePlan, ShapeResult, DEFAULT_MAX_TOKENS, PROTECTED_STRIP_FIELDS,
 };
-pub use calls::{new_request_id, CallRow};
+pub use calls::{new_request_id, CallRow, RouteRecord};
 pub use catalog::{
     band_rank, bare_id, bump_band, complexity_band, context_length, larger_fit,
     max_completion_tokens, strip_model_marker, supports_reasoning, LargerFit,
@@ -35,7 +36,11 @@ pub use decide::sticky::{
     StickyOutcome, StickyPlan,
 };
 pub use decide::{decide, decide_with, Auto, Budget, DecideRequest, Limits};
-pub use hints::{AgentRole, Hints, TierPolicy};
+pub use delegate::{
+    route as delegate_route, Alternative, ApiTier, Band, Candidate, RouteError, RouteInput,
+    RoutePolicy, RouteRequest, RouteResponse, Task,
+};
+pub use hints::{valid_budget_key, AgentRole, Hints, TierPolicy};
 pub use jev::{
     asks_file_or_repo_inspection, choice, choice_from_scores, classified, inspect, needed_tools,
     payload, Complexity, ContextFacts, PayloadPlan, Thresholds, ToolNeed,

@@ -1,9 +1,11 @@
 mod calls;
 mod compact;
 pub mod retry;
+mod route;
 mod status;
 
 pub use calls::call;
+pub use route::route;
 pub use status::status;
 
 use std::sync::Arc;
