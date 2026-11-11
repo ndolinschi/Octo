@@ -300,6 +300,57 @@ Fifth batch (F: a start screen with a dithered light streak behind the composer 
       motion); the strip never shifts the panel below it; hit areas ≥ 28px tall; touch drag after a 250ms hold.
     - Pure logic (sizing, MRU order, closed-tab stack, displacement slots) lives in `state/workspace/*.ts` with
       unit tests; pointer handling in one module (`dock/drag.ts`).
+Sixth batch of references (G: a multi-agent workspace app — its "what's new" dialog, phone inbox, site hero,
+model picker and desktop sidebar; owner: "do not copy — study and adapt"):
+
+| Pattern | Verdict | What we do |
+| --- | --- | --- |
+| G phone inbox: four status tiles — Activity, Needs you, In progress, Ready for review — above everything | Good: the first question on opening the app is "what needs me?", and it is answered in one glance. Fits us better than it fits a thread list, because our unit is a project's orchestrator | Decision 26: a triage row on Home |
+| G: a daily recap written as a sentence with inline entities ("You sent 39 prompts across 7 chats. Most of it went into …, with … carrying 99% of the tokens. Your agents ran for 5h 47m") | Good: numbers become a story; cheaper to read than four cards. Bad if any figure is invented | Decision 26: recap sentence built only from stored data, each figure linking to its source |
+| G: activity grouped Priority / Yesterday / Earlier / Done | Good: order by what matters, then by time | Home's project list is grouped Needs you / Working / Recent / Idle instead of flat |
+| G model picker: provider tabs with a favourites star, search, rows with ⌘1 / ⌘2 and a star, an effort slider with labelled stops, an "Auto-compact" row | Good: one compact popover answers "which model, how hard, how long can it run". Bad for us: provider-first tabs (our user thinks in tiers and agents, not vendors) | Decision 27: our picker — tiers, models, subscription agents; search; favourites; effort; compaction |
+| G: two-tone headlines — a muted lead-in, then the statement in full white ("Introducing Remote Connections. Control … from another.") | Good: hierarchy inside one sentence without a second font size | Decision 28: start-screen and dialog titles use it |
+| G "what's new" dialog: generative character/dither art as a header band, eyebrow, headline, one paragraph, two buttons | Good anatomy for announcements and first-run steps; the art is the same idea as our streak | Dialog header band = a cropped streak preset (decision 28); no changelog feature yet |
+| G desktop sidebar: an icon rail (home, inbox, tasks, pull requests, scheduled, apps) beside the list | Useful once there are several top-level areas; today we have two (Home, Projects) | Not now. Revisit when Bots and scheduled tasks land (then: Home, Projects, Bots, Scheduled, Usage) |
+| G: thread rows with a meta line of glyph + project + branch + PR number | We have the two-line project row; branch/PR need git integration | Keep ours; add branch when git lands |
+| G: translucent window showing the wallpaper | Platform effect (window vibrancy), only meaningful in the Tauri shell | Later, with the Tauri shell work; never in the browser host |
+| G: remote control of one computer from another, phone apps | Large: needs authenticated remote access to `harness serve` | Out of scope now; noted as a future spec |
+| G site hero: a painting behind the headline | Marketing, not the app | Not taken |
+
+26. **Home triage and recap** (replaces the centred title-only top of Home):
+    - **Triage row** under the title: four 64px tiles in one row (two rows of two under 640px) — **Needs you**
+      (failed turns and, from v7, pending approvals; `warn` glyph, count), **Working** (orchestrators with a
+      running turn; spinner glyph), **Ready to review** (turns finished since you last looked — the unseen set;
+      from v7 with changed-file counts), **Idle** — each a button that filters the project list below
+      (`aria-pressed`, one active at a time, click again to clear). Counts in tabular numerals; a zero tile is
+      `fg-3`, never hidden (stable layout).
+    - **Project list grouped by state** in that order, with 12px captions; within a group, most recent first.
+    - **Recap**: one paragraph in 14/22 `fg-2` with figures in `fg`: "Today you sent **12 requests** across
+      **3 projects**. Most went into **Atlas API**; **Sonnet** carried **84%** of the tokens. Agents ran for
+      **5h 47m**." Built from `getUsage` (day, model, project groups) and agent start/finish times; clauses with
+      no data are omitted (no zeros, no placeholders); project and model names are links (project → its
+      orchestrator, model → Usage filtered); "Full recap" opens Usage. Period: today, falling back to "This week"
+      when today is empty. Pure sentence builder in `lib/recap.ts` with tests (singular/plural, omitted clauses).
+    - The cards stay below (Orchestrators at work, Tokens, Activity, This month); "This month" may fold into the
+      recap's "Full recap" if the page no longer fits 1440×900.
+27. **Model picker** (replaces the plain model menu in the composer and the orchestrator header): a 320px popover —
+    search field on top ("Search models and agents"); sections **Tiers** (Balanced, Fast, Deep with the model each
+    maps to), **Models** (every model the harness lists), **Agents** (subscription / ACP agents that are
+    logged in; logged-out ones shown disabled with their hint); each row: name, muted detail (provider or
+    "subscription"), `Ctrl/Cmd+1…9` hint for the first nine visible rows, a star toggle; a **Favourites** section
+    appears first once anything is starred (stored per user in the preference registry). Below a hairline:
+    **Effort** — a five-stop slider (Low, Medium, High, Extra high, Max) with the current stop named above it,
+    shown only for models that support it; **Routing** — Auto / Ceiling / Fixed (the project's routing policy,
+    when the router is detected) and **Compaction** — Auto / Off as two quiet rows with a value and a chevron.
+    Keyboard: type to filter, ↑/↓, Enter selects, ←/→ on the slider, Esc closes and returns focus. Needs the
+    harness to accept an effort setting per project/turn (small; added to the harness backlog) — until then the
+    Effort block is not rendered.
+28. **Two-tone titles and dialog header band.** Start-screen titles and announcement / first-run dialog titles are
+    one sentence in two tones: the lead-in in `fg-3`, the statement in `fg`, same size and weight
+    ("Design system tokens. Give its orchestrator a first task." / "No projects yet. Create one to put an
+    orchestrator to work."). Announcement and first-run dialogs get a 160px header band drawn with a streak
+    preset (`dialog`), an 11px tracked eyebrow in `accent`, the two-tone title, one paragraph, and at most two
+    buttons (one primary). Used for: first run (attach a folder), "router detected", "an agent needs login".
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
