@@ -689,6 +689,14 @@ monochrome dithered illustration):
     Keys: `Enter` sends, `Shift+Enter` new line, `↑` in an empty field recalls the last request, `Esc` stops,
     `Ctrl/Cmd+Enter` queues, `@` and `/` open their lists above the composer. Files can be dropped or pasted
     onto it. Its height changes never move the conversation's last line (the scroller compensates).
+63. **A tab is named after what is in it, not after its role** (owner: "this should be the name of the project,
+    the sub-session — not Orchestrator"). The conversation tab's title is the project's name; a sub-agent's tab is
+    its task title (the delegation's `title`, else the first words of its task); a file tab is the file name; the
+    word "Orchestrator" appears nowhere as a title. The glyph carries the kind (conversation, sub-agent, file) and
+    the state (working ring, needs-you, failed). With decision 54 the project name is in the title bar, so the
+    separate "PCMS · Working" line under the tabs goes away: state lives on the tab glyph and in the title bar.
+    Tool rows never show an empty input (`{}`) or an "Input" label with nothing to say: a row with no arguments
+    shows only its name and result.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
