@@ -351,6 +351,38 @@ model picker and desktop sidebar; owner: "do not copy — study and adapt"):
     orchestrator to work."). Announcement and first-run dialogs get a 160px header band drawn with a streak
     preset (`dialog`), an 11px tracked eyebrow in `accent`, the two-tone title, one paragraph, and at most two
     buttons (one primary). Used for: first run (attach a folder), "router detected", "an agent needs login".
+Seventh reference (H: an agent app with tabs in the title bar, a "swarms" sidebar and a start screen over a
+monochrome dithered illustration):
+
+| Pattern | Verdict | What we do |
+| --- | --- | --- |
+| H: tabs run across the title bar, Home pinned first, "+" at the end; every tab carries a small **live state glyph** (dotted ring animating while working, amber when waiting, green when done) | Good: you see which agents are alive without opening them; the glyph, not a coloured dot, carries the state. Confirms decision 25 | Decision 29: one state-glyph family, used on tabs, sidebar rows, lists and chips |
+| H: the composer is two layers — the input card, and a footer bar fused under it with the run's context (repository, branch, sandbox level, where it runs) | Good: what the agent may touch and where it runs is stated at the moment you send, not in a settings page | Decision 30: composer context bar |
+| H: the start backdrop is a single-hue dithered picture, very low contrast | Good as a calm alternative; the owner prefers the bold streak | Decision 31: the streak keeps Vivid as the default and gains Mono and Off in Settings |
+| H: "Swarms" (named standing groups of agents) and "Automations" as sidebar sections | Same idea as our bots and standing tasks | Already in the bots design; sidebar sections arrive with it |
+| H: thread list under the swarms with state glyph + age | Session list — the thing decision 23 removed | Not taken |
+| H: account switcher in the sidebar foot | No accounts in a local tool | Not taken |
+
+29. **State glyphs.** One 12px glyph family encodes an agent's state by shape and motion first, colour second
+    (so it survives colour blindness and forced colours): **working** — a ring of 8 dots with a 3-dot bright arc
+    travelling round (1.2 s, linear; static bright arc under reduced motion), `accent`; **needs you** — the ring
+    with a solid centre dot, `warn`, a slow 2 s opacity pulse of the centre (static under reduced motion);
+    **done, unseen** — a filled disc, `accent`; **done, seen / idle** — an open ring, `fg-3`; **failed** — the ring
+    with a short diagonal bar, `err`. Drawn as one SVG component (`primitives/StateGlyph.tsx`, pure geometry in
+    `lib/stateGlyph.ts`, tested), never an icon-font spinner. Used everywhere a state appears: sidebar project
+    rows, **tab labels** (Orchestrator and Agent tabs replace their kind icon with the state glyph while not idle),
+    the team strip, Home rows and tiles, delegation rows, the palette. The watched live turn keeps its existing
+    "Working… 12s" line; no other spinner shape exists in the product.
+30. **Composer context bar.** The composer becomes two fused layers (one outline, radius 12, hairline between):
+    the input row on top, and under it a 28px bar that states the run's context as quiet buttons with a 14px
+    glyph — **folders** (the project's folders; opens project settings), **model** (the picker of decision 27),
+    **access** (Supervised / Full access, from v7; until then not rendered), **routing** (Auto / Ceiling / Fixed
+    when the router is detected) — left to right, and on the right the hint line ("↵ send") or, while a turn
+    runs, the queue count (v7). The loose line of text under the composer goes away. Under 420px the bar keeps
+    model and access and folds the rest into a `…` menu. The floating composer has the same two layers.
+31. **Streak appearance.** Settings → Appearance: **Start-screen backdrop** — Vivid (default, decision 21b), Mono
+    (the same band in one hue: `accent` at 35% peak, same grain; reads as texture), Off. Stored in the preference
+    registry; `prefers-reduced-transparency` and forced colours force Off.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
