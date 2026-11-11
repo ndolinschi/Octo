@@ -9,6 +9,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
@@ -45,6 +46,8 @@ type Options struct {
 	Router *router.Router
 	// Prices estimate cost for the harness's own budget enforcement.
 	Prices prices.Table
+	// Windows are the configured per-model context sizes for GET .../context.
+	Windows config.ContextWindows
 }
 
 // Orchestrator runs project turns: one at a time per project, each a tree of agents.
@@ -60,13 +63,14 @@ type Orchestrator struct {
 
 	mu    sync.Mutex
 	turns map[string]context.CancelFunc
+	sides map[string]*side
 }
 
 func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Options) *Orchestrator {
 	ctx, stop := context.WithCancel(context.Background())
 	return &Orchestrator{
 		store: store, hub: hub, notes: notes, opts: opts,
-		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc),
+		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), sides: make(map[string]*side),
 	}
 }
 

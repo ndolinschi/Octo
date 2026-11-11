@@ -11,7 +11,15 @@ export type Tier = "fast" | "balanced" | "deep";
 export type AgentStatus = "idle" | "running" | "completed" | "failed" | "cancelled";
 /** How an Octo router treats the tier hint: auto (may go lower or higher), ceiling (never above), fixed (the hint's tier). */
 export type TierPolicy = "auto" | "ceiling" | "fixed";
-export type Models = { orchestrator: string; fast: string; balanced: string; deep: string; tier_policy?: TierPolicy };
+export type Models = {
+  orchestrator: string;
+  fast: string;
+  balanced: string;
+  deep: string;
+  tier_policy?: TierPolicy;
+  /** Model for side questions; absent means the fast tier. Cannot be cleared once set. */
+  side?: string;
+};
 export type Folder = { id: string; label: string; path: string };
 
 export type ProjectInput = {
@@ -85,6 +93,47 @@ export type Message = {
   created_at: string;
 };
 
+/** A transcript marker: the history up to and including message `upto_message_id` was replaced by a summary at `at`. */
+export type CompactionMarker = {
+  upto_message_id: number;
+  at: string;
+  /** Estimated size of the summary (characters / 4); absent from older harnesses. */
+  summary_tokens?: number;
+};
+
+/** What `GET .../agents/{aid}/messages` returns: the raw messages plus the compaction markers. */
+export type Transcript = { messages: Message[]; compactions: CompactionMarker[] };
+
+export type ContextPartKey = "system" | "tools" | "notes" | "messages" | "tool_results" | "summary";
+export type ContextPart = { key: ContextPartKey; tokens: number };
+
+/**
+ * `GET /v1/projects/{pid}/context`: what the agent's next request would contain.
+ * `used_tokens` is the last response's reported input (+ cache read/write) when
+ * `estimated` is false, else a character-count estimate; `parts` is always an estimate scaled to sum to
+ * `used_tokens`. `window_tokens` is null when the model's window is unknown.
+ */
+export type ContextBreakdown = {
+  agent_id: string;
+  model: string;
+  window_tokens: number | null;
+  used_tokens: number;
+  estimated: boolean;
+  parts: ContextPart[];
+};
+
+/** One turn of the project's side conversation. A question and its answer share `side_id`. */
+export type SideMessage = {
+  id: number;
+  side_id: string;
+  role: "user" | "assistant";
+  text: string;
+  created_at: string;
+};
+
+/** The 202 body of `POST .../side`: the stored question; the answer arrives as side.* events. */
+export type SideStarted = { side_id: string; message: SideMessage };
+
 export type Note = {
   id: string;
   title: string;
@@ -123,6 +172,21 @@ export type TurnFinishedEvent = {
   error: string | null;
 };
 
+export type AgentCompactedEvent = {
+  type: "agent.compacted";
+  seq: number;
+  agent_id: string;
+  upto_message_id: number;
+  summary_tokens?: number;
+  at: string;
+};
+
+/** Streamed text of a side answer (only when the harness streams); the final text is in side.done. */
+export type SideDeltaEvent = { type: "side.delta"; seq: number; side_id: string; text: string };
+export type SideDoneEvent = { type: "side.done"; seq: number; side_id: string; message: SideMessage };
+/** The question failed or was cancelled (`error` is "cancelled" when the conversation was cleared); its stored question is gone. */
+export type SideErrorEvent = { type: "side.error"; seq: number; side_id: string; error: string };
+
 export type FileEntry = { name: string; path: string; type: "file" | "dir"; size: number };
 export type FileStat = { folder: string; path: string; size: number; mtime: string };
 export type FileContent = FileStat & { content: string };
@@ -151,7 +215,11 @@ export type BridgeEvent =
   | NoteChangedEvent
   | ProjectUpdatedEvent
   | FileChangedEvent
-  | TurnFinishedEvent;
+  | TurnFinishedEvent
+  | AgentCompactedEvent
+  | SideDeltaEvent
+  | SideDoneEvent
+  | SideErrorEvent;
 
 export type BridgeEventType = BridgeEvent["type"];
 

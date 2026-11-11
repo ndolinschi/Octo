@@ -1,4 +1,13 @@
-import type { Agent, BridgeEvent, ContentBlock, Message, Note, TurnStatus } from "./types";
+import type { Agent, BridgeEvent, CompactionMarker, ContentBlock, Message, Note, SideMessage, SideStarted, TurnStatus } from "./types";
+
+/** The project's side conversation (decision 40): kept apart from every agent's messages. */
+export type SideState = {
+  messages: SideMessage[];
+  /** The answer in flight: its `side_id` and the text streamed so far. */
+  pending: { side_id: string; text: string } | null;
+  /** The last question that failed; cleared by the next question. */
+  error: { side_id: string; message: string } | null;
+};
 
 export type ProjectState = {
   agents: Record<string, Agent>;
@@ -7,9 +16,16 @@ export type ProjectState = {
   streaming: Record<string, string>;
   activeTools: Record<string, Record<string, { name: string }>>;
   notes: Note[];
+  /** Compaction markers per agent id, ordered by `upto_message_id`. */
+  compactions: Record<string, CompactionMarker[]>;
+  side: SideState;
   lastSeq: number;
   lastTurn: { status: TurnStatus; error: string | null } | null;
 };
+
+export function emptySide(): SideState {
+  return { messages: [], pending: null, error: null };
+}
 
 export function emptyProjectState(): ProjectState {
   return {
@@ -19,6 +35,8 @@ export function emptyProjectState(): ProjectState {
     streaming: {},
     activeTools: {},
     notes: [],
+    compactions: {},
+    side: emptySide(),
     lastSeq: 0,
     lastTurn: null,
   };
@@ -50,6 +68,13 @@ function addMessage(state: ProjectState, message: Message): ProjectState {
   const next = list.some((m) => m.id === message.id) ? list : mergeMessages(list, [message]);
   const streaming = message.role === "assistant" ? omitKey(state.streaming, message.agent_id) : state.streaming;
   return { ...state, messages: { ...state.messages, [message.agent_id]: next }, streaming };
+}
+
+function mergeCompactions(existing: CompactionMarker[], incoming: CompactionMarker[]): CompactionMarker[] {
+  const byUpto = new Map<number, CompactionMarker>();
+  for (const c of existing) byUpto.set(c.upto_message_id, c);
+  for (const c of incoming) byUpto.set(c.upto_message_id, c);
+  return [...byUpto.values()].sort((a, b) => a.upto_message_id - b.upto_message_id);
 }
 
 function upsertNote(notes: Note[], note: Note): Note[] {
@@ -104,6 +129,35 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         activeTools: {},
         lastTurn: { status: event.status, error: event.error },
       };
+    case "agent.compacted": {
+      const marker: CompactionMarker = { upto_message_id: event.upto_message_id, at: event.at };
+      if (event.summary_tokens !== undefined) marker.summary_tokens = event.summary_tokens;
+      return {
+        ...state,
+        compactions: { ...state.compactions, [event.agent_id]: mergeCompactions(state.compactions[event.agent_id] ?? [], [marker]) },
+      };
+    }
+    case "side.delta": {
+      const prior = state.side.pending?.side_id === event.side_id ? state.side.pending.text : "";
+      return { ...state, side: { ...state.side, pending: { side_id: event.side_id, text: prior + event.text } } };
+    }
+    case "side.done": {
+      const known = state.side.messages.some((m) => m.id === event.message.id);
+      const messages = known ? state.side.messages : [...state.side.messages, event.message].sort((a, b) => a.id - b.id);
+      const pending = state.side.pending?.side_id === event.side_id ? null : state.side.pending;
+      return { ...state, side: { messages, pending, error: null } };
+    }
+    case "side.error": {
+      const pending = state.side.pending?.side_id === event.side_id ? null : state.side.pending;
+      return {
+        ...state,
+        side: {
+          messages: state.side.messages.filter((m) => m.side_id !== event.side_id),
+          pending,
+          error: event.error === "cancelled" ? state.side.error : { side_id: event.side_id, message: event.error },
+        },
+      };
+    }
     case "project.updated":
     case "file.changed":
       return state;
@@ -136,6 +190,25 @@ export function withAgents(state: ProjectState, agents: Agent[]): ProjectState {
 export function withMessages(state: ProjectState, agentId: string, messages: Message[]): ProjectState {
   const merged = mergeMessages(state.messages[agentId] ?? [], messages);
   return { ...state, messages: { ...state.messages, [agentId]: merged } };
+}
+
+export function withCompactions(state: ProjectState, agentId: string, markers: CompactionMarker[]): ProjectState {
+  return { ...state, compactions: { ...state.compactions, [agentId]: mergeCompactions(state.compactions[agentId] ?? [], markers) } };
+}
+
+/** Replaces the side conversation with a loaded list (nothing is pending after a reload unless `pending` is kept). */
+export function withSideMessages(state: ProjectState, messages: SideMessage[]): ProjectState {
+  return { ...state, side: { messages: [...messages].sort((a, b) => a.id - b.id), pending: state.side.pending, error: state.side.error } };
+}
+
+/** Records a question the harness accepted and marks its answer as pending. */
+export function withSideAsked(state: ProjectState, started: SideStarted): ProjectState {
+  const rest = state.side.messages.filter((m) => m.id !== started.message.id);
+  return { ...state, side: { messages: [...rest, started.message], pending: { side_id: started.side_id, text: "" }, error: null } };
+}
+
+export function withSideCleared(state: ProjectState): ProjectState {
+  return { ...state, side: emptySide() };
 }
 
 export function withNotes(state: ProjectState, notes: Note[]): ProjectState {

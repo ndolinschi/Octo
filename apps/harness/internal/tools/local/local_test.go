@@ -315,3 +315,71 @@ func TestRegisterRoots_NoRootsRegistersNothing(t *testing.T) {
 		t.Fatal("expected no tools without folders")
 	}
 }
+
+func TestSearchFiles(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a.txt", "alpha\nneedle one\nomega\n")
+	write("sub/b.go", "package b\n// needle two\n")
+	write(".git/config", "needle in git\n")
+	write("node_modules/x.js", "needle in deps\n")
+	write("bin.dat", "needle\x00binary")
+	write("many.txt", strings.Repeat("needle\n", 10))
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("needle secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(root, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	reg := tools.NewRegistry()
+	if err := RegisterRoots(reg, []Root{{Label: "w", Path: root}}, ToolSearchFiles); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(reg.All()); got != 1 {
+		t.Fatalf("tools = %d, want only search_files", got)
+	}
+	def, _ := reg.Get(ToolSearchFiles)
+	for _, tc := range []struct {
+		name, in string
+		isErr    bool
+		has, not []string
+	}{
+		{"finds across files", `{"pattern":"needle (one|two)"}`, false, []string{"a.txt:2: needle one", "sub/b.go:2: // needle two"}, []string{"many.txt"}},
+		{"skips .git, node_modules, binaries and symlinks", `{"pattern":"needle","max_results":200}`, false, []string{"many.txt:1: needle"}, []string{".git", "node_modules", "bin.dat", "link.txt", "secret"}},
+		{"limits results", `{"pattern":"needle","path":"many.txt","max_results":3}`, false, []string{"stopped at 3 matching lines"}, nil},
+		{"scoped to a directory", `{"pattern":"needle","path":"sub"}`, false, []string{"sub/b.go"}, []string{"a.txt"}},
+		{"no matches", `{"pattern":"zzzz"}`, false, []string{"no matches"}, nil},
+		{"bad regex", `{"pattern":"("}`, true, nil, nil},
+		{"empty pattern", `{"pattern":""}`, true, nil, nil},
+		{"escape refused", `{"pattern":"x","path":"../"}`, true, nil, nil},
+		{"symlink as path refused", `{"pattern":"needle","path":"link.txt"}`, true, nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, isErr, err := def.Handle(context.Background(), json.RawMessage(tc.in))
+			if err != nil || isErr != tc.isErr {
+				t.Fatalf("out=%q isErr=%v err=%v", out, isErr, err)
+			}
+			for _, s := range tc.has {
+				if !strings.Contains(out, s) {
+					t.Errorf("output lacks %q:\n%s", s, out)
+				}
+			}
+			for _, s := range tc.not {
+				if strings.Contains(out, s) {
+					t.Errorf("output has %q:\n%s", s, out)
+				}
+			}
+		})
+	}
+}

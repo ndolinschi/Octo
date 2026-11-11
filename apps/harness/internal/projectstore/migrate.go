@@ -16,8 +16,9 @@ var columnsAdded = []struct {
 	{"project", []column{{"budget_usd", "REAL"}}},
 	{"usage", []column{
 		{"served_model", "TEXT"}, {"tier", "TEXT"}, {"route_trigger", "TEXT"}, {"router_request_id", "TEXT"},
-		{"cost_estimated", "INTEGER NOT NULL DEFAULT 0"},
+		{"cost_estimated", "INTEGER NOT NULL DEFAULT 0"}, {"role", "TEXT"},
 	}},
+	{"compactions", []column{{"usage_id", "INTEGER"}}},
 }
 
 // migrate brings a project database up to the current schema. It is

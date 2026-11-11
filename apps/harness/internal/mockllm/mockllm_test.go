@@ -84,3 +84,19 @@ func TestStreamIsWellFormed(t *testing.T) {
 		}
 	}
 }
+
+func TestSideQuestionScript(t *testing.T) {
+	const sys = `"system":[{"type":"text","text":"You answer a side question about a software project"}],"tools":[{"name":"list_dir"},{"name":"read_file"}]`
+	first := post(t, `{`+sys+`,"messages":[{"role":"user","content":[{"type":"text","text":"earlier ask"}]},{"role":"assistant","content":[{"type":"text","text":"done"}]},`+
+		`{"role":"user","content":[{"type":"text","text":"Side question: what is here?"}]}]}`)
+	if got := toolNames(first); len(got) != 1 || got[0] != "list_dir" {
+		t.Fatalf("first step tools = %v, want one list_dir", got)
+	}
+	final := post(t, `{`+sys+`,"messages":[{"role":"user","content":[{"type":"text","text":"Side question: what is here?"}]},`+
+		`{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"list_dir","input":{}}]},`+
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"a.txt"}]}]}`)
+	text := final["content"].([]any)[0].(map[string]any)["text"].(string)
+	if len(toolNames(final)) != 0 || !strings.Contains(text, "what is here?") || !strings.Contains(text, "nothing was changed") {
+		t.Fatalf("final = %v", final["content"])
+	}
+}

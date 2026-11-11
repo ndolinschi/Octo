@@ -16,10 +16,33 @@ type reply struct {
 
 // plan derives the next assistant reply purely from the request.
 func plan(r *request) reply {
+	if strings.Contains(r.system(), sideMarker) {
+		return sideReply(r)
+	}
 	if r.hasTool("save_note") {
 		return orchestratorReply(r)
 	}
 	return subAgentReply(r)
+}
+
+// sideMarker is how the harness's side-question prompt introduces itself.
+const sideMarker = "You answer a side question"
+
+// sideReply answers a side question: one look at the folder when it can, then a
+// short answer that restates the question.
+func sideReply(r *request) reply {
+	anchor := max(r.lastUserTextIndex(), 0)
+	if r.assistantCountFrom(anchor) == 0 && r.hasTool("list_dir") {
+		return reply{
+			Text:  "I will check the project folder first.",
+			Calls: []call{{Name: "list_dir", Input: map[string]any{"path": "."}}},
+		}
+	}
+	ask := r.Messages[anchor].text()
+	if i := strings.LastIndex(ask, "Side question:"); i >= 0 {
+		ask = strings.TrimSpace(ask[i+len("Side question:"):])
+	}
+	return reply{Text: "Side answer (mock model): " + clip(ask, 200) + " - I only read the project; nothing was changed."}
 }
 
 func orchestratorReply(r *request) reply {

@@ -73,7 +73,7 @@ func mergeModels(base config.Models, over *config.Models) (config.Models, error)
 	}
 	for dst, src := range map[*string]string{
 		&base.Orchestrator: over.Orchestrator, &base.Fast: over.Fast,
-		&base.Balanced: over.Balanced, &base.Deep: over.Deep, &base.TierPolicy: over.TierPolicy,
+		&base.Balanced: over.Balanced, &base.Deep: over.Deep, &base.TierPolicy: over.TierPolicy, &base.Side: over.Side,
 	} {
 		if src != "" {
 			*dst = src

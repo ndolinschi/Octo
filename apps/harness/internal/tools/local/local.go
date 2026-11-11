@@ -28,16 +28,18 @@ const folderProp = `"folder":{"type":"string","description":"Folder label; defau
 
 func schemaFor(tool string, multi bool) json.RawMessage {
 	props := map[string]string{
-		ToolBash:      `"command":{"type":"string","description":"Shell command to run"}`,
-		ToolReadFile:  `"path":{"type":"string","description":"Relative path under the folder"},"offset":{"type":"integer","description":"First line to read, 1-based; default 1"},"limit":{"type":"integer","description":"Maximum number of lines to read; defaults to a server-side cap (2000)"}`,
-		ToolWriteFile: `"path":{"type":"string","description":"Relative path under the folder"},"content":{"type":"string","description":"File contents"}`,
-		ToolListDir:   `"path":{"type":"string","description":"Relative directory path; defaults to the folder root"}`,
+		ToolBash:        `"command":{"type":"string","description":"Shell command to run"}`,
+		ToolReadFile:    `"path":{"type":"string","description":"Relative path under the folder"},"offset":{"type":"integer","description":"First line to read, 1-based; default 1"},"limit":{"type":"integer","description":"Maximum number of lines to read; defaults to a server-side cap (2000)"}`,
+		ToolWriteFile:   `"path":{"type":"string","description":"Relative path under the folder"},"content":{"type":"string","description":"File contents"}`,
+		ToolListDir:     `"path":{"type":"string","description":"Relative directory path; defaults to the folder root"}`,
+		ToolSearchFiles: searchProps,
 	}
 	required := map[string]string{
-		ToolBash:      `["command"]`,
-		ToolReadFile:  `["path"]`,
-		ToolWriteFile: `["path","content"]`,
-		ToolListDir:   `[]`,
+		ToolBash:        `["command"]`,
+		ToolReadFile:    `["path"]`,
+		ToolWriteFile:   `["path","content"]`,
+		ToolListDir:     `[]`,
+		ToolSearchFiles: `["pattern"]`,
 	}
 	p := props[tool]
 	if multi {
@@ -47,10 +49,11 @@ func schemaFor(tool string, multi bool) json.RawMessage {
 }
 
 var descriptions = map[string]string{
-	ToolBash:      "Run a shell command in a project folder",
-	ToolReadFile:  "Read a text file under a project folder. Long files are cut: use offset and limit (lines) to page through them",
-	ToolWriteFile: "Write a text file under a project folder",
-	ToolListDir:   "List a directory under a project folder",
+	ToolBash:        "Run a shell command in a project folder",
+	ToolReadFile:    "Read a text file under a project folder. Long files are cut: use offset and limit (lines) to page through them",
+	ToolWriteFile:   "Write a text file under a project folder",
+	ToolListDir:     "List a directory under a project folder",
+	ToolSearchFiles: "Search the text files under a project folder for a regular expression; returns path:line: text for each match",
 }
 
 // Register installs all four tools over a single workspace.
@@ -78,10 +81,11 @@ func RegisterRootsLimits(reg *tools.Registry, roots []Root, lim tools.Limits, na
 		return err
 	}
 	handlers := map[string]tools.Handler{
-		ToolBash:      bashHandler(rs),
-		ToolReadFile:  readFileHandler(rs, lim),
-		ToolWriteFile: writeFileHandler(rs),
-		ToolListDir:   listDirHandler(rs),
+		ToolBash:        bashHandler(rs),
+		ToolReadFile:    readFileHandler(rs, lim),
+		ToolWriteFile:   writeFileHandler(rs),
+		ToolListDir:     listDirHandler(rs),
+		ToolSearchFiles: searchFilesHandler(rs),
 	}
 	for _, name := range names {
 		h, ok := handlers[name]

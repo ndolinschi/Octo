@@ -132,3 +132,40 @@ func TestLoad_CostDefaultsAndOverrides(t *testing.T) {
 		})
 	}
 }
+
+func TestContextWindows(t *testing.T) {
+	for _, tc := range []struct {
+		name, in string
+		want     map[string]int64
+		bad      bool
+	}{
+		{"empty", "", map[string]int64{}, false},
+		{"two models", "a=200000, b/c:d=1000000", map[string]int64{"a": 200000, "b/c:d": 1000000}, false},
+		{"no equals", "a", nil, true},
+		{"not a number", "a=big", nil, true},
+		{"zero", "a=0", nil, true},
+		{"no model", "=5", nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, err := config.ParseContextWindows(tc.in)
+			if (err != nil) != tc.bad {
+				t.Fatalf("err = %v", err)
+			}
+			if tc.bad {
+				return
+			}
+			for m, n := range tc.want {
+				if got := w.Lookup(m); got == nil || *got != n {
+					t.Errorf("Lookup(%q) = %v, want %d", m, got, n)
+				}
+			}
+			if got := w.Lookup("claude-sonnet-5-5"); got != nil {
+				t.Errorf("unknown model has window %d, want nil", *got)
+			}
+		})
+	}
+	t.Setenv("HARNESS_CONTEXT_WINDOWS", "m=oops")
+	if _, err := config.Load(); err == nil {
+		t.Error("Load accepted a bad HARNESS_CONTEXT_WINDOWS")
+	}
+}

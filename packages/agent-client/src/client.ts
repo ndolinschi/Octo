@@ -3,6 +3,7 @@ import type {
   BridgeConfig,
   BridgeEvent,
   BridgeEventType,
+  ContextBreakdown,
   FileContent,
   FileEntry,
   FileStat,
@@ -15,6 +16,9 @@ import type {
   Project,
   ProjectInput,
   ProjectSummary,
+  SideMessage,
+  SideStarted,
+  Transcript,
   UsageParams,
   UsageReport,
   WriteFileInput,
@@ -69,8 +73,17 @@ export interface Bridge {
   listAgents(projectId: string): Promise<Agent[]>;
   getAgent(projectId: string, agentId: string): Promise<Agent>;
   listMessages(projectId: string, agentId: string): Promise<Message[]>;
+  /** Same request as listMessages, plus the compaction markers of the transcript. */
+  getTranscript(projectId: string, agentId: string): Promise<Transcript>;
   sendMessage(projectId: string, text: string): Promise<Message>;
   cancelTurn(projectId: string): Promise<void>;
+  /** The orchestrator's context by part, or another agent's with `agentId`. */
+  getContext(projectId: string, agentId?: string): Promise<ContextBreakdown>;
+  /** Ask the side question; resolves with the stored question, the answer streams as side.* events. */
+  askSide(projectId: string, text: string): Promise<SideStarted>;
+  listSide(projectId: string): Promise<SideMessage[]>;
+  /** Cancels a running side question and deletes the side conversation. */
+  clearSide(projectId: string): Promise<void>;
   listNotes(projectId: string): Promise<Note[]>;
   createNote(projectId: string, input: { title: string; content: string }): Promise<Note>;
   updateNote(projectId: string, noteId: string, patch: { title?: string; content?: string }): Promise<Note>;
@@ -103,6 +116,10 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "project.updated",
   "file.changed",
   "turn.finished",
+  "agent.compacted",
+  "side.delta",
+  "side.done",
+  "side.error",
 ];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -204,9 +221,23 @@ export function createHttpBridge(options: HttpBridgeOptions): Bridge {
     listAgents: (id) => unwrap<Agent[]>(request("GET", `${p(id)}/agents`), "agents"),
     getAgent: (id, agentId) => request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}`) as Promise<Agent>,
     listMessages: (id, agentId) => unwrap<Message[]>(request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages`), "messages"),
+    getTranscript: async (id, agentId) => {
+      const body = await request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages`);
+      if (!isRecord(body) || !Array.isArray(body.messages)) {
+        throw new BridgeError(0, "invalid_response", 'missing "messages" in response');
+      }
+      return { messages: body.messages as Message[], compactions: Array.isArray(body.compactions) ? (body.compactions as Transcript["compactions"]) : [] };
+    },
     sendMessage: (id, text) => unwrap<Message>(request("POST", `${p(id)}/messages`, { text }), "message"),
     cancelTurn: async (id) => {
       await request("POST", `${p(id)}/cancel`);
+    },
+    getContext: (id, agentId) =>
+      request("GET", `${p(id)}/context${agentId === undefined ? "" : `?agent=${encodeURIComponent(agentId)}`}`) as Promise<ContextBreakdown>,
+    askSide: (id, text) => request("POST", `${p(id)}/side`, { text }) as Promise<SideStarted>,
+    listSide: (id) => unwrap<SideMessage[]>(request("GET", `${p(id)}/side`), "messages"),
+    clearSide: async (id) => {
+      await request("DELETE", `${p(id)}/side`);
     },
     listNotes: (id) => unwrap<Note[]>(request("GET", `${p(id)}/notes`), "notes"),
     createNote: (id, input) => request("POST", `${p(id)}/notes`, input) as Promise<Note>,

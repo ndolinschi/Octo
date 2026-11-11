@@ -10,10 +10,14 @@ import {
   toolResultFor,
   totalTokens,
   withAgents,
+  withCompactions,
+  withSideAsked,
+  withSideCleared,
+  withSideMessages,
   withMessages,
   withNotes,
 } from "./state";
-import type { Agent, Message, Note } from "./types";
+import type { Agent, Message, Note, SideMessage } from "./types";
 
 function agent(id: string, parent: string | null, extra: Partial<Agent> = {}): Agent {
   return {
@@ -197,4 +201,106 @@ test("toolResultFor finds the answering block", () => {
   ];
   assert.equal(toolResultFor(messages, "t1")?.content, "done");
   assert.equal(toolResultFor(messages, "t2"), undefined);
+});
+
+test("agent.compacted stores a marker per agent, deduplicated and ordered", () => {
+  let s = emptyProjectState();
+  assert.deepEqual(s.compactions, {});
+  s = applyEvent(s, { type: "agent.compacted", seq: 1, agent_id: "o", upto_message_id: 9, summary_tokens: 40, at: "t2" });
+  s = applyEvent(s, { type: "agent.compacted", seq: 2, agent_id: "o", upto_message_id: 3, at: "t1" });
+  s = applyEvent(s, { type: "agent.compacted", seq: 3, agent_id: "o", upto_message_id: 9, summary_tokens: 41, at: "t2" });
+  s = applyEvent(s, { type: "agent.compacted", seq: 4, agent_id: "a", upto_message_id: 5, at: "t3" });
+  assert.deepEqual(s.compactions.o, [
+    { upto_message_id: 3, at: "t1" },
+    { upto_message_id: 9, at: "t2", summary_tokens: 41 },
+  ]);
+  assert.deepEqual(s.compactions.a, [{ upto_message_id: 5, at: "t3" }]);
+  assert.equal(s.lastSeq, 4);
+});
+
+test("withCompactions merges loaded markers with live ones", () => {
+  let s = emptyProjectState();
+  s = applyEvent(s, { type: "agent.compacted", seq: 1, agent_id: "o", upto_message_id: 9, at: "t2" });
+  const next = withCompactions(s, "o", [
+    { upto_message_id: 3, at: "t1", summary_tokens: 7 },
+    { upto_message_id: 9, at: "t2" },
+  ]);
+  assert.deepEqual(
+    next.compactions.o?.map((c) => c.upto_message_id),
+    [3, 9],
+  );
+  assert.deepEqual(s.compactions.o?.length, 1);
+});
+
+function side(id: number, sideId: string, role: SideMessage["role"], text: string = role): SideMessage {
+  return { id, side_id: sideId, role, text, created_at: "t" };
+}
+
+test("side question: asked, streamed, done", () => {
+  let s = emptyProjectState();
+  assert.deepEqual(s.side, { messages: [], pending: null, error: null });
+  s = withSideAsked(s, { side_id: "a", message: side(1, "a", "user", "q1") });
+  assert.deepEqual(s.side.pending, { side_id: "a", text: "" });
+  s = applyEvent(s, { type: "side.delta", seq: 1, side_id: "a", text: "He" });
+  s = applyEvent(s, { type: "side.delta", seq: 2, side_id: "a", text: "llo" });
+  assert.deepEqual(s.side.pending, { side_id: "a", text: "Hello" });
+  s = applyEvent(s, { type: "side.done", seq: 3, side_id: "a", message: side(2, "a", "assistant", "Hello!") });
+  assert.equal(s.side.pending, null);
+  assert.deepEqual(
+    s.side.messages.map((m) => [m.id, m.role, m.text]),
+    [
+      [1, "user", "q1"],
+      [2, "assistant", "Hello!"],
+    ],
+  );
+  s = applyEvent(s, { type: "side.done", seq: 4, side_id: "a", message: side(2, "a", "assistant", "Hello!") });
+  assert.equal(s.side.messages.length, 2);
+  assert.deepEqual(s.messages, {}, "side messages never enter an agent's transcript");
+  assert.equal(s.lastSeq, 4);
+});
+
+test("a delta for a new question starts a fresh pending text", () => {
+  let s = emptyProjectState();
+  s = applyEvent(s, { type: "side.delta", seq: 1, side_id: "a", text: "old" });
+  s = applyEvent(s, { type: "side.delta", seq: 2, side_id: "b", text: "new" });
+  assert.deepEqual(s.side.pending, { side_id: "b", text: "new" });
+});
+
+test("side.error drops the question, keeps the others, and reports unless cancelled", () => {
+  let s = emptyProjectState();
+  s = withSideMessages(s, [side(2, "a", "assistant"), side(1, "a", "user")]);
+  assert.deepEqual(
+    s.side.messages.map((m) => m.id),
+    [1, 2],
+  );
+  s = withSideAsked(s, { side_id: "b", message: side(3, "b", "user") });
+  s = applyEvent(s, { type: "side.error", seq: 1, side_id: "b", error: "the model returned no answer" });
+  assert.deepEqual(
+    s.side.messages.map((m) => m.id),
+    [1, 2],
+  );
+  assert.equal(s.side.pending, null);
+  assert.deepEqual(s.side.error, { side_id: "b", message: "the model returned no answer" });
+
+  s = withSideAsked(s, { side_id: "c", message: side(4, "c", "user") });
+  assert.equal(s.side.error, null, "a new question clears the error");
+  s = applyEvent(s, { type: "side.error", seq: 2, side_id: "c", error: "cancelled" });
+  assert.equal(s.side.error, null, "a cancelled question is not an error");
+  assert.equal(
+    s.side.messages.some((m) => m.side_id === "c"),
+    false,
+  );
+});
+
+test("an error of an older question leaves the pending one alone", () => {
+  let s = withSideAsked(emptyProjectState(), { side_id: "new", message: side(5, "new", "user") });
+  s = applyEvent(s, { type: "side.error", seq: 1, side_id: "old", error: "cancelled" });
+  assert.deepEqual(s.side.pending, { side_id: "new", text: "" });
+  assert.equal(s.side.messages.length, 1);
+});
+
+test("withSideCleared empties the conversation", () => {
+  let s = withSideAsked(emptyProjectState(), { side_id: "a", message: side(1, "a", "user") });
+  s = withSideCleared(s);
+  assert.deepEqual(s.side, { messages: [], pending: null, error: null });
 });

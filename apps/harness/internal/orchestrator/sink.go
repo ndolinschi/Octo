@@ -76,8 +76,15 @@ func (s *agentSink) record(u agent.Usage, w *projectstore.ContextWindow) {
 func (s *agentSink) Compacted(ctx context.Context, summary string) error {
 	c, cancel := dbCtx(ctx)
 	defer cancel()
-	_, err := s.rt.db.AddCompaction(c, s.agentID, summary)
-	return err
+	comp, err := s.rt.db.AddCompaction(c, s.agentID, summary)
+	if err != nil {
+		return err
+	}
+	s.rt.publish(events.AgentCompacted, map[string]any{
+		"agent_id": s.agentID, "upto_message_id": comp.UptoMessageID,
+		"summary_tokens": comp.SummaryTokens(), "at": comp.CreatedAt,
+	})
+	return nil
 }
 
 // setContext stores the context window without writing a usage row.

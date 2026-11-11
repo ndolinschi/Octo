@@ -38,6 +38,13 @@ func (rt *runtime) brief() string {
 }
 
 func (rt *runtime) orchestratorPrompt() string {
+	static, notes := rt.orchestratorPromptParts()
+	return static + notes
+}
+
+// orchestratorPromptParts is the orchestrator's system prompt split into the
+// part that never changes between turns and the project notes block after it.
+func (rt *runtime) orchestratorPromptParts() (static, notes string) {
 	var b strings.Builder
 	b.WriteString("You are the orchestrator of a software project. You are the single long-lived agent the user talks to: " +
 		"every message in this conversation is the same user speaking about the same project.\n\n")
@@ -56,6 +63,8 @@ How you work:
 	// Notes change whenever save_note runs, so they come last: everything above
 	// stays byte-identical and the prompt-cache prefix (tools + static system)
 	// survives a note change.
+	static = b.String()
+	b.Reset()
 	b.WriteString("\nProject notes (durable memory, re-read every turn):\n")
 	if len(rt.notes) == 0 {
 		b.WriteString("(none yet)\n")
@@ -63,7 +72,7 @@ How you work:
 	for _, n := range rt.notes {
 		fmt.Fprintf(&b, "### %s\n%s\n", n.Title, n.Content)
 	}
-	return b.String()
+	return static, b.String()
 }
 
 func (rt *runtime) subAgentPrompt(a projectstore.Agent) string {

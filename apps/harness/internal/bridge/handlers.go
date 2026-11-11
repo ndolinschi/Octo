@@ -98,7 +98,12 @@ func (s *Server) agentMessages(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
+	marks, err := s.svc.Compactions(r.Context(), r.PathValue("pid"), r.PathValue("aid"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs, "compactions": marks})
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
@@ -171,4 +176,13 @@ func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) context(w http.ResponseWriter, r *http.Request) {
+	rep, err := s.svc.Context(r.Context(), r.PathValue("pid"), r.URL.Query().Get("agent"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BridgeError, createHttpBridge, type EventSourceLike, type FetchLike } from "./client";
+import { BRIDGE_EVENT_TYPES, BridgeError, createHttpBridge, type EventSourceLike, type FetchLike } from "./client";
 import type { BridgeEvent } from "./types";
 
 type Call = { url: string; method: string | undefined; body: string | undefined };
@@ -125,6 +125,45 @@ test("request shapes and envelope unwrapping", async () => {
       path: "/v1/limits",
       result: [{ provider: "api.anthropic.com", kind: "requests" }],
     },
+    {
+      run: (b) => b.askSide("p", "what is this?"),
+      reply: '{"side_id":"sid_1","message":{"id":3,"side_id":"sid_1","role":"user","text":"what is this?","created_at":"t"}}',
+      status: 202,
+      method: "POST",
+      path: "/v1/projects/p/side",
+      body: { text: "what is this?" },
+      result: { side_id: "sid_1", message: { id: 3, side_id: "sid_1", role: "user", text: "what is this?", created_at: "t" } },
+    },
+    { run: (b) => b.listSide("p"), reply: '{"messages":[{"id":3}]}', method: "GET", path: "/v1/projects/p/side", result: [{ id: 3 }] },
+    { run: (b) => b.clearSide("p/q"), reply: "", status: 204, method: "DELETE", path: "/v1/projects/p%2Fq/side", result: undefined },
+    {
+      run: (b) => b.getContext("p"),
+      reply: '{"agent_id":"o","model":"m","window_tokens":null,"used_tokens":9,"estimated":true,"parts":[{"key":"system","tokens":9}]}',
+      method: "GET",
+      path: "/v1/projects/p/context",
+      result: { agent_id: "o", model: "m", window_tokens: null, used_tokens: 9, estimated: true, parts: [{ key: "system", tokens: 9 }] },
+    },
+    {
+      run: (b) => b.getContext("p/q", "a b"),
+      reply: '{"agent_id":"a b"}',
+      method: "GET",
+      path: "/v1/projects/p%2Fq/context?agent=a%20b",
+      result: { agent_id: "a b" },
+    },
+    {
+      run: (b) => b.getTranscript("p", "a"),
+      reply: '{"messages":[{"id":1}],"compactions":[{"upto_message_id":1,"at":"t","summary_tokens":5}]}',
+      method: "GET",
+      path: "/v1/projects/p/agents/a/messages",
+      result: { messages: [{ id: 1 }], compactions: [{ upto_message_id: 1, at: "t", summary_tokens: 5 }] },
+    },
+    {
+      run: (b) => b.getTranscript("p", "a"),
+      reply: '{"messages":[]}',
+      method: "GET",
+      path: "/v1/projects/p/agents/a/messages",
+      result: { messages: [], compactions: [] },
+    },
     { run: (b) => b.getLimits(), reply: '{"limits":[]}', method: "GET", path: "/v1/limits", result: [] },
     {
       run: (b) => b.listLanguageServers("a/b"),
@@ -246,7 +285,10 @@ test("subscribe dispatches named events, ignores malformed, unsubscribes", () =>
 test("subscribe registers every event type", () => {
   const bridge = createHttpBridge({ baseUrl: "http://h", EventSource: FakeEventSource });
   bridge.subscribe("p", { onEvent: () => {} });
-  assert.equal(FakeEventSource.last.listeners.size, 10);
+  assert.equal(FakeEventSource.last.listeners.size, BRIDGE_EVENT_TYPES.length);
+  for (const type of ["agent.compacted", "side.delta", "side.done", "side.error"]) {
+    assert.ok(FakeEventSource.last.listeners.has(type), type);
+  }
 });
 
 test("subscribe delivers file.changed", () => {

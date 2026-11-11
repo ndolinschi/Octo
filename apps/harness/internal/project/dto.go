@@ -75,3 +75,11 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 	}
 	return p, nil
 }
+
+// Compaction is a transcript marker: the history up to and including message
+// UptoMessageID was replaced by a summary at At. SummaryTokens is an estimate.
+type Compaction struct {
+	UptoMessageID int64  `json:"upto_message_id"`
+	At            string `json:"at"`
+	SummaryTokens int64  `json:"summary_tokens"`
+}

@@ -33,6 +33,10 @@ func turnInProgress(msg string) *Error {
 	return &Error{Kind: KindConflict, Code: "turn_in_progress", Message: msg}
 }
 
+func sideInProgress() *Error {
+	return &Error{Kind: KindConflict, Code: "side_in_progress", Message: "a side question is already running for this project"}
+}
+
 func fileChanged() *Error {
 	return &Error{Kind: KindConflict, Code: "file_changed", Message: "file changed on disk"}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/budget"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
@@ -21,6 +22,9 @@ type Turns interface {
 	Start(ctx context.Context, projectID, text string) (projectstore.Message, error)
 	Cancel(projectID string)
 	Running(projectID string) bool
+	Context(ctx context.Context, projectID, agentID string) (orchestrator.ContextReport, error)
+	Side(ctx context.Context, projectID, text string) (orchestrator.SideStart, error)
+	CancelSide(projectID string)
 }
 
 type Defaults struct {
@@ -237,6 +241,7 @@ func (s *Service) Delete(ctx context.Context, pid string) error {
 	if s.turns.Running(pid) {
 		return turnInProgress("project has a running turn; cancel it first")
 	}
+	s.turns.CancelSide(pid)
 	if err := s.store.Delete(ctx, pid); err != nil {
 		return err
 	}

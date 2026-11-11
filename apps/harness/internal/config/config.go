@@ -39,6 +39,17 @@ type Models struct {
 	Deep         string `json:"deep"`
 	// TierPolicy is auto, ceiling or fixed; empty means auto.
 	TierPolicy string `json:"tier_policy"`
+	// Side optionally overrides the model of side questions; empty means Fast.
+	Side string `json:"side,omitempty"`
+}
+
+// SideModel is the model side questions run on: the project's fast tier unless
+// Side overrides it.
+func (m Models) SideModel() string {
+	if m.Side != "" {
+		return m.Side
+	}
+	return m.Fast
 }
 
 // Policy returns TierPolicy, defaulting to auto.
@@ -102,6 +113,9 @@ type Config struct {
 	// HARNESS_READ_FILE_LINES).
 	Limits tools.Limits
 	Models Models
+	// ContextWindows are per-model context sizes in tokens
+	// (HARNESS_CONTEXT_WINDOWS="model=tokens,..."), on top of the built-in table.
+	ContextWindows ContextWindows
 }
 
 func Load() (Config, error) {
@@ -121,6 +135,11 @@ func Load() (Config, error) {
 			ReadLines:   tools.DefaultReadFileLines,
 		},
 	}
+	windows, err := ParseContextWindows(os.Getenv("HARNESS_CONTEXT_WINDOWS"))
+	if err != nil {
+		return Config{}, fmt.Errorf("HARNESS_CONTEXT_WINDOWS: %w", err)
+	}
+	cfg.ContextWindows = windows
 	for _, d := range filepath.SplitList(os.Getenv("HARNESS_PLUGINS_DIR")) {
 		if d != "" {
 			cfg.PluginDirs = append(cfg.PluginDirs, d)

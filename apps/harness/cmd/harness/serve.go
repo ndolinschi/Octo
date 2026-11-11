@@ -115,6 +115,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Agents:          pluginReg.Agents(),
 		Router:          octo,
 		Prices:          priceTable,
+		Windows:         cfg.ContextWindows,
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth},
 		project.WithPrices(priceTable), project.WithRouter(octo))

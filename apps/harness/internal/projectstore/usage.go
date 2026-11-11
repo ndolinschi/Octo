@@ -29,6 +29,9 @@ func (g UsageGroup) Valid() bool {
 // ContextWindow is how much of an agent's context is occupied.
 type ContextWindow struct{ Used, Size int64 }
 
+// RoleSide is the usage role of side-question requests.
+const RoleSide = "side"
+
 // UsageRecord is one model response (api) or one ACP usage delta (acp).
 type UsageRecord struct {
 	AgentID          string
@@ -50,6 +53,10 @@ type UsageRecord struct {
 	RouterRequestID string
 	// CostEstimated marks CostUSD as the router's own estimate, not a reported price.
 	CostEstimated bool
+	// Role marks a row that belongs to no agent's own thread ("side": a side
+	// question); empty for an agent's own requests. Such a row is attributed to
+	// AgentID but not added to the agent's token totals.
+	Role string
 	// CreatedAt overrides the row time (RFC 3339 UTC, as Now returns); empty means now.
 	CreatedAt string
 }
@@ -67,12 +74,14 @@ func (d *DB) RecordUsage(ctx context.Context, r UsageRecord) (Agent, error) {
 		set += ", context_used = ?, context_size = ?"
 		args = append(args, r.Context.Used, r.Context.Size)
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE agents SET `+set+` WHERE id = ?`, append(args, r.AgentID)...)
-	if err != nil {
-		return Agent{}, err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return Agent{}, ErrNotFound
+	if r.Role == "" {
+		res, err := tx.ExecContext(ctx, `UPDATE agents SET `+set+` WHERE id = ?`, append(args, r.AgentID)...)
+		if err != nil {
+			return Agent{}, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return Agent{}, ErrNotFound
+		}
 	}
 	at := r.CreatedAt
 	if at == "" {
@@ -84,10 +93,11 @@ func (d *DB) RecordUsage(ctx context.Context, r UsageRecord) (Agent, error) {
 	}
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO usage (agent_id, model, source, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at,
-			served_model, tier, route_trigger, router_request_id, cost_estimated)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			served_model, tier, route_trigger, router_request_id, cost_estimated, role)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.AgentID, r.Model, r.Source, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens, cost, at,
-		nullable(r.ServedModel), nullable(r.Tier), nullable(r.RouteTrigger), nullable(r.RouterRequestID), r.CostEstimated)
+		nullable(r.ServedModel), nullable(r.Tier), nullable(r.RouteTrigger), nullable(r.RouterRequestID), r.CostEstimated,
+		nullable(r.Role))
 	if err != nil {
 		return Agent{}, err
 	}
@@ -141,7 +151,7 @@ const servedModel = "COALESCE(NULLIF(u.served_model, ''), u.model)"
 var keyExprs = map[UsageGroup][2]string{
 	GroupDay:     {"substr(u.created_at, 1, 10)", "substr(u.created_at, 1, 10)"},
 	GroupModel:   {servedModel, servedModel},
-	GroupAgent:   {"u.agent_id", "COALESCE(a.role, u.agent_id)"},
+	GroupAgent:   {"COALESCE(u.role, u.agent_id)", "COALESCE(u.role, a.role, u.agent_id)"},
 	GroupProject: {"''", "''"},
 }
 
@@ -199,14 +209,16 @@ type UsageEntry struct {
 	OutputTokens    int64
 	CostUSD         *float64
 	CostEstimated   bool
-	CreatedAt       string
+	// Role is "side" for side-question rows, empty for an agent's own requests.
+	Role      string
+	CreatedAt string
 }
 
 // UsageLog returns every usage row in insertion order.
 func (d *DB) UsageLog(ctx context.Context) ([]UsageEntry, error) {
 	rows, err := d.sql.QueryContext(ctx, `SELECT agent_id, model, COALESCE(served_model, ''), COALESCE(tier, ''),
 		COALESCE(route_trigger, ''), COALESCE(router_request_id, ''), source, input_tokens, output_tokens, cost_usd,
-		cost_estimated, created_at FROM usage ORDER BY id`)
+		cost_estimated, COALESCE(role, ''), created_at FROM usage ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +228,7 @@ func (d *DB) UsageLog(ctx context.Context) ([]UsageEntry, error) {
 		var e UsageEntry
 		var cost sql.NullFloat64
 		if err := rows.Scan(&e.AgentID, &e.Model, &e.ServedModel, &e.Tier, &e.RouteTrigger, &e.RouterRequestID,
-			&e.Source, &e.InputTokens, &e.OutputTokens, &cost, &e.CostEstimated, &e.CreatedAt); err != nil {
+			&e.Source, &e.InputTokens, &e.OutputTokens, &cost, &e.CostEstimated, &e.Role, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		if cost.Valid {

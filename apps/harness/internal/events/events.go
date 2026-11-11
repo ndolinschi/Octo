@@ -17,6 +17,10 @@ const (
 	FileChanged    = "file.changed"
 	ProjectUpdated = "project.updated"
 	TurnFinished   = "turn.finished"
+	AgentCompacted = "agent.compacted"
+	SideDelta      = "side.delta"
+	SideDone       = "side.done"
+	SideError      = "side.error"
 )
 
 // Sources of a file.changed event.

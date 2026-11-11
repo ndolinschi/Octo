@@ -75,7 +75,8 @@ CREATE TABLE IF NOT EXISTS usage (
 	tier TEXT,
 	route_trigger TEXT,
 	router_request_id TEXT,
-	cost_estimated INTEGER NOT NULL DEFAULT 0
+	cost_estimated INTEGER NOT NULL DEFAULT 0,
+	role TEXT
 );
 CREATE INDEX IF NOT EXISTS usage_created ON usage (created_at);
 CREATE TABLE IF NOT EXISTS compactions (
@@ -83,9 +84,17 @@ CREATE TABLE IF NOT EXISTS compactions (
 	agent_id TEXT NOT NULL,
 	summary TEXT NOT NULL,
 	upto_message_id INTEGER NOT NULL,
-	created_at TEXT NOT NULL
+	created_at TEXT NOT NULL,
+	usage_id INTEGER
 );
-CREATE INDEX IF NOT EXISTS compactions_agent ON compactions (agent_id, id);`
+CREATE INDEX IF NOT EXISTS compactions_agent ON compactions (agent_id, id);
+CREATE TABLE IF NOT EXISTS side_messages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	side_id TEXT NOT NULL,
+	role TEXT NOT NULL,
+	content TEXT NOT NULL,
+	created_at TEXT NOT NULL
+);`
 
 // DB is one project's database. All methods are safe for concurrent use.
 type DB struct {
