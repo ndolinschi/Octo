@@ -33,13 +33,13 @@ Read from vendor docs and one paper; search-result summaries, not re-verified li
    (names, numbers, paths, commands, acceptance criteria) as quotes with the source message id; the rest is digested.
 3. **The user can see and correct it.** Memory is files and records in the project, shown in the UI, editable and
    deletable. Each turn records what was put into context.
+4. **Per project, local, no secrets.** Stored in the project's data directory; values from the secret store are
+   redacted before anything is written or indexed.
 5. **The orchestrator thinks about the task, not about filing.** Upkeep (digesting a turn into its task record,
    extracting facts) is done by the side model after the turn. The orchestrator's tools are for the cases where it
    knows something is worth keeping or needs something back.
 6. **Newer wins, older stays.** A fact that changes ("the port is 8791 now") supersedes the old one, which is kept
    with its date and marked superseded — so "what did we decide in October?" still has an answer.
-4. **Per project, local, no secrets.** Stored in the project's data directory; values from the secret store are
-   redacted before anything is written or indexed.
 
 ## M1 — store, tools, search (harness)
 
