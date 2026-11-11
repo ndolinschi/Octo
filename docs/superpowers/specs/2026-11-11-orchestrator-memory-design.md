@@ -115,3 +115,21 @@ files (view, edit, delete), search box, and per turn "what the orchestrator had 
 - The digest costs one side-model call per turn; on a subscription-only setup there may be no side model. Then
   memory is what the orchestrator writes itself.
 - Cross-project memory. Out for now.
+
+
+---
+
+## As built — M1 (harness)
+
+Exact API, limits and behaviour: [`apps/harness/docs/memory.md`](../../../apps/harness/docs/memory.md). Client: `@octo/agent-client` (`Task`, `MemoryFile`, `MemoryHit`, optional `listTasks`, `listMemory`, `getMemoryFile`, `putMemoryFile`, `deleteMemoryFile`, `searchMemory`; events `task.updated`, `memory.updated`; reducer `tasks`, `memoryRevision`). **M2 and M3 are not built.** Where the text above was silent or is not what was built:
+
+- **Memory files are rows in `project.sqlite`, not files in `{project}/memory/`** (one transaction with their index entry, no path-escape surface). Same limits (name ≤ 80 characters, ≤ 64 kB, ≤ 500 files, `.md`), `INDEX.md` generated on `view`.
+- **Schema version 2** (migration from 1 builds the index from the existing messages; tested). Search tables: `search_docs` + FTS5 `search_u` (`unicode61 remove_diacritics 2`) and `search_t` (`trigram`).
+- **Russian inflections** are found through the trigram index with a *stem* of the query word (2 characters off a 5 to 7 character word, 3 off a longer one). Endings longer than 3 letters are not covered; this is not stemming. `unicode61` alone fails on "бюджета" for "бюджет" (checked).
+- **Search rules the spec left open**: all words (AND) first; failing that, "any of the significant words" kept only when at least half occur in the document, so a question about something absent finds nothing; exact-index hits before trigram hits; superseded facts after current ones; `after` inclusive, `before` exclusive; a fact hit carries `message_id` and `task_id`.
+- **Superseding works across tasks** (a later request usually opens a new task): the digest is shown up to 20 current facts of other tasks; the older fact's `superseded_by` is `"<taskId>/<factId>"` when it lives in another task.
+- **Quotes are checked**: a quote (from `task_update` or the digest) must be an exact substring of the request message, else `task_update` refuses and the digest drops it.
+- **`auto` and `goal_by`** on a task record tell the digest what it may replace (the harness's fallback goal, never the orchestrator's); `task_update` with another task's `id` attaches the turn's message to it and drops the untouched record the harness opened.
+- **Digest**: after completed turns only, side model (fast tier unless `models.side`), no tools, usage role `digest`, failures only log; nothing without a side model beyond the 400-character fallback goal.
+- Redaction at write and index time, including the index of messages (installed before the first message of a turn is indexed); the transcript itself still holds a user's own text as typed.
+- Not built: everything in M2 and M3; the spec's acceptance items for M2 are open. The mock orchestrator does not search on its own: the tests drive the tools with request markers (`[search: …]`, `[recall: id]`, `[mem-create: …]`, `[task-update: …]`) and the mock digest with `[fact: …]`, `[goal: …]`, `[quote: …]`, `[decision: …]`.

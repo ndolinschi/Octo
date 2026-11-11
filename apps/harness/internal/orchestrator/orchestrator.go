@@ -16,6 +16,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/inputs"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -76,6 +77,10 @@ type Options struct {
 	// ApprovalTimeout is how long an approval request waits for an answer
 	// before it is denied (zero: approval.DefaultTimeout; negative: never).
 	ApprovalTimeout time.Duration
+	// MemoryDigest makes the harness digest every completed turn into its task
+	// record with one side-model call (M1). `harness serve` turns it on; it is
+	// off here so that embedders and tests that count model requests see none.
+	MemoryDigest bool
 	// Secrets is the project secret store; nil makes one under each project's data directory.
 	Secrets *secrets.Manager
 }
@@ -94,6 +99,7 @@ type Orchestrator struct {
 	acp *acpHost
 
 	trackers  map[string]*changes.Tracker // guarded by mu
+	memories  map[string]*memory.Service  // guarded by mu
 	approvals *approval.Manager
 	inputs    *inputs.Manager
 	secrets   *secrets.Manager
@@ -116,7 +122,7 @@ func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Option
 	o := &Orchestrator{
 		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle),
 		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), sides: make(map[string]*side),
-		trackers: make(map[string]*changes.Tracker), sendNow: make(map[string]bool),
+		trackers: make(map[string]*changes.Tracker), memories: make(map[string]*memory.Service), sendNow: make(map[string]bool),
 	}
 	o.approvals = approval.New(o.hub.Publish, o.publishAttention, opts.ApprovalTimeout)
 	o.inputs = inputs.New(o.hub.Publish, o.publishAttention)
@@ -222,6 +228,7 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 	if err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
+	o.memoryOf(db) // installs the secret redactor of the search index before anything is indexed
 	rt, err := o.newRuntime(ctx, db)
 	if err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
@@ -238,6 +245,7 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
 	rt.turnID = msg.ID
+	rt.openTurnTask(ctx, text, msg.ID)
 	rt.publish(events.MessageCreated, map[string]any{"message": msg})
 	running, now := projectstore.StatusRunning, projectstore.Now()
 	model := rt.models.Orchestrator
@@ -276,5 +284,9 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 		}
 	}
 	o.approvals.EndTurn(rt.pid(), rt.turnID)
-	return status, rt.finishTurn(orch.ID, status, res.Text, errText)
+	finished := rt.finishTurn(orch.ID, status, res.Text, errText)
+	if status == projectstore.StatusCompleted {
+		o.digestTurn(rt, orch.ID, rt.currentTask(), rt.turnID, res.Text)
+	}
+	return status, finished
 }

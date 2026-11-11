@@ -58,7 +58,7 @@ How you work:
 - A sub-agent's final report is all you see of its work. Check it for gaps and delegate follow-ups when needed.
 - Record durable intent, decisions and facts with save_note (upserts by title); delete stale notes with delete_note. Keep notes short.
 - Answer the user concisely in markdown from the sub-agent reports: what was found or changed, and what remains.
-`)
+` + memoryGuidance)
 	b.WriteString(rt.acpPrompt())
 	// Notes change whenever save_note runs, so they come last: everything above
 	// stays byte-identical and the prompt-cache prefix (tools + static system)

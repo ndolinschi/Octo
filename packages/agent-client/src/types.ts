@@ -274,6 +274,11 @@ export type ProjectAttentionEvent = { type: "project.attention"; seq: number; ne
 /** Names (never values) of secrets that were stored or deleted. */
 export type SecretsChangedEvent = { type: "secrets.changed"; seq: number; names: string[] };
 
+/** A task record was created or changed (M1); `deleted` says an auto-opened record was merged into another task. */
+export type TaskUpdatedEvent = { type: "task.updated"; seq: number; task?: Task; task_id?: string; deleted?: boolean };
+/** A memory file was written, deleted or renamed. */
+export type MemoryUpdatedEvent = { type: "memory.updated"; seq: number; path: string; deleted?: boolean; renamed_from?: string };
+
 export type BridgeEvent =
   | AgentCreatedEvent
   | AgentUpdatedEvent
@@ -297,7 +302,9 @@ export type BridgeEvent =
   | InputResolvedEvent
   | QueueUpdatedEvent
   | ProjectAttentionEvent
-  | SecretsChangedEvent;
+  | SecretsChangedEvent
+  | TaskUpdatedEvent
+  | MemoryUpdatedEvent;
 
 export type BridgeEventType = BridgeEvent["type"];
 
@@ -638,3 +645,52 @@ export type Diagnostics = {
   log_tail: string[];
   problems: string[];
 };
+
+// --- M1: orchestrator memory ----------------------------------------------------------------------------------
+
+export type TaskStatus = "open" | "done" | "dropped";
+/** Wording of the user kept exactly, with the message it came from. */
+export type TaskQuote = { text: string; message_id: number };
+/** A short standalone statement with its date; `superseded_by` names the newer fact (of the same task) that replaced it. */
+export type TaskFact = { id: string; text: string; date: string; message_id: number; superseded_by?: string };
+/** A task record: the detail map of one piece of work. */
+export type Task = {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  goal: string;
+  /** Who wrote the goal: the harness (fallback: the first 400 characters of the request), the orchestrator, or the digest. */
+  goal_by: "harness" | "orchestrator" | "digest";
+  /** True while the record is the one the harness opened for a request and nobody has edited. */
+  auto: boolean;
+  constraints: string[];
+  acceptance: string[];
+  quotes: TaskQuote[];
+  decisions: string[];
+  outcome: string;
+  files: string[];
+  facts: TaskFact[];
+  message_ids: number[];
+  created_at: string;
+  updated_at: string;
+};
+export type MemoryFile = { path: string; summary: string; content?: string; size: number; created_at: string; updated_at: string };
+/** `GET .../memory`: the files without content and the harness-generated INDEX.md text. */
+export type MemoryList = { files: MemoryFile[]; index: string };
+export type MemorySearchKind = "tasks" | "facts" | "files" | "messages";
+export type MemoryHit = {
+  kind: "task" | "fact" | "file" | "message";
+  id: string;
+  title: string;
+  /** At most 300 characters around the match. */
+  snippet: string;
+  date: string;
+  /** Set on a fact a newer one replaced; such hits come after current ones. */
+  superseded?: boolean;
+  /** The message a fact came from (the exact words are one recall away). */
+  message_id?: number;
+  task_id?: string;
+};
+/** Up to 10 hits; with none, `message` is "nothing in memory matches". */
+export type MemorySearchResult = { hits: MemoryHit[]; message?: string };
+export type MemorySearchParams = { q: string; in?: MemorySearchKind[]; after?: string; before?: string; limit?: number };

@@ -50,6 +50,7 @@ flowchart TB
 | `internal/mcprelay` | `harness mcp-relay`: stdio-to-HTTP relay for agents without HTTP MCP support |
 | `internal/changes`, `internal/diff` | v7 change tracking: per-project tracker (index, pre-image copies, git-aware snapshot walk) and the line-diff counter; see [v7.md](./v7.md) |
 | `internal/approval`, `internal/inputs`, `internal/secrets` | v7 pending approvals and "allow for this turn" grants; open forms (`request_input`); the per-project 0600 secret store and its redactor; see [v7.md](./v7.md) |
+| `internal/memory` | M1 orchestrator memory service: task records, memory files, search shaping, digest merge, limits and secret redaction; see [memory.md](./memory.md) |
 | `internal/permission` | `permission.Decide`, the one seam answering an ACP agent's permission requests (auto-approve today) |
 | `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`); env switches advertise auth methods, models, `loadSession` and HTTP MCP, refuse unknown models or MCP servers; markers drive MCP tool calls (`[mcp-spawn]`), echo the prompt (`[echo]`), crash (`[crash]`) and hang (`[hang]`) |
 | `internal/mockllm` | Scripted Anthropic-compatible Messages server (used by tests and `examples/mockllm`) |

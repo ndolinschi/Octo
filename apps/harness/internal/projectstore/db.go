@@ -3,6 +3,7 @@ package projectstore
 import (
 	"context"
 	"database/sql"
+	"sync/atomic"
 )
 
 const projectSchema = `
@@ -126,6 +127,39 @@ CREATE TABLE IF NOT EXISTS changes (
 	tool_use_id TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS changes_turn ON changes (turn_id, id);
+CREATE TABLE IF NOT EXISTS tasks (
+	id TEXT PRIMARY KEY,
+	title TEXT NOT NULL,
+	status TEXT NOT NULL,
+	goal TEXT NOT NULL DEFAULT '',
+	goal_by TEXT NOT NULL DEFAULT 'harness',
+	auto INTEGER NOT NULL DEFAULT 1,
+	data_json TEXT NOT NULL DEFAULT '{}',
+	outcome TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS memory_files (
+	path TEXT PRIMARY KEY,
+	summary TEXT NOT NULL,
+	content TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS search_docs (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	kind TEXT NOT NULL,
+	ref TEXT NOT NULL,
+	title TEXT NOT NULL,
+	body TEXT NOT NULL,
+	date TEXT NOT NULL,
+	superseded INTEGER NOT NULL DEFAULT 0,
+	message_id INTEGER NOT NULL DEFAULT 0,
+	task_id TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS search_docs_ref ON search_docs (kind, ref);
+CREATE VIRTUAL TABLE IF NOT EXISTS search_u USING fts5(title, body, tokenize = 'unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE IF NOT EXISTS search_t USING fts5(title, body, tokenize = 'trigram');
 CREATE TABLE IF NOT EXISTS queue (
 	id TEXT PRIMARY KEY,
 	seq INTEGER NOT NULL,
@@ -139,6 +173,19 @@ type DB struct {
 	sql *sql.DB
 	// dir is the project's data directory (project.sqlite and its files).
 	dir string
+	// redact, when set, scrubs secret values from text before it is indexed.
+	redact atomic.Pointer[func(string) string]
+}
+
+// SetRedactor sets the function that removes secret values from text before it
+// is written to the search index.
+func (d *DB) SetRedactor(f func(string) string) { d.redact.Store(&f) }
+
+func (d *DB) scrub(s string) string {
+	if f := d.redact.Load(); f != nil && *f != nil {
+		return (*f)(s)
+	}
+	return s
 }
 
 // Dir is the project's data directory.

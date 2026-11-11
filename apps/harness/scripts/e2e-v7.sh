@@ -146,6 +146,34 @@ grep -q "$SECRET" "$TMP/harness.log" && fail "the secret is in the harness log"
 grep -q "$SECRET" "$TMP/mock.log" && fail "the secret reached the model server"
 curl -fsS -X DELETE "$BASE/v1/projects/$P5/secrets/api_key" -o /dev/null
 
+echo "== memory (M1): task record, digest, search, files"
+P6=$(newproject memory full)
+post POST "/v1/projects/$P6/messages" '{"text":"quick: Нужно уложиться в бюджет проекта [goal: Уложиться в бюджет] [fact: The dev server port is 8790] [quote: Нужно уложиться в бюджет]"}' >/dev/null
+idle "$P6"
+nfacts() { [ "$(curl -fsS "$BASE/v1/projects/$P6/tasks" | jget 'sum(len(t["facts"]) for t in d["tasks"])')" -ge "$1" ]; }
+waitfor "the digest" nfacts 1
+curl -fsS "$BASE/v1/projects/$P6/tasks" | python3 -c '
+import json,sys
+t=json.load(sys.stdin)["tasks"][0]
+assert t["goal_by"]=="digest" and t["goal"]=="Уложиться в бюджет" and t["quotes"][0]["text"]=="Нужно уложиться в бюджет", t' || fail "task record not digested"
+post POST "/v1/projects/$P6/messages" '{"text":"quick: the port is 8791 now [fact: The dev server port is 8791 | supersedes: The dev server port is 8790]"}' >/dev/null
+idle "$P6"
+waitfor "the second digest" nfacts 2
+hits=$(curl -fsS "$BASE/v1/projects/$P6/memory/search?q=dev%20server%20port&in=facts")
+python3 - "$hits" <<'PY' || fail "superseded fact not ranked after the current one"
+import json,sys
+h=json.loads(sys.argv[1])["hits"]
+assert len(h)==2 and not h[0].get("superseded") and h[1]["superseded"] and "8791" in h[0]["snippet"], h
+PY
+ru=$(curl -fsS "$BASE/v1/projects/$P6/memory/search?q=%D0%B1%D1%8E%D0%B4%D0%B6%D0%B5%D1%82%D0%B0")
+[ "$(jget 'len(d["hits"])>0' <<<"$ru")" = True ] || fail "an inflected Russian word was not found"
+none=$(curl -fsS "$BASE/v1/projects/$P6/memory/search?q=hovercraft")
+[ "$(jget 'd["message"]' <<<"$none")" = "nothing in memory matches" ] || fail "an empty search did not say so"
+post PUT "/v1/projects/$P6/memory/notes/arch.md" '{"content":"we use sqlite with fts5","summary":"architecture"}' >/dev/null
+[ "$(curl -fsS "$BASE/v1/projects/$P6/memory/search?q=fts5&in=files" | jget 'len(d["hits"])')" = 1 ] || fail "memory file not searchable"
+curl -fsS -X DELETE "$BASE/v1/projects/$P6/memory/notes/arch.md" -o /dev/null
+[ "$(curl -fsS "$BASE/v1/projects/$P6/memory/search?q=fts5&in=files" | jget 'len(d["hits"])')" = 0 ] || fail "a deleted memory file is still indexed"
+
 echo "== no leftover processes"
 kill "${PIDS[@]}" 2>/dev/null || true
 sleep 1

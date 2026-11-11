@@ -151,3 +151,55 @@ func TestNewerRegistryIsRefused(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Schema 1 (the release before memory) has no tasks, memory files or search
+// indexes; opening it with schema 2 creates them and indexes the messages that
+// are already there.
+func TestMigrateFromSchema1BuildsTheSearchIndex(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := s.Create(ctx, NewProject{Name: "p", ModelsJSON: "{}", MaxDepth: 1, OrchestratorModel: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := db.ID()
+	orch, _ := db.Orchestrator(ctx)
+	for _, q := range []string{
+		`INSERT INTO messages (agent_id, role, content_json, created_at) VALUES ('` + orch.ID + `', 'user', '[{"type":"text","text":"Нужно уложиться в бюджет"}]', '2026-10-01T00:00:00.000Z')`,
+		`INSERT INTO messages (agent_id, role, content_json, created_at) VALUES ('` + orch.ID + `', 'user', '[{"type":"tool_result","tool_use_id":"x","content":"hidden tool words"}]', '2026-10-01T00:00:01.000Z')`,
+		`DROP TABLE tasks`, `DROP TABLE memory_files`, `DROP TABLE search_docs`, `DROP TABLE search_u`, `DROP TABLE search_t`,
+		`PRAGMA user_version = 1`,
+	} {
+		if err := db.Exec_(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	_ = s.Close()
+
+	s, err = Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	db, err = s.Get(ctx, pid)
+	if err != nil {
+		t.Fatalf("schema 1 does not open: %v", err)
+	}
+	hits, err := db.Search(ctx, SearchQuery{Text: "бюджета"})
+	if err != nil || len(hits) != 1 || hits[0].Kind != DocMessage || hits[0].Date != "2026-10-01T00:00:00.000Z" {
+		t.Fatalf("existing messages were not indexed: %+v %v", hits, err)
+	}
+	if hits, _ := db.Search(ctx, SearchQuery{Text: "hidden tool words"}); len(hits) != 0 {
+		t.Fatalf("tool output was indexed: %+v", hits)
+	}
+	if _, err := db.CreateTask(ctx, Task{Title: "t", GoalBy: "harness"}); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := userVersion(ctx, db.sql); v != SchemaVersion || SchemaVersion != 2 {
+		t.Fatalf("version = %d", v)
+	}
+}

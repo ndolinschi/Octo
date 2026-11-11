@@ -1,5 +1,10 @@
 import type {
   Agent,
+  MemoryFile,
+  MemoryList,
+  MemorySearchParams,
+  MemorySearchResult,
+  Task,
   Diagnostics,
   Approval,
   ApprovalAnswer,
@@ -147,6 +152,16 @@ export interface Bridge {
   listSecrets?(projectId: string): Promise<SecretInfo[]>;
   putSecret?(projectId: string, name: string, value: string): Promise<void>;
   deleteSecret?(projectId: string, name: string): Promise<void>;
+  /*
+   * M1 members (orchestrator memory). Optional like the v7 ones: HTTP bridge only.
+   */
+  listTasks?(projectId: string): Promise<Task[]>;
+  listMemory?(projectId: string): Promise<MemoryList>;
+  getMemoryFile?(projectId: string, path: string): Promise<MemoryFile>;
+  /** Creates or replaces a file (the user's edit); `summary` is required for a new file. */
+  putMemoryFile?(projectId: string, path: string, content: string, summary?: string): Promise<MemoryFile>;
+  deleteMemoryFile?(projectId: string, path: string): Promise<void>;
+  searchMemory?(projectId: string, params: MemorySearchParams): Promise<MemorySearchResult>;
   openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
@@ -181,6 +196,8 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "queue.updated",
   "project.attention",
   "secrets.changed",
+  "task.updated",
+  "memory.updated",
 ];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -259,6 +276,9 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     }
     return body[key] as T;
   }
+
+  /** A memory path with its slashes kept: each segment is encoded. */
+  const memoryPath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
   const usageQuery = (params: UsageParams | undefined) => {
     const parts: string[] = [];
@@ -360,6 +380,22 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     },
     deleteSecret: async (id, name) => {
       await request("DELETE", `${p(id)}/secrets/${encodeURIComponent(name)}`);
+    },
+    listTasks: (id) => unwrap<Task[]>(request("GET", `${p(id)}/tasks`), "tasks"),
+    listMemory: (id) => request("GET", `${p(id)}/memory`) as Promise<MemoryList>,
+    getMemoryFile: (id, path) => request("GET", `${p(id)}/memory/${memoryPath(path)}`) as Promise<MemoryFile>,
+    putMemoryFile: (id, path, content, summary) =>
+      request("PUT", `${p(id)}/memory/${memoryPath(path)}`, summary === undefined ? { content } : { content, summary }) as Promise<MemoryFile>,
+    deleteMemoryFile: async (id, path) => {
+      await request("DELETE", `${p(id)}/memory/${memoryPath(path)}`);
+    },
+    searchMemory: (id, params) => {
+      const q = [`q=${encodeURIComponent(params.q)}`];
+      if (params.in !== undefined && params.in.length > 0) q.push(`in=${params.in.join(",")}`);
+      if (params.after !== undefined) q.push(`after=${encodeURIComponent(params.after)}`);
+      if (params.before !== undefined) q.push(`before=${encodeURIComponent(params.before)}`);
+      if (params.limit !== undefined) q.push(`limit=${params.limit}`);
+      return request("GET", `${p(id)}/memory/search?${q.join("&")}`) as Promise<MemorySearchResult>;
     },
     getDiagnostics: () => request("GET", "/v1/diagnostics") as Promise<Diagnostics>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,

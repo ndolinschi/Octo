@@ -151,6 +151,9 @@ func (s *Store) open(ctx context.Context, id string) (*DB, error) {
 	return db, nil
 }
 
+// Evict closes the cached database of a project; the next Get reopens it.
+func (s *Store) Evict(id string) { s.drop(id) }
+
 func (s *Store) drop(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

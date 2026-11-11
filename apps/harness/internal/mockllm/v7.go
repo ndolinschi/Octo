@@ -1,7 +1,9 @@
 package mockllm
 
 import (
+	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -97,4 +99,108 @@ func formReply(r *request, anchor int, ask string) reply {
 		}
 	}
 	return reply{Text: "Form answered: " + clip(result, 300)}
+}
+
+// digestMarker is how the harness's memory digest prompt introduces itself.
+const digestMarker = "You maintain the memory of a software project"
+
+// Markers in the user's request that the mock's digest turns into JSON:
+//
+//	[fact: TEXT]  or  [fact: TEXT | supersedes: OLD TEXT]
+//	[goal: TEXT]  [quote: TEXT]  [decision: TEXT]  [outcome: TEXT]
+var (
+	factMarker     = regexp.MustCompile(`\[fact:\s*([^\]|]+?)\s*(?:\|\s*supersedes:\s*([^\]]+?)\s*)?\]`)
+	goalMarker     = regexp.MustCompile(`\[goal:\s*([^\]]+?)\s*\]`)
+	quoteMarker    = regexp.MustCompile(`\[quote:\s*([^\]]+?)\s*\]`)
+	decisionMarker = regexp.MustCompile(`\[decision:\s*([^\]]+?)\s*\]`)
+	outcomeMarker  = regexp.MustCompile(`\[outcome:\s*([^\]]+?)\s*\]`)
+)
+
+// digestReply answers the digest call: a JSON object built from the markers of
+// the request it was given.
+func digestReply(r *request) reply {
+	text := ""
+	if n := len(r.Messages); n > 0 {
+		text = r.Messages[n-1].text()
+	}
+	if i := strings.Index(text, "User request:"); i >= 0 {
+		text = text[i:]
+	}
+	first := func(re *regexp.Regexp) string {
+		if m := re.FindStringSubmatch(text); m != nil {
+			return m[1]
+		}
+		return ""
+	}
+	all := func(re *regexp.Regexp) []string {
+		out := []string{}
+		for _, m := range re.FindAllStringSubmatch(text, -1) {
+			out = append(out, m[1])
+		}
+		return out
+	}
+	facts := []map[string]string{}
+	for _, m := range factMarker.FindAllStringSubmatch(text, -1) {
+		facts = append(facts, map[string]string{"text": m[1], "supersedes": m[2]})
+	}
+	out := map[string]any{
+		"goal": first(goalMarker), "outcome": first(outcomeMarker), "quotes": all(quoteMarker), "decisions": all(decisionMarker),
+		"constraints": []string{}, "acceptance": []string{}, "facts": facts,
+	}
+	b, _ := json.Marshal(out)
+	return reply{Text: string(b)}
+}
+
+// Orchestrator markers that make one memory tool call, then report its result:
+//
+//	[search: QUERY]            memory_search {query}
+//	[search-after: DATE QUERY] memory_search with after=DATE
+//	[recall: ID]               recall_message {id}
+//	[mem-create: PATH | SUMMARY | TEXT]   memory create
+//	[task-update: TITLE]       task_update {title}
+var (
+	searchMarker      = regexp.MustCompile(`\[search:\s*([^\]]+?)\s*\]`)
+	searchAfterMarker = regexp.MustCompile(`\[search-after:\s*(\S+)\s+([^\]]+?)\s*\]`)
+	recallMarker      = regexp.MustCompile(`\[recall:\s*(\d+)\s*\]`)
+	memCreateMarker   = regexp.MustCompile(`\[mem-create:\s*([^|\]]+?)\s*\|\s*([^|\]]+?)\s*\|\s*([^\]]+?)\s*\]`)
+	taskUpdateMarker  = regexp.MustCompile(`\[task-update:\s*([^\]]+?)\s*\]`)
+)
+
+func memoryToolCall(ask string) (call, bool) {
+	switch {
+	case searchAfterMarker.MatchString(ask):
+		m := searchAfterMarker.FindStringSubmatch(ask)
+		return call{Name: "memory_search", Input: map[string]any{"query": m[2], "after": m[1]}}, true
+	case searchMarker.MatchString(ask):
+		return call{Name: "memory_search", Input: map[string]any{"query": searchMarker.FindStringSubmatch(ask)[1]}}, true
+	case recallMarker.MatchString(ask):
+		n, _ := strconv.Atoi(recallMarker.FindStringSubmatch(ask)[1])
+		return call{Name: "recall_message", Input: map[string]any{"id": n}}, true
+	case memCreateMarker.MatchString(ask):
+		m := memCreateMarker.FindStringSubmatch(ask)
+		return call{Name: "memory", Input: map[string]any{"command": "create", "path": m[1], "summary": m[2], "file_text": m[3]}}, true
+	case taskUpdateMarker.MatchString(ask):
+		return call{Name: "task_update", Input: map[string]any{"title": taskUpdateMarker.FindStringSubmatch(ask)[1]}}, true
+	}
+	return call{}, false
+}
+
+// memoryReply is the orchestrator's one-tool-call flow for those markers.
+func memoryReply(r *request, anchor int, ask string) (reply, bool) {
+	c, ok := memoryToolCall(ask)
+	if !ok || !r.hasTool(c.Name) {
+		return reply{}, false
+	}
+	if r.assistantCountFrom(anchor) == 0 {
+		return reply{Text: "Let me use my memory.", Calls: []call{c}}, true
+	}
+	result := "(no result)"
+	for _, m := range r.Messages[anchor+1:] {
+		for _, b := range m.blocks() {
+			if b.Type == "tool_result" {
+				result = strings.TrimSpace(b.resultText())
+			}
+		}
+	}
+	return reply{Text: "Memory result: " + result}, true
 }

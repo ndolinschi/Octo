@@ -16,6 +16,10 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
 )
 
+// budgetRe matches the budget message with the router's spend of about two cents (the figure moves a
+// little with the mock's token counts).
+var budgetRe = regexp.MustCompile(`Project budget reached \(\$0\.0\d+ of \$0\.01\)`)
+
 func costOf(t *testing.T, r *rig, pid string) (sum float64, flat, nonFlat int) {
 	t.Helper()
 	for _, e := range r.usageLog(t, pid) {
@@ -118,7 +122,7 @@ func TestACPOrchestratorCumulativeUsageIsNotCountedTwice(t *testing.T) {
 func TestRouterSpendIsTheOnlyBudgetNumber(t *testing.T) {
 	ag := fakeAgent("fake", true)
 	ag.FlatRate = true
-	cheap := map[string][2]float64{"low": {1, 1}, "mid": {1, 1}, "high": {1, 1}}
+	cheap := map[string][2]float64{"low": {0.05, 0.05}, "mid": {0.05, 0.05}, "high": {0.05, 0.05}}
 	r, fr := newFakeRig(t, mockllm.New(0), fakerouter.Options{Rates: cheap, IgnoreBudget: true}, orchestrator.Options{Agents: []plugins.Agent{ag}})
 	pid := r.project(t, 1)
 	r.update(t, pid, budgetInput(0.01))
@@ -153,16 +157,16 @@ func TestRouterSpendIsTheOnlyBudgetNumber(t *testing.T) {
 	}
 	refused := false
 	for _, m := range toolResultTexts(t, r, pid, r.agents(t, pid)[0].ID) {
-		refused = refused || strings.Contains(m, "Project budget reached ($0.02 of $0.01)")
+		refused = refused || budgetRe.MatchString(m)
 	}
 	if !refused {
-		t.Fatal("delegation was not refused with the budget message")
+		t.Fatalf("delegation was not refused with the budget message: %q", toolResultTexts(t, r, pid, r.agents(t, pid)[0].ID))
 	}
 	if n := fr.UpstreamCalls() - callsBefore; n != 1 {
 		t.Fatalf("upstream calls this turn = %d, want 1: the next orchestrator request must be stopped by the same check", n)
 	}
 	e := r.agents(t, pid)[0].Error
-	if e == nil || !regexp.MustCompile(`^Project budget reached \(\$0\.02 of \$0\.01\)$`).MatchString(*e) {
+	if e == nil || !regexp.MustCompile(`^Project budget reached \(\$0\.0\d+ of \$0\.01\)$`).MatchString(*e) {
 		t.Fatalf("orchestrator error = %v", e)
 	}
 	for _, q := range fr.Requests() {

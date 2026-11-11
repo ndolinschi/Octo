@@ -27,6 +27,9 @@ import (
 type env struct {
 	url  string
 	gate chan struct{}
+	// store and dir are the stack's project store and data directory.
+	store *projectstore.Store
+	dir   string
 }
 
 // newEnv wires the full stack against the scripted mock Messages server. While
@@ -49,7 +52,8 @@ func newEnvWith(t *testing.T, gate chan struct{}, reg *plugins.Registry, opts ..
 	}))
 	t.Cleanup(llmSrv.Close)
 
-	store, err := projectstore.Open(t.TempDir())
+	dataDir := t.TempDir()
+	store, err := projectstore.Open(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +62,7 @@ func newEnvWith(t *testing.T, gate chan struct{}, reg *plugins.Registry, opts ..
 	notes := project.NewNotes(store, hub)
 	orch := orchestrator.New(store, hub, notes, orchestrator.Options{
 		Client: anthropicclient.New("k", llmSrv.URL, ""), MaxTurns: 12, Stream: true, Agents: reg.Agents(),
+		MemoryDigest: testDigest,
 	})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -67,7 +72,7 @@ func newEnvWith(t *testing.T, gate chan struct{}, reg *plugins.Registry, opts ..
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: config.DefaultMaxDepth})
 	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub), append([]bridge.Option{bridge.WithPlugins(reg)}, opts...)...))
 	t.Cleanup(srv.Close)
-	return &env{url: srv.URL, gate: gate}
+	return &env{url: srv.URL, gate: gate, store: store, dir: dataDir}
 }
 
 func (e *env) do(t *testing.T, method, path string, body any) (int, []byte) {
@@ -202,3 +207,20 @@ func count(evs []sseEvent, typ string) int {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// newEnvWithData is newEnv that also returns the data directory.
+func newEnvWithData(t *testing.T) (*env, string) {
+	e := newEnv(t, nil)
+	return e, e.dir
+}
+
+// closeProject evicts the project's cached database so the next request reopens the file.
+func (e *env) closeProject(pid string) { e.store.Evict(pid) }
+
+// testDigest switches the post-turn memory digest on for stacks built while it is set.
+var testDigest bool
+
+func withDigest(t *testing.T) {
+	testDigest = true
+	t.Cleanup(func() { testDigest = false })
+}

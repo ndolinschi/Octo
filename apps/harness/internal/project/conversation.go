@@ -78,7 +78,7 @@ func (s *Service) PostMessage(ctx context.Context, pid, text string) (msg projec
 	case errors.Is(err, projectstore.ErrNotFound):
 		return msg, nil, notFound("project")
 	}
-	return msg, queued, err
+	return msg, queued, storeErr(err)
 }
 
 func (s *Service) Cancel(ctx context.Context, pid string) error {

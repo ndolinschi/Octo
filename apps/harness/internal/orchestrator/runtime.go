@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
@@ -30,6 +31,21 @@ type runtime struct {
 	notes   []projectstore.Note
 	// turnID is the id of the user message that started the turn (0 outside a turn).
 	turnID int64
+	// taskID is the task record of the turn's request ("" when none was opened).
+	taskID string
+	taskMu sync.Mutex
+}
+
+func (rt *runtime) currentTask() string {
+	rt.taskMu.Lock()
+	defer rt.taskMu.Unlock()
+	return rt.taskID
+}
+
+func (rt *runtime) setTask(id string) {
+	rt.taskMu.Lock()
+	rt.taskID = id
+	rt.taskMu.Unlock()
 }
 
 func (o *Orchestrator) newRuntime(ctx context.Context, db *projectstore.DB) (*runtime, error) {
@@ -101,7 +117,7 @@ func (rt *runtime) registry(a projectstore.Agent) (*tools.Registry, error) {
 		}
 	}
 	if isOrch {
-		for _, d := range rt.noteDefs() {
+		for _, d := range append(rt.noteDefs(), rt.memoryDefs()...) {
 			if err := reg.Register(d); err != nil {
 				return nil, err
 			}

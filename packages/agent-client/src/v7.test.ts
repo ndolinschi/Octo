@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BRIDGE_EVENT_TYPES, BridgeError, createHttpBridge, type FetchLike } from "./client";
-import { applyEvent, emptyProjectState, withApprovals, withInputs, withQueue } from "./state";
-import type { Approval, BridgeEvent, FileChange, InputRequest } from "./types";
+import { applyEvent, emptyProjectState, withApprovals, withInputs, withQueue, withTasks } from "./state";
+import type { Approval, BridgeEvent, FileChange, InputRequest, Task } from "./types";
 
 type Call = { url: string; method: string | undefined; body: string | undefined };
 
@@ -232,4 +232,78 @@ test("http: diagnostics", async () => {
   const got = await bridge.getDiagnostics?.();
   assert.equal(calls[0]?.url, "http://h:1/v1/diagnostics");
   assert.equal(got?.version, "1");
+});
+
+test("M1: task and memory events and request shapes", async () => {
+  let s = emptyProjectState();
+  const task: Task = {
+    id: "tsk_1",
+    title: "t",
+    status: "open",
+    goal: "g",
+    goal_by: "harness",
+    auto: true,
+    constraints: [],
+    acceptance: [],
+    quotes: [],
+    decisions: [],
+    outcome: "",
+    files: [],
+    facts: [],
+    message_ids: [1],
+    created_at: "t",
+    updated_at: "t",
+  };
+  s = applyEvent(s, { type: "task.updated", seq: 1, task: { ...task } });
+  assert.equal(s.tasks.tsk_1?.goal, "g");
+  s = applyEvent(s, { type: "task.updated", seq: 2, task_id: "tsk_1", deleted: true });
+  assert.equal(Object.keys(s.tasks).length, 0);
+  s = applyEvent(s, { type: "memory.updated", seq: 3, path: "a.md" });
+  assert.equal(s.memoryRevision, 1);
+  s = withTasks(s, [{ ...task }]);
+  assert.equal(s.tasks.tsk_1?.id, "tsk_1");
+
+  const cases: {
+    run: (b: ReturnType<typeof bridgeWith>["bridge"]) => Promise<unknown> | undefined;
+    reply: string;
+    status?: number;
+    method: string;
+    path: string;
+    body?: unknown;
+    result?: unknown;
+  }[] = [
+    { run: (b) => b.listTasks?.("p"), reply: '{"tasks":[]}', method: "GET", path: "/v1/projects/p/tasks", result: [] },
+    { run: (b) => b.listMemory?.("p"), reply: '{"files":[],"index":"#"}', method: "GET", path: "/v1/projects/p/memory", result: { files: [], index: "#" } },
+    {
+      run: (b) => b.getMemoryFile?.("p", "notes/a b.md"),
+      reply: '{"path":"notes/a b.md"}',
+      method: "GET",
+      path: "/v1/projects/p/memory/notes/a%20b.md",
+      result: { path: "notes/a b.md" },
+    },
+    {
+      run: (b) => b.putMemoryFile?.("p", "a.md", "x", "s"),
+      reply: '{"path":"a.md"}',
+      method: "PUT",
+      path: "/v1/projects/p/memory/a.md",
+      body: { content: "x", summary: "s" },
+      result: { path: "a.md" },
+    },
+    { run: (b) => b.deleteMemoryFile?.("p", "a.md"), reply: "", status: 204, method: "DELETE", path: "/v1/projects/p/memory/a.md", result: undefined },
+    {
+      run: (b) => b.searchMemory?.("p", { q: "бюджет", in: ["facts", "messages"], after: "2026-10-01", limit: 5 }),
+      reply: '{"hits":[],"message":"nothing in memory matches"}',
+      method: "GET",
+      path: "/v1/projects/p/memory/search?q=%D0%B1%D1%8E%D0%B4%D0%B6%D0%B5%D1%82&in=facts,messages&after=2026-10-01&limit=5",
+      result: { hits: [], message: "nothing in memory matches" },
+    },
+  ];
+  for (const c of cases) {
+    const { bridge, calls } = bridgeWith(c.status ?? 200, c.reply);
+    const got = await c.run(bridge);
+    assert.equal(calls[0]?.method, c.method, c.path);
+    assert.equal(calls[0]?.url, `http://h:1${c.path}`);
+    if (c.body !== undefined) assert.deepEqual(JSON.parse(calls[0]?.body ?? "null"), c.body);
+    assert.deepEqual(got, c.result, c.path);
+  }
 });

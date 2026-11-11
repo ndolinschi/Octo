@@ -1,6 +1,7 @@
 package project
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -64,4 +65,15 @@ func revertUnavailable(note string) *Error {
 func queueFull() *Error {
 	return &Error{Kind: KindConflict, Code: "queue_full",
 		Message: fmt.Sprintf("the message queue is full (%d messages); wait for the running turn or remove one", projectstore.MaxQueue)}
+}
+
+// storeErr maps a store failure that has a clear meaning for the caller: a
+// database written by a newer version of the app answers 409 newer_schema with
+// the store's own message (what to do), not a bare 500.
+func storeErr(err error) error {
+	var ne *projectstore.NewerSchemaError
+	if errors.As(err, &ne) {
+		return &Error{Kind: KindConflict, Code: "newer_schema", Message: ne.Error()}
+	}
+	return err
 }

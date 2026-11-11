@@ -11,6 +11,7 @@ import type {
   QueuedMessage,
   SideMessage,
   SideStarted,
+  Task,
   TurnStatus,
 } from "./types";
 
@@ -53,6 +54,10 @@ export type ProjectState = {
   /** v7: the message queue. */
   queue: { paused: boolean; messages: QueuedMessage[] };
   attention: AttentionState;
+  /** M1: task records by id (from task.updated events and withTasks). */
+  tasks: Record<string, Task>;
+  /** M1: bumped when a memory file was written, deleted or renamed (refetch listMemory). */
+  memoryRevision: number;
   /** v7: bumped when secrets were stored or deleted (refetch listSecrets). */
   secretsRevision: number;
   lastSeq: number;
@@ -79,6 +84,8 @@ export function emptyProjectState(): ProjectState {
     answeredInputs: {},
     queue: { paused: false, messages: [] },
     attention: { needs_you: false, approvals: 0, inputs: 0 },
+    tasks: {},
+    memoryRevision: 0,
     secretsRevision: 0,
     lastSeq: 0,
     lastTurn: null,
@@ -226,6 +233,13 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
       return { ...state, attention: { needs_you: event.needs_you, approvals: event.approvals, inputs: event.inputs } };
     case "secrets.changed":
       return { ...state, secretsRevision: state.secretsRevision + 1 };
+    case "task.updated": {
+      if (event.task) return { ...state, tasks: { ...state.tasks, [event.task.id]: event.task } };
+      if (event.deleted && event.task_id !== undefined) return { ...state, tasks: omitKey(state.tasks, event.task_id) };
+      return state;
+    }
+    case "memory.updated":
+      return { ...state, memoryRevision: state.memoryRevision + 1 };
     case "project.updated":
     case "file.changed":
     case "settings.changed": // not about this project
@@ -342,4 +356,9 @@ export function withInputs(state: ProjectState, inputs: InputRequest[]): Project
 /** Replaces the queue with a loaded one (GET .../queue). */
 export function withQueue(state: ProjectState, queue: { paused: boolean; messages: QueuedMessage[] }): ProjectState {
   return { ...state, queue };
+}
+
+/** Replaces the task records with a loaded list (GET .../tasks). */
+export function withTasks(state: ProjectState, tasks: Task[]): ProjectState {
+  return { ...state, tasks: Object.fromEntries(tasks.map((t) => [t.id, t])) };
 }

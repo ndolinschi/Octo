@@ -14,6 +14,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/inputs"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
@@ -49,6 +50,8 @@ type Turns interface {
 	Secrets(projectID string) ([]secrets.Info, error)
 	PutSecret(projectID, name, value string) error
 	DeleteSecret(projectID, name string) error
+	// Memory is the project's memory service (tasks, memory files, search).
+	Memory(ctx context.Context, projectID string) (*memory.Service, error)
 	// Attention counts what waits for the user: approvals and open forms.
 	Attention(projectID string) (approvals, inputs int)
 }
@@ -194,7 +197,7 @@ func (s *Service) db(ctx context.Context, pid string) (*projectstore.DB, error) 
 	if errors.Is(err, projectstore.ErrNotFound) {
 		return nil, notFound("project")
 	}
-	return db, err
+	return db, storeErr(err)
 }
 
 func (s *Service) List(ctx context.Context) ([]Summary, error) {

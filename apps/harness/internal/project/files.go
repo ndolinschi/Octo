@@ -39,7 +39,7 @@ func (f *Files) root(ctx context.Context, pid, folder string) (string, error) {
 		return "", notFound("project")
 	}
 	if err != nil {
-		return "", err
+		return "", storeErr(err)
 	}
 	folders, err := db.Folders(ctx)
 	if err != nil {

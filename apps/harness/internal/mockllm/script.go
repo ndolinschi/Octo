@@ -16,6 +16,9 @@ type reply struct {
 
 // plan derives the next assistant reply purely from the request.
 func plan(r *request) reply {
+	if strings.Contains(r.system(), digestMarker) {
+		return digestReply(r)
+	}
 	if strings.Contains(r.system(), sideMarker) {
 		return sideReply(r)
 	}
@@ -53,6 +56,9 @@ func orchestratorReply(r *request) reply {
 	ask := r.Messages[anchor].text()
 	if agents := r.spawnAgentChoices(); len(agents) > 0 && strings.Contains(ask, acpMarker) {
 		return acpReply(r, anchor, ask, agents[0])
+	}
+	if rep, ok := memoryReply(r, anchor, ask); ok {
+		return rep
 	}
 	if strings.Contains(ask, formMarker) && r.hasTool("request_input") {
 		return formReply(r, anchor, ask)

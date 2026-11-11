@@ -32,7 +32,7 @@ var columnsAdded = []struct {
 // SchemaVersion is the schema generation this binary writes and understands
 // (PRAGMA user_version). Databases without a stamp (0) are older and are
 // migrated forward; a higher number was written by a newer binary and is refused.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.
@@ -91,6 +91,14 @@ func (d *DB) migrate(ctx context.Context) error {
 			if _, err := d.sql.ExecContext(ctx, "ALTER TABLE "+t.table+" ADD COLUMN "+c.name+" "+c.ddl); err != nil {
 				return fmt.Errorf("add %s.%s: %w", t.table, c.name, err)
 			}
+		}
+	}
+	if v, err := userVersion(ctx, d.sql); err != nil {
+		return err
+	} else if v < 2 {
+		// Schema 2 added the search indexes: index what the project already says.
+		if err := d.backfillMessages(ctx); err != nil {
+			return fmt.Errorf("index existing messages: %w", err)
 		}
 	}
 	return stampVersion(ctx, d.sql)

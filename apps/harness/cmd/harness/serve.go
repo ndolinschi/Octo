@@ -182,6 +182,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		Windows:         cfg.ContextWindows,
 		ACPIdle:         cfg.ACPIdle,
 		ApprovalTimeout: approvalTimeout,
+		MemoryDigest:    true,
 
 		BuiltinUnavailable:  builtinReason,
 		DefaultOrchestrator: cfg.Models.Orchestrator,

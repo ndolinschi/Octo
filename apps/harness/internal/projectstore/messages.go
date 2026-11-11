@@ -17,7 +17,12 @@ type Message struct {
 
 func (d *DB) AppendMessage(ctx context.Context, agentID, role string, contentJSON []byte) (Message, error) {
 	now := Now()
-	res, err := d.sql.ExecContext(ctx,
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
 		`INSERT INTO messages (agent_id, role, content_json, created_at) VALUES (?, ?, ?, ?)`,
 		agentID, role, string(contentJSON), now)
 	if err != nil {
@@ -25,6 +30,18 @@ func (d *DB) AppendMessage(ctx context.Context, agentID, role string, contentJSO
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
+		return Message{}, err
+	}
+	// The user and assistant texts are searchable; tool output is not. The
+	// index is written in the same transaction as the message.
+	if role == "user" || role == "assistant" {
+		if text := messageText(contentJSON); text != "" {
+			if err := putDoc(ctx, tx, messageDoc(id, role, d.scrub(text), now)); err != nil {
+				return Message{}, err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return Message{}, err
 	}
 	if err := d.Touch(ctx); err != nil {
