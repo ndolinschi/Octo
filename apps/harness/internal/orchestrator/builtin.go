@@ -24,7 +24,7 @@ func IsNoBuiltinLoop(err error) bool {
 // side question): with no key and no router it fails before any request, so
 // nothing reaches the upstream; otherwise it is the budget gate.
 func (rt *runtime) loopGate() func(context.Context) error {
-	if msg := rt.o.opts.BuiltinUnavailable; msg != "" {
+	if msg := rt.o.builtinOff(); msg != "" {
 		return func(context.Context) error { return noBuiltinLoopError{msg} }
 	}
 	return rt.gate()
@@ -42,7 +42,7 @@ var preferredAgents = []string{"claude-code", "codex", "copilot"}
 // so, or it has no probe. With no such agent the built-in default stays and its
 // turn fails with the unavailable message.
 func (o *Orchestrator) EffectiveOrchestrator(model string) string {
-	if o.opts.BuiltinUnavailable == "" || plugins.IsACPRef(model) || model != o.serverDefault() {
+	if o.builtinOff() == "" || plugins.IsACPRef(model) || model != o.serverDefault() {
 		return model
 	}
 	if a, ok := o.readyAgent(); ok {
@@ -70,6 +70,20 @@ func (o *Orchestrator) readyAgent() (plugins.Agent, bool) {
 	}
 	return plugins.Agent{}, false
 }
+
+// builtinOff is the reason the built-in loop cannot run right now ("" when it
+// can): Options.BuiltinUnavailable until SetBuiltinUnavailable replaces it.
+func (o *Orchestrator) builtinOff() string {
+	if p := o.builtinReason.Load(); p != nil {
+		return *p
+	}
+	return o.opts.BuiltinUnavailable
+}
+
+// SetBuiltinUnavailable swaps the reason the built-in loop cannot run ("" says
+// it can): a key written to the settings file makes the loop available
+// without a restart. Turns and side questions that start afterwards see it.
+func (o *Orchestrator) SetBuiltinUnavailable(reason string) { o.builtinReason.Store(&reason) }
 
 // SetDefaultOrchestrator swaps the server default orchestrator model; turns
 // that start afterwards see it. Safe concurrently with running turns.

@@ -26,9 +26,10 @@ type prober struct {
 	now func() time.Time
 	run func(ctx context.Context, a Agent) *bool
 
-	mu    sync.Mutex
-	ctx   context.Context // nil until StartProbes; probing is off before that
-	state map[string]*probeState
+	mu       sync.Mutex
+	ctx      context.Context // nil until StartProbes; probing is off before that
+	state    map[string]*probeState
+	onChange func() // called, unlocked, when a probe's outcome differs from the last one
 }
 
 type probeState struct {
@@ -82,8 +83,20 @@ func (p *prober) refresh(agents []Agent) {
 func (p *prober) probe(ctx context.Context, a Agent, st *probeState) {
 	res := p.run(ctx, a)
 	p.mu.Lock()
+	changed := !sameResult(st.result, res)
 	st.result, st.running = res, false
+	notify := p.onChange
 	p.mu.Unlock()
+	if changed && notify != nil {
+		notify()
+	}
+}
+
+func sameResult(a, b *bool) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // runProbe executes the manifest's probe command: exit 0 is logged in (unless

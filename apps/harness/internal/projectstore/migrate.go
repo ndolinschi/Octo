@@ -41,7 +41,7 @@ var columnsAdded = []struct {
 // SchemaVersion is the schema generation this binary writes and understands
 // (PRAGMA user_version). Databases without a stamp (0) are older and are
 // migrated forward; a higher number was written by a newer binary and is refused.
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.
@@ -101,6 +101,12 @@ func (d *DB) migrate(ctx context.Context) error {
 				return fmt.Errorf("add %s.%s: %w", t.table, c.name, err)
 			}
 		}
+	}
+	// Schema 6: PR review tables (migrate_v6_reviews.go). The chain is 4 (plan) -> 5 (error hint,
+	// stopped, tokens estimated, stemmed index) -> 6 (reviews); each step is idempotent, so a
+	// database of any earlier version runs the steps it lacks.
+	if err := d.migrateV6Reviews(ctx); err != nil {
+		return err
 	}
 	if v, err := userVersion(ctx, d.sql); err != nil {
 		return err

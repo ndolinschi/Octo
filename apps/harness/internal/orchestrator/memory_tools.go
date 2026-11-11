@@ -158,7 +158,7 @@ func (rt *runtime) openTurnTask(ctx context.Context, text string, messageID int6
 // one marks it superseded). It runs off the request path and only logs a
 // failure; with no side model the record keeps the harness's fallback goal.
 func (o *Orchestrator) digestTurn(rt *runtime, orchID, taskID string, messageID int64, reply string, trivial bool) {
-	if !o.opts.MemoryDigest || o.opts.BuiltinUnavailable != "" || taskID == "" || messageID == 0 || o.baseCtx.Err() != nil {
+	if !o.opts.MemoryDigest || o.builtinOff() != "" || taskID == "" || messageID == 0 || o.baseCtx.Err() != nil {
 		return
 	}
 	o.wg.Add(1)
@@ -275,7 +275,7 @@ func (o *Orchestrator) closeTurnTask(rt *runtime, status projectstore.AgentStatu
 	ctx, cancel := dbCtx(context.Background())
 	defer cancel()
 	trivial = rt.turnTools.Load() == 0 && utf8.RuneCountInString(strings.TrimSpace(reply)) <= TrivialReply
-	digestRuns := o.opts.MemoryDigest && o.opts.BuiltinUnavailable == "" && o.baseCtx.Err() == nil
+	digestRuns := o.opts.MemoryDigest && o.builtinOff() == "" && o.baseCtx.Err() == nil
 	_, gone, err := rt.memory().CloseTurn(ctx, id, memory.TurnEnd{
 		Completed: status == projectstore.StatusCompleted, Cancelled: status == projectstore.StatusCancelled,
 		Outcome: reply, Files: rt.touchedFiles(), Trivial: trivial, KeepForDigest: digestRuns,

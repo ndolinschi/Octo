@@ -64,7 +64,7 @@ type autoPlan struct {
 }
 
 func (rt *runtime) apiCandidates() []autoCand {
-	if rt.o.opts.BuiltinUnavailable != "" {
+	if rt.o.builtinOff() != "" {
 		return nil
 	}
 	var out []autoCand
@@ -79,7 +79,7 @@ func (rt *runtime) apiCandidates() []autoCand {
 // apiCandidate is a tier candidate; a tier mapped to an ACP agent is not an API
 // tier (the agent is its own candidate).
 func (rt *runtime) apiCandidate(tier string) (autoCand, bool) {
-	if rt.o.opts.BuiltinUnavailable != "" || plugins.IsACPRef(rt.models.ForTier(tier)) {
+	if rt.o.builtinOff() != "" || plugins.IsACPRef(rt.models.ForTier(tier)) {
 		return autoCand{}, false
 	}
 	return autoCand{c: router.Candidate{ID: tier, Kind: "api", Tier: tier}, tier: projectstore.Tier(tier)}, true
@@ -171,7 +171,7 @@ func bandTier(band string) projectstore.Tier {
 // unavailable, the first ready ACP agent (as for the default orchestrator).
 func (rt *runtime) autoDefault(reason string) autoPlan {
 	p := autoPlan{tier: projectstore.TierBalanced, info: projectstore.RouteInfo{Reason: reason, Choice: string(projectstore.TierBalanced)}}
-	if rt.o.opts.BuiltinUnavailable == "" {
+	if rt.o.builtinOff() == "" {
 		return p
 	}
 	if a, ok := rt.o.readyAgent(); ok {

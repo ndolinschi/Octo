@@ -1,4 +1,25 @@
 import type {
+  PullRequestList,
+  ReviewState,
+  ReviewSummary,
+  OpenReviewInput,
+  Review,
+  ReviewPatch,
+  ReviewFiles,
+  ReviewDiffOptions,
+  ReviewFileDiff,
+  ReviewFile,
+  ReviewComment,
+  ReviewCommentInput,
+  ReviewCommentUpdate,
+  ReviewFinding,
+  ReviewFindingDecision,
+  ReviewFindingResult,
+  ReviewSubmitInput,
+  ReviewSubmitPreview,
+  ReviewSubmitResult,
+} from "./review";
+import type {
   Agent,
   ContextReceipt,
   MemoryFile,
@@ -40,6 +61,7 @@ import type {
   FolderEntry,
   CompletionResult,
   SideMessage,
+  ProvidersResponse,
   SettingsUpdate,
   SettingsView,
   SideStarted,
@@ -53,12 +75,17 @@ import { openLspSession } from "./lspSession";
 export class BridgeError extends Error {
   readonly status: number;
   readonly code: string;
+  /** `model_unavailable` (422): the provider that would run the model, and what is missing. */
+  readonly provider?: string;
+  readonly reason?: string;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, detail?: { provider?: string; reason?: string }) {
     super(message);
     this.name = "BridgeError";
     this.status = status;
     this.code = code;
+    if (detail?.provider !== undefined) this.provider = detail.provider;
+    if (detail?.reason !== undefined) this.reason = detail.reason;
   }
 }
 
@@ -135,6 +162,14 @@ export interface Bridge {
   /** Validates the whole update, writes it atomically, applies what can apply at once. Secrets are write-only. */
   putSettings?(update: SettingsUpdate): Promise<SettingsView>;
   /**
+   * What can run a model right now (connect first, choose second): the built-in API loop, a detected router and every
+   * ACP agent, each with a state, its models and how to make it ready, plus the models a new project would get.
+   * Optional: only the HTTP bridge implements it; hosts check for presence. Refetch on `providers.updated`.
+   * Creating or patching a project with a model whose provider is not ready answers 422 `model_unavailable`
+   * (`BridgeError.provider` / `.reason`); creating with nothing connected answers 409 `no_provider`.
+   */
+  listProviders?(): Promise<ProvidersResponse>;
+  /**
    * Folder picker. `path` is a directory path or a prefix of one (`~` is the home directory, empty is home): the
    * child directories of its directory whose names start with the last segment (case-insensitive, hidden ones only
    * when that segment starts with a dot), at most 50. HTTP bridge only; the harness answers 403 unless it listens on
@@ -198,6 +233,34 @@ export interface Bridge {
    * `models.completion`, 409 `budget_reached`, 502 `completion_failed`. Aborting `signal` aborts the model call.
    */
   complete?(projectId: string, input: CompletionRequest, options?: { signal?: AbortSignalLike }): Promise<CompletionResult | null>;
+  /*
+   * RV1 members (pull-request review, apps/harness/docs/review.md). Optional: HTTP bridge only. Nothing is posted to a
+   * code host except by `submitReview`, which the user's own button calls.
+   */
+  /** Open pull requests of the project's repository (review requests first), or why they cannot be listed. */
+  listPullRequests?(projectId: string, params?: { folder?: string }): Promise<PullRequestList>;
+  listReviews?(projectId: string, state?: ReviewState): Promise<ReviewSummary[]>;
+  /** Starts a review of a pull request or a local branch; the same source opened again returns the open review. */
+  openReview?(projectId: string, input: OpenReviewInput): Promise<Review>;
+  getReview?(projectId: string, reviewId: string): Promise<Review>;
+  patchReview?(projectId: string, reviewId: string, patch: ReviewPatch): Promise<Review>;
+  /** Changed files in reading order. */
+  listReviewFiles?(projectId: string, reviewId: string): Promise<ReviewFiles>;
+  getReviewFileDiff?(projectId: string, reviewId: string, path: string, options?: ReviewDiffOptions): Promise<ReviewFileDiff>;
+  /** URL of a file's bytes at the head (`new`) or the base (`old`), for images next to their diff. */
+  reviewFileRawUrl?(projectId: string, reviewId: string, path: string, side: "new" | "old"): string;
+  setReviewFileViewed?(projectId: string, reviewId: string, path: string, viewed: boolean): Promise<ReviewFile>;
+  listReviewComments?(projectId: string, reviewId: string): Promise<ReviewComment[]>;
+  createReviewComment?(projectId: string, reviewId: string, input: ReviewCommentInput): Promise<ReviewComment>;
+  updateReviewComment?(projectId: string, reviewId: string, commentId: string, patch: ReviewCommentUpdate): Promise<ReviewComment>;
+  deleteReviewComment?(projectId: string, reviewId: string, commentId: string): Promise<void>;
+  listReviewFindings?(projectId: string, reviewId: string): Promise<ReviewFinding[]>;
+  /** Keep (makes a pending comment), dismiss (with a reason) or reset a finding. */
+  decideReviewFinding?(projectId: string, reviewId: string, findingId: string, decision: ReviewFindingDecision): Promise<ReviewFindingResult>;
+  /** What a submit would post, word for word; posts nothing. */
+  previewReviewSubmit?(projectId: string, reviewId: string, input: ReviewSubmitInput): Promise<ReviewSubmitPreview>;
+  /** Posts the pending comments and the verdict as one review. Only an explicit user action may call it. */
+  submitReview?(projectId: string, reviewId: string, input: ReviewSubmitInput): Promise<ReviewSubmitResult>;
   openLanguageServer(projectId: string, serverId: string): Promise<LanguageServerSession>;
   subscribe(projectId: string, handlers: SubscribeHandlers): () => void;
 }
@@ -237,8 +300,10 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "queue.updated",
   "project.attention",
   "secrets.changed",
+  "providers.updated",
   "task.updated",
   "memory.updated",
+  "review.updated",
 ];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -259,7 +324,11 @@ function toBridgeError(status: number, text: string): BridgeError {
   const err = isRecord(body) ? body.error : undefined;
   if (isRecord(err) && typeof err.message === "string") {
     const code = typeof err.code === "string" ? err.code : "http_error";
-    return new BridgeError(status, code, err.message);
+    const detail = {
+      ...(typeof err.provider === "string" ? { provider: err.provider } : {}),
+      ...(typeof err.reason === "string" ? { reason: err.reason } : {}),
+    };
+    return new BridgeError(status, code, err.message, detail);
   }
   const snippet = text.trim().slice(0, 200);
   return new BridgeError(status, "http_error", snippet || `HTTP ${status}`);
@@ -285,7 +354,7 @@ function parseEvent(data: unknown): BridgeEvent | undefined {
 }
 
 /** What {@link createHttpBridge} returns: every method is implemented, the optional ones included. */
-export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSettings">>;
+export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSettings" | "listProviders">>;
 
 export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
@@ -427,6 +496,39 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     deleteSecret: async (id, name) => {
       await request("DELETE", `${p(id)}/secrets/${encodeURIComponent(name)}`);
     },
+    listPullRequests: (id, params) =>
+      request("GET", `${p(id)}/prs${params?.folder ? `?folder=${encodeURIComponent(params.folder)}` : ""}`) as Promise<PullRequestList>,
+    listReviews: (id, state) => unwrap<ReviewSummary[]>(request("GET", `${p(id)}/reviews${state ? `?state=${state}` : ""}`), "reviews"),
+    openReview: (id, input) => request("POST", `${p(id)}/reviews`, input) as Promise<Review>,
+    getReview: (id, rid) => request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}`) as Promise<Review>,
+    patchReview: (id, rid, patch) => request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}`, patch) as Promise<Review>,
+    listReviewFiles: (id, rid) => request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/files`) as Promise<ReviewFiles>,
+    getReviewFileDiff: (id, rid, path, o) => {
+      const q: string[] = [];
+      if (o?.context !== undefined) q.push(`context=${o.context}`);
+      if (o?.ignoreWhitespace) q.push("ignore_whitespace=1");
+      if (o?.since) q.push(`since=${encodeURIComponent(o.since)}`);
+      return request(
+        "GET",
+        `${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}${q.length ? `?${q.join("&")}` : ""}`,
+      ) as Promise<ReviewFileDiff>;
+    },
+    reviewFileRawUrl: (id, rid, path, side) => `${base}${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}?raw=${side}`,
+    setReviewFileViewed: (id, rid, path, viewed) =>
+      request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}`, { viewed }) as Promise<ReviewFile>,
+    listReviewComments: (id, rid) => unwrap<ReviewComment[]>(request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments`), "comments"),
+    createReviewComment: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments`, input) as Promise<ReviewComment>,
+    updateReviewComment: (id, rid, cid, patch) =>
+      request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments/${encodeURIComponent(cid)}`, patch) as Promise<ReviewComment>,
+    deleteReviewComment: async (id, rid, cid) => {
+      await request("DELETE", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments/${encodeURIComponent(cid)}`);
+    },
+    listReviewFindings: (id, rid) => unwrap<ReviewFinding[]>(request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/findings`), "findings"),
+    decideReviewFinding: (id, rid, fid, d) =>
+      request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}/findings/${encodeURIComponent(fid)}`, d) as Promise<ReviewFindingResult>,
+    previewReviewSubmit: (id, rid, input) =>
+      request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/submit-preview`, input) as Promise<ReviewSubmitPreview>,
+    submitReview: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/submit`, input) as Promise<ReviewSubmitResult>,
     getTurnContext: (id, turnId) => request("GET", `${p(id)}/turns/${turnId}/context`) as Promise<ContextReceipt>,
     listTasks: (id) => unwrap<Task[]>(request("GET", `${p(id)}/tasks`), "tasks"),
     listMemory: (id) => request("GET", `${p(id)}/memory`) as Promise<MemoryList>,
@@ -450,6 +552,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     listProviders: () => request("GET", "/v1/providers") as Promise<ProviderList>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
+    listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
     openLanguageServer: (id, serverId) =>
       openLspSession(
         {

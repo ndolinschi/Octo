@@ -8,6 +8,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
+	"github.com/ndolinschi/Octo/apps/harness/internal/review"
 )
 
 const (
@@ -27,13 +28,16 @@ type Server struct {
 	limits  LimitSource
 	router  RouterInfo
 	mcp     http.Handler
+	reviews *review.Service
 
 	settings         SettingsStore
 	settingsLoopback bool
 	ping             time.Duration
 
 	diagnostics func() any
-	builtinOff  string        // reason the built-in loop is unavailable; "" = available
+	builtinOff  string // reason the built-in loop is unavailable; "" = available
+	builtinFn   func() (bool, string)
+	providers   ProviderSource
 	defaultOrch func() string // the orchestrator a project without a choice runs now
 }
 
@@ -101,6 +105,9 @@ func (s *Server) routes() *http.ServeMux {
 		mux.HandleFunc("GET /v1/settings", s.getSettings)
 		mux.HandleFunc("PUT /v1/settings", s.putSettings)
 	}
+	if s.providers != nil {
+		mux.HandleFunc("GET /v1/providers", s.listProviders)
+	}
 	if s.diagnostics != nil {
 		mux.HandleFunc("GET /v1/diagnostics", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, s.diagnostics()) })
 	}
@@ -159,6 +166,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/projects/{pid}/lsp/sessions/{sid}/messages", s.postLSPMessage)
 	mux.HandleFunc("GET /v1/projects/{pid}/lsp/sessions/{sid}/events", s.lspEvents)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/lsp/sessions/{sid}", s.deleteLSPSession)
+	s.reviewRoutes(mux)
 	if s.mcp != nil {
 		mux.Handle(mcp.PathPrefix, s.mcp)
 	}

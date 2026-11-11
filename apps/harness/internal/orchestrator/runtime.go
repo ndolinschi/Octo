@@ -271,6 +271,8 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 		rt.logErr("list agents", err)
 	}
 	text, errText = rt.redact(text), rt.redact(errText)
+	// The orchestrator is idle after every turn; a failed one leaves its error
+	// on the row until the next request starts (project.attention says failed).
 	idle, now := projectstore.StatusIdle, projectstore.Now()
 	patch := projectstore.AgentPatch{Status: &idle, FinishedAt: &now}
 	if text != "" {
@@ -299,6 +301,9 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	out := map[string]any{"status": string(status), "error": e}
 	if hint != "" && errText != "" {
 		out["hint"] = hint
+	}
+	if status == projectstore.StatusFailed {
+		rt.publishTurnState(attentionFailed, errText)
 	}
 	return out
 }

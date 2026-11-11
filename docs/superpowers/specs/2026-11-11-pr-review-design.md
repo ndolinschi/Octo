@@ -96,3 +96,23 @@ diffs. There is no notion of a pull request, no way to list or open one, and not
 - Reviewing on the code host's side as well (a bot that comments on its own) — deliberately out: the owner asked
   for *their* review to be easy, and unattended posting is a different trust decision.
 - Stacked PRs and merge queues.
+
+## As built — RV1 (harness)
+
+Exact API, shapes and rules: [`apps/harness/docs/review.md`](../../../apps/harness/docs/review.md). Built: code-host interface and `gh` adapter
+(`internal/codehost`), local-branch source, git worktrees under `{data-dir}/projects/{pid}/review/{rid}` with the 14-day and closed-PR
+cleanup (never with pending comments), the `reviews` store (schema 6: reviews, viewed marks per file blob, findings, comments, last submitted
+head), the diff API with reading order (core, callers, tests, other, mechanical; renames paired; binary and image markers; sizes), pending
+line / range / suggestion / file / general comments, submit (one atomic review post; preview), `review.updated`, and optional types and methods
+in `@octo/agent-client`.
+
+Deviations and additions: a fifth group `other` (docs, config, assets) sits between tests and mechanical; extra routes `GET …/reviews`,
+`PATCH …/files/{path}` (viewed), `PATCH …/findings/{fid}` (keep makes a pending comment, dismiss stores the reason), `POST …/submit-preview`;
+refresh is `PATCH {refresh:true}`. Local reviews submit to nowhere (comments are marked submitted and returned). No AI pass: findings are only
+stored and served; no route creates them.
+
+Verified: the three safety tests (nothing posted without submit; no agent path to submit: import graph, MCP tool list, MCP routes; PR text is
+data), worktrees leave the user's working tree untouched, repositories with spaces and Cyrillic in paths, the migration from the previous
+version, restart survival, all against a fake `gh` that is the only `gh` on PATH. Not verified: real `gh` and GitHub (no login here), fork PRs,
+very large PRs, finding quality (RV3), the residual risk that an agent with a shell could call the unauthenticated loopback API (supervised
+projects stop that command at an approval card).

@@ -132,22 +132,25 @@ func TestServeSettingsEndToEnd(t *testing.T) {
 	if err := json.Unmarshal(raw, &cfg); err != nil || cfg.DefaultModels.Fast != "new-fast" {
 		t.Fatalf("config = %s (%v)", raw, err)
 	}
-	// A key written now takes a restart: the loop is still unavailable here.
-	if cfg.BuiltinLoop.Available {
-		t.Fatal("the built-in loop changed without a restart")
+	// A key written now applies at once: the built-in loop is available
+	// without a restart.
+	if !cfg.BuiltinLoop.Available {
+		t.Fatal("the built-in loop did not become available after the key was written")
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, config.EnvFileName))
 	if !strings.Contains(string(b), "# written by hand\n") || !strings.Contains(string(b), "UNRELATED=keep me\n") ||
 		!strings.Contains(string(b), "HARNESS_MODEL_FAST=new-fast\n") {
 		t.Fatalf("file = %q", b)
 	}
-	if k := settingsView(t, base)["ANTHROPIC_API_KEY"]; !k.Set || k.Source != "file" || k.Value != nil {
+	if k := settingsView(t, base)["ANTHROPIC_API_KEY"]; !k.Set || k.Source != "file" || k.Value != nil || k.Applies != "now" {
 		t.Fatalf("key = %+v", k)
 	}
 	_, raw = request(t, "GET", base+"/v1/settings", nil)
 	var full settings.View
 	_ = json.Unmarshal(raw, &full)
-	if len(full.RestartRequired) != 1 || full.RestartRequired[0] != "ANTHROPIC_API_KEY" {
+	// The key is live, so only the router setting (read by the app, not by the
+	// harness) could ever need a restart, and it was not changed.
+	if len(full.RestartRequired) != 0 {
 		t.Fatalf("restart_required = %v", full.RestartRequired)
 	}
 }

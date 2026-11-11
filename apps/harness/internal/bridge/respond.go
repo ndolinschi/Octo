@@ -26,13 +26,20 @@ func writeErr(w http.ResponseWriter, err error) {
 	var pe *project.Error
 	if errors.As(err, &pe) {
 		status := map[project.Kind]int{
-			project.KindInvalid:     http.StatusBadRequest,
-			project.KindNotFound:    http.StatusNotFound,
-			project.KindConflict:    http.StatusConflict,
-			project.KindTooLarge:    http.StatusRequestEntityTooLarge,
-			project.KindUnsupported: http.StatusUnsupportedMediaType,
-			project.KindUpstream:    http.StatusBadGateway,
+			project.KindInvalid:       http.StatusBadRequest,
+			project.KindNotFound:      http.StatusNotFound,
+			project.KindConflict:      http.StatusConflict,
+			project.KindTooLarge:      http.StatusRequestEntityTooLarge,
+			project.KindUnsupported:   http.StatusUnsupportedMediaType,
+			project.KindUpstream:      http.StatusBadGateway,
+			project.KindUnprocessable: http.StatusUnprocessableEntity,
 		}[pe.Kind]
+		if pe.Code == "model_unavailable" {
+			writeJSON(w, status, map[string]any{"error": map[string]string{
+				"code": pe.Code, "message": pe.Message, "provider": pe.Provider, "reason": pe.Reason,
+			}})
+			return
+		}
 		writeError(w, status, pe.Code, pe.Message)
 		return
 	}

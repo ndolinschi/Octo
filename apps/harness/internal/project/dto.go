@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
@@ -24,6 +25,10 @@ type Summary struct {
 	NeedsYou         bool `json:"needs_you"`
 	PendingApprovals int  `json:"pending_approvals"`
 	PendingInputs    int  `json:"pending_inputs"`
+	// Attention is what the project asks of the user: "needs_you" while an
+	// approval or a form waits, "failed" when the last turn failed (the error is
+	// on the orchestrator's agent row) and nothing waits, else "none".
+	Attention string `json:"attention"`
 }
 
 type Project struct {
@@ -42,6 +47,9 @@ type Project struct {
 	Access string `json:"access"`
 	// Memory is the memory setting: how the orchestrator's context is built.
 	Memory memory.Settings `json:"memory"`
+	// ModelsUnavailable lists the stored models whose provider cannot run them
+	// now (never an error: the project is still readable and editable).
+	ModelsUnavailable []ModelIssue `json:"models_unavailable"`
 }
 
 func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error) {
@@ -72,6 +80,10 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 	}
 	p.PendingApprovals, p.PendingInputs = s.turns.Attention(info.ID)
 	p.NeedsYou = p.PendingApprovals+p.PendingInputs > 0
+	p.ModelsUnavailable = []ModelIssue{}
+	if s.provider != nil {
+		p.ModelsUnavailable = unusableModels(s.provider.Snapshot(), models)
+	}
 	spent, known, err := s.meter().Spent(ctx, db)
 	if err != nil {
 		return Project{}, err
@@ -79,18 +91,31 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 	if known {
 		p.SpentUSD = &spent
 	}
+	failed := false
 	for _, a := range agents {
 		if a.ParentID == nil {
 			p.OrchestratorAgentID = a.ID
 			if a.Status == projectstore.StatusRunning {
 				p.Status = "running"
 			}
+			// The orchestrator is idle after a failed turn; its error (not a
+			// warning) says it failed, until the next request resets it.
+			failed = a.Status == projectstore.StatusFailed ||
+				(a.Error != nil && *a.Error != "" && !strings.HasPrefix(*a.Error, "warning:"))
 		}
 	}
 	// Read last: a project whose orchestrator row says idle is still running until
 	// turn.finished has been published (see Orchestrator.finish).
 	if p.Status == "idle" && s.turns.Active(info.ID) {
 		p.Status = "running"
+	}
+	switch {
+	case p.NeedsYou:
+		p.Attention = "needs_you"
+	case failed && p.Status != "running":
+		p.Attention = "failed"
+	default:
+		p.Attention = "none"
 	}
 	return p, nil
 }

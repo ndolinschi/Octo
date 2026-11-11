@@ -109,7 +109,8 @@ type Orchestrator struct {
 	inputs    *inputs.Manager
 	secrets   *secrets.Manager
 
-	defaultOrch atomic.Pointer[string] // the server default orchestrator (SetDefaultOrchestrator)
+	defaultOrch   atomic.Pointer[string] // the server default orchestrator (SetDefaultOrchestrator)
+	builtinReason atomic.Pointer[string] // overrides Options.BuiltinUnavailable (SetBuiltinUnavailable)
 
 	// qmu serializes queue decisions (see queue.go); sendNow marks a project
 	// whose running turn was cancelled by SendNow. Lock order: qmu before mu.
@@ -268,17 +269,25 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 	if err := rt.repairDangling(ctx, orch.ID); err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
-	content, err := json.Marshal([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(text)})
-	if err != nil {
-		return projectstore.Message{}, nil, projectstore.Agent{}, err
-	}
-	msg, err := db.AppendMessage(ctx, orch.ID, "user", content)
-	if err != nil {
-		return projectstore.Message{}, nil, projectstore.Agent{}, err
+	// A retry sends the text of a turn that failed before it answered: the
+	// stored user message is run again, not stored a second time.
+	msg, retried := rt.failedRequest(ctx, orch, text)
+	if !retried {
+		content, err := json.Marshal([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(text)})
+		if err != nil {
+			return projectstore.Message{}, nil, projectstore.Agent{}, err
+		}
+		if msg, err = db.AppendMessage(ctx, orch.ID, "user", content); err != nil {
+			return projectstore.Message{}, nil, projectstore.Agent{}, err
+		}
 	}
 	rt.turnID = msg.ID
-	rt.openTurnTask(ctx, text, msg.ID)
-	rt.publish(events.MessageCreated, map[string]any{"message": msg})
+	if !retried || !rt.reuseTurnTask(ctx, msg.ID) {
+		rt.openTurnTask(ctx, text, msg.ID)
+	}
+	if !retried {
+		rt.publish(events.MessageCreated, map[string]any{"message": msg})
+	}
 	running, now := projectstore.StatusRunning, projectstore.Now()
 	model := rt.models.Orchestrator
 	if rt.isACPOrchestrator() {
@@ -292,6 +301,9 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
 	rt.publishAgent(events.AgentUpdated, orch)
+	if retried {
+		rt.publishTurnState(attentionNone, "")
+	}
 	return msg, rt, orch, nil
 }
 

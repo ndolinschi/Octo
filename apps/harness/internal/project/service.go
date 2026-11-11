@@ -20,6 +20,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/secrets"
 )
@@ -68,6 +69,11 @@ type ACPAgents interface {
 	Agents() []plugins.Agent
 }
 
+// ProviderSource says which providers can run a model now (providers.Service).
+type ProviderSource interface {
+	Snapshot() providers.Response
+}
+
 type Defaults struct {
 	Models   config.Models
 	MaxDepth int
@@ -87,6 +93,7 @@ type Service struct {
 	prices   prices.Table
 	router   *router.Router
 	acpAgent ACPAgents
+	provider ProviderSource
 	now      func() time.Time
 }
 
@@ -102,6 +109,13 @@ func WithRouter(r *router.Router) ServiceOption { return func(s *Service) { s.ro
 // WithACPAgents validates `acp:<id>[/<model>]` model settings against the
 // loaded plugin agents. Without it such settings are rejected.
 func WithACPAgents(a ACPAgents) ServiceOption { return func(s *Service) { s.acpAgent = a } }
+
+// WithProviders makes create and patch refuse a model whose provider cannot
+// run it (422 model_unavailable) and a create with nothing connected (409
+// no_provider), gives a new project the suggested models, and lists the
+// unusable models of a project in models_unavailable. Without it nothing is
+// checked.
+func WithProviders(p ProviderSource) ServiceOption { return func(s *Service) { s.provider = p } }
 
 // ValidateModels checks the `acp:` entries of a models overlay (non-empty
 // fields): the agent must be loaded and available, and the model allowed. Side
@@ -260,7 +274,20 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err := s.ValidateModels(in.Models); err != nil {
 		return Project{}, err
 	}
-	models, err := mergeModels(s.Defaults().Models, in.Models)
+	base := s.Defaults().Models
+	if s.provider != nil {
+		snap := s.provider.Snapshot()
+		if snap.Connected == 0 {
+			return Project{}, noProvider()
+		}
+		// A project that names no models gets what can run now.
+		sg := snap.Suggested
+		base.Orchestrator, base.Fast, base.Balanced, base.Deep = sg.Orchestrator, sg.Fast, sg.Balanced, sg.Deep
+		if err := checkModels(snap, in.Models, nil); err != nil {
+			return Project{}, err
+		}
+	}
+	models, err := mergeModels(base, in.Models)
 	if err != nil {
 		return Project{}, err
 	}
@@ -322,6 +349,13 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 	if in.Models != nil {
 		if err := s.ValidateModels(in.Models); err != nil {
 			return Project{}, err
+		}
+		if s.provider != nil {
+			// Only a model that changes is checked: a client that sends the
+			// whole object back must still be able to edit the rest.
+			if err := checkModels(s.provider.Snapshot(), in.Models, &cur.Models); err != nil {
+				return Project{}, err
+			}
 		}
 		merged, err := mergeModels(cur.Models, in.Models)
 		if err != nil {
@@ -409,4 +443,62 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// modelFields lists the model settings of a project in a fixed order.
+func modelFields(m config.Models) []struct{ field, model string } {
+	list := []struct{ field, model string }{
+		{"orchestrator", m.Orchestrator}, {"fast", m.Fast}, {"balanced", m.Balanced}, {"deep", m.Deep},
+		{"side", m.Side}, {"completion", m.Completion},
+	}
+	for _, c := range m.AutoCandidates {
+		list = append(list, struct{ field, model string }{"auto_candidates", c})
+	}
+	return list
+}
+
+// checkModels is the first model of over (a create or patch body) that cannot
+// run according to snap, as a 422; fields equal to cur's are skipped.
+func checkModels(snap providers.Response, over, cur *config.Models) error {
+	if over == nil {
+		return nil
+	}
+	have := map[string]bool{}
+	if cur != nil {
+		for _, f := range modelFields(*cur) {
+			have[f.field+"\x00"+f.model] = true
+		}
+	}
+	for _, f := range modelFields(*over) {
+		if f.model == "" || have[f.field+"\x00"+f.model] {
+			continue
+		}
+		if u := providers.CheckIn(snap, f.model); u != nil {
+			return modelUnavailable(f.field, f.model, u)
+		}
+	}
+	return nil
+}
+
+// ModelIssue is a model a project stores that cannot run now.
+type ModelIssue struct {
+	Field    string `json:"field"`
+	Model    string `json:"model"`
+	Provider string `json:"provider"`
+	Reason   string `json:"reason"`
+}
+
+// unusableModels lists the models of m that snap says cannot run; reading a
+// project never fails because of them.
+func unusableModels(snap providers.Response, m config.Models) []ModelIssue {
+	out := []ModelIssue{}
+	for _, f := range modelFields(m) {
+		if f.model == "" {
+			continue
+		}
+		if u := providers.CheckIn(snap, f.model); u != nil {
+			out = append(out, ModelIssue{Field: f.field, Model: f.model, Provider: u.Provider, Reason: u.Reason})
+		}
+	}
+	return out
 }

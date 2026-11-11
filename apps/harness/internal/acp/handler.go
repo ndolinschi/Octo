@@ -50,3 +50,9 @@ type UpdateObserver interface {
 type PromptUsageHandler interface {
 	PromptUsage(ctx context.Context, u PromptUsage)
 }
+
+// PromptStartHandler is implemented by handlers that want to know when the
+// prompt is sent (after the process started and the session was opened).
+type PromptStartHandler interface {
+	PromptStarted(ctx context.Context)
+}

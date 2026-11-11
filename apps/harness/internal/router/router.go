@@ -48,6 +48,7 @@ type Router struct {
 	origin       string
 	octoKey      string
 	apiKey       string
+	apiKeyFn     func() string
 	http         *http.Client
 	reprobe      time.Duration
 	retryWait    time.Duration

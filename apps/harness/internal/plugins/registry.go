@@ -26,6 +26,18 @@ func (r *Registry) StartProbes(ctx context.Context) {
 	r.probes.refresh(r.allAgents())
 }
 
+// OnProbeChange registers f to be called (from a probe goroutine, no locks
+// held) whenever a background login probe finds a different outcome than the
+// one before it, the first result included. Call it before StartProbes.
+func (r *Registry) OnProbeChange(f func()) {
+	if r == nil || r.probes == nil {
+		return
+	}
+	r.probes.mu.Lock()
+	r.probes.onChange = f
+	r.probes.mu.Unlock()
+}
+
 func (r *Registry) allAgents() []Agent {
 	var out []Agent
 	for _, p := range r.plugins {

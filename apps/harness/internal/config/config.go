@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
@@ -282,6 +283,31 @@ func Load() (Config, error) {
 	}
 	return cfg, nil
 }
+
+// KeySource holds the Messages API key of a running process: the key the
+// settings screen writes replaces it without a restart. Safe for concurrent use.
+type KeySource struct{ v atomic.Pointer[string] }
+
+// NewKeySource starts with the given key (may be empty).
+func NewKeySource(initial string) *KeySource {
+	k := &KeySource{}
+	k.Set(initial)
+	return k
+}
+
+// Get returns the current key; "" when none is set.
+func (k *KeySource) Get() string {
+	if k == nil {
+		return ""
+	}
+	if p := k.v.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
+// Set replaces the key.
+func (k *KeySource) Set(key string) { k.v.Store(&key) }
 
 // NoBuiltinLoopMessage is the one error every request that needs the built-in
 // agent loop ends with while no API key or router is configured.

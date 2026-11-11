@@ -89,6 +89,7 @@ type acpSession struct {
 	// waits for the user; stopWatch ends the silence watcher.
 	lastEvent time.Time
 	quiet     bool
+	prompting bool // the prompt was sent
 	waiting   bool
 	stopWatch chan struct{}
 }
@@ -131,7 +132,7 @@ func (s *acpSession) watchSilence() {
 		case <-tick.C:
 		}
 		s.mu.Lock()
-		fire := !s.done && !s.waiting && !s.quiet && len(s.open) == 0 && time.Since(s.lastEvent) >= after
+		fire := !s.done && s.prompting && !s.waiting && !s.quiet && len(s.open) == 0 && time.Since(s.lastEvent) >= after
 		if fire {
 			s.quiet = true
 		}
@@ -140,6 +141,17 @@ func (s *acpSession) watchSilence() {
 			s.rt.activity(s.agentID, activity.Quiet, s.label, "")
 		}
 	}
+}
+
+// PromptStarted implements acp.PromptStartHandler: the silence the watcher
+// reports is silence during a prompt, so its clock starts when the prompt is
+// sent, not while the process starts and the session opens ("Starting <agent>"
+// covers that).
+func (s *acpSession) PromptStarted(context.Context) {
+	s.mu.Lock()
+	s.prompting = true
+	s.touch()
+	s.mu.Unlock()
 }
 
 // UpdateSeen implements acp.UpdateObserver: every session/update is a sign of life.

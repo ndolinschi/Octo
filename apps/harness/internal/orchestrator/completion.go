@@ -55,8 +55,8 @@ func (o *Orchestrator) Complete(ctx context.Context, pid string, req completion.
 	switch {
 	case model == "":
 		return res, "", &CompletionOffError{"inline completion is off: choose a completion model (models.completion)"}
-	case o.opts.BuiltinUnavailable != "":
-		return res, "", &CompletionOffError{o.opts.BuiltinUnavailable}
+	case o.builtinOff() != "":
+		return res, "", &CompletionOffError{o.builtinOff()}
 	}
 	size := int64(-1)
 	if f, ok := rt.folderOf(req.Folder); ok {

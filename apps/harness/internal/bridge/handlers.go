@@ -19,9 +19,10 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	if s.router != nil && s.router.Enabled() {
 		caps = s.router.Capabilities()
 	}
-	builtin := map[string]any{"available": s.builtinOff == ""}
-	if s.builtinOff != "" {
-		builtin["reason"] = s.builtinOff
+	builtinOK, builtinWhy := s.builtinState()
+	builtin := map[string]any{"available": builtinOK}
+	if !builtinOK {
+		builtin["reason"] = builtinWhy
 	}
 	defOrch := d.Models.Orchestrator
 	if s.defaultOrch != nil {

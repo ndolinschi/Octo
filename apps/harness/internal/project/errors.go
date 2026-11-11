@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
 )
 
 type Kind int
@@ -17,6 +18,8 @@ const (
 	KindUnsupported
 	// KindUpstream: a model call failed (502).
 	KindUpstream
+	// KindUnprocessable: well-formed but cannot be done (422).
+	KindUnprocessable
 )
 
 // Error is a caller-visible failure with a stable machine code.
@@ -24,6 +27,10 @@ type Error struct {
 	Kind    Kind
 	Code    string
 	Message string
+	// Provider and Reason are set for model_unavailable: who would run the
+	// model and what is missing.
+	Provider string
+	Reason   string
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -78,4 +85,18 @@ func storeErr(err error) error {
 		return &Error{Kind: KindConflict, Code: "newer_schema", Message: ne.Error()}
 	}
 	return err
+}
+
+// modelUnavailable is 422: the model's provider cannot run it now.
+func modelUnavailable(field, model string, u *providers.Unavailable) *Error {
+	return &Error{
+		Kind: KindUnprocessable, Code: "model_unavailable", Provider: u.Provider, Reason: u.Reason,
+		Message: fmt.Sprintf("models.%s %q cannot run: %s", field, model, u.Reason),
+	}
+}
+
+// noProvider is 409: no provider is connected, so no project can run.
+func noProvider() *Error {
+	return &Error{Kind: KindConflict, Code: "no_provider",
+		Message: "No provider is connected. Add an API key in Settings, or log in to an agent such as Claude Code, then try again."}
 }
