@@ -603,6 +603,31 @@ monochrome dithered illustration):
     left of them; in a browser the row is the same without the inset. Tabs stay directly under it. Host contract:
     the shell passes `chrome: { overlay: boolean; insetStart: number; insetEnd: number }`; `packages/ui` imports no
     Tauri API and marks drag areas with a data attribute the shell maps.
+55. **An agent at work is never just a spinner** (owner, live with Claude Code over ACP: "Working… 23s" and
+    nothing else — "we need to stream messages, not only loading; this is not responsive"). The harness already
+    forwards an ACP agent's text chunks; what it drops today is everything the agent does *before* it writes:
+    thinking, plan updates and its own tool calls as they start. From now on, for ACP agents and the built-in loop
+    alike, the conversation shows, live and in order:
+    (a) **the activity line** — "Working… 23s" becomes what is happening now: "Thinking…", "Reading
+    src/server/routes.ts", "Running `pnpm test`", "Searching for "budget"", "Waiting for your approval", updated
+    on every tool start; the timer stays; shimmer per decision 45;
+    (b) **tool rows as they start**, not when they finish (pending → running → done/failed), folded into "Ran 3
+    commands, read 5 files" when the turn ends, as today;
+    (c) **thinking** as a dim, collapsed-by-default "Thinking" row whose first line streams; expanding shows the
+    stream; it is never stored in memory or search and is dropped from the transcript after the turn unless the
+    user pinned it open;
+    (d) **the plan**, when the agent publishes one, as a compact checklist above the answer that ticks off;
+    (e) **text** token by token with at most 50 ms of batching; the first visible sign of life (any of a–e) must
+    appear within 1 s of the agent's first event, and if nothing at all arrives for 10 s the activity line says
+    "Still working — no output from <agent> yet" rather than staying mute.
+    Harness: new events `agent.activity` (kind, label, tool id), `message.thinking_delta`, `agent.plan`; tool rows
+    are published at `tool_call` (pending) and updated at `tool_call_update`; secret scrubbing may hold back at
+    most the length of the longest stored secret, never a whole message.
+56. **A control points where it opens.** A chip or select at the bottom of the window opens upward, so its glyph
+    is an up-down chevron pair (`chevrons-up-down`), not a down arrow; a menu that opens downward keeps the down
+    chevron. The popover is attached to its chip (4px gap, aligned to the chip's start edge) so it reads as the
+    chip's menu; the "scroll to latest" button hides while any popover of the composer is open. Model picker rows
+    follow decision 53 (only what can run) and show one name per row — the raw model id moves to the tooltip.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
