@@ -169,3 +169,9 @@ product's name, icons or assets.
 Always delegate to the selected models: **Opus 5.5 — review** (and UI/design work the owner assigns to it),
 **Sonnet 5.5 — writing code and tests**, **Haiku 5.5 — research**. The orchestrator decides, writes contracts,
 re-runs the gates itself and commits; independent review of each pass goes to an Opus reviewer.
+
+### Cost rule (owner, 2026-11-11, later the same day)
+
+Opus spends too much: **do as much as possible with Sonnet** — code, tests, UI implementation and routine review.
+Opus only where the owner asks for it or for a final design/review pass on something already working. Haiku for
+research. Fewer, narrower briefs; hand back at the first green state.
