@@ -133,10 +133,10 @@ func TestSlashCommandsOfAnACPOrchestrator(t *testing.T) {
 		"/compact": "/compact", "/clear now": "/clear", "/mode plan": "PATCH", "/remember a thing": "/facts", "/export": "/export",
 	} {
 		var resp struct {
-			Error struct{ Code, Message string } `json:"error"`
+			Error struct{ Code, Message, Details string } `json:"error"`
 		}
 		e.into(t, "POST", "/v1/projects/"+p.ID+"/messages", map[string]string{"text": text}, http.StatusBadRequest, &resp)
-		if resp.Error.Code != "octo_command" || !strings.Contains(resp.Error.Message, endpoint) {
+		if resp.Error.Code != "octo_command" || !strings.Contains(resp.Error.Details, endpoint) {
 			t.Errorf("%q: error = %+v", text, resp.Error)
 		}
 	}

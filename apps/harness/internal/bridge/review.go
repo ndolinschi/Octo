@@ -52,10 +52,7 @@ func writeReviewErr(w http.ResponseWriter, err error) {
 			review.KindUpstream:    http.StatusBadGateway,
 			review.KindUnsupported: http.StatusUnsupportedMediaType,
 		}[re.Kind]
-		body := map[string]any{"code": re.Code, "message": re.Message}
-		if re.Command != "" {
-			body["command"] = re.Command
-		}
+		body := errorBody(re.Code, re.Catalogue())
 		if len(re.Repos) > 0 {
 			body["repos"] = re.Repos
 		}

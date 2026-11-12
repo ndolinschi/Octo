@@ -1,5 +1,5 @@
 import { Check, ChevronDown, ChevronsUpDown } from "lucide-react";
-import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { CONTROL, FIELD, type ControlSize } from "../../lib/controls";
 import { listKeyTarget } from "../../lib/focus";
@@ -27,7 +27,7 @@ const TYPE_AHEAD_MS = 700;
  * Not for: more than about 12 options or anything searchable (`Picker`), actions rather than a value (`MenuButton`),
  * two or three exclusive choices that fit a row (`Segmented`).
  */
-export function Select(props: {
+type SelectProps = {
   value: string;
   onChange(value: string): void;
   options: readonly SelectOption[];
@@ -40,7 +40,9 @@ export function Select(props: {
   invalid?: boolean;
   id?: string;
   className?: string;
-}) {
+};
+
+export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(props, outer) {
   const { options, value } = props;
   const size = props.size ?? "md";
   const side = props.side ?? "bottom";
@@ -124,7 +126,11 @@ export function Select(props: {
   return (
     <>
       <button
-        ref={trigger}
+        ref={(el) => {
+          trigger.current = el;
+          if (typeof outer === "function") outer(el);
+          else if (outer) outer.current = el;
+        }}
         type="button"
         id={props.id}
         role="combobox"
@@ -198,4 +204,4 @@ export function Select(props: {
       </Presence>
     </>
   );
-}
+});

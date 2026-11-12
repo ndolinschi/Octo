@@ -96,10 +96,10 @@ func TestNothingReady(t *testing.T) {
 		t.Fatalf("snapshot = %+v", got)
 	}
 	api := byID(t, got, "api")
-	if api.Kind != "api" || api.State != "not_connected" || api.Reason != config.NoBuiltinLoopMessage {
+	if api.Kind != "api" || api.State != "not_connected" || api.Reason != "Anthropic API is not connected." || api.Problem == nil || api.Problem.Details != config.NoBuiltinLoopMessage {
 		t.Fatalf("api = %+v", api)
 	}
-	if cc := byID(t, got, "claude-code"); cc.State != "not_installed" || cc.Reason != "`claude` was not found" {
+	if cc := byID(t, got, "claude-code"); cc.State != "not_installed" || cc.Problem == nil || !strings.Contains(cc.Problem.Details, "`claude` was not found") {
 		t.Fatalf("claude-code = %+v", cc)
 	}
 	if got.Providers[0].ID != "api" || len(got.Providers) != 2 {
@@ -188,10 +188,10 @@ func TestAgentOrderStatesAndHints(t *testing.T) {
 	if cc.State != "ready" || cc.DefaultModel != "sonnet" || len(cc.Models) != 2 {
 		t.Fatalf("claude-code = %+v", cc)
 	}
-	if cp.State != "not_logged_in" || cp.LoginHint != "Run `copilot login`." || !cp.FlatRate || cp.Reason != "not logged in" {
+	if cp.State != "not_logged_in" || cp.LoginHint != "Run `copilot login`." || !cp.FlatRate || cp.Reason != "Copilot is not logged in." {
 		t.Fatalf("copilot = %+v", cp)
 	}
-	if gk.State != "not_installed" || gk.InstallHint != "npm i -g grok" || gk.Reason != "not installed" {
+	if gk.State != "not_installed" || gk.InstallHint != "npm i -g grok" || gk.Reason != "Grok is not installed." {
 		t.Fatalf("grok = %+v", gk)
 	}
 	if got.Connected != 3 { // claude-code, zed, codex
@@ -240,7 +240,7 @@ func TestCheck(t *testing.T) {
 			t.Fatalf("Check(%q) = %+v", tc.model, u)
 		}
 		for _, s := range tc.contain {
-			if !strings.Contains(u.Reason, s) {
+			if all := u.Reason + " " + u.Problem.Hint + " " + u.Problem.Command + " " + u.Problem.Details; !strings.Contains(all, s) {
 				t.Errorf("Check(%q) reason %q lacks %q", tc.model, u.Reason, s)
 			}
 		}

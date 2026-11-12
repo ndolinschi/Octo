@@ -1,3 +1,5 @@
+import type { ErrorFields } from "@octo/agent-client";
+
 /** The text of a caught value: an Error's message, else its string form. The one place errors become user-visible text. */
 export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -6,6 +8,21 @@ export function errorMessage(e: unknown): string {
 /** The bridge's error code (`plan_not_pending`, `steer_unsupported` …) of a caught value; null for anything else. */
 export function errorCode(e: unknown): string | null {
   return typeof e === "object" && e !== null && "code" in e && typeof e.code === "string" ? e.code : null;
+}
+
+/**
+ * The structured failure of a caught value (decision 94b): the harness's plain `message` with `hint`, `command`, `action`
+ * and `details` when they came. Null for anything that is not a bridge error. The UI shows these fields first.
+ */
+export function structuredError(e: unknown): ({ message: string } & ErrorFields) | null {
+  if (!(e instanceof Error) || !("code" in e)) return null;
+  const o = e as Error & ErrorFields;
+  const out: { message: string } & ErrorFields = { message: e.message };
+  if (o.hint) out.hint = o.hint;
+  if (o.command) out.command = o.command;
+  if (o.action) out.action = o.action;
+  if (o.details) out.details = o.details;
+  return out;
 }
 
 export function formatDuration(ms: number): string {

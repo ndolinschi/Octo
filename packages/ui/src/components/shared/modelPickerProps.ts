@@ -26,6 +26,10 @@ export type ModelPickerProps = {
   /** Tooltip (the served model, the unavailable reason); default "Model: <label>". */
   tip?: string | undefined;
   onOpenChange?(open: boolean): void;
+  /** Opens the list from outside (`/model`): a new `n` opens it, with `query` typed in the search field. */
+  openRequest?: { n: number; query: string } | undefined;
+  /** A line under the top-level list (the composer puts "Routing: Auto" here when a router is connected, decision 91e). */
+  footer?: ReactNode;
   className?: string;
   children?: ReactNode;
 };

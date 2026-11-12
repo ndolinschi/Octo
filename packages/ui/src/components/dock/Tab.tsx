@@ -5,6 +5,7 @@ import { closable, type TabId } from "../../state/workspace/layout";
 import { domId } from "../../state/workspace/ids";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { Glyph } from "../primitives/Glyph";
+import { IconButton } from "../primitives/IconButton";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { CommentCount, commentsDescription } from "../files/CommentCount";
 import { TAB_MAX, TAB_MIN } from "../../state/workspace/tabStrip";
@@ -109,24 +110,20 @@ export function Tab(props: {
           />
         )}
         {canClose && (
-          <button
-            type="button"
+          <IconButton
+            icon={X}
+            size="xs"
             tabIndex={-1}
-            aria-label={`Close ${name}`}
-            title={`Close ${info.label}`}
+            label={`Close ${name}`}
             data-shortcut={`${MOD}W`}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={props.onClose}
             className={cn(
               // A 24px hit area around the 16px slot (decision 36); without a slot it sits over the title's end on the tab's own fill.
-              slot
-                ? "absolute -inset-1 grid place-items-center rounded-sm text-fg-3 hover:bg-hover hover:text-fg"
-                : "absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-items-center rounded-sm bg-hover text-fg-3 hover:text-fg",
+              slot ? "absolute -inset-1" : "absolute top-1/2 right-1 -translate-y-1/2 bg-hover",
               selected && info.status !== "modified" ? "" : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
             )}
-          >
-            <Glyph icon={X} size={14} />
-          </button>
+          />
         )}
       </span>
     </div>

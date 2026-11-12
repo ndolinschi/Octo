@@ -28,6 +28,7 @@
           "auth",
           "status"
         ],
+        "command": "claude auth login",
         "hint": "Log in once: run `claude` and type /login (or run `claude auth login`). The harness hides its own ANTHROPIC_API_KEY from the agent so the subscription is used; to bill per token on purpose, add env {\"ANTHROPIC_API_KEY\": \"${ANTHROPIC_API_KEY}\"} to this entry.",
         "notLoggedInExit": [
           1
@@ -69,6 +70,7 @@
         "COPILOT_GITHUB_TOKEN": "${COPILOT_GITHUB_TOKEN}"
       },
       "auth": {
+        "command": "copilot auth login",
         "hint": "Log in once: run `copilot` and type /login, or start the harness with COPILOT_GITHUB_TOKEN set to a fine-grained token that has the \"Copilot Requests\" permission. The harness has no non-interactive Copilot login check, so its login state shows as unknown."
       },
       "install": "Install the GitHub Copilot CLI so that `copilot` is on PATH: npm install -g @github/copilot (needs Node.js 22 or newer and a Copilot plan)"
@@ -107,6 +109,7 @@
           },
           "cached_token"
         ],
+        "command": "grok login",
         "hint": "Log in once: run `grok login` (browser), or `grok login --device-auth` on a machine without a browser. An XAI_API_KEY in the harness environment is forwarded to Grok and switches it to per-token billing: unset it to stay on the subscription."
       },
       "install": "Install the Grok CLI so that `grok` is on PATH: npm install -g @xai-official/grok (verified against Grok CLI 1.0.77). For scripts its documentation recommends `--no-auto-update` for `grok agent stdio`; it is not in this entry's args because its placement is unverified: add it to a copied manifest if wanted.",
@@ -141,6 +144,7 @@
           "login",
           "status"
         ],
+        "command": "codex login",
         "hint": "Log in with the Codex CLI (codex login, or codex login --device-auth on a headless machine); with OCTO_CODEX_HOME set, log in with CODEX_HOME pointing at the same folder.",
         "notLoggedInExit": [
           1
@@ -174,6 +178,7 @@
         "skip": [
           "cursor_login"
         ],
+        "command": "cursor-agent login",
         "hint": "Run cursor-agent login once (browser), or start the harness with CURSOR_API_KEY set. Some installs name the binary agent.",
         "notLoggedInExit": [
           1
@@ -235,6 +240,7 @@
           },
           "cached_token"
         ],
+        "command": "devin auth login",
         "hint": "Run devin auth login (add --force-manual-token-flow over SSH), or set WINDSURF_API_KEY. List models with devin models list --format json.",
         "notLoggedInExit": [
           1

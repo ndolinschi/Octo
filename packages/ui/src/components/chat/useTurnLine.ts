@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { servedModel } from "../../lib/models";
 import { turnLine } from "../../lib/usage/turnLine";
 import { useApp } from "../../state/app";
+import { useAcpNames } from "../../state/models";
 import { useProject } from "../../state/project";
 
 /**
@@ -13,6 +14,7 @@ import { useProject } from "../../state/project";
 export function useTurnLine(agent: Pick<Agent, "model" | "served_model"> | undefined, active: boolean, running: boolean): string | null {
   const { bridge } = useApp();
   const { projectId } = useProject();
+  const acp = useAcpNames();
   const [usage, setUsage] = useState<{ input: number; output: number } | null>(null);
   useEffect(() => {
     if (!active || running || !bridge.getContextOverview) return;
@@ -29,5 +31,5 @@ export function useTurnLine(agent: Pick<Agent, "model" | "served_model"> | undef
     };
   }, [bridge, projectId, active, running]);
   if (!active || !agent || !usage) return null;
-  return turnLine({ model: servedModel(agent).name, inputTokens: usage.input, outputTokens: usage.output });
+  return turnLine({ model: servedModel(agent, acp).name, inputTokens: usage.input, outputTokens: usage.output });
 }

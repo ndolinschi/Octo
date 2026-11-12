@@ -7,6 +7,9 @@ import { endedNote, exchangeCount, newestFirst, sessionRow, toggleExpanded } fro
 import { liveOrchestratorState } from "../../lib/orchestrator";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { requestSession } from "../../state/workspace/sessionsStart";
+import { IconMenu } from "../primitives/IconMenu";
 import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
 import { SkeletonText } from "../primitives/Skeleton";
@@ -60,6 +63,7 @@ export function SessionsView(props: {
           return (
             <ListRow
               key={s.id}
+              role="listitem"
               size="md"
               selected={s.id === picked}
               {...(r.working ? { leading: <StateGlyph state="working" /> } : {})}
@@ -101,6 +105,7 @@ function SessionDetail(props: {
   onOpenMessage?: ((turnId: number) => void) | undefined;
 }) {
   const { bridge } = useApp();
+  const ws = useOptionalWorkspace();
   const load = useSession(props.projectId, props.id, props.tick);
   const [open, setOpen] = useState<string | null>(props.focusExchange);
   // The list mounts after the load; `useRowKeys` rebinds when its container appears.
@@ -113,11 +118,28 @@ function SessionDetail(props: {
   const note = endedNote(session);
   return (
     <div className={DETAIL_MAX}>
-      <header className="flex flex-col gap-0.5 px-2 pt-3 pb-2">
-        <h2 className="text-heading break-words text-fg">{session.title}</h2>
-        <p className="truncate text-xs text-fg-3">
-          {[formatDay(session.started_at, props.now), exchangeCount(session.exchanges), note].filter(Boolean).join(" · ")}
-        </p>
+      <header className="flex items-start gap-2 px-2 pt-3 pb-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h2 className="text-heading break-words text-fg">{session.title}</h2>
+          <p className="truncate text-xs text-fg-3">
+            {[formatDay(session.started_at, props.now), exchangeCount(session.exchanges), note].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+        {ws && (
+          <IconMenu
+            label="Session actions"
+            items={[
+              {
+                id: "open-sessions",
+                label: "Open in Sessions",
+                run: () => {
+                  ws.openTool("sessions");
+                  requestSession(props.projectId, session.id);
+                },
+              },
+            ]}
+          />
+        )}
       </header>
       {session.summary && (
         <div className="px-2 pb-2 text-fg-2">

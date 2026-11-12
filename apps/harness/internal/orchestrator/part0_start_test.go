@@ -23,9 +23,9 @@ func TestACPOrchestratorStartFailuresEndTheTurnWithTheError(t *testing.T) {
 		agent plugins.Agent
 		want  string
 	}{
-		{"missing command", missing, "start ACP agent"},
+		{"missing command", missing, "is not installed"},
 		{"auth refused", refusing, "is not logged in"},
-		{"exits at once", exits, "ACP agent"},
+		{"exits at once", exits, "stopped while starting"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newACPRig(t, mockllm.New(0), tc.agent)
@@ -50,10 +50,10 @@ func TestACPOrchestratorStartFailuresEndTheTurnWithTheError(t *testing.T) {
 				t.Fatalf("orchestrator error = %v", orch.Error)
 			}
 			if tc.name == "auth refused" {
-				if hint, _ := fin["hint"].(string); hint != "Sign in with the Fake CLI first." || contains(msg, "Sign in with") || contains(msg, "interactive") {
+				if hint, _ := fin["hint"].(string); hint != "Log in to it in a terminal, then check again." || contains(msg, "Sign in with") || contains(msg, "interactive") {
 					t.Fatalf("hint %q, message %q: want the plain message and the hint apart", hint, msg)
 				}
-				if orch.ErrorHint == nil || *orch.ErrorHint != "Sign in with the Fake CLI first." {
+				if orch.ErrorHint == nil || *orch.ErrorHint != "Log in to it in a terminal, then check again." {
 					t.Fatalf("orchestrator error_hint = %v", orch.ErrorHint)
 				}
 			}

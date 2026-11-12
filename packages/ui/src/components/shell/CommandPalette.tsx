@@ -1,9 +1,6 @@
 import type { Agent } from "@octo/agent-client";
-import { Search } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "../../lib/cn";
 import { formatRelative } from "../../lib/format";
 import { matchScore, rankGroups } from "../../lib/match";
 import { navigate } from "../../lib/route";
@@ -12,7 +9,10 @@ import { useNav } from "../../state/nav";
 import { hitRow } from "../../lib/requestSearch";
 import { useRequests } from "../../state/requests";
 import { useRequestSearch } from "../../state/requestSearch";
+import { ListRow } from "../primitives/ListRow";
 import { usePresence } from "../primitives/Presence";
+import { SearchField } from "../primitives/SearchField";
+import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { agentGlyph, type GlyphState } from "../../lib/stateGlyph";
 import { useModal } from "../primitives/useModal";
@@ -106,32 +106,35 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
         ),
       },
       {
+        // Decision 94d: ONE "Requests" group: this project's first (its loaded requests, then older hits of the harness's search),
+        // then other projects' hits with the project dim on the right.
         title: "Requests",
-        items: pid
-          ? rank(
-              (requests ?? []).map((r) => ({
-                id: `r:${r.id}`,
-                label: r.text.split("\n", 1)[0] ?? r.text,
-                detail: formatRelative(r.created_at, now),
-                run: go(() => {
-                  nav.requestTurn({ projectId: pid, messageId: r.id });
-                  navigate(pid);
-                }),
-              })),
-              (i) => i.label,
-            )
-          : [],
-      },
-      {
-        // Parity B7: requests of every project, found by the harness; picking one opens that project at the message.
-        title: "Past requests",
-        items: past.map((h) => ({
-          ...hitRow(h),
-          run: go(() => {
-            nav.requestTurn({ projectId: h.project_id, messageId: h.message_id });
-            navigate(h.project_id);
-          }),
-        })),
+        items: [
+          ...(pid
+            ? rank(
+                (requests ?? []).map((r) => ({
+                  id: `r:${r.id}`,
+                  label: r.text.split("\n", 1)[0] ?? r.text,
+                  detail: formatRelative(r.created_at, now),
+                  run: go(() => {
+                    nav.requestTurn({ projectId: pid, messageId: r.id });
+                    navigate(pid);
+                  }),
+                })),
+                (i) => i.label,
+              )
+            : []),
+          ...past
+            .filter((h) => !(h.project_id === pid && (requests ?? []).some((r) => r.id === h.message_id)))
+            .sort((x, y) => Number(y.project_id === pid) - Number(x.project_id === pid))
+            .map((h) => ({
+              ...hitRow(h),
+              run: go(() => {
+                nav.requestTurn({ projectId: h.project_id, messageId: h.message_id });
+                navigate(h.project_id);
+              }),
+            })),
+        ],
       },
       {
         title: "Agents",
@@ -213,55 +216,46 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
         data-state={state}
         className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay shadow-pop"
       >
-        <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
-          <Glyph icon={Search} size={16} className="shrink-0 text-fg-3" />
-          <input
-            data-autofocus
-            role="combobox"
-            aria-expanded="true"
-            aria-controls={`${baseId}-list`}
-            aria-autocomplete="list"
-            aria-activedescendant={flat.length ? optionId(current) : undefined}
-            aria-label="Search tabs, projects, requests, agents and actions"
-            placeholder="Search tabs, projects, requests, agents, actions"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelected(0);
-            }}
-            onKeyDown={onKeyDown}
-            className="h-full min-w-0 flex-1 bg-transparent text-base text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
-          />
-        </div>
+        <SearchField
+          variant="header"
+          label="Search tabs, projects, requests, agents and actions"
+          placeholder="Search tabs, projects, requests, agents, actions"
+          value={query}
+          clearOnEscape={false}
+          onChange={(v) => {
+            setQuery(v);
+            setSelected(0);
+          }}
+          onKeyDown={onKeyDown}
+          inputProps={{
+            role: "combobox",
+            "aria-expanded": true,
+            "aria-controls": `${baseId}-list`,
+            "aria-autocomplete": "list",
+            ...(flat.length ? { "aria-activedescendant": optionId(current) } : {}),
+          }}
+        />
         <div ref={list} id={`${baseId}-list`} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
           {groups.map((g) => (
             <div key={g.title} role="group" aria-labelledby={`${baseId}-${g.title}`} className="pb-1">
-              <div id={`${baseId}-${g.title}`} className="flex h-row items-center px-2 text-xs text-fg-3">
+              <SectionHeader inset as="h3" id={`${baseId}-${g.title}`}>
                 {g.title}
-              </div>
+              </SectionHeader>
               {g.items.map((item) => {
                 index += 1;
                 const i = index;
-                const isSelected = i === current;
                 return (
-                  <div
+                  <ListRow
                     key={item.id}
                     id={optionId(i)}
                     role="option"
-                    aria-selected={isSelected}
-                    onMouseDown={(e) => e.preventDefault()}
+                    size="md"
+                    selected={i === current}
                     onClick={item.run}
-                    className={cn(
-                      // Radius 6 = palette radius (10) − list padding (4).
-                      "flex h-row-nav items-center gap-3 rounded-sm px-2 text-sm press-row",
-                      isSelected ? "bg-active text-fg" : "text-fg hover:bg-hover",
-                    )}
-                  >
-                    {item.glyph && <StateGlyph state={item.glyph} box={16} />}
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {item.detail && <span className={cn("max-w-[45%] shrink-0 truncate text-xs", isSelected ? "text-fg-2" : "text-fg-3")}>{item.detail}</span>}
-                    {item.shortcut && <kbd className="shrink-0 rounded-2xs bg-active px-1 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
-                  </div>
+                    leading={item.glyph ? <StateGlyph state={item.glyph} box={16} /> : <span />}
+                    title={item.label}
+                    meta={item.shortcut ?? item.detail}
+                  />
                 );
               })}
             </div>

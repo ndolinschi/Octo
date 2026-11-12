@@ -1,0 +1,183 @@
+import type { ProjectSession } from "@octo/agent-client";
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  blockedText,
+  currentTitle,
+  earlierSession,
+  filterCounts,
+  glyphOf,
+  hasSeveral,
+  isCompact,
+  sessionErrorText,
+  sessionRow,
+  sidebarSessions,
+  toggleOpen,
+  transcriptSession,
+  visibleNodes,
+} from "./model";
+
+const NOW = Date.parse("2026-11-12T12:00:00Z");
+const s = (id: string, over: Partial<ProjectSession> = {}): ProjectSession => ({
+  id,
+  kind: "main",
+  title: id,
+  state: "idle",
+  model: "",
+  started_at: "2026-11-12T09:00:00Z",
+  last_activity_at: "2026-11-12T09:30:00Z",
+  exchanges: 2,
+  children: 0,
+  current: false,
+  archived: false,
+  can_message: false,
+  ...over,
+});
+const agent = (id: string, parent: string, over: Partial<ProjectSession> = {}): ProjectSession =>
+  s(id, { kind: "agent", parent_session_id: parent, exchanges: 0, ...over });
+
+const list = [
+  s("m1", { started_at: "2026-11-10T09:00:00Z" }),
+  s("m2", { started_at: "2026-11-11T09:00:00Z", children: 2 }),
+  s("m3", { started_at: "2026-11-12T09:00:00Z", current: true, state: "working", children: 1 }),
+  s("m0", { started_at: "2026-11-09T09:00:00Z", archived: true }),
+  agent("a1", "m2", { started_at: "2026-11-11T09:10:00Z" }),
+  agent("a2", "m2", { started_at: "2026-11-11T09:05:00Z", state: "failed" }),
+  agent("a3", "m3", { started_at: "2026-11-12T09:20:00Z", state: "working" }),
+  agent("a4", "m0", { started_at: "2026-11-09T09:20:00Z", archived: true }),
+];
+
+test("All: main sessions newest first, each with its agents oldest first, archived left out", () => {
+  const nodes = visibleNodes(list, "all");
+  assert.deepEqual(
+    nodes.map((n) => n.session.id),
+    ["m3", "m2", "m1"],
+  );
+  assert.deepEqual(
+    nodes[1]?.children.map((c) => c.id),
+    ["a2", "a1"],
+  );
+});
+
+test("Mine lists the main sessions alone; Agents the agent sessions flat; Archived both kinds", () => {
+  assert.ok(visibleNodes(list, "mine").every((n) => n.children.length === 0 && n.session.kind === "main"));
+  assert.deepEqual(
+    visibleNodes(list, "agents").map((n) => n.session.id),
+    ["a3", "a1", "a2"],
+  );
+  assert.deepEqual(
+    visibleNodes(list, "archived").map((n) => n.session.id),
+    ["a4", "m0"],
+  );
+});
+
+test("Working keeps the working main session and an idle one only for its working agents", () => {
+  const nodes = visibleNodes([...list, agent("a5", "m1", { state: "waiting" })], "working");
+  assert.deepEqual(
+    nodes.map((n) => [n.session.id, n.children.map((c) => c.id)]),
+    [
+      ["m3", ["a3"]],
+      ["m1", ["a5"]],
+    ],
+  );
+  assert.deepEqual(visibleNodes([s("x")], "working"), []);
+});
+
+test("counts per filter", () => {
+  assert.deepEqual(filterCounts(list), { all: 3, working: 2, mine: 3, agents: 3, archived: 2 });
+});
+
+test("glyphs: waiting needs you, stopped rests", () => {
+  assert.equal(glyphOf("working"), "working");
+  assert.equal(glyphOf("waiting"), "needs");
+  assert.equal(glyphOf("failed"), "failed");
+  assert.equal(glyphOf("stopped"), "idle");
+});
+
+test("row: day, exchanges and model on the second line; 'current' or the last activity at the right", () => {
+  const name = (v: string) => (v === "opus" ? "Opus 5.5" : v);
+  const row = sessionRow(s("m3", { title: "Plan the release", model: "opus", exchanges: 5, current: true }), NOW, name);
+  assert.equal(row.description, "Nov 12 · 5 exchanges · Opus 5.5");
+  assert.equal(row.tail, "current");
+  assert.equal(sessionRow(s("m1", { last_activity_at: "2026-11-11T09:00:00Z" }), NOW, name).tail, "Yesterday");
+  const a = sessionRow(agent("a1", "m2", { model: "haiku", title: "Map the repository" }), NOW, name);
+  assert.equal(a.description, "Nov 12 · haiku");
+  assert.equal(sessionRow(s("e", { title: " " }), NOW, name).title, "New session");
+});
+
+test("the composer note: the harness's sentence, else the reason by code, none when it can send", () => {
+  assert.equal(blockedText({ can_message: true }), null);
+  assert.equal(
+    blockedText({ can_message: false, message_blocked: { code: "not_current", message: "Resume this session to continue it" } }),
+    "Resume this session to continue it.",
+  );
+  assert.equal(blockedText({ can_message: false, message_blocked: { code: "not_running", message: "" } }), "This agent has finished and can't be continued.");
+  assert.equal(blockedText({ can_message: false }), "This session can't take a message now.");
+});
+
+test("error codes read as plain words; an unknown code keeps the harness's message", () => {
+  assert.equal(sessionErrorText("turn_in_progress", "x"), "Wait for the current request to finish, or stop it.");
+  assert.match(sessionErrorText("current_session", "x"), /current session/);
+  assert.match(sessionErrorText("session_running", "x"), /Stop it first/);
+  assert.match(sessionErrorText("not_continuable", "x"), /can't be continued/);
+  assert.match(sessionErrorText("steer_unsupported", "x"), /can't take a message while it works/);
+  assert.equal(sessionErrorText("weird", "disk full"), "disk full. Try again.");
+});
+
+test("the conversation tab follows the current session's title", () => {
+  assert.equal(currentTitle(list, "m3", "fallback"), "m3");
+  assert.equal(currentTitle(list, null, "fallback"), "fallback");
+  assert.equal(currentTitle([s("m3", { title: "  " })], "m3", "fallback"), "fallback");
+});
+
+test("only a resumed session loads the conversation by id", () => {
+  assert.equal(transcriptSession(list, "m3"), undefined);
+  assert.equal(transcriptSession(list, "m2"), "m2");
+  assert.equal(transcriptSession(list, null), undefined);
+  assert.equal(transcriptSession(list, "a1"), undefined);
+});
+
+test("sidebar: five most recent, 'more' past five; two main sessions make a project expandable", () => {
+  const many = Array.from({ length: 7 }, (_, i) => s(`m${i}`, { started_at: `2026-11-0${i + 1}T09:00:00Z` }));
+  const side = sidebarSessions(many);
+  assert.equal(side.shown.length, 5);
+  assert.equal(side.shown[0]?.id, "m6");
+  assert.equal(side.more, true);
+  assert.equal(sidebarSessions(many.slice(0, 5)).more, false);
+  assert.equal(hasSeveral([s("a")]), false);
+  assert.equal(hasSeveral([s("a"), s("b")]), true);
+});
+
+test("Agents can be limited to the agent sessions of one main session", () => {
+  assert.deepEqual(
+    visibleNodes(list, "agents", "m2").map((n) => n.session.id),
+    ["a1", "a2"],
+  );
+  assert.equal(visibleNodes(list, "agents", null).length, 3);
+  assert.equal(visibleNodes(list, "all", "m2").length, 3);
+});
+
+test("a pane under the conversation's floor is compact; an unmeasured one is not", () => {
+  assert.equal(isCompact(270), true);
+  assert.equal(isCompact(419), true);
+  assert.equal(isCompact(420), false);
+  assert.equal(isCompact(0), false);
+});
+
+test("the boundary marker names the earlier session: the harness's title, else the one before", () => {
+  const m3 = list.find((x) => x.id === "m3");
+  assert.ok(m3);
+  assert.deepEqual(earlierSession(list, m3), { id: "m2", title: "m2" });
+  assert.deepEqual(earlierSession(list, m3, "Cleared one"), { id: "m2", title: "Cleared one" });
+  const oldest = list.find((x) => x.id === "m0");
+  assert.ok(oldest);
+  assert.equal(earlierSession(list, oldest), null);
+  const only = s("only", { started_at: "2026-11-12T10:00:00Z" });
+  assert.deepEqual(earlierSession([only], only, "Marker"), { id: null, title: "Marker" });
+});
+
+test("one open row at a time", () => {
+  assert.equal(toggleOpen(null, "a"), "a");
+  assert.equal(toggleOpen("a", "a"), null);
+  assert.equal(toggleOpen("a", "b"), "b");
+});

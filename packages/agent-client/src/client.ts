@@ -104,7 +104,11 @@ import type {
   UsageParams,
   UsageReport,
   WriteFileInput,
+  ErrorAction,
 } from "./types";
+
+/** A `Blob` without the DOM lib (this package type-checks without browser globals): what `new Blob(...)` returns where one exists. */
+export type BlobLike = { readonly size: number; readonly type: string; text(): Promise<string> };
 
 export class BridgeError extends Error {
   readonly status: number;
@@ -123,6 +127,14 @@ export class BridgeError extends Error {
   readonly files?: ReviewDirtyFile[];
   /** `repo_mismatch`, `invalid_repo`, `ambiguous_pr` (review): the repositories of the folder to choose from. */
   readonly repos?: RepoRef[];
+  /** What to do next, in plain words (decision 94b); absent when the server sends none. `message` is the plain sentence. */
+  readonly hint?: string;
+  /** A button the UI may offer; absent means none. */
+  readonly action?: ErrorAction;
+  /** The technical text, for a "Details" fold. */
+  readonly details?: string;
+  /** `rewind_conflict`: `error.details` is the report object, kept here as data. */
+  readonly data?: unknown;
 
   constructor(
     status: number,
@@ -135,6 +147,10 @@ export class BridgeError extends Error {
       command?: string;
       files?: ReviewDirtyFile[];
       repos?: RepoRef[];
+      hint?: string;
+      action?: ErrorAction;
+      details?: string;
+      data?: unknown;
     },
   ) {
     super(message);
@@ -147,6 +163,10 @@ export class BridgeError extends Error {
     if (detail?.command !== undefined) this.command = detail.command;
     if (detail?.files !== undefined) this.files = detail.files;
     if (detail?.repos !== undefined) this.repos = detail.repos;
+    if (detail?.hint !== undefined) this.hint = detail.hint;
+    if (detail?.action !== undefined) this.action = detail.action;
+    if (detail?.details !== undefined) this.details = detail.details;
+    if (detail?.data !== undefined) this.data = detail.data;
   }
 }
 
@@ -337,6 +357,11 @@ export interface Bridge {
   forgetFact?(projectId: string, taskId: string, factId: string): Promise<void>;
   /** Parity B7: where the conversation as Markdown is (`GET`, `text/markdown`); the host downloads it. */
   exportConversationUrl?(projectId: string): string;
+  /**
+   * The conversation as Markdown, fetched with the `Authorization` header (a plain link carries no token, and the harness
+   * takes `?token=` only on its two SSE routes). The host saves the Blob; prefer this over the URL against a real harness.
+   */
+  exportConversation?(projectId: string): Promise<BlobLike>;
   /** Parity B7: past requests of all projects (the palette). */
   searchRequests?(query: string, limit?: number): Promise<RequestHit[]>;
   /** What agents changed, one entry per file per turn, newest turn first; `turnId` narrows to one turn. */
@@ -551,6 +576,12 @@ function asProvider(body: unknown, id: string): Provider | null {
   return typeof body.id === "string" && Array.isArray(body.models) ? (body as Provider) : null;
 }
 
+const ERROR_ACTIONS: readonly string[] = ["recheck_provider", "connect_provider", "retry", "open_settings", "update_agent"];
+
+function isErrorAction(v: unknown): v is ErrorAction {
+  return typeof v === "string" && ERROR_ACTIONS.includes(v);
+}
+
 function toBridgeError(status: number, text: string): BridgeError {
   const body = parseJson(text);
   const err = isRecord(body) ? body.error : undefined;
@@ -563,6 +594,10 @@ function toBridgeError(status: number, text: string): BridgeError {
       ...(typeof err.command === "string" && err.command.trim() ? { command: err.command.trim() } : {}),
       ...(Array.isArray(err.files) ? { files: err.files as ReviewDirtyFile[] } : {}),
       ...(Array.isArray(err.repos) ? { repos: err.repos as RepoRef[] } : {}),
+      ...(typeof err.hint === "string" && err.hint ? { hint: err.hint } : {}),
+      ...(isErrorAction(err.action) ? { action: err.action } : {}),
+      ...(typeof err.details === "string" && err.details ? { details: err.details } : {}),
+      ...(err.details !== undefined && typeof err.details !== "string" ? { data: err.details } : {}),
     };
     return new BridgeError(status, code, err.message, detail);
   }
@@ -786,6 +821,22 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       await request("DELETE", `${p(id)}/facts/${encodeURIComponent(taskId)}/${encodeURIComponent(factId)}`);
     },
     exportConversationUrl: (id) => `${base}${p(id)}/export?format=md`,
+    exportConversation: async (id) => {
+      const doFetch = options.fetchBinary ?? globalBinaryFetch();
+      const headers: Record<string, string> = {};
+      if (token !== "") headers.Authorization = `Bearer ${token}`;
+      let res: FetchResponseLike;
+      try {
+        res = await doFetch(`${base}${p(id)}/export?format=md`, { method: "GET", headers });
+      } catch (e) {
+        throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
+      }
+      if (!res.ok) throw toBridgeError(res.status, await res.text());
+      const type = res.headers?.get("Content-Type") ?? "text/markdown";
+      const Blob = (globalThis as { Blob?: new (parts: unknown[], init?: { type?: string }) => BlobLike }).Blob;
+      if (!Blob) throw new BridgeError(0, "no_blob", "this environment has no Blob");
+      return new Blob([res.arrayBuffer ? await res.arrayBuffer() : await res.text()], { type });
+    },
     searchRequests: (query, limit) =>
       unwrap<RequestHit[]>(request("GET", `/v1/search?q=${encodeURIComponent(query)}${limit === undefined ? "" : `&limit=${limit}`}`), "results"),
     listChanges: (id, turnId) => unwrap<TurnChanges[]>(request("GET", `${p(id)}/changes${turnId === undefined ? "" : `?turn=${turnId}`}`), "turns"),

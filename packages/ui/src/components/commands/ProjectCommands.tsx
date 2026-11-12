@@ -6,7 +6,8 @@ import { settingsHref } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { useRunsSelector, useRunsStore } from "../../state/projectRuns";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { Minimize2 } from "lucide-react";
+import { Minimize2, Play } from "lucide-react";
+import { Glyph } from "../primitives/Glyph";
 import { MOD_LABEL } from "../../lib/keys";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
@@ -114,23 +115,29 @@ export default function ProjectCommands({
           inert={collapsePinned}
           className={cn("flex items-center gap-1 max-lg:hidden", collapsePinned && "pointer-events-none invisible absolute")}
         >
-          {pinned.map((c) => (
-            <Button
-              key={c.name}
-              variant="ghost"
-              size="sm"
-              title={c.command}
-              aria-busy={busy.has(c.name.toLowerCase())}
-              onClick={() => void run(c.name)}
-              className="max-w-40"
-            >
-              {/* The spinner has its own place, so the strip (and the tabs in it) never changes width when a run starts or ends. */}
-              <span aria-hidden className="-ml-1 grid size-3 place-items-center">
-                {busy.has(c.name.toLowerCase()) && <Spinner />}
-              </span>
-              <span className="truncate">{c.name}</span>
-            </Button>
-          ))}
+          {/* Decision 94c: a pinned command is a quiet button that looks like something that runs: a play glyph and the name,
+              set off from the tabs by a divider; while it runs the glyph is the spinner and a click opens its run tab. */}
+          {pinned.length > 0 && <span aria-hidden className="mr-1 h-4 w-px shrink-0 bg-line" />}
+          {pinned.map((c) => {
+            const running = busy.has(c.name.toLowerCase());
+            return (
+              <Button
+                key={c.name}
+                variant="quiet"
+                size="sm"
+                title={running ? `${c.name} is running: open its tab` : `Run: ${c.command}`}
+                aria-busy={running}
+                onClick={() => void run(c.name)}
+                className="max-w-40"
+              >
+                {/* The glyph has its own place, so the strip (and the tabs in it) never changes width when a run starts or ends. */}
+                <span aria-hidden className="grid size-4 place-items-center">
+                  {running ? <Spinner /> : <Glyph icon={Play} size={14} />}
+                </span>
+                <span className="truncate">{c.name}</span>
+              </Button>
+            );
+          })}
         </span>
         <MenuButton label="Run a project command" text="Run" alignEnd items={items} />
       </span>

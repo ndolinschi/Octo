@@ -8,6 +8,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // Complete answers one inline-completion request. skipped is why nothing was
@@ -28,9 +29,9 @@ func (s *Service) Complete(ctx context.Context, pid string, req completion.Reque
 	case errors.As(err, &off):
 		return res, "", &Error{Kind: KindConflict, Code: "completion_off", Message: off.Reason}
 	case errors.As(err, &be):
-		return res, "", &Error{Kind: KindConflict, Code: "budget_reached", Message: be.Error()}
+		return res, "", of(KindConflict, usererr.BudgetReached(be.Spent, be.Budget))
 	case errors.As(err, &failed):
-		return res, "", &Error{Kind: KindUpstream, Code: "completion_failed", Message: failed.Error()}
+		return res, "", of(KindUpstream, usererr.CompletionFailed(failed.Error()))
 	}
 	return res, "", err
 }

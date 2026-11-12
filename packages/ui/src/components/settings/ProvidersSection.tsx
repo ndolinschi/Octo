@@ -7,8 +7,8 @@ import { Button } from "../primitives/Button";
 import { ListFrame } from "../primitives/Card";
 import { Notice } from "../primitives/Notice";
 import { SkeletonList } from "../primitives/Skeleton";
+import { ProviderRows } from "../shared/providers/ProviderRows";
 import { ProviderDetail } from "./ProviderDetail";
-import { ProviderList } from "./ProviderList";
 import { RouterSettings } from "./RouterSettings";
 
 /**
@@ -51,7 +51,7 @@ export function ProvidersSection() {
         )}
         {list && (
           <div className="flex items-start gap-4">
-            <ProviderList
+            <ProviderRows
               groups={groups}
               selectedId={selected?.id}
               onSelect={(id) => {

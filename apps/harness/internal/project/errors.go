@@ -6,6 +6,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 type Kind int
@@ -27,6 +28,11 @@ type Error struct {
 	Kind    Kind
 	Code    string
 	Message string
+	// User is the catalogue form of the failure (plain message, hint, command,
+	// action, details). When set it is what the bridge sends; Message is its
+	// plain message. Without it the bridge reads Message as technical text and
+	// sends the catalogue's generic wording for Code (usererr.Generic).
+	User *usererr.Error
 	// Provider and Reason are set for model_unavailable: who would run the
 	// model and what is missing.
 	Provider string
@@ -45,6 +51,20 @@ func (e *Error) Error() string { return e.Code + ": " + e.Message }
 // error instead of failing the turn.
 func (e *Error) ToolFacing() bool { return e.Kind == KindInvalid || e.Kind == KindNotFound }
 
+// Catalogue is the failure as the person reads it: User, or the generic
+// wording of Code with Message as its details.
+func (e *Error) Catalogue() *usererr.Error {
+	if e.User != nil {
+		return e.User
+	}
+	return usererr.Generic(e.Code, e.Message)
+}
+
+// of is an Error that carries a catalogue case; the code is the case's.
+func of(kind Kind, u *usererr.Error) *Error {
+	return &Error{Kind: kind, Code: u.Code, Message: u.Message, User: u}
+}
+
 func invalid(format string, args ...any) *Error {
 	return &Error{Kind: KindInvalid, Code: "invalid_request", Message: fmt.Sprintf(format, args...)}
 }
@@ -53,17 +73,11 @@ func notFound(what string) *Error {
 	return &Error{Kind: KindNotFound, Code: "not_found", Message: what + " not found"}
 }
 
-func turnInProgress(msg string) *Error {
-	return &Error{Kind: KindConflict, Code: "turn_in_progress", Message: msg}
-}
+func turnInProgress() *Error { return of(KindConflict, usererr.TurnInProgress()) }
 
-func sideInProgress() *Error {
-	return &Error{Kind: KindConflict, Code: "side_in_progress", Message: "a side question is already running for this project"}
-}
+func sideInProgress() *Error { return of(KindConflict, usererr.SideInProgress()) }
 
-func fileChanged() *Error {
-	return &Error{Kind: KindConflict, Code: "file_changed", Message: "file changed on disk"}
-}
+func fileChanged() *Error { return of(KindConflict, usererr.FileChanged()) }
 
 func reviewReadOnly() *Error {
 	return &Error{Kind: KindConflict, Code: "review_workspace_read_only",
@@ -86,32 +100,30 @@ func revertUnavailable(note string) *Error {
 	return &Error{Kind: KindConflict, Code: "revert_unavailable", Message: msg}
 }
 
-func queueFull() *Error {
-	return &Error{Kind: KindConflict, Code: "queue_full",
-		Message: fmt.Sprintf("the message queue is full (%d messages); wait for the running turn or remove one", projectstore.MaxQueue)}
-}
+func queueFull() *Error { return of(KindConflict, usererr.QueueFull(projectstore.MaxQueue)) }
 
 // storeErr maps a store failure that has a clear meaning for the caller: a
 // database written by a newer version of the app answers 409 newer_schema with
-// the store's own message (what to do), not a bare 500.
+// what to do about it, not a bare 500.
 func storeErr(err error) error {
 	var ne *projectstore.NewerSchemaError
 	if errors.As(err, &ne) {
-		return &Error{Kind: KindConflict, Code: "newer_schema", Message: ne.Error()}
+		return of(KindConflict, usererr.NewerSchema(ne.Error()))
 	}
 	return err
 }
 
-// modelUnavailable is 422: the model's provider cannot run it now.
+// modelUnavailable is 422: the model's provider cannot run it now. The
+// catalogue form is the provider's own problem (not logged in, not installed,
+// ...); the models.<field> technical sentence is its details.
 func modelUnavailable(field, model string, u *providers.Unavailable) *Error {
+	p := *u.Problem
+	p.Details = fmt.Sprintf("models.%s %q cannot run: %s", field, model, u.Reason)
 	return &Error{
 		Kind: KindUnprocessable, Code: "model_unavailable", Provider: u.Provider, Reason: u.Reason, CanForce: u.CanForce,
-		Message: fmt.Sprintf("models.%s %q cannot run: %s", field, model, u.Reason),
+		Message: p.Message, User: &p,
 	}
 }
 
 // noProvider is 409: no provider is connected, so no project can run.
-func noProvider() *Error {
-	return &Error{Kind: KindConflict, Code: "no_provider",
-		Message: "No provider is connected. Add an API key in Settings, or log in to an agent such as Claude Code, then try again."}
-}
+func noProvider() *Error { return of(KindConflict, usererr.NoProvider()) }

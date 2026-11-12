@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "../../lib/cn";
 import { budgetState } from "../../lib/models";
 import { modelName } from "../../lib/models";
 import { topModelLines } from "../../lib/usage/modelLines";
@@ -14,7 +13,7 @@ import { useStatusSlots } from "../../state/statusSlots";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
-import { STATUS_ITEM } from "./StatusItem";
+import { StatusButton } from "./StatusButton";
 
 /**
  * What the open project puts in the status bar (decision 73), portalled into the shell's row: its folder (opens Files), the
@@ -63,22 +62,17 @@ function Start() {
   return (
     <>
       {first && (
-        <button
-          type="button"
-          className={cn(STATUS_ITEM, "min-w-0 shrink")}
-          title={`${first.path}\nOpen the project's files`}
-          onClick={() => ws?.openTool("files")}
-        >
+        <StatusButton className="shrink" title={`${first.path}\nOpen the project's files`} onClick={() => ws?.openTool("files")}>
           <Glyph icon={GLYPH.files} size={14} />
           <span className="truncate">{first.label}</span>
           {more > 0 && <span className="tabular-nums">+{more}</span>}
-        </button>
+        </StatusButton>
       )}
       {changed > 0 && (
-        <button type="button" className={STATUS_ITEM} title="What the agents changed. Open Changes." onClick={() => ws?.openTool("changes")}>
+        <StatusButton title="What the agents changed. Open Changes." onClick={() => ws?.openTool("changes")}>
           <Glyph icon={GLYPH.changes} size={14} />
           {changedText(changed)}
-        </button>
+        </StatusButton>
       )}
     </>
   );
@@ -95,16 +89,10 @@ function End() {
   return (
     <>
       {text && (
-        <button
-          type="button"
-          data-running-commands
-          className={STATUS_ITEM}
-          title="Project commands are running. Show the latest."
-          onClick={() => (newest ? ws?.openRun(newest) : undefined)}
-        >
+        <StatusButton data-running-commands title="Project commands are running. Show the latest." onClick={() => (newest ? ws?.openRun(newest) : undefined)}>
           <StateGlyph state="working" />
           {text}
-        </button>
+        </StatusButton>
       )}
       {budget && <Budget budget={budget} spent={project?.spent_usd ?? null} />}
     </>
@@ -130,10 +118,10 @@ function Budget({ budget, spent }: { budget: NonNullable<ReturnType<typeof budge
   }, [bridge, projectId, spent]);
   const base = `${budget.reached ? "Project budget reached. Raise it in project settings to continue. " : ""}Spent ${budget.text} of the project's budget. Open Usage.`;
   return (
-    <button
-      type="button"
+    <StatusButton
       data-budget
-      className={cn(STATUS_ITEM, "tabular-nums", budget.tone === "err" && "text-err", budget.tone === "warn" && "text-warn")}
+      className="tabular-nums"
+      {...(budget.tone === "err" || budget.tone === "warn" ? { warning: budget.tone } : {})}
       title={lines.length ? `${base}\n${lines.join("\n")}` : base}
       onMouseEnter={read}
       onFocus={read}
@@ -141,6 +129,6 @@ function Budget({ budget, spent }: { budget: NonNullable<ReturnType<typeof budge
     >
       <span className="sr-only">Budget: </span>
       {budget.reached ? "Budget reached" : budget.text}
-    </button>
+    </StatusButton>
   );
 }

@@ -43,8 +43,17 @@ import { gzipSync } from "node:zlib";
  * their own chunks; the turn line and the budget tooltip cost +0.3. Entry 155.78 kB. Budget = measured + 1.0 = 156.8.
  * (Making `FloatingComposer` lazy made it WORSE, +2.7 kB: the bundler hoisted more shared modules into extra preloaded
  * chunks. Measure every move.)
+ *
+ * Batch 5 + sessions merge (2026-11-12): the merged tree measured 172.99 kB (the same toolchain measures commit ec4bc05 at
+ * 157.28). Moved out of the entry: the sessions model (the tab title and "which session loads" stay in `lib/sessions/current`),
+ * the error mapping (`lib/errors/plain`: only `words` stays; the failed-turn notice is its own `TurnBanner` chunk, the sidebar's
+ * failure tooltip maps through `useReadable` on demand), the provider reasons, the tool vocabulary beyond `toolName`, the image
+ * canvas work, the routing line, the pills band, the folder menu, the "unsaved edits" dialogs: 163.59 kB. Still above the old
+ * budget because the sidebar rows, the live activity line, the composer's slash and image hooks and the sessions state are real
+ * first-paint code now. Budget = measured + 1.0 = 164.6; the target of 158 stays open (next: slash/image hooks behind a first-use
+ * import, the agent-client's session methods in a lazy chunk). Do not raise it further.
  */
-const BUDGET_KB = 156.8;
+const BUDGET_KB = 164.6;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

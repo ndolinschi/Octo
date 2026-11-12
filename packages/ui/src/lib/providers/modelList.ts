@@ -2,6 +2,7 @@ import type { Provider, ProviderList, ProviderModel, ProviderModelSource, Provid
 import { agentModelLabel, modelLabel } from "../models";
 import { jsonCodec, type Codec } from "../storage";
 import { canUseAnyway, connectAction, isReady, stateText } from "./providers";
+import { plainReason } from "./reasons";
 
 /**
  * The model picker as data (decisions 53 a and 58), React-free: what a picker renders and how its keys move. The
@@ -232,7 +233,7 @@ export function pickerView(list: ProviderList, opts: PickerOptions = {}): Picker
           state: stateText(p.state),
           action: connectAction(p),
           unverified: canUseAnyway(p),
-          ...(p.state === "not_supported" ? { unsupported: true, reason: p.reason } : {}),
+          ...(p.state === "not_supported" ? { unsupported: true, reason: plainReason(p) } : {}),
           ...(p.experimental ? { experimental: true } : {}),
         });
       continue;

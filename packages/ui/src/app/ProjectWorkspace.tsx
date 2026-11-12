@@ -10,7 +10,6 @@ import { allTabs, fileTab, focusedGroup, parseTab } from "../state/workspace/lay
 import { useWorkspace, WorkspaceProvider } from "../state/workspace/WorkspaceProvider";
 import { Dock } from "../components/dock/Dock";
 import { Button } from "../components/primitives/Button";
-import { Dialog } from "../components/primitives/Dialog";
 import { Presence } from "../components/primitives/Presence";
 import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
@@ -22,6 +21,7 @@ const ProjectStatus = lazy(() => import("../components/status/ProjectStatus").th
 const ProjectRunsFeed = lazy(() => import("../components/commands/ProjectRunsFeed"));
 
 /** The project dialog loads on first use (its own chunk). */
+const CloseDialog = lazy(() => import("../components/shell/DiscardDialogs").then((m) => ({ default: m.CloseDialog })));
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
 
 /** The v7 pieces the conversation and the composer show (approvals, forms, the harness queue); each renders nothing when the bridge lacks its methods. */
@@ -53,8 +53,9 @@ export function ProjectWorkspace(props: { agentId: string | null }) {
   const openSettings = useCallback(() => setSettings(true), []);
   const { projectId } = useProject();
   return (
-    <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
-      <FileViewProvider projectId={projectId}>
+    // The file-view state sits above the workspace: the dock's width floors read each group's tree column (decision 94a).
+    <FileViewProvider projectId={projectId}>
+      <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
         <Files>
           <ChatSlotsProvider value={CHAT_SLOTS}>
             <Suspense fallback={null}>
@@ -64,10 +65,12 @@ export function ProjectWorkspace(props: { agentId: string | null }) {
             <Body />
           </ChatSlotsProvider>
           <SettingsDialog show={settings} onClose={() => setSettings(false)} />
-          <CloseDialog />
+          <Suspense fallback={null}>
+            <CloseDialog />
+          </Suspense>
         </Files>
-      </FileViewProvider>
-    </WorkspaceProvider>
+      </WorkspaceProvider>
+    </FileViewProvider>
   );
 }
 
@@ -157,37 +160,6 @@ function SettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
             }}
           />
         </Suspense>
-      )}
-    </Presence>
-  );
-}
-
-/** Closing tabs with unsaved edits asks first. */
-function CloseDialog() {
-  const ws = useWorkspace();
-  const closing = ws.closing;
-  const many = (closing?.files.length ?? 0) > 1;
-  return (
-    <Presence show={closing !== null}>
-      {closing && (
-        <Dialog
-          width="sm"
-          title={many ? `Discard changes to ${closing.files.length}\u00a0files?` : `Discard changes to ${closing.files[0] ?? "this file"}?`}
-          description={many ? `${closing.files.join(", ")} have unsaved edits that will be lost.` : "Your edits haven't been saved and will be lost."}
-          onClose={ws.cancelClose}
-          footer={
-            <>
-              <Button onClick={ws.cancelClose} data-autofocus>
-                Cancel
-              </Button>
-              <Button variant="danger" onClick={ws.confirmClose}>
-                Discard changes
-              </Button>
-            </>
-          }
-        >
-          {null}
-        </Dialog>
       )}
     </Presence>
   );

@@ -78,7 +78,7 @@ bash apps/harness/scripts/test-subscriptions.sh      # LIVE: real agent CLIs on 
 ```
 
 Docs of the harness's features (exact API): `apps/harness/docs/` — `architecture.md`, `settings.md`, `v7.md`, `memory.md`, `sessions.md` (project sessions: new, resume, agent sessions)
-(orchestrator memory), `providers.md` (providers, models, `GET /v1/providers`), `review.md` (PR review), `acp-orchestrator.md` (ACP orchestrator, agents, diagnostics, wire trace). Every variable and setting:
+(orchestrator memory), `providers.md` (providers, models, `GET /v1/providers`), `review.md` (PR review), `acp-orchestrator.md` (ACP orchestrator, agents, diagnostics, wire trace), `errors.md` (the error catalogue: `message`, `hint`, `command`, `action`, `details`). Every variable and setting:
 the table in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md#environment-variables-and-settings).
 
 ## Desktop + UI (pnpm)

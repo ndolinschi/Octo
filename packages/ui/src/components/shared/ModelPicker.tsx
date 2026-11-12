@@ -23,6 +23,11 @@ export function ModelPicker(props: ModelPickerProps) {
   const { bridge } = useApp();
   const providers = useProviders(bridge);
   const [open, setOpenState] = useState(false);
+  const [served, setServed] = useState(props.openRequest?.n ?? 0);
+  if (props.openRequest && props.openRequest.n !== served) {
+    setServed(props.openRequest.n);
+    setOpenState(true);
+  }
   const button = useRef<HTMLButtonElement>(null);
   const setOpen = (next: boolean) => {
     setOpenState(next);

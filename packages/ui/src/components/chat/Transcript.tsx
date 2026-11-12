@@ -1,23 +1,31 @@
-import type { Agent, Message, PlanEntry, TurnOutcome } from "@octo/agent-client";
+import { errorFieldsOf, type Agent, type Message, type PlanEntry, type TurnOutcome } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
 
 import { markSteered } from "../../lib/v7/steer";
-import { lazy, memo, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
-import { formatDuration, formatSeparator, needsSeparator, timeAgo, errorMessage } from "../../lib/format";
+import { formatDuration, formatSeparator, needsSeparator, timeAgo } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
 import { buildTurns, compactionSlots, promptText, turnWarning, type Turn } from "../../lib/transcript";
-import { Info } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
+import { agentLabelOf } from "../../lib/errors/words";
+import { recheckAgent } from "../../lib/providers/recheck";
+import { useApp } from "../../state/app";
+import { parseAcp } from "../../lib/models";
+import { useAcpNames } from "../../state/models";
 import { useProject } from "../../state/project";
 import { useActivity } from "../../state/activity";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { useTurnLine } from "./useTurnLine";
 import { LazyMarkdown as Markdown } from "./LazyMarkdown";
 /** Code comments sent with a prompt render with the first such prompt (their own chunk). */
+/** The failed or stopped turn's notice: its own chunk (error mapping, notice, retry), warmed after first paint. */
+export const TurnBanner = lazy(() => import("./TurnBanner").then((m) => ({ default: m.TurnBanner })));
+const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const PlanList = lazy(() => import("./LivePanels").then((m) => ({ default: m.PlanList })));
 const ThinkingRow = lazy(() => import("./LivePanels").then((m) => ({ default: m.ThinkingRow })));
+const PromptImages = lazy(() => import("./PromptImages").then((m) => ({ default: m.PromptImages })));
 const SentComments = lazy(() => import("./SentComments").then((m) => ({ default: m.SentComments })));
 /** The plan card loads with the first plan (parity B3). */
 const CompactedMarker = lazy(() => import("./CompactedMarker").then((m) => ({ default: m.CompactedMarker })));
@@ -29,9 +37,9 @@ const PLAN_TURNS = 5;
 /** Tool lines and delegation cards: their own chunks, fetched right after the first paint with the Markdown chunk (`AppShell`). */
 const ToolGroup = lazy(() => import("./ToolGroup").then((m) => ({ default: m.ToolGroup })));
 const DelegationGroup = lazy(() => import("./DelegationGroup").then((m) => ({ default: m.DelegationGroup })));
-import { TranscriptContext, type ToolResult, type TranscriptCtx } from "./transcriptContext";
+import { TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
+import { proseClass } from "../primitives/Prose";
 import { ActivityLine, useBatched } from "./LiveActivity";
-import { runRetry, sentence, splitHint } from "./outcome";
 
 /** Memoised: the conversation re-renders on scroll (pinned prompt, jump button); the transcript need not. */
 export const Transcript = memo(function Transcript(props: {
@@ -47,6 +55,10 @@ export const Transcript = memo(function Transcript(props: {
   onKeepEditing?: (() => void) | undefined;
   /** Parity B5: opens the rewind dialog for a request; absent when the bridge cannot rewind. */
   onRewind?: ((messageId: number) => void) | undefined;
+  /** Sessions tab: a pane narrower than the conversation's floor (smaller type, tighter bubbles, time-only reply meta). */
+  density?: "compact" | undefined;
+  /** Sessions tab: a delegation row's "Open session" selects the agent's session in place (else it opens the Sessions tab). */
+  onOpenSession?: ((agentId: string) => void) | undefined;
 }) {
   const { agent, messages, now } = props;
   const { state, steered } = useProject();
@@ -70,8 +82,8 @@ export const Transcript = memo(function Transcript(props: {
   const ctx = useMemo<TranscriptCtx>(() => {
     const results = new Map<string, ToolResult>();
     for (const m of messages) for (const b of m.content) if (b.type === "tool_result") results.set(b.tool_use_id, b);
-    return { results, agentRunning: running, now };
-  }, [messages, running, now]);
+    return { results, agentRunning: running, now, density: props.density === "compact" ? "compact" : "regular", onOpenSession: props.onOpenSession };
+  }, [messages, running, now, props.density, props.onOpenSession]);
 
   const isOrchestrator = agent.parent_id === null;
   const lastTurn = isOrchestrator ? state.lastTurn : null;
@@ -90,12 +102,20 @@ export const Transcript = memo(function Transcript(props: {
   // that is not a warning: an ACP orchestrator that could not start). Its login hint comes along when the agent has one.
   const failure =
     lastTurn && lastTurn.status !== "completed"
-      ? { status: lastTurn.status, error: lastTurn.error, hint: lastTurn.hint }
+      ? { status: lastTurn.status, error: lastTurn.error, ...errorFieldsOf(lastTurn) }
       : isOrchestrator && (agent.status === "failed" || (agent.error && !turnWarning(agent.error)))
-        ? { status: "failed" as const, error: agent.error }
+        ? { status: "failed" as const, error: agent.error, ...(agent.error_hint ? { hint: agent.error_hint } : {}) }
         : null;
   const usageLine = useTurnLine(agent, isOrchestrator, running);
-  const loginHint = useLoginHint(isOrchestrator && failure ? agent.model : null);
+  const login = useLoginHint(isOrchestrator && failure ? agent.model : null);
+  const { bridge } = useApp();
+  const recheck = useCallback(async () => {
+    const id = providerIdOf(agent.model);
+    const ready = id ? await recheckAgent(bridge, id).catch(() => false) : false;
+    login.recheck();
+    return ready;
+  }, [agent.model, bridge, login]);
+  const agentName = useAgentName(agent.model);
   const warning =
     isOrchestrator && !running ? turnWarning(lastTurn?.status === "completed" ? lastTurn.error : agent.status !== "failed" ? agent.error : null) : null;
   // Finished turns only show minutes-old times; a coarse clock lets them skip the per-second tick.
@@ -130,6 +150,7 @@ export const Transcript = memo(function Transcript(props: {
                 <UserPrompt
                   messageId={turn.prompt.id}
                   text={promptText(turn.prompt)}
+                  images={turn.prompt.content.filter((b) => b.type === "image")}
                   author={props.promptAuthor}
                   external={!isOrchestrator}
                   steered={steeredAt.has(i)}
@@ -155,7 +176,11 @@ export const Transcript = memo(function Transcript(props: {
                   <PlanForTurn turnId={turn.prompt.id} onKeepEditing={props.onKeepEditing} />
                 </Suspense>
               )}
-              {ended && ended.status !== "completed" && <TurnBanner status={ended.status} error={ended.error} retryText={null} hint={ended.hint ?? null} />}
+              {ended && ended.status !== "completed" && (
+                <Suspense fallback={null}>
+                  <TurnBanner status={ended.status} error={ended.error} retryText={null} fields={errorFieldsOf(ended)} agent={agentName} />
+                </Suspense>
+              )}
             </section>
           );
         })}
@@ -179,13 +204,28 @@ export const Transcript = memo(function Transcript(props: {
           </Suspense>
         ))}
         {warning && (
-          <p data-turn-warning role="status" className="-mt-4 flex items-center gap-2 text-sm text-fg-2">
-            <Glyph icon={Info} size={14} className="shrink-0 text-fg-3" />
-            <span className="min-w-0">{warning}</span>
-          </p>
+          <div data-turn-warning className="-mt-4">
+            <Suspense fallback={null}>
+              <ErrorNotice tone="info" fields={{ message: warning }} raw={`warning: ${warning}`} agent={agentName} />
+            </Suspense>
+          </div>
         )}
         {failure && !running && (
-          <TurnBanner status={failure.status} error={failure.error} retryText={lastPrompt ? promptText(lastPrompt) : null} hint={failure.hint ?? loginHint} />
+          <Suspense fallback={null}>
+            <TurnBanner
+              status={failure.status}
+              error={failure.error}
+              retryText={lastPrompt ? promptText(lastPrompt) : null}
+              fields={{
+                ...failure,
+                ...(failure.hint || !login.hint ? {} : { hint: login.hint }),
+                ...(failure.action || !login.hint ? {} : { action: "recheck_provider" as const }),
+              }}
+              agent={agentName}
+              providerId={providerIdOf(agent.model)}
+              onCheck={recheck}
+            />
+          </Suspense>
         )}
       </div>
     </TranscriptContext.Provider>
@@ -207,6 +247,7 @@ function TimeSeparator({ at, now }: { at: string; now: number }) {
 const UserPrompt = memo(function UserPrompt({
   messageId,
   text: raw,
+  images,
   author,
   external,
   steered,
@@ -214,12 +255,14 @@ const UserPrompt = memo(function UserPrompt({
 }: {
   messageId: number;
   text: string;
+  images: Extract<Message["content"][number], { type: "image" }>[];
   author: string;
   external: boolean;
   steered: boolean;
   onRewind: ((messageId: number) => void) | undefined;
 }) {
   const { prose: text, comments } = useMemo(() => splitComments(raw), [raw]);
+  const compact = useTranscript().density === "compact";
   const box = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -237,7 +280,10 @@ const UserPrompt = memo(function UserPrompt({
 
   return (
     <div data-prompt className="group/prompt relative">
-      <div data-bubble className="rounded-md border border-line bg-raised p-card text-base text-fg transition-[box-shadow] duration-300">
+      <div
+        data-bubble
+        className={cn("rounded-md border border-line bg-raised text-fg transition-[box-shadow] duration-300", compact ? "p-2 text-sm" : "p-card text-base")}
+      >
         {external ? <div className="mb-0.5 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
         {steered && (
           <div data-steered className="mb-0.5 text-xs text-fg-3">
@@ -250,15 +296,14 @@ const UserPrompt = memo(function UserPrompt({
           </div>
         )}
         {text && (overflows || expanded) && (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-controls={id}
-            onClick={() => setExpanded((x) => !x)}
-            className="mt-1 -ml-1.5 inline-flex h-6 press items-center rounded-sm px-1.5 text-sm text-fg-2 hover:bg-hover hover:text-fg"
-          >
+          <Button variant="quiet" size="xs" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded((x) => !x)} className="mt-1 -ml-1.5">
             {expanded ? "Show less" : "Show more"}
-          </button>
+          </Button>
+        )}
+        {images.length > 0 && (
+          <Suspense fallback={null}>
+            <PromptImages blocks={images} />
+          </Suspense>
         )}
         {comments.length > 0 && (
           <div className={cn(text && "mt-3")}>
@@ -270,13 +315,14 @@ const UserPrompt = memo(function UserPrompt({
       </div>
       {onRewind && (
         // On the bubble's lower edge, in the gap to the answer: it takes no room and shows on hover or focus (always on touch).
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="xs"
           onClick={() => onRewind(messageId)}
-          className="absolute right-3 -bottom-3 z-10 inline-flex h-6 press items-center gap-1.5 rounded-full border border-line-strong bg-overlay px-2 text-xs text-fg-2 opacity-0 shadow-float group-focus-within/prompt:opacity-100 group-hover/prompt:opacity-100 hover:text-fg pointer-coarse:opacity-100"
+          className="absolute right-3 -bottom-3 z-10 rounded-full bg-overlay opacity-0 shadow-float group-focus-within/prompt:opacity-100 group-hover/prompt:opacity-100 pointer-coarse:opacity-100"
         >
           Rewind to here
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -298,54 +344,71 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   usage?: string | null;
 }) {
   const { turn, live, streaming } = props;
+  const compact = useTranscript().density === "compact";
   const empty = turn.items.length === 0 && !streaming && !props.thinking;
   if (empty && !live) return null;
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
   const end = turn.lastAt ? Date.parse(turn.lastAt) : null;
   const worked = !live && start !== null && end !== null && end - start >= 1000 ? end - start : null;
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
+  const prose = proseClass(compact ? "compact" : "reading");
   return (
-    // Blocks of a reply (prose, tool lines, delegation cards, the live line, the footer) sit 12 apart.
-    <article aria-label={`${props.speaker} response`} className="flex flex-col gap-3">
-      {worked !== null && <p className="text-base text-fg-3 tabular-nums">Worked for {formatDuration(worked)}</p>}
+    // Decision 91j: blocks of a reply (prose, cards) sit 16 apart (12 in the Sessions tab), step rows 8, and the meta line is tight to its reply.
+    <article
+      aria-label={`${props.speaker} response`}
+      className={cn("flex flex-col [&>[data-activity-row]+[data-activity-row]]:-mt-2", compact ? "gap-3" : "gap-4")}
+    >
+      {worked !== null && <p className={cn("text-fg-3 tabular-nums", compact ? "text-sm" : "text-base")}>Worked for {formatDuration(worked)}</p>}
       <Suspense fallback={null}>
         {live && props.plan && <PlanList entries={props.plan} />}
         {live && <ThinkingRow text={props.thinking} />}
       </Suspense>
       {turn.items.map((item) => {
-        if (item.kind === "text") return <Markdown key={item.key} text={item.text} className="octo-prose" fileLinks />;
+        if (item.kind === "text") return <Markdown key={item.key} text={item.text} className={prose} fileLinks />;
         return (
           <Suspense key={item.key} fallback={null}>
             {item.kind === "tools" ? <ToolGroup uses={item.uses} /> : <DelegationGroup uses={item.uses} />}
           </Suspense>
         );
       })}
-      {streaming && <Markdown text={streaming} className="octo-prose" streaming fileLinks />}
+      {streaming && <Markdown text={streaming} className={prose} streaming fileLinks />}
       {live && <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} now={props.now} watched={props.watched} />}
-      {props.footer && !live && reply && turn.lastAt && <TurnFooter reply={reply} at={turn.lastAt} now={props.now} usage={props.usage ?? null} />}
+      {props.footer && !live && reply && turn.lastAt && (
+        <TurnFooter reply={reply} at={turn.lastAt} now={props.now} usage={props.usage ?? null} compact={compact} />
+      )}
     </article>
   );
 });
 
-/** Muted row under a finished orchestrator reply: copy it, and when it finished. */
-function TurnFooter({ reply, at, now, usage }: { reply: string; at: string; now: number; usage: string | null }) {
+/**
+ * Muted row under a finished orchestrator reply: copy it, when it finished, and the usage. Every segment is `whitespace-nowrap`
+ * (the time never breaks as "3d / ago"); the usage gives way first (ellipsis from the right). `compact` (a narrow pane) keeps
+ * the time only and puts the usage in its tooltip.
+ */
+function TurnFooter({ reply, at, now, usage, compact }: { reply: string; at: string; now: number; usage: string | null; compact: boolean }) {
   const [copied, copy] = useCopy();
+  const when = new Date(at).toLocaleString();
   return (
-    <div data-turn-footer className="-ml-1 flex h-6 items-center gap-1.5 text-sm text-fg-3">
-      <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : "Copy reply"} size="sm" onClick={() => copy(reply)} />
-      <time dateTime={at} title={new Date(at).toLocaleString()} className="tabular-nums">
+    <div
+      data-turn-footer
+      title={compact && usage ? `${when} · ${usage}` : undefined}
+      className="-mt-2 -ml-1 flex h-6 min-w-0 items-center gap-1.5 text-sm text-fg-3"
+    >
+      <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : "Copy reply"} size="xs" className="shrink-0" onClick={() => copy(reply)} />
+      <time dateTime={at} title={when} className="shrink-0 whitespace-nowrap tabular-nums">
         {timeAgo(at, now)}
       </time>
-      {usage && <span className="min-w-0 truncate tabular-nums">· {usage}</span>}
+      {usage && !compact && <span className="min-w-0 truncate whitespace-nowrap tabular-nums">· {usage}</span>}
     </div>
   );
 }
 
-/** The login hint of the ACP agent an `acp:` setting names, when the plugins report it logged out (or give a hint). */
-export function useLoginHint(model: string | null): string | null {
+/** The login hint of the ACP agent an `acp:` setting names, when the plugins report it logged out (or give a hint); `recheck` reads it again. */
+export function useLoginHint(model: string | null): { hint: string | null; recheck(): void } {
   const activity = useActivity();
   const id = model?.startsWith("acp:") ? model.slice(4).split("/")[0] : undefined;
   const [hint, setHint] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
   useEffect(() => {
     if (!id) return;
     let alive = true;
@@ -354,44 +417,26 @@ export function useLoginHint(model: string | null): string | null {
         const a = plugins.flatMap((p) => p.agents).find((x) => x.id === id);
         if (alive) setHint(a && a.logged_in !== true && a.hint ? a.hint : null);
       },
+      // Unreadable plugin list: the notice keeps its own text and "Check again" asks once more.
       () => undefined,
     );
     return () => {
       alive = false;
     };
-  }, [activity, id]);
-  return id ? hint : null;
+  }, [activity, id, round]);
+  const recheck = useCallback(() => setRound((n) => n + 1), []);
+  return { hint: id ? hint : null, recheck };
 }
 
-export function TurnBanner(props: { status: "failed" | "cancelled"; error: string | null; retryText: string | null; hint?: string | null }) {
-  const { send, running } = useProject();
-  const [busy, setBusy] = useState(false);
-  const [retryError, setRetryError] = useState<string | null>(null);
-  const failed = props.status === "failed";
-  const canRetry = failed && props.retryText !== null;
+/** The provider id of an `acp:` model setting, undefined for a plain model. */
+export function providerIdOf(model: string | null | undefined): string | undefined {
+  return model ? parseAcp(model)?.id : undefined;
+}
 
-  const retry = async () => {
-    if (!props.retryText) return;
-    setRetryError(null);
-    await runRetry(send, props.retryText, { setBusy, onError: (e) => setRetryError(errorMessage(e)) });
-  };
-
-  // The hint is said once, on its own line, even when the error text already ends with it (owner, live run).
-  const { error, hint } = splitHint(props.error, props.hint ?? undefined);
-  const detail = failed ? sentence(error || "No error details were reported") : props.retryText !== null ? "Send a message to continue." : "";
-
-  return (
-    <div role="status" data-turn-outcome={props.status} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-      <p className="min-w-0 flex-1 text-fg-2">
-        <span className={failed ? "text-err" : "text-fg"}>{failed ? "Failed." : "Stopped."}</span> {detail}
-        {hint && <span className="mt-1 block text-fg-3">{hint}</span>}
-        {retryError && <span className="text-err"> Retry failed: {sentence(retryError)}</span>}
-      </p>
-      {canRetry && (
-        <Button size="sm" onClick={() => void retry()} disabled={busy || running}>
-          {busy ? "Retrying…" : "Retry"}
-        </Button>
-      )}
-    </div>
-  );
+/** The label of the agent a model setting names (decision 94e): never its id. Null for a plain model. */
+export function useAgentName(model: string | null | undefined): string | undefined {
+  const acp = useAcpNames();
+  const ref = model ? parseAcp(model) : null;
+  if (!ref) return undefined;
+  return acp.find((a) => a.id === ref.id)?.label ?? agentLabelOf(ref.id);
 }

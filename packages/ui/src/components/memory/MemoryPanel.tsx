@@ -10,7 +10,6 @@ export function MemoryPanel(props: {
   onOpenFile?: (path: string) => void;
   onOpenNote?: (noteId: string) => void;
   initialView?: MemoryTab;
-  reportRequests?: number;
 }) {
   const { projectId } = useProject();
   return <MemoryView projectId={projectId} {...props} />;

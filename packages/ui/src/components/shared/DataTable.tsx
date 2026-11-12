@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useCopy } from "../../lib/hooks";
 import { FOLD_ROWS, numericColumns, toCsv, toMarkdown, type Table } from "../../lib/table";
-import { Glyph } from "../primitives/Glyph";
+import { Button } from "../primitives/Button";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 
@@ -46,18 +46,20 @@ export function TableFrame({ children, tone = "panel", note }: { children: React
       </div>
       <div className="flex h-row items-center gap-2 text-xs text-fg-3">
         {rows > FOLD_ROWS ? (
-          <button type="button" aria-expanded={all} onClick={() => setAll((x) => !x)} className="-ml-1.5 h-chip rounded-sm px-1.5 hover:bg-hover hover:text-fg">
+          <Button variant="quiet" size="xs" aria-expanded={all} onClick={() => setAll((x) => !x)} className="-ml-1.5">
             {all ? "Show fewer" : `Show all ${rows} rows`}
-          </button>
+          </Button>
         ) : (
           <span className="tabular-nums">
             {rows} {rows === 1 ? "row" : "rows"}
           </span>
         )}
         {note && <span className="min-w-0 truncate">{note}</span>}
-        <button
+        <Button
           ref={button}
-          type="button"
+          variant="quiet"
+          size="xs"
+          icon={copied ? Check : Copy}
           aria-haspopup="menu"
           aria-expanded={menu !== null}
           aria-label="Copy table"
@@ -66,14 +68,13 @@ export function TableFrame({ children, tone = "panel", note }: { children: React
             if (r) setMenu(menu ? null : { x: r.right, y: r.bottom + 4 });
           }}
           className={cn(
-            "-mr-1.5 ml-auto inline-flex h-chip items-center gap-1.5 rounded-sm px-1.5 hover:bg-hover hover:text-fg",
+            "-mr-1.5 ml-auto",
             "opacity-0 group-focus-within/table:opacity-100 group-hover/table:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100",
             (menu !== null || copied) && "opacity-100",
           )}
         >
-          <Glyph icon={copied ? Check : Copy} size={14} />
           {copied ? "Copied" : "Copy"}
-        </button>
+        </Button>
       </div>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (

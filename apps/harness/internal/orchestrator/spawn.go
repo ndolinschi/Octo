@@ -14,6 +14,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 const ToolSpawnAgent = "spawn_agent"
@@ -76,12 +77,12 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	// gets its row, settled as failed with the reason, so the delegation does not
 	// sit "starting" forever. (Malformed calls and unknown agents are plain tool
 	// errors: nothing was going to start.)
-	refuse := func(msg string) (string, bool, error) {
-		rt.refuseChild(ctx, parent, in, tier, msg)
-		return msg, true, nil
+	refuse := func(p *usererr.Error) (string, bool, error) {
+		rt.refuseChild(ctx, parent, in, tier, p)
+		return p.Message + " " + p.Hint, true, nil
 	}
 	if be := rt.budgetReached(ctx); be != nil {
-		return refuse(be.Error())
+		return refuse(describe(be))
 	}
 	var route *projectstore.RouteInfo
 	var budgetErr error
@@ -155,15 +156,15 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	rt.registerAgentSession(ctx, child)
 	if budgetErr != nil {
 		// The router's 402: the same failure as a budget stop mid-run.
-		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", budgetErr.Error())
+		rt.settleProblem(ctx, child.ID, describe(budgetErr))
 		return "", false, budgetErr
 	}
 
 	task := anthropic.NewUserMessage(anthropic.NewTextBlock(in.Task))
 	sink := &agentSink{rt: rt, agentID: child.ID}
 	if err := sink.Message(ctx, "user", task); err != nil {
-		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
-		return "sub-agent failed: " + err.Error(), true, nil
+		rt.settleProblem(ctx, child.ID, describe(err))
+		return rt.redact("sub-agent failed: " + modelText(describe(err))), true, nil
 	}
 	childCtx, stopChild := context.WithCancel(ctx)
 	endRun := rt.o.registerRun(child.ID, stopChild, ext == nil, false)
@@ -191,14 +192,15 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		return rt.o.opts.Limits.CapReport(rt.redact(text)), false, nil
 	case router.IsBudget(err):
 		// Not a recoverable tool error: stop the whole turn, no more upstream calls.
-		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
+		rt.settleProblem(ctx, child.ID, describe(err))
 		return "", false, err
 	case ctx.Err() != nil || errors.Is(err, errAgentCancelled):
 		rt.settle(ctx, child.ID, projectstore.StatusCancelled, "", "")
 		return "sub-agent cancelled", true, nil
 	default:
-		rt.settleHint(ctx, child.ID, projectstore.StatusFailed, "", err.Error(), hintOf(err))
-		return rt.redact("sub-agent failed: " + err.Error()), true, nil
+		u := describe(err)
+		rt.settleProblem(ctx, child.ID, u)
+		return rt.redact("sub-agent failed: " + modelText(u)), true, nil
 	}
 }
 
@@ -214,7 +216,7 @@ func (rt *runtime) runChild(ctx context.Context, child projectstore.Agent, task 
 // refuseChild records a delegation that was refused before it started: the
 // sub-agent row is created and settled as failed with the reason, both
 // announced, and linked to the spawn_agent call.
-func (rt *runtime) refuseChild(ctx context.Context, parent projectstore.Agent, in spawnInput, tier projectstore.Tier, reason string) {
+func (rt *runtime) refuseChild(ctx context.Context, parent projectstore.Agent, in spawnInput, tier projectstore.Tier, p *usererr.Error) {
 	if !tier.Valid() {
 		tier = projectstore.TierBalanced
 	}
@@ -232,5 +234,5 @@ func (rt *runtime) refuseChild(ctx context.Context, parent projectstore.Agent, i
 	}
 	rt.publishAgent(events.AgentCreated, child)
 	rt.registerAgentSession(ctx, child)
-	rt.settle(ctx, child.ID, projectstore.StatusFailed, "", reason)
+	rt.settleHint(ctx, child.ID, projectstore.StatusFailed, "", p.Message, p.Hint)
 }

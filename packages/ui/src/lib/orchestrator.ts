@@ -22,12 +22,13 @@ export function orchestratorState(agents: readonly Agent[], projectStatus: "idle
   const running = runningAgents(agents);
   if (projectStatus === "running" || root?.status === "running" || running.length) return { kind: "working", agents: running };
   // The harness says whether the last turn failed (`attention`); without it (an older harness) the agents decide.
-  if (attention === "failed") return { kind: "needs", error: root?.error ?? null, at: root?.finished_at ?? null };
+  if (attention === "failed") return { kind: "needs", error: root?.error?.trim() || null, at: root?.finished_at ?? null };
   if (attention === "none")
     return !root || (!root.started_at && agents.length <= 1) ? { kind: "new" } : { kind: "idle", at: root.finished_at ?? root.started_at };
   // A failed turn needs the user even when nothing was stored (an ACP orchestrator that could not start: owner's live
   // test showed "Idle" and nothing else). An `error` on a non-running orchestrator counts too, unless it is a warning.
-  if (root && (root.status === "failed" || (root.error && !/^warning:/i.test(root.error)))) return { kind: "needs", error: root.error, at: root.finished_at };
+  if (root && (root.status === "failed" || (root.error && !/^warning:/i.test(root.error))))
+    return { kind: "needs", error: root.error?.trim() || null, at: root.finished_at };
   if (!root || (!root.started_at && agents.length <= 1)) return { kind: "new" };
   return { kind: "idle", at: root.finished_at ?? root.started_at };
 }

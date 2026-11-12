@@ -1,3 +1,4 @@
+import type { ProjectSummary } from "@octo/agent-client";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { useEscape, useMediaQuery } from "../lib/hooks";
@@ -12,8 +13,6 @@ import { NavProvider, useNav } from "../state/nav";
 import { ProjectProvider } from "../state/project";
 import { RequestsProvider } from "../state/requests";
 import { ShellContext } from "../state/shell";
-import { Button } from "../components/primitives/Button";
-import { Dialog } from "../components/primitives/Dialog";
 import { Presence, usePresence } from "../components/primitives/Presence";
 import type { PaletteAction } from "../components/shell/CommandPalette";
 import { Panel } from "../components/shell/Panel";
@@ -44,6 +43,10 @@ const ConnectSheet = lazy(() => import("../components/providers/ConnectSheet").t
 const ConnectScreen = lazy(() => import("../components/providers/ConnectScreen").then((m) => ({ default: m.ConnectScreen })));
 
 /** Below this width the sidebar becomes an overlay drawer, closed by default. */
+
+/** Dialogs that only open on a conflict (unsaved edits): their own chunk with `Dialog`, warmed after the first paint. */
+const LeaveDialog = lazy(() => import("../components/shell/DiscardDialogs").then((m) => ({ default: m.LeaveDialog })));
+const SidebarSessions = lazy(() => import("../components/sessions/SidebarSessions").then((m) => ({ default: m.SidebarSessions })));
 
 export function AppShell() {
   return (
@@ -122,6 +125,10 @@ function Shell() {
       void import("../components/shared/Markdown").catch(() => undefined);
       void import("../components/chat/ToolGroup").catch(() => undefined);
       void import("../components/chat/DelegationGroup").catch(() => undefined);
+      void import("../components/chat/TurnBanner").catch(() => undefined);
+      void import("../components/shell/DiscardDialogs").catch(() => undefined);
+      void import("../components/primitives/Menu").catch(() => undefined);
+      void import("../components/chat/ComposerPills").catch(() => undefined);
     };
     if (Reflect.has(window, "requestIdleCallback")) {
       const id = window.requestIdleCallback(warm, { timeout: 500 });
@@ -142,6 +149,7 @@ function Shell() {
       void import("../components/files/FileView").catch(() => undefined);
       void import("../components/dock/TabPicker").catch(() => undefined);
       void import("../components/shared/ModelPickerPanel").catch(() => undefined);
+      void import("../components/chat/RoutingLine").catch(() => undefined);
     }, 1500);
     return () => window.clearTimeout(id);
   }, []);
@@ -199,7 +207,7 @@ function Shell() {
   else if (noProvider && route.projectId === null)
     main = (
       <Suspense fallback={null}>
-        <ConnectScreen onConnect={setConnectTarget} />
+        <ConnectScreen />
       </Suspense>
     );
   else if (projects && projects.length === 0)
@@ -229,6 +237,12 @@ function Shell() {
     onSettings: () => openSettings(),
     // Picking a project closes the drawer even when it is the one already open (the route does not change then).
     onPick: () => setDrawerOpen(false),
+    // A project with several sessions expands to its recent ones (lazy chunk: the row costs nothing until the list loads).
+    projectExtra: (p: ProjectSummary, active: boolean) => (
+      <Suspense fallback={null}>
+        <SidebarSessions projectId={p.id} updatedAt={p.updated_at} active={active} onPick={() => setDrawerOpen(false)} />
+      </Suspense>
+    ),
   };
 
   const actions: PaletteAction[] = [
@@ -320,42 +334,20 @@ function Shell() {
             </Suspense>
           </Presence>
           <Presence show={pending}>
-            <LeaveDialog
-              count={nav.unsavedCount()}
-              onStay={() => {
-                nav.clearPendingTurn();
-                stay();
-              }}
-              onLeave={proceed}
-            />
+            <Suspense fallback={null}>
+              <LeaveDialog
+                count={nav.unsavedCount()}
+                onStay={() => {
+                  nav.clearPendingTurn();
+                  stay();
+                }}
+                onLeave={proceed}
+              />
+            </Suspense>
           </Presence>
         </div>
       </StatusSlotsContext.Provider>
     </ShellContext.Provider>
-  );
-}
-
-function LeaveDialog(props: { count: number; onStay(): void; onLeave(): void }) {
-  const files = props.count === 1 ? "1\u00a0file has" : `${props.count}\u00a0files have`;
-  return (
-    <Dialog
-      width="sm"
-      title="Discard unsaved changes?"
-      description={`${files} unsaved edits in this project. Leaving the project discards them.`}
-      onClose={props.onStay}
-      footer={
-        <>
-          <Button onClick={props.onStay} data-autofocus>
-            Stay
-          </Button>
-          <Button variant="danger" onClick={props.onLeave}>
-            Discard and leave
-          </Button>
-        </>
-      }
-    >
-      {null}
-    </Dialog>
   );
 }
 

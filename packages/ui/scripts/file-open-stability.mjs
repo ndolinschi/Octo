@@ -5,7 +5,12 @@
  * paint, as `flicker.mjs` does) from just before the click until 600 ms after it:
  *
  *   tree      first file from the tree of the Files tab, then narrow, 400-column, one-line bundle, a normal source file and a file
- *             too large to open, with the tree scrolled (strict: nothing but the editor's content may differ)
+ *             too large to open, with the tree scrolled (strict: nothing but the editor's content may differ; the tree
+ *             column's box and scrollTop are identical across opens). Where the group is too narrow for the column and a 360 px
+ *             editor, or the dock is one strip, the tree is a page (decision 94a): picking a file is ONE layout change (the
+ *             page turns to the editor), "Files" is ONE change back and restores the tree's scrollTop
+ *   column    (column mode) hiding and showing the column are ONE layout change each; resizing it by keyboard never changes
+ *             the group's outer box (groups, bar, strips, status), only the tree and editor boxes
  *   link      a file link in the conversation: the first one creates the editor group (ONE layout change, in one frame), the
  *             next ones are strict
  *   palette   Ctrl/Cmd+K and Enter on an open file's tab (strict)
@@ -79,7 +84,11 @@ const RECORD = () => {
     const r = el.getBoundingClientRect();
     return [round(r.left), round(r.top), round(r.width), round(r.height)];
   };
-  const visible = (sel) => [...document.querySelectorAll(sel)].find((e) => e.offsetParent !== null || getComputedStyle(e).position === "fixed");
+  // A page-mode tree or editor that is not the page being shown is `visibility: hidden` (laid out, so it keeps its scroll).
+  const visible = (sel) =>
+    [...document.querySelectorAll(sel)].find(
+      (e) => (e.offsetParent !== null || getComputedStyle(e).position === "fixed") && getComputedStyle(e).visibility !== "hidden",
+    );
   const PANES = "[data-dock-group], [data-dock-body], [data-editor-area], [data-file-bar], [data-status-bar], [data-strip], aside[aria-label='File tree']";
   const channel = new MessageChannel();
   channel.port1.onmessage = () => {
@@ -238,14 +247,28 @@ const clickRow = (path) => async () => {
 await openProject();
 await openFilesTool();
 await expandAndScroll(0.5);
-for (const [label, path] of [
+const pageMode = await page.evaluate(() => {
+  const el = [...document.querySelectorAll("aside[aria-label='File tree']")].find((e) => getComputedStyle(e).visibility !== "hidden");
+  return Boolean(el && getComputedStyle(el).position === "absolute");
+});
+console.log(`  tree mode at ${W}x${H}: ${pageMode ? "page" : "column"}`);
+const TREE_FILES = [
   ["tree: first file (20 columns)", "atlas-api/width/narrow.txt"],
   ["tree: 400-column file", "atlas-api/width/wide.txt"],
   ["tree: one-line bundle", "atlas-api/width/minified.js"],
   ["tree: source file", "atlas-api/src/auth/login.ts"],
   ["tree: file too large to open", "atlas-api/test/fixtures/events.ndjson"],
   ["tree: third source file", "atlas-api/src/auth/tokens.ts"],
-]) {
+];
+const scrollTop = () =>
+  page.evaluate(() => {
+    const list = [...document.querySelectorAll("aside[aria-label='File tree']")]
+      .find((e) => getComputedStyle(e).visibility !== "hidden")
+      ?.querySelector("[id$='-tree-list']");
+    return list ? Math.round(list.scrollTop) : null;
+  });
+const pageScrolls = [];
+for (const [label, path] of TREE_FILES) {
   // Only visible rows are clicked (a click on a row outside the viewport scrolls the list, which is the browser's, not ours).
   const visibleRow = await page.evaluate((p) => {
     const list = document.querySelector("aside[aria-label='File tree'] [id$='-tree-list']");
@@ -262,7 +285,30 @@ for (const [label, path] of [
     }, path);
     await page.waitForTimeout(200);
   }
-  runs.push(await record(label, "strict", clickRow(path)));
+  const before = await scrollTop();
+  // Column: nothing but the editor's content changes. Page: the page turns to the editor, once; then "Files" turns it back, once.
+  runs.push(await record(label, pageMode ? "one" : "strict", clickRow(path)));
+  await page.waitForTimeout(500);
+  if (pageMode) {
+    runs.push(await record(`${label}: Files (back to the tree)`, "one", async () => page.getByRole("button", { name: "Files", exact: true }).first().click()));
+    await page.waitForTimeout(500);
+    pageScrolls.push([label, before, await scrollTop()]);
+  }
+}
+if (!pageMode) {
+  // The column's own toggle and divider (the file group keeps its outer box; hiding and showing are one change each).
+  runs.push(await record("column: hide", "one", async () => page.getByRole("button", { name: "Hide file tree" }).first().click()));
+  await page.waitForTimeout(500);
+  runs.push(await record("column: show", "one", async () => page.getByRole("button", { name: "Show file tree" }).first().click()));
+  await page.waitForTimeout(500);
+  const sep = page.getByRole("separator", { name: "Resize file tree" }).first();
+  runs.push(
+    await record("column: resize (keyboard)", "outer", async () => {
+      await sep.focus();
+      for (let i = 0; i < 3; i++) await page.keyboard.press("Shift+ArrowRight");
+      for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowLeft");
+    }),
+  );
   await page.waitForTimeout(500);
 }
 
@@ -350,6 +396,7 @@ const sameList = (a, b) => a.length === b.length && a.every((v, i) => same(v, b[
 const KEYS = ["groups", "editor", "bar", "status", "strips", "tree"];
 const sig = (f) =>
   KEYS.map((k) => (k === "groups" || k === "strips" ? f[k].map((x) => x.join(",")).join("|") : f[k] === null ? "-" : f[k].join(","))).join(" / ");
+const OUTER = ["groups", "bar", "status", "strips"];
 const diffKeys = (f, base) =>
   KEYS.filter((k) => (k === "groups" || k === "strips" ? !sameList(f[k], base[k]) : !same(f[k], base[k]))).concat(
     f.scroll !== base.scroll && !(f.scroll !== null && base.scroll !== null && Math.abs(f.scroll - base.scroll) <= TOL) ? ["tree scrollTop"] : [],
@@ -367,7 +414,14 @@ for (const r of runs) {
     continue;
   }
   const bad = (f, msg) => problems.push(`${r.label}: frame +${Math.round(f.t - r.frames[r.before].t)} ms: ${msg}`);
-  if (r.mode === "strict") {
+  if (r.mode === "outer") {
+    let reported = 0;
+    for (const f of after) {
+      const d = diffKeys(f, base).filter((k) => OUTER.includes(k));
+      if (d.length && reported++ < 3) bad(f, `${d.join(", ")} changed while the column was resized: ${sig(base)}  ->  ${sig(f)}`);
+    }
+    if (!after.some((f) => !same(f.tree, base.tree))) problems.push(`${r.label}: the column did not change width`);
+  } else if (r.mode === "strict") {
     let reported = 0;
     for (const f of after) {
       const d = diffKeys(f, base);
@@ -390,6 +444,9 @@ for (const r of runs) {
     }
   }
 }
+for (const [label, before, afterBack] of pageScrolls)
+  if (before === null || afterBack === null || Math.abs(before - afterBack) > 1)
+    problems.push(`${label}: the tree's scrollTop was ${before} before the pick and ${afterBack} after "Files"`);
 for (const e of errors) problems.push(`page error: ${e}`);
 
 if (OUT) {

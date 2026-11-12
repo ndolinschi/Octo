@@ -99,7 +99,7 @@ Built-in agents come from the embedded `subscription-agents` plugin. To change o
 
 ## A failure is never silent
 
-Every way an ACP agent can fail ends the turn (orchestrator) or the sub-agent (a tool error to the orchestrator) with a message that says what to do:
+Every way an ACP agent can fail ends the turn (orchestrator) or the sub-agent (a tool error to the orchestrator) with a plain message, a hint and a button code (see [`errors.md`](errors.md); the technical text, such as the exit status and stderr tail, is the `details`). The "Message carries" column below names the technical content, now found in `details`:
 
 | Failure | Message carries |
 | --- | --- |

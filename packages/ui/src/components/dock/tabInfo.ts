@@ -1,4 +1,5 @@
 import { File, type LucideIcon } from "lucide-react";
+import { currentTitle } from "../../lib/sessions/current";
 import { roleText } from "../../lib/orchestrator";
 import { GLYPH } from "../primitives/glyphs";
 import type { ProjectState } from "@octo/agent-client";
@@ -28,6 +29,7 @@ export type TabInfo = {
 };
 
 const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> = {
+  sessions: { label: "Sessions", icon: GLYPH.sessions, title: "Sessions: your conversations with the orchestrator and the agent sessions it started" },
   agents: { label: "Agents", icon: GLYPH.agents, title: "Agents in this project" },
   notes: { label: "Notes", icon: GLYPH.notes, title: "Project notes" },
   files: { label: "Files", icon: GLYPH.files, title: "Project files: select a file to open it here" },
@@ -67,7 +69,9 @@ export function tabInfo(
     // Decision 63: named after what is in it — the project's conversation.
     const name = ctx.projectName || "Conversation";
     // Decision 67: the tab is the project's breadcrumb — "Project / the latest task" (dim); the title is the orchestrator's own.
-    const topic = ctx.orchestratorId ? ctx.state.agents[ctx.orchestratorId]?.title?.trim() : "";
+    // The current session's title (project sessions), else the orchestrator's own.
+    const own = ctx.orchestratorId ? (ctx.state.agents[ctx.orchestratorId]?.title?.trim() ?? "") : "";
+    const topic = currentTitle(ctx.state.sessions.list, ctx.state.sessions.currentId, own).trim();
     const detail = topic && topic !== name ? middleTruncate(topic, 40) : undefined;
     return {
       label: middleTruncate(name, 28),
@@ -95,6 +99,20 @@ export function tabInfo(
       icon: GLYPH.agent,
       status: agent?.status === "running" ? "running" : null,
       glyph: agent?.status === "running" ? "working" : agent?.status === "failed" ? "failed" : null,
+      comments: 0,
+    };
+  }
+  if (ref.kind === "session") {
+    const s = ctx.state.sessions.list.find((x) => x.id === ref.sessionId);
+    const title = s?.title.trim() || "Session";
+    const working = s?.state === "working" || s?.state === "waiting";
+    return {
+      label: middleTruncate(title, 28),
+      name: title,
+      title: `${s?.kind === "agent" ? "Agent session" : "Session"}: ${title}`,
+      icon: GLYPH.sessions,
+      status: working ? "running" : null,
+      glyph: working ? "working" : s?.state === "failed" ? "failed" : null,
       comments: 0,
     };
   }

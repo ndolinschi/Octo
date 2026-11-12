@@ -1,11 +1,10 @@
 import type { Project, ProjectInput, ProviderList } from "@octo/agent-client";
 import { useId, useMemo } from "react";
-import { canRun, chipLabel, useHiddenModels } from "../../lib/providers";
+import { chipLabel, useHiddenModels } from "../../lib/providers";
 import { Button } from "../primitives/Button";
-import { Notice } from "../primitives/Notice";
 import { Select } from "../primitives/Select";
 import { useHarnessSettings } from "./harnessSettings";
-import { useSettingsActions } from "./pageContext";
+import { ModelsProblem } from "./ModelsProblem";
 import { modelOptions, MODEL_ROWS, type ModelRow } from "./modelRows";
 import { CONTROL_W, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
@@ -18,16 +17,19 @@ import { useSave } from "./useSave";
 export function ProjectModels(props: { project: Project; list: ProviderList; update(id: string, patch: Partial<ProjectInput>): Promise<void> }) {
   const harness = useHarnessSettings();
   return (
-    <SettingsGroup
-      label={`Models of ${props.project.name}`}
-      id="row-project-models"
-      footer="Defaults are copied into a project when it is created; a value equal to the default counts as inherited."
-    >
-      {MODEL_ROWS.map((row) => {
-        const d = harness.get(row.id)?.value;
-        return <ProjectModelRow key={row.id} row={row} {...props} defaultValue={typeof d === "string" && d !== "" ? d : null} />;
-      })}
-    </SettingsGroup>
+    <>
+      <ModelsProblem list={props.list} values={MODEL_ROWS.map((row) => props.project.models[row.field])} />
+      <SettingsGroup
+        label={`Models of ${props.project.name}`}
+        id="row-project-models"
+        footer="Defaults are copied into a project when it is created; a value equal to the default counts as inherited."
+      >
+        {MODEL_ROWS.map((row) => {
+          const d = harness.get(row.id)?.value;
+          return <ProjectModelRow key={row.id} row={row} {...props} defaultValue={typeof d === "string" && d !== "" ? d : null} />;
+        })}
+      </SettingsGroup>
+    </>
   );
 }
 
@@ -39,7 +41,6 @@ function ProjectModelRow(props: {
   update(id: string, patch: Partial<ProjectInput>): Promise<void>;
 }) {
   const { row, project, list, defaultValue } = props;
-  const { connect } = useSettingsActions();
   const [saved, run] = useSave();
   const [hidden] = useHiddenModels();
   const id = useId();
@@ -47,7 +48,6 @@ function ProjectModelRow(props: {
   const options = useMemo(() => modelOptions(list, new Set(hidden), value), [list, hidden, value]);
   const inherited = defaultValue !== null && value === defaultValue;
   const set = (model: string) => void run(() => props.update(project.id, { models: { [row.field]: model } }));
-  const runs = canRun(list, value);
   return (
     <SettingsRow
       rowId={`project-${row.rowId}`}
@@ -60,23 +60,7 @@ function ProjectModelRow(props: {
             ? "Inherited from defaults"
             : `Set for this project. Default: ${chipLabel(defaultValue, list)}.`
       }
-      status={
-        !runs ? (
-          <Notice
-            tone="warn"
-            className="mt-1"
-            action={
-              <Button variant="link" size="xs" onClick={() => connect("providers")}>
-                Connect a provider
-              </Button>
-            }
-          >
-            {chipLabel(value, list)} cannot run: its provider is not connected.
-          </Notice>
-        ) : (
-          <SaveStatus state={saved} />
-        )
-      }
+      status={<SaveStatus state={saved} />}
       control={
         <>
           {!inherited && defaultValue !== null && (

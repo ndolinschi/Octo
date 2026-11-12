@@ -2,15 +2,20 @@ import { agentBySpawnToolUse, descendantCount, type Agent } from "@octo/agent-cl
 import { roleText } from "../../lib/orchestrator";
 import { agentActivity } from "../../lib/orchestrator";
 import { cn } from "../../lib/cn";
-import { agentDuration, formatDuration } from "../../lib/format";
+import { agentDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
 import { spawnInput } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { isTier, RunningDot, statusLabel, StatusIcon, tierLabel } from "../primitives/Status";
+import { isTier, statusLabel, tierLabel } from "../primitives/Status";
+import { readable } from "../../lib/errors/plain";
+import { ActivityRow, type ActivityState } from "./ActivityRow";
 import { useModelNames } from "../../state/models";
 import { useTranscript } from "./transcriptContext";
+import { IconButton } from "../primitives/IconButton";
+import { GLYPH } from "../primitives/glyphs";
+import { requestSession } from "../../state/workspace/sessionsStart";
 
 const FINISHED = new Set(["completed", "failed", "cancelled"]);
 
@@ -26,9 +31,8 @@ function progress(agents: (Agent | undefined)[]): string {
 }
 
 /**
- * Hairline card for one round of delegation: caption ("3 agents") and progress on one line, then a
- * row per sub-agent. Rows share one grid (subgrid), so glyph, role, title and the right slot line up
- * across rows whatever their lengths.
+ * Hairline card for one round of delegation: caption ("3 agents") and progress on one line, then one `ActivityRow` per
+ * sub-agent (decision 91d): state glyph, role, dim title, and on the right what it does or the model, then the time.
  */
 export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
   const { state } = useProject();
@@ -43,11 +47,9 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
         <span className="shrink-0 whitespace-nowrap text-fg-2">{caption}</span>
         <span className={cn("ml-auto min-w-0 truncate text-xs tabular-nums", failed && status.endsWith("failed") ? "text-err" : "text-fg-3")}>{status}</span>
       </div>
-      {/* Zero-width edge tracks + the 8px column gap are the rows' inside padding (a subgrid's own
-          padding would eat into its first and last tracks): glyph on the caption's 12px line (4 + 8). */}
-      <ul className="grid grid-cols-[0px_16px_fit-content(36%)_minmax(0,1fr)_auto_0px] gap-x-2 px-1 pb-1 @max-[440px]:grid-cols-[0px_16px_fit-content(44%)_minmax(0,1fr)_auto_0px]">
+      <ul className="flex flex-col px-3 pb-1">
         {uses.map((u, i) => (
-          <li key={u.id} className="col-span-full grid grid-cols-subgrid">
+          <li key={u.id}>
             <DelegationRow use={u} agent={agents[i]} />
           </li>
         ))}
@@ -56,11 +58,21 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
   );
 }
 
+const STATE: Record<string, ActivityState> = { running: "running", completed: "done", failed: "failed", cancelled: "stopped", pending: "running" };
+
 function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined }) {
   const { projectId, state } = useProject();
   const ws = useOptionalWorkspace();
-  const { now } = useTranscript();
+  const { now, onOpenSession } = useTranscript();
   const names = useModelNames();
+  // The agent's session (project sessions): "Open session" selects it in the Sessions tab, in place when the transcript is in that tab.
+  const session = agent ? state.sessions.list.find((s) => s.agent_id === agent.id) : undefined;
+  const openSession = () => {
+    if (!agent || !session) return;
+    if (onOpenSession) return onOpenSession(agent.id);
+    requestSession(projectId, session.id);
+    ws?.openTool("sessions");
+  };
   const input = spawnInput(use.input);
   const role = roleText(agent?.role || input.role);
   const title = agent?.title || input.title;
@@ -69,74 +81,52 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
   const nested = agent ? descendantCount(state, agent.id) : 0;
   const duration = agent ? agentDuration(agent, now) : null;
   const running = agent?.status === "running";
-  const error = status === "failed" ? agent?.error || "No error details were reported." : null;
+  const error = status === "failed" ? (agent?.error ? readable(agent.error) : "No error details were reported.") : null;
   // A compact place: the served model's name alone (decision 37), the requested one in the row's tooltip.
   const served = agent ? names.served(agent) : null;
   const model = served ? served.name : tier ? tierLabel(tier) : "";
-
-  const right = running ? (
-    <>
-      <span className="min-w-0 truncate">{agentActivity(state, agent.id)}</span>
-      {duration !== null && <span className="shrink-0 text-fg-2 tabular-nums">{formatDuration(duration)}</span>}
-    </>
-  ) : (
-    <>
-      {status === "pending" && <span>starting</span>}
-      {status === "failed" && <span className="text-err">failed</span>}
-      {status === "cancelled" && <span>{statusLabel("cancelled")}</span>}
-      {model && (
-        <span className="min-w-0 truncate @max-[440px]:hidden" title={served?.asked ? `${served.asked} → ${served.name} (chosen → served)` : model}>
-          {model}
-        </span>
-      )}
-      {duration !== null && <span className="min-w-[4ch] text-right text-fg-2 tabular-nums">{formatDuration(duration)}</span>}
-    </>
-  );
-
-  const body = (
-    <>
-      <span className="col-start-2 grid h-8 place-items-center">{agent ? <StatusIcon status={agent.status} /> : <RunningDot />}</span>
-      <span className="flex h-8 min-w-0 items-center gap-1 text-fg">
-        <span className="min-w-0 truncate">{role}</span>
-        {nested > 0 && (
-          <span className="shrink-0 text-xs text-fg-3" title={`${nested} nested`}>
-            +{nested}
-          </span>
-        )}
-      </span>
-      <span className="block min-w-0 truncate py-1.5 leading-5 text-fg-2">{title}</span>
-      <span className="flex h-8 max-w-[24ch] min-w-0 items-center justify-end gap-2 text-xs text-fg-3 @max-[440px]:max-w-[12ch]">{right}</span>
-    </>
-  );
-  // The error line sits under the row (outside it, so the row keeps its 32px), from the role column on.
-  const errorLine = error && <span className="col-span-3 col-start-3 -mt-1 truncate pb-2 text-xs text-err">{error}</span>;
-
-  // Radius 4 = card radius (8) − its inset (4).
-  const row = "col-span-full grid grid-cols-subgrid items-center rounded-xs text-sm";
-  if (!agent)
-    return (
-      <>
-        <div className={row}>{body}</div>
-        {errorLine}
-      </>
-    );
+  const aside =
+    running && agent
+      ? agentActivity(state, agent.id)
+      : status === "pending"
+        ? "starting"
+        : status === "failed"
+          ? "failed"
+          : status === "cancelled"
+            ? statusLabel("cancelled")
+            : model;
+  const tip =
+    error ??
+    (agent?.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : served?.asked ? `${served.asked} → ${served.name} (chosen → served)` : undefined);
   return (
-    <>
-      <a
-        href={hrefFor(projectId, agent.id)}
-        aria-label={`Open ${role}: ${title} (${status})`}
-        aria-description={error ?? undefined}
-        title={error ?? (agent.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : undefined)}
-        onClick={(e) => {
-          if (!ws || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-          e.preventDefault();
-          ws.openAgent(agent.id, { otherSide: e.altKey });
-        }}
-        className={cn(row, "press-row focus-inset hover:bg-hover")}
-      >
-        {body}
-      </a>
-      {errorLine}
-    </>
+    <ActivityRow
+      state={STATE[status] ?? "running"}
+      verb={
+        <>
+          {role}
+          {nested > 0 && <span className="ml-1 text-xs text-fg-3">+{nested}</span>}
+        </>
+      }
+      detail={title}
+      aside={aside}
+      duration={duration}
+      error={error}
+      {...(tip ? { tip } : {})}
+      {...(session
+        ? {
+            trailing: <IconButton icon={GLYPH.sessions} label="Open session" size="xs" onClick={openSession} />,
+          }
+        : {})}
+      {...(agent
+        ? {
+            href: hrefFor(projectId, agent.id),
+            onClick: (e: React.MouseEvent) => {
+              if (!ws || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              ws.openAgent(agent.id, { otherSide: e.altKey });
+            },
+          }
+        : {})}
+    />
   );
 }

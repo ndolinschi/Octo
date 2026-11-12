@@ -1,5 +1,5 @@
 import type { Bridge, Plan } from "@octo/agent-client";
-import { Check, ChevronRight, ListChecks } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
 import { errorCode, errorMessage } from "../../lib/format";
@@ -8,7 +8,8 @@ import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
-import { Spinner } from "../primitives/Status";
+import { Card } from "../primitives/Card";
+import { RequestCard } from "../shared/RequestCard";
 import { LazyMarkdown } from "./LazyMarkdown";
 
 /**
@@ -43,51 +44,47 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
 
   if (approved) {
     return (
-      <section data-plan="approved" aria-label="Approved plan" className="rounded-md border border-line bg-panel text-sm">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-          className="flex h-8 w-full items-center gap-2 rounded-md px-3 text-left text-fg-2 press-row focus-inset hover:bg-hover"
-        >
-          <Glyph icon={Check} size={14} className="shrink-0 text-ok" />
-          <span className="flex-1">Plan approved</span>
-          <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", open && "rotate-90")} />
-        </button>
-        {open && (
-          <div className="border-t border-line px-3 py-2">
-            <LazyMarkdown text={plan.text} className="octo-prose" />
-          </div>
-        )}
-      </section>
+      <div data-plan="approved" role="group" aria-label="Approved plan" className="text-sm">
+        <Card surface="panel" padding="none">
+          <Button variant="quiet" size="md" fullWidth aria-expanded={open} onClick={() => setOpen((o) => !o)} className="justify-start px-3">
+            <Glyph icon={Check} size={14} className="shrink-0 text-ok" />
+            <span className="flex-1 text-left">Plan approved</span>
+            <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", open && "rotate-90")} />
+          </Button>
+          {open && (
+            <div className="border-t border-line px-3 py-2">
+              <LazyMarkdown text={plan.text} className="octo-prose" />
+            </div>
+          )}
+        </Card>
+      </div>
     );
   }
 
   return (
-    <section data-plan="pending" aria-label="Plan to approve" className="rounded-md border border-line bg-panel text-sm">
-      <header className="flex h-8 items-center gap-2 px-3 text-fg-2">
-        <Glyph icon={ListChecks} size={14} className="shrink-0 text-fg-3" />
-        Plan
-      </header>
-      <div className="max-h-80 overflow-y-auto px-3 pb-1 scroll-quiet">
-        <LazyMarkdown text={plan.text} className="octo-prose" />
-      </div>
-      <div className="flex flex-wrap items-center gap-2 p-3">
-        <Button variant="primary" size="sm" className="max-md:h-10" disabled={busy || running} onClick={() => void approve()} aria-busy={busy}>
-          {busy && <Spinner size={12} className="text-current" />}
+    <RequestCard
+      data-plan="pending"
+      aria-label="Plan to approve"
+      title="Plan"
+      asks="Approve it to start the work"
+      glyph="needs"
+      primary={
+        <Button variant="primary" size="sm" disabled={busy || running} loading={busy} onClick={() => void approve()}>
           Approve and run
         </Button>
-        <Button variant="ghost" size="sm" className="max-md:h-10" disabled={busy} onClick={props.onKeepEditing}>
+      }
+      alternatives={
+        <Button variant="quiet" size="sm" disabled={busy} onClick={props.onKeepEditing}>
           Keep editing
         </Button>
-        {running && !problem && <span className="text-fg-3">A turn is running.</span>}
-        {problem && (
-          <p role="alert" className="basis-full text-err">
-            {problem}
-          </p>
-        )}
+      }
+      error={problem}
+    >
+      <div className="max-h-80 overflow-y-auto scroll-quiet">
+        <LazyMarkdown text={plan.text} className="octo-prose" />
       </div>
-    </section>
+      {running && !problem && <p className="text-fg-3">A turn is running.</p>}
+    </RequestCard>
   );
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/providers"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // ProviderSource is what GET /v1/providers serves (providers.Service).
@@ -56,9 +57,9 @@ func (s *Server) providerError(w http.ResponseWriter, err error) {
 	case errors.Is(err, providers.ErrUnknownAgent):
 		writeError(w, http.StatusNotFound, "not_found", "no such agent")
 	case errors.Is(err, providers.ErrDiscoveryOff):
-		writeError(w, http.StatusConflict, "discovery_off", "model discovery is switched off (HARNESS_MODEL_DISCOVERY=0)")
+		writeProblem(w, http.StatusConflict, usererr.DiscoveryOff().WithDetails("model discovery is switched off (HARNESS_MODEL_DISCOVERY=0)"))
 	case errors.As(err, &nr):
-		writeError(w, http.StatusConflict, "not_ready", nr.Reason)
+		writeJSON(w, http.StatusConflict, map[string]any{"error": errorBody("not_ready", nr.Problem)})
 	case errors.As(err, &ve):
 		writeError(w, http.StatusBadRequest, "invalid_request", ve.Message)
 	default:

@@ -56,7 +56,7 @@ func (rt *runtime) answerSideACP(ctx context.Context, run *side, t acpTarget, qu
 			s.closeLocked()
 		}
 		s.mu.Unlock()
-		return "", acpFailure(t.agent, "ACP agent", err)
+		return "", acpFailure(t.agent, false, err)
 	case stop == acp.StopCancelled:
 		return "", errAgentCancelled
 	case stop != acp.StopEndTurn:
@@ -93,7 +93,7 @@ func (rt *runtime) openSide(ctx context.Context, s *sideSession, t acpTarget) (f
 	})
 	if err != nil {
 		client.Close()
-		return false, acpFailure(ag, "ACP agent", err)
+		return false, acpFailure(ag, false, err)
 	}
 	mode := ""
 	if target := pickSessionMode(sess.Modes, projectstore.ModeAsk); target != "" {

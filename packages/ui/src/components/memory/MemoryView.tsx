@@ -2,7 +2,6 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import type { HitTarget } from "../../lib/memory/search";
 import { useApp } from "../../state/app";
 import { SearchField } from "../primitives/SearchField";
-import { WindowReport } from "../shared/WindowReport";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { FilesView } from "./FilesView";
 import { PaneEmpty } from "./parts";
@@ -26,7 +25,6 @@ const TABS: readonly { id: MemoryTab; label: string }[] = [
  * replace the views, grouped by kind; Esc clears it. It fills the space it is given and sizes itself by container width:
  * list and detail side by side from 640 px, one column below, where rows open in place. Hosts pass `onOpenMessage` (a
  * request in the chat), `onOpenFile` (a project file) and `onOpenNote`; without them those links are plain text or absent.
- * `reportRequests` opens the context window report over the view (the context popover's "Open context details").
  */
 export function MemoryView(props: {
   projectId: string;
@@ -34,8 +32,6 @@ export function MemoryView(props: {
   onOpenFile?: ((path: string) => void) | undefined;
   onOpenNote?: ((noteId: string) => void) | undefined;
   initialView?: MemoryTab;
-  /** Each increase opens the context window report as a sheet (the context popover's "Open context details"). */
-  reportRequests?: number;
 }) {
   const { bridge } = useApp();
   const { projectId, onOpenMessage, onOpenFile, onOpenNote } = props;
@@ -44,8 +40,6 @@ export function MemoryView(props: {
   const [session, setSession] = useState<{ id: string | null; exchange: string | null }>({ id: null, exchange: null });
   const [focus, setFocus] = useState<KnowledgeFocus & { nonce: number }>({ task: null, fact: null, nonce: 0 });
   const [file, setFile] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState(0);
-  const reportRequests = props.reportRequests ?? 0;
   const tasks = useTasks(projectId);
   const files = useMemoryFiles(projectId);
   const search = useMemorySearch(projectId, query);
@@ -107,30 +101,6 @@ export function MemoryView(props: {
             {view === "files" && <FilesView projectId={projectId} load={files.load} reload={files.reload} selected={file} onSelect={setFile} />}
           </div>
         </>
-      )}
-      {reportRequests > dismissed && (
-        <WindowReport
-          onClose={() => setDismissed(reportRequests)}
-          onOpenMemoryFile={(path) => {
-            setFile(path);
-            setView("files");
-            setDismissed(reportRequests);
-          }}
-          onOpenFile={
-            onOpenFile &&
-            ((path) => {
-              onOpenFile(path);
-              setDismissed(reportRequests);
-            })
-          }
-          onOpenMessage={
-            onOpenMessage &&
-            ((id) => {
-              onOpenMessage(id);
-              setDismissed(reportRequests);
-            })
-          }
-        />
       )}
     </div>
   );

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 func validMode(m *string) error {
@@ -37,9 +38,9 @@ func (s *Service) ApprovePlan(ctx context.Context, pid, planID string) (projects
 	case errors.Is(err, projectstore.ErrNotFound):
 		return p, msg, notFound("plan")
 	case errors.Is(err, projectstore.ErrPlanNotPending):
-		return p, msg, &Error{Kind: KindConflict, Code: "plan_not_pending", Message: "the plan was approved already"}
+		return p, msg, of(KindConflict, usererr.PlanNotPending())
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return p, msg, turnInProgress("a turn is running for this project; approve the plan when it ends")
+		return p, msg, turnInProgress()
 	}
 	return p, msg, err
 }
@@ -56,7 +57,7 @@ func (s *Service) Rewind(ctx context.Context, pid string, messageID int64, dryRu
 	case errors.Is(err, orchestrator.ErrNotRequest):
 		return rep, invalid("message_id must be the id of one of this conversation's user requests")
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return rep, turnInProgress("a turn is running for this project; cancel it or wait before rewinding")
+		return rep, turnInProgress()
 	case errors.Is(err, orchestrator.ErrRewindConflict):
 		if dryRun {
 			return rep, nil // a dry run reports the conflicts; it is the real call that refuses

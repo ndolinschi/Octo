@@ -1,4 +1,5 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { Button } from "../primitives/Button";
 import { cn } from "../../lib/cn";
 import { resolveFolder } from "../../lib/files";
 import { structured } from "../../lib/table";
@@ -49,15 +50,18 @@ function PathLink({ use }: { use: ToolUse }) {
     else code.openFile(target, path);
   };
   return (
-    <button
-      type="button"
+    <Button
+      variant="link"
+      tone="quiet"
+      mono
+      size="xs"
       aria-label={dir && !openFile ? `Show ${path} in files` : `Open ${path} in editor`}
       title={target ? `${target}/${path.replace(/^\.\/?/, "")}` : path}
       onClick={open}
-      className="min-w-0 truncate rounded-sm font-mono text-fg-2 underline-offset-2 hover:text-fg hover:underline focus-visible:underline"
+      className="min-w-0 truncate"
     >
       {path}
-    </button>
+    </Button>
   );
 }
 
@@ -79,16 +83,19 @@ function AcpLocations({ use }: { use: ToolUse }) {
             </span>
           );
         return (
-          <button
+          <Button
             key={i}
-            type="button"
+            variant="link"
+            tone="quiet"
+            mono
+            size="xs"
             aria-label={`Open ${label} in editor`}
             title={l.path}
             onClick={() => (openFile ? openFile(l.path) : hit && code?.openFile(hit.folder, hit.path, l.line ? { line: l.line } : undefined))}
-            className="min-w-0 truncate rounded-sm font-mono text-fg-2 underline-offset-2 hover:text-fg hover:underline focus-visible:underline"
+            className="min-w-0 truncate"
           >
             {label}
-          </button>
+          </Button>
         );
       })}
     </span>
@@ -117,14 +124,9 @@ function ToolSection({
         {label}
         {action}
         {shape && (
-          <button
-            type="button"
-            aria-pressed={raw}
-            onClick={() => setRaw((x) => !x)}
-            className="-my-1 ml-auto h-chip rounded-sm px-1.5 hover:bg-hover hover:text-fg"
-          >
+          <Button variant="quiet" size="xs" pressed={raw} onClick={() => setRaw((x) => !x)} className="-my-1 ml-auto">
             {raw ? "Table" : "Raw"}
-          </button>
+          </Button>
         )}
       </div>
       {shape && !raw ? (

@@ -1,64 +1,40 @@
 package orchestrator
 
 import (
+	"context"
 	"errors"
-	"fmt"
+	"io/fs"
+	"net/http"
+	"os/exec"
 	"strings"
 
+	"github.com/anthropics/anthropic-sdk-go/v2"
+
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
-// userError is a failure written for the person using the app: msg says what
-// happened, hint what to do about it. The hint travels in its own field (the
-// agent row's error_hint, turn.finished's hint) and is never part of the text,
-// so a UI that shows both does not print it twice.
-type userError struct {
-	msg, hint string
-	cause     error
-}
-
-func (e *userError) Error() string { return e.msg }
-func (e *userError) Unwrap() error { return e.cause }
-
-// hintOf returns the hint of the first userError in err's chain, else "".
-func hintOf(err error) string {
-	var u *userError
-	if errors.As(err, &u) {
-		return u.hint
-	}
-	return ""
-}
-
-// loginHint is the manifest's login hint of the agent, else a generic one.
-func loginHint(ag plugins.Agent) string {
-	if h := strings.TrimSpace(ag.Hint); h != "" {
-		return h
-	}
-	return "Check that it is installed and logged in (run it once in a terminal)."
-}
-
 // nothingError ends a turn in which the agent said and did nothing: no text,
-// no tool call. A silent agent is usually one that is not logged in, so the
-// manifest's login hint is the error's hint.
+// no tool call. A silent agent is usually one that is not logged in.
 func nothingError(ag plugins.Agent) error {
-	return &userError{msg: fmt.Sprintf("the agent %q returned nothing (no text and no tool calls)", ag.ID), hint: loginHint(ag)}
+	return usererr.AgentSilent(ag.Label, ag.LoginCmd(), ag.Hint)
 }
 
 // stopError explains a prompt that ended for another reason than end_turn.
 func stopError(ag plugins.Agent, stop acp.StopReason) error {
-	var what string
+	kind := usererr.StopUnknown
 	switch stop {
 	case acp.StopRefusal:
-		what = "declined the request; rephrase it or use another agent"
+		kind = usererr.StopDeclined
 	case acp.StopMaxTokens:
-		what = "ran out of output tokens; ask for a smaller step"
+		kind = usererr.StopOutOfRoom
 	case acp.StopMaxTurnRequests:
-		what = "hit its limit of model requests for one prompt; ask for a smaller step"
-	default:
-		what = fmt.Sprintf("stopped with an unexpected reason %q", string(stop))
+		kind = usererr.StopTooManyRequests
 	}
-	return &userError{msg: fmt.Sprintf("the agent %q %s", ag.ID, what), hint: loginHint(ag)}
+	return usererr.AgentStopped(ag.Label, kind, string(stop))
 }
 
 // isAuthFailure reports whether err says the agent is not logged in: the
@@ -82,33 +58,35 @@ func isAuthFailure(err error) bool {
 	return false
 }
 
-// acpFailure turns an error from talking to an ACP agent into the one the user
-// sees: "<label> is not logged in" (hint separate) for a login problem, else the
-// error wrapped with the agent's id. what is "ACP agent" or "start ACP agent".
-func acpFailure(ag plugins.Agent, what string, err error) error {
+// acpFailure turns an error from talking to an ACP agent into the catalogue
+// error the user sees. starting says the agent was still starting up.
+func acpFailure(ag plugins.Agent, starting bool, err error) error {
 	if isAuthFailure(err) {
-		return &userError{msg: ag.Label + " is not logged in", hint: loginHint(ag), cause: err}
+		return usererr.AgentNotLoggedIn(ag.Label, ag.LoginCmd(), ag.Hint).Caused(err)
 	}
 	if u := launchRejection(ag, err); u != nil {
 		return u
 	}
 	var me *acp.ModelError
 	if errors.As(err, &me) {
-		return &userError{msg: fmt.Sprintf("%s does not accept model %s", ag.Label, me.Model), hint: modelHint(ag, me.Offers), cause: err}
+		offers := me.Offers
+		if len(offers) == 0 {
+			offers = ag.Models
+		}
+		return usererr.AgentModelRejected(ag.Label, me.Model, offers, err.Error()).Caused(err)
 	}
-	return fmt.Errorf("%s %q: %w", what, ag.ID, err)
-}
-
-// modelHint says what to choose instead of a model the agent refused: what it
-// advertised in the session, else what the manifest lists.
-func modelHint(ag plugins.Agent, offers []string) string {
+	var exit *acp.ExitError
 	switch {
-	case len(offers) > 0:
-		return "It advertises: " + strings.Join(offers, ", ") + ". Choose one of those, or the agent's default."
-	case len(ag.Models) > 0:
-		return "It advertised no models in this session; the manifest lists: " + strings.Join(ag.Models, ", ") + ". Choose one of those, or the agent's default."
+	case errors.Is(err, exec.ErrNotFound), errors.Is(err, fs.ErrNotExist):
+		return usererr.AgentNotInstalled(ag.Label, ag.InstallCmd(), err.Error()).Caused(err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return usererr.AgentTimedOut(ag.Label, err.Error()).Caused(err)
+	case starting && (errors.As(err, &exit) || errors.Is(err, acp.ErrClosed)):
+		return usererr.AgentExitedDuringStart(ag.Label, err.Error()).Caused(err)
+	case errors.As(err, &exit) || errors.Is(err, acp.ErrClosed):
+		return usererr.AgentCrashed(ag.Label, err.Error()).Caused(err)
 	}
-	return "It advertised no models in this session. Choose the agent's default, or check the model name."
+	return usererr.AgentFailed(ag.Label, err.Error()).Caused(err)
 }
 
 // startFailure is acpFailure for an agent that did not start; when the model
@@ -119,8 +97,32 @@ func startFailure(t acpTarget, err error) error {
 		return u
 	}
 	if t.requested && len(ag.ModelArg) > 0 && !isAuthFailure(err) {
-		return &userError{msg: fmt.Sprintf("%s does not accept model %s (it did not start with it)", ag.Label, t.model),
-			hint: modelHint(ag, nil), cause: err}
+		return usererr.AgentModelRejected(ag.Label, t.model, ag.Models, "It did not start with that model. "+err.Error()).Caused(err)
 	}
-	return acpFailure(ag, "start ACP agent", err)
+	return acpFailure(ag, true, err)
+}
+
+// describe is the catalogue error a failed turn, side question or child agent
+// settles with: the one in err's chain, else the catalogue's reading of a known
+// error type (budget, no built-in loop, the model provider's HTTP errors), else
+// Unexpected with err's text as its details.
+func describe(err error) *usererr.Error {
+	if u := usererr.As(err); u != nil {
+		return u
+	}
+	var be *router.BudgetError
+	var api *anthropic.Error
+	switch {
+	case errors.As(err, &be):
+		return usererr.BudgetReached(be.Spent, be.Budget).Caused(err)
+	case IsNoBuiltinLoop(err):
+		return usererr.BuiltinLoopOff(err.Error()).Caused(err)
+	case errors.Is(err, agent.ErrMaxTurns):
+		return usererr.TooManySteps(err.Error()).Caused(err)
+	case errors.As(err, &api) && (api.StatusCode == http.StatusUnauthorized || api.StatusCode == http.StatusForbidden):
+		return usererr.ApiKeyRejected(err.Error()).Caused(err)
+	case errors.As(err, &api):
+		return usererr.ModelCallFailed(err.Error()).Caused(err)
+	}
+	return usererr.Unexpected(err)
 }

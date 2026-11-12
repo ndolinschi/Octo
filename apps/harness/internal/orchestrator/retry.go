@@ -6,6 +6,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // failedRequest recognises a retry. The client's Retry button posts the text of
@@ -54,11 +55,12 @@ const (
 // publishTurnState tells clients how the turn that just started or ended left
 // the project: failed (with the error) or none. It is the same event as the
 // approval counts, with the counts of now.
-func (rt *runtime) publishTurnState(state, errText string) {
+func (rt *runtime) publishTurnState(state string, problem *usererr.Error) {
 	a, in := rt.o.Attention(rt.pid())
 	fields := map[string]any{"needs_you": a+in > 0, "approvals": a, "inputs": in, "state": state}
-	if errText != "" {
-		fields["error"] = errText
+	if problem != nil {
+		fields["error"] = problem.Message
+		problem.AddTo(fields, "hint", "command", "action", "details")
 	}
 	rt.publish(events.ProjectAttention, fields)
 }

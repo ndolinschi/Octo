@@ -407,7 +407,7 @@ func TestACPOrchestratorAgentRefusesMCP(t *testing.T) {
 		t.Errorf("text = %q", text)
 	}
 	warn, _ := tr.errMsg.(string)
-	if !strings.HasPrefix(warn, "warning: ") || !strings.Contains(warn, "refused the harness's MCP server") {
+	if !strings.HasPrefix(warn, "warning: ") || !strings.Contains(warn, "could not use Octo's tools") {
 		t.Errorf("turn.finished error = %q, want the one-line warning", warn)
 	}
 	orch := e.agent(t, p, p.OrchestratorAgentID)
@@ -748,10 +748,10 @@ func TestACPModelSettingsValidation(t *testing.T) {
 			body["name"] = "x"
 		}
 		var resp struct {
-			Error struct{ Code, Message string } `json:"error"`
+			Error struct{ Code, Message, Details string } `json:"error"`
 		}
 		e.into(t, method, path, body, http.StatusBadRequest, &resp)
-		if resp.Error.Code != "invalid_request" || !strings.Contains(resp.Error.Message, wantMsg) {
+		if resp.Error.Code != "invalid_request" || !strings.Contains(resp.Error.Details, wantMsg) {
 			t.Errorf("%s %v: error = %+v, want it to mention %q", method, models, resp.Error, wantMsg)
 		}
 	}

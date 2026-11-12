@@ -1,7 +1,8 @@
 import { useScrollAnchor } from "../../lib/scrollAnchor";
 import type { Agent } from "@octo/agent-client";
 import { ArrowDown } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
+import { IconButton } from "../primitives/IconButton";
+import { InlineNotesProvider } from "./notesContext";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { useNow, useStickToBottom } from "../../lib/hooks";
@@ -17,7 +18,9 @@ import { useComposerAnchor } from "./useComposerAnchor";
 /** Decision 63: the project's own agent goes by the project's name in its conversation, never "Orchestrator". */
 const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
 import { showRail, turnWarning } from "../../lib/transcript";
-import { TurnBanner, useLoginHint } from "./Transcript";
+import { TurnBanner, providerIdOf, useAgentName, useLoginHint } from "./Transcript";
+import { errorFieldsOf } from "@octo/agent-client";
+import { recheckAgent } from "../../lib/providers/recheck";
 
 /** A sub-agent's header loads with the first Agent tab (its own chunk). */
 const AgentHeader = lazy(() => import("./AgentHeader").then((m) => ({ default: m.AgentHeader })));
@@ -25,6 +28,7 @@ import { requestTitle } from "../../lib/comments";
 import { buildTurns, promptText, requestSummaries } from "../../lib/transcript";
 import { CommentsControl } from "./CommentsControlLazy";
 import { Composer, type ComposerHandle } from "./Composer";
+const InlineNotes = lazy(() => import("./InlineNotes").then((m) => ({ default: m.InlineNotes })));
 const TurnRail = lazy(() => import("./TurnRail").then((m) => ({ default: m.TurnRail })));
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { StreakLayer } from "../primitives/StreakLayer";
@@ -65,7 +69,18 @@ const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m
  * then all of them pad by `--pad` (24, or 16 under 560px). Rhythm: turns 32 apart, prompt → reply 16,
  * blocks 12.
  */
-export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: TabId }) {
+/** Owns the notes slash commands leave in the conversation (B11); `/rewind` reaches the body's dialog through a ref. */
+export function ConversationView(props: { agentId: string; tab?: TabId }) {
+  const rewindRef = useRef<(() => void) | undefined>(undefined);
+  const rewindLast = useCallback(() => rewindRef.current?.(), []);
+  return (
+    <InlineNotesProvider rewindLast={rewindLast}>
+      <ConversationBody {...props} rewindRef={rewindRef} />
+    </InlineNotesProvider>
+  );
+}
+
+function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string; tab?: TabId; rewindRef: { current: (() => void) | undefined } }) {
   const ws = useOptionalWorkspace();
   const slots = useChatSlots();
   const { theme, backdrop: appBackdrop, bridge } = useApp();
@@ -130,6 +145,13 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
     () => (isOrchestrator && messages ? requestSummaries(buildTurns(messages), agent?.status === "running", lastTurnStatus) : []),
     [isOrchestrator, messages, agent?.status, lastTurnStatus],
   );
+  const newestRequest = requests[requests.length - 1]?.id;
+  useEffect(() => {
+    rewindRef.current = newestRequest === undefined ? undefined : () => setRewinding(newestRequest);
+    return () => {
+      rewindRef.current = undefined;
+    };
+  }, [rewindRef, newestRequest]);
   useViewTurn(scroll.ref, projectId, isOrchestrator, promptCount);
   useTurnRequests({
     root: scroll.ref,
@@ -232,6 +254,15 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
     <div
       data-conv
       onKeyDown={onKeyDown}
+      onDragOver={(e) => {
+        if (isOrchestrator && [...e.dataTransfer.types].includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        // Files dropped on the conversation go to the composer, as if dropped on it (B12).
+        if (!isOrchestrator || e.defaultPrevented || e.dataTransfer.files.length === 0) return;
+        e.preventDefault();
+        composer.current?.addFiles([...e.dataTransfer.files]);
+      }}
       className={cn(
         "@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]",
         // Decision 50: the empty project's streak is on the dock group (never in this scroller); no rubber-band either.
@@ -298,6 +329,11 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
                   onKeepEditing={isOrchestrator ? keepEditing : undefined}
                   onRewind={isOrchestrator && bridge.rewind ? setRewinding : undefined}
                 />
+                {isOrchestrator && (
+                  <Suspense fallback={null}>
+                    <InlineNotes />
+                  </Suspense>
+                )}
                 {isOrchestrator && slots?.approvals?.({ onOpenAgent: (id) => ws?.openAgent(id) })}
               </div>
             </div>
@@ -310,15 +346,14 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
               <div aria-hidden className="octo-fade pointer-events-none absolute inset-x-0 -top-3 h-3 overflow-hidden scroll-quiet">
                 <div className="h-full bg-linear-to-t from-panel to-transparent" />
               </div>
-              <button
-                type="button"
+              <IconButton
+                icon={ArrowDown}
+                label="Jump to latest"
+                variant="round"
+                size="md"
+                className="octo-fade octo-ring-pop shadow-pop"
                 onClick={() => scroll.scrollToBottom(true)}
-                aria-label="Jump to latest"
-                title="Jump to latest"
-                className="octo-fade octo-ring-pop grid size-8 press place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
-              >
-                <Glyph icon={ArrowDown} size={14} />
-              </button>
+              />
             </div>
           )}
         </div>
@@ -372,11 +407,34 @@ function StartFailure({ agent }: { agent: Agent }) {
       : agent.status === "failed" || (agent.error && !turnWarning(agent.error))
         ? agent.error
         : undefined;
-  const hint = useLoginHint(failed !== undefined ? agent.model : null);
+  const login = useLoginHint(failed !== undefined ? agent.model : null);
+  const agentName = useAgentName(agent.model);
+  const { bridge } = useApp();
+  const fromTurn = state.lastTurn?.status === "failed" ? errorFieldsOf(state.lastTurn) : agent.error_hint ? { hint: agent.error_hint } : {};
+  const recheck = async () => {
+    const id = providerIdOf(agent.model);
+    const ready = id ? await recheckAgent(bridge, id).catch(() => false) : false;
+    login.recheck();
+    return ready;
+  };
   if (failed === undefined || agent.status === "running") return null;
   return (
     <div data-start-failure className="relative mx-auto mt-4 w-full max-w-float">
-      <TurnBanner status="failed" error={failed} retryText={null} hint={hint} />
+      <Suspense fallback={null}>
+        <TurnBanner
+          status="failed"
+          error={failed}
+          retryText={null}
+          fields={{
+            ...fromTurn,
+            ...(fromTurn.hint || !login.hint ? {} : { hint: login.hint }),
+            ...("action" in fromTurn || !login.hint ? {} : { action: "recheck_provider" as const }),
+          }}
+          agent={agentName}
+          providerId={providerIdOf(agent.model)}
+          onCheck={recheck}
+        />
+      </Suspense>
     </div>
   );
 }

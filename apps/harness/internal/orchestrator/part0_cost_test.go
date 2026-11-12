@@ -18,7 +18,7 @@ import (
 
 // budgetRe matches the budget message with the router's spend of about two cents (the figure moves a
 // little with the mock's token counts).
-var budgetRe = regexp.MustCompile(`Project budget reached \(\$0\.0\d+ of \$0\.01\)`)
+var budgetRe = regexp.MustCompile(`This project's budget is used up \(\$0\.0\d+ of \$0\.01\)`)
 
 func costOf(t *testing.T, r *rig, pid string) (sum float64, flat, nonFlat int) {
 	t.Helper()
@@ -151,7 +151,7 @@ func TestRouterSpendIsTheOnlyBudgetNumber(t *testing.T) {
 		t.Fatalf("turn over the router's budget = %s, want failed", st)
 	}
 	for _, a := range r.agents(t, pid)[agentsBefore:] {
-		if a.Status != "failed" || a.Error == nil || !strings.Contains(*a.Error, "Project budget reached") {
+		if a.Status != "failed" || a.Error == nil || !strings.Contains(*a.Error, "budget is used up") {
 			t.Fatalf("a sub-agent was started over budget: %s %v", a.Status, a.Error)
 		}
 	}
@@ -166,7 +166,7 @@ func TestRouterSpendIsTheOnlyBudgetNumber(t *testing.T) {
 		t.Fatalf("upstream calls this turn = %d, want 1: the next orchestrator request must be stopped by the same check", n)
 	}
 	e := r.agents(t, pid)[0].Error
-	if e == nil || !regexp.MustCompile(`^Project budget reached \(\$0\.0\d+ of \$0\.01\)$`).MatchString(*e) {
+	if e == nil || !regexp.MustCompile(`^This project's budget is used up \(\$0\.0\d+ of \$0\.01\)\.$`).MatchString(*e) {
 		t.Fatalf("orchestrator error = %v", e)
 	}
 	for _, q := range fr.Requests() {
@@ -221,7 +221,7 @@ func TestBudgetRefusedDelegationAnnouncesFailedAgent(t *testing.T) {
 	for _, m := range got.of("agent.updated") {
 		a := m["agent"].(map[string]any)
 		if id := a["id"].(string); created[id] && a["status"] == "failed" {
-			if e, _ := a["error"].(string); !strings.Contains(e, "Project budget reached") {
+			if e, _ := a["error"].(string); !strings.Contains(e, "budget is used up") {
 				t.Errorf("failed agent error = %q", e)
 			}
 			failed++

@@ -1,4 +1,5 @@
 import { ancestorsOf, descendantCount, type Agent } from "@octo/agent-client";
+import { Button } from "../primitives/Button";
 import { roleName } from "../../lib/orchestrator";
 import { ChevronRight } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
@@ -104,16 +105,10 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
       )}
       {agent.task && (
         <div className="mt-2">
-          <button
-            type="button"
-            aria-expanded={briefOpen}
-            aria-controls={briefId}
-            onClick={() => setBriefOpen((o) => !o)}
-            className="-ml-1.5 inline-flex h-6 press items-center gap-1 rounded-sm px-1.5 text-sm text-fg-3 hover:bg-hover hover:text-fg-2"
-          >
+          <Button variant="quiet" size="xs" aria-expanded={briefOpen} aria-controls={briefId} onClick={() => setBriefOpen((o) => !o)} className="-ml-1.5">
             Task brief
             <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", briefOpen && "rotate-90")} />
-          </button>
+          </Button>
           {briefOpen && (
             <div id={briefId} className="mt-1 border-l border-line-strong pl-3">
               <Markdown text={agent.task} className="octo-prose octo-prose-sm" />

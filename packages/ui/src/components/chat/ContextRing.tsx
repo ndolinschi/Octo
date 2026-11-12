@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { formatTokens } from "../../lib/format";
 import { MOD_LABEL } from "../../lib/keys";
+import { Button } from "../primitives/Button";
 import { Presence } from "../primitives/Presence";
 
 const ContextPopover = lazy(() => import("./ContextPopover").then((m) => ({ default: m.ContextPopover })));
@@ -34,16 +35,17 @@ export function ContextRing({ used, size }: { used: number | null | undefined; s
   const text = `Context: ${formatTokens(used)} of ${formatTokens(size)} tokens (${pct}%)`;
   return (
     <>
-      <button
+      <Button
         ref={button}
-        type="button"
+        variant="quiet"
+        size="sm"
+        pressed={open}
         aria-label={text}
         aria-haspopup="dialog"
         aria-expanded={open}
         title={`Context (${MOD_LABEL}⇧U)`}
         data-context-ring
         onClick={() => setOpen((o) => !o)}
-        className={cn("flex h-7 shrink-0 press items-center gap-1 rounded-sm px-1.5 hover:bg-hover", open && "bg-hover")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden className="-rotate-90">
           <circle cx="8" cy="8" r={R} fill="none" stroke="currentColor" strokeWidth="2" className="text-line-strong" />
@@ -60,7 +62,7 @@ export function ContextRing({ used, size }: { used: number | null | undefined; s
           />
         </svg>
         {share > 0.5 && <span className={cn("text-xs tabular-nums", share >= 0.8 ? "text-warn" : "text-fg-3")}>{pct}%</span>}
-      </button>
+      </Button>
       <Presence show={open} exitMs={0}>
         {open && (
           <Suspense fallback={null}>

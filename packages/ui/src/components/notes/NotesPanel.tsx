@@ -6,7 +6,7 @@ import { filterNotes, indexFooter, noteFileName, sortNotes, titleFromFileName } 
 import { useProject } from "../../state/project";
 import { Button } from "../primitives/Button";
 import { EmptyState } from "../primitives/EmptyState";
-import { FileInputButton } from "../primitives/FileInputButton";
+import { FileInput } from "../primitives/FileInput";
 import { Glyph } from "../primitives/Glyph";
 import { IconButton } from "../primitives/IconButton";
 import { ListDetail } from "../primitives/ListDetail";
@@ -116,7 +116,12 @@ export function NotesPanel() {
   const toolbar = (
     <div className="box-content flex h-ctl-md shrink-0 items-center gap-1 px-pane pt-pane pb-1">
       <SearchField label="Search notes" size="sm" value={query} onChange={setQuery} className="min-w-0 flex-1" />
-      <FileInputButton icon={Upload} label="Import a .md file" accept=".md,.markdown,.txt,text/markdown,text/plain" onFile={(f) => void importFile(f)} />
+      <FileInput
+        button={{ icon: Upload }}
+        label="Import a .md file"
+        accept=".md,.markdown,.txt,text/markdown,text/plain"
+        onFiles={(files) => files[0] && void importFile(files[0])}
+      />
       <IconButton icon={Plus} label="Add note" onClick={() => setMode({ kind: "new" })} disabled={mode.kind === "new"} />
     </div>
   );
@@ -154,7 +159,9 @@ export function NotesPanel() {
           detailClassName="p-0"
           list={(select) =>
             shown.length === 0 ? (
-              <p className="px-2 py-3 text-sm text-fg-3">No note matches "{query}".</p>
+              <p role="listitem" className="px-2 py-3 text-sm text-fg-3">
+                No note matches "{query}".
+              </p>
             ) : (
               shown.map((n) => <NoteRow key={n.id} note={n} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />)
             )
@@ -172,6 +179,7 @@ function NoteRow(props: { note: Note; active: boolean; onPick(): void }) {
   const { note } = props;
   return (
     <ListRow
+      role="listitem"
       size="md"
       selected={props.active}
       leading={note.pinned ? <Glyph icon={Pin} size={14} aria-label="Pinned" /> : undefined}

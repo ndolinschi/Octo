@@ -26,6 +26,8 @@ export type Action =
   | { type: "notes"; notes: Note[] }
   | { type: "sessions"; sessions: ProjectSession[] }
   | { type: "compactions"; agentId: string; markers: CompactionMarker[] }
+  /** The agent's conversation replaced by another one (a resumed session): messages, markers and any streamed text. */
+  | { type: "transcript"; agentId: string; messages: Message[]; markers: CompactionMarker[] }
   | { type: "side"; messages: SideMessage[] }
   | { type: "sideAsked"; started: SideStarted }
   | { type: "sideCleared" }
@@ -44,6 +46,13 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
       return withNotes(state, action.notes);
     case "sessions":
       return withSessions(state, action.sessions);
+    case "transcript":
+      return {
+        ...state,
+        messages: { ...state.messages, [action.agentId]: [...action.messages] },
+        compactions: { ...state.compactions, [action.agentId]: [...action.markers] },
+        streaming: { ...state.streaming, [action.agentId]: "" },
+      };
     case "compactions":
       return withCompactions(state, action.agentId, action.markers);
     case "side":

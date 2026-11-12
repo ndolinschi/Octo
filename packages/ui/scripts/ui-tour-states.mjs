@@ -39,7 +39,7 @@ async function home(page) {
 /** Ctrl+K, type, pick the first result with Enter. */
 async function palette(page, text, pick = true) {
   await page.keyboard.press("Control+k");
-  const box = page.getByRole("combobox").first();
+  const box = page.getByRole("combobox", { name: /^Search tabs/ }).first();
   await box.waitFor({ timeout: 6000 });
   if (text) await box.fill(text);
   await page.waitForTimeout(500);
@@ -306,9 +306,10 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Docs site");
         await send(page, "approvals demo please");
-        await need(page, page.locator("[data-network]"), "approvals");
+        await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]").first(), "approvals");
         await page.waitForTimeout(500);
-        await page.locator("[data-patch] button").first().click();
+        await page.getByRole("button", { name: "Details" }).first().click();
+        await need(page, page.locator("[data-patch]"), "patch");
         await page.locator("[data-patch]").first().scrollIntoViewIfNeeded();
       },
     },
@@ -320,8 +321,10 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Docs site");
         await send(page, "approvals demo please");
-        await need(page, page.locator("[data-network]"), "network approval");
+        await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]").first(), "network approval");
         await page.waitForTimeout(500);
+        await page.getByRole("button", { name: "Details" }).nth(1).click();
+        await need(page, page.locator("[data-network]"), "network details");
         await page.locator("[data-network]").first().scrollIntoViewIfNeeded();
       },
     },
@@ -333,12 +336,11 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Docs site");
         await send(page, "approvals demo please");
-        await need(page, page.locator("[data-network]"), "approvals");
+        await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]").first(), "approvals");
         await page.waitForTimeout(500);
         await page
-          .locator("[data-v7-approval]")
-          .last()
           .getByRole("button", { name: /^Always allow/ })
+          .last()
           .click();
         await need(page, page.locator("[data-always-panel]"), "rule panel");
       },
@@ -710,7 +712,10 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await openPath(page, ["src", "auth", "refresh.ts"]);
         await editorReady(page);
-        await page.locator(".monaco-editor .view-line").nth(4).click({ position: { x: 4, y: 8 } });
+        await page
+          .locator(".monaco-editor .view-line")
+          .nth(4)
+          .click({ position: { x: 4, y: 8 } });
         await page.keyboard.press("Control+Alt+c");
         const box = page.getByPlaceholder(/Comment on/);
         await box.waitFor({ timeout: 6000 });
@@ -743,14 +748,14 @@ export const GROUPS = {
     },
     {
       name: "memory-tasks",
-      text: "Atlas API: the Memory tool, Tasks view.",
+      text: "Atlas API: the Memory tool, Knowledge view (what is remembered, and the tasks).",
       sizes: "all",
       run: async (page, env) => {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
-        await clickText(page, /^Tasks$/);
-        await need(page, page.getByText("Refresh tokens rotate on every use"), "memory tasks");
+        await page.getByRole("tab", { name: "Knowledge" }).click();
+        await need(page, page.getByText("Refresh tokens rotate on every use"), "memory knowledge");
       },
     },
     {
@@ -761,7 +766,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
-        await clickText(page, /^Files$/);
+        await page.getByRole("tab", { name: "Files" }).click();
         await page.waitForTimeout(800);
       },
     },
@@ -773,22 +778,13 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
-        await clickText(page, /^Search$/);
-        await page.getByPlaceholder(/A word or two/).fill("refresh");
+        await page
+          .getByRole("searchbox")
+          .or(page.getByPlaceholder(/Search/))
+          .first()
+          .fill("refresh");
         await page.keyboard.press("Enter");
         await page.waitForTimeout(1500);
-      },
-    },
-    {
-      name: "memory-context-details",
-      text: "The Memory tool's Context view: what fills the orchestrator's context.",
-      sizes: "all",
-      run: async (page, env) => {
-        await boot(page, env);
-        await project(page, env, "Atlas API");
-        await tool(page, "Show memory");
-        await clickText(page, /^Context$/);
-        await page.waitForTimeout(1000);
       },
     },
     {
@@ -907,7 +903,10 @@ export const GROUPS = {
       sizes: "one",
       run: async (page, env) => {
         await reviewOpen(page, env);
-        await clickText(page, /thread not at a line/);
+        // The demo's thread that sits at no line belongs to retry.ts (the strip is per file).
+        await page.getByText("retry.ts", { exact: true }).first().click();
+        await page.waitForTimeout(900);
+        await clickText(page, /outdated threads?|threads? not at a line/);
         await page.waitForTimeout(500);
       },
     },
@@ -917,20 +916,22 @@ export const GROUPS = {
       sizes: "one",
       run: async (page, env) => {
         await reviewOpen(page, env);
+        await page.waitForTimeout(2000); // the inline threads are placed after the diff is drawn
         await page
-          .locator("button", { hasText: /^Reply$/ })
+          .locator("button:visible", { hasText: /^Reply$/ })
           .first()
           .waitFor({ state: "attached", timeout: 15000 });
         await page
-          .locator("button", { hasText: /^Reply$/ })
+          .locator("button:visible", { hasText: /^Reply$/ })
           .first()
           .evaluate((e) => {
             e.scrollIntoView({ block: "center" });
             e.click();
           });
         await page.waitForTimeout(500);
-        const box = page.getByRole("textbox").filter({ visible: true }).last();
-        await box.fill("Good catch. 429 is retried with the Retry-After value; I added a test for it.");
+        // The reply box takes the focus when it opens.
+        await need(page, page.getByLabel("Your reply"), "the reply box");
+        await page.keyboard.insertText("Good catch. 429 is retried with the Retry-After value; I added a test for it.");
         await page.waitForTimeout(400);
       },
     },
@@ -1049,12 +1050,11 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Docs site");
         await send(page, "approvals demo please");
-        await need(page, page.locator("[data-network]"), "approvals");
+        await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]").first(), "approvals");
         await page.waitForTimeout(500);
         await page
-          .locator("[data-v7-approval]")
-          .last()
           .getByRole("button", { name: /^Always allow/ })
+          .last()
           .click();
         await need(page, page.locator("[data-always-panel]"), "rule panel");
         await click(page, /Save rule and allow/);
@@ -1093,14 +1093,14 @@ export const GROUPS = {
     },
     {
       name: "command-palette-past-requests",
-      text: "The palette with 'slowest': the 'Past requests' group (a search through earlier messages).",
+      text: "The palette with 'slowest': the one 'Requests' group (this project's first, then older hits of the harness's search).",
       sizes: "one",
       run: async (page, env) => {
         await boot(page, env);
         await project(page, env, "Docs site");
         await palette(page, "slowest", false);
         await page.waitForTimeout(900);
-        await need(page, page.getByText("Past requests"), "past requests group");
+        await need(page, page.getByText("Requests", { exact: true }), "requests group");
       },
     },
     {
@@ -1181,7 +1181,10 @@ export const GROUPS = {
       sizes: "all",
       run: async (page, env) => {
         await reviewPicker(page, env);
-        const field = page.getByRole("searchbox").or(page.getByLabel(/Search pull requests/)).first();
+        const field = page
+          .getByRole("searchbox")
+          .or(page.getByLabel(/Search pull requests/))
+          .first();
         await field.fill("482");
         await field.press("Enter");
         await need(page, page.getByText(/Which repository is it in|Pick the repository/), "the refusal", 12000);
@@ -1220,7 +1223,11 @@ export const GROUPS = {
         if (await pinned.isVisible().catch(() => false)) await pinned.click();
         else {
           // Narrow: the pinned buttons fold into the Run menu.
-          await page.getByRole("button", { name: /Run a project command/ }).filter({ visible: true }).first().click();
+          await page
+            .getByRole("button", { name: /Run a project command/ })
+            .filter({ visible: true })
+            .first()
+            .click();
           await page.getByRole("menuitem", { name: /Tests/ }).click();
         }
         await need(page, page.getByRole("tab", { name: /Tests/ }), "the run tab", 10000);
@@ -1291,8 +1298,15 @@ export const GROUPS = {
       run: async (page, env) => {
         await boot(page, env);
         await project(page, env, "Atlas API");
-        await page.getByRole("button", { name: /^Model/ }).filter({ visible: true }).first().click();
-        const row = page.getByText(/Copilot/).filter({ visible: true }).first();
+        await page
+          .getByRole("button", { name: /^Model/ })
+          .filter({ visible: true })
+          .first()
+          .click();
+        const row = page
+          .getByText(/Copilot/)
+          .filter({ visible: true })
+          .first();
         await row.waitFor({ timeout: 8000 });
         await row.click();
         await need(page, page.getByRole("button", { name: "Use anyway" }), "the refused-model notice", 10000);
@@ -1341,7 +1355,7 @@ export const GROUPS = {
         await tool(page, "Show memory");
         await need(page, page.getByRole("tab", { name: "Sessions" }), "Sessions view", 10000);
         await page.getByRole("tab", { name: "Sessions" }).click();
-        await need(page, page.getByRole("list", { name: "Sessions" }), "sessions list", 10000);
+        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
       },
     },
     {
@@ -1353,10 +1367,10 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
         await page.getByRole("tab", { name: "Sessions" }).click();
-        const list = page.getByRole("list", { name: "Sessions" });
+        const list = page.locator("[aria-label='Sessions']").first();
         await list.waitFor({ timeout: 10000 });
         await list.locator("button[data-row]").first().click();
-        await need(page, page.getByRole("list", { name: "Exchanges" }), "exchanges", 10000);
+        await need(page, page.locator("[aria-label='Exchanges']").first(), "exchanges", 10000);
         await page.waitForTimeout(600);
       },
     },
@@ -1369,7 +1383,7 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show memory");
         await page.getByRole("tab", { name: "Sessions" }).click();
-        const list = page.getByRole("list", { name: "Sessions" });
+        const list = page.locator("[aria-label='Sessions']").first();
         await list.waitFor({ timeout: 10000 });
         await list.locator("button[data-row]").first().click();
         await page.getByRole("button", { name: "Exchange actions" }).filter({ visible: true }).first().click();
@@ -1377,16 +1391,81 @@ export const GROUPS = {
         await need(page, page.getByRole("dialog", { name: /Forget this exchange/ }).or(page.getByText("Forget this exchange?")), "forget confirmation");
       },
     },
+  ],
+
+  sessions: [
     {
-      name: "context-details",
-      text: "Memory, Context: the itemised context report (categories with rows, not loaded, largest messages).",
+      name: "list",
+      text: "Atlas API, Sessions tab: the project's sessions as one list (the main sessions, their agents under the open one) with the filters.",
       sizes: "all",
       run: async (page, env) => {
         await boot(page, env);
         await project(page, env, "Atlas API");
-        await tool(page, "Show memory");
-        await page.getByRole("tab", { name: "Context" }).click();
-        await page.waitForTimeout(1500);
+        await tool(page, "Show sessions");
+        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
+        await page.waitForTimeout(500);
+      },
+    },
+    {
+      name: "main-detail",
+      text: "Sessions: a main session open on the right: header with its actions, the conversation word for word, the footer.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show sessions");
+        const list = page.locator("[aria-label='Sessions']").first();
+        await list.waitFor({ timeout: 10000 });
+        await page.waitForTimeout(800);
+        await list.locator("button[data-row]").first().click();
+        await page
+          .locator("article")
+          .first()
+          .waitFor({ state: "attached", timeout: 15000 })
+          .catch(() => {
+            throw new Error("not reached: the session's conversation");
+          });
+        await page.waitForTimeout(400);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: "agent-detail",
+      text: "Sessions, filter Agents: an agent session open: its task, who started it and its usage, the conversation, the message box.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show sessions");
+        const list = page.locator("[aria-label='Sessions']").first();
+        await list.waitFor({ timeout: 10000 });
+        await page
+          .getByRole("radio", { name: /^Agents/ })
+          .filter({ visible: true })
+          .first()
+          .click({ timeout: 8000 });
+        await page.waitForTimeout(800);
+        await list.locator("button[data-row]").first().click();
+        await page
+          .locator("[data-activity-row], article")
+          .first()
+          .waitFor({ state: "attached", timeout: 15000 })
+          .catch(() => {
+            throw new Error("not reached: the agent session's conversation");
+          });
+        await page.waitForTimeout(400);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: "sidebar-expanded",
+      text: "The sidebar: a project with several sessions expanded under its row (its five latest, then 'All sessions').",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await page.getByRole("button", { name: "Show recent sessions" }).first().click({ force: true, timeout: 10000 });
+        await need(page, page.getByRole("list", { name: "Recent sessions" }), "recent sessions under the project");
+        await page.waitForTimeout(400);
       },
     },
   ],
@@ -1400,7 +1479,7 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show notes");
-        await need(page, page.getByRole("list", { name: "Notes" }), "note list", 10000);
+        await need(page, page.locator("[aria-label='Notes']").first(), "note list", 10000);
       },
     },
     {
@@ -1411,9 +1490,9 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show notes");
-        const list = page.getByRole("list", { name: "Notes" });
+        const list = page.locator("[aria-label='Notes']").first();
         await list.waitFor({ timeout: 10000 });
-        await list.locator("li button").first().click();
+        await list.locator("[data-row]").first().click();
         await page.waitForTimeout(1000);
       },
     },
@@ -1425,9 +1504,9 @@ export const GROUPS = {
         await boot(page, env);
         await project(page, env, "Atlas API");
         await tool(page, "Show notes");
-        const list = page.getByRole("list", { name: "Notes" });
+        const list = page.locator("[aria-label='Notes']").first();
         await list.waitFor({ timeout: 10000 });
-        await list.locator("li button").first().click();
+        await list.locator("[data-row]").first().click();
         await page.getByRole("button", { name: /^Edit/ }).filter({ visible: true }).first().click();
         await page.waitForTimeout(1200);
       },
@@ -1461,8 +1540,7 @@ export const GROUPS = {
         await project(page, env, "Atlas API");
         await tool(page, "Show usage");
         await page.getByRole("tab", { name: "By model" }).click({ timeout: 10000 });
-        await page.getByRole("button", { name: "Period and scope" }).filter({ visible: true }).first().click();
-        await page.getByRole("menu").getByText("Show roles").click();
+        await page.getByRole("button", { name: "Show roles" }).filter({ visible: true }).first().click();
         await page.waitForTimeout(1200);
       },
     },
@@ -1473,7 +1551,10 @@ export const GROUPS = {
       run: async (page, env) => {
         await boot(page, env, "demo=1", "#/settings/usage");
         await need(page, page.getByText(/Usage by project/i), "table", 12000);
-        const row = page.getByRole("button", { name: /Atlas API/ }).filter({ visible: true }).first();
+        const row = page
+          .getByRole("button", { name: /Atlas API/ })
+          .filter({ visible: true })
+          .first();
         await row.click();
         await page.waitForTimeout(1200);
       },
@@ -1499,4 +1580,194 @@ export const GROUPS = {
       }
     },
   })),
+
+  polish: [
+    {
+      name: "approvals-grouped",
+      text: "Docs site, 'approvals demo please': several pending approvals as one group of cards (decision 91c), one Allow / Deny each.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Docs site");
+        await send(page, "approvals demo please");
+        await need(page, page.locator("[data-v7-approval-group], [data-v7-approval]"), "approval group");
+        await page.waitForTimeout(500);
+        await page.locator("[data-v7-approval-group], [data-v7-approval]").first().scrollIntoViewIfNeeded();
+      },
+    },
+    {
+      name: "activity-rows",
+      text: "Atlas API, a request running: thinking, tool and delegation steps as one activity row each (glyph, verb, detail, time).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await need(page, page.locator("[data-activity-row]"), "activity rows", 20000);
+        await page.locator("[data-activity-row]").last().scrollIntoViewIfNeeded();
+      },
+    },
+    {
+      name: "composer-row",
+      text: "Atlas API: the composer's one row (attach, mode, model chip with its routing, context ring, send).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await need(page, page.locator("[data-composer-wrap]"), "composer");
+        await composer(page).fill("Summarise the failing tests");
+      },
+    },
+    {
+      name: "slash-menu",
+      text: "Atlas API: '/' in the composer opens the command menu (Octo commands first, the agent's below).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await composer(page).click();
+        await composer(page).fill("/");
+        await need(page, page.getByRole("listbox").first(), "slash menu");
+      },
+    },
+    {
+      name: "slash-context-report",
+      text: "Atlas API: '/context' opens the window report sheet (stacked bar with colour keys, categories, not loaded, largest messages).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await composer(page).click();
+        await composer(page).fill("/context");
+        await page.keyboard.press("Enter");
+        await need(page, page.getByRole("dialog", { name: "Context window" }), "window report");
+        await page.waitForTimeout(800);
+      },
+    },
+    {
+      name: "window-report-from-ring",
+      text: "Atlas API: the context ring's popover, then 'Open context details': the same window report.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await page
+          .getByRole("button", { name: /^Context:/ })
+          .first()
+          .click();
+        await need(page, page.getByRole("button", { name: "Open context details" }), "popover button");
+        await page.getByRole("button", { name: "Open context details" }).click();
+        await need(page, page.getByRole("dialog", { name: "Context window" }), "window report");
+        await page.waitForTimeout(800);
+      },
+    },
+    {
+      name: "images-attached",
+      text: "Atlas API: an image attached to the next message (chip with thumbnail, remove).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAFklEQVQYV2P8z8Dwn4EIwDiqkL4KAQBM0Af9eQ4h3AAAAABJRU5ErkJggg==", "base64");
+        await page.locator("input[type=file]").first().setInputFiles({ name: "screenshot.png", mimeType: "image/png", buffer: png });
+        await need(page, page.locator("[data-image-chip]"), "image chip", 10000);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: "error-notice-structured",
+      text: "Changelog bot: a failed start as the harness words it (message, hint, 'Check again'); Details folded.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Changelog bot");
+        await need(page, page.locator("[data-turn-outcome='failed']"), "failed banner");
+      },
+    },
+    {
+      name: "tree-column-page-mode",
+      text: "Atlas API at the window's own width: the file tree as a column beside the editor (wide) or as a page (narrow).",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await openPath(page, ["src", "auth", "refresh.ts"]);
+        await editorReady(page);
+      },
+    },
+    {
+      name: "tree-column-hidden",
+      text: "Atlas API: the tree column hidden with the editor-bar toggle; the editor has the whole group.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await openPath(page, ["src", "auth", "refresh.ts"]);
+        await editorReady(page);
+        await page
+          .getByRole("button", { name: /file tree|Hide files|Show files/i })
+          .filter({ visible: true })
+          .first()
+          .click();
+        await page.waitForTimeout(500);
+      },
+    },
+    {
+      name: "memory-sessions",
+      text: "Memory, view 1 of 3: Sessions.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show memory");
+        await page.getByRole("tab", { name: "Sessions" }).click();
+        await need(page, page.locator("[aria-label='Sessions']").first(), "sessions list", 10000);
+      },
+    },
+    {
+      name: "memory-knowledge",
+      text: "Memory, view 2 of 3: Knowledge.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show memory");
+        await page.getByRole("tab", { name: "Knowledge" }).click();
+        await page.waitForTimeout(900);
+      },
+    },
+    {
+      name: "memory-files",
+      text: "Memory, view 3 of 3: Files.",
+      sizes: "one",
+      run: async (page, env) => {
+        await boot(page, env);
+        await project(page, env, "Atlas API");
+        await tool(page, "Show memory");
+        await page.getByRole("tab", { name: "Files" }).click();
+        await page.waitForTimeout(900);
+      },
+    },
+    {
+      name: "home-rows",
+      text: "Home: projects as list rows on the shared scale, failures as one plain line.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env);
+        await home(page);
+        await page.waitForTimeout(600);
+      },
+    },
+    {
+      name: "connect-providers-list",
+      text: "No provider connected: the connect screen is the providers list; a row opens its detail.",
+      sizes: "all",
+      run: async (page, env) => {
+        await boot(page, env, "demo=1&providers=none");
+        await home(page);
+        await need(page, page.getByRole("group", { name: "Providers" }), "providers list");
+        await page.getByRole("group", { name: "Providers" }).locator("[data-row]").first().click();
+        await page.waitForTimeout(700);
+      },
+    },
+  ],
 };

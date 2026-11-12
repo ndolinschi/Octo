@@ -146,7 +146,12 @@ await tree.first().waitFor({ timeout: 8000 });
 await page.waitForTimeout(600);
 
 async function showTree() {
-  if (!(await tree.count())) await page.locator('[data-dock-group] button[aria-label="Show file tree"]:visible').first().click();
+  // Decision 94a: a column toggled by "Show file tree", or (a group too narrow for the column) the tree page behind "Files".
+  if (!(await tree.count())) {
+    const toggle = page.locator('[data-dock-group] button[aria-label="Show file tree"]:visible').first();
+    if (await toggle.count()) await toggle.click();
+    else await page.getByRole("button", { name: "Files", exact: true }).first().click();
+  }
   await tree.first().waitFor({ timeout: 4000 });
 }
 async function openFile(name) {
@@ -161,7 +166,7 @@ async function openFile(name) {
     throw e;
   }
   await page.waitForTimeout(900);
-  // The tree is a column of the editor pane: measure with it hidden, so only the editor's own width is compared.
+  // The tree is a column (or a page) of the file group: measure with it hidden, so only the editor's own width is compared.
   const hide = page.locator('[data-dock-group] button[aria-label="Hide file tree"]:visible').first();
   if (await hide.count()) await hide.click();
   await page.waitForTimeout(300);
@@ -220,6 +225,9 @@ await exchanges
   .catch(() => fail("the first demo session lists no exchanges"));
 await page.waitForTimeout(300);
 await measure("split", "memory, session with exchanges collapsed");
+// Rows are clicked with the DOM's own `click()`: Playwright's `click()` scrolls an off-screen row into view first (at 900x600 the
+// second row sits below the fold once the first is open), and that scroll belongs to the driver, not to the product.
+const press = (i) => exchanges.nth(i).evaluate((e) => e.click());
 const rowTop = (i) => exchanges.nth(i).evaluate((e) => Math.round(e.getBoundingClientRect().top * 10) / 10);
 const listScroll = () =>
   memory
@@ -234,15 +242,15 @@ const memoryProblems = [];
 const topBefore = await rowTop(1);
 const firstBefore = await rowTop(0);
 const scrollBefore = await listScroll();
-await exchanges.first().click();
+await press(0);
 await page.waitForTimeout(400);
 await measure("split", "memory, long answer expanded (code block and table)");
 if (Math.abs((await rowTop(0)) - firstBefore) > TOL) memoryProblems.push("memory: the row you opened moved when it expanded");
-await exchanges.nth(1).click();
+await press(1);
 await page.waitForTimeout(400);
 await measure("split", "memory, second exchange expanded (the first closed)");
 if ((await memory.locator("[data-exchange] .octo-mem-expand").count()) !== 1) memoryProblems.push("memory: more than one exchange is open at a time");
-await exchanges.nth(1).click();
+await press(1);
 await page.waitForTimeout(300);
 const topAfter = await rowTop(1);
 const scrollAfter = await listScroll();

@@ -17,6 +17,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // changeRetention is how long a recorded change keeps its diff.
@@ -283,6 +284,21 @@ func (rt *runtime) settle(ctx context.Context, id string, status projectstore.Ag
 	rt.settleHint(ctx, id, status, result, errText, "")
 }
 
+// settleProblem settles a failed agent with a catalogue error: its plain
+// message and hint on the row.
+func (rt *runtime) settleProblem(ctx context.Context, id string, p *usererr.Error) {
+	rt.settleHint(ctx, id, projectstore.StatusFailed, "", p.Message, p.Hint)
+}
+
+// modelText is what a model reads about a failure: the plain message and, for
+// it to reason about, the technical details.
+func modelText(p *usererr.Error) string {
+	if p.Details == "" {
+		return p.Message
+	}
+	return p.Message + " (" + p.Details + ")"
+}
+
 // settleHint is settle with the hint that goes with the error.
 func (rt *runtime) settleHint(ctx context.Context, id string, status projectstore.AgentStatus, result, errText, hint string) {
 	c, cancel := dbCtx(ctx)
@@ -312,7 +328,25 @@ func (rt *runtime) settleHint(ctx context.Context, id string, status projectstor
 // the turn.finished payload; the caller publishes it once the turn's slot is
 // released, so a client that reacts to turn.finished never meets "turn already
 // in progress".
-func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, text, errText, hint string) map[string]any {
+//
+// problem is the failure of a failed turn; notice is the standing notice of a
+// completed one (an agent that runs without Octo's tools). Both are catalogue
+// errors: the row and the payload carry the plain message and the hint (the
+// message of a notice keeps the "warning: " marker the row has always had),
+// the payload adds command, action and details, and a notice also as `notice`.
+func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, text string, problem, notice *usererr.Error) map[string]any {
+	errText, hint := "", ""
+	shown := problem
+	if shown == nil {
+		shown = notice
+	}
+	if shown != nil {
+		shown = rt.redactProblem(shown)
+		errText, hint = shown.Message, shown.Hint
+		if problem == nil {
+			errText = "warning: " + errText
+		}
+	}
 	ctx := context.Background()
 	c, cancel := dbCtx(ctx)
 	defer cancel()
@@ -328,7 +362,7 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	} else {
 		rt.logErr("list agents", err)
 	}
-	text, errText = rt.redact(text), rt.redact(errText)
+	text = rt.redact(text)
 	// The orchestrator is idle after every turn; a failed one leaves its error
 	// on the row until the next request starts (project.attention says failed).
 	idle, now := projectstore.StatusIdle, projectstore.Now()
@@ -338,7 +372,7 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	}
 	if errText != "" {
 		patch.Error = &errText
-		if hint = rt.redact(hint); hint != "" {
+		if hint != "" {
 			patch.ErrorHint = &hint
 		}
 	}
@@ -357,11 +391,14 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 		e = errText
 	}
 	out := map[string]any{"status": string(status), "error": e}
-	if hint != "" && errText != "" {
-		out["hint"] = hint
+	if shown != nil {
+		shown.AddTo(out, "hint", "command", "action", "details")
+		if problem == nil {
+			out["notice"] = shown.Fields()
+		}
 	}
 	if status == projectstore.StatusFailed {
-		rt.publishTurnState(attentionFailed, errText)
+		rt.publishTurnState(attentionFailed, shown)
 	}
 	return out
 }

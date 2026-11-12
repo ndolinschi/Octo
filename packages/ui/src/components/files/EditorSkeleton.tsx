@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { treeLayout } from "../../lib/treeLayout";
 import { TREE_MIN, useFileView } from "../../state/fileView";
+import { useGroup } from "../../state/workspace/group";
+import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 
 /** Line widths (% of the editor), a code-like ragged edge. */
 const LINES = [38, 62, 0, 74, 51, 46, 68, 33, 0, 57, 71, 44, 29, 64, 52, 40];
@@ -22,28 +24,29 @@ export function EditorSkeleton({ className }: { className?: string }) {
 
 /**
  * The file view before its chunk has loaded (the `Suspense` fallback in `dock/TabView`): the 40px bar with its hairline, the
- * editor's place and the tree column at the width the project last used, so the group has its final shape from the first
+ * editor's place and the tree column at the width the group last used, so the group has its final shape from the first
  * frame and the real view replaces it without a size change.
  */
 export function FileViewSkeleton() {
-  const { treeOpen, treeWidth } = useFileView();
+  const fv = useFileView();
+  const ws = useWorkspace();
+  const { open, width: stored } = fv.column(useGroup()?.groupId ?? "");
   const root = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   // Measured before the first paint; the column is drawn only where the real view will draw one (`treeLayout`), so the real
-  // view replaces this one without a size change (decision 85).
+  // view replaces this one without a size change (decisions 85, 94a).
   useLayoutEffect(() => {
     if (root.current) setWidth(Math.round(root.current.getBoundingClientRect().width));
   }, []);
-  const { overlay, maxWidth } = treeLayout(width, treeWidth, TREE_MIN);
-  const column = Math.max(TREE_MIN, Math.min(treeWidth, maxWidth));
+  const { page, column } = treeLayout(width, stored, TREE_MIN, ws.narrow);
   return (
     <div ref={root} aria-hidden className="flex min-h-0 flex-1 flex-col">
       <div data-file-bar className="h-bar shrink-0 shadow-[inset_0_-1px_0_var(--octo-line)]" />
       <div className="relative flex min-h-0 flex-1">
+        {open && !page && width > 0 && <aside data-tree-skeleton style={{ width: column }} className="shrink-0 border-r border-line bg-panel" />}
         <div data-editor-area className="relative min-w-0 flex-1">
           <EditorSkeleton />
         </div>
-        {treeOpen && !overlay && width > 0 && <aside data-tree-skeleton style={{ width: column }} className="shrink-0 border-l border-line bg-panel" />}
       </div>
     </div>
   );

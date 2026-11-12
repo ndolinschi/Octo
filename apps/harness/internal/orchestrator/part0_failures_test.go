@@ -7,49 +7,51 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/mockllm"
 )
 
-// R1.4: every way an ACP agent can fail ends the turn with a message that says
-// what to do; a turn with zero text and zero tool calls is never a success.
+// R1.4 and decision 94b: every way an ACP agent can fail ends the turn with a
+// plain message, a hint that says what to do, and the manifest's own login
+// text kept in the details (never in the message); a turn with zero text and
+// zero tool calls is never a success.
 func TestACPFailureModesSayWhatToDo(t *testing.T) {
+	const login = "Sign in with the Fake CLI first."
 	for _, tc := range []struct {
-		name, ask string
-		want      []string
-		hint      bool // the login hint is in the separate hint field, never in the text
+		name, ask     string
+		message, hint string
+		loginDetails  bool // the manifest's login text rides in `details`
 	}{
-		{"silent agent", "[silent] hi", []string{"returned nothing"}, true},
-		{"refusal", "[refuse] hi", []string{"declined the request", "rephrase"}, true},
-		{"max tokens", "[max-tokens] hi", []string{"ran out of output tokens", "smaller step"}, true},
-		{"crash mid-turn", "[crash] hi", []string{"ACP agent"}, false},
+		{"silent agent", "[silent] hi", "answered with nothing", "may not be logged in", true},
+		{"refusal", "[refuse] hi", "declined the request", "Rephrase", false},
+		{"max tokens", "[max-tokens] hi", "ran out of room", "smaller step", false},
+		{"crash mid-turn", "[crash] hi", "stopped in the middle of the request", "Try again", false},
 	} {
 		t.Run("orchestrator "+tc.name, func(t *testing.T) {
 			ag := fakeAgent("fake", true)
-			ag.Hint = "Sign in with the Fake CLI first."
+			ag.Hint = login
 			r := newACPRig(t, mockllm.New(0), ag)
 			pid := r.supervisedProject(t, t.TempDir(), "acp:fake")
 			got := r.runCollect(t, pid, tc.ask, nil)
 			if got.status != "failed" {
 				t.Fatalf("turn = %s, want failed", got.status)
 			}
-			msg, _ := got.of("turn.finished")[0]["error"].(string)
-			for _, w := range tc.want {
-				if !strings.Contains(msg, w) {
-					t.Errorf("error %q lacks %q", msg, w)
-				}
+			fin := got.of("turn.finished")[0]
+			msg, _ := fin["error"].(string)
+			hint, _ := fin["hint"].(string)
+			if !strings.Contains(msg, tc.message) || !strings.Contains(hint, tc.hint) {
+				t.Errorf("message %q / hint %q, want %q / %q", msg, hint, tc.message, tc.hint)
 			}
-			if strings.Contains(msg, "Sign in with the Fake CLI") {
-				t.Errorf("the hint is inside the error text: %q", msg)
+			if strings.Contains(msg, login) || strings.Contains(hint, login) {
+				t.Errorf("the login text is in the message or hint: %q / %q", msg, hint)
 			}
-			hint, _ := got.of("turn.finished")[0]["hint"].(string)
-			if tc.hint != strings.Contains(hint, "Sign in with the Fake CLI") {
-				t.Errorf("turn.finished hint = %q, want the login hint: %v", hint, tc.hint)
+			if details, _ := fin["details"].(string); tc.loginDetails != strings.Contains(details, login) {
+				t.Errorf("details = %q, want the login text: %v", details, tc.loginDetails)
 			}
 			orch := r.agents(t, pid)[0]
-			if tc.hint && (orch.ErrorHint == nil || !strings.Contains(*orch.ErrorHint, "Sign in with the Fake CLI")) {
+			if orch.ErrorHint == nil || !strings.Contains(*orch.ErrorHint, tc.hint) {
 				t.Errorf("orchestrator row error_hint = %v", orch.ErrorHint)
 			}
 		})
 		t.Run("sub-agent "+tc.name, func(t *testing.T) {
 			ag := fakeAgent("fake", true)
-			ag.Hint = "Sign in with the Fake CLI first."
+			ag.Hint = login
 			r := newACPRig(t, mockllm.New(0), ag)
 			pid := r.projectAt(t, t.TempDir())
 			r.runCollect(t, pid, "[acp] "+tc.ask, nil)
@@ -57,16 +59,14 @@ func TestACPFailureModesSayWhatToDo(t *testing.T) {
 			if child.Status != "failed" || child.Error == nil {
 				t.Fatalf("sub-agent = %s %v, want failed with a message", child.Status, child.Error)
 			}
-			for _, w := range tc.want {
-				if !strings.Contains(*child.Error, w) {
-					t.Errorf("sub-agent error %q lacks %q", *child.Error, w)
-				}
+			if !strings.Contains(*child.Error, tc.message) {
+				t.Errorf("sub-agent error %q lacks %q", *child.Error, tc.message)
 			}
-			if strings.Contains(*child.Error, "Sign in with the Fake CLI") {
-				t.Errorf("the hint is inside the sub-agent's error text: %q", *child.Error)
+			if strings.Contains(*child.Error, login) {
+				t.Errorf("the login text is inside the sub-agent's error: %q", *child.Error)
 			}
-			if tc.hint != (child.ErrorHint != nil && strings.Contains(*child.ErrorHint, "Sign in with the Fake CLI")) {
-				t.Errorf("sub-agent error_hint = %v, want the login hint: %v", child.ErrorHint, tc.hint)
+			if child.ErrorHint == nil || !strings.Contains(*child.ErrorHint, tc.hint) {
+				t.Errorf("sub-agent error_hint = %v, want %q", child.ErrorHint, tc.hint)
 			}
 		})
 	}
@@ -81,12 +81,16 @@ func TestACPAgentWithAnswerIsStillASuccess(t *testing.T) {
 }
 
 // An agent that answers session/prompt with -32000 "Authentication required"
-// is "<label> is not logged in", with the hint in its own field.
+// is "<label> is not logged in.", with a hint, the login text as details and a
+// button to check again.
 func TestACPAuthenticationRequiredOnPromptIsNotLoggedIn(t *testing.T) {
-	const hint = "Sign in with the Fake CLI first."
+	const login = "Sign in with the Fake CLI first."
+	const message = "Fake fake is not logged in."
+	const hint = "Log in to it in a terminal, then check again."
 	mk := func() *rig {
 		ag := fakeAgent("fake", true)
-		ag.Hint = hint
+		ag.Hint = login
+		ag.LoginCommand = "fake login"
 		return newACPRig(t, mockllm.New(0), ag)
 	}
 	t.Run("orchestrator", func(t *testing.T) {
@@ -94,10 +98,11 @@ func TestACPAuthenticationRequiredOnPromptIsNotLoggedIn(t *testing.T) {
 		pid := r.supervisedProject(t, t.TempDir(), "acp:fake")
 		got := r.runCollect(t, pid, "[auth-required] hi", nil)
 		fin := got.of("turn.finished")[0]
-		if got.status != "failed" || fin["error"] != "Fake fake is not logged in" || fin["hint"] != hint {
+		if got.status != "failed" || fin["error"] != message || fin["hint"] != hint || fin["command"] != "fake login" ||
+			fin["action"] != "recheck_provider" || fin["details"] != login {
 			t.Fatalf("turn.finished = %v", fin)
 		}
-		if a := r.agents(t, pid)[0]; a.Error == nil || *a.Error != "Fake fake is not logged in" || a.ErrorHint == nil || *a.ErrorHint != hint {
+		if a := r.agents(t, pid)[0]; a.Error == nil || *a.Error != message || a.ErrorHint == nil || *a.ErrorHint != hint {
 			t.Fatalf("orchestrator row = %v / %v", a.Error, a.ErrorHint)
 		}
 	})
@@ -106,7 +111,7 @@ func TestACPAuthenticationRequiredOnPromptIsNotLoggedIn(t *testing.T) {
 		pid := r.projectAt(t, t.TempDir())
 		r.runCollect(t, pid, "[acp] [auth-required] hi", nil)
 		child := r.acpChild(t, pid)
-		if child.Error == nil || *child.Error != "Fake fake is not logged in" || child.ErrorHint == nil || *child.ErrorHint != hint {
+		if child.Error == nil || *child.Error != message || child.ErrorHint == nil || *child.ErrorHint != hint {
 			t.Fatalf("child = %v / %v", child.Error, child.ErrorHint)
 		}
 	})

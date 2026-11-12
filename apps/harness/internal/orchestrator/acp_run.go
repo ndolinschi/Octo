@@ -47,7 +47,7 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	}
 	h.finish(ctx, err != nil)
 	if err != nil {
-		return "", acpFailure(ag, "ACP agent", err)
+		return "", acpFailure(ag, false, err)
 	}
 	switch stop {
 	case acp.StopEndTurn:

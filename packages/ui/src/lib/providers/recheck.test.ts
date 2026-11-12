@@ -51,7 +51,7 @@ test("picker rows: a not-logged-in agent is unverified, a not_supported one only
   assert.equal(grok.experimental, true);
   assert.equal(agy.unverified, false);
   assert.equal(agy.unsupported, true);
-  assert.equal(agy.reason, "No ACP mode.");
+  assert.equal(agy.reason, "No agent mode.");
   assert.equal(agy.action, "");
   assert.equal(stateText("not_supported"), "Not supported");
   assert.equal(connectAction({ kind: "agent", state: "not_supported" }), "");

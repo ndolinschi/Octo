@@ -5,7 +5,8 @@ import { Button } from "../primitives/Button";
 import { Segmented } from "../primitives/Segmented";
 import { Spinner } from "../primitives/Status";
 import { Switch } from "../primitives/Switch";
-import { SaveStatus, SettingsGroup, SettingsRow, StateDot } from "./parts";
+import { ToneDot } from "../shared/providers/ProviderRows";
+import { SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 import { startupCodec, useMotionPref } from "./prefs";
 import type { Backdrop, ThemePref } from "../../state/app";
@@ -55,7 +56,7 @@ function BridgeRow() {
     <SettingsRow
       rowId="bridge"
       title="Harness connection"
-      leading={health === "checking" ? <Spinner size={10} /> : <StateDot tone={health === "online" ? "ok" : "err"} />}
+      leading={health === "checking" ? <Spinner size={10} /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
       description={
         <span className="flex min-w-0 flex-wrap gap-x-2">
           <code className="min-w-0 font-mono text-xs break-all text-fg-2">{bridgeUrl}</code>

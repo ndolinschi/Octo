@@ -12,7 +12,6 @@ import { GroupProvider } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
 import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";
-import { groupFloor } from "../../state/workspace/floors";
 import { useShell } from "../../state/shell";
 import { controlsWidth, useChrome } from "../../state/chrome";
 
@@ -148,7 +147,7 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
       data-dock-group={group.id}
       aria-label={narrow ? "Workspace" : name === "Workspace" ? name : `${name} group`}
       hidden={hidden}
-      style={narrow ? undefined : maximised ? { flex: "1 1 0px", minWidth: 0 } : { flex: `${group.size} 1 0px`, minWidth: groupFloor(group.tabs) }}
+      style={narrow ? undefined : maximised ? { flex: "1 1 0px", minWidth: 0 } : { flex: `${group.size} 1 0px`, minWidth: ws.floorOf(group.id) }}
       onPointerDownCapture={() => ws.focusGroup(group.id)}
       onFocusCapture={() => ws.focusGroup(group.id)}
       className={cn("flex min-h-0 min-w-0 flex-col overflow-clip contain-inline-size", narrow && "flex-1")}

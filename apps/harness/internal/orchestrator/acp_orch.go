@@ -22,6 +22,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 const (
@@ -41,11 +42,11 @@ func (rt *runtime) isACPOrchestrator() bool { return plugins.IsACPRef(rt.models.
 func (rt *runtime) acpOrchestratorTarget() (acpTarget, error) {
 	id, model, ok := plugins.ParseACPRef(rt.models.Orchestrator)
 	if !ok {
-		return acpTarget{}, fmt.Errorf("orchestrator model %q is not a valid acp:<agent-id>[/<model>] setting", rt.models.Orchestrator)
+		return acpTarget{}, usererr.AgentUnavailable("orchestrator model " + rt.models.Orchestrator + " is not a valid acp:<agent-id>[/<model>] setting")
 	}
 	t, msg := rt.pickACPAgent(id, model)
 	if msg != "" {
-		return acpTarget{}, errors.New(msg)
+		return acpTarget{}, usererr.AgentUnavailable(msg)
 	}
 	return t, nil
 }
@@ -142,7 +143,7 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	case fatal != nil:
 		return agent.Result{}, fatal
 	case err != nil:
-		return agent.Result{}, acpFailure(target.agent, "ACP agent", err)
+		return agent.Result{}, acpFailure(target.agent, false, err)
 	}
 	switch stop {
 	case acp.StopEndTurn:
@@ -195,7 +196,7 @@ func (s *orchSession) endTurn() {
 	s.turnCtx, s.turnCancel, s.busy, s.lastUsed = nil, nil, false, time.Now()
 }
 
-func (s *orchSession) setNoMCP(msg string) {
+func (s *orchSession) setNoMCP(msg *usererr.Error) {
 	s.mu.Lock()
 	s.noMCP = msg
 	s.mu.Unlock()
@@ -216,7 +217,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	s.mu.Lock()
 	s.client, s.token, s.pluginID, s.model, s.cwd, s.sessID = client, token, ag.ID, t.recorded(), cwd, ""
 	s.mu.Unlock()
-	servers, warn := rt.o.mcpServers(client.Capabilities(), rt.pid(), token)
+	servers, warn := rt.o.mcpServers(ag.Label, client.Capabilities(), rt.pid(), token)
 	s.setNoMCP(warn)
 
 	c, cancel := dbCtx(ctx)
@@ -226,7 +227,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 		rt.logErr("read acp session", dbErr)
 	}
 	if have && stored.PluginAgent == ag.ID && stored.Model == t.recorded() && client.Capabilities().LoadSession {
-		err := s.loadWithFallback(ctx, client, ag.ID, stored.SessionID, cwd, servers)
+		err := s.loadWithFallback(ctx, client, ag.Label, stored.SessionID, cwd, servers)
 		if err == nil {
 			// The resumed session keeps counting from where it was: seed the
 			// counters with what it has reported so far, so its next
@@ -261,12 +262,12 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	sess, err := client.NewSession(ctx, cwd, servers, opts)
 	var rpcErr *acp.RPCError
 	if err != nil && len(servers) > 0 && errors.As(err, &rpcErr) && ctx.Err() == nil {
-		s.setNoMCP(refusedMCP(ag.ID, rpcErr))
+		s.setNoMCP(refusedMCP(ag.Label, rpcErr))
 		slog.Warn("acp agent refused MCP servers; continuing without harness tools", "project", rt.pid(), "agent", ag.ID, "err", err)
 		sess, err = client.NewSession(ctx, cwd, nil, opts)
 	}
 	if err != nil {
-		return false, acpFailure(ag, "ACP agent", err)
+		return false, acpFailure(ag, false, err)
 	}
 	s.mu.Lock()
 	s.sessID = sess.ID
@@ -283,19 +284,18 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	return true, nil
 }
 
-func refusedMCP(agentID string, e *acp.RPCError) string {
-	return fmt.Sprintf("ACP agent %q refused the harness's MCP server (%s); this session runs without harness tools "+
-		"(spawn_agent, notes), so it cannot delegate: update the agent, or choose another one as orchestrator", agentID, e.Message)
+func refusedMCP(label string, e *acp.RPCError) *usererr.Error {
+	return usererr.AgentRefusedToolServer(label, "the agent refused the harness's MCP server: "+e.Message)
 }
 
 // loadWithFallback resumes a stored session; an agent that refuses the MCP
 // servers on load gets them dropped (with the warning) before giving up.
-func (s *orchSession) loadWithFallback(ctx context.Context, client *acp.Client, agentID, id, cwd string, servers []acp.MCPServer) error {
+func (s *orchSession) loadWithFallback(ctx context.Context, client *acp.Client, label, id, cwd string, servers []acp.MCPServer) error {
 	err := client.LoadSession(ctx, id, cwd, servers)
 	var rpcErr *acp.RPCError
 	if err != nil && len(servers) > 0 && errors.As(err, &rpcErr) && ctx.Err() == nil {
 		if err2 := client.LoadSession(ctx, id, cwd, nil); err2 == nil {
-			s.setNoMCP(refusedMCP(agentID, rpcErr))
+			s.setNoMCP(refusedMCP(label, rpcErr))
 			return nil
 		}
 	}
@@ -305,21 +305,21 @@ func (s *orchSession) loadWithFallback(ctx context.Context, client *acp.Client, 
 // mcpServers builds the session's mcpServers entry: the HTTP endpoint when the
 // agent advertised mcpCapabilities.http, else a stdio entry running this binary
 // as the relay. A non-empty warning means no entry could be built.
-func (o *Orchestrator) mcpServers(caps acp.Capabilities, pid, token string) (servers []acp.MCPServer, warning string) {
+func (o *Orchestrator) mcpServers(label string, caps acp.Capabilities, pid, token string) (servers []acp.MCPServer, warning *usererr.Error) {
 	base := o.bridgeURL()
 	if base == "" {
-		return nil, "the harness's MCP endpoint is not available (the bridge address is unknown); this session runs without harness tools"
+		return nil, usererr.AgentRefusedToolServer(label, "the harness's MCP endpoint is not available (the bridge address is unknown)")
 	}
 	endpoint := strings.TrimRight(base, "/") + mcp.Path(pid)
 	if caps.MCPHTTP {
 		return []acp.MCPServer{acp.HTTPMCPServer(mcp.ServerName, endpoint,
-			[]acp.HTTPHeader{{Name: "Authorization", Value: "Bearer " + token}})}, ""
+			[]acp.HTTPHeader{{Name: "Authorization", Value: "Bearer " + token}})}, nil
 	}
 	cmd := o.opts.MCPRelay
 	if len(cmd) == 0 {
 		exe, err := os.Executable()
 		if err != nil {
-			return nil, "cannot locate the harness binary for the stdio MCP relay: " + err.Error()
+			return nil, usererr.AgentRefusedToolServer(label, "cannot locate the harness binary for the stdio MCP relay: "+err.Error())
 		}
 		cmd = []string{exe, "mcp-relay"}
 	}
@@ -327,13 +327,13 @@ func (o *Orchestrator) mcpServers(caps acp.Capabilities, pid, token string) (ser
 	if !filepath.IsAbs(command) {
 		abs, err := filepath.Abs(command)
 		if err != nil {
-			return nil, "cannot resolve the MCP relay command: " + err.Error()
+			return nil, usererr.AgentRefusedToolServer(label, "cannot resolve the MCP relay command: "+err.Error())
 		}
 		command = abs
 	}
 	args := append(append([]string{}, cmd[1:]...), "--url", endpoint, "--token-env", mcpTokenEnv)
 	return []acp.MCPServer{acp.StdioMCPServer(mcp.ServerName, command, args,
-		[]acp.EnvVar{{Name: mcpTokenEnv, Value: token}})}, ""
+		[]acp.EnvVar{{Name: mcpTokenEnv, Value: token}})}, nil
 }
 
 // acpTurnPrompt composes the text of this turn's session/prompt: the user's
@@ -429,7 +429,7 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 			rt.setReceipt(r)
 		}
 	}
-	if noMCP != "" && fresh {
+	if noMCP != nil && fresh {
 		b.WriteString("(Note: the harness tools are unavailable in this session.)\n")
 	}
 	if rt.planText != "" {

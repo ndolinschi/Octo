@@ -11,6 +11,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // Compact summarises the orchestrator's conversation now (a manual compaction).
@@ -21,13 +22,13 @@ func (s *Service) Compact(ctx context.Context, pid string) (orchestrator.Compact
 	res, err := s.turns.Compact(ctx, pid)
 	switch {
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return res, turnInProgress("a turn is running for this project; compact when it ends")
+		return res, turnInProgress()
 	case errors.Is(err, orchestrator.ErrNothingToCompact):
-		return res, &Error{Kind: KindConflict, Code: "nothing_to_compact", Message: "the conversation has nothing a summary would replace yet"}
+		return res, of(KindConflict, usererr.NothingToCompact())
 	case errors.Is(err, orchestrator.ErrCompactUnsupported):
-		return res, &Error{Kind: KindConflict, Code: "compact_unsupported", Message: err.Error()}
+		return res, of(KindConflict, usererr.CompactUnsupported(err.Error()))
 	case orchestrator.IsNoBuiltinLoop(err):
-		return res, &Error{Kind: KindConflict, Code: "builtin_loop_unavailable", Message: err.Error()}
+		return res, of(KindConflict, usererr.BuiltinLoopOff(err.Error()))
 	}
 	return res, err
 }

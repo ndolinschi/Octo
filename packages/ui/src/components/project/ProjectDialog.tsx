@@ -16,7 +16,10 @@ import { folderName, labelsForFolders } from "../../lib/folderPick";
 import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
-import { Field, Input, Textarea } from "../primitives/Field";
+import { Field } from "../primitives/Field";
+import { FieldRow } from "../primitives/FieldRow";
+import { Notice } from "../primitives/Notice";
+import { TextArea, TextField } from "../primitives/TextField";
 import { ApprovalRules } from "./ApprovalRules";
 
 type FolderRow = { key: number; path: string };
@@ -165,10 +168,10 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         )
       }
     >
-      <form id={id} onSubmit={submit} noValidate className="flex flex-col gap-5">
+      <form id={id} onSubmit={submit} noValidate className="@container flex flex-col gap-5">
         <div className="grid gap-3">
           <Field label="Name" htmlFor={`${id}-name`} error={nameError} errorId={`${id}-name-error`}>
-            <Input
+            <TextField
               id={`${id}-name`}
               data-autofocus
               value={name}
@@ -183,10 +186,15 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             />
           </Field>
           <Field label="Description" htmlFor={`${id}-desc`} optional>
-            <Input id={`${id}-desc`} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Payments API and webhook workers" />
+            <TextField
+              id={`${id}-desc`}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. Payments API and webhook workers"
+            />
           </Field>
           <Field label="Instructions" htmlFor={`${id}-instr`} optional>
-            <Textarea
+            <TextArea
               id={`${id}-instr`}
               rows={3}
               value={instructions}
@@ -266,15 +274,15 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         </fieldset>
 
         <div>
-          <button
-            type="button"
+          <Button
+            variant="quiet"
+            iconEnd={advanced ? ChevronDown : ChevronRight}
             aria-expanded={advanced}
             onClick={() => setAdvanced((a) => !a)}
-            className="-ml-2 inline-flex h-7 items-center gap-1 rounded-sm px-2 text-sm text-fg-2 hover:bg-hover hover:text-fg"
+            className="-ml-2"
           >
             Models and delegation
-            <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", advanced && "rotate-90")} />
-          </button>
+          </Button>
           {advanced && (
             <div className="mt-3 grid gap-3">
               <div className="grid gap-3 @min-[520px]/dialog:grid-cols-2">
@@ -302,48 +310,65 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                   />
                 </Field>
               )}
-              <Field
-                label="Budget"
-                optional
-                htmlFor={`${id}-budget`}
+              <FieldRow
+                fields={[
+                  {
+                    id: `${id}-budget`,
+                    label: "Budget (optional)",
+                    control: (
+                      <TextField
+                        id={`${id}-budget`}
+                        inputMode="decimal"
+                        placeholder="No cap"
+                        value={budget}
+                        aria-invalid={budgetError ? true : undefined}
+                        aria-describedby={budgetError ? `${id}-budget-error` : undefined}
+                        onChange={(e) => setBudget(e.target.value)}
+                        className="tabular-nums"
+                      />
+                    ),
+                  },
+                  {
+                    id: `${id}-depth`,
+                    label: "Max delegation depth",
+                    control: (
+                      <TextField
+                        id={`${id}-depth`}
+                        type="number"
+                        min={1}
+                        max={8}
+                        aria-invalid={depthError ? true : undefined}
+                        aria-describedby={depthError ? `${id}-depth-error` : undefined}
+                        value={maxDepth}
+                        onChange={(e) => setMaxDepth(Number(e.target.value))}
+                        className="tabular-nums"
+                      />
+                    ),
+                  },
+                ]}
                 hint={
-                  spent
-                    ? `Spent ${spent.text}. Leave empty for no cap.`
-                    : "US dollars. The router stops the project's requests at this amount; leave empty for no cap."
+                  <>
+                    {spent
+                      ? `Spent ${spent.text}. Leave the budget empty for no cap.`
+                      : "Budget in US dollars: the router stops the project's requests at this amount."}{" "}
+                    Delegation depth is the levels of sub-agents that may spawn their own, 1–8.
+                  </>
                 }
-                error={budgetError}
-                errorId={`${id}-budget-error`}
-              >
-                <Input
-                  id={`${id}-budget`}
-                  inputMode="decimal"
-                  placeholder="No cap"
-                  value={budget}
-                  aria-invalid={budgetError ? true : undefined}
-                  aria-describedby={budgetError ? `${id}-budget-error` : undefined}
-                  onChange={(e) => setBudget(e.target.value)}
-                  className="w-32 tabular-nums"
-                />
-              </Field>
-              <Field
-                label="Max delegation depth"
-                htmlFor={`${id}-depth`}
-                hint="Levels of sub-agents that may spawn their own, 1–8."
-                error={depthError}
-                errorId={`${id}-depth-error`}
-              >
-                <Input
-                  id={`${id}-depth`}
-                  type="number"
-                  min={1}
-                  max={8}
-                  aria-invalid={depthError ? true : undefined}
-                  aria-describedby={depthError ? `${id}-depth-error` : undefined}
-                  value={maxDepth}
-                  onChange={(e) => setMaxDepth(Number(e.target.value))}
-                  className="w-24 tabular-nums"
-                />
-              </Field>
+                status={
+                  <>
+                    {budgetError && (
+                      <div id={`${id}-budget-error`}>
+                        <Notice tone="error">{budgetError}</Notice>
+                      </div>
+                    )}
+                    {depthError && (
+                      <div id={`${id}-depth-error`}>
+                        <Notice tone="error">{depthError}</Notice>
+                      </div>
+                    )}
+                  </>
+                }
+              />
             </div>
           )}
         </div>

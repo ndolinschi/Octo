@@ -8,27 +8,33 @@ let nextId = 0;
  * Files dropped or pasted onto the composer (decision 62): text files become pills and go out with the next message;
  * anything else is refused with one line saying why. `dragging` drives the drop highlight.
  */
-export function useAttachments() {
+export function useAttachments(onImages?: (files: File[]) => void) {
   const [files, setFiles] = useState<Attachment[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  const add = useCallback((list: readonly File[]) => {
-    const notes: string[] = [];
-    for (const f of list) {
-      const why = refusal(f.name, f.type, f.size);
-      if (why) {
-        notes.push(why);
-        continue;
+  const add = useCallback(
+    (all: readonly File[]) => {
+      const images = onImages ? all.filter((f) => f.type.startsWith("image/")) : [];
+      if (images.length) onImages?.(images);
+      const list = onImages ? all.filter((f) => !f.type.startsWith("image/")) : all;
+      const notes: string[] = [];
+      for (const f of list) {
+        const why = refusal(f.name, f.type, f.size);
+        if (why) {
+          notes.push(why);
+          continue;
+        }
+        const id = `att${(nextId += 1)}`;
+        f.text().then(
+          (text) => setFiles((cur) => (cur.some((x) => x.name === f.name && x.text === text) ? cur : [...cur, { id, name: f.name, size: f.size, text }])),
+          (e: unknown) => setNote(`Couldn't read ${f.name}: ${errorMessage(e)}. Try attaching it again.`),
+        );
       }
-      const id = `att${(nextId += 1)}`;
-      f.text().then(
-        (text) => setFiles((cur) => (cur.some((x) => x.name === f.name && x.text === text) ? cur : [...cur, { id, name: f.name, size: f.size, text }])),
-        (e: unknown) => setNote(`Couldn't read ${f.name}: ${errorMessage(e)}. Try attaching it again.`),
-      );
-    }
-    setNote(notes.length ? notes.join(" ") : null);
-  }, []);
+      setNote(notes.length ? notes.join(" ") : null);
+    },
+    [onImages],
+  );
 
   const remove = useCallback((id: string) => setFiles((cur) => cur.filter((f) => f.id !== id)), []);
   const clear = useCallback(() => {
@@ -66,5 +72,5 @@ export function useAttachments() {
     add(pasted);
   };
 
-  return { files, note, dismissNote: () => setNote(null), dragging, remove, clear, dropProps, onPaste };
+  return { files, note, dismissNote: () => setNote(null), dragging, remove, clear, dropProps, onPaste, add };
 }

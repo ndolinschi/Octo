@@ -2,12 +2,35 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnsweredInput, Approval, ApprovalAnswer, Bridge, InputAnswer, InputRequest } from "@octo/agent-client";
 import { useLatest } from "../../lib/hooks";
 import { agentDisplayName } from "../../lib/orchestrator";
-import { approvalDeadline, approvalItems, resolutionCause, type Resolution } from "../../lib/v7/approval";
+import { approvalDeadline, approvalItems, resolutionCause, type ApprovalItem, type Resolution } from "../../lib/v7/approval";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalGroup } from "./ApprovalGroup";
 import { InputFormCard } from "./InputFormCard";
 import { useV7Events } from "./useV7Events";
+
+type Segment = { kind: "group"; items: Approval[] } | { kind: "one"; item: ApprovalItem };
+
+/** Two or more pending approvals in a row are one group (decision 91c); resolved ones stay single lines. */
+function segments(items: readonly ApprovalItem[]): Segment[] {
+  const out: Segment[] = [];
+  let run: ApprovalItem[] = [];
+  const flush = () => {
+    if (run.length >= 2) out.push({ kind: "group", items: run.map((i) => i.approval) });
+    else for (const item of run) out.push({ kind: "one", item });
+    run = [];
+  };
+  for (const item of items) {
+    if (item.resolution === null) run.push(item);
+    else {
+      flush();
+      out.push({ kind: "one", item });
+    }
+  }
+  flush();
+  return out;
+}
 
 type Ids = { projectId: string; bridge: Bridge };
 
@@ -113,18 +136,29 @@ function Live({ onOpenAgent }: ApprovalsSlotProps) {
   if (!approvals.items.length && !forms.forms.length) return null;
   const newest = [...approvals.items].reverse().find((i) => i.resolution === null)?.approval.id;
   return (
-    <div className="flex flex-col gap-2" data-v7-slot="approvals">
-      {approvals.items.map(({ approval, resolution }) => (
-        <ApprovalCard
-          key={approval.id}
-          approval={{ ...approval, agent_label: name(approval.agent_label) }}
-          resolution={resolution}
-          focusOnArrival={approval.id === newest}
-          onResolve={resolve}
-          onResolved={approvals.markResolved}
-          {...(onOpenAgent ? { onOpenAgent } : {})}
-        />
-      ))}
+    <div className="mt-4 flex flex-col gap-4" data-v7-slot="approvals">
+      {segments(approvals.items).map((seg) =>
+        seg.kind === "group" ? (
+          <ApprovalGroup
+            key={seg.items[0]?.id}
+            approvals={seg.items.map((a) => ({ ...a, agent_label: name(a.agent_label) }))}
+            source={project?.name ?? "this project"}
+            onResolve={resolve}
+            onResolved={approvals.markResolved}
+            {...(onOpenAgent ? { onOpenAgent } : {})}
+          />
+        ) : (
+          <ApprovalCard
+            key={seg.item.approval.id}
+            approval={{ ...seg.item.approval, agent_label: name(seg.item.approval.agent_label) }}
+            resolution={seg.item.resolution}
+            focusOnArrival={seg.item.approval.id === newest}
+            onResolve={resolve}
+            onResolved={approvals.markResolved}
+            {...(onOpenAgent ? { onOpenAgent } : {})}
+          />
+        ),
+      )}
       {forms.forms.map((request) => (
         <InputFormCard
           key={request.id}

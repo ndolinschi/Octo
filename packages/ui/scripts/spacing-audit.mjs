@@ -232,6 +232,18 @@ async function openMemoryTab(page, ctx) {
   await settle(page, 500);
 }
 
+async function openSessionsTab(page, ctx) {
+  await openProject(page, ctx, "Atlas API");
+  await openTool(page, "sessions");
+  try {
+    await page.locator("[data-sessions]").first().waitFor({ timeout: T });
+    await page.locator("[data-sessions] [data-row]").first().waitFor({ timeout: T });
+  } catch {
+    skip("Sessions tab did not render");
+  }
+  await settle(page, 500);
+}
+
 const HOME_VPS = [...WIDE, { width: 390, height: 844 }];
 
 const STATES = [
@@ -387,6 +399,46 @@ const STATES = [
     },
   },
   {
+    id: "sessions-list",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openSessionsTab(page, ctx);
+      await page.locator("[data-sessions] [data-row]").first().click({ timeout: T });
+      await settle(page, 400);
+      // Narrow: the click opened the detail; Back returns to the list with the row open.
+      const backButton = page.locator("[data-sessions] button", { hasText: /^Sessions$/ }).first();
+      if (await backButton.isVisible().catch(() => false)) await backButton.click({ timeout: T });
+      await settle(page, 300);
+    },
+  },
+  {
+    id: "sessions-main",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openSessionsTab(page, ctx);
+      const second = page.locator('[data-sessions] ul[aria-label="Sessions"] > li').nth(1).locator("[data-row]").first();
+      if (!(await second.count())) skip("no second session in the demo");
+      await second.click({ timeout: T });
+      await settle(page, 700);
+    },
+  },
+  {
+    id: "sessions-agent",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openSessionsTab(page, ctx);
+      const second = page.locator('[data-sessions] ul[aria-label="Sessions"] > li').nth(1).locator("[data-row]").first();
+      await second.click({ timeout: T });
+      await settle(page, 300);
+      const backButton = page.locator("[data-sessions] button", { hasText: /^Sessions$/ }).first();
+      if (await backButton.isVisible().catch(() => false)) await backButton.click({ timeout: T });
+      const agent = page.locator("[data-sessions] [data-row]", { hasText: "Collect the open pull requests" }).first();
+      if (!(await agent.count())) skip("no agent session under the second session");
+      await agent.click({ timeout: T });
+      await settle(page, 700);
+    },
+  },
+  {
     id: "memory-search",
     viewports: [...WIDE, { width: 390, height: 800 }],
     async run(page, ctx) {
@@ -499,7 +551,8 @@ const STATES = [
         const list = document.querySelector('[aria-label="Providers"]');
         const detail = document.querySelector("[data-provider-detail]");
         if (list && detail && list.getBoundingClientRect().height > 0 && detail.getBoundingClientRect().height > 0 && window.innerWidth >= 1000) {
-          const dt = detail.getBoundingClientRect().top;
+          // The list is its own frame (ProviderRows); the detail sits in a ListFrame, so compare frame tops.
+          const dt = (detail.parentElement ?? detail).getBoundingClientRect().top;
           const lt = list.getBoundingClientRect().top;
           if (Math.abs(dt - lt) > 0.5)
             out.push({ rule: "edges", selector: "[data-provider-detail]", text: "", prop: "top", measured: `${dt}px`, expected: `${lt}px (the list's top)` });

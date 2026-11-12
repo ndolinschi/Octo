@@ -1,6 +1,7 @@
 import type { ContextBreakdown, ContextOverview } from "@octo/agent-client";
 import { useEffect, useMemo, useState } from "react";
-import { cacheLine, contextHeadline } from "../../lib/contextView";
+import { cacheLine, contextHeadline, contextKey } from "../../lib/contextView";
+import { cn } from "../../lib/cn";
 import { errorMessage, formatTokens } from "../../lib/format";
 import { foldItems, windowReportView, type OpenTarget, type ReportItem, type WindowReportView } from "../../lib/windowReport";
 import { useApp } from "../../state/app";
@@ -107,6 +108,20 @@ export function WindowReport(props: {
       {load.status === "loading" && <SkeletonText lines={5} />}
       {load.status === "error" && <Notice tone="error">{load.message} Close this and open it again to retry.</Notice>}
       {view?.source === "agent" && <p className="text-sm text-fg-2">This agent manages its own context. Octo shows what it reports.</p>}
+      {report && report.sections.length > 0 && view?.source !== "agent" && (
+        <div
+          role="meter"
+          aria-label="Context used"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={view?.usedPercent ?? 0}
+          className="mb-2 flex h-2 overflow-hidden rounded-full bg-line"
+        >
+          {[...report.sections.filter((s) => s.kind !== "free"), ...report.sections.filter((s) => s.kind === "free")].map((s) => (
+            <span key={s.id} className={cn("h-full", contextKey(s).segment)} style={{ width: `${s.percent}%` }} />
+          ))}
+        </div>
+      )}
       {report && report.sections.length > 0 && (
         <ul className="-mx-2 flex flex-col">
           {report.sections.map((s) => {
@@ -115,6 +130,7 @@ export function WindowReport(props: {
               <li key={s.id}>
                 <ListRow
                   title={s.label}
+                  leading={<span className={cn("size-2 rounded-2xs", contextKey(s).key)} />}
                   trailing={TAIL}
                   tone={s.kind === "free" ? "quiet" : "default"}
                   meta={

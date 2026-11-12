@@ -24,8 +24,7 @@ export function routeAgents(rec: ProjectRecord, orchestrator: string): void {
 }
 
 /** What the harness carries when an ACP agent refused its MCP server: a completed turn with a `warning:` error. */
-export const ACP_WARNING =
-  "warning: ACP agent Claude Code refused the harness's MCP server (method not supported); this request ran without harness tools (spawn_agent, notes).";
+export const ACP_WARNING = "warning: Claude Code ran this request without Octo's own tools (agents, notes, plans).";
 
 /** An orchestrator that runs as Claude Code over ACP: one finished request, with the warning above on its agent. */
 export async function acpOrchestratorHistory(ctx: Ctx): Promise<void> {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // Conversation is a boundary in the orchestrator's transcript: a new conversation starts
@@ -59,7 +60,7 @@ func (s *Service) Clear(ctx context.Context, pid string) (orchestrator.ClearResu
 	}
 	res, err := s.turns.Clear(ctx, pid)
 	if errors.Is(err, orchestrator.ErrTurnInProgress) {
-		return res, turnInProgress("a turn is running for this project; clear when it ends")
+		return res, turnInProgress()
 	}
 	return res, storeErr(err)
 }
@@ -73,9 +74,9 @@ func (s *Service) CompactViaAgent(ctx context.Context, pid string) (msg projects
 	msg, sent, err = s.turns.CompactViaAgent(ctx, pid)
 	switch {
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return msg, false, turnInProgress("a turn is running for this project; compact when it ends")
+		return msg, false, turnInProgress()
 	case orchestrator.IsNoBuiltinLoop(err):
-		return msg, false, &Error{Kind: KindConflict, Code: "builtin_loop_unavailable", Message: err.Error()}
+		return msg, false, of(KindConflict, usererr.BuiltinLoopOff(err.Error()))
 	}
 	return msg, sent, err
 }

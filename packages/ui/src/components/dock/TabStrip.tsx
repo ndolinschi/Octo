@@ -18,7 +18,7 @@ import { Tab } from "./Tab";
 import { useStripFit } from "./useStripFit";
 import { type FileKey } from "../../lib/files";
 import { ChevronDown, Plus } from "lucide-react";
-import { IconButton } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { Glyph } from "../primitives/Glyph";
 import { StateGlyph } from "../primitives/StateGlyph";
 /** The "+" picker and the all-tabs list load when first opened (their own chunks). */
@@ -31,8 +31,6 @@ const AllTabsPicker = lazy(() => import("./AllTabsPicker").then((m) => ({ defaul
 
 /** Room the "+" takes after the tabs (28 + the 4px gap), and the "all tabs" button when the strip scrolls (24 + 4). */
 const PLUS_ROOM = 32;
-/** The gap before the sub-agent chips' box in the strip that holds the conversation (it exists while the project has a team). */
-const TEAM_GAP = 4;
 const ALL_TABS_ROOM = 28;
 /** Clear of the 20px edge fade, so the selected tab's label and close button are never under it. */
 const SCROLL_MARGIN = 24;
@@ -90,7 +88,7 @@ export function TabStrip(props: {
 
   // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer. The tabs get the
   // strip minus the "+" (decision 25: it follows the last tab) and, once they scroll, the "all tabs" button.
-  const reserved = PLUS_ROOM + (props.tabs.includes(CHAT) ? TEAM_GAP : 0);
+  const reserved = PLUS_ROOM;
   const overflow = tabsOverflow(room - reserved, props.tabs.length);
   const signature = props.tabs
     .map((t) => {
@@ -235,26 +233,22 @@ export function TabStrip(props: {
           className={cn("shrink-0", pickerHere && "bg-active text-fg")}
           onClick={() => (pickerHere ? ws.closePicker() : ws.openPicker(props.groupId))}
         />
-        {props.tabs.includes(CHAT) && <ProjectTeamLine />}
         {overflow && (
-          <button
+          <IconButton
             ref={allButton}
-            type="button"
+            icon={ChevronDown}
+            label={`All tabs (${props.tabs.length})`}
+            size="xs"
             data-all-tabs
-            aria-label={`All tabs (${props.tabs.length})`}
-            title={`All tabs (${props.tabs.length})`}
             aria-haspopup="dialog"
             aria-expanded={allOpen}
             onClick={() => setAllOpen((o) => !o)}
-            className={cn(
-              "ml-auto grid h-chip w-6 shrink-0 press place-items-center rounded-sm text-fg-3 hover:bg-hover hover:text-fg",
-              allOpen && "bg-active text-fg",
-            )}
-          >
-            <Glyph icon={ChevronDown} size={14} />
-          </button>
+            className={cn("ml-auto", allOpen && "bg-active text-fg")}
+          />
         )}
       </div>
+      {/* Decision 91g: the sub-agents are one quiet "N agents" button at the end of the strip, before the commands. */}
+      {props.tabs.includes(CHAT) && <ProjectTeamLine />}
       {props.last && (
         <Suspense fallback={null}>
           {/* The "Restore" control of a maximised group lives in this chunk too (decision 78): the initial bundle has no room for it. */}

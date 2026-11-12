@@ -110,7 +110,7 @@ Nothing below is shared between harness, router and shell.
 | Harness data dir | `--data-dir` / `HARNESS_DATA_DIR`, default `./data/harness`. In the desktop app: `<Tauri app data dir>/harness` (the identifier is `com.ndolinschi.octo.desktop`; the per-OS base path was not checked here) | harness | Created `0700`. `HARNESS_DATA_DIR` cannot come from `harness.env` |
 | `harness.env` | `{data-dir}/harness.env`, mode `0600` (a group-readable file is refused) | harness (settings API writes it atomically); the shell reads the three `OCTO_ROUTER_*` keys | `KEY=VALUE` lines. Precedence: flags > process environment > file |
 | `registry.sqlite` | `{data-dir}/registry.sqlite` | harness | Project registry. Stamped with `user_version`; a newer database is refused untouched |
-| `project.sqlite` | `{data-dir}/projects/{pid}/project.sqlite` | harness | Messages, agents, usage rows, notes, tasks and facts, memory files, search index (FTS5), queue, changes, approvals, compactions, ACP session ids, context receipts. Same version stamp |
+| `project.sqlite` | `{data-dir}/projects/{pid}/project.sqlite` | harness | Messages, agents, usage rows, notes, tasks and facts, memory sessions and exchanges, project sessions, memory files, search index (FTS5), queue, changes, approvals, compactions, ACP session ids, context receipts. Same version stamp: **schema 14** (`projectstore.SchemaVersion`); the memory M6 clean-up migration leaves `project.sqlite.pre-m6` (a numbered name when one exists) beside it |
 | Project side files | `{data-dir}/projects/{pid}/shadow/` (pre-images, 256 MiB cap), `{data-dir}/projects/{pid}/secrets.json` (`0600`, never in SQLite) | harness | |
 | ACP wire traces | `{data-dir}/traces/` | harness | Only when `HARNESS_ACP_TRACE` is on; per process, 5 MB cap per file, 20 files, redacted |
 | Plugins, remote-tool cache, price table | `{data-dir}/plugins/`, `{data-dir}/cache/`, `{data-dir}/prices.toml` | harness | All optional |
@@ -401,9 +401,16 @@ data. "Owner" is the owner's Linux runs. "status not recorded" where no note say
 | UI: usability pass (2026-11-12) | Built | Playwright on demo data; unit tests | WebKit; light theme for the new controls |
 | UI: v7 (changes, queue, approvals, forms) | Built (mounted in `cedc10c`) | status not recorded | Live use in a supervised project (checklist 2.9) |
 | UI part 2 (decisions 24, 26–28, 30, 31, 37–40) | Partly built; per decision not recorded | status not recorded | The rest |
-| UI decisions 64–78 | Designed, not built (handover, section 2) | | All of them |
-| Parity backlog B1–B10 | Approved; not started (no commits) | | All of them |
-| Live checklist 3 (`docs/superpowers/LIVE-CHECKLIST.md`) | Written; the owner's run is pending | | Every item |
+| UI decisions 64–78 | Built in batches 1 to 4 (frame, status bar, settings scopes, review workspace, provider list, skeletons); per decision "As built" notes in the UI spec | Playwright scripts on demo data | WebKit; a live harness |
+| UI decisions 79–94 (widths, no coloured frames, view tabs, tab width, field rows, file opening, usage per model, `/context`, Providers list, component library, review rounds 1 and 2, no boxed shortcuts, Memory redesign) | Built (batch 5 closes part of rounds 1 and 2; which findings remain open: status not recorded) | 599 UI unit tests; `width-stability`, `flicker`, `file-open-stability`, `frame-colours`, `scroll-on-send`, `spacing-audit` on demo data | WebKit and macOS; the open findings |
+| UI: Sessions tab, sidebar session rows, "Open session" from delegation rows (`specs/2026-11-12-project-sessions-design.md`) | Built | Unit tests (`lib/sessions`, reducer); Playwright tour group `sessions` on demo data | A real agent's sessions: resume with `session/load`, messaging a finished agent |
+| Harness project sessions (schema 13) and error catalogue `internal/usererr` (structured `message`, `hint`, `command`, `action`, `details`) | Built | Go gates (catalogue and sweep tests) | Real agents' failures; an older UI against the new bodies |
+| Memory M4 (sessions as exchanges), M5 (notes with descriptions), M6 (a task exists only when a turn did work; `project.sqlite.pre-m6`), schema 14 | Built | Go gates | A real project's migration on the owner's data |
+| Slash commands and `/clear`, `remember`, images, side question on the project's agent, itemised context | Built | Go gates; Playwright on demo data | Real agents (does each accept images; which commands each advertises) |
+| Component library (decision 90) | Primitives built; 49 `octo/no-native-controls` warnings left (`research/2026-11-12-ui-component-audit.md`) | `pnpm lint` (0 errors) | The remaining batches B3–B10 |
+| Entry bundle | 163.6 kB gzip, budget 164.6, target 158 not reached | `node scripts/check-bundle-size.mjs` | |
+| Parity backlog | B1–B7, B11–B13 built in batches 1 to 4 (slash commands, `/clear`, images, side question, always-allow, modes, plans, rewind, steer); B8–B10 not built | Go gates; Playwright on demo data | B8–B10; every item against a real agent |
+| Live checklist 4 (`docs/superpowers/LIVE-CHECKLIST.md`) | Written; the owner's run is pending | | Every item |
 | Bots | Draft; not built | | Owner questions 1–2 |
 | Subscription routing through the router (S3b) | Not built; not recommended | | Owner decision |
 | I3 savings view | Not built | | |
@@ -420,7 +427,7 @@ written in the file, shortened.
 | --- | --- | --- |
 | `2026-11-09-desktop-ui-design.md` | Tauri desktop shell and shared UI, future web host | Approved for Phase 1; built |
 | `2026-11-10-project-harness-design.md` | Projects, orchestrator, sub-agents, bridge API contract | Approved; built |
-| `2026-11-10-project-harness-ui.md` | UI design, decisions 1–78, tokens, workspace | No status line; "As built" sections for v6 to v6.3 part 1, the 2026-11-11 passes and the 2026-11-12 usability pass. Decisions 64–78 designed, not built |
+| `2026-11-10-project-harness-ui.md` | UI design, decisions 1–94, tokens, workspace | No status line; "As built" sections up to batch 4; decisions 79–94 follow the numbering of the file (85 sits after 89). Batch 5 and the sessions merge: notes in the commit, spec "As built" not yet extended — status not recorded |
 | `2026-11-10-code-pane-design.md` | Own app with a built-in Monaco code pane, file API | Approved; built |
 | `2026-11-10-workspace-plugins-acp-design.md` | Workspace tabs, code comments, plugins (LSP), ACP sub-agents | Approved; built |
 | `2026-11-10-usage-design.md` | Tokens, cost and limits (Usage panel) | Phase A approved and built; subscriptions option B1; open: real ACP traffic, default prices |
@@ -433,7 +440,8 @@ written in the file, shortened.
 | `2026-11-11-inline-completion-design.md` | Ghost-text completion with its own model | Built on both sides; not verified with a real model |
 | `2026-11-11-pr-review-design.md` | Pull-request review | RV1 (harness) and RV2 (UI) built; RV3 (AI pass) not built |
 | `2026-11-11-bots-design.md` | Standing autonomous agents with permissions | Draft for the owner; not built |
-| `2026-11-12-parity-backlog.md` | Features to add after the OpenCode and Cursor comparison (B1–B10) | Approved to build; not started |
+| `2026-11-12-parity-backlog.md` | Features to add after the OpenCode and Cursor comparison (B1–B13) | B1–B7 and B11–B13 built; B8–B10 not built |
+| `2026-11-12-project-sessions-design.md` | Main sessions that can be continued, agent sessions made accessible, the Sessions tab | Harness (schema 13) and UI built; not verified with a real agent |
 
 ### Research (`docs/superpowers/research/`)
 
@@ -447,6 +455,8 @@ written in the file, shortened.
 | `2026-11-11-synara-gap.md` | Gap against another multi-agent app and the ten agents | Sub-agent's sourced report; no agent CLI run; one claim confirmed in code |
 | `2026-11-11-editor-ui-references.md` | Reference study for borrowed UI behaviours (decision 47) | Adapted, not copied |
 | `2026-11-12-feature-comparison.md` | Comparison with OpenCode and Cursor: inventory, scoreboard, 25 ranked gaps | Nothing built from it directly; source of the parity backlog |
+| `2026-11-12-ui-review-round-1.md` | The orchestrator's review of the screenshots: round 1 (findings 1–15, decision 91) and round 2 (16–27, decision 94) | Rules a–k and a–g are part of the UI spec; open findings: status not recorded |
+| `2026-11-12-ui-component-audit.md` | Audit of native controls, duplicates and inconsistencies; replacement table; current lint baseline | Decision 90; 49 warnings left (per folder in the file) |
 
 ### Plans (`docs/superpowers/plans/`)
 

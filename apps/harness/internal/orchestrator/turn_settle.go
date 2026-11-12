@@ -91,8 +91,10 @@ func (o *Orchestrator) settleTurn(rt *runtime, orchID string, status projectstor
 		return
 	}
 	o.wg.Add(1)
+	o.settling.Add(1)
 	go func() {
 		defer o.wg.Done()
+		defer o.settling.Done()
 		ctx, cancel := context.WithTimeout(o.baseCtx, 90*time.Second)
 		defer cancel()
 		var d *memory.Digest

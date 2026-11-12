@@ -61,9 +61,9 @@ func TestAPITokenEveryV1RouteNeedsTheToken(t *testing.T) {
 			continue
 		}
 		var out struct {
-			Error struct{ Code, Message string }
+			Error struct{ Code, Message, Details string }
 		}
-		if err := json.Unmarshal(body, &out); err != nil || out.Error.Code != "unauthorized" || !strings.Contains(out.Error.Message, "Authorization: Bearer") {
+		if err := json.Unmarshal(body, &out); err != nil || out.Error.Code != "unauthorized" || !strings.Contains(out.Error.Details, "Authorization: Bearer") {
 			t.Errorf("%s %s body = %s", rt.method, rt.path, body)
 		}
 		if resp.Header.Get("WWW-Authenticate") == "" || resp.Header.Get("Content-Type") != "application/json" {

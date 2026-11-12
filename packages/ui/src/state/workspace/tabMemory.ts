@@ -1,4 +1,4 @@
-import { toolTab, type TabId } from "./layout";
+import type { TabId } from "./layout";
 import { isUsageView } from "../../lib/usageView";
 
 /**
@@ -41,23 +41,3 @@ export const USAGE_VIEW = slot("usage-view", isUsageView);
 
 /** The side question is kept when its tab closes (decision 40: cleared on close unless pinned). */
 export const SIDE_PINNED = slot("side-pinned", (v): v is boolean => typeof v === "boolean");
-
-/** Which Memory view the tab opens on once ("context": the context button's "Open context details"); read and cleared on mount. */
-export const MEMORY_START = slot("memory-start", (v): v is string => typeof v === "string");
-
-const memoryViewListeners = new Set<() => void>();
-
-/**
- * Asks the Memory tab for a view ("context": the context button's "Open context details"): writes the request the tab reads
- * on mount, and tells a Memory tab that is already mounted (parity B7), which switches at once.
- */
-export function requestMemoryView(memory: TabMemory, view: string): void {
-  memory.set(toolTab("memory"), MEMORY_START, view);
-  for (const listener of memoryViewListeners) listener();
-}
-
-/** A mounted Memory tab listens for `requestMemoryView`. */
-export function onMemoryViewRequest(listener: () => void): () => void {
-  memoryViewListeners.add(listener);
-  return () => void memoryViewListeners.delete(listener);
-}

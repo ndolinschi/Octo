@@ -169,10 +169,12 @@ type manifestAuth struct {
 	NotLoggedInPattern string `json:"notLoggedInPattern"`
 	// NotLoggedInExit lists probe exit statuses that mean "logged out". Without
 	// it only the pattern can say so: a failing probe leaves the login unchecked.
-	NotLoggedInExit []int           `json:"notLoggedInExit"`
-	Hint            string          `json:"hint"`
-	Methods         []AuthMethodRef `json:"methods"`
-	Skip            []string        `json:"skip"`
+	NotLoggedInExit []int  `json:"notLoggedInExit"`
+	Hint            string `json:"hint"`
+	// Command is the terminal command that logs the CLI in ("claude auth login"); shown copyable.
+	Command string          `json:"command"`
+	Methods []AuthMethodRef `json:"methods"`
+	Skip    []string        `json:"skip"`
 }
 
 // AuthMethodRef names an ACP auth method. RequiresEnv, when set, makes the

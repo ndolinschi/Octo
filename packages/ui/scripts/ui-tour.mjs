@@ -4,7 +4,7 @@
  * packages/ui/AGENTS.md) and saves `<group>/<nn>-<state>-<theme>-<WxH>.png`. It judges nothing: it captures each state, and a
  * state that cannot be reached is listed in MISSING.txt instead of saving a wrong screen.
  *
- *   node packages/ui/scripts/ui-tour.mjs --url http://localhost:1485 --out /tmp/tour [--only chat] [--theme dark] [--small]
+ *   node packages/ui/scripts/ui-tour.mjs --url http://localhost:1485 --out /tmp/tour [--only chat] [--theme dark] [--small] [--sizes phone]
  *
  * `--only` takes a group (or several, comma separated) or `group/nn`; `--theme` limits the themes; `--small` keeps 1440x900 only.
  */
@@ -24,6 +24,8 @@ const OUT = path.resolve(opt("--out", "tour"));
 const ONLY = opt("--only", "").split(",").filter(Boolean);
 const THEMES = opt("--theme", "dark,light").split(",");
 const SMALL = argv.includes("--small");
+// `--sizes phone` (or `full,phone`): only those sizes of the states that run at four sizes; a state that runs at one size runs only when `full` is listed.
+const ONLY_SIZES = opt("--sizes", "").split(",").filter(Boolean);
 const SIZES = { full: [1440, 900], wide: [1100, 700], narrow: [830, 560], phone: [390, 700] };
 
 function loadPlaywright() {
@@ -73,7 +75,8 @@ for (const [group, states] of Object.entries(GROUPS)) {
     const st = states[k];
     const nn = String(k + 1).padStart(2, "0");
     if (!wanted(group, nn)) continue;
-    const sizes = st.sizes === "all" && !SMALL ? ["full", "wide", "narrow", "phone"] : ["full"];
+    const all = st.sizes === "all" && !SMALL ? ["full", "wide", "narrow", "phone"] : ["full"];
+    const sizes = ONLY_SIZES.length ? all.filter((z) => ONLY_SIZES.includes(z)) : all;
     for (const theme of THEMES) {
       for (const sz of sizes) {
         const [width, height] = SIZES[sz];

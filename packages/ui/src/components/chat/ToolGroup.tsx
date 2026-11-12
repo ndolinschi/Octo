@@ -1,11 +1,9 @@
-import { ChevronRight } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
-import { lazy, Suspense, useId, useState } from "react";
+import { lazy, Suspense } from "react";
 
 import { cn } from "../../lib/cn";
 import { acpCall, toolMeta } from "../../lib/tools";
 import type { ToolUse } from "../../lib/transcript";
-import { RunningDot } from "../primitives/Status";
+import { ActivityRow, type ActivityState } from "./ActivityRow";
 import { toolState, useTranscript, type ToolState } from "./transcriptContext";
 
 /** A tool call's input and result load with the first one opened (their own chunk: links, tables, diff colours). */
@@ -52,19 +50,6 @@ function Arg({ use, text, className }: { use: ToolUse; text: string; className?:
   );
 }
 
-function Summary({ uses }: { uses: ToolUse[] }) {
-  const [use] = uses;
-  if (uses.length !== 1 || !use) return <span className="truncate">{summarize(uses)}</span>;
-  const meta = toolMeta(use.name, use.input);
-  return (
-    <span className="flex min-w-0 items-baseline gap-1.5">
-      <span className="shrink-0">{meta.verb}</span>
-      {meta.arg && <Arg use={use} text={meta.arg} />}
-      {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
-    </span>
-  );
-}
-
 function summarize(uses: ToolUse[]): string {
   const counts = new Map<string, number>();
   for (const u of uses) {
@@ -82,68 +67,53 @@ function summarize(uses: ToolUse[]): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** One muted line per run of tool calls; collapsed by default. */
+/** One activity row per run of tool calls (decision 91d); collapsed by default. */
 export function ToolGroup({ uses }: { uses: ToolUse[] }) {
   const ctx = useTranscript();
   const rows = uses.map((use) => ({ use, state: toolState(ctx, use.id) }));
   const running = rows.some((r) => r.state === "running");
   const errors = rows.filter((r) => r.state === "error").length;
-  const [open, setOpen] = useState(false);
-  const panelId = useId();
   const [only] = uses;
-  const single = uses.length === 1;
-
+  const single = uses.length === 1 ? only : undefined;
+  const meta = single ? toolMeta(single.name, single.input) : null;
+  const state: ActivityState = running ? "running" : errors > 0 ? "failed" : rows.some((r) => r.state === "interrupted") ? "stopped" : "done";
   return (
-    <div>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((o) => !o)}
-        className="group -mx-2 flex h-row max-w-[calc(100%+16px)] items-center gap-2 rounded-sm px-2 text-sm text-fg-3 press-row hover:bg-hover hover:text-fg-2"
-      >
-        <Summary uses={uses} />
-        {running && <RunningDot />}
-        {errors > 0 && <span className="shrink-0 text-err">{single ? "failed" : `${errors} failed`}</span>}
-        <Glyph icon={ChevronRight} size={14} className={cn("shrink-0 transition-[rotate] duration-150", open && "rotate-90")} />
-      </button>
-      {open && (
-        <div id={panelId} className="mt-1">
-          {single && only ? <ToolDetail use={only} /> : rows.map((r) => <ToolRow key={r.use.id} use={r.use} state={r.state} />)}
-        </div>
-      )}
-    </div>
+    <ActivityRow
+      state={state}
+      verb={single && meta ? meta.verb : summarize(uses)}
+      detail={
+        single && meta ? (
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            {meta.arg && <Arg use={single} text={meta.arg} />}
+            {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
+            {errors > 0 && <span className="shrink-0">failed</span>}
+          </span>
+        ) : errors > 0 ? (
+          `${errors} failed`
+        ) : undefined
+      }
+    >
+      {single ? <ToolDetail use={single} /> : rows.map((r) => <ToolRow key={r.use.id} use={r.use} state={r.state} />)}
+    </ActivityRow>
   );
 }
 
 function ToolRow({ use, state }: { use: ToolUse; state: ToolState }) {
-  const [open, setOpen] = useState(false);
-  const panelId = useId();
   const meta = toolMeta(use.name, use.input);
-
+  const row: ActivityState = state === "running" ? "running" : state === "error" ? "failed" : state === "interrupted" ? "stopped" : "done";
   return (
-    <div>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((o) => !o)}
-        className="-mx-2 flex h-row w-[calc(100%+16px)] min-w-0 items-center gap-2 rounded-sm px-2 text-left font-mono text-xs press-row hover:bg-hover"
-      >
-        <span className="shrink-0 font-sans text-fg-2">{meta.verb}</span>
-        {meta.arg && <Arg use={use} text={meta.arg} className="text-fg-3" />}
-        {meta.folder && <span className="shrink-0 font-sans text-fg-3">in {meta.folder}</span>}
-        <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2 font-sans">
-          {state === "running" && <RunningDot />}
-          {state === "error" && <span className="text-err">failed</span>}
-          {state === "interrupted" && <span className="text-fg-3">no result</span>}
+    <ActivityRow
+      state={row}
+      verb={meta.verb}
+      detail={
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          {meta.arg && <Arg use={use} text={meta.arg} />}
+          {meta.folder && <span className="shrink-0">in {meta.folder}</span>}
+          {state === "interrupted" && <span className="shrink-0">no result</span>}
         </span>
-      </button>
-      {open && (
-        <div id={panelId} className="mt-1 mb-2">
-          <ToolDetail use={use} />
-        </div>
-      )}
-    </div>
+      }
+    >
+      <ToolDetail use={use} />
+    </ActivityRow>
   );
 }

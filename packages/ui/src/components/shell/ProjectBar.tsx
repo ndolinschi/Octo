@@ -3,11 +3,14 @@ import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { liveOrchestratorState } from "../../lib/orchestrator";
 import { useProject } from "../../state/project";
-import { IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { Presence } from "../primitives/Presence";
+import type { Failure } from "./ProjectActionsMenu";
 import { ProjectTeam } from "./ProjectTeam";
 
 const ProjectActionsMenu = lazy(() => import("./ProjectActionsMenu"));
+const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 
 /**
  * What the open project puts in the window's top row (decision 67; the row is the tab strips, `dock/TabStrip`). Next to the
@@ -24,6 +27,7 @@ export function ProjectTeamLine() {
 export function ProjectActions() {
   const { project } = useProject();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   if (!project) return null;
   return (
@@ -45,10 +49,26 @@ export function ProjectActions() {
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Suspense fallback={null}>
-            <ProjectActionsMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
+            <ProjectActionsMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} onFailure={setFailure} />
           </Suspense>
         )}
       </Presence>
+      {failure && (
+        <div role="alert" className="fixed top-12 right-3 z-[60] w-96 max-w-[calc(100vw-1.5rem)]">
+          <Suspense fallback={null}>
+            <ErrorNotice
+              fields={failure}
+              raw={failure.message}
+              title="Could not export"
+              actions={
+                <Button size="sm" variant="quiet" onClick={() => setFailure(null)}>
+                  Dismiss
+                </Button>
+              }
+            />
+          </Suspense>
+        </div>
+      )}
     </>
   );
 }

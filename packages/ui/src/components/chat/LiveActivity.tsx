@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatDuration } from "../../lib/format";
 import { useProject } from "../../state/project";
-import { RunningDot, Spinner } from "../primitives/Status";
+import { ActivityRow } from "./ActivityRow";
 import { activityLine, labelParts, runningToolOf } from "./activity";
 import { useAnimationGate } from "./useAnimationGate";
 
@@ -59,22 +58,24 @@ export function ActivityLine({
     ),
   );
   return (
-    <p ref={ref} data-activity={line.kind} data-paused={paused || undefined} className="flex h-6 min-w-0 items-center gap-2 text-sm text-fg-3 tabular-nums">
-      <span className="grid size-4 shrink-0 place-items-center">{watched ? <Spinner className="text-accent" /> : <RunningDot />}</span>
-      {watched ? (
-        <span className="octo-shimmer" title={line.label}>
-          {text}
-          <span aria-hidden className="octo-shimmer-sweep">
-            <span className="octo-shimmer-text">{text}</span>
-          </span>
-        </span>
-      ) : (
-        <span className="min-w-0 truncate" title={line.label}>
-          {text}
-        </span>
-      )}
-      {startedAt !== null && <span className="shrink-0">{formatDuration(now - startedAt)}</span>}
-    </p>
+    <div ref={ref} data-activity={line.kind} data-paused={paused || undefined} className="tabular-nums">
+      <ActivityRow
+        state="running"
+        verb={
+          watched ? (
+            <span className="octo-shimmer" title={line.label}>
+              {text}
+              <span aria-hidden className="octo-shimmer-sweep">
+                <span className="octo-shimmer-text">{text}</span>
+              </span>
+            </span>
+          ) : (
+            <span title={line.label}>{text}</span>
+          )
+        }
+        duration={startedAt !== null ? now - startedAt : null}
+      />
+    </div>
   );
 }
 

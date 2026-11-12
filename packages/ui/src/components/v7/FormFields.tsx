@@ -2,8 +2,12 @@ import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import type { InputField } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
-import { IconButton } from "../primitives/Button";
-import { Field, Input } from "../primitives/Field";
+import { IconButton } from "../primitives/IconButton";
+import { Checkbox } from "../primitives/Checkbox";
+import { Field } from "../primitives/Field";
+import { Segmented } from "../primitives/Segmented";
+import { Select } from "../primitives/Select";
+import { TextField } from "../primitives/TextField";
 
 /** Selects with at most this many options are a row of choices; longer ones a native select. */
 const CHOICES_MAX = 4;
@@ -27,21 +31,8 @@ export function FormField(props: Props) {
   const described = error ? errorId : undefined;
   if (field.kind === "confirm") {
     return (
-      <div className="flex flex-col gap-1.5">
-        <label className="flex min-h-7 items-start gap-2 text-sm text-fg max-md:min-h-10 max-md:items-center">
-          <input
-            ref={(el) => props.registerControl(el)}
-            id={domId}
-            type="checkbox"
-            className="mt-0.5 size-4 shrink-0 accent-[var(--octo-primary)] max-md:mt-0"
-            checked={props.value === true}
-            disabled={props.disabled}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={described}
-            onChange={(e) => props.onChange(e.target.checked)}
-          />
-          <span>{field.label}</span>
-        </label>
+      <div ref={(el) => props.registerControl(el)} tabIndex={-1} id={domId} className="flex flex-col gap-1.5">
+        <Checkbox checked={props.value === true} disabled={props.disabled} label={field.label} onChange={(v) => props.onChange(v)} />
         {field.help && <p className="text-xs text-fg-3">{field.help}</p>}
         {error && (
           <p id={errorId} className="text-xs text-err">
@@ -61,7 +52,6 @@ export function FormField(props: Props) {
 function Control(props: Props & { described: string | undefined }) {
   const { field, domId, error, described } = props;
   const value = typeof props.value === "string" ? props.value : "";
-  const touch = "max-md:h-10 max-md:text-input-touch";
   switch (field.kind) {
     case "secret":
       return <SecretInput {...props} />;
@@ -69,66 +59,35 @@ function Control(props: Props & { described: string | undefined }) {
       const options = field.options ?? [];
       if (options.length <= CHOICES_MAX) {
         return (
-          <div
-            ref={(el) => props.registerControl(el)}
-            id={domId}
-            role="radiogroup"
-            aria-describedby={described}
-            aria-invalid={error ? true : undefined}
-            className="flex flex-wrap gap-2"
-            tabIndex={-1}
-          >
-            {options.map((o) => (
-              <label
-                key={o}
-                className={cn(
-                  "inline-flex h-7 min-w-0 press items-center rounded-sm border px-3 text-sm has-focus-visible:shadow-[0_0_0_2px_var(--octo-focus)] max-md:h-10",
-                  value === o ? "border-fg bg-active text-fg" : "border-line-strong text-fg-2 hover:bg-hover",
-                  error && value !== o && "border-err/60",
-                )}
-              >
-                <input
-                  type="radio"
-                  name={domId}
-                  value={o}
-                  checked={value === o}
-                  disabled={props.disabled}
-                  className="sr-only"
-                  onChange={() => props.onChange(o)}
-                />
-                <span className="truncate">{o}</span>
-              </label>
-            ))}
+          <div ref={(el) => props.registerControl(el)} id={domId} tabIndex={-1} aria-describedby={described} aria-invalid={error ? true : undefined}>
+            <Segmented
+              label={field.label}
+              options={options.map((o) => ({ id: o, label: o }))}
+              value={value}
+              onChange={(v) => !props.disabled && props.onChange(v)}
+            />
           </div>
         );
       }
       return (
-        <select
-          ref={(el) => props.registerControl(el)}
-          id={domId}
-          value={value}
-          disabled={props.disabled}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={described}
-          onChange={(e) => props.onChange(e.target.value)}
-          className={cn(
-            "h-8 w-full rounded-md border border-input-border bg-panel px-2 text-sm text-fg focus:border-fg focus:outline-none aria-invalid:border-err",
-            touch,
-          )}
-        >
-          <option value="">Choose…</option>
-          {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
+        <div ref={(el) => props.registerControl(el)} tabIndex={-1}>
+          <Select
+            id={domId}
+            label={field.label}
+            value={value}
+            placeholder="Choose…"
+            disabled={props.disabled}
+            invalid={error !== undefined}
+            options={options.map((o) => ({ value: o, label: o }))}
+            onChange={props.onChange}
+          />
+        </div>
       );
     }
     case "text":
     case "path":
       return (
-        <Input
+        <TextField
           ref={(el) => props.registerControl(el)}
           id={domId}
           value={value}
@@ -137,7 +96,7 @@ function Control(props: Props & { described: string | undefined }) {
           aria-invalid={error ? true : undefined}
           aria-describedby={described}
           aria-required={field.required}
-          className={cn(field.kind === "path" && "font-mono", touch)}
+          className={cn(field.kind === "path" && "font-mono")}
           onChange={(e) => props.onChange(e.target.value)}
         />
       );
@@ -154,7 +113,7 @@ function SecretInput(props: Props & { described: string | undefined }) {
   const [shown, setShown] = useState(false);
   return (
     <div className="relative">
-      <Input
+      <TextField
         ref={(el) => props.registerControl(el)}
         id={props.domId}
         type={shown ? "text" : "password"}
@@ -168,7 +127,7 @@ function SecretInput(props: Props & { described: string | undefined }) {
         aria-invalid={props.error ? true : undefined}
         aria-describedby={props.described}
         aria-required={props.field.required}
-        className="pr-10 font-mono max-md:h-10 max-md:text-input-touch"
+        className="pr-10 font-mono"
         onInput={props.onSecretInput}
       />
       <IconButton
@@ -176,7 +135,7 @@ function SecretInput(props: Props & { described: string | undefined }) {
         label={shown ? "Hide" : "Show"}
         pressed={shown}
         size="sm"
-        className="absolute top-1 right-1 max-md:top-2 max-md:right-2"
+        className="absolute top-1 right-1"
         onClick={() => setShown((s) => !s)}
       />
     </div>

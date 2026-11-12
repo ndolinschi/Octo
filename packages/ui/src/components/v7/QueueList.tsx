@@ -1,13 +1,18 @@
-import { ChevronDown, ChevronUp, Clock, CircleStop, CornerDownLeft, Pause, X } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, ChevronUp, Clock, CircleStop, CornerDownLeft, MoreHorizontal, Pause, X } from "lucide-react";
+import { useRef, useState } from "react";
 import type { QueuedMessage } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorCode, errorMessage } from "../../lib/format";
 import { queueCountLabel, queueLine, queueView } from "../../lib/v7/queue";
 import { queuedModeTag, STEER_REASON, steerOutcome } from "../../lib/v7/steerQueue";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { Glyph } from "../primitives/Glyph";
-import { ErrorLine } from "./parts";
+import { ListRow } from "../primitives/ListRow";
+import { Menu, type MenuItem } from "../primitives/Menu";
+import { Notice } from "../primitives/Notice";
+import { Presence } from "../primitives/Presence";
+import { SectionHeader } from "../primitives/SectionHeader";
 
 export type QueueListProps = {
   paused: boolean;
@@ -78,118 +83,120 @@ export function QueueList(props: QueueListProps) {
     }
   };
 
+  const count = messages.length;
   return (
-    <section
-      aria-label={queueCountLabel(messages.length)}
-      className="@container/queue flex min-w-0 flex-col rounded-md border border-line bg-panel p-1 text-sm"
-    >
+    <section aria-label={queueCountLabel(count)} className="@container/queue flex min-w-0 flex-col rounded-md border border-line bg-panel p-1 text-sm">
+      <SectionHeader inset level="caption" as="h3">
+        {props.paused ? (messages.length ? `${queueCountLabel(count)} · paused after a failed or stopped turn` : "Queue paused") : queueCountLabel(count)}
+      </SectionHeader>
       {props.paused && (
-        <div className="flex min-h-7 flex-wrap items-center gap-2 py-0.5 pr-0.5 pl-2">
-          <Glyph icon={Pause} size={14} className="shrink-0 text-warn" />
-          <span className="min-w-0 flex-1 text-fg-2">{messages.length ? "Queue paused after a failed or stopped turn" : "Queue paused"}</span>
-          <span className="flex shrink-0 gap-1">
-            <Button
-              size="sm"
-              variant="secondary"
-              className="h-6 px-2 max-md:h-10"
-              disabled={pending !== null}
-              onClick={() => void run({ kind: "resume" }, props.onResume, "resume the queue")}
-            >
-              Resume
+        <div className="flex min-h-ctl-sm flex-wrap items-center gap-2 pr-0.5 pl-2">
+          <Glyph icon={Pause} size={14} className="shrink-0 text-fg-3" />
+          <span className="min-w-0 flex-1 text-fg-2">Nothing is sent until you resume.</span>
+          <Button size="xs" variant="secondary" disabled={pending !== null} onClick={() => void run({ kind: "resume" }, props.onResume, "resume the queue")}>
+            Resume
+          </Button>
+          {messages.length > 0 && (
+            <Button size="xs" variant="quiet" disabled={pending !== null} onClick={() => void run({ kind: "clear" }, props.onClear, "clear the queue")}>
+              Clear
             </Button>
-            {messages.length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 px-2 max-md:h-10"
-                disabled={pending !== null}
-                onClick={() => void run({ kind: "clear" }, props.onClear, "clear the queue")}
-              >
-                Clear
-              </Button>
-            )}
-          </span>
+          )}
         </div>
+      )}
+      {view.shown.length > 0 && (
+        <p data-steer-reason={unsupported ? "" : undefined} className="px-2 pb-1 text-xs text-fg-3">
+          {unsupported ? STEER_REASON : "Sent one by one when this turn ends."}
+        </p>
       )}
       {view.shown.length > 0 && (
         <ul className="flex flex-col">
           {view.shown.map((m) => {
             const busy = pending !== null && "id" in pending && pending.id === m.id;
+            const text = `${queuedModeTag(m.mode) ? `${queuedModeTag(m.mode)} ` : ""}${queueLine(m.text) || "(empty message)"}`;
+            const sendNow = () => void steer(m.id);
+            const stopSend = () => void run({ kind: "stop", id: m.id }, () => props.onStopAndSend(m.id), "stop the turn and send it");
+            const remove = () => void run({ kind: "remove", id: m.id }, () => props.onRemove(m.id), "remove it");
             return (
-              <li key={m.id} data-row className="group flex h-7 min-w-0 items-center gap-2 rounded-sm pr-0.5 pl-2 hover:bg-hover max-md:h-10">
-                <Glyph icon={Clock} size={14} className="shrink-0 text-fg-3" />
-                <span className="min-w-0 flex-1 truncate text-fg-2" title={m.text}>
-                  {queuedModeTag(m.mode) && <span className="mr-1.5 text-fg-3">{queuedModeTag(m.mode)}</span>}
-                  {queueLine(m.text) || "(empty message)"}
-                </span>
-                {steering.has(m.id) ? (
-                  <span data-steering className="shrink-0 text-xs text-fg-3">
-                    Goes in at the next step
-                  </span>
-                ) : (
-                  <>
-                    {!unsupported && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon={CornerDownLeft}
-                        className={cn("h-6 px-2 max-md:h-10", busy && pending.kind === "send" && "text-fg")}
-                        disabled={pending !== null}
-                        title="Hand this to the running turn at its next step, without stopping it"
-                        onClick={() => void steer(m.id)}
-                      >
-                        <span className="@max-[360px]/queue:sr-only">Send now</span>
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={CircleStop}
-                      className={cn("h-6 px-2 max-md:h-10", busy && pending.kind === "stop" && "text-fg")}
-                      disabled={pending !== null}
-                      title="Stop the running turn and send this next"
-                      onClick={() => void run({ kind: "stop", id: m.id }, () => props.onStopAndSend(m.id), "stop the turn and send it")}
-                    >
-                      <span className="@max-[360px]/queue:sr-only">Stop and send</span>
-                    </Button>
-                  </>
-                )}
-                <IconButton
-                  icon={X}
-                  size="sm"
-                  label="Remove from queue"
-                  className="max-md:size-10"
-                  disabled={pending !== null}
-                  onClick={() => void run({ kind: "remove", id: m.id }, () => props.onRemove(m.id), "remove it")}
+              <li key={m.id} data-row>
+                <ListRow
+                  tone="quiet"
+                  leading={<Clock size={14} />}
+                  title={text}
+                  tip={m.text}
+                  className={cn(busy && "opacity-70")}
+                  meta={steering.has(m.id) ? <span data-steering>Goes in at the next step</span> : undefined}
+                  trailing={
+                    steering.has(m.id) ? undefined : (
+                      <>
+                        <span className="flex gap-0.5 @max-[480px]/queue:hidden">
+                          {!unsupported && <IconButton icon={CornerDownLeft} size="xs" label="Send now" disabled={pending !== null} onClick={sendNow} />}
+                          <IconButton icon={CircleStop} size="xs" label="Stop and send" disabled={pending !== null} onClick={stopSend} />
+                          <IconButton icon={X} size="xs" label="Remove from queue" disabled={pending !== null} onClick={remove} />
+                        </span>
+                        <span className="hidden @max-[480px]/queue:inline-flex">
+                          <RowMenu
+                            label={`Actions for ${queueLine(m.text) || "this message"}`}
+                            disabled={pending !== null}
+                            items={[
+                              ...(unsupported ? [] : [{ id: "now", label: "Send now", run: sendNow }]),
+                              { id: "stop", label: "Stop and send", run: stopSend },
+                              { id: "remove", label: "Remove from queue", run: remove },
+                            ]}
+                          />
+                        </span>
+                      </>
+                    )
+                  }
                 />
               </li>
             );
           })}
         </ul>
       )}
-      {unsupported && view.shown.length > 0 && (
-        <p data-steer-reason className="px-2 py-1 text-xs text-fg-3">
-          {STEER_REASON}
-        </p>
-      )}
       {(view.hidden > 0 || expanded) && messages.length > 2 && (
-        <button
-          type="button"
-          data-row
-          aria-expanded={expanded}
-          className="flex h-7 items-center gap-2 rounded-sm pl-2 text-left text-fg-3 press-row focus-inset hover:bg-hover hover:text-fg max-md:h-10"
+        <ListRow
+          tone="quiet"
+          leading={expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          title={expanded ? "Show less" : `${view.hidden} more queued`}
           onClick={() => setExpanded((x) => !x)}
-        >
-          <Glyph icon={expanded ? ChevronUp : ChevronDown} size={14} />
-          {expanded ? "Show less" : `${view.hidden} more queued`}
-        </button>
+        />
       )}
-      {error && <ErrorLine className="px-2 py-1">{error}</ErrorLine>}
+      {error && (
+        <Notice tone="error" className="px-2 py-1">
+          {error}
+        </Notice>
+      )}
     </section>
   );
 }
 
-/** The queue count on the send button (decision 30's "queue count"): a small figure at the button's top-right. */
+/** "⋯" with a menu: the row's actions below 480 px, where the icons would take the text's room. */
+function RowMenu(props: { label: string; disabled: boolean; items: MenuItem[] }) {
+  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <IconButton
+        ref={button}
+        icon={MoreHorizontal}
+        size="xs"
+        label={props.label}
+        aria-haspopup="menu"
+        aria-expanded={at !== null}
+        disabled={props.disabled}
+        onClick={() => {
+          const r = button.current?.getBoundingClientRect();
+          if (r) setAt(at ? null : { x: r.right, y: r.bottom + 4 });
+        }}
+      />
+      <Presence show={at !== null} exitMs={0}>
+        {at && <Menu label={props.label} x={at.x} y={at.y} alignEnd items={props.items} onClose={() => setAt(null)} />}
+      </Presence>
+    </>
+  );
+}
+
+/** The old count on the send button; the queue now says "N queued" in its own header (decision 91h), the composer no longer mounts this. */
 export function QueueBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (

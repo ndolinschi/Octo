@@ -34,7 +34,7 @@ test("claudeLabel names Claude ids and leaves the rest whole", () => {
 test("modelName renders an acp value as the agent's label and model, never the raw string", () => {
   assert.equal(modelName("acp:claude-code", ACP), "Claude Code");
   assert.equal(modelName("acp:claude-code/claude-opus-5-5", ACP), "Claude Code · Opus 5.5");
-  assert.equal(modelName("acp:codex/gpt-5.5", ACP), "codex · gpt-5.5");
+  assert.equal(modelName("acp:codex/gpt-5.5", ACP), "Codex · gpt-5.5");
   assert.equal(modelName("claude-haiku-5-5"), "Haiku 5.5");
   assert.equal(modelName("deepseek/deepseek-v4.1-flash-0905"), "deepseek-v4.1-flash-0905");
 });

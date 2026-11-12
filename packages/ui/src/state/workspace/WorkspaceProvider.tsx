@@ -5,6 +5,7 @@ import { hrefFor } from "../../lib/route";
 import { loadPref, numberCodec, PREFS, usePersistentState, writePref } from "../../lib/storage";
 import { useNav, type WorkspaceApi, type WorkspaceCommand } from "../nav";
 import { useProject } from "../project";
+import { hasQueuedSession } from "./sessionsStart";
 import * as L from "./layout";
 import type { Layout, TabId, ToolTab } from "./layout";
 import {
@@ -23,7 +24,8 @@ import { createRequiredContext } from "../../lib/context";
 import { SIDE_PINNED, TabMemory, USAGE_VIEW } from "./tabMemory";
 import { jumpIndex, mruOrder, mruTouch, pushClosed, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
 import { useTabKeys } from "./useTabKeys";
-import { dockFits, dockNeeds, groupFloor } from "./floors";
+import { dockFits, dockNeeds, groupFloors } from "./floors";
+import { TREE_MIN, useFileView } from "../fileView";
 import { maximisedGroup, toggleMaximise } from "./maximise";
 import { domId, tabButton } from "./ids";
 import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
@@ -53,6 +55,8 @@ export type WorkspaceValue = {
   layout: Layout;
   /** One strip for everything (narrow window or groups that don't fit). */
   narrow: boolean;
+  /** A group's minimum width in the row (decision 67; 94a: a file group that shows its tree column also needs the column). */
+  floorOf(groupId: string): number;
   /** The conversation tab whose live indicator may animate (the one being watched), if visible. */
   watched: TabId | null;
   /** Agent of the conversation last focused (for the agents tree selection). */
@@ -86,6 +90,8 @@ export type WorkspaceValue = {
   openFileTab(key: FileKey, where?: { group: string; replace?: TabId }): void;
   /** Opens (or focuses) the "Run: name" tab of a project command beside the conversation (decision 68). */
   openRun(name: string): void;
+  /** One session in a tab of its own, beside the tab it was opened from (two sessions side by side). */
+  openSession(sessionId: string): void;
   /** Opens (or focuses) a tab in a given group. */
   openIn(tab: TabId, groupId: string): void;
   /** Removes a tab without asking (a restored file that no longer exists). */
@@ -185,6 +191,16 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const [runStatuses, setRunStatuses] = useState<WorkspaceValue["runStatuses"]>({});
 
   const narrow = !docked || !dockFits(layout.groups, dockWidth);
+  const fv = useFileView();
+  const floors = useMemo(
+    () =>
+      groupFloors(layout.groups, dockWidth, (id) => {
+        const c = fv.column(id);
+        return c.open ? Math.max(TREE_MIN, c.width) : 0;
+      }),
+    [layout.groups, dockWidth, fv],
+  );
+  const floorsRef = useLatest(floors);
   const narrowRef = useLatest(narrow);
   const widthRef = useLatest(dockWidth);
   const maximised = maximisedGroup(layout, maxGroup, narrow);
@@ -307,6 +323,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       projectId,
       layout,
       narrow,
+      floorOf: (groupId) => floors[layout.groups.findIndex((g) => g.id === groupId)] ?? 0,
       watched: isVisible(lastConversation) ? lastConversation : null,
       currentAgentId: agentOf === undefined ? null : (agentOf ?? project?.orchestrator_agent_id ?? null),
       focusRequest,
@@ -379,6 +396,17 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
       },
       openRun: (name) => openSide(L.runTab(name), fileFraction()),
+      openSession: (sessionId) => {
+        const current = layoutRef.current;
+        const tab = L.sessionTab(sessionId);
+        if (L.groupOf(current, tab)) return commit(L.activate(current, tab));
+        const from = L.groupOf(current, L.toolTab("sessions")) ?? L.chatGroupOf(current);
+        // Split only when the dock is one group (and has room): beside it. With two groups already, a third column leaves
+        // nothing readable, so the session is a tab next to the Sessions tab.
+        const room = !narrowRef.current && current.groups.length === 1 && dockWidth >= dockNeeds([...current.groups, { tabs: [] }]);
+        if (room) return commit(L.open(current, tab, { newAfter: from.id, size: from.size / 2 }));
+        commit(L.open(current, tab, { group: from.id }));
+      },
       openIn: (tab, groupId) => commit(L.open(layoutRef.current, tab, { group: groupId })),
       dropTab: (tab) => commit(L.close(layoutRef.current, [tab])),
       requestClose,
@@ -433,8 +461,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       resize: (index, px) => {
         const inner = widthRef.current - (layoutRef.current.groups.length - 1) * GROUP_GAP;
         if (inner <= 0) return;
-        const [a, b] = [layoutRef.current.groups[index], layoutRef.current.groups[index + 1]];
-        const next = L.resize(layoutRef.current, index, px / inner, groupFloor(a?.tabs ?? []) / inner, groupFloor(b?.tabs ?? []) / inner);
+        const next = L.resize(layoutRef.current, index, px / inner, (floorsRef.current[index] ?? 0) / inner, (floorsRef.current[index + 1] ?? 0) / inner);
         commit(next);
         // Decision 60: where the user puts the divider between the conversation and its one neighbour is where the next first split opens.
         const [first] = next.groups;
@@ -500,6 +527,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     project,
     layout,
     narrow,
+    floors,
+    floorsRef,
     dockWidth,
     lastConversation,
     focusRequest,
@@ -551,6 +580,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   useEffect(() => {
     if (toolAsked.current) return;
     toolAsked.current = true;
+    // The sidebar's session rows (and Memory) ask for the Sessions tab before this workspace mounted.
+    if (hasQueuedSession(projectId)) value.openTool("sessions");
     const asked = nav.takePendingTool(projectId);
     if (!asked) return;
     memory.set(L.toolTab(asked.tool), USAGE_VIEW, { ...DEFAULT_USAGE_VIEW, scope: asked.scope });
@@ -593,6 +624,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         const active = L.focusedGroup(layoutRef.current).active;
         const name = label(active);
         const out: WorkspaceCommand[] = [
+          { id: "tool-sessions", label: "Show sessions", detail: "conversations and agent sessions", run: () => ws.openTool("sessions") },
           { id: "tool-agents", label: "Show agents", run: () => ws.openTool("agents") },
           { id: "tool-notes", label: "Show notes", run: () => ws.openTool("notes") },
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },

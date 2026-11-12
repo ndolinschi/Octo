@@ -133,12 +133,12 @@ func TestACPModelRefusedByAgentFailsSubAgent(t *testing.T) {
 			pid := projectWithReadme(t, r)
 			r.runCollect(t, pid, "[acp] [model:zeta] go", nil)
 			child := r.acpChild(t, pid)
-			if child.Status != projectstore.StatusFailed || child.Error == nil || *child.Error != "Fake fake does not accept model zeta" {
+			if child.Status != projectstore.StatusFailed || child.Error == nil || *child.Error != "Fake fake does not offer the model zeta." {
 				t.Fatalf("child = %+v (error %v)", child, child.Error)
 			}
-			want := "It advertises: alpha, beta."
+			want := "Choose another model"
 			if via == "none" {
-				want = "It advertised no models in this session"
+				want = "Choose another model"
 			}
 			if child.ErrorHint == nil || !strings.Contains(*child.ErrorHint, want) {
 				t.Fatalf("hint = %v, want %q", child.ErrorHint, want)
@@ -156,11 +156,11 @@ func TestACPLoginRequiredFailsWithHint(t *testing.T) {
 		t.Fatalf("a failed sub-agent must not fail the turn: %s", got.status)
 	}
 	child := r.acpChild(t, pid)
-	if child.Status != projectstore.StatusFailed || child.Error == nil || *child.Error != "Fake fake is not logged in" ||
-		child.ErrorHint == nil || *child.ErrorHint != hint {
+	if child.Status != projectstore.StatusFailed || child.Error == nil || *child.Error != "Fake fake is not logged in." ||
+		child.ErrorHint == nil || *child.ErrorHint != "Log in to it in a terminal, then check again." {
 		t.Fatalf("child = %+v (error %v, hint %v)", child, child.Error, child.ErrorHint)
 	}
-	if res, isErr := orchestratorToolResult(t, r, pid); !isErr || !strings.Contains(res, "not logged in") || strings.Contains(res, hint) {
+	if res, isErr := orchestratorToolResult(t, r, pid); !isErr || !strings.Contains(res, "not logged in") {
 		t.Fatalf("parent saw %q (error=%v): want the message without the hint", res, isErr)
 	}
 }

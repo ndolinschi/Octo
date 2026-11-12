@@ -1,3 +1,4 @@
+import { readable } from "../../lib/errors/plain";
 import type { Agent } from "@octo/agent-client";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef } from "react";
@@ -141,7 +142,7 @@ function AgentRow(props: { agent: Agent; now: number; quiet: boolean; via?: stri
   const a = props.agent;
   const running = a.status === "running";
   const duration = agentDuration(a, props.now);
-  const line = running ? agentActivity(state, a.id) : a.status === "failed" ? (a.error ?? a.title) : a.title;
+  const line = running ? agentActivity(state, a.id) : a.status === "failed" ? (a.error ? readable(a.error) : a.title) : a.title;
   return (
     <ListRow
       size="md"

@@ -1,6 +1,6 @@
 import { totalTokens } from "@octo/agent-client";
-import { formatTokens } from "../../lib/format";
-import { startDownload } from "../../lib/download";
+import { formatTokens, structuredError, errorMessage } from "../../lib/format";
+import { saveConversation } from "../../lib/download";
 import { MOD_LABEL } from "../../lib/keys";
 import { budgetState } from "../../lib/models";
 import { useApp } from "../../state/app";
@@ -9,8 +9,17 @@ import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu } from "../primitives/Menu";
 
+/** A failed action in the shape `ErrorNotice` takes: the harness's `message`, `hint`, `action`, `details`. */
+export type Failure = NonNullable<ReturnType<typeof structuredError>>;
+
 /** The "⋯" menu of the project's actions. Its own chunk: `ProjectActions` loads it when the menu is first opened. */
-export default function ProjectActionsMenu(props: { x: number; y: number; onClose(): void }) {
+export default function ProjectActionsMenu(props: {
+  x: number;
+  y: number;
+  onClose(): void;
+  /** A failed action (the export): the owner shows it as the standard error notice, with the harness's own message. */
+  onFailure(failure: Failure): void;
+}) {
   const { project, state } = useProject();
   const { openProjectInEditor } = useHost();
   const { bridge } = useApp();
@@ -47,8 +56,14 @@ export default function ProjectActionsMenu(props: { x: number; y: number; onClos
         ...(openProjectInEditor
           ? [{ id: "editor", label: "Open in editor", disabled: project.folders.length === 0, run: () => openProjectInEditor(project.id) }]
           : []),
-        ...(bridge.exportConversationUrl
-          ? [{ id: "export", label: "Export conversation (Markdown)", run: () => startDownload(bridge.exportConversationUrl?.(project.id) ?? "") }]
+        ...(bridge.exportConversation || bridge.exportConversationUrl
+          ? [
+              {
+                id: "export",
+                label: "Export conversation (Markdown)",
+                run: () => void saveConversation(bridge, project.id).catch((e: unknown) => props.onFailure(structuredError(e) ?? { message: errorMessage(e) })),
+              },
+            ]
           : []),
         { id: "settings", label: "Project settings", disabled: !ws, run: () => ws?.openSettings() },
       ]}

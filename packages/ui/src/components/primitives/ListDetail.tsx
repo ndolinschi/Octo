@@ -44,6 +44,11 @@ export function ListDetail(props: {
   listSkeleton?: ReactNode;
   detailSkeleton?: ReactNode;
   detailClassName?: string;
+  /**
+   * What the rows `list()` returns are: `"rows"` (default) is flat `ListRow`s, each given `role="listitem"` by the owner, inside the
+   * `role="list"` the list's name goes on; `"own"` is a list the owner builds itself (a `<ul>` of `<li>`, a tree) and names.
+   */
+  listSemantics?: "rows" | "own";
   className?: string;
 }) {
   const [pane, dispatch] = useReducer(paneReducer, props.selected, (selected) => ({ selected, open: selected !== null }));
@@ -84,8 +89,7 @@ export function ListDetail(props: {
     // The container query lives on the outer element: a container cannot match its own query, so the row layout is on the inner one.
     <div className={cn("@container/ld h-full min-h-0", props.className)}>
       <div role="group" aria-label={props.label} className="flex h-full min-h-0 flex-col @min-[640px]/ld:flex-row">
-        <section
-          aria-label={props.listLabel}
+        <div
           className={cn(
             "min-h-0 flex-col @min-[640px]/ld:flex @min-[640px]/ld:w-70 @min-[640px]/ld:shrink-0 @min-[640px]/ld:border-r @min-[640px]/ld:border-line",
             open ? "hidden" : "flex flex-1 @min-[640px]/ld:flex-none",
@@ -93,10 +97,12 @@ export function ListDetail(props: {
         >
           {props.listHeader}
           <ScrollArea className="min-h-0 flex-1 px-pane pb-4">
-            <div ref={rows}>{props.loading ? (props.listSkeleton ?? <SkeletonList count={7} size="md" twoLine />) : props.list(select)}</div>
+            <div ref={rows} {...(props.listSemantics === "own" || props.loading ? {} : { role: "list", "aria-label": props.listLabel })}>
+              {props.loading ? (props.listSkeleton ?? <SkeletonList count={7} size="md" twoLine />) : props.list(select)}
+            </div>
             <FloatRoom />
           </ScrollArea>
-        </section>
+        </div>
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Esc from any control inside the detail goes back (decision 66) */}
         <section
           aria-label="Detail"

@@ -22,6 +22,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/secrets"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 var (
@@ -108,6 +109,8 @@ type Orchestrator struct {
 	baseCtx context.Context
 	stop    context.CancelFunc
 	wg      sync.WaitGroup
+	// settling counts the digests of finished turns still being written to the task list (settleTurn); tests wait on it.
+	settling sync.WaitGroup
 
 	acp *acpHost
 	// side holds the ACP sessions of side conversations.
@@ -363,37 +366,33 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string, opts S
 	rt.publishAgent(events.AgentUpdated, orch)
 	rt.publishSession(rt.sessionID, false)
 	if retried {
-		rt.publishTurnState(attentionNone, "")
+		rt.publishTurnState(attentionNone, nil)
 	}
 	return msg, rt, orch, nil
 }
 
 func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectstore.Agent) (projectstore.AgentStatus, map[string]any) {
 	res, err := rt.runOrchestrator(ctx, orch)
-	status, errText, hint := projectstore.StatusCompleted, "", ""
+	status := projectstore.StatusCompleted
+	var problem, notice *usererr.Error
 	switch {
 	case err == nil:
 	case ctx.Err() != nil, errors.Is(err, errAgentCancelled):
 		status = projectstore.StatusCancelled
 	default:
-		status, errText, hint = projectstore.StatusFailed, err.Error(), hintOf(err)
-		if errText == "" {
-			errText = "the turn failed without a reason"
-		}
+		status, problem = projectstore.StatusFailed, describe(err)
 		slog.Error("turn failed", "project", rt.pid(), "err", err)
 	}
 	if status == projectstore.StatusCompleted && rt.isACPOrchestrator() {
-		// A warning, not a failure: the session works without harness tools.
-		if w := o.acp.warning(rt.pid()); w != "" {
-			errText = "warning: " + w
-		}
+		// A notice, not a failure: the session works without harness tools.
+		notice = o.acp.warning(rt.pid())
 	}
 	o.approvals.EndTurn(rt.pid(), rt.turnID)
 	if status == projectstore.StatusCompleted && rt.mode == projectstore.ModePlan {
 		rt.turnPlan.Store(true)
 		o.savePlan(rt, res.Text)
 	}
-	finished := rt.finishTurn(orch.ID, status, res.Text, errText, hint)
+	finished := rt.finishTurn(orch.ID, status, res.Text, problem, notice)
 	rt.publish(events.ContextUpdated, map[string]any{"project_id": rt.pid()})
 	o.recordExchange(rt, orch.ID, status, res.Text)
 	rt.publishSession(rt.sessionID, false)

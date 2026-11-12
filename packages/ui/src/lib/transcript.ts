@@ -1,5 +1,5 @@
 import type { ContentBlock, Message } from "@octo/agent-client";
-import { harnessTool, SPAWN_TOOL } from "./tools";
+import { harnessTool, SPAWN_TOOL } from "./toolName";
 import { excerpt } from "./format";
 
 export type ToolUse = Extract<ContentBlock, { type: "tool_use" }>;

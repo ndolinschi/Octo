@@ -14,7 +14,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/prices"
 )
 
-var budgetMessage = regexp.MustCompile(`^Project budget reached \(\$\d+\.\d+ of \$0\.01\)$`)
+var budgetMessage = regexp.MustCompile(`^This project's budget is used up \(\$\d+\.\d+ of \$0\.01\)\.$`)
 
 // pricey makes one request cost far more than a cent.
 var pricey = map[string][2]float64{"low": {3000, 15000}, "mid": {3000, 15000}, "high": {3000, 15000}}
@@ -77,7 +77,7 @@ func TestRouter402StopsTheTurnFromASubAgent(t *testing.T) {
 	if n := fr.UpstreamCalls(); n != 1 {
 		t.Fatalf("upstream calls = %d, want 1", n)
 	}
-	want := regexp.MustCompile(`^Project budget reached \(\$\d+\.\d+ of \$1000\.00\)$`)
+	want := regexp.MustCompile(`^This project's budget is used up \(\$\d+\.\d+ of \$1000\.00\)\.$`)
 	failed := 0
 	for _, a := range r.agents(t, pid) {
 		if a.ParentID != nil && a.Status == "failed" && a.Error != nil && want.MatchString(*a.Error) {

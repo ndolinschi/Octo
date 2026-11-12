@@ -803,7 +803,14 @@
    the no-projects hero. The canvas is drawn at 2px cells (3 above a 1600px window) and scaled with `pixelated`; it
    overhangs by 12px (the drift that used it was removed by decision 50: a backdrop never moves). Its
    colours are the looks in `lib/streak.ts`. */
+/* Decision 91a: the streak is a band at the top of its panel, never behind content: `--octo-band-h` tall (the screens keep
+   that area free), its lower edge fading out. */
+:root {
+  --octo-band-h: clamp(72px, 14svh, 140px);
+}
 .octo-streak-layer {
+  height: var(--octo-band-h);
+  mask-image: linear-gradient(to bottom, #000 0, #000 55%, transparent 100%);
   animation: octo-fade-in 240ms ease-out both;
 }
 .octo-streak {
@@ -897,30 +904,10 @@
   background: var(--octo-accent);
 }
 
-/* Behind a text block that sits on the streak: a feathered panel-coloured wash, so every line keeps ≥ 4.5:1
-   at the band's brightest pixel (measured; see As built v6.1). */
-.octo-streak-scrim {
-  position: absolute;
-  inset: -16px -24px;
-  pointer-events: none;
-  border-radius: 24px;
-  /* A feathered rectangle (not a radial wash): even cover across a wide text block, to its row ends. */
-  background: color-mix(in srgb, var(--octo-panel) 84%, transparent);
-  filter: blur(24px);
-}
-
-/* Over the streak behind a group's tab strip and header (the empty project): a panel wash that eases out over
-   112px — opaque enough at the top for the strip's and header's text (measured ≥ 4.5:1), no visible edge. */
+/* Decision 91a: the streak never sits behind content, so there is no scrim and no wash under the strip. The class stays
+   for the one caller (`dock/Dock.tsx`) that still renders it. */
 .octo-streak-topfade {
-  height: 112px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--octo-panel) 92%, transparent) 0,
-    color-mix(in srgb, var(--octo-panel) 90%, transparent) 72px,
-    color-mix(in srgb, var(--octo-panel) 60%, transparent) 88px,
-    color-mix(in srgb, var(--octo-panel) 24%, transparent) 102px,
-    transparent 100%
-  );
+  display: none;
 }
 
 /* Context meter (decision 38): bar segments and legend swatches take the part's colour. */
@@ -1234,7 +1221,7 @@
   /* Below this width the settings navigation is a select on top and rows stack their control under the text. */
   --breakpoint-settings: 760px;
   --spacing-settings: 780px; /* the settings page's content column */
-  --spacing-connect: 560px; /* the connect screen's column */
+  --spacing-connect: 928px; /* the connect screen: 880px of content for the list and the detail side by side (decision 91b) */
 }
 /* Settings → Appearance → Reduce motion: whatever the system says. */
 :root[data-motion="reduced"] *,

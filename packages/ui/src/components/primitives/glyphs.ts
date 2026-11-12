@@ -8,6 +8,7 @@ import {
   Gauge,
   ListTree,
   MessageCircleQuestionMark,
+  MessagesSquare,
   Notebook,
   Settings,
   Terminal,
@@ -38,6 +39,8 @@ export const GLYPH = {
   changes: FileDiff,
   /** Reading and reviewing a pull request or a local branch (Review tool). */
   review: GitPullRequest,
+  /** Conversations of the project: yours with the orchestrator and the sessions of its agents (Sessions tool). */
+  sessions: MessagesSquare,
   /** What the orchestrator remembers: tasks, files, context, search (Memory tool). */
   memory: Brain,
   /** A side question about the project that does not enter the orchestrator's history (decision 40). */

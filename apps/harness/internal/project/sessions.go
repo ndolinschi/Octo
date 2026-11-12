@@ -9,6 +9,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // maxSessionMessage bounds a message to an agent session (characters).
@@ -42,15 +43,18 @@ func sessionErr(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return turnInProgress("a turn is running for this project; try again when it ends")
+		return turnInProgress()
 	case errors.Is(err, projectstore.ErrNotFound):
 		return notFound("session")
 	case errors.Is(err, projectstore.ErrSessionCurrent):
-		return &Error{Kind: KindConflict, Code: "current_session", Message: "this is the current session; make another one current first"}
+		return of(KindConflict, usererr.SessionRefused("current_session", "", err.Error()))
 	case errors.As(err, &se):
-		return &Error{Kind: KindConflict, Code: se.Code, Message: se.Message}
+		if se.User != nil {
+			return of(KindConflict, se.User)
+		}
+		return of(KindConflict, usererr.SessionRefused(se.Code, "", se.Message))
 	case orchestrator.IsNoBuiltinLoop(err):
-		return &Error{Kind: KindConflict, Code: "builtin_loop_unavailable", Message: err.Error()}
+		return of(KindConflict, usererr.SessionRefused("builtin_loop_unavailable", "", err.Error()))
 	}
 	return storeErr(err)
 }
@@ -300,7 +304,7 @@ func (s *Service) DeleteSession(ctx context.Context, pid, sid string) error {
 		}
 	}
 	if busy {
-		return &Error{Kind: KindConflict, Code: "session_running", Message: "this session (or one it started) is running; stop it first"}
+		return of(KindConflict, usererr.SessionRefused("session_running", "", "this session (or one it started) is running"))
 	}
 	removed, err := db.DeleteSession(ctx, sid)
 	if err != nil {

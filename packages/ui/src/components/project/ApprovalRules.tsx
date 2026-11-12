@@ -1,12 +1,10 @@
 import type { ApprovalRule } from "@octo/agent-client";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { describeRule } from "../../lib/v7/rules";
 import { useApp } from "../../state/app";
-import { IconButton } from "../primitives/Button";
-import { Glyph } from "../primitives/Glyph";
+import { Button, IconButton } from "../primitives/Button";
 import { Spinner } from "../primitives/Status";
 
 type Load = { kind: "loading" } | { kind: "ready"; rules: ApprovalRule[] } | { kind: "error"; message: string };
@@ -55,15 +53,9 @@ export function ApprovalRules({ projectId }: { projectId: string }) {
   };
   return (
     <div data-approval-rules>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="-ml-2 inline-flex h-7 items-center gap-1 rounded-sm px-2 text-sm text-fg-2 hover:bg-hover hover:text-fg"
-      >
+      <Button variant="quiet" iconEnd={open ? ChevronDown : ChevronRight} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-ml-2">
         Always-allowed requests
-        <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", open && "rotate-90")} />
-      </button>
+      </Button>
       {open && (
         <div className="mt-2 flex flex-col gap-1 text-sm">
           {load.kind === "loading" && (

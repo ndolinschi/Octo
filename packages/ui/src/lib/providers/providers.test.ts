@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BridgeConfig, Plugin, ProviderList, SettingsView } from "@octo/agent-client";
 import { deriveProviders } from "./derive";
-import { API_PROVIDER, ROUTER_PROVIDER, canRun, chipLabel, connectAction, extraReason, providerOf, stateText } from "./providers";
+import { API_PROVIDER, ROUTER_PROVIDER, canRun, chipLabel, connectAction, providerOf, stateText } from "./providers";
+import { extraReason } from "./reasons";
 
 const config = (over: Partial<BridgeConfig> = {}): BridgeConfig => ({
   default_models: { orchestrator: "claude-sonnet-5-5", fast: "claude-haiku-5-5", balanced: "claude-sonnet-5-5", deep: "claude-opus-5-5" },
@@ -119,7 +120,7 @@ test("chipLabel names agent models as 'Agent · Model'", () => {
   assert.equal(chipLabel("acp:claude-code", list), "Claude Code");
   assert.equal(chipLabel("claude-haiku-5-5", list), "Haiku 5.5");
   assert.equal(chipLabel("openai/gpt-x", list), "gpt-x");
-  assert.equal(chipLabel("acp:claude-code/claude-opus-5-5", null), "claude-code · Opus 5.5");
+  assert.equal(chipLabel("acp:claude-code/claude-opus-5-5", null), "Claude Code · Opus 5.5");
 });
 
 test("canRun: only what a ready provider runs", () => {

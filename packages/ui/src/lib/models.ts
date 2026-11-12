@@ -1,3 +1,4 @@
+import { agentLabelOf } from "./errors/words";
 import type { AcpOrchestratorChoice, TierPolicy } from "@octo/agent-client";
 
 /** What the UI needs of an ACP agent to name it: its id and label (from `config.acp_orchestrators` or the plugins list). */
@@ -66,7 +67,7 @@ export function agentModelLabel(m: { id: string; label: string; source?: string 
 export function modelName(value: string, acp: readonly AcpName[] = []): string {
   const ref = parseAcp(value);
   if (!ref) return displayId(value);
-  const label = acp.find((a) => a.id === ref.id)?.label ?? ref.id;
+  const label = acp.find((a) => a.id === ref.id)?.label ?? agentLabelOf(ref.id);
   return ref.model ? `${label} · ${displayId(ref.model)}` : label;
 }
 

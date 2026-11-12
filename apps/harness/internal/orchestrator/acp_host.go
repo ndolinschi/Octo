@@ -9,6 +9,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // DefaultACPIdle is how long an ACP orchestrator session may sit unused before
@@ -55,7 +56,7 @@ type orchSession struct {
 	token    string
 	// noMCP is set when the agent got no harness tools; the text is the
 	// warning shown on every turn of the session.
-	noMCP string
+	noMCP *usererr.Error
 	// modes are the session modes the agent advertised when the session was
 	// created, baseMode the one it started in and curMode the one in use.
 	modes    []acp.SessionMode
@@ -205,10 +206,10 @@ func (h *acpHost) reap(ctx context.Context) {
 }
 
 // warning is the standing warning of the project's ACP session ("" when none).
-func (h *acpHost) warning(pid string) string {
+func (h *acpHost) warning(pid string) *usererr.Error {
 	s := h.lookup(pid)
 	if s == nil {
-		return ""
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

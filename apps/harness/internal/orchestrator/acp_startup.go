@@ -2,13 +2,13 @@ package orchestrator
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // usageRejection matches what a CLI prints when it does not know the arguments
@@ -21,7 +21,7 @@ const maxStderrLine = 200
 // stderr is an argument or usage error, and says so in words that name the
 // command, instead of the raw "acp initialize: acp: connection closed: ..."
 // chain. The stderr tail in err was redacted when it was read.
-func launchRejection(ag plugins.Agent, err error) *userError {
+func launchRejection(ag plugins.Agent, err error) *usererr.Error {
 	text := err.Error()
 	if !strings.Contains(text, "acp initialize") || !strings.Contains(text, "agent exited") {
 		return nil
@@ -40,14 +40,5 @@ func launchRejection(ag plugins.Agent, err error) *userError {
 	}
 	cli := filepath.Base(ag.Command)
 	cmd := strings.Join(append([]string{cli}, ag.ArgsFor("")...), " ")
-	hint := fmt.Sprintf("Your %s version may not support the Agent Client Protocol, or it uses a different flag. Check `%s --help`; "+
-		"the launch arguments can be changed in a copied plugin manifest (see apps/harness/docs/acp-orchestrator.md).", ag.Label, cli)
-	if ag.StartHint != "" {
-		hint = ag.StartHint + " " + hint
-	}
-	return &userError{
-		msg:   fmt.Sprintf("%s did not start in agent mode: its command `%s` was rejected (%q).", ag.Label, cmd, first),
-		hint:  hint,
-		cause: err,
-	}
+	return usererr.AgentLaunchRejected(ag.Label, cli, "`"+cmd+"`: "+first, ag.StartHint).Caused(err)
 }

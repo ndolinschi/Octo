@@ -16,6 +16,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // ReportCommand marks the stored user message that hands a sub-agent session's answer to the orchestrator
@@ -26,12 +27,27 @@ const ReportCommand = "session_report"
 type SessionError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	Hint    string `json:"hint,omitempty"`
+	// User is the catalogue form (plain message and hint, technical details).
+	User *usererr.Error `json:"-"`
 }
 
 func (e *SessionError) Error() string { return e.Code + ": " + e.Message }
 
-func sessionErr(code, format string, args ...any) *SessionError {
-	return &SessionError{Code: code, Message: fmt.Sprintf(format, args...)}
+// sessionErr refuses with the catalogue's plain wording for code; why is a
+// plain reason for not_continuable and details the technical text.
+func sessionErr(code, why, details string) *SessionError {
+	return sessionUser(usererr.SessionRefused(code, why, details))
+}
+
+func withCode(u *usererr.Error, code string) *usererr.Error {
+	c := *u
+	c.Code = code
+	return &c
+}
+
+func sessionUser(u *usererr.Error) *SessionError {
+	return &SessionError{Code: u.Code, Message: u.Message, Hint: u.Hint, User: u}
 }
 
 // SessionView is a session as the API shows it: the stored fields with the live state, and, for the sessions
@@ -142,7 +158,7 @@ func (o *Orchestrator) SessionView(ctx context.Context, db *projectstore.DB, inf
 				}
 			}
 		} else {
-			v.MessageBlocked = sessionErr("not_current", "Resume this session to continue it.")
+			v.MessageBlocked = sessionErr("not_current", "", "")
 		}
 		return v
 	}
@@ -158,29 +174,29 @@ func (o *Orchestrator) SessionView(ctx context.Context, db *projectstore.DB, inf
 func (o *Orchestrator) agentMessageBlock(ctx context.Context, db *projectstore.DB, info projectstore.SessionInfo) *SessionError {
 	a, err := db.Agent(ctx, info.AgentID)
 	if err != nil {
-		return sessionErr("not_continuable", "The agent is gone.")
+		return sessionErr("not_continuable", "The agent was removed.", "agent row missing")
 	}
 	acpAgent := plugins.IsACPRef(a.Model)
 	if a.Status == projectstore.StatusRunning {
 		if acpAgent {
-			return sessionErr("steer_unsupported", "This agent is an ACP agent: the protocol cannot add input to a prompt that is running. Stop it, or wait for it to finish.")
+			return sessionErr("steer_unsupported", "", "an ACP prompt that is running takes no added input")
 		}
 		if r := o.runOf(a.ID); r == nil || r.box == nil {
-			return sessionErr("not_running", "The agent is not running.")
+			return sessionErr("not_running", "", "no steerable run")
 		}
 		return nil
 	}
 	if !acpAgent {
 		if why := o.builtinOff(); why != "" {
-			return sessionErr("builtin_loop_unavailable", "%s", why)
+			return sessionErr("builtin_loop_unavailable", "", why)
 		}
 		if msgs, err := db.Messages(ctx, a.ID); err != nil || len(msgs) == 0 {
-			return sessionErr("not_continuable", "The agent kept no conversation to continue.")
+			return sessionErr("not_continuable", "It kept no conversation to continue.", "no stored messages")
 		}
 		return nil
 	}
 	if _, ok, err := db.SessionACPOf(ctx, info.ID); err != nil || !ok {
-		return sessionErr("not_continuable", "The agent did not keep a session that can be resumed (it ran before sessions were kept, or it never opened one).")
+		return sessionErr("not_continuable", "It ran before sessions were kept, or never opened one.", "no stored ACP session")
 	}
 	return nil
 }
@@ -274,7 +290,7 @@ func (o *Orchestrator) ResumeSession(ctx context.Context, pid, sid string) (Sess
 		return SessionView{}, err
 	}
 	if info.Kind != projectstore.KindMain {
-		return SessionView{}, sessionErr("not_main_session", "Only a main session can be resumed; an agent session is opened and messaged.")
+		return SessionView{}, sessionErr("not_main_session", "", "kind is agent")
 	}
 	if info.Current {
 		return o.SessionView(ctx, db, info), nil
@@ -380,7 +396,7 @@ func (o *Orchestrator) StopSession(ctx context.Context, pid, sid string) (Sessio
 	case info.Kind == projectstore.KindAgent && o.runOf(info.AgentID) != nil:
 		o.runOf(info.AgentID).cancel()
 	default:
-		return SessionView{}, sessionErr("not_running", "This session is not running.")
+		return SessionView{}, sessionErr("not_running", "", "")
 	}
 	return o.SessionView(ctx, db, info), nil
 }
@@ -410,7 +426,7 @@ func (o *Orchestrator) MessageAgentSession(ctx context.Context, pid, sid, text s
 		return "", SessionView{}, err
 	}
 	if info.Kind != projectstore.KindAgent {
-		return "", SessionView{}, sessionErr("not_agent_session", "Messages to a main session go through the project's message route.")
+		return "", SessionView{}, sessionErr("not_agent_session", "", "kind is main")
 	}
 	if blocked := o.agentMessageBlock(ctx, db, info); blocked != nil {
 		return "", SessionView{}, blocked
@@ -423,7 +439,7 @@ func (o *Orchestrator) MessageAgentSession(ctx context.Context, pid, sid, text s
 	if a.Status == projectstore.StatusRunning {
 		r := o.runOf(a.ID)
 		if r == nil || r.box == nil || !r.box.add(text) {
-			return "", SessionView{}, sessionErr("not_running", "The agent finished just now; send the message again to continue it.")
+			return "", SessionView{}, sessionErr("not_running", "", "the run finished before the message was taken")
 		}
 		out = Steered
 	} else if err := o.continueAgent(ctx, db, a, info, text, reportToParent); err != nil {
@@ -461,32 +477,32 @@ func (o *Orchestrator) continueAgent(ctx context.Context, db *projectstore.DB, a
 	if id, m, ok := plugins.ParseACPRef(a.Model); ok {
 		t, msg := rt.pickACPAgent(id, m)
 		if msg != "" {
-			return sessionErr("not_continuable", "%s", msg)
+			return sessionErr("not_continuable", "That agent is not available right now.", msg)
 		}
 		ext = &t
 		var have bool
 		if kept, have, err = db.SessionACPOf(ctx, info.ID); err != nil {
 			return err
 		} else if !have {
-			return sessionErr("not_continuable", "The agent did not keep a session that can be resumed.")
+			return sessionErr("not_continuable", "It never opened a session that can be resumed.", "no stored ACP session")
 		}
 		// Start the process and load the session now, so a refusal is the answer to this request.
 		c, err := acp.Start(runCtx, acp.Spec{Command: t.agent.Command, Args: t.agent.ArgsFor(t.model), Env: t.processEnv(), Dir: rt.folders[0].Path, Name: t.agent.ID, Redact: rt.redact})
 		if err != nil {
-			return sessionErr("not_continuable", "%s", startFailure(t, err).Error())
+			return sessionUser(withCode(usererr.Of(startFailure(t, err)), "not_continuable"))
 		}
 		if !c.Capabilities().LoadSession {
 			c.Close()
-			return sessionErr("not_continuable", "%s cannot load a finished session (it did not advertise session/load), so this agent cannot be continued.", t.agent.Label)
+			return sessionErr("not_continuable", t.agent.Label+" cannot reopen a finished session.", "no session/load capability")
 		}
 		if err := c.LoadSession(runCtx, kept.SessionID, rt.folders[0].Path, nil); err != nil {
 			c.Close()
-			return sessionErr("not_continuable", "%s could not load the session: %s", t.agent.Label, rt.redact(err.Error()))
+			return sessionErr("not_continuable", t.agent.Label+" could not reopen the session.", rt.redact(err.Error()))
 		}
 		client = c
 	}
 	if len(rt.folders) == 0 && ext != nil {
-		return sessionErr("not_continuable", "ACP agents work inside a project folder, and this project has none attached")
+		return sessionErr("not_continuable", "This agent needs a project folder, and the project has none.", "no folders attached")
 	}
 	// The agent row runs again; the user's message is stored in its transcript first.
 	task := anthropic.NewUserMessage(anthropic.NewTextBlock(text))
@@ -568,7 +584,7 @@ func (rt *runtime) settleRun(a projectstore.Agent, info projectstore.SessionInfo
 	case cancelled || errors.Is(err, errAgentCancelled):
 		rt.settle(ctx, a.ID, projectstore.StatusCancelled, "", "")
 	default:
-		rt.settleHint(ctx, a.ID, projectstore.StatusFailed, "", err.Error(), hintOf(err))
+		rt.settleProblem(ctx, a.ID, describe(err))
 	}
 	if report && err == nil && strings.TrimSpace(text) != "" && info.ParentSessionID != "" {
 		note := fmt.Sprintf("Sub-agent %q (session %s) answered a message the user sent to it directly:\n%s", a.Title, info.ID, rt.redact(rt.o.opts.Limits.CapReport(text)))
@@ -592,7 +608,7 @@ func (rt *runtime) runACPLoaded(ctx context.Context, child projectstore.Agent, t
 	stop, err := client.Prompt(ctx, sessionID, text, h)
 	h.finish(ctx, err != nil)
 	if err != nil {
-		return "", acpFailure(ag, "ACP agent", err)
+		return "", acpFailure(ag, false, err)
 	}
 	switch stop {
 	case acp.StopEndTurn:

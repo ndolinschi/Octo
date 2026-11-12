@@ -29,11 +29,6 @@ export function stateText(state: ProviderState): string {
   return STATE_TEXT[state];
 }
 
-/** The harness's reason when it says more than the state does ("grok: command not found on PATH"), else "" ("not logged in" after "Not logged in"). */
-export function extraReason(p: Pick<Provider, "state" | "reason">): string {
-  return p.reason && p.reason.trim().toLowerCase() !== STATE_TEXT[p.state].toLowerCase() ? p.reason : "";
-}
-
 /**
  * The button a provider row shows (decision 53): Connect when it never worked, Reconnect when it did and stopped. An agent
  * that was never set up (not installed, not logged in) has nothing to press: its sheet lists the commands, so "How to connect".

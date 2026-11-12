@@ -1,5 +1,5 @@
 import type { Bridge, PluginAgent } from "@octo/agent-client";
-import { MessageSquare, Search, type LucideIcon } from "lucide-react";
+import { Image as ImageIcon, MessageSquare, Search, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
 import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
@@ -63,6 +63,8 @@ export const ComposerMenu = forwardRef<
     onActive(id: string | null): void;
     pendingComments: number;
     onOpenComments(): void;
+    /** "Image…": the host's file dialog or the platform's. */
+    onPickImage(): void;
     onPick(pick: MenuPick): void;
     onClose(): void;
   }
@@ -131,6 +133,15 @@ export const ComposerMenu = forwardRef<
       const label = `Review ${props.pendingComments} pending ${props.pendingComments === 1 ? "comment" : "comments"}`;
       out.push({ id: "comments", group: "Comments", label, hint: "Open", icon: MessageSquare, match: label, pick: { run: props.onOpenComments } });
     }
+    out.push({
+      id: "action:image",
+      group: "Actions",
+      label: "Image…",
+      hint: "Attach",
+      icon: ImageIcon,
+      match: "image picture photo screenshot",
+      pick: { run: props.onPickImage },
+    });
     if (ws) {
       const actions: [string, string, LucideIcon, () => void][] = [
         ["settings", "Project settings", GLYPH.settings, ws.openSettings],
@@ -142,7 +153,7 @@ export const ComposerMenu = forwardRef<
       for (const [id, label, icon, run] of actions) out.push({ id: `action:${id}`, group: "Actions", label, hint: "Run", icon, match: label, pick: { run } });
     }
     return query ? out.filter((e) => e.group === "Files" || e.match.toLowerCase().includes(query)) : out;
-  }, [code?.loadedFiles, agents, props.pendingComments, props.onOpenComments, ws, query]);
+  }, [code?.loadedFiles, agents, props.pendingComments, props.onOpenComments, props.onPickImage, ws, query]);
 
   const current = entries.length ? Math.min(selected, entries.length - 1) : -1;
   const optionId = (i: number) => `${baseId}-opt-${i}`;

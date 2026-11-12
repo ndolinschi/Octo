@@ -1,4 +1,4 @@
-import type { Folder, ProjectMode, TierPolicy } from "@octo/agent-client";
+import type { Folder, TierPolicy } from "@octo/agent-client";
 import { ArrowUp, Clock, Plus, Square } from "lucide-react";
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
@@ -6,31 +6,46 @@ import { useChatSlots } from "../../state/chatSlots";
 import { errorMessage } from "../../lib/format";
 import { canForce, refusedProvider } from "../../lib/providers/recheck";
 import { Button } from "../primitives/Button";
-import { Glyph } from "../primitives/Glyph";
+import { IconButton } from "../primitives/IconButton";
 import { Presence } from "../primitives/Presence";
 import { withAttachments } from "./attachments";
 import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
 import { modeNote } from "../../lib/modes";
-import { FolderChip, ModelChip, TierChip, useShedLabels } from "./ComposerChips";
-import { ComposerPills, type QueuedMessage } from "./ComposerPills";
+import { FolderChip, ModelChip, useShedLabels } from "./ComposerChips";
+import type { ComposerMode } from "./composerMode";
+import type { QueuedMessage } from "./ComposerPills";
 import { ContextRing } from "./ContextRing";
 import { useAttachments } from "./useAttachments";
+import { useImages } from "./useImages";
+import { useHost } from "../../state/host";
+import { FileInput, type FileInputHandle } from "../primitives/FileInput";
+import { useAgentName } from "./Transcript";
+import { errorCode as errorCodeOf, structuredError } from "../../lib/format";
+import type { SlashMenuHandle } from "./SlashMenu";
+import { octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
+import { useSlashCommands, useSlashRunner } from "./useSlash";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
 
+const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
 /** Parts of the composer that only matter once used load on demand (the initial bundle budget). */
 const ComposerMenu = lazy(() => import("./ComposerMenu").then((m) => ({ default: m.ComposerMenu })));
 const ModeChip = lazy(() => import("./ModeChip").then((m) => ({ default: m.ModeChip })));
+/** The pills band (queued messages, attachments, images, comments) only exists while there is something in it. */
+const ComposerPills = lazy(() => import("./ComposerPills").then((m) => ({ default: m.ComposerPills })));
+const RoutingLine = lazy(() => import("./RoutingLine").then((m) => ({ default: m.RoutingLine })));
+const SlashMenu = lazy(() => import("./SlashMenu").then((m) => ({ default: m.SlashMenu })));
 const ComposerHighlight = lazy(() => import("./ComposerHighlight").then((m) => ({ default: m.ComposerHighlight })));
 
 export type ComposerHandle = {
   focus(): void;
   fill(text: string): void;
   /** "Keep editing" on a plan: Plan mode for the next message, and the caret in the text. */ refinePlan(): void;
+  /** Files dropped on the conversation: images become chips, text files pills. */
+  addFiles(files: File[]): void;
 };
 
-/** Parity B3: the mode of the next message. `isDefault`: it is the project's own default, not a choice for this message. */
-export type ComposerMode = { value: ProjectMode; isDefault: boolean; choose(mode: ProjectMode): void; cycle(): void; makeDefault(): Promise<void> };
+export type { ComposerMode };
 
 export type ComposerProps = {
   running: boolean;
@@ -50,7 +65,9 @@ export type ComposerProps = {
   context: { used: number | null | undefined; size: number | null | undefined };
   /** The newest request, recalled by ↑ in an empty field. */
   lastRequest: string | null;
-  onSend(text: string): Promise<void>;
+  onSend(text: string, opts?: { attachments?: string[] }): Promise<void>;
+  /** B12: whether the orchestrator takes images (`false` is said as soon as one is attached). */
+  acceptsImages?: boolean | null | undefined;
   onCancel(): Promise<void>;
   /** The harness keeps the queue (`sendOrQueueMessage`): a message written while a turn runs goes through `onSend`, not the local queue. */
   serverQueue?: boolean;
@@ -66,13 +83,15 @@ export type ComposerProps = {
   onOverlay?(open: boolean): void;
 };
 
+const noCount = () => undefined;
+
 /** `/` or `@` at the start of a word, up to the caret: the "+" menu's inline query. */
 const TRIGGER = /(^|\s)([/@])([^\s/@]*)$/;
 
 type MenuState = { mode: "button" } | { mode: "inline"; start: number; query: string };
 
-/** Chips that can shed their label (tier, mode, folder, model). */
-const SHEDDABLE = 4;
+/** Chips that can shed their label (mode, folder, model); at most four controls before send (decision 91e). */
+const SHEDDABLE = 3;
 
 /**
  * The composer (decision 62): one container (radius 14, raised, hairline that brightens on focus;
@@ -82,7 +101,12 @@ const SHEDDABLE = 4;
  */
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(props, handle) {
   const { text, setText, area, place } = useComposerText(props.draft);
-  const attach = useAttachments();
+  const pics = useImages();
+  const attach = useAttachments(pics.add);
+  const host = useHost();
+  const picker = useRef<FileInputHandle>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [errorFields, setErrorFields] = useState<ReturnType<typeof structuredError>>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelError, setModelError] = useState<{ model: string; message: string; provider?: string } | null>(null);
@@ -94,9 +118,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const plus = useRef<HTMLButtonElement>(null);
   const row = useRef<HTMLDivElement>(null);
   const menuRef = useRef<ComposerMenuHandle>(null);
+  const slashRef = useRef<SlashMenuHandle>(null);
+  const [slash, setSlash] = useState<{ query: string } | null>(null);
+  const [slashActive, setSlashActive] = useState<string | null>(null);
+  const [modelRequest, setModelRequest] = useState<{ n: number; query: string } | undefined>(undefined);
+  const slashCommands = useSlashCommands();
+  const openModel = useCallback((query: string) => setModelRequest((r) => ({ n: (r?.n ?? 0) + 1, query })), []);
+  const runSlash = useSlashRunner({ mode: props.mode, openModel });
+  const slashListId = useId();
   const listId = useId();
   const slots = useChatSlots();
-  const [queuedCount, setQueuedCount] = useState(0);
 
   const modeChoose = props.mode?.choose;
   useImperativeHandle(
@@ -104,15 +135,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     () => ({
       focus: () => area.current?.focus(),
       fill: (value) => place(value),
+      addFiles: (files) => attach.add(files),
       refinePlan: () => {
         modeChoose?.("plan");
         area.current?.focus();
       },
     }),
-    [area, place, modeChoose],
+    [area, place, modeChoose, attach],
   );
 
-  const overlay = menu !== null || commentsOpen || chipOpen > 0;
+  const overlay = menu !== null || slash !== null || commentsOpen || chipOpen > 0;
   const onOverlay = props.onOverlay;
   useEffect(() => onOverlay?.(overlay), [overlay, onOverlay]);
   useEffect(() => () => onOverlay?.(false), [onOverlay]);
@@ -120,8 +152,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   const disabled = props.disabledReason !== null;
   const pendingComments = props.comments?.count ?? 0;
-  const hasContent = text.trim().length > 0 || attach.files.length > 0 || pendingComments > 0;
-  const canSend = !disabled && !sending && hasContent;
+  const hasContent = text.trim().length > 0 || attach.files.length > 0 || pics.images.length > 0 || pendingComments > 0;
+  const canSend = !disabled && !sending && !pics.busy && hasContent;
   const shed = useShedLabels(row, SHEDDABLE, `${props.model?.value}|${props.folders.length}|${props.tier?.value}|${props.mode?.value}`);
 
   const outgoing = () => withAttachments(text.trim(), attach.files);
@@ -131,18 +163,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     props.queue.add(message);
     setText("");
     attach.clear();
+    pics.clear();
   };
   const submit = async () => {
     if (!canSend) return;
+    // An Octo command typed out in full runs here; an agent's is sent as typed (B11).
+    const octo = octoCommandFor(text, slashCommands);
+    if (octo && attach.files.length === 0) {
+      setText("");
+      setSlash(null);
+      await runSlash(octo.command.name, octo.args);
+      return;
+    }
     if (props.running && !props.serverQueue) return queue();
     setSending(true);
     setError(null);
+    setErrorCode(null);
+    setErrorFields(null);
     try {
-      await props.onSend(outgoing());
+      // Images only: the harness wants some text with them.
+      const body = outgoing() || (pics.ready.length ? "See the attached image." : "");
+      await props.onSend(body, pics.ready.length ? { attachments: pics.ready } : undefined);
       setText("");
       attach.clear();
+      pics.clear();
     } catch (e) {
+      // The draft stays in the box (and the chips on the row) so the person can fix it and send again.
       setError(errorMessage(e));
+      setErrorCode(errorCodeOf(e));
+      setErrorFields(structuredError(e));
     } finally {
       setSending(false);
     }
@@ -150,6 +199,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   /** Re-reads the word at the caret: opens, updates or closes the inline menu. */
   const syncTrigger = (value: string, caret: number) => {
+    const q = slashQuery(value, caret);
+    setSlash(q === null ? null : { query: q });
+    if (q !== null) {
+      setMenu(null);
+      return;
+    }
     const m = TRIGGER.exec(value.slice(0, caret));
     const query = m?.[3];
     if (query !== undefined) setMenu({ mode: "inline", start: caret - query.length - 1, query });
@@ -185,7 +240,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     place(before + lead + insert + after, (before + lead + insert).length + (insert === p.insert ? 0 : 1));
   };
 
+  const chooseSlash = (row: SlashRow) => {
+    setSlash(null);
+    // A command that takes an argument, and every agent command, goes into the text to be completed; the rest run now.
+    if (row.group === "agent" || row.args) {
+      place(`/${row.name} `);
+      return;
+    }
+    setText("");
+    void runSlash(row.name, "");
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slash && slashRef.current?.onKeyDown(e)) {
+      e.preventDefault();
+      if (e.key === "Escape") setSlash(null);
+      return;
+    }
     if (menu?.mode === "inline" && menuRef.current?.onKeyDown(e)) {
       e.preventDefault();
       return;
@@ -225,15 +296,47 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     });
   };
   const inlineOpen = menu?.mode === "inline";
+  const pickImage = () => {
+    if (host.pickImages) void host.pickImages().then(pics.add, () => undefined);
+    else picker.current?.open();
+  };
+  const agentName = useAgentName(model?.value);
   const action = props.running ? (hasContent ? "queue" : "stop") : "send";
 
   return (
     <div data-composer-wrap>
       {error && (
+        <Suspense fallback={null}>
+          <ErrorNotice
+            fields={errorFields}
+            raw={error}
+            code={errorCode}
+            agent={agentName}
+            className="mb-2"
+            onRetry={() => void submit()}
+            retrying={sending}
+            {...(errorCode === "images_unsupported"
+              ? {
+                  actions: (
+                    <Button size="sm" variant="quiet" onClick={pics.clear}>
+                      Remove the images
+                    </Button>
+                  ),
+                }
+              : {})}
+          />
+        </Suspense>
+      )}
+      {props.acceptsImages === false && pics.images.length > 0 && !error && (
+        <p data-images-unsupported className="mb-2 px-3 text-sm text-fg-3">
+          {agentName ?? "This model"} can&apos;t read images, so it would ignore these. Remove them or choose another model.
+        </p>
+      )}
+      {pics.note && (
         <Notice>
-          <span className="text-err">Couldn't send.</span> {error.replace(/\.$/, "")}. Your message is still in the box.
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => void submit()} disabled={!canSend}>
-            Retry
+          <span className="text-fg-2">{pics.note}</span>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={pics.dismissNote}>
+            Dismiss
           </Button>
         </Notice>
       )}
@@ -269,7 +372,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </Button>
         </Notice>
       )}
-      <div>
+      <div className="relative">
+        {slash && (
+          <Suspense fallback={null}>
+            <SlashMenu
+              ref={slashRef}
+              box={box}
+              commands={slashCommands}
+              query={slash.query}
+              listId={slashListId}
+              onActive={setSlashActive}
+              onChoose={chooseSlash}
+              onClose={() => setSlash(null)}
+            />
+          </Suspense>
+        )}
         <form
           ref={box}
           data-composer
@@ -289,14 +406,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {...attach.dropProps}
           className={cn("octo-composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
         >
-          {slots?.queue?.({ onCount: setQueuedCount })}
-          <ComposerPills
-            files={attach.files}
-            onRemoveFile={attach.remove}
-            queue={props.queue.items}
-            onUnqueue={props.queue.remove}
-            comments={pendingComments > 0 ? props.comments?.render(commentsOpen, setCommentsOpen) : null}
-          />
+          {slots?.queue?.({ onCount: noCount })}
+          {(pics.images.length > 0 || attach.files.length > 0 || props.queue.items.length > 0 || pendingComments > 0) && (
+            <Suspense fallback={null}>
+              <ComposerPills
+                images={pics.images}
+                onRemoveImage={pics.remove}
+                files={attach.files}
+                onRemoveFile={attach.remove}
+                queue={props.queue.items}
+                onUnqueue={props.queue.remove}
+                comments={pendingComments > 0 ? props.comments?.render(commentsOpen, setCommentsOpen) : null}
+              />
+            </Suspense>
+          )}
           <label htmlFor={props.floating ? "octo-composer-float" : "octo-composer"} className="sr-only">
             Message the orchestrator
           </label>
@@ -317,33 +440,31 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
               onKeyDown={onKeyDown}
               onPaste={attach.onPaste}
-              onBlur={() => inlineOpen && setMenu(null)}
+              onBlur={() => {
+                if (inlineOpen) setMenu(null);
+                setSlash(null);
+              }}
               placeholder={props.disabledReason ?? "Ask anything, @ to mention a file"}
               aria-autocomplete="list"
-              aria-expanded={inlineOpen}
-              aria-controls={inlineOpen ? listId : undefined}
-              aria-activedescendant={inlineOpen && activeOption ? activeOption : undefined}
+              aria-expanded={inlineOpen || slash !== null}
+              aria-controls={slash ? slashListId : inlineOpen ? listId : undefined}
+              aria-activedescendant={slash ? (slashActive ?? undefined) : inlineOpen && activeOption ? activeOption : undefined}
               aria-keyshortcuts="Enter Shift+Enter Control+Enter Escape"
               className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 pt-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
             />
           </div>
           <div ref={row} data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">
-            <button
+            <IconButton
               ref={plus}
-              type="button"
-              aria-label="Attach, mention or run"
+              icon={Plus}
+              label="Attach, mention or run"
               title="Attach a file, mention, or run an action ( / or @ )"
               aria-haspopup="listbox"
               aria-expanded={menu?.mode === "button"}
+              pressed={menu?.mode === "button"}
               disabled={disabled}
               onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
-              className={cn(
-                "relative grid size-7 shrink-0 press place-items-center rounded-sm text-fg-2 hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-50",
-                menu?.mode === "button" && "bg-active text-fg",
-              )}
-            >
-              <Glyph icon={Plus} size={16} />
-            </button>
+            />
             {props.mode && (
               <Suspense fallback={<span aria-hidden className="size-7 shrink-0" />}>
                 <ModeChip
@@ -351,7 +472,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   isDefault={props.mode.isDefault}
                   onChoose={props.mode.choose}
                   onMakeDefault={() => void props.mode?.makeDefault().catch(() => undefined)}
-                  bare={shed >= 2}
+                  bare={shed >= 1}
                   disabled={disabled}
                   onOpenChange={onChip}
                 />
@@ -364,32 +485,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 unavailable={model.unavailable === true}
                 onChoose={chooseModel}
                 onChooseUnverified={(value) => chooseModel(value, true)}
-                bare={shed >= 4}
+                openRequest={modelRequest}
+                footer={
+                  props.tier ? (
+                    <Suspense fallback={null}>
+                      <RoutingLine value={props.tier.value} onChoose={(p) => void props.tier?.choose(p).catch(() => undefined)} />
+                    </Suspense>
+                  ) : undefined
+                }
+                bare={shed >= 3}
                 disabled={disabled}
                 onOpenChange={onChip}
               />
             )}
-            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 3} disabled={disabled} onOpenChange={onChip} />
-            {props.tier && (
-              <TierChip
-                value={props.tier.value}
-                onChoose={(p) => void props.tier?.choose(p).catch(() => undefined)}
-                bare={shed >= 1}
-                disabled={disabled}
-                onOpenChange={onChip}
-              />
-            )}
+            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 2} disabled={disabled} onOpenChange={onChip} />
             <span className="min-w-0 flex-1" />
             <ContextRing used={props.context.used} size={props.context.size} />
-            <SendButton
-              action={action}
-              enabled={action === "stop" ? !disabled : canSend}
-              onStop={() => void props.onCancel()}
-              badge={slots?.badge?.(queuedCount)}
-            />
+            <SendButton action={action} enabled={action === "stop" ? !disabled : canSend} onStop={() => void props.onCancel()} />
           </div>
         </form>
       </div>
+      <FileInput ref={picker} label="Attach images" accept="image/png,image/jpeg,image/webp,image/gif,image/*" multiple onFiles={pics.add} />
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Suspense fallback={null}>
@@ -402,6 +518,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onActive={setActiveOption}
               pendingComments={pendingComments}
               onOpenComments={openComments}
+              onPickImage={pickImage}
               onPick={pick}
               onClose={closeMenu}
             />
@@ -427,24 +544,20 @@ const SEND = {
 } as const;
 
 /** One 28px round button: Send (dim while empty), Stop while working, Queue while working with text (decision 62). */
-function SendButton({ action, enabled, onStop, badge }: { action: "send" | "queue" | "stop"; enabled: boolean; onStop(): void; badge?: ReactNode }) {
+function SendButton({ action, enabled, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; onStop(): void }) {
   const { icon, label } = SEND[action];
   const solid = enabled && action !== "stop";
   return (
-    <button
+    <IconButton
+      icon={icon}
+      label={label}
+      round
+      variant={solid ? "primary" : "quiet"}
       type={action === "stop" ? "button" : "submit"}
       onClick={action === "stop" ? onStop : undefined}
       disabled={!enabled}
-      aria-label={label}
-      title={label}
       data-action={action}
-      className={cn(
-        "grid size-7 shrink-0 press place-items-center rounded-full transition-[background-color,color] duration-100",
-        solid ? "bg-primary text-primary-fg hover:opacity-90" : action === "stop" ? "bg-active text-fg hover:bg-line-strong" : "bg-hover text-fg-3",
-      )}
-    >
-      <Glyph icon={icon} size={action === "stop" ? 14 : 16} fill={action === "stop" ? "currentColor" : "none"} />
-      {badge}
-    </button>
+      className={cn(!solid && action === "stop" && "bg-active text-fg")}
+    />
   );
 }

@@ -315,6 +315,30 @@ runs `eslint .` with the package as the working directory, so the root resolved 
 `primitives/zzScratch.ts` importing `../../app/OctoApp` produced no error from `packages/ui` and the expected `primitives may not import app` error from the repo root. The config now passes
 `path.join(import.meta.dirname, UI)`; the same scratch file is reported from `packages/ui`. With the rule live, `eslint src` from `packages/ui` reports 0 real `octo/layer-imports` violations (scratch file removed).
 
+## Current baseline (2026-11-12, after batch 5 and the sessions merge)
+
+Measured with `npx eslint packages/ui packages/agent-client apps/desktop` on the merged tree: **49 warnings** of
+`octo/no-native-controls` (the rule's baseline was 130 at `6ba3e27`; the migration batches B1 and B2 cleared Settings,
+Memory, Notes, Usage, Agents, Details and the side question; the Sessions tab, `components/sessions`, was written on the
+library and adds none). Per folder of `packages/ui/src/components`:
+
+| Folder | Warnings |
+| --- | --- |
+| `review` | 19 |
+| `files` | 14 |
+| `chat` | 9 |
+| `v7` | 3 |
+| `shared` | 2 |
+| `dock` | 1 |
+| `project` | 1 |
+| every other folder (`settings`, `memory`, `notes`, `usage`, `agents`, `details`, `side`, `sessions`, `home`, `shell`, `status`, `commands`, `providers`, `primitives`) | 0 |
+| **Total** | **49** |
+
+Batches still open from the table above: B3 (`review`), B4 (`v7`), B5 (`files`), B6 (`shared`), B8 (`shell`, `dock`, `status`
+for the one `dock` hit), B9 (`chat`), B7 (`project`), then B10 (rule to `error`). The other lint warnings on the tree
+(209 in all, 160 not from this rule) are the older baseline of `no-deprecated`, `no-unnecessary-condition`, `prefer-optional-chain`
+and the React hooks rules; the integration pass added none and no error remains.
+
 ## Decision 90 — one component library
 
 Final text: `docs/superpowers/specs/2026-11-10-project-harness-ui.md`, "Decision 90 — one component library". The target set of 90d was built in B0 except the names listed under "Not built" in section 8.

@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
 import { Fragment, useId, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { cn } from "../../lib/cn";
 import { parseAcp } from "../../lib/models";
@@ -16,9 +16,12 @@ import {
 } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { useShell } from "../../state/shell";
+import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
+import { IconButton } from "../primitives/IconButton";
+import { SearchField } from "../primitives/SearchField";
+import { TextField } from "../primitives/TextField";
 import { ProviderMark } from "../primitives/ProviderMark";
-import { Spinner } from "../primitives/Status";
 import { Highlight } from "../primitives/Highlight";
 import { Popover } from "../primitives/Popover";
 import type { ModelPickerProps } from "./modelPickerProps";
@@ -43,7 +46,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const { bridge } = useApp();
   const { openConnect } = useShell();
   const current = parseAcp(props.value);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(props.openRequest?.query ?? "");
   const [inside, setInside] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [typing, setTyping] = useState(false);
@@ -220,50 +223,44 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
       onClose={props.onClose}
       className="w-[min(320px,calc(100vw-16px))]"
     >
-      <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
-        <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />
-        <input
-          ref={input}
-          data-autofocus
-          role="combobox"
-          aria-expanded="true"
-          aria-controls={listId}
-          aria-activedescendant={at >= 0 ? optionId(at) : undefined}
-          aria-label={agent ? `Search ${agent.label} models` : "Search models and agents"}
-          placeholder={agent ? `Search ${agent.label} models` : props.custom ? "Search, or type a model id" : "Search models and agents"}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelected(0);
-          }}
-          onKeyDown={onKeyDown}
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
-        />
-      </div>
+      <SearchField
+        ref={input}
+        variant="header"
+        clearOnEscape={false}
+        label={agent ? `Search ${agent.label} models` : "Search models and agents"}
+        placeholder={agent ? `Search ${agent.label} models` : props.custom ? "Search, or type a model id" : "Search models and agents"}
+        value={query}
+        onChange={(v) => {
+          setQuery(v);
+          setSelected(0);
+        }}
+        onKeyDown={onKeyDown}
+        inputProps={{
+          role: "combobox",
+          "aria-expanded": true,
+          "aria-controls": listId,
+          ...(at >= 0 ? { "aria-activedescendant": optionId(at) } : {}),
+        }}
+      />
       {agent && (
         <div className="mx-1 mt-1 flex h-row shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={back}
-            className="flex h-full min-w-0 flex-1 press items-center gap-1.5 rounded-sm px-2 text-left text-xs text-fg-3 hover:bg-hover hover:text-fg"
-          >
-            <Glyph icon={ChevronLeft} size={14} />
+          <Button variant="quiet" size="xs" icon={ChevronLeft} onClick={back} className="min-w-0 flex-1 justify-start">
             <span className="truncate">{agent.label}</span>
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="quiet"
+            size="xs"
+            icon={RefreshCw}
+            loading={refreshing}
             onClick={() => void doRefresh()}
-            aria-busy={refreshing}
             title={
               agent.refreshedAt
                 ? `Ask ${agent.label} which models it offers (last read ${new Date(agent.refreshedAt).toLocaleString()})`
                 : `Ask ${agent.label} which models it offers`
             }
-            className="flex h-full shrink-0 press items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
           >
-            {refreshing ? <Spinner /> : <Glyph icon={RefreshCw} size={14} />}
             Refresh models
-          </button>
+          </Button>
         </div>
       )}
       {why && (
@@ -292,8 +289,9 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
             return (
               <div key={r.key} className="flex h-row items-center gap-2 rounded-sm bg-active px-2">
                 <span className="size-4 shrink-0" />
-                <input
+                <TextField
                   ref={other}
+                  variant="bare"
                   value={draft}
                   aria-label={`Model name for ${agent?.label ?? "the agent"}`}
                   placeholder={`e.g. ${agent?.example ?? "opus"}`}
@@ -308,7 +306,6 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
                       input.current?.focus();
                     }
                   }}
-                  className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
                 />
               </div>
             );
@@ -341,19 +338,18 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
                 )}
                 {r.kind === "agent" && <Glyph icon={ChevronRight} size={14} className="-mr-0.5 shrink-0 text-fg-3" />}
                 {r.kind === "model" && r.removable && (
-                  <button
-                    type="button"
+                  <IconButton
+                    icon={X}
+                    size="xs"
                     tabIndex={-1}
-                    aria-label={`Remove ${r.label}`}
+                    label={`Remove ${r.label}`}
                     title={`Remove ${r.label} from this list`}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (inside) removeModel(inside, r.value.slice(`acp:${inside}/`.length));
                     }}
-                    className="-mr-1 grid size-6 shrink-0 place-items-center rounded-xs text-fg-3 opacity-0 group-hover:opacity-100 hover:text-fg"
-                  >
-                    <Glyph icon={X} size={14} />
-                  </button>
+                    className="-mr-1 opacity-0 group-hover:opacity-100"
+                  />
                 )}
               </div>
             </Fragment>
@@ -363,13 +359,14 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
           <div className="flex min-h-row items-center gap-2 px-2 text-xs text-fg-3">
             <span className="min-w-0 flex-1">{empty}</span>
             {!view && load.status === "error" && (
-              <button type="button" onClick={() => void refresh()} className="shrink-0 rounded-xs px-1 text-fg-2 hover:text-fg">
+              <Button variant="quiet" size="xs" onClick={() => void refresh()}>
                 Try again
-              </button>
+              </Button>
             )}
           </div>
         )}
       </div>
+      {props.footer && !agent && <div className="shrink-0 border-t border-line px-3 py-1.5">{props.footer}</div>}
     </Popover>
   );
 }
@@ -389,17 +386,16 @@ function UnverifiedActions({ checking, still, onCheck, onUse }: { checking: bool
     e.stopPropagation();
     fn();
   };
-  const cls = "shrink-0 rounded-xs px-1 text-xs text-fg-2 hover:text-fg";
   return (
     <span className="flex shrink-0 items-center gap-1">
       {still && !checking && <span className="text-xs text-warn">Still logged out</span>}
-      <button type="button" tabIndex={-1} aria-busy={checking} disabled={checking} onClick={stop(onCheck)} className={cls}>
-        {checking ? <Spinner /> : "Check again"}
-      </button>
+      <Button variant="quiet" size="xs" tabIndex={-1} loading={checking} onClick={stop(onCheck)}>
+        Check again
+      </Button>
       {onUse && (
-        <button type="button" tabIndex={-1} onClick={stop(onUse)} className={cls}>
+        <Button variant="quiet" size="xs" tabIndex={-1} onClick={stop(onUse)}>
           Use anyway
-        </button>
+        </Button>
       )}
     </span>
   );

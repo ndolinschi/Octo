@@ -33,10 +33,6 @@ export const FILE_GROUP_MIN_FRACTION = 0.45;
 /** Largest fraction of the row a new tool group takes, and the fraction used before the row has been measured. */
 export const TOOL_GROUP_MAX_FRACTION = 0.5;
 export const TOOL_GROUP_UNMEASURED_FRACTION = 0.3;
-/** A file view narrower than this floats its tree over the editor instead of giving it a column. */
-export const FILE_VIEW_OVERLAY_BELOW = 560;
-/** A tree column that would leave the editor narrower than this floats over it instead (closed by default). */
-export const EDITOR_MIN_WIDTH = 480;
 /** Below this conversation width the composer's context bar folds folders and routing into a `…` menu (decision 30). */
 export const CONTEXT_BAR_FOLD_BELOW = 420;
 

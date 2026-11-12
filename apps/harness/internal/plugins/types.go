@@ -51,6 +51,8 @@ type Agent struct {
 	ModelLabels map[string]string `json:"model_labels,omitempty"`
 	ModelsNote  string            `json:"models_note,omitempty"`
 	Hint        string            `json:"hint,omitempty"`
+	// LoginCommand is the terminal command that logs the agent's CLI in (manifest auth.command).
+	LoginCommand string `json:"login_command,omitempty"`
 	// InstallHint says how to install the agent (manifest `install`).
 	InstallHint string `json:"install_hint,omitempty"`
 	// FlatRate: the agent runs on a flat-rate subscription; set by the manifest's

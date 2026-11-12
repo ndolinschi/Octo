@@ -1,31 +1,35 @@
 import type { Project } from "@octo/agent-client";
+import { useRef } from "react";
+import { useRowKeys } from "../../lib/hooks";
 import { prompts } from "../../lib/starters";
+import { ListRow } from "../primitives/ListRow";
+import { SectionHeader } from "../primitives/SectionHeader";
+
+/** Decision 91f: at most this many suggestions. */
+const MAX = 3;
 
 /**
- * Starter prompts under the empty project's composer: quiet 32px rows (no box, no icons — three different
- * pictures for three sentences only added noise), [title] 8 [the prompt, muted, truncated]; the full prompt
- * is the row's tooltip (pointer and keyboard focus) and its accessible description, and picking one puts it
- * in the composer, where it can be read and edited before sending.
+ * Suggestions under the empty project's composer (decisions 52, 91f): a quiet caption and `ListRow`s (hover, focus, arrow
+ * keys; Enter or a click puts the prompt in the composer, where it can be read and edited before sending). The full
+ * prompt is the row's tooltip.
  */
 export function StarterPrompts({ project, onPick }: { project: Project; onPick(text: string): void }) {
-  const list = prompts(project);
+  const list = prompts(project).slice(0, MAX);
+  const box = useRef<HTMLUListElement>(null);
+  useRowKeys(box);
   if (!list.length) return null;
   return (
-    <ul aria-label="Starter prompts" className="flex flex-col px-1">
-      {list.map((p) => (
-        <li key={p.title}>
-          <button
-            type="button"
-            data-row
-            onClick={() => onPick(p.text)}
-            title={p.text}
-            aria-description={p.text}
-            className="flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-left text-sm press-row hover:bg-hover"
-          >
-            <span className="min-w-0 truncate text-fg-2">{p.title}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col px-1">
+      <SectionHeader inset as="h2">
+        Suggestions
+      </SectionHeader>
+      <ul ref={box} aria-label="Suggestions" className="flex flex-col">
+        {list.map((p) => (
+          <li key={p.title}>
+            <ListRow tone="quiet" size="md" title={p.title} tip={p.text} onClick={() => onPick(p.text)} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { Check, Copy } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
+import { Button } from "../primitives/Button";
 import { lazy, memo, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -79,14 +79,9 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     <div className="my-3 overflow-hidden rounded-md bg-code-bg p-card">
       <div className="mb-2 flex h-5 items-center">
         <span className="font-mono text-xs text-fg-3">{lang ?? "text"}</span>
-        <button
-          type="button"
-          onClick={() => copy(code)}
-          className="-my-0.5 -mr-2 ml-auto inline-flex h-6 press items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
-        >
-          {copied ? <Glyph icon={Check} size={14} /> : <Glyph icon={Copy} size={14} />}
+        <Button variant="quiet" size="xs" icon={copied ? Check : Copy} onClick={() => copy(code)} className="-my-0.5 -mr-2 ml-auto">
           {copied ? "Copied" : "Copy"}
-        </button>
+        </Button>
       </div>
       {/* Plain first, coloured when the highlighter is in: same text, same metrics (colours only). */}
       <pre className="octo-code overflow-x-auto font-mono text-xs leading-5">

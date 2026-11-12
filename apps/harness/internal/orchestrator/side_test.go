@@ -465,7 +465,7 @@ func TestSideRoundLimit(t *testing.T) {
 	defer cancel()
 	_, id := a.ask(pid, "never answer")
 	f, _ := awaitSide(t, ch, id)
-	if f.Type != "side.error" || !strings.Contains(f.Error, "6 tool rounds") {
+	if f.Type != "side.error" || !strings.Contains(f.Error, "more steps") {
 		t.Fatalf("final = %+v", f)
 	}
 	if n := len(llm.sideRequests()); n != orchestrator.SideMaxRounds+1 {

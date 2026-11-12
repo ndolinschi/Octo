@@ -1,16 +1,14 @@
 import type { ProviderList } from "@octo/agent-client";
 import { useId, useMemo, useState } from "react";
-import { canRun, chipLabel, useHiddenModels, useProviders } from "../../lib/providers";
+import { useHiddenModels, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
-import { Button } from "../primitives/Button";
-import { Notice } from "../primitives/Notice";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { useHarnessSettings } from "./harnessSettings";
 import { modelOptions, MODEL_ROWS, type ModelRow } from "./modelRows";
-import { useSettingsActions } from "./pageContext";
 import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { ModelsProblem } from "./ModelsProblem";
 import { ProjectModels } from "./ProjectModels";
 import { useProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
@@ -45,20 +43,26 @@ export function ModelsSection(props: { projectId?: string | null }) {
           onChange={setScope}
           options={[
             { id: "defaults", label: "Defaults", title: "What this machine starts new projects with" },
-            { id: "project", label: project.name, title: "This project's own models" },
+            {
+              id: "project",
+              label: project.name,
+              title: projects.length > 1 ? "This project's own models; press again to pick another project" : "This project's own models",
+              // Several projects: the tab's label is the menu that chooses which one (the scope is chosen once, here).
+              ...(projects.length > 1
+                ? { menu: projects.map((p) => ({ id: p.id, label: p.name, checked: p.id === project.id, run: () => setPick(p.id) })) }
+                : {}),
+            },
           ]}
           className="px-0"
         />
-      )}
-      {projectScope && projects.length > 1 && (
-        <SettingsGroup label="Project">
-          <ProjectPick projects={projects} value={project.id} onChange={setPick} />
-        </SettingsGroup>
       )}
       {projectScope && list && <ProjectModels key={project.id} project={project} list={list} update={update} />}
       {projectScope && !list && <SkeletonList count={4} size="lg" twoLine />}
       {!projectScope && (
         <>
+          {list && harness.load.status === "ready" && (
+            <ModelsProblem list={list} values={MODEL_ROWS.map((d) => (typeof harness.get(d.id)?.value === "string" ? String(harness.get(d.id)?.value) : ""))} />
+          )}
           <SettingsGroup label="Defaults for new projects" footer="A project keeps the models it was created with; change them in its own tab.">
             {loading && <SkeletonList count={MODEL_ROWS.length} size="lg" twoLine />}
             {harness.load.status === "unavailable" && (
@@ -84,30 +88,8 @@ export function ModelsSection(props: { projectId?: string | null }) {
   );
 }
 
-function ProjectPick(props: { projects: readonly { id: string; name: string }[]; value: string; onChange(id: string): void }) {
-  const id = useId();
-  return (
-    <SettingsRow
-      title="Settings for"
-      htmlFor={id}
-      description="Pick the project whose models to show."
-      control={
-        <Select
-          id={id}
-          label="Settings for"
-          value={props.value}
-          options={props.projects.map((p) => ({ value: p.id, label: p.name }))}
-          onChange={props.onChange}
-          className={CONTROL_W.md}
-        />
-      }
-    />
-  );
-}
-
 function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
   const harness = useHarnessSettings();
-  const { connect } = useSettingsActions();
   const [saved, run] = useSave();
   const [hidden] = useHiddenModels();
   const id = useId();
@@ -115,30 +97,13 @@ function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
   const value = typeof s?.value === "string" ? s.value : "";
   const options = useMemo(() => modelOptions(list, new Set(hidden), value), [list, hidden, value]);
   if (!s) return null;
-  const runs = !value || canRun(list, value);
   return (
     <SettingsRow
       rowId={def.rowId}
       title={def.title}
       htmlFor={id}
       description={s.editable ? def.description : (s.note ?? `Set by the ${s.source}.`)}
-      status={
-        !runs ? (
-          <Notice
-            tone="warn"
-            className="mt-1"
-            action={
-              <Button variant="link" size="xs" onClick={() => connect("providers")}>
-                Connect a provider
-              </Button>
-            }
-          >
-            {chipLabel(value, list)} cannot run: its provider is not connected.
-          </Notice>
-        ) : (
-          <SaveStatus state={saved} />
-        )
-      }
+      status={<SaveStatus state={saved} />}
       control={
         <Select
           id={id}

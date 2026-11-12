@@ -234,7 +234,8 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
             kind: "agent",
             label: "Grok",
             state: "not_installed",
-            reason: "grok: command not found on PATH",
+            reason: "Grok is not installed.",
+            problem: { message: "Grok is not installed.", hint: "Install it, then check again.", details: "grok: command not found on PATH" },
             install_hint: GROK_INSTALL,
             login_hint: GROK_LOGIN,
             models: [],
@@ -261,7 +262,7 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
               ...(refreshed.has(p.id) || (p.id === "claude-code" && !claudeEmpty) || (owner && p.models.length > 0) ? { models_refreshed_at: SEEN_AT } : {}),
             }
           : {}),
-        ...(error ? { models_error: error } : {}),
+        ...(error ? { models_error: error, models_problem: { message: error, hint: "Check again in a moment.", action: "recheck_provider" as const } } : {}),
       };
     };
     const connected = list.filter((p) => p.state === "ready").length;
@@ -285,7 +286,7 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<
       await new Promise((r) => setTimeout(r, 700));
       const p = providers().providers.find((x) => x.id === id);
       if (!p) throw new BridgeError(404, "not_found", `no provider ${id}`);
-      if (refreshFails()) failed.set(id, `${p.label} did not start: exit status 1`);
+      if (refreshFails()) failed.set(id, `${p.label} did not start.`);
       else {
         failed.delete(id);
         refreshed.add(id);

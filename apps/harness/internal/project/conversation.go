@@ -85,7 +85,7 @@ func (s *Service) PostMessage(ctx context.Context, pid, text string, mode *strin
 	case errors.Is(err, orchestrator.ErrQueueFull):
 		return msg, nil, queueFull()
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return msg, nil, turnInProgress("a turn is already running for this project")
+		return msg, nil, turnInProgress()
 	case errors.Is(err, projectstore.ErrNotFound):
 		return msg, nil, notFound("project")
 	}

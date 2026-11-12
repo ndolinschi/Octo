@@ -361,6 +361,26 @@ func scaleTo(parts []int64, total int64) []int64 {
 		out[best]++
 		rem[best] = -1
 	}
+	// A part that holds something never reads as empty: a share that rounds to
+	// zero gets one token, taken from the largest part. (Which parts round to
+	// zero depends on the exact size of every part, such as the path in the
+	// briefing, so without this an edge case flipped from run to run.)
+	for i, p := range parts {
+		if p <= 0 || out[i] > 0 {
+			continue
+		}
+		big := 0
+		for j := range out {
+			if out[j] > out[big] {
+				big = j
+			}
+		}
+		if out[big] <= 1 {
+			break
+		}
+		out[big]--
+		out[i]++
+	}
 	return out
 }
 

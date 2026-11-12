@@ -496,7 +496,7 @@ func (s *Service) Delete(ctx context.Context, pid string) error {
 		return err
 	}
 	if s.turns.Running(pid) {
-		return turnInProgress("project has a running turn; cancel it first")
+		return turnInProgress()
 	}
 	s.turns.CancelSide(pid)
 	s.turns.CloseProject(pid)

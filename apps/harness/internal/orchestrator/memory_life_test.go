@@ -57,7 +57,7 @@ func digestRig(t *testing.T) *rig {
 func (r *rig) settle(t *testing.T, pid string) {
 	t.Helper()
 	eventually(t, "the turn to be over", func() bool { return !r.orch.Running(pid) })
-	time.Sleep(300 * time.Millisecond) // the digest is off the request path
+	r.orch.WaitSettledForTest() // the digest is off the request path: wait for it, not for a fixed time
 }
 
 func exchangesOf(t *testing.T, r *rig, pid string) []projectstore.Exchange {

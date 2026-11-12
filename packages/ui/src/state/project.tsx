@@ -8,6 +8,7 @@ import {
   type Project,
   type ProjectInput,
   type ProjectMode,
+  type ProjectSession,
   type ProjectState,
 } from "@octo/agent-client";
 import { rewoundLabel } from "../lib/compact";
@@ -15,8 +16,12 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Rea
 import { useApp } from "./app";
 import { useActivity } from "./activity";
 import { projectReducer } from "./projectReducer";
+import { transcriptSession } from "../lib/sessions/current";
 import { errorMessage } from "../lib/format";
+import { useLatest } from "../lib/hooks";
 import { createRequiredContext } from "../lib/context";
+
+export type SessionChange = { kind: "upsert"; session: ProjectSession } | { kind: "remove"; ids: string[] } | { kind: "current"; id: string; previous: string };
 
 export type LiveStatus = "connecting" | "live" | "reconnecting";
 
@@ -30,7 +35,7 @@ type ProjectValue = {
   reload(): Promise<void>;
   ensureMessages(agentId: string): void;
   /** `mode` (parity B3) overrides the project's default for this message only. */
-  send(text: string, opts?: { mode: ProjectMode }): Promise<void>;
+  send(text: string, opts?: { mode?: ProjectMode; attachments?: string[] }): Promise<void>;
   cancel(): Promise<void>;
   /** The texts `message.steered` named this session: those user messages landed in a running turn (parity B6). */
   steered: readonly string[];
@@ -44,6 +49,11 @@ type ProjectValue = {
   askSide(text: string): Promise<void>;
   loadSide(): Promise<void>;
   clearSide(): Promise<void>;
+  /**
+   * Applies a session change the person just made to `state.sessions` at once (the harness's `session.*` events say the same
+   * a moment later; applying both is harmless). A bridge without those events (the demo's memory sessions) relies on this.
+   */
+  applySession(change: SessionChange): void;
   /** Observe raw bridge events on this project's existing subscription (no extra connection). */
   onEvent(listener: (event: BridgeEvent) => void): () => void;
 };
@@ -67,21 +77,39 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
   const [steered, setSteered] = useState<readonly string[]>([]);
 
   const fetchMessages = useCallback(
-    async (agentId: string) => {
+    async (agentId: string, scope?: { sessionId?: string }) => {
       loaded.current.add(agentId);
       try {
         // The transcript carries the compaction markers (decision 37); an older harness only has the message list.
         const transcript = await bridge
-          .getTranscript(projectId, agentId)
+          .getTranscript(projectId, agentId, scope?.sessionId === undefined ? undefined : { sessionId: scope.sessionId })
           .catch(async () => ({ messages: await bridge.listMessages(projectId, agentId), compactions: [] }));
-        dispatch({ type: "messages", agentId, messages: transcript.messages });
-        if (transcript.compactions.length) dispatch({ type: "compactions", agentId, markers: transcript.compactions });
+        // A resumed session's conversation replaces what the state held (ids of two sessions must not mix).
+        if (scope) dispatch({ type: "transcript", agentId, messages: transcript.messages, markers: transcript.compactions });
+        else {
+          dispatch({ type: "messages", agentId, messages: transcript.messages });
+          if (transcript.compactions.length) dispatch({ type: "compactions", agentId, markers: transcript.compactions });
+        }
       } catch {
         // Not loaded: the transcript shows its empty state, and the next `ensureMessages` (or a reconnect) tries again.
         loaded.current.delete(agentId);
       }
     },
     [bridge, projectId],
+  );
+
+  const sessionsRef = useLatest(state.sessions);
+  const orchestratorRef = useRef<string | null>(null);
+  /** `session.current`: the conversation shows the new current session (resumed: only its messages; the newest: all, with markers). */
+  const showSession = useCallback(
+    (currentId: string) => {
+      const agentId = orchestratorRef.current;
+      if (!agentId) return;
+      // The event may arrive before the list has the session: `transcriptSession` then reads an older list and shows everything.
+      const sessionId = transcriptSession(sessionsRef.current.list, currentId);
+      void fetchMessages(agentId, sessionId === undefined ? {} : { sessionId });
+    },
+    [fetchMessages, sessionsRef],
   );
 
   const syncAll = useCallback(async () => {
@@ -91,15 +119,18 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         bridge.listAgents(projectId),
         bridge.listNotes(projectId),
         // Project sessions: an older harness has none; a failed read leaves the list as it is (`session.*` events keep it current).
-        bridge.listSessions ? bridge.listSessions(projectId, { limit: 200 }).catch(() => null) : null,
+        bridge.listSessions ? bridge.listSessions(projectId, { limit: 200, archived: "all" }).catch(() => null) : null,
       ]);
       setProject(p);
+      orchestratorRef.current = p.orchestrator_agent_id;
       setLoadError(null);
       dispatch({ type: "agents", agents });
       dispatch({ type: "notes", notes });
       if (sessions) dispatch({ type: "sessions", sessions });
+      // A resumed (older) session stays what the conversation shows after a reload or reconnect.
+      const resumed = sessions ? transcriptSession(sessions, sessions.find((s) => s.kind === "main" && s.current)?.id ?? null) : undefined;
       const ids = new Set([p.orchestrator_agent_id, ...loaded.current]);
-      await Promise.all([...ids].map(fetchMessages));
+      await Promise.all([...ids].map((id) => fetchMessages(id, id === p.orchestrator_agent_id && resumed !== undefined ? { sessionId: resumed } : undefined)));
     } catch (e) {
       setLoadError(errorMessage(e));
     }
@@ -127,13 +158,14 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
           const { type: _type, seq: _seq, agent_id: agentId, ...marker } = event;
           dispatch({ type: "compactions", agentId, markers: [{ ...marker, label: "history compacted" }] });
         }
+        if (event.type === "session.current") showSession(event.session_id);
         if (event.type === "turn.finished" || event.type === "project.updated") void refreshProjects();
         for (const observe of observers.current) observe(event);
       },
     });
     void syncAll();
     return unsubscribe;
-  }, [bridge, projectId, syncAll, refreshProjects]);
+  }, [bridge, projectId, syncAll, refreshProjects, showSession]);
 
   // The sidebar and Home read the open project's orchestrator state from its live agents (decision 23).
   const activity = useActivity();
@@ -212,6 +244,15 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         await bridge.clearSide(projectId);
         dispatch({ type: "sideCleared" });
       },
+      applySession: (change) => {
+        if (change.kind === "upsert") dispatch({ type: "event", event: { type: "session.updated", seq: 0, session: change.session } });
+        else if (change.kind === "remove")
+          for (const id of change.ids) dispatch({ type: "event", event: { type: "session.updated", seq: 0, session_id: id, deleted: true } });
+        else {
+          dispatch({ type: "event", event: { type: "session.current", seq: 0, session_id: change.id, previous_session_id: change.previous } });
+          showSession(change.id);
+        }
+      },
       onEvent: (listener) => {
         observers.current.add(listener);
         return () => {
@@ -219,7 +260,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         };
       },
     }),
-    [projectId, project, loadError, state, live, running, syncAll, fetchMessages, bridge, refreshProjects, steered],
+    [projectId, project, loadError, state, live, running, syncAll, fetchMessages, bridge, refreshProjects, steered, showSession],
   );
 
   return <ProjectContextProvider value={value}>{children}</ProjectContextProvider>;

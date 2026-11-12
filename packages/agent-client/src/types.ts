@@ -1,6 +1,20 @@
 import type { CommandFinishedEvent, CommandOutputEvent, CommandStartedEvent, ProjectCommand, ReviewConfig, ReviewConfigInput } from "./commands";
 import type { ReviewListUpdatedEvent, ReviewUpdatedEvent, ReviewWorkspace, ReviewWorkspaceEvent } from "./review";
 
+/** A button the UI can offer for a failure (decision 94b); an absent `action` means none. */
+export type ErrorAction = "recheck_provider" | "connect_provider" | "retry" | "open_settings" | "update_agent";
+
+/** The optional parts of a failure beside its plain one-sentence message. `details` is technical text (a fold). */
+export type ErrorFields = {
+  hint?: string;
+  command?: string;
+  action?: ErrorAction;
+  details?: string;
+};
+
+/** A failure or notice in structured form (`Provider.problem`, `TurnFinishedEvent.notice`). */
+export type ErrorInfo = ErrorFields & { message: string };
+
 export type ShellKind = "desktop" | "web" | "vscode";
 
 export type AgentBridgeConfig = {
@@ -461,13 +475,17 @@ export type ToolFinishedEvent = {
 };
 export type NoteChangedEvent = { type: "note.changed"; seq: number; note: Note | null; note_id: string };
 export type ProjectUpdatedEvent = { type: "project.updated"; seq: number; project: Project };
-export type TurnFinishedEvent = {
+export type TurnFinishedEvent = ErrorFields & {
   type: "turn.finished";
   seq: number;
   status: TurnStatus;
+  /**
+   * The plain one-sentence message of the failure; for a completed turn with a standing notice it is
+   * `warning: <message>` (the notice also comes structured in `notice`).
+   */
   error: string | null;
-  /** What the user can do about `error`, sent apart from it (older harnesses put it inside the text). */
-  hint?: string;
+  /** A standing notice of a completed turn (an agent that ran without Octo's tools), in structured form. */
+  notice?: ErrorInfo;
 };
 
 export type AgentCompactedEvent = {
@@ -521,14 +539,14 @@ export type ContextUpdatedEvent = { type: "context.updated"; seq: number; projec
 export type SideDeltaEvent = { type: "side.delta"; seq: number; side_id: string; text: string };
 export type SideDoneEvent = { type: "side.done"; seq: number; side_id: string; message: SideMessage };
 /** The question failed or was cancelled (`error` is "cancelled" when the conversation was cleared); its stored question is gone. */
-export type SideErrorEvent = {
+export type SideErrorEvent = ErrorFields & {
   type: "side.error";
   seq: number;
   side_id: string;
+  /** The plain one-sentence message (`cancelled` when the conversation was cleared). */
   error: string;
   /** Parity B13: `no_provider` when nothing could answer; `hint` is what to do (an agent that is not logged in). */
   code?: string;
-  hint?: string;
 };
 /** Parity B13: the live activity of a side answer, like thinking.delta, agent.activity and tool.* of a turn. */
 export type SideThinkingEvent = { type: "side.thinking"; seq: number; side_id: string; text: string };
@@ -579,13 +597,14 @@ export type QueueUpdatedEvent = { type: "queue.updated"; seq: number; paused: bo
  * How many approvals and forms wait for the user. `state` is present when a turn started or ended: `failed` (with the
  * `error`) after a failed turn, `none` when a retry starts; events without it leave the last state unchanged.
  */
-export type ProjectAttentionEvent = {
+export type ProjectAttentionEvent = ErrorFields & {
   type: "project.attention";
   seq: number;
   needs_you: boolean;
   approvals: number;
   inputs: number;
   state?: "none" | "failed";
+  /** The plain one-sentence message of the failure (decision 94b); `hint`, `command`, `action`, `details` come with it. */
   error?: string;
 };
 
@@ -700,8 +719,10 @@ export type Provider = {
   kind: ProviderKind;
   label: string;
   state: ProviderState;
-  /** Why it is not ready; empty when ready. */
+  /** Why it is not ready, one plain sentence ("GitHub Copilot is not logged in."); empty when ready. */
   reason: string;
+  /** `reason` in structured form (hint, command, action, details) while the provider is not ready. */
+  problem?: ErrorInfo;
   /** One line on how to install the agent; empty when not known. */
   install_hint: string;
   /** One line on how to log in or connect; empty when not known. */
@@ -713,8 +734,10 @@ export type Provider = {
   flat_rate: boolean;
   /** Agents: when the harness last looked for the agent's models (RFC 3339), found or not. */
   models_refreshed_at?: string;
-  /** Agents: why the last look failed (short text); absent when it worked. Not an error of the provider. */
+  /** Agents: why the last look failed (one plain sentence); absent when it worked. Not an error of the provider. */
   models_error?: string;
+  /** `models_error` in structured form; the technical text is in its `details`. */
+  models_problem?: ErrorInfo;
   /** Agents: the manifest's remark on its model list (where it comes from, how far to trust it). */
   models_note?: string;
   /** Agents: any model name may be chosen, listed or not (`acp:<id>/<anything>`). */
@@ -811,6 +834,8 @@ export type PluginAgent = {
   default_model?: string;
   /** One-line login instruction from the manifest. */
   hint?: string;
+  /** The terminal command that logs the agent in (manifest `auth.command`); absent when none is known. */
+  login_command?: string;
   /** Why `available` is false (a required command is missing); absent when available. */
   unavailable_reason?: string;
   /** One-line instruction for installing the agent (manifest `install`); absent when the manifest has none. */

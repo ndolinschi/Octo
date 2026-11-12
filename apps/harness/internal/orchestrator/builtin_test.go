@@ -36,7 +36,7 @@ func TestNoBuiltinLoopOrchestratorTurnFailsWithoutUpstreamCall(t *testing.T) {
 		t.Fatalf("turn status = %s, want failed", st)
 	}
 	orch := r.agents(t, pid)[0]
-	if orch.Error == nil || *orch.Error != config.NoBuiltinLoopMessage {
+	if orch.Error == nil || *orch.Error != "The built-in agent has no API key." {
 		t.Fatalf("orchestrator error = %v, want the one message", orch.Error)
 	}
 	if n := up.n.Load(); n != 0 {

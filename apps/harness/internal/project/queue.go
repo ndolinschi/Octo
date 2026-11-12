@@ -7,6 +7,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // QueueState is GET /queue.
@@ -73,8 +74,7 @@ func (s *Service) SendNow(ctx context.Context, pid, qid string, interrupt bool) 
 	running := s.turns.Running(pid)
 	err = s.turns.SendNow(ctx, pid, qid, interrupt)
 	if errors.Is(err, orchestrator.ErrSteerUnsupported) {
-		return false, &Error{Kind: KindConflict, Code: "steer_unsupported",
-			Message: "this agent cannot take a message in the middle of a turn: it is sent when the turn ends, or send it with interrupt to stop the turn now"}
+		return false, of(KindConflict, usererr.SteerUnsupported())
 	}
 	return err == nil && running && !interrupt, queueErr(err)
 }

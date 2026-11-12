@@ -230,7 +230,7 @@ func TestDiscoveryFailuresAreRecordedNotThrown(t *testing.T) {
 			return []plugins.Agent{fakeAgentFor("fake", log, nil)}
 		})
 		p, _ := r.svc.RefreshModels(context.Background(), "fake")
-		if p.ModelsError != "the agent advertised no models" {
+		if p.ModelsProblem == nil || p.ModelsProblem.Details != "the agent advertised no models" {
 			t.Fatalf("error = %q", p.ModelsError)
 		}
 	})
@@ -242,7 +242,7 @@ func TestDiscoveryFailuresAreRecordedNotThrown(t *testing.T) {
 		})
 		start := time.Now()
 		p, _ := r.svc.RefreshModels(context.Background(), "slow")
-		if p.ModelsError != "timed out after 300ms" || time.Since(start) > 10*time.Second {
+		if p.ModelsProblem == nil || p.ModelsProblem.Details != "timed out after 300ms" || time.Since(start) > 10*time.Second {
 			t.Fatalf("error = %q after %v", p.ModelsError, time.Since(start))
 		}
 	})
@@ -371,7 +371,7 @@ func TestModelsCommandIsUsedBeforeASession(t *testing.T) {
 			return []plugins.Agent{a}
 		})
 		p, _ := r.svc.RefreshModels(context.Background(), "grok")
-		if !strings.Contains(p.ModelsError, "models command failed") || !strings.Contains(p.ModelsError, "advertised no models") {
+		if p.ModelsProblem == nil || !strings.Contains(p.ModelsProblem.Details, "models command failed") || !strings.Contains(p.ModelsProblem.Details, "advertised no models") {
 			t.Fatalf("error = %q", p.ModelsError)
 		}
 	})

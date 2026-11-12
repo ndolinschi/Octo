@@ -13,6 +13,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 func (rt *runtime) sideSystemPrompt() string {
@@ -96,13 +97,13 @@ func (rt *runtime) answerSide(ctx context.Context, run *side, history []anthropi
 	}
 	res, err := loop.Run(ctx, history)
 	if errors.Is(err, agent.ErrMaxTurns) {
-		return "", fmt.Errorf("the side question used all %d tool rounds without an answer", SideMaxRounds)
+		return "", usererr.TooManySteps(fmt.Sprintf("the side question used all %d tool rounds without an answer", SideMaxRounds))
 	}
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(res.Text) == "" {
-		return "", errors.New("the model returned no answer")
+		return "", usererr.ModelCallFailed("the model returned no answer")
 	}
 	return res.Text, nil
 }
@@ -117,17 +118,17 @@ func (rt *runtime) failSide(run *side, err error) {
 	if derr := rt.db.DeleteSide(c, run.id); derr != nil {
 		rt.logErr("drop failed side question", derr)
 	}
-	fields := map[string]any{"side_id": run.id, "error": err.Error()}
-	switch {
-	case errors.Is(err, context.Canceled):
+	fields := map[string]any{"side_id": run.id}
+	if errors.Is(err, context.Canceled) {
 		fields["error"] = "cancelled"
-	case errors.Is(err, ErrNoProvider):
-		fields["code"] = "no_provider"
-	case IsNoBuiltinLoop(err):
-		fields["code"] = "no_provider"
+		rt.publish(events.SideError, fields)
+		return
 	}
-	if h := hintOf(err); h != "" {
-		fields["hint"] = h
+	u := rt.redactProblem(describe(err))
+	fields["error"] = u.Message
+	u.AddTo(fields, "hint", "command", "action", "details")
+	if errors.Is(err, ErrNoProvider) || IsNoBuiltinLoop(err) {
+		fields["code"] = "no_provider"
 	}
 	rt.publish(events.SideError, fields)
 }

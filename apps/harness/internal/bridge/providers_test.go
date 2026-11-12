@@ -182,7 +182,7 @@ func (r provResponse) entry(t *testing.T, id string) provEntry {
 }
 
 type apiError struct {
-	Error struct{ Code, Message, Provider, Reason string } `json:"error"`
+	Error struct{ Code, Message, Provider, Reason, Hint, Command, Action, Details string } `json:"error"`
 }
 
 func (e *provEnv) createProject(t *testing.T, models map[string]string, wantStatus int, v any) {
@@ -231,7 +231,7 @@ func TestProvidersEndpointShape(t *testing.T) {
 		t.Fatalf("connected = %d, want the 4 installed agents", r.Connected)
 	}
 	api := r.entry(t, "api")
-	if api.Kind != "api" || api.State != "not_connected" || api.Reason != config.NoBuiltinLoopMessage || len(api.Models) != 3 ||
+	if api.Kind != "api" || api.State != "not_connected" || api.Reason != "Anthropic API is not connected." || len(api.Models) != 3 ||
 		api.Models[0].Source != "catalogue" || api.DefaultModel != "claude-sonnet-5-5" {
 		t.Fatalf("api = %+v", api)
 	}
@@ -259,7 +259,7 @@ func TestProviderStatesFollowTheLoginProbe(t *testing.T) {
 	waitUntil(t, "the probe result", func() bool { return e.providers(t).entry(t, "copilot").State == "not_logged_in" })
 	r := e.providers(t)
 	c := r.entry(t, "copilot")
-	if c.LoginHint != "Run `copilot login` once." || c.InstallHint == "" || c.Reason != "not logged in" {
+	if c.LoginHint != "Run `copilot login` once." || c.InstallHint == "" || c.Reason != "Copilot is not logged in." {
 		t.Fatalf("copilot = %+v", c)
 	}
 	if r.Connected != 0 || r.Suggested.Orchestrator != "" {
@@ -333,7 +333,7 @@ func TestModelUnavailableOnCreateAndPatch(t *testing.T) {
 	var er apiError
 	e.createProject(t, map[string]string{"orchestrator": "acp:copilot"}, http.StatusUnprocessableEntity, &er)
 	if er.Error.Code != "model_unavailable" || er.Error.Provider != "copilot" ||
-		!strings.Contains(er.Error.Reason, "not logged in") || !strings.Contains(er.Error.Reason, "copilot login") {
+		er.Error.Reason != "Copilot is not logged in." || er.Error.Command != "copilot login" || er.Error.Action != "recheck_provider" || er.Error.Hint == "" {
 		t.Fatalf("create = %+v", er)
 	}
 	// A built-in model with no key: the API is the provider.
@@ -579,7 +579,7 @@ func TestRetryOfAFailedTurnReusesTheUserMessage(t *testing.T) {
 
 	id1, _ := post()
 	first := finish()
-	if first.status != "failed" || !strings.Contains(first.errMsg.(string), "No API key") {
+	if first.status != "failed" || !strings.Contains(first.errMsg.(string), "no API key") {
 		t.Fatalf("first turn = %s %v", first.status, first.errMsg)
 	}
 	// The failed state: the project says failed (not needs_you), the error sits on the orchestrator row.
@@ -598,7 +598,7 @@ func TestRetryOfAFailedTurnReusesTheUserMessage(t *testing.T) {
 	}
 	e.into(t, "GET", "/v1/projects/"+pid, nil, http.StatusOK, &pj)
 	e.into(t, "GET", "/v1/projects/"+pid+"/agents/"+pj.OrchestratorAgentID, nil, http.StatusOK, &agent)
-	if agent.Error == nil || !strings.Contains(*agent.Error, "No API key") {
+	if agent.Error == nil || !strings.Contains(*agent.Error, "no API key") {
 		t.Fatalf("agent error = %v", agent.Error)
 	}
 	if r := e.rows(t, pid); r.users != 1 {
@@ -657,7 +657,7 @@ func TestFailedTurnPublishesTheFailedAttentionState(t *testing.T) {
 		}
 	}
 	if len(attention) != 1 || attention[0]["state"] != "failed" || attention[0]["needs_you"] != false ||
-		!strings.Contains(attention[0]["error"].(string), "No API key") {
+		!strings.Contains(attention[0]["error"].(string), "no API key") {
 		raw, _ := json.Marshal(attention)
 		t.Fatalf("attention events = %s", raw)
 	}

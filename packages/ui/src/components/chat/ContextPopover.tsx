@@ -2,12 +2,11 @@ import type { ContextBreakdown, ContextOverview } from "@octo/agent-client";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
 import { compactedLine, compactError } from "../../lib/compactNow";
-import { cacheLine, contextHeadline, contextView, lastTurnView, type ContextView } from "../../lib/contextView";
+import { cacheLine, contextHeadline, contextKey, contextView, lastTurnView, type ContextView } from "../../lib/contextView";
 import { errorCode, errorMessage, formatTokens } from "../../lib/format";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
-import { requestMemoryView } from "../../state/workspace/tabMemory";
-import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { ContextReport } from "./ContextReport";
 import { Button } from "../primitives/Button";
 import { Popover } from "../primitives/Popover";
 import { Spinner } from "../primitives/Status";
@@ -16,7 +15,7 @@ import { Spinner } from "../primitives/Status";
 export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElement | null>; used: number; size: number; onClose(): void }) {
   const { bridge } = useApp();
   const { projectId } = useProject();
-  const ws = useOptionalWorkspace();
+  const [details, setDetails] = useState(false);
   const [view, setView] = useState<ContextView>(() => lastTurnView(props.used, props.size));
   const [loading, setLoading] = useState(Boolean(bridge.getContextOverview));
   const [compacting, setCompacting] = useState(false);
@@ -39,6 +38,8 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
   const a = view.approx ? "≈" : "";
   const cache = cacheLine(view);
   const compact = bridge.compactNow;
+  // "Open context details": the window report itself (decision 93 c), a sheet over whatever is open.
+  if (details) return <ContextReport onClose={props.onClose} />;
   return (
     <Popover anchor={props.anchor} label="Context" side="top" align="end" onClose={props.onClose} className="w-[min(340px,calc(100vw-16px))]">
       <div className="flex flex-col gap-3 p-3 text-sm">
@@ -63,33 +64,13 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
                 {view.rows
                   .filter((r) => r.kind !== "free")
                   .map((r) => (
-                    <span
-                      key={r.id}
-                      className={cn(
-                        "h-full",
-                        r.kind === "reserved" ? "bg-line-strong" : `octo-ctx-${r.id}`,
-                        r.kind === "category" && !CTX_IDS.has(r.id) && "bg-fg-3",
-                      )}
-                      style={{ width: `${r.percent}%` }}
-                    />
+                    <span key={r.id} className={cn("h-full", contextKey(r).segment)} style={{ width: `${r.percent}%` }} />
                   ))}
               </div>
               <ul className="flex flex-col">
                 {view.rows.map((r) => (
                   <li key={r.id} data-context-part={r.id} className="flex h-row items-center gap-2">
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "size-2 shrink-0 rounded-2xs",
-                        r.kind === "free"
-                          ? "border border-line-strong"
-                          : r.kind === "reserved"
-                            ? "bg-line-strong"
-                            : CTX_IDS.has(r.id)
-                              ? `octo-ctx-${r.id}`
-                              : "bg-fg-3",
-                      )}
-                    />
+                    <span aria-hidden className={cn("size-2 shrink-0 rounded-2xs", contextKey(r).key)} />
                     <span className={cn("min-w-0 flex-1 truncate", r.kind === "free" ? "text-fg-3" : "text-fg-2")}>{r.label}</span>
                     <span className="shrink-0 font-mono text-xs text-fg-2 tabular-nums">
                       {a}
@@ -140,18 +121,7 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
               Compact now
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="ml-auto"
-            disabled={!ws}
-            onClick={() => {
-              // An already-mounted Memory tab is told too (it reads the request once on mount otherwise).
-              if (ws) requestMemoryView(ws.memory, "context");
-              ws?.openTool("memory");
-              props.onClose();
-            }}
-          >
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setDetails(true)}>
             Open context details
           </Button>
         </div>
@@ -159,6 +129,3 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
     </Popover>
   );
 }
-
-/** The parts that have a colour in styles.css (`octo-ctx-<id>`); any other category is drawn neutral. */
-const CTX_IDS = new Set(["messages", "tool_results", "summary", "notes", "tools", "system"]);

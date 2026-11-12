@@ -10,6 +10,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/attachments"
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // defaultImageText is the text of a message that has images and no words.
@@ -32,7 +33,7 @@ func (s *Service) UploadAttachment(ctx context.Context, pid, name string, r io.R
 	switch {
 	case errors.Is(err, attachments.ErrTooLarge):
 		return projectstore.Attachment{}, &Error{Kind: KindTooLarge, Code: "attachment_too_large",
-			Message: "the image is larger than 5 MB; downsize it before uploading"}
+			Message: "the image is larger than 5 MB"}
 	case errors.Is(err, attachments.ErrEmpty):
 		return projectstore.Attachment{}, invalid("the upload is empty")
 	case err != nil:
@@ -99,9 +100,7 @@ func (s *Service) checkAttachments(ctx context.Context, db *projectstore.DB, pid
 }
 
 func imagesUnsupported(label string) *Error {
-	return &Error{Kind: KindUnprocessable, Code: "images_unsupported",
-		Message: fmt.Sprintf("%s does not accept images. Remove the images, or choose another agent or model for this project.", label),
-		Details: map[string]any{"agent": label}}
+	return of(KindUnprocessable, usererr.ImagesUnsupported(label))
 }
 
 // PostMessageWith is PostMessage with the ids of uploaded images attached to
@@ -133,7 +132,7 @@ func (s *Service) PostMessageWith(ctx context.Context, pid, text string, mode *s
 	case errors.Is(err, orchestrator.ErrQueueFull):
 		return msg, nil, queueFull()
 	case errors.Is(err, orchestrator.ErrTurnInProgress):
-		return msg, nil, turnInProgress("a turn is already running for this project")
+		return msg, nil, turnInProgress()
 	case errors.Is(err, projectstore.ErrNotFound):
 		return msg, nil, notFound("project")
 	}

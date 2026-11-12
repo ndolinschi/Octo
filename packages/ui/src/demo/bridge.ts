@@ -26,6 +26,7 @@ import { sideModeFromUrl, withDemoSide } from "./side";
 import { withDemoReview } from "./review";
 import { withDemoParity } from "./parity";
 import { withDemoV7 } from "./v7";
+import { withDemoSlash } from "./slash";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
 import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
 import { act, say, sleep, turn, type Ctx } from "./runtime";
@@ -317,7 +318,8 @@ function seed(): ProjectRecord[] {
   );
   Object.assign(orchestratorOf(copilot), {
     status: "failed",
-    error: "ACP agent GitHub Copilot could not start: not logged in (exit status 1).",
+    error: "GitHub Copilot is not logged in.",
+    error_hint: "Log in once with `copilot auth login`, then check again.",
     finished_at: new Date(now - 40 * 60_000).toISOString(),
   });
 
@@ -759,7 +761,11 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const once = `${id}/${serverId}`;
       if (lspMode === "fail-once" && !failedOnce.has(once)) {
         failedOnce.add(once);
-        throw new BridgeError(500, "spawn_failed", `${info.label} exited during startup (exit status 1)`);
+        throw new BridgeError(500, "spawn_failed", `${info.label} stopped while starting.`, {
+          hint: "Try again. If it keeps happening, check that it runs in a terminal.",
+          action: "retry",
+          details: "exited during startup (exit status 1)",
+        });
       }
       await ensureSeeded(rec);
       const { createDemoServer } = await import("./lsp");
@@ -796,7 +802,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     },
   };
   return withDemoSide(
-    withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records),
+    withDemoSlash(withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records), records),
     records,
     sideModeFromUrl(),
   );

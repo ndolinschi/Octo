@@ -147,3 +147,17 @@ export function cacheLine(v: ContextView): string | null {
   const share = Math.round((Math.min(r.cached, r.input) / r.input) * 100);
   return `Last request: ${formatTokens(r.input)} read, ${formatTokens(Math.min(r.cached, r.input))} of it cached (${share}%), ${formatTokens(r.output)} written`;
 }
+
+/** The parts that have a colour in styles.css (`octo-ctx-<id>`); any other category is drawn neutral. */
+const CTX_IDS = new Set(["messages", "tool_results", "summary", "notes", "tools", "system"]);
+
+/**
+ * The classes of a category's colour key (a 8px square) and of its segment in the stacked bar: the same colour in both
+ * (decision 88 b). Free space is an outline and a dim segment, the reserved buffer a neutral one.
+ */
+export function contextKey(r: Pick<ContextRowView, "id" | "kind">): { key: string; segment: string } {
+  if (r.kind === "free") return { key: "border border-line-strong", segment: "bg-active" };
+  if (r.kind === "reserved") return { key: "bg-line-strong", segment: "bg-line-strong" };
+  const c = CTX_IDS.has(r.id) ? `octo-ctx-${r.id}` : "bg-fg-3";
+  return { key: c, segment: c };
+}

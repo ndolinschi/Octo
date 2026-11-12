@@ -2686,3 +2686,131 @@ a column on the left and stays — never an overlay over code; (b) errors speak 
 vocabulary goes to Details; (c) a pinned command carries a play glyph and looks like a button; (d) one Requests
 group in the palette; (e) an agent's label, never its id; (f) narrow chat: the jump button never overlaps a card,
 queued rows keep their text; (g) a shared problem is said once above the rows, one `SegmentedControl`.
+
+### As built — decision 94b (harness), 2026-11-12
+
+Rule b on the harness side: every error and notice a person reads has `message` (one plain sentence), `hint`, `command`, `action` (`recheck_provider`, `connect_provider`, `retry`, `open_settings`, `update_agent`; absent = none) and `details` (technical text). One catalogue, `apps/harness/internal/usererr`; the fields, the surfaces and the cases are in `apps/harness/docs/errors.md`.
+
+- Built: the catalogue; turn errors (`turn.finished`, `project.attention`, agent rows), a notice of a completed turn (`turn.finished.notice`, the `warning:` marker stays on `error`), `side.error`, provider `reason`/`problem` and `models_error`/`models_problem`, every HTTP error body (`writeError` makes technical text `details` and sends `usererr.Generic` wording; catalogue cases go through `writeProblem`), review and code-host errors, manifest `auth.command` (`login_command`). `@octo/agent-client`: `BridgeError.hint/action/details/data`, `ErrorFields`, `ErrorInfo`, the reducer keeps the fields.
+- Tests: `TestCatalogueWording`, `TestEveryConstructorIsListed`, `TestNoAdHocStrings` (allow-list `testdata/adhoc_strings.txt`), the orchestrator, bridge, providers tests updated to the plain wording, `packages/agent-client/src/errors.test.ts`.
+- Run: gofmt, go vet ./..., `go test -race` for usererr, providers, plugins, project, review, codehost, bridge, orchestrator (one flaky `TestContextEndpoint` under load, green alone), cmd/harness, diag, settings, commands, mcp; `e2e-acp-orchestrator.sh`; agent-client tsc and tests.
+- Not verified: `packages/ui` tsc (no node_modules in the worktree; the type changes are additive, `TurnOutcome` is a superset); no real agent CLI; agent rows do not persist `command`, `action`, `details` (no schema change), so after a restart a failed row has message and hint only; the UI does not render any of this yet.
+
+### As built — decision 94a (2026-11-12)
+
+The file tree is a column at the left edge of the file group and stays; nothing overlays the code (the right-hand overlay of decision 85's first cut is gone, with `FILE_VIEW_OVERLAY_BELOW` and `EDITOR_MIN_WIDTH`).
+
+- **Column.** `TreeColumn` is a real flex column before the editor: width from layout state (default 220, 200–480), a hairline on its right edge, its own divider (pointer, ←/→ by 16, Shift 64, Home/End, double-click resets). The editor takes the rest. Width and shown/hidden are per group (`state/fileView`: `column(groupId)`); group ids are new on every load, so they live for the session and each change is also written as the project's stored default (`octo.fileTree.{projectId}`, validated codec) that groups nobody touched start from. `FileViewProvider` moved above `WorkspaceProvider` so the dock can read the columns.
+- **Floors.** `groupFloor(tabs, treeColumn)` = tree width + `EDITOR_MIN_GROUP` (360) for a file group that shows its column; `groupFloors(groups, width, columnOf)` applies those while all floors fit in the dock, otherwise the plain floors (and the file views then use the page). `WorkspaceProvider` exposes `floorOf(groupId)`; the divider drag (`resize`) and `Dock.tsx` (only the group's `minWidth`: `ws.floorOf(group.id)` instead of `groupFloor(group.tabs)`) use it. `dockFits`/narrow mode still use the plain floors: a group too narrow for the column degrades to the page, it does not push the dock into one strip.
+- **Page.** `lib/treeLayout.ts` decides: page when the dock is narrow (one strip) or `width - column < 360`, else column (unmeasured = column; the skeleton calls the same function). In page mode the group shows the tree or the editor (``useTreeShell``): both stay mounted and laid out in the same box, the other is `visibility: hidden` + `inert`, so Monaco, the tree's scroll and selection survive. Picking a file (or any file arriving in the view) turns to the editor; the editor bar shows a "Files" button to go back; "Show files" / "Reveal in tree" turn to the tree; in the tree page of a view with a file an "Editor" button returns.
+- **Toggle.** The editor-bar toggle shows/hides the column (icon `PanelLeftClose` when shown, `PanelLeftOpen` when hidden); hidden = the editor has the whole group. One layout change in one frame.
+- **Decision 85 holds:** one `FileView` per group, one Monaco; opening a file changes the editor's content and the selected row only.
+- **Verified** (Chromium, demo, dev server): `file-open-stability.mjs` ok at 1440x900 and 1920x1080 (column: strict opens, column hide/show one change each, keyboard resize leaves groups/bar/strips/status untouched), 1100x700, 900x600, 390x700 (page: pick = one change, "Files" = one change, tree scrollTop restored); `width-stability.mjs` ok at 1440x900 and 900x600; `flicker.mjs` ok; `spacing-audit.mjs --only file-view` and `--only markdown-file` total=0. Unit tests: `treeLayout.test.ts`, `floors.test.ts`. **Not verified:** WebKit; pointer drag of the divider (keyboard only in the script); a project reloaded with a persisted layout where a file group starts under its floor (the floor is a CSS minWidth, so it is widened by the flex row, not tested live).
+
+## As built — shell review fixes (91, 94)
+
+Built in `components/{shell,home,status,project,shared,providers}`, `dock/{Tab,TabStrip}`, `commands/ProjectCommands` and the streak module.
+
+- **91a, the backdrop never sits behind content.** `StreakLayer` is a band at the top of its positioned parent, `--octo-band-h` tall
+  (`clamp(72px, 14svh, 140px)`, `styles.css`), its lower edge masked out. One preset, `STREAK_BAND` (`lib/streakPresets.ts`); the three
+  earlier names are deprecated aliases of it, so Home, connect, no-projects and the empty conversation (via `dock/Dock.tsx`) share one
+  placement and one angle. Home, connect and no-projects are a flex column: a spacer of the band's height, then the scroller, so a row can
+  not slide under the band. The scrim rule is gone and `.octo-streak-topfade` is `display: none` (its one user, `dock/Dock.tsx`, still renders
+  the element). Cards on Home are `Card` (opaque). `scripts/backdrop-check.mjs` asserts, per screen, theme and size, one band and no text-bearing
+  box intersecting it.
+- **91b, connect is the Providers list.** `shared/providers/ProviderRows.tsx` (the list, on `ListRow`), `ConnectDetail.tsx` (title, one sentence,
+  steps, the one action: "Check again" or the key form's save) and `ConnectSteps.tsx` (lifted from `ConnectSheet`, which imports it). `ConnectScreen`
+  takes no props (`AppShell` renders `<ConnectScreen />`). List and detail sit side by side in one frame from 880px of content (`--spacing-connect` is 928px); below that the list is a page and a row opens the detail as another page with a back control.
+- **91g, 94c, 94d, 91k.** "N agents" is one quiet `Button` (`shell/ProjectTeam.tsx`) at the end of the strip before the commands, the working ring in a
+  fixed 16px slot; it calls `useOpenSessions()` (`shell/openSessions.ts`), which opens the Agents tool today and is the one place to switch to
+  Sessions. Pinned commands are quiet buttons with a play glyph (the spinner while running), after a divider. The palette has one "Requests" group
+  (this project's first, then other projects' hits with the project dim on the right). Sidebar sub-lines are neutral; the status bar items are
+  `StatusButton`s with one default colour, `warning` colours only the budget.
+- **Run tab.** `commands/RunPanel` in a "Run: name" tab has one status line: name, state glyph, the command in dim mono, duration, Stop or Re-run; no chip and no second row.
+- **94e.** No string in these folders prints an agent id.
+- **Home and first run (64/75).** Home's groups, the project rows and "Agents at work" are `ListRow`s, the state tiles are one-row `Card`s (a 40px `ListRow`: glyph, label, count),
+  skeletons are `SkeletonList`. The New project dialog uses `TextField`/`TextArea`, `FieldRow` for budget and delegation depth.
+- **Library migration.** `octo/no-native-controls` in these folders (counting `commands/RunPanel`, not mine): 37 before, 5 after.
+
+Verified: `tsc --noEmit`, prettier and eslint on the touched files, `backdrop-check.mjs` (dark, three sizes), the stability scripts listed in the hand-back.
+Not verified: WebKit, a real harness, the Sessions list (not built), touch behaviour on a device.
+Left: the folder-select button of the project dialog, `ModelPicker`'s field button, `FileLink` and the tab's own `role="tab"` button need `SelectButton`/inline-link/tab
+primitives; `FolderPicker` rows follow when `Picker` moves to `ListRow` (B10).
+
+## As built — conversation review fixes (91, 94) and B11/B12 UI
+
+Scope: `components/chat`, `components/v7`, the new `components/shared/RequestCard.tsx` and
+`components/primitives/FileInput.tsx`, `lib/errors`, `lib/slash.ts`, `lib/images.ts`, `demo/slash.ts`.
+
+- **91c.** `components/shared/RequestCard` (in `shared`, not `v7`, because `chat/PlanCard` uses it and features may not
+  import each other) is `primitives/Card` with a focusable, labelled wrapper: header glyph · title · dim "what asks" ·
+  quiet meta, body, one action row (primary, quiet alternatives, destructive last). Approval, form, pending plan and the
+  always-allow panel (inside the approval) use it. Two or more pending approvals in a row are one `ApprovalGroup` ("3 requests
+  from Docs site", one "Allow all for this turn"); its rows are compact (title, command on one mono line, quiet buttons,
+  Details fold). Failed-turn blocks are `ErrorNotice` (a `Notice` block) per 94b, not a RequestCard.
+- **91d.** `chat/ActivityRow` (on `ListRow`) is the one step row: glyph (spinner only while running) · verb · dim detail ·
+  duration · chevron only when it opens. Used by `ToolGroup`/`ToolRow`, `ThinkingRow` and the live `ActivityLine`. Sub-agent
+  rows (`DelegationGroup`) and plan steps (`PlanList`) keep their own layouts: not done.
+- **91e/91f/91h/91j.** The composer row is "+", mode, model, folder; the router's tier policy is a "Routing" `Segmented` line
+  under the model list (`ModelPicker footer`, only with a router). Suggestions are `ListRow`s under a "Suggestions" caption, at
+  most three. The queue has a "N queued" header, the explanation once, rows with icon buttons (Send now, Stop and send,
+  Remove) and a "⋯" menu below 480 px (container query); no badge on the send button (the `QueueBadge` export stays for the
+  app's slot). Transcript rhythm: reply blocks 16 apart, consecutive step rows 8, the meta line tight to its reply, the
+  approvals slot 16 above and between cards.
+- **94b/94e/94f.** `lib/errors/plain.ts` maps codes and texts to a sentence plus a next step (check, retry, a command), and
+  falls back to the first sentence with protocol words removed; `plain.test.ts` checks every string it can produce against
+  `JARGON`. `shared/ErrorNotice` lays out the sentence, "Check again"/Retry/copy line and a Details fold; used by the failed
+  turn, the start failure, the harness-tools warning, the send error and slash errors. The agent's label, never its id,
+  comes from `agentLabelOf`/`useAgentName`; `modelName` falls back to it and the turn meta line uses the ACP labels.
+  Jump-to-latest is an `IconButton round` in its own room under the transcript.
+- **B11.** `/` at the start opens `SlashMenu` (portal above the box; Octo group, then the agent's under its label; fuzzy
+  filter; ↑↓ Enter Tab Esc; unavailable rows dim with the reason). Octo commands run through `useSlashRunner`: compact, clear
+  (`conversation.cleared` draws "New session started"), mode, model (opens the picker with the query), rewind (the last
+  request's dialog), export, review, context (inline card from `getContextOverview`; no shared `WindowReport` exists),
+  memory, settings, remember (`fact.remembered` draws "Remembered: …" with Undo via `forgetFact`), help. A full command
+  typed with arguments runs on Enter; an agent's command is inserted as `/<name> ` and sent as typed. Notes are not stored;
+  they live in the conversation's `InlineNotesProvider`. Demo: `demo/slash.ts`.
+- **B12.** Paste, drop on the composer or the conversation, "+ → Image…" (`HostCapabilities.pickImages`, else `FileInput`).
+  `lib/images.ts` decides (long side 2 048 px, ≤ 5 MB, ≤ 8, redraw for other types); `useImages` scales on a canvas, shows a
+  chip (thumbnail, size, remove) and uploads. `accepts_images === false` is said under the chips at once; a 422
+  `images_unsupported` keeps the draft and shows the Notice. User messages render `image` blocks as thumbnails that open a
+  `Dialog` preview. Demo: `?images=no` for the unsupported case.
+- **Migration.** `octo/no-native-controls` in chat + v7: 36 before, 12 after (kept: the composer textarea, the sticky
+  prompt toggle, the rail dots, the comments popover rows, the patch toggle in `ApprovalExtras`, `TurnFiles` rows, the
+  gallery demo link, the composer menu search input). Hand-written touch overrides in these folders are gone.
+
+Verified: ui `tsc`, eslint (0 errors), `prettier`, ui tests, `flicker`, `scroll-on-send`, `frame-colours` (its approval
+scene now opens the group's Details), `width-stability` at 1440×900, screenshots dark and light. Not verified: a real ACP
+agent's slash commands and a real image round trip (demo bridge only); `ui-tour-states` approval steps assume single cards
+and were not updated.
+
+### As built — batch 5 integration (decisions 94a-g with the four branches merged), 2026-11-12
+
+- **Errors end to end.** `shared/ErrorNotice` reads the harness's `message`, `hint`, `command`, `action`, `details` first (`lib/errors/plain.ts`: `plainStructured`, `isStructured`, `readable`); only a bare text with protocol words (an older harness) goes through the mapping. Buttons by `action`: `recheck_provider` → "Check again" (re-reads the login, then sends the failed request again when it was a failed turn), `connect_provider` → the connect sheet, `retry` → Retry, `open_settings` → the section of the error code, `update_agent` → command and hint only. Home rows, the sidebar tooltip, the Agents list, provider reasons (`problem.message`) show the plain sentence, never `details`. Demo data carries structured errors; `demo/userFacing.test.ts` and `lib/errors/*.test.ts` check no ACP, MCP, exit status, stderr or JSON-RPC reaches a person.
+- **Window report.** The context ring's "Open context details" and `/context` mount `shared/WindowReport` (lazy, through `chat/ContextReport`); Memory has no context branch, `requestMemoryView` is gone. The report has the stacked bar and colour keys (`lib/contextView.contextKey`, free space last and dim).
+- **Providers.** Settings → Providers renders `shared/providers/ProviderRows`; `settings/ProviderList.tsx` and `StateDot` are gone (`ToneDot`).
+- **Activity rows** in `DelegationGroup` and `PlanList`; `ListRow expanded` replaces the sr-only text.
+- **Export** goes through `bridge.exportConversation` (Authorization header, Blob URL); `exportConversationUrl` stays for the demo.
+- **Primitives.** `Card`, `Checkbox`, `Select` forward refs (Card: aria/data/handlers too, `RequestCard` no longer wraps it); `FileInput` has an optional `button` and replaces `FileInputButton`.
+- **Not verified / not done:** `SelectButton`, Settings → Models single Notice and project-scope menu, native controls to the target (49 warnings remain), the entry bundle is over its budget (see the hand-back numbers).
+
+### As built — final integration pass (batch 5 + the Sessions tab), 2026-11-12
+
+- **Sessions merged.** `ProjectItem` is a `ListRow` with the sessions chevron (`SidebarSessions`, lazy) mounted under it; `DelegationGroup` rows
+  are `ActivityRow`s whose `trailing` action is "Open session"; the "N agents" button (`shell/openSessions.ts`) and every other way into the tab
+  go through `requestSession`. A refusal in the Sessions tab shows the harness's `message` (and `hint`); the fixed texts by code are only the
+  fallback for an older harness (`failureText`, tested). The palette has "Show sessions".
+- **List semantics.** `ListDetail` names its rows container `role="list"` (the owner's `ListRow`s carry `role="listitem"`); a list the owner
+  builds itself (`SessionRows`: `ul`/`li`) passes `listSemantics="own"`. The list column is no longer a landmark.
+- **Settings → Models.** One `ModelsProblem` notice above a group whose models cannot run; rows show only the value. The project scope is
+  chosen once: when there are several projects the project tab's label is a menu (`ViewTabs` option `menu`); the "Settings for" row is gone.
+  (Settings → Commands keeps its project row.)
+- **Export errors** from the project "⋯" menu show as the standard `ErrorNotice` under the top row with the harness's `message`, until dismissed.
+- **Entry bundle.** The sessions model (`lib/sessions/current` stays), the error mapping (`lib/errors/words` stays; `TurnBanner` is a chunk, the
+  sidebar tooltip maps through `useReadable`), provider reasons, tool vocabulary, the image canvas work, the routing line, the pills band,
+  the folder menu and the "unsaved edits" dialogs are lazy and warmed after first paint: 172.99 → 163.59 kB; the 158 target is not reached
+  (see `scripts/check-bundle-size.mjs`). `ErrorNotice` moved to `components/shared` so the shell may use it.
+- **Browser scripts.** `width-stability.mjs` at 900×600 clicks exchanges with the DOM's `click()` (Playwright's `click()` scrolled an off-screen row
+  into view and that scroll was the driver's); the tour has a `sessions` group, a palette helper that finds the search field by name, and
+  selectors for the "Requests" group, the outdated-threads strip, the reply box and "Show roles".
+- **Not verified:** a screen reader on the new list roles; the Models project-tab menu with a real harness; WebKit.

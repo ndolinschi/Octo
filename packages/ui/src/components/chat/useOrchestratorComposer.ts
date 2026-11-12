@@ -108,11 +108,12 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   }, [messages]);
 
   const onSend = useCallback(
-    async (text: string) => {
+    async (text: string, extra?: { attachments?: string[] }) => {
       // Pending code comments ride along as an `octo-comments` block, then clear.
       const prepared = comments ? await comments.prepare() : null;
       const mode = modeToSend(override, project?.mode);
-      await send(prepared ? withComments(text, prepared.block) : text, mode ? { mode } : undefined);
+      const opts = { ...(mode ? { mode } : {}), ...(extra?.attachments?.length ? { attachments: extra.attachments } : {}) };
+      await send(prepared ? withComments(text, prepared.block) : text, Object.keys(opts).length ? opts : undefined);
       prepared?.commit();
       setOverride(null);
     },
@@ -209,6 +210,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
         : null,
     mode: modeApi,
     onSend,
+    acceptsImages: project?.accepts_images,
     onCancel: cancel,
     draft,
   };

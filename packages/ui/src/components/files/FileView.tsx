@@ -1,6 +1,6 @@
-import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
@@ -8,7 +8,6 @@ import { crumbName, fitCrumbs } from "../../lib/crumbs";
 import { useCopy, useDelayedLoading } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useCode, type OpenFile } from "../../state/code";
-import { TREE_MIN, useFileView } from "../../state/fileView";
 import { useProject } from "../../state/project";
 import { fileTab, type TabId } from "../../state/workspace/layout";
 import { focusSoon } from "../../lib/focus";
@@ -28,7 +27,7 @@ import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 /** The Markdown preview loads with the first Markdown file (its own chunk). */
 const MarkdownPreview = lazy(() => import("./MarkdownPreview").then((m) => ({ default: m.MarkdownPreview })));
 import { TreeColumn } from "./TreeColumn";
-import { treeLayout } from "../../lib/treeLayout";
+import { useTreeShell } from "./useTreeShell";
 import { slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 
@@ -44,14 +43,12 @@ const MD_MODE = slot("md", (v): v is Mode => v === "preview" || v === "source");
 /**
  * A file view: every File tab, and the Files tab while no file is open. One 40px breadcrumb row
  * (back / forward, crumbs, then status, Preview|Source for Markdown, a `…` menu and the tree toggle),
- * the editor edge to edge below it, and the tree column on the right (hairline on its left edge;
- * width and open state shared by every file view of the project). When no Chat tab is visible, the
- * focused file view shows the floating composer over its editor area (never over the tree).
+ * the editor edge to edge below it, and the tree column at the left edge (decision 94a; width and shown/hidden per group).
+ * A group too narrow for the column and a 360px editor shows the tree as a page instead (`useTreeShell`). When no Chat tab
+ * is visible, the focused file view shows the floating composer over its editor area (never over the tree).
  */
 export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileKey: FileKey | null; floatingComposer: FloatingSlot }) {
   const code = useCode();
-  const ws = useWorkspace();
-  const fv = useFileView();
   const group = useGroup();
   const { project } = useProject();
   const { theme } = useApp();
@@ -65,52 +62,19 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const opening = useDelayedLoading(fileKey !== null && (!file || file.status === "loading"));
   const saving = useDelayedLoading(Boolean(file?.saving));
 
-  // The view's own width decides whether the tree gets a column or floats over the editor.
+  const groupId = group?.groupId ?? "";
   const root = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = root.current;
-    if (!el) return;
-    // Measured before the first paint (a layout effect's state update is flushed synchronously), so the tree is never
-    // painted as a column for one frame and then moved to the overlay (decision 85).
-    setWidth(Math.round(el.getBoundingClientRect().width));
-    const ro = new ResizeObserver(([e]) => {
-      // A hidden view (its tab is not the active one) reports 0: keep the last real width, so showing it again does not
-      // paint the tree at the unmeasured shape for a frame.
-      if (e && e.contentRect.width > 0) setWidth(Math.round(e.contentRect.width));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  // A column that would leave the editor under `EDITOR_MIN_WIDTH` (a narrow file group beside the orchestrator) floats
-  // over it instead, closed by default.
-  const { overlay, maxWidth: treeMax } = treeLayout(width, fv.treeWidth, TREE_MIN);
-  // A narrow view floats the tree over the editor; it starts closed (open in the empty Files view) and is closed only by the
-  // user (toggle, Esc, a click outside): picking a file never hides it (decision 85). The shared column preference is left alone.
-  const [overlayOpen, setOverlayOpen] = useState(fileKey === null);
-  // The shared view turning into the empty Files view again (the Files tool opened): its tree is open, to pick a file.
-  const [wasEmpty, setWasEmpty] = useState(fileKey === null);
-  if (wasEmpty !== (fileKey === null)) {
-    setWasEmpty(fileKey === null);
-    if (fileKey === null) setOverlayOpen(true);
-  }
-  const treeShown = overlay ? overlayOpen : fv.treeOpen;
-  const setTreeShown = (open: boolean) => (overlay ? setOverlayOpen(open) : fv.setTreeOpen(open));
-  const focusTick = useRef(fv.focusTreeTick);
-  useEffect(() => {
-    if (focusTick.current === fv.focusTreeTick) return;
-    focusTick.current = fv.focusTreeTick;
-    if (overlay && ws.isVisible(tab)) setOverlayOpen(true);
-  }, [fv.focusTreeTick, overlay, ws, tab]);
-
+  const shell = useTreeShell(root, tab, fileKey, groupId);
+  const { width, page, showEditor } = shell;
   const treeId = `${domId(tab)}-tree`;
-  // Files picked in this view's tree open in this group; the empty view turns into the file in place.
-  const groupId = group?.groupId;
-  // Opening a file never leaves focus on nothing: when the picked row went away (the overlay closed, the
-  // empty Files view turned into the file in place), the file's editor or preview takes it.
+  // Files picked in this view's tree open in this group; the empty view turns into the file in place. In page mode the picked
+  // file also turns the page to the editor (one change, nothing else moves). Opening a file never leaves focus on nothing:
+  // when the picked row went away (the tree page hid, the empty Files view turned into the file in place), the file's editor
+  // or preview takes it.
   const openHere = useCallback(
     (f: string, p: string) => {
-      code.openFile(f, p, undefined, groupId ? (fileKey ? { group: groupId } : { group: groupId, replace: tab }) : undefined);
+      showEditor();
+      code.openFile(f, p, undefined, group ? (fileKey ? { group: group.groupId } : { group: group.groupId, replace: tab }) : undefined);
       const panel = `${domId(fileTab(fileKeyOf(f, p)))}-panel`;
       focusSoon(
         () => {
@@ -121,38 +85,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         { onlyIfLost: true, timeout: 1500 },
       );
     },
-    [code, groupId, fileKey, tab],
+    [code, group, fileKey, tab, showEditor],
   );
-
-  // The overlay tree (narrow views) closes on Esc and on a pointer down outside it; focus goes back to the toggle.
-  const toggle = useRef<HTMLButtonElement>(null);
-  const overlayShown = overlay && overlayOpen;
-  useEffect(() => {
-    if (!overlayShown) return;
-    const tree = () => document.getElementById(treeId);
-    const close = (refocus: boolean) => {
-      setOverlayOpen(false);
-      if (refocus) requestAnimationFrame(() => toggle.current?.focus());
-    };
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      const el = tree();
-      if (!el || !(el.contains(document.activeElement) || toggle.current === document.activeElement)) return;
-      e.preventDefault();
-      close(true);
-    };
-    const onDown = (e: PointerEvent) => {
-      const t = e.target;
-      if (!(t instanceof Node) || tree()?.contains(t) || toggle.current?.contains(t)) return;
-      close(tree()?.contains(document.activeElement) ?? false);
-    };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("pointerdown", onDown, true);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", onDown, true);
-    };
-  }, [overlayShown, treeId]);
 
   // Ctrl/Cmd+S anywhere in the view (Monaco binds it too; saving is guarded against doubles).
   const onKeyDown = (e: KeyboardEvent) => {
@@ -202,6 +136,11 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
     <div ref={root} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       {/* The hairline is an inset shadow, so the 40px row keeps a 40px content box (no half-pixel centring). */}
       <div data-file-bar className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]">
+        {page && !shell.treePage && fileKey && (
+          <Button variant="quiet" size="sm" icon={PanelLeft} title="Show the file tree" onClick={shell.showTree}>
+            Files
+          </Button>
+        )}
         <IconButton icon={ArrowLeft} label="Back" title="Back (previous file in this group)" disabled={!group?.canBack} onClick={group?.back} />
         <IconButton icon={ArrowRight} label="Forward" title="Forward (next file in this group)" disabled={!group?.canForward} onClick={group?.forward} />
         {fileKey ? <Crumbs folder={folder} path={path} /> : <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>}
@@ -226,23 +165,52 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         </span>
         {markdown && file?.status === "ready" && <ModeToggle mode={mode} onChange={setMode} />}
         {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
-        <IconButton
-          ref={toggle}
-          icon={PanelRight}
-          label={treeShown ? "Hide file tree" : "Show file tree"}
-          aria-expanded={treeShown}
-          aria-controls={treeShown ? treeId : undefined}
-          onClick={() => setTreeShown(!treeShown)}
-          className={cn(treeShown && "text-fg-2")}
-        />
+        {page ? (
+          shell.treePage &&
+          fileKey && (
+            <Button variant="quiet" size="sm" onClick={shell.showEditor}>
+              Editor
+            </Button>
+          )
+        ) : (
+          <IconButton
+            icon={shell.open ? PanelLeftClose : PanelLeftOpen}
+            label={shell.open ? "Hide file tree" : "Show file tree"}
+            aria-expanded={shell.open}
+            aria-controls={shell.open ? treeId : undefined}
+            onClick={shell.toggleColumn}
+            className={cn(shell.open && "text-fg-2")}
+          />
+        )}
       </div>
       <div className="relative flex min-h-0 flex-1">
-        <div data-editor-area className="relative flex min-w-0 flex-1 flex-col overflow-clip contain-inline-size">
+        {(page || shell.open) && (
+          <TreeColumn
+            key="tree"
+            id={treeId}
+            tab={tab}
+            page={page}
+            shown={!page || shell.treePage}
+            width={shell.column}
+            maxWidth={shell.maxWidth}
+            groupId={groupId}
+            onOpenFile={openHere}
+          />
+        )}
+        <div
+          key="editor"
+          data-editor-area
+          inert={page && shell.treePage}
+          className={cn(
+            "relative flex min-w-0 flex-1 flex-col overflow-clip contain-inline-size",
+            page && "absolute inset-0",
+            page && shell.treePage && "invisible",
+          )}
+        >
           {file && <Notice file={file} />}
           <div className="min-h-0 flex-1">{body}</div>
           {floating && floatingComposer(setFloatHeight)}
         </div>
-        {treeShown && <TreeColumn id={treeId} tab={tab} overlay={overlay} maxWidth={treeMax} onOpenFile={openHere} />}
       </div>
     </div>
   );

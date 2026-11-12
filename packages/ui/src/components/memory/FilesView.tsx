@@ -52,6 +52,7 @@ export function FilesView(props: {
         sorted.map((f) => (
           <ListRow
             key={f.path}
+            role="listitem"
             size="md"
             selected={f.path === current?.path}
             leading={<Glyph icon={fileIcon(f.path)} size={14} />}

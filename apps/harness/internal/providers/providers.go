@@ -13,7 +13,6 @@ package providers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // Provider kinds.
@@ -135,6 +135,11 @@ type Provider struct {
 	// ExperimentalNote says what is known.
 	Experimental     bool   `json:"experimental,omitempty"`
 	ExperimentalNote string `json:"experimental_note,omitempty"`
+	// Problem is Reason in structured form while the provider is not ready:
+	// {message, hint, command, action, details}. Reason is its plain message.
+	Problem *usererr.Error `json:"problem,omitempty"`
+	// ModelsProblem is ModelsError in structured form (ModelsError is its plain message).
+	ModelsProblem *usererr.Error `json:"models_problem,omitempty"`
 }
 
 // Roles is the model per tier of one agent ("" = the agent's own default).
@@ -170,6 +175,8 @@ type Unavailable struct {
 	// CanForce: the refusal rests on a login probe, which is advisory; the same
 	// request with force_unverified is accepted. Never set for not_installed.
 	CanForce bool `json:"can_force"`
+	// Problem is the provider's own problem in the catalogue's form (Reason is its plain message).
+	Problem *usererr.Error `json:"-"`
 }
 
 // RouterState is the Octo router detection (router.Router).
@@ -268,7 +275,9 @@ func (s *Service) Snapshot() Response {
 	case builtinOK:
 		api.State = StateReady
 	default:
-		api.State, api.Reason = StateNotConnected, builtinWhy
+		api.State = StateNotConnected
+		api.Problem = usererr.ProviderNotConnected(api.Label, api.LoginHint, builtinWhy)
+		api.Reason = api.Problem.Message
 	}
 	resp.Providers = append(resp.Providers, api)
 	if routerOn {
@@ -340,15 +349,14 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 	}
 	switch {
 	case a.Unsupported != "":
-		p.State, p.Reason = StateNotSupported, a.Unsupported
+		p.State = StateNotSupported
+		p.Problem = usererr.ProviderNotSupported(p.Label, a.Unsupported)
 	case !a.Available:
 		p.State = StateNotInstalled
-		p.Reason = a.UnavailableReason
-		if p.Reason == "" {
-			p.Reason = "not installed"
-		}
+		p.Problem = usererr.AgentNotInstalled(p.Label, a.InstallCmd(), strings.TrimSpace(a.UnavailableReason+" "+a.InstallHint))
 	case a.LoggedIn != nil && !*a.LoggedIn:
-		p.State, p.Reason = StateNotLoggedIn, "not logged in"
+		p.State = StateNotLoggedIn
+		p.Problem = usererr.AgentNotLoggedIn(p.Label, a.LoginCmd(), a.Hint)
 		p.Login = LoginNotLoggedIn
 	case a.LoggedIn != nil:
 		p.State, p.Login = StateReady, LoginOK
@@ -356,12 +364,19 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 		// No probe, or one that could not tell: usable, login not checked.
 		p.State, p.Login = StateReady, LoginUnchecked
 	}
+	if p.Problem != nil {
+		p.Reason = p.Problem.Message
+	}
 	adv := s.cache.get(a.ID)
 	p.PreferredModel = preferredOf(adv)
 	r := effectiveRoles(a, adv)
 	p.Roles = &Roles{Fast: r["fast"], Balanced: r["balanced"], Deep: r["deep"]}
 	p.Models = agentModels(a, adv)
-	p.ModelsRefreshedAt, p.ModelsError = adv.RefreshedAt, adv.Error
+	p.ModelsRefreshedAt = adv.RefreshedAt
+	if adv.Error != "" {
+		p.ModelsProblem = modelsProblem(p.Label, a, adv.Error)
+		p.ModelsError = p.ModelsProblem.Message
+	}
 	if p.DefaultModel == "" && adv.Current != "" {
 		p.DefaultModel = adv.Current
 	}
@@ -493,9 +508,9 @@ func CheckIn(snap Response, model string) *Unavailable {
 		p := byID(agentID)
 		switch {
 		case p == nil:
-			return &Unavailable{Provider: agentID, Reason: fmt.Sprintf("unknown agent %q", agentID)}
+			return unknownAgent(agentID)
 		case p.State != StateReady:
-			return &Unavailable{Provider: p.ID, Reason: describe(*p), CanForce: p.State == StateNotLoggedIn}
+			return unavailable(*p, p.State == StateNotLoggedIn)
 		}
 		return nil
 	}
@@ -504,40 +519,9 @@ func CheckIn(snap Response, model string) *Unavailable {
 		p = byID(IDAPI)
 	}
 	if p != nil && p.State != StateReady {
-		return &Unavailable{Provider: p.ID, Reason: describe(*p)}
+		return unavailable(*p, false)
 	}
 	return nil
-}
-
-// describe is one sentence on why p is not ready, with what to do about it.
-func describe(p Provider) string {
-	var b strings.Builder
-	b.WriteString(p.Label)
-	switch p.State {
-	case StateNotSupported:
-		return p.Reason
-	case StateNotInstalled:
-		b.WriteString(" is not installed")
-	case StateNotLoggedIn:
-		b.WriteString(" is not logged in")
-	case StateError:
-		b.WriteString(" is not working")
-	default:
-		b.WriteString(" is not connected")
-	}
-	if p.Reason != "" && !strings.EqualFold(p.Reason, "not installed") && !strings.EqualFold(p.Reason, "not logged in") {
-		b.WriteString(" (" + strings.TrimRight(p.Reason, ".") + ")")
-	}
-	b.WriteString(".")
-	switch {
-	case p.State == StateNotInstalled && p.InstallHint != "":
-		b.WriteString(" " + p.InstallHint)
-	case p.State == StateNotLoggedIn && p.LoginHint != "":
-		b.WriteString(" " + p.LoginHint)
-	case p.Kind == KindAPI && p.LoginHint != "":
-		b.WriteString(" " + p.LoginHint)
-	}
-	return b.String()
 }
 
 // Agents is the plugin registry's agents with the models they advertised added

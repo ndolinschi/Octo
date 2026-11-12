@@ -5,6 +5,10 @@ import { FloatRoomContext } from "../primitives/floatRoom";
 import { parseTab, type TabId } from "../../state/workspace/layout";
 import { useFloatingHere } from "../../state/workspace/useFloatingHere";
 import { ConversationView } from "../chat/ConversationView";
+import { Transcript } from "../chat/Transcript";
+import { useNow } from "../../lib/hooks";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
+import type { TranscriptSlot } from "../sessions/parts";
 import { FloatingComposer } from "../chat/FloatingComposer";
 import type { FloatingSlot } from "../files/FileView";
 
@@ -23,6 +27,29 @@ const NotesPanel = lazy(() => import("../notes/NotesPanel").then((m) => ({ defau
 const ChangesPane = lazy(() => import("./ChangesPane").then((m) => ({ default: m.ChangesPane })));
 /** Memory (its own chunk). */
 const MemoryTab = lazy(() => import("../memory/MemoryTab").then((m) => ({ default: m.MemoryTab })));
+/** Sessions (project sessions): the list-detail tab and one session in a tab of its own. Their own chunks. */
+const SessionsTab = lazy(() => import("../sessions/SessionsTab").then((m) => ({ default: m.SessionsTab })));
+const SessionPane = lazy(() => import("../sessions/SessionPane").then((m) => ({ default: m.SessionPane })));
+
+/** A session's conversation is drawn by the project chat's own `Transcript`; the sessions feature receives it as a slot. */
+function SessionTranscript(props: Parameters<TranscriptSlot>[0]) {
+  const now = useNow(props.agent.status === "running");
+  return (
+    <Transcript
+      agent={props.agent}
+      messages={props.messages}
+      now={now}
+      watched
+      speaker={props.speaker}
+      promptAuthor={props.promptAuthor}
+      hideFirstPrompt={props.hideFirstPrompt}
+      density={props.density}
+      onOpenSession={props.onOpenSession}
+    />
+  );
+}
+const renderSessionTranscript: TranscriptSlot = (props) => <SessionTranscript {...props} />;
+
 /** Review (RV2): pick a pull request, read it, comment, submit. Monaco comes from the files feature, as for Changes. */
 const ReviewTab = lazy(() => import("../review/ReviewTab").then((m) => ({ default: m.ReviewTab })));
 const loadReviewMonaco = () => import("../files/monaco");
@@ -51,6 +78,8 @@ export function TabView({ tab }: { tab: TabId }) {
           <FileView tab={tab} fileKey={ref.key} floatingComposer={renderFloatingComposer} />
         </Suspense>
       );
+    case "session":
+      return <SessionTab sessionId={ref.sessionId} tab={tab} />;
     case "run":
       return (
         <Suspense fallback={null}>
@@ -86,6 +115,8 @@ export function TabView({ tab }: { tab: TabId }) {
             <ReviewTab loadMonaco={loadReviewMonaco} loadCommands={loadReviewCommands} />
           </Suspense>
         );
+      // Its own list, detail and composer: no floating composer over it.
+      if (ref.tool === "sessions") return <SessionsToolTab />;
       if (ref.tool === "memory")
         return (
           <ToolView tab={tab}>
@@ -102,6 +133,24 @@ export function TabView({ tab }: { tab: TabId }) {
         </ToolView>
       );
   }
+}
+
+function SessionsToolTab() {
+  const ws = useOptionalWorkspace();
+  return (
+    <Suspense fallback={null}>
+      <SessionsTab renderTranscript={renderSessionTranscript} onOpenInTab={ws ? (id) => ws.openSession(id) : undefined} />
+    </Suspense>
+  );
+}
+
+function SessionTab({ sessionId, tab }: { sessionId: string; tab: TabId }) {
+  const ws = useOptionalWorkspace();
+  return (
+    <Suspense fallback={null}>
+      <SessionPane sessionId={sessionId} renderTranscript={renderSessionTranscript} onClose={ws ? () => ws.dropTab(tab) : undefined} />
+    </Suspense>
+  );
 }
 
 /**

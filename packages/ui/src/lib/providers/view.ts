@@ -1,6 +1,7 @@
 import type { Provider, ProviderModel, ProviderState } from "@octo/agent-client";
 import { timeAgo } from "../format";
 import { stateText } from "./providers";
+import { plainReason } from "./reasons";
 
 // Decision 89: Settings → Providers is a list and a detail. Everything the page decides is here, React-free.
 
@@ -116,12 +117,12 @@ export function billingLine(p: Pick<Provider, "kind" | "flat_rate">): string {
 }
 
 /** Why it is not ready, in plain words and without repeating the state; "" when the provider is ready. */
-export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason">): string {
+export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason" | "problem">): string {
   switch (p.state) {
     case "ready":
       return "";
     case "not_supported": {
-      const r = p.reason.trim();
+      const r = plainReason(p).trim();
       return r || "This agent's command line cannot work with Octo.";
     }
     case "not_installed":
@@ -131,7 +132,7 @@ export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason">): stri
     case "not_connected":
       return p.kind === "api" ? "Add an API key to bill per token through your own account." : "Switch the router on and give it an upstream key.";
     case "error": {
-      const r = p.reason.trim();
+      const r = plainReason(p).trim();
       return r ? `Not working: ${r.replace(/\.$/, "")}.` : "Not working. Check again, or copy the diagnostic report from Privacy and data.";
     }
   }

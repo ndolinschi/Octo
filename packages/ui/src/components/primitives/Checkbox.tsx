@@ -1,5 +1,5 @@
 import { Check, Minus } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Glyph } from "./Glyph";
 
@@ -14,7 +14,7 @@ import { Glyph } from "./Glyph";
  *
  * Not for: an on/off setting that applies at once (`Switch`), one of several exclusive choices (`Segmented`).
  */
-export function Checkbox(props: {
+type CheckboxProps = {
   checked: boolean;
   onChange(next: boolean): void;
   label: ReactNode;
@@ -27,7 +27,11 @@ export function Checkbox(props: {
   id?: string;
   name?: string;
   className?: string;
-}) {
+  /** The choice is missing or wrong: a `err` box border and `aria-invalid`. */
+  invalid?: boolean;
+};
+
+export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(props, outer) {
   const input = useRef<HTMLInputElement>(null);
   const mixed = props.indeterminate === true && !props.checked;
   useEffect(() => {
@@ -37,7 +41,12 @@ export function Checkbox(props: {
   return (
     <label className={cn("group touch-hit relative inline-flex min-w-0 items-start gap-2 text-sm text-fg", props.disabled && "opacity-50", props.className)}>
       <input
-        ref={input}
+        ref={(el) => {
+          input.current = el;
+          if (typeof outer === "function") outer(el);
+          else if (outer) outer.current = el;
+        }}
+        aria-invalid={props.invalid || undefined}
         type="checkbox"
         id={props.id}
         name={props.name}
@@ -51,7 +60,7 @@ export function Checkbox(props: {
         aria-hidden
         className={cn(
           "mt-0.5 grid size-4 shrink-0 place-items-center rounded-xs border transition-[background-color,border-color] duration-100 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-focus",
-          on ? "border-primary bg-primary text-primary-fg" : "border-input-border bg-panel group-hover:border-fg-3",
+          on ? "border-primary bg-primary text-primary-fg" : props.invalid ? "border-err bg-panel" : "border-input-border bg-panel group-hover:border-fg-3",
         )}
       >
         {on && <Glyph icon={mixed ? Minus : Check} size={14} />}
@@ -64,4 +73,4 @@ export function Checkbox(props: {
       )}
     </label>
   );
-}
+});

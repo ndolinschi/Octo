@@ -13,6 +13,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/secrets"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // ToolRequestInput is the tool an agent calls to ask the user for structured
@@ -25,6 +26,14 @@ const ToolRequestInput = "request_input"
 func (o *Orchestrator) Redact(projectID, s string) string { return o.secrets.Redact(projectID, s) }
 
 func (rt *runtime) redact(s string) string { return rt.o.secrets.Redact(rt.pid(), s) }
+
+// redactProblem is a copy of e with the project's secret values removed from
+// every text of it.
+func (rt *runtime) redactProblem(e *usererr.Error) *usererr.Error {
+	c := *e
+	c.Message, c.Hint, c.Command, c.Details = rt.redact(e.Message), rt.redact(e.Hint), rt.redact(e.Command), rt.redact(e.Details)
+	return &c
+}
 
 // Inputs lists the project's open forms.
 func (o *Orchestrator) Inputs(pid string) []inputs.Input { return o.inputs.List(pid) }

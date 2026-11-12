@@ -12,6 +12,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // Discovery turns on model discovery: finding the models of an ACP agent
@@ -62,7 +63,10 @@ var (
 )
 
 // NotReadyError says the agent cannot be asked for its models now.
-type NotReadyError struct{ Reason string }
+type NotReadyError struct {
+	Reason  string
+	Problem *usererr.Error
+}
 
 func (e *NotReadyError) Error() string { return e.Reason }
 
@@ -209,9 +213,11 @@ func (s *Service) RefreshModels(ctx context.Context, id string) (Provider, error
 		if reason == "" {
 			reason = "not installed"
 		}
-		return Provider{}, &NotReadyError{Reason: a.Label + " is not installed (" + reason + ")"}
+		p := usererr.AgentNotInstalled(a.Label, a.InstallCmd(), strings.TrimSpace(reason+" "+a.InstallHint))
+		return Provider{}, &NotReadyError{Reason: p.Message, Problem: p}
 	case a.LoggedIn != nil && !*a.LoggedIn:
-		return Provider{}, &NotReadyError{Reason: a.Label + " is not logged in"}
+		p := usererr.AgentNotLoggedIn(a.Label, a.LoginCmd(), a.Hint)
+		return Provider{}, &NotReadyError{Reason: p.Message, Problem: p}
 	}
 	s.discover(ctx, a, true)
 	p, _ := s.Provider(id)

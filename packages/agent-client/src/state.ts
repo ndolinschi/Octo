@@ -16,6 +16,8 @@ import type {
   SideStarted,
   Task,
   TurnStatus,
+  ErrorFields,
+  ErrorInfo,
 } from "./types";
 
 /** The project's side conversation (decision 40): kept apart from every agent's messages. */
@@ -25,11 +27,11 @@ export type SideState = {
   /** `thinking` and `activity` (parity B13) are the live state of an ACP side answer; both are dropped when it ends. */
   pending: { side_id: string; text: string; thinking?: string; activity?: { kind: string; label: string; tool_use_id?: string } } | null;
   /** The last question that failed; cleared by the next question. */
-  error: { side_id: string; message: string; code?: string; hint?: string } | null;
+  error: ({ side_id: string; message: string; code?: string } & ErrorFields) | null;
 };
 
 /** What waits for the user (v7): pending approvals and open forms, from events or a reload. */
-export type AttentionState = {
+export type AttentionState = ErrorFields & {
   needs_you: boolean;
   approvals: number;
   inputs: number;
@@ -95,7 +97,7 @@ export type ProjectState = {
 
 export type SessionsState = { list: ProjectSession[]; currentId: string | null };
 
-export type TurnOutcome = { status: TurnStatus; error: string | null; hint?: string };
+export type TurnOutcome = { status: TurnStatus; error: string | null; notice?: ErrorInfo } & ErrorFields;
 
 export function emptySide(): SideState {
   return { messages: [], pending: null, error: null };
@@ -252,7 +254,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         notes: event.note ? upsertNote(state.notes, event.note) : state.notes.filter((n) => n.id !== event.note_id),
       };
     case "turn.finished": {
-      const outcome: TurnOutcome = event.hint ? { status: event.status, error: event.error, hint: event.hint } : { status: event.status, error: event.error };
+      const outcome: TurnOutcome = { status: event.status, error: event.error, ...errorFieldsOf(event), ...(event.notice ? { notice: event.notice } : {}) };
       const request = lastRequestId(state);
       return {
         ...state,
@@ -361,6 +363,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
       const from = event.state === undefined ? state.attention : event;
       if (from.state !== undefined) attention.state = from.state;
       if (from.error !== undefined) attention.error = from.error;
+      Object.assign(attention, errorFieldsOf(from));
       return { ...state, attention };
     }
     case "providers.updated":
@@ -523,14 +526,18 @@ export function withTasks(state: ProjectState, tasks: Task[]): ProjectState {
   return { ...state, tasks: Object.fromEntries(tasks.map((t) => [t.id, t])) };
 }
 
-function sideError(event: { side_id: string; error: string; code?: string; hint?: string }): {
-  side_id: string;
-  message: string;
-  code?: string;
-  hint?: string;
-} {
-  const e: { side_id: string; message: string; code?: string; hint?: string } = { side_id: event.side_id, message: event.error };
+/** The structured parts of an error event (hint, command, action, details), only those that are present. */
+export function errorFieldsOf(src: ErrorFields): ErrorFields {
+  const out: ErrorFields = {};
+  if (src.hint) out.hint = src.hint;
+  if (src.command) out.command = src.command;
+  if (src.action) out.action = src.action;
+  if (src.details) out.details = src.details;
+  return out;
+}
+
+function sideError(event: { side_id: string; error: string; code?: string } & ErrorFields): { side_id: string; message: string; code?: string } & ErrorFields {
+  const e: { side_id: string; message: string; code?: string } & ErrorFields = { side_id: event.side_id, message: event.error, ...errorFieldsOf(event) };
   if (event.code !== undefined) e.code = event.code;
-  if (event.hint !== undefined) e.hint = event.hint;
   return e;
 }

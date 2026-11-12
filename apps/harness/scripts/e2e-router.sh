@@ -88,7 +88,7 @@ P2=$(new_project http://127.0.0.1:8815 ',"budget_usd":0.01')
 n_before=$(curl -fsS "http://127.0.0.1:8815/v1/usage?group=day&project=$P2" | jget 'd["total"]["requests"]')
 res=$(run_turn http://127.0.0.1:8815 "$P2" "build it")
 echo "orchestrator error: $res"
-echo "$res" | grep -Eq '^Project budget reached \(\$[0-9.]+ of \$0\.01\)$' || fail "no budget message"
+echo "$res" | grep -Eq '^This project.s budget is used up \(\$[0-9.]+ of \$0\.01\)\.$' || fail "no budget message"
 sleep 1
 n1=$(curl -fsS "http://127.0.0.1:8815/v1/usage?group=day&project=$P2" | jget 'd["total"]["requests"]')
 sleep 1

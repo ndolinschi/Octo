@@ -7,6 +7,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // AskSide starts a side question; the answer arrives as side.* events.
@@ -19,13 +20,11 @@ func (s *Service) AskSide(ctx context.Context, pid, text string) (orchestrator.S
 	case errors.Is(err, orchestrator.ErrSideInProgress):
 		return start, sideInProgress()
 	case errors.Is(err, orchestrator.ErrNoProvider):
-		e := noProvider()
-		e.Message = "Nothing can answer a side question. Connect a provider in Settings, or choose a side model."
+		detail := ""
 		if errors.Unwrap(err) != nil {
-			_, detail, _ := strings.Cut(err.Error(), ": nothing can answer a side question: ")
-			e.Message = "Nothing can answer a side question: " + detail + ". Connect a provider in Settings, or choose a side model."
+			_, detail, _ = strings.Cut(err.Error(), ": nothing can answer a side question: ")
 		}
-		return start, e
+		return start, of(KindConflict, usererr.SideNoAnswer(detail))
 	case errors.Is(err, projectstore.ErrNotFound):
 		return start, notFound("project")
 	}

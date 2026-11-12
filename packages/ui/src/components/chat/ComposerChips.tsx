@@ -1,12 +1,13 @@
-import type { Folder, TierPolicy } from "@octo/agent-client";
-import { Layers } from "lucide-react";
-import { lazy, Suspense, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import type { Folder } from "@octo/agent-client";
+import { lazy, Suspense, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { GLYPH } from "../primitives/glyphs";
-import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { Chip } from "../primitives/Chip";
 import { ModelPicker } from "../shared/ModelPicker";
+
+/** The folder menu opens on a click: its own chunk (shared with every other menu), warmed after the first paint. */
+const Menu = lazy(() => import("../primitives/Menu").then((m) => ({ default: m.Menu })));
 
 /** The folder picker loads when first opened (decision 49; its own chunk). */
 const FolderPicker = lazy(() => import("../shared/FolderPicker").then((m) => ({ default: m.FolderPicker })));
@@ -61,6 +62,8 @@ export function useChipMenu(onOpenChange: (open: boolean) => void) {
 /** The project's model or agent (decision 58): the shared model control, the same one the title bar shows. */
 export function ModelChip(
   props: ChipProps & {
+    footer?: ReactNode;
+    openRequest?: { n: number; query: string } | undefined;
     value: string;
     title?: string | undefined;
     unavailable?: boolean;
@@ -79,6 +82,8 @@ export function ModelChip(
       side="top"
       warn={props.unavailable === true}
       tip={props.unavailable ? "This model's provider is not connected" : props.title}
+      footer={props.footer}
+      openRequest={props.openRequest}
       onOpenChange={props.onOpenChange}
     />
   );
@@ -114,30 +119,32 @@ export function FolderChip(props: ChipProps & { folders: Folder[]; onAdd?: ((pat
       />
       <Presence show={pos !== null} exitMs={0}>
         {pos && (
-          <Menu
-            label="Folders"
-            x={pos.x}
-            y={pos.y}
-            above
-            onClose={() => setOpen(false)}
-            items={[
-              ...props.folders.map((f) => ({ id: f.id, label: f.label, title: f.path, run: () => ws?.openTool("files") })),
-              ...(props.folders.length ? [{ id: "sep", separator: true as const }] : []),
-              ...(add
-                ? [
-                    {
-                      id: "add",
-                      label: "Add a folder…",
-                      run: () => {
-                        setPicking(true);
-                        onOpenChange(true);
+          <Suspense fallback={null}>
+            <Menu
+              label="Folders"
+              x={pos.x}
+              y={pos.y}
+              above
+              onClose={() => setOpen(false)}
+              items={[
+                ...props.folders.map((f) => ({ id: f.id, label: f.label, title: f.path, run: () => ws?.openTool("files") })),
+                ...(props.folders.length ? [{ id: "sep", separator: true as const }] : []),
+                ...(add
+                  ? [
+                      {
+                        id: "add",
+                        label: "Add a folder…",
+                        run: () => {
+                          setPicking(true);
+                          onOpenChange(true);
+                        },
                       },
-                    },
-                  ]
-                : []),
-              { id: "manage", label: "Project settings…", disabled: !ws, run: () => ws?.openSettings() },
-            ]}
-          />
+                    ]
+                  : []),
+                { id: "manage", label: "Project settings…", disabled: !ws, run: () => ws?.openSettings() },
+              ]}
+            />
+          </Suspense>
         )}
       </Presence>
       <Presence show={picking}>
@@ -155,47 +162,6 @@ export function FolderChip(props: ChipProps & { folders: Folder[]; onAdd?: ((pat
               }}
             />
           </Suspense>
-        )}
-      </Presence>
-    </>
-  );
-}
-
-const POLICY: Record<TierPolicy, { label: string; title: string }> = {
-  auto: { label: "Auto", title: "Auto: the router may pick a lower or higher tier" },
-  ceiling: { label: "Ceiling", title: "Ceiling: never above the requested tier" },
-  fixed: { label: "Fixed", title: "Fixed: always the requested tier" },
-};
-
-const POLICIES: readonly TierPolicy[] = ["auto", "ceiling", "fixed"];
-
-/** The router's tier policy (shown only when a router is in the path). */
-export function TierChip(props: ChipProps & { value: TierPolicy; onChoose(value: TierPolicy): void }) {
-  const { ref, open, setOpen, at } = useChipMenu(props.onOpenChange);
-  const pos = open ? at() : null;
-  return (
-    <>
-      <Chip
-        ref={ref}
-        icon={Layers}
-        name="Routing"
-        label={POLICY[props.value].label}
-        bare={props.bare}
-        open={open}
-        disabled={props.disabled}
-        aria-haspopup="menu"
-        onClick={() => setOpen(!open)}
-      />
-      <Presence show={pos !== null} exitMs={0}>
-        {pos && (
-          <Menu
-            label="Routing"
-            x={pos.x}
-            y={pos.y}
-            above
-            onClose={() => setOpen(false)}
-            items={POLICIES.map((p) => ({ id: p, label: POLICY[p].label, title: POLICY[p].title, checked: p === props.value, run: () => props.onChoose(p) }))}
-          />
         )}
       </Presence>
     </>

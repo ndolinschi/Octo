@@ -76,7 +76,7 @@ func TestNoKeyACPTurnCompletesAndBuiltinWorkFailsCleanly(t *testing.T) {
 	}
 	failed := 0
 	for _, a := range e.agents(t, p) {
-		if a.ParentID != nil && a.Status == "failed" && a.Error != nil && *a.Error == config.NoBuiltinLoopMessage {
+		if a.ParentID != nil && a.Status == "failed" && a.Error != nil && *a.Error == "The built-in agent has no API key." {
 			failed++
 		}
 	}
@@ -87,7 +87,7 @@ func TestNoKeyACPTurnCompletesAndBuiltinWorkFailsCleanly(t *testing.T) {
 	// An explicit built-in model: the turn fails with the message.
 	b := e.project(t, map[string]string{"orchestrator": "claude-opus-5-5"})
 	tr = e.ask(t, b, "hello")
-	if tr.status != "failed" || tr.errMsg != config.NoBuiltinLoopMessage {
+	if tr.status != "failed" || tr.errMsg != "The built-in agent has no API key." {
 		t.Fatalf("builtin turn = %s (%v)", tr.status, tr.errMsg)
 	}
 
@@ -114,10 +114,10 @@ func TestNoKeyCompletionIsOffWithTheReasonAndNeverCallsUpstream(t *testing.T) {
 	e.into(t, "POST", "/v1/projects", map[string]any{"name": "p", "folders": []map[string]string{{"path": t.TempDir()}}}, http.StatusCreated, &proj)
 	e.into(t, "PATCH", "/v1/projects/"+proj.ID, map[string]any{"models": map[string]string{"completion": "fast"}}, http.StatusOK, nil)
 	var resp struct {
-		Error struct{ Code, Message string } `json:"error"`
+		Error struct{ Code, Message, Details string } `json:"error"`
 	}
 	e.into(t, "POST", "/v1/projects/"+proj.ID+"/complete", map[string]any{"path": "a.go", "prefix": "x"}, http.StatusConflict, &resp)
-	if resp.Error.Code != "completion_off" || resp.Error.Message != config.NoBuiltinLoopMessage {
+	if resp.Error.Code != "completion_off" || resp.Error.Details != config.NoBuiltinLoopMessage {
 		t.Fatalf("error = %+v", resp.Error)
 	}
 	if calls.Load() != 0 {

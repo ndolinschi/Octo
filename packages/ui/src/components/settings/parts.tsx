@@ -141,13 +141,3 @@ export function SaveStatus(props: { state: SaveState; restart?: boolean; onResta
     );
   return null;
 }
-
-/** A state dot for a provider or agent (ok / warn / err / muted): the one dot of the provider list and the connection row. */
-export function StateDot({ tone }: { tone: "ok" | "warn" | "err" | "muted" }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("size-2 shrink-0 rounded-full", tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : tone === "err" ? "bg-err" : "bg-fg-3")}
-    />
-  );
-}

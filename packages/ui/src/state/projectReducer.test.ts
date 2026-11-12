@@ -86,6 +86,19 @@ test("loading agents keeps ones the stream knows that the list lacks, after the 
   assert.ok(s.agents.new);
 });
 
+test("a resumed session's transcript replaces the conversation: messages, markers and streamed text", () => {
+  let s = projectReducer(emptyProjectState(), { type: "messages", agentId: "a", messages: [message(1, "user"), message(2)] });
+  s = projectReducer(s, { type: "compactions", agentId: "a", markers: [{ upto_message_id: 1, at: "2026-11-10T10:00:00Z" }] });
+  s = projectReducer(s, { type: "event", event: { type: "message.delta", seq: 1, agent_id: "a", text: "partial" } });
+  s = projectReducer(s, { type: "transcript", agentId: "a", messages: [message(7, "user"), message(8)], markers: [] });
+  assert.deepEqual(
+    s.messages.a?.map((m) => m.id),
+    [7, 8],
+  );
+  assert.deepEqual(s.compactions.a, []);
+  assert.equal(s.streaming.a, "");
+});
+
 test("notes are replaced wholesale", () => {
   let s = projectReducer(emptyProjectState(), { type: "notes", notes: [note("1"), note("2")] });
   s = projectReducer(s, { type: "notes", notes: [note("3")] });

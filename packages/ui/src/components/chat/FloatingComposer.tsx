@@ -1,4 +1,5 @@
 import { Check, CircleX } from "lucide-react";
+import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
@@ -12,9 +13,6 @@ import { RunningDot, Spinner } from "../primitives/Status";
 import { CommentsControl } from "./CommentsControlLazy";
 import { Composer } from "./Composer";
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
-
-const CHIP =
-  "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs text-fg-2 tabular-nums shadow-float octo-ring-float hover:text-fg";
 
 /**
  * The orchestrator composer floating over a file view (or Agents / Notes) while no Chat tab is visible:
@@ -92,15 +90,15 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
         {chips && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {turn && (
-              <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the conversation">
+              <Button variant="secondary" size="xs" onClick={ws.focusChat} title="Show the conversation">
                 {turn}
-              </button>
+              </Button>
             )}
             {agentsRunning > 0 && (
-              <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the conversation">
+              <Button variant="secondary" size="xs" onClick={ws.focusChat} title="Show the conversation">
                 <RunningDot />
                 {agentsRunning}&nbsp;{agentsRunning === 1 ? "agent" : "agents"} running
-              </button>
+              </Button>
             )}
           </div>
         )}
