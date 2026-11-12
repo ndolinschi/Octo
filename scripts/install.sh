@@ -91,10 +91,9 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
 fi
 
 cd "$ROOT"
-if [[ ! -d node_modules ]]; then
-  echo "install.sh: installing JavaScript dependencies (pnpm install)"
-  pnpm install --frozen-lockfile
-fi
+# Always: a pull can add a dependency (an existing node_modules would then miss it); a no-op takes under a second.
+echo "install.sh: installing JavaScript dependencies (pnpm install)"
+pnpm install --frozen-lockfile
 
 echo "install.sh: building the sidecars (harness and router; the router needs a full Rust build the first time)"
 env -u OCTO_NO_ROUTER bash "$ROOT/scripts/build-sidecar.sh"
