@@ -870,6 +870,43 @@ monochrome dithered illustration):
     Harness: `GET /v1/providers` adds `preferred_model`, `roles: {fast, balanced, deep}`, `login: "ok" |
     "not_logged_in" | "unchecked"`; `PUT /v1/providers/{id}/prefs {preferred_model?, roles?}`; tier resolution
     for `acp:<agent>` uses the role's model.
+73. **A status bar that earns its place** (owner: "as with the header we can make a footer with useful
+    information; today the footer hangs there with nothing useful in it"). One 24px row at the bottom of the
+    window, at most five quiet items, each a button: left — the open project's **branch** and number of changed
+    files (opens Changes), **running commands** (opens their tab); right — **agents working** across projects
+    (opens the list), **spend today / budget** (opens Usage), **connection** (harness and router state; only
+    shown when not fine, with what to do). Background work (indexing, refreshing models) appears as one dim text
+    while it runs and disappears after. No clock, no version, no decoration. Hidden in full-screen reading of a
+    single tab below 600px height.
+74. **Settings have two scopes: this machine's defaults, and this project** (owner: "per project there can be
+    separate settings, e.g. models … the default model should not be a setting of the whole environment; we can
+    put a default on the environment"). The Settings page has a scope switch at the top: **Defaults** |
+    **<Project>** (when a project is open; also reachable from the project's "⋯"). Everything that can differ
+    between projects lives in the project scope and starts as "Default: <value>" with one click to override and
+    one to reset: models and roles, access mode, memory and context mode, inline completion, budget, network,
+    project commands, folders and instructions. Machine-only: providers and keys, appearance, notifications,
+    privacy and data, about. A row never appears in both scopes with different meanings.
+75. **Every element helps do or decide something — otherwise it is removed** (owner, on Home's "This week you
+    sent 4 requests … Full recap": "this element does not help me at all"). Home loses the recap sentence, the
+    streak-style statistics and any card that only reports; it keeps what needs the user (failed, waiting,
+    finished-unread), recent projects, and starting something new. Numbers live in Usage. The same test is
+    applied to every screen in each pass, and what fails it is deleted, not restyled.
+76. **Motion only while something is in progress** (owner: "this Working spinner always turns — why spend the
+    computer's CPU on that animation"). Counters, tiles, tabs and list rows use static glyphs; exactly the item
+    that is working right now animates, and stops the moment it finishes; a category that merely *can* be
+    working never animates. All animation pauses when the window is hidden, unfocused for more than 30 s, or the
+    element is off-screen. A test loads each screen with nothing running and asserts
+    `document.getAnimations().length === 0` and no `requestAnimationFrame` loop; with one agent working, only
+    that agent's indicators animate.
+77. **Loading is shown as shape, quickly** (owner: "it loads for a long time; we must have skeletons or
+    something like that"). Any view that can take longer than 150 ms shows a skeleton of its final layout within
+    100 ms; lists show the last known content at once and refresh in place (a quiet "updated just now" on
+    change); nothing blocks on a network or CLI call that can be cached — the harness caches the pull-request
+    list per folder for 60 s and returns the cached list with `stale: true` while refreshing. **Review picker:**
+    one centred column (max 720px): the search field doubles as "paste a URL or type a number"; pull requests
+    that ask for the user first; "Compare branches…" is one row that opens an inline form with Base and Head on
+    one aligned line (labels above both); checks state as a small neutral glyph with a word on hover, not a red
+    cross on its own.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
