@@ -2136,3 +2136,23 @@ b. **Local branches are a view of the picker**, not a block under it: the review
 c. Needs from the harness: `GET …/review/branches?folder=&base=` → `{base, default_base, branches:[{name,current,
    ahead,behind,commit:{sha,subject,date}}]}` read with git only (no network). If it is absent the view shows the
    current branch only.
+
+## Decision 86 — who spent what: tokens per model, per project
+
+Owner: "we need to see which model consumed how much per project — tokens, I mean". The harness already answers
+`GET /v1/usage?group=model&project=<id>`; the UI did not show it plainly. Rules:
+a. The project's Usage tab opens on **By model** (view tabs of decision 82: By model · By agent · By day · Limits):
+   one table, one row per model or agent-model (`Claude Code · opus`, `claude-sonnet-…`), columns Input · Cached ·
+   Output · Total tokens · Requests · Cost (a flat-rate agent shows "≈ $X on your subscription", decision on usage
+   contract) · share bar; sorted by total, a totals row, numbers tabular and right-aligned, full values in the
+   tooltip, compact (12.4k / 3.1M) in the cell. Role rows (completion, summary, classifier) are listed under the
+   model that ran them when "Show roles" is on.
+b. Period control: This session · Today · 7 days · 30 days · All (default: All for the project).
+c. The same table for **all projects** in Settings → Usage and budget, with a first column Project (group
+   `project`, expandable to its models).
+d. In the conversation, a finished turn's meta line gains "model · in / out tokens" (quiet, decision 75: one line,
+   no new card), and the status bar's budget item tooltip lists the top three models of the project.
+e. Export: "Copy as CSV" of the visible table.
+Acceptance: view-model tests (sorting, totals equal the sum, flat-rate cost text, compact formatting incl. Russian
+locale off — English only), screenshots at 1440×900 and 390×700 (below the list floor the table becomes rows with
+the three token numbers under the model name), the spacing audit state.
