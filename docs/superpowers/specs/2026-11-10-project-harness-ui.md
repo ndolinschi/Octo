@@ -1974,3 +1974,22 @@ needs-you dot no longer pulses anywhere (the `octo-ring-pulse` animation is dele
 working project's or agent's ring turns. Checked in Chromium on demo data: with no working project Home has no running
 animation (the one finished `octo-fade-in` of the backdrop streak remains — a test should count running animations).
 Not verified: WebKit, CPU use on the owner's machine.
+
+## Decision 79 — a pane's width never depends on what it shows
+
+Owner: "opening files with different line widths jerks the window". Rule: the width of every pane (sidebar,
+conversation, editor, dock) comes from the layout state only — the divider position and the width floors of decision
+67 — never from content. Acceptance:
+a. Opening, switching and closing files of any line length changes no pane's width by a single pixel (Playwright:
+   open a 20-column file, then a 400-column file, then a one-line minified file; `getBoundingClientRect().width` of
+   the conversation and the editor pane is identical across all three, and the window has no horizontal scroll).
+b. Long lines scroll inside the editor; the editor container has `min-width: 0` and `overflow: hidden` at every flex
+   and grid level up to the pane.
+c. The same test covers the Changes diff, the Review diff and a wide table or code block in the conversation.
+
+## Decision 80 — a folder has no label anywhere
+
+Owner: "remove the label from the project's folder choice altogether". Extends decision 71 to editing a project and
+to every other place: no label input exists. The label sent to the harness is the folder's name (the parent is added
+only to tell two equal names apart). Acceptance: no "Label" field in New project or in project settings; existing
+projects keep working; unit test on the label derivation.
