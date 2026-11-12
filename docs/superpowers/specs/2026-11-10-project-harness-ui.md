@@ -2431,3 +2431,13 @@ As built (B0, primitives only): the primitives in (e) exist with header comments
 prettier on the touched files, unit tests, the gallery script in dark and light (control heights equal their size, no console
 errors), two spacing-audit scenes. Not verified: touch behaviour on a real device (only the CSS rule), keyboard use of `Select` and
 `ListRow` in a real screen reader, any feature migration (none done).
+
+## Decision 91 — UI review round 1
+
+The orchestrator's own review of the screenshots (`docs/superpowers/research/2026-11-12-ui-review-round-1.md`, 15
+findings). Rules a–k are stated there in full and are part of this spec: (a) the backdrop never sits behind content;
+(b) the connect screen is the Providers list; (c) one card for "this needs you"; (d) one activity row; (e) the
+composer row holds at most four controls, routing policy moves into the model menu; (f) suggestions are rows;
+(g) sub-agents are one quiet button at the end of the strip; (h) the queue has a header count and icon actions;
+(i) the review picker header is one line and a refusal is a `Notice` of its view; (j) one vertical rhythm in the
+transcript; (k) tone is carried once.
