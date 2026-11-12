@@ -742,6 +742,13 @@ monochrome dithered illustration):
     (g) **Even density.** No screen has a crowded corner and an empty half: content is centred in a readable
     column, long toolbars are split into "primary / more", and empty space is distributed (equal gutters), not
     left over.
+    (h) **An empty panel is composed, not top-aligned** (owner, on the Side question tab: "this text should be in
+    the middle; at the top it looks detached"). Every empty state — side question, Memory, Changes, Review list,
+    Agents, Usage with no data, an empty conversation — is one block centred horizontally in the panel and placed
+    at the optical middle (its centre at about 42% of the free height): a short title, one line of explanation,
+    then the starting actions or suggestions directly under it, all on one left edge or all centred, never a
+    sentence at the top with a button floating at its right. When the panel has an input at the bottom, the
+    block sits in the space above it; once there is content the block is gone and content starts at the top.
     The spacing audit gains checks for (a) item count per bar, (b) more than one filled button in a surface, and
     (c) nested bordered containers; a pass is not accepted while they report anything.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
