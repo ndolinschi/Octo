@@ -768,6 +768,25 @@ monochrome dithered illustration):
     categories: [{id, label, tokens}], last_request: {input, cached, output}}`, computed from the same assembly
     that builds the next request (so it matches what will be sent), refreshed after every turn and on
     `context.updated`.
+66. **Memory is one tidy view, not tabs over tabs** (owner: "Memory does not look neat at all" — two rows of
+    tabs, a narrow list with cut titles, a detail pane that is empty except for a sentence in its corner, the
+    same request listed twice). Layout:
+    - **One header row:** a segmented control Tasks · Files · Context on the left; on the right a search field
+      (search is not a tab: typing filters the current list and, on Enter, shows results from all kinds) and one
+      quiet filter menu ("Open ▾": Open / Done / Dropped / All, with counts inside the menu). No second tab row.
+    - **List** (fixed 340px; full width below 720px of panel width): rows of two lines — the title (the task's
+      own title, never the raw request cut mid-word; up to two lines) and one dim line "open · 14h ago · 3 facts";
+      a state glyph on the left, nothing on the right. Identical consecutive requests collapse into one row
+      with "×2".
+    - **Detail** (readable column, max 720px, 24px padding): the first item is selected on open, so the pane is
+      never an empty sentence in a corner; sections in a fixed order with the same heading style and 24px between
+      them (Goal, Asked, Decisions, Facts, Outcome, Files); empty sections are omitted, not shown as headings with
+      nothing under them; a task with nothing but its request shows the request and one line "Nothing was
+      recorded for this request yet".
+    - **No items at all:** the shared empty state (decision 64h) with one sentence on what will appear here.
+    - Below 720px of panel width the list and the detail are two steps with a back arrow, not two cramped columns.
+    The same list + detail frame (header row, 340px list, readable detail, first item selected) is used by Changes
+    and Review, so the three read as one family.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
