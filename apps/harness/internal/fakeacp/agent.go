@@ -76,6 +76,7 @@ type agent struct {
 	opts     options
 	authed   bool
 	model    string
+	mode     string // current session mode (EnvModes)
 
 	sess    string // current session id ("" until session/new or session/load)
 	nSess   int
@@ -152,6 +153,22 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		a.handleAuthenticate(m)
 	case "session/set_model", "session/set_config_option":
 		a.handleSetModel(m)
+	case "session/set_mode":
+		var p struct {
+			ModeID string `json:"modeId"`
+		}
+		if !a.opts.modes {
+			a.respondError(m.ID, -32601, "method not found: session/set_mode")
+			return
+		}
+		if err := json.Unmarshal(m.Params, &p); err != nil || (p.ModeID != "default" && p.ModeID != "ask" && p.ModeID != "plan") {
+			a.respondError(m.ID, -32602, "unknown mode")
+			return
+		}
+		a.mu.Lock()
+		a.mode = p.ModeID
+		a.mu.Unlock()
+		a.respond(m.ID, map[string]any{})
 	case "session/new":
 		var p struct {
 			Cwd        string
@@ -184,6 +201,7 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 			a.sess = fmt.Sprintf("fake-%d-%d", os.Getpid(), a.nSess)
 		}
 		a.loaded = false
+		a.mode = "default"
 		a.mcpSrvs = p.McpServers
 		a.mu.Unlock()
 		a.closeMCP()

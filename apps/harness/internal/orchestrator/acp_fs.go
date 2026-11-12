@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/files"
@@ -49,8 +50,11 @@ func (s *acpSession) WriteTextFile(ctx context.Context, req acp.WriteTextFilePar
 		s.deny(req.Path, err)
 		return fmt.Errorf("path %q is outside the project folders: %w", req.Path, err)
 	}
+	if s.rt.readOnlyMode() {
+		return errors.New(s.rt.modeRefusal("writing files"))
+	}
 	if !s.consumePreapproval(req.Path) {
-		if ok, note := s.rt.approveWrite(ctx, s.agentID, s.label, label, abs, rel, req.Content); !ok {
+		if ok, note := s.rt.approveWrite(ctx, s.agentID, s.label, approval.ToolWriteFile, label, abs, rel, req.Content); !ok {
 			return errors.New(denied(note))
 		}
 	}

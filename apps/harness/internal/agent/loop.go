@@ -51,6 +51,10 @@ type Loop struct {
 	// version in use has no typed field for it). StopSequences end generation.
 	Temperature   *float64
 	StopSequences []string
+	// Steer, when set, is asked at every tool boundary (after a round of tool
+	// results is stored, before the next model request) for user messages to
+	// inject: each becomes a stored user message of the conversation.
+	Steer func(ctx context.Context) []string
 	// Clear, when set, replaces old tool results with stubs once a request is
 	// past its share of the window, before compaction is considered.
 	Clear *ClearPolicy
@@ -162,6 +166,15 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 			return res, err
 		}
 		messages = append(messages, toolUser)
+		if l.Steer != nil {
+			for _, text := range l.Steer(ctx) {
+				steered := anthropic.NewUserMessage(anthropic.NewTextBlock(text))
+				if err := l.Sink.Message(ctx, "user", steered); err != nil {
+					return res, err
+				}
+				messages = append(messages, steered)
+			}
+		}
 	}
 	return res, ErrMaxTurns
 }

@@ -40,6 +40,10 @@ func writeErr(w http.ResponseWriter, err error) {
 			}})
 			return
 		}
+		if pe.Details != nil {
+			writeJSON(w, status, map[string]any{"error": map[string]any{"code": pe.Code, "message": pe.Message, "details": pe.Details}})
+			return
+		}
 		writeError(w, status, pe.Code, pe.Message)
 		return
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/files"
+	"github.com/ndolinschi/Octo/apps/harness/internal/instructions"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -96,6 +97,9 @@ func (f *Files) Write(ctx context.Context, pid, folder, path, content string, ex
 		return FileStat{}, fileErr(err)
 	}
 	f.hub.Publish(pid, events.FileChanged, map[string]any{"folder": folder, "path": info.Path, "source": events.SourceUser})
+	if instructions.IsInstructionFile(info.Path) {
+		f.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
+	}
 	return stat(folder, info), nil
 }
 

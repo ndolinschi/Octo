@@ -90,7 +90,7 @@ Package map of `apps/harness/internal/` (one line each; deeper: `apps/harness/do
 | Package | Role |
 | --- | --- |
 | `bridge` | HTTP routes (`/v1/...`, `/health`, `/mcp/...`), SSE, CORS and loopback rules; `Version` |
-| `project`, `projectstore` | Project service (create, send, budget, files, notes, memory API); SQLite stores (registry, per project), migrations, `PRAGMA user_version` stamp (`SchemaVersion`, **3** in the working tree) |
+| `project`, `projectstore` | Project service (create, send, budget, files, notes, memory API); SQLite stores (registry, per project), migrations, `PRAGMA user_version` stamp (`SchemaVersion`, **7**) |
 | `orchestrator` | One turn at a time per project; orchestrator and sub-agent runs; `spawn_agent` (tiers, `auto`, ACP agents); queue; approvals glue; compaction; memory tools, digest and window assembly; ACP orchestrator session (`acp_*.go`) |
 | `agent` | The Messages-API tool loop (`agent.Loop`), tool-result clearing |
 | `anthropicclient`, `router`, `budget`, `fakerouter` | Messages client (prompt caching, response observer); the router integration (detection, hints, result headers, route call); project spend meter; a stand-in router for tests |
@@ -132,7 +132,7 @@ Each flow names the code that does it. Statements about real vendor CLIs are **u
    {queued}`, FIFO, at most 20, persisted); otherwise the project's turn slot is claimed and the user message is stored.
 3. The harness opens a task record for the message (memory, first 80/400 characters, `auto: true`).
 4. `runOrchestrator` assembles the request: mode `full` = the whole transcript after the latest compaction summary;
-   mode `window` (memory M2, in progress) = capped blocks; tool results older than the last 5 are replaced by stubs in
+   mode `window` (memory M2) = capped blocks; tool results older than the last 5 are replaced by stubs in
    the copy that is sent when the estimate passes 60% of the model's window.
 5. Before each request the budget gate runs ([flow 5](#5-budget)). `agent.Loop` sends the Messages request through
    `anthropicclient` (up to three `cache_control` breakpoints; with a detected router also the `x-octo-*` hint headers).
@@ -213,8 +213,8 @@ and the tier hint when a router is present.
 
 ### 6. Approvals, queue and forms (v7)
 
-1. **Access** is a project field: `supervised` or `full`. New projects get `HARNESS_DEFAULT_ACCESS` (**`full`** until
-   the UI shows approval cards; existing projects are `full`).
+1. **Access** is a project field: `supervised` or `full`. New projects get `HARNESS_DEFAULT_ACCESS` (**`full`**
+   unless set otherwise; the UI shows approval cards; existing projects keep their value).
 2. In a `supervised` project `write_file`, `bash` (any depth), ACP `session/request_permission` (not read/search) and
    ACP `fs/write_text_file` create an `Approval` card (`GET/POST /v1/projects/{pid}/approvals`); only the agent that
    asked blocks. Decisions `allow`, `allow_for_turn`, `deny`. Cancelling the turn denies what is pending; an
@@ -242,10 +242,10 @@ and the tier hint when a router is present.
 4. Search (`memory_search`, `GET /v1/projects/{pid}/memory/search`): two FTS5 indexes (`unicode61`, and `trigram` for
    inflected Russian and partial identifiers); all words first, then "most of the significant words"; superseded facts
    after current ones; an explicit "nothing in memory matches".
-5. **M2 (in progress in the working tree)**: project setting `memory: {context: "full"|"window", recent_exchanges}`;
+5. **M2 (built, opt-in)**: project setting `memory: {context: "full"|"window", recent_exchanges}`;
    `window` builds the orchestrator request from capped blocks (memory index, open tasks, the last N exchanges, facts,
    the current turn) and stores a context receipt (`GET /v1/projects/{pid}/turns/{tid}/context`). `full` is the default
-   and today's behaviour. **M3** (UI view, embeddings, cross-project memory) is not built.
+   and today's behaviour. **M3** (UI view) is built; embeddings and cross-project memory are not.
 6. Detail: `apps/harness/docs/memory.md`.
 
 ### 8. Diagnostics (`harness doctor`)
@@ -265,8 +265,8 @@ and the tier hint when a router is present.
 `GET/PUT /v1/settings` read and write `{data-dir}/harness.env` for a fixed list (provider key, tier models, default
 orchestrator, router switch/key/base URL, child-env allow list, ACP trace). Secrets are write-only. Models, the
 allow list and the trace apply at once; keys and router settings need a restart of the sidecars
-(`restart_required`), which the shell performs through `bridge_restart`. The first-run screen (P9) that would use this
-is **not built** in the UI.
+(`restart_required`), which the shell performs through `bridge_restart`. The first-run screen (P9) is built as the connect
+screen (decision 53).
 
 ## Where to look
 
@@ -284,7 +284,7 @@ is **not built** in the UI.
 | Delegation routing (`tier: auto`) | harness `internal/orchestrator/auto.go`; router `src/auto/delegate/` | same, section I2 | `e2e-router.sh` case 6; `tests/route_api.rs` |
 | Price rule, ladder, autoroute | `apps/router/src/auto/`, `apps/router/config/autoroute.toml`, `prices.toml` | same, sections "price rule", "Decisions after the live run"; `apps/router/docs/autoroute.md` | `tests/price_rule.rs`, `tests/cost_fixes.rs` |
 | Changes, approvals, queue, forms, secrets (v7) | `internal/{changes,diff,approval,inputs,secrets}`, `orchestrator/{approvals,queue,secrets}.go`; `apps/harness/docs/v7.md` | `2026-11-10-v7-changes-queue-approvals.md` | `apps/harness/scripts/e2e-v7.sh` |
-| Memory (M1; M2 in progress) | `internal/memory`, `projectstore/{tasks,search,receipts}.go`, `orchestrator/{memory_tools,window}.go`; `apps/harness/docs/memory.md` | `2026-11-11-orchestrator-memory-design.md` | `go test` only (no e2e script) |
+| Memory (M1, M2, M3) | `internal/memory`, `projectstore/{tasks,search,receipts}.go`, `orchestrator/{memory_tools,window}.go`; `apps/harness/docs/memory.md` | `2026-11-11-orchestrator-memory-design.md` | `go test`; `e2e-v7.sh` |
 | Settings and `harness.env` | `internal/{settings,config}`; `apps/harness/docs/settings.md` | `2026-11-11-packaging-design.md` (P1, P7) | `go test ./cmd/harness`, `internal/settings` |
 | Diagnostics, wire trace, schema versions | `internal/{diag,acptrace}`, `cmd/harness/doctor.go`, `projectstore/migrate.go` | `2026-11-11-packaging-design.md` (R1) | `go test ./cmd/harness ./internal/diag ./internal/projectstore` |
 | Sidecars, ports, PATH, stop order | `apps/desktop/src-tauri/sidecar/`, `apps/desktop/src-tauri/src/lib.rs` | `2026-11-11-packaging-design.md` (P5, P8, P8b) | `cd apps/desktop/src-tauri && cargo test -p octo-sidecar` (needs `python3` for the router tests) |
@@ -292,7 +292,7 @@ is **not built** in the UI.
 | Client, reducer, message bridge | `packages/agent-client/src` | `2026-11-10-project-harness-design.md` and the specs that extend it | `pnpm --filter @octo/agent-client test` |
 | UI (layers, tabs, chat, usage, demo) | `packages/ui/src`, `packages/ui/ARCHITECTURE.md` | `2026-11-10-project-harness-ui.md` (decisions 1-44, "As built" sections) | `pnpm --filter @octo/ui test`, `packages/ui/scripts/spacing-audit.mjs` (needs a dev server and Playwright) |
 | Router proxy and history | `apps/router/src`, `apps/router/docs/` | (product docs, not specs) | `cargo test -p octo` |
-| Inline completion | not built (`POST /v1/projects/{id}/complete`, `models.completion` are only designed) | `2026-11-11-inline-completion-design.md` | none |
+| Inline completion | `internal/completion`, `POST /v1/projects/{id}/complete`, `models.completion`; editor provider in `packages/ui` | `2026-11-11-inline-completion-design.md` | `e2e-v7.sh` case, `go test ./internal/completion` |
 | Bots | not built | `2026-11-11-bots-design.md` | none |
 
 ## Environment variables and settings
@@ -322,7 +322,7 @@ flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
 | `HARNESS_NO_BUILTIN_PLUGINS` (flag `--no-builtin-plugins`) | harness | `false` | **Every harness started by a test sets `1`** |
 | `HARNESS_ACP_IDLE` | harness | `30m` | Idle ACP orchestrator session shutdown |
 | `HARNESS_ROUTE_TIMEOUT` | harness | `2500ms` | The route call of `tier: auto` |
-| `HARNESS_DEFAULT_ACCESS` | harness | `full` | `supervised` or `full`; flips to `supervised` when the UI shows approval cards |
+| `HARNESS_DEFAULT_ACCESS` | harness | `full` | `supervised` or `full`; the UI shows approval cards, the default is still `full` |
 | `HARNESS_APPROVAL_TIMEOUT` | harness | `30m` | `0` or negative: wait for ever |
 | `HARNESS_API_TOKEN` | harness (env only, not a setting) | generated per start into `{data-dir}/api-token` | Bearer token required on `/v1/**` (16+ printable ASCII characters); never passed to children. The Tauri shell, `scripts/dev.sh` and the e2e scripts set it |
 | `HARNESS_NO_API_TOKEN` (flag `--no-api-token`) | harness | off | `1` turns the token check off (tests and scripts only; logs a warning) |
@@ -481,14 +481,12 @@ Items fixed since 2026-11-11 were removed (the v7 header, the missing live check
 1. `specs/2026-11-11-orchestrator-memory-design.md`, "As built — M1", says "M2 and M3 are not built". The sections "As
    built — M2" and "As built — M3" below it say they are, and the code has both. The M1 sentence is stale.
 2. `specs/2026-11-11-packaging-design.md`, "As built — R1", says `projectstore.SchemaVersion` is **3** "now". The code has
-   `SchemaVersion = 6` in `apps/harness/internal/projectstore/migrate.go`. The package table above also says 3.
+   `SchemaVersion = 7` in `apps/harness/internal/projectstore/migrate.go`.
 3. `specs/2026-11-11-router-harness-integration.md`, section I2, says the route call times out after 300 ms. The code
    (`DefaultRouteTimeout` in `apps/harness/internal/config/config.go`) and the spec's own "As built" note say 2500 ms.
 4. `apps/harness/README.md` says nobody has run Copilot or Grok, nor Codex. `apps/harness/scripts/test-subscriptions.sh`
    says copilot, grok and codex were run by a person. The owner's run 2 records logged-out Copilot and Grok failures and no
    logged-in run; no record of a Codex run exists. The status table above is the current statement.
-5. The "Main flows" section (1.4, 6.1, 7.5, 9) and the "Where to look" rows for memory and inline completion still say that
-   M2 is in progress, that the UI shows no approval cards, that inline completion is not built and that the first-run
-   screen is not built. All four are built now (M2 in the harness; approval cards, inline completion and the connect
-   screen in the UI); the status table is current. `HARNESS_DEFAULT_ACCESS` still defaults to `full` in
+5. (Fixed 2026-11-12: "Main flows" and "Where to look" no longer call M2, approval cards, inline completion or the first-run
+   screen unbuilt.) `HARNESS_DEFAULT_ACCESS` still defaults to `full` in
    `apps/harness/cmd/harness/serve.go`.

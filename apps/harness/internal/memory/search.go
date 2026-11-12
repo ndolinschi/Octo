@@ -77,6 +77,9 @@ func (s *Service) Search(ctx context.Context, p SearchParams) (SearchResult, err
 	return out, nil
 }
 
+// Snippet cuts at most SnippetLen characters of body around the first of terms that occurs.
+func Snippet(body string, terms []string) string { return snippet(body, terms) }
+
 // snippet cuts at most SnippetLen characters around the first term that occurs.
 func snippet(body string, terms []string) string {
 	body = strings.Join(strings.Fields(body), " ")

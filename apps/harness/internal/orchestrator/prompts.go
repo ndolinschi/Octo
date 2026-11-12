@@ -49,6 +49,11 @@ func (rt *runtime) orchestratorPromptParts() (static, notes string) {
 	b.WriteString("You are the orchestrator of a software project. You are the single long-lived agent the user talks to: " +
 		"every message in this conversation is the same user speaking about the same project.\n\n")
 	b.WriteString(rt.brief())
+	if !rt.isACPOrchestrator() {
+		b.WriteString(rt.instructionSection(projectstore.Agent{}))
+		b.WriteString(rt.planSection())
+		b.WriteString(rt.modeSection())
+	}
 	b.WriteString(`
 How you work:
 - Keep your own context small. Beyond a quick orientation with list_dir/read_file, do not explore, implement or verify yourself; delegate with spawn_agent.
@@ -85,6 +90,7 @@ func (rt *runtime) subAgentPrompt(a projectstore.Agent) string {
 	fmt.Fprintf(&b, "Role: %s\n", a.Role)
 	b.WriteString("You are a sub-agent working for a parent agent on the project below. Your task is the first user message.\n\n")
 	b.WriteString(rt.brief())
+	b.WriteString(rt.instructionSection(a))
 	b.WriteString("\nYour final message is the only thing your parent sees. Make it a complete, compact report: " +
 		"findings, relevant file paths, what you changed, and open questions. Do not ask for clarification; state your assumptions.\n")
 	if a.Depth < rt.info.MaxDepth {

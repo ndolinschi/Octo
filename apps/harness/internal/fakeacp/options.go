@@ -56,6 +56,9 @@ const (
 	// EnvUniqueSessions=1 gives every session/new a fresh id
 	// (fake-<pid>-<n>) instead of the fixed fake-session-1.
 	EnvUniqueSessions = "OCTO_FAKEACP_UNIQUE_SESSIONS"
+	// EnvModes=1 advertises session modes (default, ask, plan) in session/new
+	// and serves session/set_mode; [mode] reports the current one.
+	EnvModes = "OCTO_FAKEACP_MODES"
 )
 
 // Auth method ids offered under EnvAuth.
@@ -81,6 +84,7 @@ type options struct {
 	mcpHTTP     bool
 	mcpReject   bool
 	unique      bool
+	modes       bool
 }
 
 func optionsFromEnv(args []string) options {
@@ -89,6 +93,7 @@ func optionsFromEnv(args []string) options {
 		via: os.Getenv(EnvModelsVia), refuseUnk: os.Getenv(EnvRefuseModel) == "1",
 		loadSession: os.Getenv(EnvLoadSession) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
 		mcpReject: os.Getenv(EnvMCPReject) == "1", promptUsage: os.Getenv(EnvPromptUsage), unique: os.Getenv(EnvUniqueSessions) == "1",
+		modes: os.Getenv(EnvModes) == "1",
 	}
 	for _, m := range strings.Split(os.Getenv(EnvModels), ",") {
 		if m = strings.TrimSpace(m); m != "" {

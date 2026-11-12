@@ -109,6 +109,8 @@ export function approvalCaption(a: Approval): string {
       return "Run a command";
     case "acp":
       return "Permission requested";
+    case "network":
+      return "Fetch a web page";
   }
 }
 

@@ -116,6 +116,10 @@ type Orchestrator struct {
 	// whose running turn was cancelled by SendNow. Lock order: qmu before mu.
 	qmu     sync.Mutex
 	sendNow map[string]bool
+	// steer holds, per project with a running built-in orchestrator turn, the
+	// queued messages waiting to be injected at its next tool boundary.
+	steerMu sync.Mutex
+	steer   map[string]*steerBox
 
 	mu    sync.Mutex
 	turns map[string]context.CancelFunc
@@ -131,6 +135,7 @@ func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Option
 		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle),
 		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), live: make(map[string]bool), sides: make(map[string]*side),
 		trackers: make(map[string]*changes.Tracker), memories: make(map[string]*memory.Service), sendNow: make(map[string]bool),
+		steer: make(map[string]*steerBox),
 	}
 	o.approvals = approval.New(o.hub.Publish, o.publishAttention, opts.ApprovalTimeout)
 	o.inputs = inputs.New(o.hub.Publish, o.publishAttention)
@@ -183,6 +188,11 @@ func (o *Orchestrator) Shutdown(ctx context.Context) error {
 
 // Start persists the user's message and runs the turn in the background.
 func (o *Orchestrator) Start(ctx context.Context, projectID, text string) (projectstore.Message, error) {
+	return o.StartWith(ctx, projectID, text, StartOpts{})
+}
+
+// StartWith is Start with the turn's mode and an optional pinned plan.
+func (o *Orchestrator) StartWith(ctx context.Context, projectID, text string, opts StartOpts) (projectstore.Message, error) {
 	if o.baseCtx.Err() != nil {
 		return projectstore.Message{}, ErrShuttingDown
 	}
@@ -191,11 +201,17 @@ func (o *Orchestrator) Start(ctx context.Context, projectID, text string) (proje
 		cancel()
 		return projectstore.Message{}, ErrTurnInProgress
 	}
-	msg, rt, orch, err := o.begin(ctx, projectID, text)
+	msg, rt, orch, err := o.begin(ctx, projectID, text, opts)
 	if err != nil {
 		cancel()
 		o.release(projectID)
 		return projectstore.Message{}, err
+	}
+	// A built-in turn can take steered messages from the moment it is claimed
+	// until it is finished (an ACP turn never can).
+	closeBox := func() {}
+	if !rt.isACPOrchestrator() {
+		closeBox = o.openSteerBox(projectID)
 	}
 	o.wg.Add(1)
 	go func() {
@@ -203,6 +219,7 @@ func (o *Orchestrator) Start(ctx context.Context, projectID, text string) (proje
 		defer cancel()
 		status, finished := o.runTurn(turnCtx, rt, orch)
 		o.qmu.Lock()
+		closeBox()
 		o.finish(projectID, finished)
 		o.advance(projectID, status)
 		o.qmu.Unlock()
@@ -252,7 +269,7 @@ func (o *Orchestrator) Active(projectID string) bool {
 	return o.live[projectID]
 }
 
-func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (projectstore.Message, *runtime, projectstore.Agent, error) {
+func (o *Orchestrator) begin(ctx context.Context, projectID, text string, opts StartOpts) (projectstore.Message, *runtime, projectstore.Agent, error) {
 	db, err := o.store.Get(ctx, projectID)
 	if err != nil {
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
@@ -282,6 +299,11 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string) (proje
 		}
 	}
 	rt.turnID = msg.ID
+	rt.request = text
+	if projectstore.ValidMode(opts.Mode) {
+		rt.mode = opts.Mode
+	}
+	rt.planText = opts.PlanText
 	if !retried || !rt.reuseTurnTask(ctx, msg.ID) {
 		rt.openTurnTask(ctx, text, msg.ID)
 	}
@@ -329,7 +351,11 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 	}
 	o.approvals.EndTurn(rt.pid(), rt.turnID)
 	trivial, _ := o.closeTurnTask(rt, status, res.Text)
+	if status == projectstore.StatusCompleted && rt.mode == projectstore.ModePlan {
+		o.savePlan(rt, res.Text)
+	}
 	finished := rt.finishTurn(orch.ID, status, res.Text, errText, hint)
+	rt.publish(events.ContextUpdated, map[string]any{"project_id": rt.pid()})
 	if status == projectstore.StatusCompleted {
 		o.digestTurn(rt, orch.ID, rt.currentTask(), rt.turnID, res.Text, trivial)
 	}

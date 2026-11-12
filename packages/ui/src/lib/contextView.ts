@@ -43,7 +43,7 @@ export function percentShares(values: readonly number[]): number[] {
   return floors;
 }
 
-const isOverview = (v: ContextOverview | ContextBreakdown): v is ContextOverview => "categories" in v || "source" in v;
+const isOverview = (v: ContextOverview | ContextBreakdown): v is ContextOverview => "used" in v;
 
 const PART_LABEL: Record<string, string> = {
   system: "Instructions and briefing",
@@ -59,11 +59,18 @@ export function contextView(raw: ContextOverview | ContextBreakdown, now = Date.
   const o: ContextOverview = isOverview(raw)
     ? raw
     : {
-        window: raw.window_tokens,
+        window: raw.window ?? raw.window_tokens,
         used: raw.used_tokens,
-        source: "harness",
+        source: raw.source ?? "harness",
         estimated: raw.estimated,
-        categories: raw.parts.map((p) => ({ id: p.key, label: PART_LABEL[p.key] ?? p.key, tokens: p.tokens })),
+        ...(raw.free_tokens != null ? { free: raw.free_tokens } : {}),
+        ...(raw.reserved_tokens !== undefined ? { reserved: raw.reserved_tokens } : {}),
+        ...(raw.compacted_at !== undefined ? { compacted_at: raw.compacted_at } : {}),
+        ...(raw.last_request ? { last_request: raw.last_request } : {}),
+        categories:
+          raw.categories && raw.categories.length > 0
+            ? raw.categories
+            : raw.parts.map((p) => ({ id: p.key, label: PART_LABEL[p.key] ?? p.key, tokens: p.tokens })),
       };
   const used = Math.max(0, o.used);
   const window = o.window && o.window > 0 ? o.window : null;

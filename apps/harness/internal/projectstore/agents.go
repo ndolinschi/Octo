@@ -107,7 +107,7 @@ func (d *DB) Agent(ctx context.Context, id string) (Agent, error) {
 }
 
 func (d *DB) Agents(ctx context.Context) ([]Agent, error) {
-	rows, err := d.sql.QueryContext(ctx, `SELECT `+agentCols+` FROM agents ORDER BY rowid`)
+	rows, err := d.sql.QueryContext(ctx, `SELECT `+agentCols+` FROM agents WHERE rewound_at IS NULL ORDER BY rowid`)
 	if err != nil {
 		return nil, err
 	}

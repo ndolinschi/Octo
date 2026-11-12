@@ -195,7 +195,7 @@ func TestContextOfSubAgent(t *testing.T) {
 		case req.isOrchestrator() && len(req.Msgs) == 1:
 			fmt.Fprint(w, `{"id":"m","type":"message","role":"assistant","model":"x","content":[`+spawnBlock("t1", "worker")+`],"stop_reason":"tool_use","usage":{"input_tokens":50,"output_tokens":2}}`)
 		case req.isOrchestrator():
-			fmt.Fprint(w, `{"id":"m","type":"message","role":"assistant","model":"x","content":[`+textBlock("done")+`],"stop_reason":"end_turn","usage":{"input_tokens":70,"output_tokens":2}}`)
+			fmt.Fprint(w, `{"id":"m","type":"message","role":"assistant","model":"x","content":[`+textBlock("done")+`],"stop_reason":"end_turn","usage":{"input_tokens":700,"output_tokens":2}}`)
 		default:
 			fmt.Fprint(w, `{"id":"m","type":"message","role":"assistant","model":"x","content":[`+textBlock("child report")+`],"stop_reason":"end_turn","usage":{"input_tokens":33,"output_tokens":2}}`)
 		}
@@ -211,7 +211,7 @@ func TestContextOfSubAgent(t *testing.T) {
 	if child.UsedTokens != 33 || child.Estimated || child.part("notes") != 0 {
 		t.Fatalf("child = %+v, want reported 33 and no notes", child)
 	}
-	if orch := a.context(pid, ""); orch.UsedTokens != 70 || orch.part("notes") <= 0 {
-		t.Fatalf("orchestrator = %+v, want reported 70 and a notes block", orch)
+	if orch := a.context(pid, ""); orch.UsedTokens != 700 || orch.part("notes") <= 0 {
+		t.Fatalf("orchestrator = %+v, want reported 700 and a notes block", orch)
 	}
 }

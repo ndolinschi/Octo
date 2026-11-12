@@ -51,8 +51,21 @@ func (s *Server) resumeQueue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sendNow(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.SendNow(r.Context(), r.PathValue("pid"), r.PathValue("qid")); err != nil {
+	var in struct {
+		Interrupt bool `json:"interrupt"`
+	}
+	if r.Body != nil && r.ContentLength != 0 {
+		if !decode(w, r, &in) {
+			return
+		}
+	}
+	steered, err := s.svc.SendNow(r.Context(), r.PathValue("pid"), r.PathValue("qid"), in.Interrupt)
+	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if steered {
+		writeJSON(w, http.StatusAccepted, map[string]any{"steered": true})
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{})

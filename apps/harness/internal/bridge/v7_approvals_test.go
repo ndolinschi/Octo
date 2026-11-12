@@ -85,7 +85,7 @@ func TestSupervisedWriteApprovals(t *testing.T) {
 			found := false
 			for _, m := range msgs.Messages {
 				for _, b := range m.Content {
-					if b.Type == "tool_result" && b.IsError != nil && *b.IsError && b.Content != nil && strings.Contains(*b.Content, "denied by the user: not this one") {
+					if b.Type == "tool_result" && b.IsError != nil && *b.IsError && b.Content != nil && strings.Contains(*b.Content, "Denied by the user: not this one") {
 						found = true
 					}
 				}

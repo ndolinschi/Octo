@@ -54,6 +54,25 @@ type Project struct {
 	Access string
 	// MemoryJSON is the project's memory settings (context mode, window size).
 	MemoryJSON string
+	// Network is "off" (default) or "on": whether agents may use web_fetch.
+	// NetworkPrivate lets web_fetch reach private and loopback addresses.
+	Network        string
+	NetworkPrivate bool
+	// Mode is the project's default mode: agent, ask or plan.
+	Mode string
+}
+
+// Network settings of a project.
+const (
+	NetworkOff = "off"
+	NetworkOn  = "on"
+)
+
+func orNetworkOff(n string) string {
+	if n == NetworkOn {
+		return n
+	}
+	return NetworkOff
 }
 
 func orEmptyJSON(s string) string {
@@ -185,6 +204,10 @@ type InfoPatch struct {
 	BudgetUSD  *float64
 	Access     *string
 	MemoryJSON *string
+	// Network and NetworkPrivate change the web_fetch settings.
+	Network        *string
+	NetworkPrivate *bool
+	Mode           *string
 }
 
 type NewProject struct {
@@ -199,6 +222,11 @@ type NewProject struct {
 	Access string
 	// MemoryJSON is the new project's memory settings ("" = defaults).
 	MemoryJSON string
+	// Network ("" = off) and NetworkPrivate are the new project's web_fetch settings.
+	Network        string
+	NetworkPrivate bool
+	// Mode ("" = agent) is the new project's default mode.
+	Mode string
 	// OrchestratorModel is recorded on the project's root agent row.
 	OrchestratorModel string
 }

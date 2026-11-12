@@ -32,6 +32,12 @@ type ContextPart struct {
 // ContextReport is what an agent's next request would contain, by part.
 // UsedTokens is the last reported input size when the model reported one
 // (Estimated false); the split into parts is always an estimate.
+//
+// The fields after Parts (parity B7) are additive. Categories are the same
+// request split the way the context button shows it (they sum to UsedTokens,
+// the same scaling as Parts); Source says who measured: "harness" (built from the
+// assembly that builds the next request) or "agent" (an ACP agent's own report,
+// no categories).
 type ContextReport struct {
 	AgentID      string        `json:"agent_id"`
 	Model        string        `json:"model"`
@@ -39,6 +45,51 @@ type ContextReport struct {
 	UsedTokens   int64         `json:"used_tokens"`
 	Estimated    bool          `json:"estimated"`
 	Parts        []ContextPart `json:"parts"`
+
+	Source string `json:"source"`
+	// Window is the size used for Free: the model's configured window, else
+	// DefaultContextWindow (the same default tool-result clearing assumes);
+	// WindowSource says which ("configured", "default", "agent"). Null for an ACP
+	// agent that reported no size.
+	Window       *int64 `json:"window"`
+	WindowSource string `json:"window_source"`
+	// ReservedTokens is room kept for the answer (the loop's max_tokens); Free is
+	// the window minus used minus reserved, never below 0 (null with no window).
+	ReservedTokens *int64 `json:"reserved_tokens,omitempty"`
+	FreeTokens     *int64 `json:"free_tokens"`
+	// CompactedAt is when the history was last compacted (omitted when never).
+	CompactedAt string            `json:"compacted_at,omitempty"`
+	Categories  []ContextCategory `json:"categories"`
+	LastRequest *LastRequest      `json:"last_request"`
+}
+
+// reservedOutputTokens is the room the loop keeps for an answer: its default max_tokens.
+const reservedOutputTokens = 8192
+
+// DefaultContextWindow is the window assumed when none is configured
+// (HARNESS_CONTEXT_WINDOWS); tool-result clearing uses the same figure.
+const DefaultContextWindow = defaultClearWindow
+
+// ContextCategory is one slice of the context for the context button.
+type ContextCategory struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Tokens int64  `json:"tokens"`
+}
+
+// LastRequest is the newest orchestrator request's usage as the model reported
+// it: Input is everything it read (uncached, cache reads and cache writes),
+// Cached the part read from the cache, Output the answer.
+type LastRequest struct {
+	Input  int64 `json:"input"`
+	Cached int64 `json:"cached"`
+	Output int64 `json:"output"`
+}
+
+var categoryOrder = []struct{ id, label string }{
+	{"system", "Briefing"}, {"instructions", "Project instruction files"}, {"tools", "Tool definitions"}, {"notes", "Project notes"},
+	{"memory", "Memory"}, {"messages", "Conversation"}, {"tool_results", "Tool results"}, {"summary", "Compacted summary"},
+	{"current_request", "Current request"},
 }
 
 // Context reports the context of the project's orchestrator (agentID empty) or
@@ -82,6 +133,8 @@ func (o *Orchestrator) Context(ctx context.Context, projectID, agentID string) (
 	} else {
 		chars[PartSystem] = len(rt.systemPrompt(a))
 	}
+	// The instruction files are inside the system prompt; the categories show them apart.
+	catChars := map[string]int{"instructions": len(rt.instructionsOf(instrAgent(a)).text)}
 	if raw, err := json.Marshal(reg.AnthropicTools()); err == nil {
 		chars[PartTools] = len(raw)
 	}
@@ -102,7 +155,12 @@ func (o *Orchestrator) Context(ctx context.Context, projectID, agentID string) (
 		chars[PartToolResults] += results
 	}
 
-	rep := ContextReport{AgentID: a.ID, Model: a.Model}
+	if a.ParentID == nil {
+		if err := rt.splitMemoryAndRequest(ctx, a, history, chars, catChars); err != nil {
+			return ContextReport{}, err
+		}
+	}
+	rep := ContextReport{AgentID: a.ID, Model: a.Model, Categories: []ContextCategory{}}
 	served := ""
 	reported, ok, err := db.LastReportedContext(ctx, a.ID)
 	if err != nil {
@@ -129,7 +187,113 @@ func (o *Orchestrator) Context(ctx context.Context, projectID, agentID string) (
 		rep.Parts = append(rep.Parts, ContextPart{Key: partOrder[i], Tokens: tokens})
 	}
 	rep.WindowTokens = rt.window(served, a)
+	if err := rt.finishContextReport(ctx, &rep, a, chars, catChars); err != nil {
+		return ContextReport{}, err
+	}
 	return rep, nil
+}
+
+// instrAgent is the agent whose instruction files a context report counts (the
+// orchestrator's are keyed without an id).
+func instrAgent(a projectstore.Agent) projectstore.Agent {
+	if a.ParentID == nil {
+		return projectstore.Agent{}
+	}
+	return a
+}
+
+// splitMemoryAndRequest moves, out of the conversation count and into their own
+// categories, the memory blocks the window mode puts in front of the messages and
+// the user's latest request.
+func (rt *runtime) splitMemoryAndRequest(ctx context.Context, a projectstore.Agent, history []anthropic.MessageParam, chars, cat map[string]int) error {
+	st := memory.ParseSettings(rt.info.MemoryJSON)
+	if st.Context == memory.ContextWindow && !rt.isACPOrchestrator() {
+		as, err := rt.assembleWindow(ctx, a, st)
+		if err != nil {
+			return err
+		}
+		mem := 0
+		for _, b := range as.lead {
+			mem += len(b.Text)
+		}
+		if as.tasks != nil {
+			mem += len(as.tasks.Text)
+		}
+		if as.facts != nil {
+			mem += len(as.facts.Text)
+		}
+		mem = min(mem, chars[PartMessages])
+		cat["memory"], chars[PartMessages] = mem, chars[PartMessages]-mem
+	}
+	stored, err := rt.db.Messages(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	for i := len(stored) - 1; i >= 0; i-- {
+		if t := messageText(stored[i]); stored[i].Role == "user" && t != "" {
+			n := min(len(t), chars[PartMessages])
+			cat["current_request"], chars[PartMessages] = n, chars[PartMessages]-n
+			break
+		}
+	}
+	return nil
+}
+
+// finishContextReport fills the additive fields of a report.
+func (rt *runtime) finishContextReport(ctx context.Context, rep *ContextReport, a projectstore.Agent, chars, cat map[string]int) error {
+	isAgent := a.ParentID == nil && rt.isACPOrchestrator()
+	rep.Source = "harness"
+	if isAgent {
+		rep.Source = "agent"
+	}
+	switch {
+	case rep.WindowTokens != nil && isAgent:
+		rep.Window, rep.WindowSource = rep.WindowTokens, "agent"
+	case rep.WindowTokens != nil:
+		rep.Window, rep.WindowSource = rep.WindowTokens, "configured"
+	case !isAgent:
+		w := int64(DefaultContextWindow)
+		rep.Window, rep.WindowSource = &w, "default"
+	default:
+		rep.WindowSource = "unknown"
+	}
+	if !isAgent {
+		r := int64(reservedOutputTokens)
+		rep.ReservedTokens = &r
+	}
+	if rep.Window != nil {
+		var reserved int64
+		if rep.ReservedTokens != nil {
+			reserved = *rep.ReservedTokens
+		}
+		free := max(*rep.Window-rep.UsedTokens-reserved, 0)
+		rep.FreeTokens = &free
+	}
+	if c, ok, err := rt.db.LatestCompaction(ctx, a.ID); err != nil {
+		return err
+	} else if ok {
+		rep.CompactedAt = c.CreatedAt
+	}
+	if u, ok, err := rt.db.LastAgentUsage(ctx, a.ID); err != nil {
+		return err
+	} else if ok {
+		rep.LastRequest = &LastRequest{Input: u.Input + u.CacheRead + u.CacheWrite, Cached: u.CacheRead, Output: u.Output}
+	}
+	if isAgent {
+		return nil // an ACP agent owns its context: nothing of ours to split
+	}
+	// The categories: the same characters as Parts, split further, scaled to the used total.
+	cat["system"] = max(chars[PartSystem]-cat["instructions"], 0)
+	cat["tools"], cat["notes"] = chars[PartTools], chars[PartNotes]
+	cat["messages"], cat["tool_results"], cat["summary"] = chars[PartMessages], chars[PartToolResults], chars[PartSummary]
+	est := make([]int64, len(categoryOrder))
+	for i, c := range categoryOrder {
+		est[i] = projectstore.EstimateTokens(cat[c.id])
+	}
+	for i, tokens := range scaleTo(est, rep.UsedTokens) {
+		rep.Categories = append(rep.Categories, ContextCategory{ID: categoryOrder[i].id, Label: categoryOrder[i].label, Tokens: tokens})
+	}
+	return nil
 }
 
 // window finds the context size: the served model's, the requested model's,

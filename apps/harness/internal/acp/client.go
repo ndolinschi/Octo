@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -159,6 +160,39 @@ func (c *Client) RunWith(ctx context.Context, cwd, prompt string, h Handler, opt
 // Session is a session opened by NewSession.
 type Session struct {
 	ID string
+	// Modes are the session modes the agent advertised and Mode the one in use ("" when it advertised none).
+	Modes []SessionMode
+	Mode  string
+}
+
+// SessionMode is one mode an ACP agent offers (session/new's modes.availableModes).
+type SessionMode struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+func parseModes(raw json.RawMessage) (modes []SessionMode, current string) {
+	if len(raw) == 0 {
+		return nil, ""
+	}
+	var m struct {
+		Current   string        `json:"currentModeId"`
+		Available []SessionMode `json:"availableModes"`
+	}
+	if json.Unmarshal(raw, &m) != nil {
+		return nil, ""
+	}
+	return m.Available, m.Current
+}
+
+// SetMode switches the session to one of its advertised modes (session/set_mode).
+func (c *Client) SetMode(ctx context.Context, sessionID, modeID string) error {
+	err := c.conn.call(ctx, methodSetMode, map[string]string{"sessionId": sessionID, "modeId": modeID}, nil)
+	if err != nil {
+		return fmt.Errorf("acp session/set_mode: %w", err)
+	}
+	return nil
 }
 
 // NewSession opens a session at cwd with the given MCP servers (nil: none),
@@ -173,7 +207,8 @@ func (c *Client) NewSession(ctx context.Context, cwd string, servers []MCPServer
 	if err := c.selectModel(ctx, sess, opts); err != nil {
 		return Session{}, err
 	}
-	return Session{ID: sess.SessionID}, nil
+	modes, cur := parseModes(sess.Modes)
+	return Session{ID: sess.SessionID, Modes: modes, Mode: cur}, nil
 }
 
 // LoadSession resumes a stored session (session/load); only call it when

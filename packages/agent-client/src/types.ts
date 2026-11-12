@@ -43,8 +43,13 @@ export type Models = {
 };
 export type Folder = { id: string; label: string; path: string };
 
+/** Parity B3: `agent` acts, `ask` answers read-only, `plan` answers with a plan to approve. */
+export type ProjectMode = "agent" | "ask" | "plan";
+
 export type ProjectInput = {
   name: string;
+  /** Parity B3: the project's default mode (a message may override it for one turn). */
+  mode?: ProjectMode;
   description?: string;
   instructions?: string;
   folders?: { path: string; label?: string }[];
@@ -99,6 +104,12 @@ export type Project = ProjectSummary & {
   spent_usd?: number | null;
   /** v7: the project's access mode (`full` for projects that predate approvals). */
   access?: AccessMode;
+  /** Parity B3: the project's default mode (absent on a harness that predates modes). */
+  mode?: ProjectMode;
+  /** Parity B2: `"off"` (default) or `"on"`: agents get web_fetch only when on. */
+  network?: "off" | "on";
+  /** Parity B2: web_fetch may reach private and loopback addresses. */
+  network_private?: boolean;
   /** M2: the memory setting (`context: "full"`, 5 exchanges for projects that predate it). */
   memory?: MemorySettings;
   /** Stored models whose provider cannot run them now (see {@link ModelIssue}); empty when everything can run. */
@@ -171,6 +182,11 @@ export type CompactionMarker = {
   at: string;
   /** Estimated size of the summary (characters / 4); absent from older harnesses. */
   summary_tokens?: number;
+  /** Parity B7: the marker's text ("history compacted"). */
+  label?: string;
+  /** The user asked for it (`compactNow`); `message_count` is how many messages the summary replaced (manual only). */
+  manual?: boolean;
+  message_count?: number;
 };
 
 /** What `GET .../agents/{aid}/messages` returns: the raw messages plus the compaction markers. */
@@ -192,10 +208,28 @@ export type ContextBreakdown = {
   used_tokens: number;
   estimated: boolean;
   parts: ContextPart[];
+  /** Parity B7 (all absent on a harness that predates it). `harness`: measured from the request the built-in loop builds; `agent`: an ACP agent's own report, no categories. */
+  source?: "harness" | "agent";
+  /** The size `free_tokens` is computed from: the configured window, else the 200,000 default tool-result clearing assumes; null when unknown (an ACP agent that reported none). */
+  window?: number | null;
+  window_source?: "configured" | "default" | "agent" | "unknown";
+  /** Room kept for the answer (built-in loop only). */
+  reserved_tokens?: number;
+  /** `window - used_tokens - reserved_tokens`, never below 0; null without a window. */
+  free_tokens?: number | null;
+  /** When the history was last compacted (absent: never). */
+  compacted_at?: string;
+  /** The same request split for the context button; the tokens sum to `used_tokens`. Empty for `source: "agent"`. */
+  categories?: ContextCategory[];
+  /** The newest orchestrator request's usage as the model reported it (null before any). */
+  last_request?: ContextLastRequest | null;
 };
 
-/** One slice of the context window in the overview (`GET …/context`, decision 65). */
-export type ContextCategory = { id: string; label: string; tokens: number };
+/** One slice of the context window (`GET …/context`, decision 65; parity B7 ids listed in {@link ContextCategoryId}, others possible). */
+export type ContextCategoryId = "system" | "instructions" | "tools" | "notes" | "memory" | "messages" | "tool_results" | "summary" | "current_request";
+export type ContextCategory = { id: ContextCategoryId | (string & {}); label: string; tokens: number };
+/** `input` is everything the request read (uncached + cache reads + cache writes), `cached` the cache-read part. */
+export type ContextLastRequest = { input: number; cached: number; output: number };
 
 /**
  * Decision 65: the context window as the indicator's popover shows it. `source: "agent"`: the agent manages its own
@@ -214,7 +248,7 @@ export type ContextOverview = {
   estimated?: boolean;
   categories: ContextCategory[];
   /** Tokens of the latest request: what was read, how much of it from the cache, what came out. */
-  last_request?: { input: number; cached: number; output: number };
+  last_request?: ContextLastRequest;
 };
 
 /** One turn of the project's side conversation. A question and its answer share `side_id`. */
@@ -306,7 +340,19 @@ export type AgentCompactedEvent = {
   upto_message_id: number;
   summary_tokens?: number;
   at: string;
+  /** Parity B7. */
+  manual?: boolean;
+  message_count?: number;
 };
+
+/** Parity B3/B5/B6/B7 events. */
+export type PlanCreatedEvent = { type: "plan.created"; seq: number; plan: Plan };
+export type PlanApprovedEvent = { type: "plan.approved"; seq: number; plan: Plan };
+export type ConversationRewoundEvent = { type: "conversation.rewound"; seq: number; message_id: number; request_text: string };
+/** A queued message was injected into the running turn at a tool boundary. */
+export type MessageSteeredEvent = { type: "message.steered"; seq: number; queue_id: string; text: string };
+/** The context report changed (a turn, a compaction, a rewind, a note or an instruction file): refetch `getContext`. */
+export type ContextUpdatedEvent = { type: "context.updated"; seq: number; project_id: string };
 
 /** Streamed text of a side answer (only when the harness streams); the final text is in side.done. */
 export type SideDeltaEvent = { type: "side.delta"; seq: number; side_id: string; text: string };
@@ -398,6 +444,11 @@ export type BridgeEvent =
   | FileChangedEvent
   | TurnFinishedEvent
   | AgentCompactedEvent
+  | PlanCreatedEvent
+  | PlanApprovedEvent
+  | ConversationRewoundEvent
+  | MessageSteeredEvent
+  | ContextUpdatedEvent
   | SideDeltaEvent
   | SideDoneEvent
   | SideErrorEvent
@@ -405,6 +456,8 @@ export type BridgeEvent =
   | ChangeRecordedEvent
   | ApprovalRequestedEvent
   | ApprovalResolvedEvent
+  | ApprovalRuleCreatedEvent
+  | ApprovalRuleDeletedEvent
   | InputRequestedEvent
   | InputResolvedEvent
   | QueueUpdatedEvent
@@ -744,15 +797,47 @@ export type RevertResult = FileStat & { deleted?: boolean };
 
 // --- v7: message queue ----------------------------------------------------------------------------------------
 
-export type QueuedMessage = { id: string; text: string; created_at: string };
+export type QueuedMessage = { id: string; text: string; created_at: string; /** Parity B3: the mode chosen for this message. */ mode?: ProjectMode };
+
+// --- parity B3, B5, B6, B7 -------------------------------------------------------------------------------------
+
+/** The result of a plan-mode turn. */
+export type Plan = { id: string; turn_id: number; text: string; status: "pending" | "approved"; created_at: string; approved_at: string | null };
+
+export type RewindFile = { folder: string; path: string; action: "restore" | "delete"; change_ids: number[] };
+/** `modified_outside`: changed outside the harness since its last recorded change; `unavailable`: the earlier or later content was not kept. */
+export type RewindConflict = { folder: string; path: string; reason: "modified_outside" | "unavailable" | "folder_missing" };
+/** What `rewind` did, or with `dry_run` would do. A real rewind with conflicts is `409 rewind_conflict` whose `error.details` is this report. */
+export type RewindReport = {
+  dry_run: boolean;
+  message_id: number;
+  /** The request's text, to put back in the composer. */
+  request_text: string;
+  files: RewindFile[];
+  conflicts: RewindConflict[];
+  messages_cut: number;
+  agents_cut: number;
+  /** An ACP orchestrator's session cannot be rewound in place: the next turn starts a new session with a recap. */
+  acp_session_reset: boolean;
+};
+
+export type CompactResult = { upto_message_id: number; at: string; summary_tokens: number; message_count: number; manual: true };
+
+/** A past request found by `searchRequests`. */
+export type RequestHit = { project_id: string; project_name: string; message_id: number; snippet: string; date: string };
 export type QueueState = { paused: boolean; messages: QueuedMessage[] };
 /** What POST .../messages answers: the started turn's message, or (a turn is running) the queued one. */
 export type SendResult = { message: Message; queued?: undefined } | { queued: QueuedMessage; message?: undefined };
 
 // --- v7: approvals --------------------------------------------------------------------------------------------
 
-export type ApprovalKind = "write" | "command" | "acp";
-export type ApprovalDecision = "allow" | "allow_for_turn" | "deny";
+/** The wire also carries "network" (a web_fetch in a supervised project); it is not in this union yet so the UI exhaustive switches keep compiling until it handles the card. */
+export type ApprovalKind = "write" | "command" | "acp" | "network";
+export type ApprovalDecision = "allow" | "allow_for_turn" | "allow_always" | "deny";
+/** A rule an `allow_always` answer saves: `match` is a command prefix (the whole command when `exact`), a path glob or a host glob. */
+export type ApprovalRuleSpec = { tool: string; match: string; exact: boolean };
+/** A saved "always allow" rule of a project. */
+export type ApprovalRule = ApprovalRuleSpec & { id: string; created_at: string };
 export type ApprovalOption = { id: string; label: string; kind: "allow_once" | "allow_always" | "reject_once" | "reject_always" };
 export type Approval = {
   id: string;
@@ -770,10 +855,22 @@ export type Approval = {
     command?: string;
     /** The options an ACP agent offered (kind `acp`). */
     options?: ApprovalOption[];
+    /** The change as a unified diff (write_file and edit; cut at 20 kB). */
+    patch?: string;
+    /** What a web_fetch would fetch (kind `network`). */
+    url?: string;
   };
   created_at: string;
+  /** The tool behind the request: bash, write_file, edit, web_fetch or `acp:<kind>`. */
+  tool?: string;
+  /** The rule `allow_always` saves by default; absent when no rule can be saved (a compound shell command, ...). */
+  suggested_rule?: ApprovalRuleSpec;
 };
-export type ApprovalAnswer = { decision: ApprovalDecision; option_id?: string; note?: string };
+/** `match` (with `allow_always`) overrides the suggested rule; it must cover the request (400 `invalid_request` otherwise; 422 `no_rule` when none can be saved). */
+export type ApprovalAnswer = { decision: ApprovalDecision; option_id?: string; note?: string; match?: string };
+/** A rule was saved by an `allow_always` answer / deleted. */
+export type ApprovalRuleCreatedEvent = { type: "approval_rule.created"; seq: number; rule: ApprovalRule };
+export type ApprovalRuleDeletedEvent = { type: "approval_rule.deleted"; seq: number; id: string };
 
 // --- v7: forms and secrets (decision 43) ----------------------------------------------------------------------
 

@@ -52,6 +52,11 @@ type orchSession struct {
 	// noMCP is set when the agent got no harness tools; the text is the
 	// warning shown on every turn of the session.
 	noMCP string
+	// modes are the session modes the agent advertised when the session was
+	// created, baseMode the one it started in and curMode the one in use.
+	modes    []acp.SessionMode
+	baseMode string
+	curMode  string
 
 	// Turn state (valid while turnCtx != nil).
 	agentID    string // the project's orchestrator agent row
@@ -115,6 +120,7 @@ func (s *orchSession) closeLocked() {
 		s.client = nil
 	}
 	s.sessID = ""
+	s.modes, s.baseMode, s.curMode = nil, "", ""
 	s.costSeen, s.usedSeen = 0, 0 // the counters belong to the session that ended
 }
 

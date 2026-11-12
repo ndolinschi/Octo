@@ -21,6 +21,7 @@ const (
 	methodAuth        = "authenticate"
 	methodSetModel    = "session/set_model"
 	methodSetConfig   = "session/set_config_option"
+	methodSetMode     = "session/set_mode"
 	methodUpdate      = "session/update"
 	methodPermission  = "session/request_permission"
 	methodReadFile    = "fs/read_text_file"
@@ -180,6 +181,8 @@ type newSessionResult struct {
 	Models        json.RawMessage   `json:"models"`
 	ConfigOptions []json.RawMessage `json:"configOptions"`
 	Meta          json.RawMessage   `json:"_meta"`
+	// Modes is the session's mode list (currentModeId, availableModes), raw for the same reason.
+	Modes json.RawMessage `json:"modes"`
 }
 
 type contentBlock struct {

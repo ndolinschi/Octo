@@ -47,6 +47,14 @@ type Project struct {
 	Access string `json:"access"`
 	// Memory is the memory setting: how the orchestrator's context is built.
 	Memory memory.Settings `json:"memory"`
+	// Network is "off" (default) or "on": agents get the web_fetch tool only when on
+	// (in a supervised project every fetch is an approval). NetworkPrivate lets
+	// web_fetch reach private and loopback addresses; it is refused otherwise.
+	Network        string `json:"network"`
+	NetworkPrivate bool   `json:"network_private"`
+	// Mode is the project's default mode: "agent", "ask" (read-only answers) or "plan"
+	// (read-only, the answer is a plan to approve). A message may override it for one turn.
+	Mode string `json:"mode"`
 	// ModelsUnavailable lists the stored models whose provider cannot run them
 	// now (never an error: the project is still readable and editable).
 	ModelsUnavailable []ModelIssue `json:"models_unavailable"`
@@ -77,6 +85,7 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 		},
 		Instructions: info.Instructions, Folders: folders, Models: models, MaxDepth: info.MaxDepth,
 		BudgetUSD: info.BudgetUSD, Access: info.Access, Memory: memory.ParseSettings(info.MemoryJSON),
+		Network: info.Network, NetworkPrivate: info.NetworkPrivate, Mode: info.Mode,
 	}
 	p.PendingApprovals, p.PendingInputs = s.turns.Attention(info.ID)
 	p.NeedsYou = p.PendingApprovals+p.PendingInputs > 0
@@ -122,8 +131,14 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 
 // Compaction is a transcript marker: the history up to and including message
 // UptoMessageID was replaced by a summary at At. SummaryTokens is an estimate.
+//
+// Label is the marker's text ("history compacted"); Manual says the user asked for it
+// and MessageCount (manual only) how many messages the summary replaced.
 type Compaction struct {
 	UptoMessageID int64  `json:"upto_message_id"`
 	At            string `json:"at"`
 	SummaryTokens int64  `json:"summary_tokens"`
+	Label         string `json:"label"`
+	Manual        bool   `json:"manual"`
+	MessageCount  int    `json:"message_count"`
 }

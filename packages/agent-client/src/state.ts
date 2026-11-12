@@ -294,6 +294,15 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "approval.requested":
       if (state.approvals.some((a) => a.id === event.approval.id)) return state;
       return { ...state, approvals: [...state.approvals, event.approval] };
+    case "plan.created":
+    case "plan.approved":
+    case "conversation.rewound":
+    case "message.steered":
+    case "context.updated":
+      return state; // views refetch (getLatestPlan, the transcript, getContext) or read the event themselves
+    case "approval_rule.created":
+    case "approval_rule.deleted":
+      return state; // the rules are listed with listApprovalRules; a view refetches on these events
     case "approval.resolved":
       return { ...state, approvals: state.approvals.filter((a) => a.id !== event.id) };
     case "input.requested":

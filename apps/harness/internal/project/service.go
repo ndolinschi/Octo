@@ -30,11 +30,22 @@ type Turns interface {
 	Start(ctx context.Context, projectID, text string) (projectstore.Message, error)
 	// Submit starts a turn, or queues the message when one runs.
 	Submit(ctx context.Context, projectID, text string) (projectstore.Message, *projectstore.QueuedMessage, error)
+	// SubmitMode is Submit with the mode chosen for this message.
+	SubmitMode(ctx context.Context, projectID, text, mode string) (projectstore.Message, *projectstore.QueuedMessage, error)
+	// LatestPlan is the newest plan of a plan-mode turn; ApprovePlan approves it and starts an agent turn with it pinned.
+	// Rewind cuts the conversation back to a user request and restores the files after it.
+	Rewind(ctx context.Context, projectID string, messageID int64, dryRun bool) (orchestrator.RewindReport, error)
+	// Compact summarises the orchestrator's conversation now (manual compaction).
+	Compact(ctx context.Context, projectID string) (orchestrator.CompactResult, error)
+	// Redact replaces the project's stored secret values in s.
+	Redact(projectID, s string) string
+	LatestPlan(ctx context.Context, projectID string) (projectstore.Plan, error)
+	ApprovePlan(ctx context.Context, projectID, planID string) (projectstore.Plan, projectstore.Message, error)
 	Queue(ctx context.Context, projectID string) ([]projectstore.QueuedMessage, bool, error)
 	EditQueued(ctx context.Context, projectID, queueID, text string) (projectstore.QueuedMessage, error)
 	RemoveQueued(ctx context.Context, projectID, queueID string) error
 	ResumeQueue(ctx context.Context, projectID string) error
-	SendNow(ctx context.Context, projectID, queueID string) error
+	SendNow(ctx context.Context, projectID, queueID string, interrupt bool) error
 	Cancel(projectID string)
 	Running(projectID string) bool
 	// Active: a turn started and its turn.finished has not been published yet.
@@ -297,6 +308,12 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err := validAccess(in.Access); err != nil {
 		return Project{}, err
 	}
+	if err := validNetwork(in.Network); err != nil {
+		return Project{}, err
+	}
+	if err := validMode(in.Mode); err != nil {
+		return Project{}, err
+	}
 	memJSON := ""
 	if in.Memory != nil {
 		if err := in.Memory.Validate(); err != nil {
@@ -316,6 +333,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 		Name: strings.TrimSpace(*in.Name), Description: deref(in.Description), Instructions: deref(in.Instructions),
 		ModelsJSON: string(modelsJSON), MaxDepth: depth, Folders: folders, OrchestratorModel: models.Orchestrator,
 		BudgetUSD: in.BudgetUSD.Value, Access: access, MemoryJSON: memJSON,
+		Network: deref(in.Network), NetworkPrivate: in.NetworkPrivate != nil && *in.NetworkPrivate, Mode: deref(in.Mode),
 	})
 	if err != nil {
 		return Project{}, err
@@ -376,6 +394,14 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		return Project{}, err
 	}
 	patch.Access = in.Access
+	if err := validNetwork(in.Network); err != nil {
+		return Project{}, err
+	}
+	patch.Network, patch.NetworkPrivate = in.Network, in.NetworkPrivate
+	if err := validMode(in.Mode); err != nil {
+		return Project{}, err
+	}
+	patch.Mode = in.Mode
 	if in.Memory != nil {
 		if err := in.Memory.Validate(); err != nil {
 			return Project{}, invalid("%s", err.Error())

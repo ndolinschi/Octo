@@ -33,6 +33,12 @@ type Input struct {
 	Access *string `json:"access"`
 	// Memory is the project's memory setting (context mode, window size).
 	Memory *memory.Settings `json:"memory"`
+	// Network is "off" (default) or "on": whether agents get web_fetch.
+	// NetworkPrivate lets web_fetch reach private and loopback addresses.
+	Network        *string `json:"network"`
+	NetworkPrivate *bool   `json:"network_private"`
+	// Mode is the project's default mode: "agent" (default), "ask" or "plan".
+	Mode *string `json:"mode"`
 }
 
 // OptionalFloat distinguishes an absent JSON field from an explicit null.
@@ -65,6 +71,13 @@ func validBudget(o OptionalFloat) error {
 func validAccess(a *string) error {
 	if a != nil && *a != projectstore.AccessSupervised && *a != projectstore.AccessFull {
 		return invalid("access must be %q or %q", projectstore.AccessSupervised, projectstore.AccessFull)
+	}
+	return nil
+}
+
+func validNetwork(n *string) error {
+	if n != nil && *n != projectstore.NetworkOff && *n != projectstore.NetworkOn {
+		return invalid("network must be %q or %q", projectstore.NetworkOff, projectstore.NetworkOn)
 	}
 	return nil
 }

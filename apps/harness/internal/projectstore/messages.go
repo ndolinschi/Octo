@@ -56,7 +56,7 @@ func (d *DB) AppendMessage(ctx context.Context, agentID, role string, contentJSO
 
 func (d *DB) Messages(ctx context.Context, agentID string) ([]Message, error) {
 	rows, err := d.sql.QueryContext(ctx,
-		`SELECT id, role, content_json, created_at, stopped FROM messages WHERE agent_id = ? ORDER BY id`, agentID)
+		`SELECT id, role, content_json, created_at, stopped FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id`, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (d *DB) LastMessage(ctx context.Context, agentID string) (Message, error) {
 	var id int64
 	var role, content, created string
 	err := d.sql.QueryRowContext(ctx,
-		`SELECT id, role, content_json, created_at FROM messages WHERE agent_id = ? ORDER BY id DESC LIMIT 1`, agentID).
+		`SELECT id, role, content_json, created_at FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id DESC LIMIT 1`, agentID).
 		Scan(&id, &role, &content, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, ErrNotFound

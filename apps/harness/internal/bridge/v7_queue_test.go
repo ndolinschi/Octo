@@ -163,7 +163,7 @@ func TestCancelPausesTheQueueAndResumeContinues(t *testing.T) {
 	}
 }
 
-func TestSendNowCancelsAndRunsThatMessageFirst(t *testing.T) {
+func TestSendNowWithInterruptCancelsAndRunsThatMessageFirst(t *testing.T) {
 	gate := make(chan struct{})
 	e := newEnv(t, gate)
 	pid, _ := e.v7Project(t, "full")
@@ -171,7 +171,7 @@ func TestSendNowCancelsAndRunsThatMessageFirst(t *testing.T) {
 	e.post(t, pid, "quick second")
 	e.post(t, pid, "quick third")
 	q := e.queueState(t, pid)
-	e.into(t, "POST", "/v1/projects/"+pid+"/queue/"+q.Messages[1].ID+"/send-now", nil, http.StatusAccepted, nil)
+	e.into(t, "POST", "/v1/projects/"+pid+"/queue/"+q.Messages[1].ID+"/send-now", map[string]bool{"interrupt": true}, http.StatusAccepted, nil)
 	e.wantError(t, "POST", "/v1/projects/"+pid+"/queue/q_nope/send-now", nil, http.StatusNotFound, "not_found")
 	close(gate)
 	e.waitIdle(t, pid)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -21,6 +22,11 @@ var ErrQueueFull = projectstore.ErrQueueFull
 // ahead of it, else it is queued (queued != nil). A paused queue does not
 // block a new message while no turn runs: the user asked for it now.
 func (o *Orchestrator) Submit(ctx context.Context, pid, text string) (started projectstore.Message, queued *projectstore.QueuedMessage, err error) {
+	return o.SubmitMode(ctx, pid, text, "")
+}
+
+// SubmitMode is Submit with a mode chosen for this message ("": the project's).
+func (o *Orchestrator) SubmitMode(ctx context.Context, pid, text, mode string) (started projectstore.Message, queued *projectstore.QueuedMessage, err error) {
 	o.qmu.Lock()
 	defer o.qmu.Unlock()
 	db, err := o.store.Get(ctx, pid)
@@ -33,20 +39,20 @@ func (o *Orchestrator) Submit(ctx context.Context, pid, text string) (started pr
 			return started, nil, qerr
 		}
 		if len(q) == 0 || paused {
-			msg, err := o.Start(ctx, pid, text)
+			msg, err := o.StartWith(ctx, pid, text, StartOpts{Mode: mode})
 			if !errors.Is(err, ErrTurnInProgress) {
 				return msg, nil, err
 			}
 		}
 	}
-	m, err := o.enqueue(ctx, db, text)
+	m, err := o.enqueue(ctx, db, text, mode)
 	if err != nil {
 		return started, nil, err
 	}
 	return started, &m, nil
 }
 
-func (o *Orchestrator) enqueue(ctx context.Context, db *projectstore.DB, text string) (projectstore.QueuedMessage, error) {
+func (o *Orchestrator) enqueue(ctx context.Context, db *projectstore.DB, text, mode string) (projectstore.QueuedMessage, error) {
 	q, _, err := db.Queue(ctx)
 	if err != nil {
 		return projectstore.QueuedMessage{}, err
@@ -57,7 +63,7 @@ func (o *Orchestrator) enqueue(ctx context.Context, db *projectstore.DB, text st
 			return projectstore.QueuedMessage{}, err
 		}
 	}
-	m, err := db.Enqueue(ctx, text)
+	m, err := db.EnqueueMode(ctx, text, mode)
 	if err != nil {
 		return m, err
 	}
@@ -138,12 +144,39 @@ func (o *Orchestrator) ResumeQueue(ctx context.Context, pid string) error {
 // SendNow runs a queued message next: with a turn running it is cancelled
 // first (and the queue is not paused by that cancel); otherwise the message
 // starts at once.
-func (o *Orchestrator) SendNow(ctx context.Context, pid, qid string) error {
+//
+// With interrupt false (the default of the API) a running built-in turn is not
+// cancelled: the message is injected as a user message at the turn's next tool
+// boundary (see steer.go). An ACP orchestrator's turn cannot take one:
+// ErrSteerUnsupported (the caller may repeat with interrupt, or wait).
+func (o *Orchestrator) SendNow(ctx context.Context, pid, qid string, interrupt bool) error {
 	o.qmu.Lock()
 	defer o.qmu.Unlock()
 	db, err := o.store.Get(ctx, pid)
 	if err != nil {
 		return err
+	}
+	if !interrupt && o.Running(pid) {
+		box := o.steerBox(pid)
+		if box == nil {
+			return ErrSteerUnsupported
+		}
+		q, _, err := db.Queue(ctx)
+		if err != nil {
+			return err
+		}
+		if !slices.ContainsFunc(q, func(m projectstore.QueuedMessage) bool { return m.ID == qid }) {
+			return projectstore.ErrNotFound
+		}
+		if err := db.MoveQueuedFirst(ctx, qid); err != nil {
+			return err
+		}
+		if err := db.SetQueuePaused(ctx, false); err != nil {
+			return err
+		}
+		box.add(qid)
+		o.publishQueue(ctx, db)
+		return nil
 	}
 	if err := db.MoveQueuedFirst(ctx, qid); err != nil {
 		return err
@@ -200,7 +233,7 @@ func (o *Orchestrator) startNext(db *projectstore.DB) {
 		return
 	}
 	first := q[0]
-	if _, err := o.Start(ctx, db.ID(), first.Text); err != nil {
+	if _, err := o.StartWith(ctx, db.ID(), first.Text, StartOpts{Mode: first.Mode}); err != nil {
 		if errors.Is(err, ErrTurnInProgress) {
 			return
 		}

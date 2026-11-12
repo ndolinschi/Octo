@@ -30,6 +30,12 @@ import type {
   Diagnostics,
   Approval,
   ApprovalAnswer,
+  ApprovalRule,
+  CompactResult,
+  Plan,
+  ProjectMode,
+  RequestHit,
+  RewindReport,
   ChangeDetail,
   InputAnswer,
   InputRequest,
@@ -148,8 +154,6 @@ export interface Bridge {
    * a harness that sends the new shape; the UI reads either (`ContextBreakdown` is the older one). Optional.
    */
   getContextOverview?(projectId: string): Promise<ContextOverview | ContextBreakdown>;
-  /** `POST /v1/projects/{id}/compact`: compacts the conversation now. Optional; "Compact now" is hidden without it. */
-  compactNow?(projectId: string): Promise<void>;
   /** Ask the side question; resolves with the stored question, the answer streams as side.* events. */
   askSide(projectId: string, text: string): Promise<SideStarted>;
   listSide(projectId: string): Promise<SideMessage[]>;
@@ -219,7 +223,7 @@ export interface Bridge {
    * that predates them keeps compiling; hosts check for presence.
    */
   /** Like sendMessage, but a message sent while a turn runs is queued (202) and resolves as `{ queued }`. */
-  sendOrQueueMessage?(projectId: string, text: string): Promise<SendResult>;
+  sendOrQueueMessage?(projectId: string, text: string, opts?: { mode?: ProjectMode }): Promise<SendResult>;
   getQueue?(projectId: string): Promise<QueueState>;
   editQueued?(projectId: string, queueId: string, text: string): Promise<QueuedMessage>;
   removeQueued?(projectId: string, queueId: string): Promise<void>;
@@ -228,7 +232,25 @@ export interface Bridge {
   /** Lifts the pause after a failed or cancelled turn. */
   resumeQueue?(projectId: string): Promise<void>;
   /** Cancels the running turn and runs that queued message next. */
-  sendQueuedNow?(projectId: string, queueId: string): Promise<void>;
+  sendQueuedNow?(projectId: string, queueId: string, opts?: { interrupt?: boolean }): Promise<void>;
+  /**
+   * Parity B6: "send now" without cancelling. A running built-in turn takes the message at its next tool boundary
+   * (`steered: true`, event `message.steered`; if the turn ends first it runs next); an ACP turn answers 409
+   * `steer_unsupported`: say the message is sent when the turn ends, or use `sendQueuedNow(..., { interrupt: true })`.
+   */
+  steerQueued?(projectId: string, queueId: string): Promise<{ steered: boolean }>;
+  /** Parity B3: the plan the newest plan-mode turn produced; 404 `not_found` without one. */
+  getLatestPlan?(projectId: string): Promise<Plan>;
+  /** Approves a plan and starts an `agent` turn with it pinned; 409 `plan_not_pending` / `turn_in_progress`. */
+  approvePlan?(projectId: string, planId: string): Promise<{ plan: Plan; message: Message }>;
+  /** Parity B5: cut the conversation back to a request and restore the files after it (see {@link RewindReport}). */
+  rewind?(projectId: string, input: { message_id: number; dry_run?: boolean }): Promise<RewindReport>;
+  /** Parity B7 (`POST /v1/projects/{id}/compact`; "Compact now" is hidden without it): summarise the conversation now; 409 `nothing_to_compact` / `compact_unsupported` / `turn_in_progress`. */
+  compactNow?(projectId: string): Promise<CompactResult>;
+  /** Parity B7: where the conversation as Markdown is (`GET`, `text/markdown`); the host downloads it. */
+  exportConversationUrl?(projectId: string): string;
+  /** Parity B7: past requests of all projects (the palette). */
+  searchRequests?(query: string, limit?: number): Promise<RequestHit[]>;
   /** What agents changed, one entry per file per turn, newest turn first; `turnId` narrows to one turn. */
   listChanges?(projectId: string, turnId?: number): Promise<TurnChanges[]>;
   getChange?(projectId: string, changeId: number): Promise<ChangeDetail>;
@@ -236,6 +258,10 @@ export interface Bridge {
   revertChange?(projectId: string, changeId: number): Promise<RevertResult>;
   listApprovals?(projectId: string): Promise<Approval[]>;
   resolveApproval?(projectId: string, approvalId: string, answer: ApprovalAnswer): Promise<void>;
+  /** The project's saved "always allow" rules (parity B4), oldest first. */
+  listApprovalRules?(projectId: string): Promise<ApprovalRule[]>;
+  /** Removes a rule: requests it covered are asked about again. 404 `not_found` for an unknown id. */
+  deleteApprovalRule?(projectId: string, ruleId: string): Promise<void>;
   listInputs?(projectId: string): Promise<InputRequest[]>;
   /** Submits or skips an open form. Secret values go to the harness's secret store and are never echoed. */
   submitInput?(projectId: string, inputId: string, answer: InputAnswer): Promise<void>;
@@ -323,6 +349,11 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "file.changed",
   "turn.finished",
   "agent.compacted",
+  "plan.created",
+  "plan.approved",
+  "conversation.rewound",
+  "message.steered",
+  "context.updated",
   "side.delta",
   "side.done",
   "side.error",
@@ -330,6 +361,8 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "change.recorded",
   "approval.requested",
   "approval.resolved",
+  "approval_rule.created",
+  "approval_rule.deleted",
   "input.requested",
   "input.resolved",
   "queue.updated",
@@ -507,8 +540,8 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getUsage: (params) => request("GET", `/v1/usage${usageQuery(params)}`) as Promise<UsageReport>,
     getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
     listLanguageServers: (id) => unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
-    sendOrQueueMessage: async (id, text) => {
-      const body = await request("POST", `${p(id)}/messages`, { text });
+    sendOrQueueMessage: async (id, text, opts) => {
+      const body = await request("POST", `${p(id)}/messages`, opts?.mode ? { text, mode: opts.mode } : { text });
       if (isRecord(body) && isRecord(body.queued)) return { queued: body.queued as QueuedMessage };
       if (isRecord(body) && isRecord(body.message)) return { message: body.message as unknown as Message };
       throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
@@ -524,15 +557,30 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     resumeQueue: async (id) => {
       await request("POST", `${p(id)}/queue/resume`);
     },
-    sendQueuedNow: async (id, qid) => {
-      await request("POST", `${p(id)}/queue/${encodeURIComponent(qid)}/send-now`);
+    sendQueuedNow: async (id, qid, opts) => {
+      await request("POST", `${p(id)}/queue/${encodeURIComponent(qid)}/send-now`, opts?.interrupt ? { interrupt: true } : undefined);
     },
+    steerQueued: async (id, qid) => {
+      const body = await request("POST", `${p(id)}/queue/${encodeURIComponent(qid)}/send-now`);
+      return { steered: isRecord(body) && body.steered === true };
+    },
+    getLatestPlan: (id) => unwrap<Plan>(request("GET", `${p(id)}/plans/latest`), "plan"),
+    approvePlan: (id, planId) => request("POST", `${p(id)}/plans/${encodeURIComponent(planId)}/approve`) as Promise<{ plan: Plan; message: Message }>,
+    rewind: (id, input) => request("POST", `${p(id)}/rewind`, input) as Promise<RewindReport>,
+    compactNow: (id) => request("POST", `${p(id)}/compact`) as Promise<CompactResult>,
+    exportConversationUrl: (id) => `${base}${p(id)}/export?format=md`,
+    searchRequests: (query, limit) =>
+      unwrap<RequestHit[]>(request("GET", `/v1/search?q=${encodeURIComponent(query)}${limit === undefined ? "" : `&limit=${limit}`}`), "results"),
     listChanges: (id, turnId) => unwrap<TurnChanges[]>(request("GET", `${p(id)}/changes${turnId === undefined ? "" : `?turn=${turnId}`}`), "turns"),
     getChange: (id, cid) => request("GET", `${p(id)}/changes/${cid}`) as Promise<ChangeDetail>,
     revertChange: (id, cid) => request("POST", `${p(id)}/changes/${cid}/revert`) as Promise<RevertResult>,
     listApprovals: (id) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals`), "approvals"),
     resolveApproval: async (id, aid, answer) => {
       await request("POST", `${p(id)}/approvals/${encodeURIComponent(aid)}`, answer);
+    },
+    listApprovalRules: (id) => unwrap<ApprovalRule[]>(request("GET", `${p(id)}/approval-rules`), "rules"),
+    deleteApprovalRule: async (id, rid) => {
+      await request("DELETE", `${p(id)}/approval-rules/${encodeURIComponent(rid)}`);
     },
     listInputs: (id) => unwrap<InputRequest[]>(request("GET", `${p(id)}/inputs`), "inputs"),
     submitInput: async (id, iid, answer) => {
@@ -579,9 +627,6 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/submit-preview`, input) as Promise<ReviewSubmitPreview>,
     submitReview: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/submit`, input) as Promise<ReviewSubmitResult>,
     getContextOverview: (id) => request("GET", `${p(id)}/context`) as Promise<ContextOverview | ContextBreakdown>,
-    compactNow: async (id) => {
-      await request("POST", `${p(id)}/compact`, {});
-    },
     getTurnContext: (id, turnId) => request("GET", `${p(id)}/turns/${turnId}/context`) as Promise<ContextReceipt>,
     listTasks: (id) => unwrap<Task[]>(request("GET", `${p(id)}/tasks`), "tasks"),
     listMemory: (id) => request("GET", `${p(id)}/memory`) as Promise<MemoryList>,

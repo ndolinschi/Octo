@@ -15,6 +15,14 @@ func (a *agent) currentModel() string {
 // sessionResult is the session/new answer, advertising models when configured.
 func (a *agent) sessionResult() map[string]any {
 	res := map[string]any{"sessionId": a.sid()}
+	if a.opts.modes {
+		a.mu.Lock()
+		cur := a.mode
+		a.mu.Unlock()
+		res["modes"] = map[string]any{"currentModeId": cur, "availableModes": []map[string]string{
+			{"id": "default", "name": "Default"}, {"id": "ask", "name": "Ask", "description": "read-only"}, {"id": "plan", "name": "Plan"},
+		}}
+	}
 	if len(a.opts.models) == 0 || a.opts.via == "none" {
 		return res
 	}

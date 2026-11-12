@@ -21,6 +21,9 @@ const ToolRequestInput = "request_input"
 
 // redact removes the project's secret values from text about to be stored,
 // published or handed to the model.
+// Redact replaces the project's stored secret values in s with their marker.
+func (o *Orchestrator) Redact(projectID, s string) string { return o.secrets.Redact(projectID, s) }
+
 func (rt *runtime) redact(s string) string { return rt.o.secrets.Redact(rt.pid(), s) }
 
 // Inputs lists the project's open forms.

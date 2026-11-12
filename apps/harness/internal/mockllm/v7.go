@@ -13,6 +13,9 @@ import (
 //	[write:PATH]     write_file PATH (PATH may hold {role}: the role, lower-cased, dashes)
 //	[rewrite:PATH]   write_file PATH twice, with different content
 //	[bash:COMMAND]   bash COMMAND (no ']' in it)
+//	[edit:PATH|OLD|NEW]  edit PATH, replacing OLD with NEW (no '|' or ']' in them)
+//	[glob:PATTERN]   glob PATTERN
+//	[fetch:URL]      web_fetch URL (when the tool is offered)
 //	[usekey:NAME]    bash with env MY_KEY=secret:NAME that prints the variable's length and value
 //	[ask]            request_input for an API key (secret) and a region (text)
 //
@@ -23,6 +26,9 @@ var (
 	rewriteMarker = regexp.MustCompile(`\[rewrite:([^\]]+)\]`)
 	bashMarker    = regexp.MustCompile(`\[bash:([^\]]+)\]`)
 	useKeyMarker  = regexp.MustCompile(`\[usekey:([^\]]+)\]`)
+	editMarker    = regexp.MustCompile(`\[edit:([^|\]]+)\|([^|\]]*)\|([^\]]*)\]`)
+	globMarker    = regexp.MustCompile(`\[glob:([^\]]+)\]`)
+	fetchMarker   = regexp.MustCompile(`\[fetch:([^\]]+)\]`)
 )
 
 const (
@@ -56,6 +62,21 @@ func v7Steps(r *request, first, role string) []func() reply {
 			steps = append(steps,
 				call1("I will write "+p+".", "write_file", map[string]any{"path": p, "content": "line one\nline two\n"}),
 				call1("I will refine "+p+".", "write_file", map[string]any{"path": p, "content": "line one\nline two changed\nline three\n"}))
+		}
+	}
+	if r.hasTool("edit") {
+		for _, m := range editMarker.FindAllStringSubmatch(first, -1) {
+			steps = append(steps, call1("I will edit "+m[1]+".", "edit", map[string]any{"path": rolePath(m[1], role), "old_string": m[2], "new_string": m[3]}))
+		}
+	}
+	if r.hasTool("glob") {
+		for _, m := range globMarker.FindAllStringSubmatch(first, -1) {
+			steps = append(steps, call1("I will look for files.", "glob", map[string]any{"pattern": strings.TrimSpace(m[1])}))
+		}
+	}
+	if r.hasTool("web_fetch") {
+		for _, m := range fetchMarker.FindAllStringSubmatch(first, -1) {
+			steps = append(steps, call1("I will fetch a page.", "web_fetch", map[string]any{"url": strings.TrimSpace(m[1])}))
 		}
 	}
 	if r.hasTool("bash") {

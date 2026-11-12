@@ -33,6 +33,7 @@ func (n *Notes) changed(pid, id string, note *projectstore.Note) {
 		payload = *note
 	}
 	n.hub.Publish(pid, events.NoteChanged, map[string]any{"note": payload, "note_id": id})
+	n.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid}) // the notes are part of the context
 }
 
 func (n *Notes) List(ctx context.Context, pid string) ([]projectstore.Note, error) {

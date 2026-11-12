@@ -17,9 +17,12 @@ type Compaction struct {
 	// UsageID is the newest usage row the agent had when the summary was stored
 	// (0: unknown, a database from before the column existed).
 	UsageID int64
+	// Manual: the user asked for it (POST /compact); MessageCount how many messages it replaced (manual only).
+	Manual       bool
+	MessageCount int
 }
 
-const compactionCols = `id, agent_id, summary, upto_message_id, created_at, COALESCE(usage_id, 0)`
+const compactionCols = `id, agent_id, summary, upto_message_id, created_at, COALESCE(usage_id, 0), manual, message_count`
 
 // AddCompaction stores summary as covering every message the agent has so far.
 func (d *DB) AddCompaction(ctx context.Context, agentID, summary string) (Compaction, error) {
@@ -46,7 +49,7 @@ func (d *DB) AddCompaction(ctx context.Context, agentID, summary string) (Compac
 func (d *DB) LatestCompaction(ctx context.Context, agentID string) (c Compaction, ok bool, err error) {
 	err = d.sql.QueryRowContext(ctx,
 		`SELECT `+compactionCols+` FROM compactions WHERE agent_id = ? ORDER BY id DESC LIMIT 1`,
-		agentID).Scan(&c.ID, &c.AgentID, &c.Summary, &c.UptoMessageID, &c.CreatedAt, &c.UsageID)
+		agentID).Scan(&c.ID, &c.AgentID, &c.Summary, &c.UptoMessageID, &c.CreatedAt, &c.UsageID, &c.Manual, &c.MessageCount)
 	if err == sql.ErrNoRows {
 		return Compaction{}, false, nil
 	}
@@ -64,7 +67,7 @@ func (d *DB) Compactions(ctx context.Context, agentID string) ([]Compaction, err
 	out := []Compaction{}
 	for rows.Next() {
 		var c Compaction
-		if err := rows.Scan(&c.ID, &c.AgentID, &c.Summary, &c.UptoMessageID, &c.CreatedAt, &c.UsageID); err != nil {
+		if err := rows.Scan(&c.ID, &c.AgentID, &c.Summary, &c.UptoMessageID, &c.CreatedAt, &c.UsageID, &c.Manual, &c.MessageCount); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

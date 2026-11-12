@@ -139,6 +139,23 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		return a.ownEdit(cwd)
 	case has(MarkerPerm):
 		return a.permScript(ctx, cwd)
+	case has(MarkerMode):
+		a.mu.Lock()
+		cur := a.mode
+		a.mu.Unlock()
+		a.say("mode=" + cur)
+		return "end_turn"
+	case has(MarkerWrite):
+		_, rpcErr, err := a.call(ctx, "fs/write_text_file", map[string]any{"sessionId": a.sid(), "path": filepath.Join(cwd, WriteFile), "content": "written\n"})
+		switch {
+		case err != nil:
+			return "cancelled"
+		case rpcErr != nil:
+			a.say("fswrite refused: " + rpcErr.Message)
+		default:
+			a.say("fswrite ok")
+		}
+		return "end_turn"
 	case has(MarkerAskForm):
 		return a.askForm(ctx)
 	case has(MarkerLeakEnv):

@@ -81,3 +81,20 @@ func (s *Server) resolveApproval(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (s *Server) listApprovalRules(w http.ResponseWriter, r *http.Request) {
+	rules, err := s.svc.ApprovalRules(r.Context(), r.PathValue("pid"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rules": rules})
+}
+
+func (s *Server) deleteApprovalRule(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.DeleteApprovalRule(r.Context(), r.PathValue("pid"), r.PathValue("rid")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

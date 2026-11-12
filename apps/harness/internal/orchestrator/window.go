@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
+	"github.com/ndolinschi/Octo/apps/harness/internal/instructions"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -48,6 +50,8 @@ type ReceiptBlock struct {
 	Cap   int64    `json:"cap"`
 	Count int      `json:"count"`
 	IDs   []string `json:"ids"`
+	// Files is set on the instructions block: each file with its size and whether it was cut.
+	Files []instructions.File `json:"files,omitempty"`
 }
 
 // Receipt records what the orchestrator had in front of it in a turn: the
@@ -63,6 +67,9 @@ type Receipt struct {
 	MessageCount int    `json:"message_count"`
 	ClearedCalls int    `json:"cleared_calls"`
 	CreatedAt    string `json:"created_at"`
+	// InstructionsNote is set on the receipt of an ACP-run turn: the harness
+	// adds no instruction files for such an agent.
+	InstructionsNote string `json:"instructions_note,omitempty"`
 }
 
 func (r *Receipt) add(b ReceiptBlock) {
@@ -514,6 +521,11 @@ func (rt *runtime) orchestratorHistory(ctx context.Context, orch projectstore.Ag
 
 // setReceipt keeps the turn's receipt and stores it.
 func (rt *runtime) setReceipt(r Receipt) {
+	if rt.isACPOrchestrator() {
+		r.InstructionsNote = ACPInstructionsNote
+	} else if b, ok := rt.instructionsBlock(); ok && !slices.ContainsFunc(r.Blocks, func(x ReceiptBlock) bool { return x.Name == BlockInstructions }) {
+		r.add(b)
+	}
 	rt.rcptMu.Lock()
 	rt.rcpt = &r
 	rt.rcptMu.Unlock()

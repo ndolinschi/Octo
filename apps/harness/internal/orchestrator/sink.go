@@ -91,7 +91,7 @@ func (s *agentSink) TextDelta(text string) {
 // ToolInput implements agent.ToolInputSink: the files a built-in tool call reads or changes.
 func (s *agentSink) ToolInput(_, name string, input json.RawMessage) {
 	switch name {
-	case "read_file", "write_file":
+	case "read_file", "write_file", "edit":
 		var in struct {
 			Path string `json:"path"`
 		}
@@ -150,8 +150,9 @@ func (s *agentSink) Compacted(ctx context.Context, summary string) error {
 	}
 	s.rt.publish(events.AgentCompacted, map[string]any{
 		"agent_id": s.agentID, "upto_message_id": comp.UptoMessageID,
-		"summary_tokens": comp.SummaryTokens(), "at": comp.CreatedAt,
+		"summary_tokens": comp.SummaryTokens(), "at": comp.CreatedAt, "manual": false,
 	})
+	s.rt.publish(events.ContextUpdated, map[string]any{"project_id": s.rt.pid()})
 	return nil
 }
 

@@ -57,7 +57,8 @@ func (s *Service) Compactions(ctx context.Context, pid, aid string) ([]Compactio
 	}
 	out := make([]Compaction, len(list))
 	for i, c := range list {
-		out[i] = Compaction{UptoMessageID: c.UptoMessageID, At: c.CreatedAt, SummaryTokens: c.SummaryTokens()}
+		out[i] = Compaction{UptoMessageID: c.UptoMessageID, At: c.CreatedAt, SummaryTokens: c.SummaryTokens(),
+			Label: "history compacted", Manual: c.Manual, MessageCount: c.MessageCount}
 	}
 	return out, nil
 }
@@ -65,11 +66,18 @@ func (s *Service) Compactions(ctx context.Context, pid, aid string) ([]Compactio
 // PostMessage starts a turn on the project's orchestrator, or, while one
 // runs (or messages wait ahead of it), queues the message: queued is then set
 // and msg is empty.
-func (s *Service) PostMessage(ctx context.Context, pid, text string) (msg projectstore.Message, queued *projectstore.QueuedMessage, err error) {
+func (s *Service) PostMessage(ctx context.Context, pid, text string, mode *string) (msg projectstore.Message, queued *projectstore.QueuedMessage, err error) {
 	if strings.TrimSpace(text) == "" {
 		return msg, nil, invalid("text is required")
 	}
-	msg, queued, err = s.turns.Submit(ctx, pid, text)
+	if err := validMode(mode); err != nil {
+		return msg, nil, err
+	}
+	m := ""
+	if mode != nil {
+		m = *mode
+	}
+	msg, queued, err = s.turns.SubmitMode(ctx, pid, text, m)
 	switch {
 	case errors.Is(err, orchestrator.ErrQueueFull):
 		return msg, nil, queueFull()

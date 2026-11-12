@@ -42,6 +42,19 @@ const (
 	// SettingsChanged carries the ids of settings a PUT /v1/settings changed
 	// (never values). It is delivered on every project stream.
 	SettingsChanged = "settings.changed"
+	// ApprovalRuleCreated carries a rule an "allow always" answer saved;
+	// ApprovalRuleDeleted the id of one that was deleted.
+	ApprovalRuleCreated = "approval_rule.created"
+	ApprovalRuleDeleted = "approval_rule.deleted"
+	// PlanCreated carries the plan a plan-mode turn produced; PlanApproved the plan that was approved.
+	PlanCreated  = "plan.created"
+	PlanApproved = "plan.approved"
+	// ConversationRewound says the conversation was cut back to a request.
+	ConversationRewound = "conversation.rewound"
+	// MessageSteered says a queued message was injected into the running turn.
+	MessageSteered = "message.steered"
+	// ContextUpdated says the project's context report changed: refetch GET /context.
+	ContextUpdated = "context.updated"
 	// ProvidersUpdated says what can run a model changed (a login probe result,
 	// a key, a router, the advertised models). Delivered on every project
 	// stream; a client refetches GET /v1/providers.

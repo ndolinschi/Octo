@@ -38,8 +38,8 @@ func command(c string) string { return "Running `" + strings.ReplaceAll(Clip(c, 
 // ForTool labels a call of one of the harness's own tools, from its name and arguments.
 func ForTool(name string, input json.RawMessage) string {
 	var a struct {
-		Path, Command, Pattern, Query, Title, Task, Name string
-		ID                                               any
+		Path, Command, Pattern, Query, Title, Task, Name, URL string
+		ID                                                    any
 	}
 	_ = json.Unmarshal(input, &a)
 	path := func(p string) string {
@@ -58,6 +58,18 @@ func ForTool(name string, input json.RawMessage) string {
 		return "Reading " + path(a.Path)
 	case "write_file":
 		return "Writing " + path(a.Path)
+	case "edit":
+		return "Editing " + path(a.Path)
+	case "glob":
+		if a.Pattern != "" {
+			return "Finding files matching " + Clip(a.Pattern, 50)
+		}
+		return "Finding files"
+	case "web_fetch":
+		if a.URL != "" {
+			return "Fetching " + Clip(a.URL, 60)
+		}
+		return "Fetching a web page"
 	case "list_dir":
 		return "Listing " + path(a.Path)
 	case "search_files":

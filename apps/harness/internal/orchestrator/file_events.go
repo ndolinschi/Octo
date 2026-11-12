@@ -8,9 +8,11 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
+	"github.com/ndolinschi/Octo/apps/harness/internal/instructions"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools/webfetch"
 )
 
 // tracker is the project's change tracker, created on first use. It publishes
@@ -25,6 +27,9 @@ func (o *Orchestrator) tracker(db *projectstore.DB) *changes.Tracker {
 		t.OnChange = func(c projectstore.Change) {
 			o.hub.Publish(pid, events.ChangeRecorded, map[string]any{"turn_id": c.TurnID, "change": changes.ToFileChange(c)})
 			o.hub.Publish(pid, events.FileChanged, map[string]any{"folder": c.Folder, "path": c.Path, "source": events.SourceAgent})
+			if instructions.IsInstructionFile(c.Path) {
+				o.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
+			}
 		}
 		o.trackers[pid] = t
 	}
@@ -85,38 +90,25 @@ func (rt *runtime) guardTools(reg *tools.Registry, a projectstore.Agent) {
 	if len(rt.folders) == 0 {
 		return
 	}
-	reg.Decorate(local.ToolWriteFile, func(next tools.Handler) tools.Handler {
-		return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
-			var in struct{ Folder, Path string }
-			if json.Unmarshal(input, &in) != nil {
-				return next(ctx, input)
-			}
-			f, ok := rt.folderOf(in.Folder)
-			if !ok {
-				return next(ctx, input)
-			}
-			rel := filepath.ToSlash(filepath.Clean(in.Path))
-			abs, err := local.Resolve(f.Path, rel)
-			if err != nil {
-				return next(ctx, input)
-			}
-			var w struct{ Content string }
-			_ = json.Unmarshal(input, &w)
-			if ok, note := rt.approveWrite(ctx, a.ID, agentLabel(a), f.Label, abs, rel, w.Content); !ok {
-				return denied(note), true, nil
-			}
-			t := rt.tracker()
-			before := t.PreWrite(abs)
-			out, isErr, err := next(ctx, input)
-			if err != nil || isErr {
-				return out, isErr, err
-			}
-			scope := rt.scope(a.ID, tools.ToolUseID(ctx), changes.SourceWriteFile)
-			if _, recorded := t.PostWrite(ctx, scope, changes.Folder{Label: f.Label, Path: f.Path}, rel, before); !recorded {
-				rt.publish(events.FileChanged, map[string]any{"folder": f.Label, "path": rel, "source": events.SourceAgent})
-			}
-			return out, isErr, err
+	// write_file and edit go through the same approval and change recording: what
+	// the file will hold is worked out first (the approval shows it as a diff),
+	// then the tool runs and the change is recorded.
+	rt.guardWrite(reg, a, local.ToolWriteFile, func(in json.RawMessage, abs string) (string, bool) {
+		var w struct{ Content string }
+		_ = json.Unmarshal(in, &w)
+		return w.Content, true
+	})
+	rt.guardWrite(reg, a, local.ToolEdit, func(in json.RawMessage, abs string) (string, bool) {
+		var e local.EditInput
+		if json.Unmarshal(in, &e) != nil {
+			return "", false
 		}
+		content, err := local.ReadTextFile(abs)
+		if err != nil {
+			return "", false // the tool itself reports why
+		}
+		out, _, err := local.ComputeEdit(content, e.OldString, e.NewString, e.ReplaceAll)
+		return out, err == nil
 	})
 	reg.Redefine(local.ToolBash, func(d tools.Def) tools.Def {
 		d.InputSchema = bashEnvSchema(d.InputSchema)
@@ -148,4 +140,66 @@ func (rt *runtime) guardTools(reg *tools.Registry, a projectstore.Agent) {
 			return rt.redact(out), isErr, err
 		}
 	})
+}
+
+// guardWrite wraps a tool that writes one file (input: folder, path): newContent
+// says what the file will hold (false: the tool will fail, so there is nothing
+// to approve or record and it runs as is). The user is asked first in a
+// supervised project, and the change is recorded exactly.
+func (rt *runtime) guardWrite(reg *tools.Registry, a projectstore.Agent, tool string, newContent func(in json.RawMessage, abs string) (string, bool)) {
+	reg.Decorate(tool, func(next tools.Handler) tools.Handler {
+		return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
+			var in struct{ Folder, Path string }
+			if json.Unmarshal(input, &in) != nil {
+				return next(ctx, input)
+			}
+			f, ok := rt.folderOf(in.Folder)
+			if !ok {
+				return next(ctx, input)
+			}
+			rel := filepath.ToSlash(filepath.Clean(in.Path))
+			abs, err := local.Resolve(f.Path, rel)
+			if err != nil {
+				return next(ctx, input)
+			}
+			content, ok := newContent(input, abs)
+			if !ok {
+				return next(ctx, input)
+			}
+			if ok, note := rt.approveWrite(ctx, a.ID, agentLabel(a), tool, f.Label, abs, rel, content); !ok {
+				return denied(note), true, nil
+			}
+			t := rt.tracker()
+			before := t.PreWrite(abs)
+			out, isErr, err := next(ctx, input)
+			if err != nil || isErr {
+				return out, isErr, err
+			}
+			scope := rt.scope(a.ID, tools.ToolUseID(ctx), changes.SourceWriteFile)
+			if _, recorded := t.PostWrite(ctx, scope, changes.Folder{Label: f.Label, Path: f.Path}, rel, before); !recorded {
+				rt.publish(events.FileChanged, map[string]any{"folder": f.Label, "path": rel, "source": events.SourceAgent})
+			}
+			return out, isErr, err
+		}
+	})
+}
+
+// webFetchDef is the web_fetch tool of a project whose network setting is on:
+// the user is asked first in a supervised project, secrets are kept out of the
+// URL and the answer.
+func (rt *runtime) webFetchDef(a projectstore.Agent) tools.Def {
+	inner := webfetch.Handler(webfetch.Config{AllowPrivate: rt.info.NetworkPrivate, Redact: rt.redact})
+	return tools.Def{
+		Name: webfetch.Tool, Description: webfetch.Description, InputSchema: webfetch.Schema,
+		Handle: func(ctx context.Context, input json.RawMessage) (string, bool, error) {
+			var in struct{ URL string }
+			_ = json.Unmarshal(input, &in)
+			if u, err := webfetch.ParseURL(in.URL); err == nil {
+				if ok, note := rt.approveFetch(ctx, a.ID, agentLabel(a), u.String(), strings.ToLower(u.Hostname())); !ok {
+					return denied(note), true, nil
+				}
+			}
+			return inner(ctx, input)
+		},
+	}
 }

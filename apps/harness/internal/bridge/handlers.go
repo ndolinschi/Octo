@@ -125,12 +125,13 @@ func (s *Server) agentMessages(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Text string `json:"text"`
+		Text string  `json:"text"`
+		Mode *string `json:"mode"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	msg, queued, err := s.svc.PostMessage(r.Context(), r.PathValue("pid"), in.Text)
+	msg, queued, err := s.svc.PostMessage(r.Context(), r.PathValue("pid"), in.Text, in.Mode)
 	if err != nil {
 		writeErr(w, err)
 		return

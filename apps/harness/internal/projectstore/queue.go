@@ -11,6 +11,8 @@ type QueuedMessage struct {
 	ID        string `json:"id"`
 	Text      string `json:"text"`
 	CreatedAt string `json:"created_at"`
+	// Mode is the mode chosen for this message ("": the project's).
+	Mode string `json:"mode,omitempty"`
 }
 
 // MaxQueue is the most messages a project queues.
@@ -21,7 +23,7 @@ var ErrQueueFull = errors.New("projectstore: queue full")
 
 // Queue returns the queued messages in order and whether the queue is paused.
 func (d *DB) Queue(ctx context.Context) ([]QueuedMessage, bool, error) {
-	rows, err := d.sql.QueryContext(ctx, `SELECT id, text, created_at FROM queue ORDER BY seq`)
+	rows, err := d.sql.QueryContext(ctx, `SELECT id, text, created_at, mode FROM queue ORDER BY seq`)
 	if err != nil {
 		return nil, false, err
 	}
@@ -29,7 +31,7 @@ func (d *DB) Queue(ctx context.Context) ([]QueuedMessage, bool, error) {
 	out := []QueuedMessage{}
 	for rows.Next() {
 		var m QueuedMessage
-		if err := rows.Scan(&m.ID, &m.Text, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.Text, &m.CreatedAt, &m.Mode); err != nil {
 			return nil, false, err
 		}
 		out = append(out, m)
@@ -46,6 +48,11 @@ func (d *DB) Queue(ctx context.Context) ([]QueuedMessage, bool, error) {
 
 // Enqueue appends a message; ErrQueueFull at MaxQueue.
 func (d *DB) Enqueue(ctx context.Context, text string) (QueuedMessage, error) {
+	return d.EnqueueMode(ctx, text, "")
+}
+
+// EnqueueMode is Enqueue with a mode chosen for the message.
+func (d *DB) EnqueueMode(ctx context.Context, text, mode string) (QueuedMessage, error) {
 	tx, err := d.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return QueuedMessage{}, err
@@ -58,9 +65,9 @@ func (d *DB) Enqueue(ctx context.Context, text string) (QueuedMessage, error) {
 	if n >= MaxQueue {
 		return QueuedMessage{}, ErrQueueFull
 	}
-	m := QueuedMessage{ID: NewID("q"), Text: text, CreatedAt: Now()}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO queue (id, seq, text, created_at) VALUES (?, ?, ?, ?)`,
-		m.ID, maxSeq+1, m.Text, m.CreatedAt); err != nil {
+	m := QueuedMessage{ID: NewID("q"), Text: text, CreatedAt: Now(), Mode: mode}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO queue (id, seq, text, created_at, mode) VALUES (?, ?, ?, ?, ?)`,
+		m.ID, maxSeq+1, m.Text, m.CreatedAt, m.Mode); err != nil {
 		return QueuedMessage{}, err
 	}
 	return m, tx.Commit()

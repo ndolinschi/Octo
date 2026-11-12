@@ -118,7 +118,7 @@ func TestMigrateFromSchema4RunsBothStepsToTheReviews(t *testing.T) {
 	if _, err := db.CreateReview(ctx, Review{Source: "local:main..x", Kind: "local", Title: "t"}); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := userVersion(ctx, db.sql); v != 6 {
-		t.Fatalf("user_version = %d, want 6", v)
+	if v, _ := userVersion(ctx, db.sql); v != SchemaVersion {
+		t.Fatalf("user_version = %d, want %d", v, SchemaVersion)
 	}
 }

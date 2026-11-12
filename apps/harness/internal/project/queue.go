@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -58,10 +59,19 @@ func (s *Service) ResumeQueue(ctx context.Context, pid string) error {
 	return s.turns.ResumeQueue(ctx, pid)
 }
 
-// SendNow cancels the running turn (if any) and runs the queued message first.
-func (s *Service) SendNow(ctx context.Context, pid, qid string) error {
+// SendNow runs a queued message now. A running built-in turn takes it as a user
+// message at its next tool boundary (steered true); with interrupt the running
+// turn is cancelled and the message runs first instead (steered false). For an
+// ACP orchestrator's running turn it is 409 steer_unsupported unless interrupt is set.
+func (s *Service) SendNow(ctx context.Context, pid, qid string, interrupt bool) (steered bool, err error) {
 	if _, err := s.db(ctx, pid); err != nil {
-		return err
+		return false, err
 	}
-	return queueErr(s.turns.SendNow(ctx, pid, qid))
+	running := s.turns.Running(pid)
+	err = s.turns.SendNow(ctx, pid, qid, interrupt)
+	if errors.Is(err, orchestrator.ErrSteerUnsupported) {
+		return false, &Error{Kind: KindConflict, Code: "steer_unsupported",
+			Message: "this agent cannot take a message in the middle of a turn: it is sent when the turn ends, or send it with interrupt to stop the turn now"}
+	}
+	return err == nil && running && !interrupt, queueErr(err)
 }

@@ -98,9 +98,11 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 		handler.finish(ctx, true)
 		return agent.Result{}, err
 	}
+	rt.ensureACPReceipt()
 	s.mu.Lock()
 	client, sessID := s.client, s.sessID
 	s.mu.Unlock()
+	s.applyMode(ctx, rt, client, sessID)
 	endSpan := rt.trackSpan(ctx, orch.ID, "", changes.SourceACPTurn)
 	stop, err := client.Prompt(ctx, sessID, prompt, handler)
 	if err != nil && ctx.Err() == nil && handler.idle() && connectionEnded(client) {
@@ -157,10 +159,9 @@ func (s *orchSession) beginTurn(ctx context.Context, cancel context.CancelFunc, 
 	if err != nil {
 		return false, err
 	}
-	if _, ok := reg.Get("read_file"); ok {
-		// ACP's fs/read_text_file covers it; the agent has its own reader.
-		reg = reg.Without("read_file")
-	}
+	// ACP's fs/read_text_file covers read_file, and the agent has its own edit,
+	// glob and web tools: the harness offers it none of these over MCP.
+	reg = reg.Without("read_file", "edit", "glob", "web_fetch")
 	cwd := rt.folders[0].Path
 	s.mu.Lock()
 	s.agentID, s.rt, s.reg, s.handler = orch.ID, rt, reg, handler
@@ -260,6 +261,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	}
 	s.mu.Lock()
 	s.sessID = sess.ID
+	s.modes, s.baseMode, s.curMode = sess.Modes, sess.Mode, sess.Mode
 	s.mu.Unlock()
 	c, cancel = dbCtx(ctx)
 	defer cancel()
@@ -402,6 +404,12 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 	}
 	if noMCP != "" && fresh {
 		b.WriteString("(Note: the harness tools are unavailable in this session.)\n")
+	}
+	if rt.planText != "" {
+		b.WriteString("Approved plan (pinned; the user approved it, carry it out and report against it):\n" + rt.planText + "\n\n")
+	}
+	if n := modeNote(rt.mode); n != "" {
+		b.WriteString("[" + n + "]\n")
 	}
 	b.WriteString(request)
 	return b.String(), nil

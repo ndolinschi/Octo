@@ -25,7 +25,15 @@ const (
 	// MarkerLeakEnv says the value of the variable named by OCTO_FAKEACP_LEAK_ENV
 	// in an agent message (a careless agent: the harness must not store it).
 	MarkerLeakEnv = "[leak-env]"
+	// MarkerMode reports the session mode the client set (EnvModes).
+	MarkerMode = "[mode]"
+	// MarkerWrite asks the client to write WriteFile through fs/write_text_file
+	// and reports whether it was refused.
+	MarkerWrite = "[fswrite]"
 )
+
+// WriteFile is the file MarkerWrite writes.
+const WriteFile = "fswrite.txt"
 
 // Markers for the failure paths: the turn ends without text or tool calls
 // (MarkerSilent), or with stopReason refusal / max_tokens.

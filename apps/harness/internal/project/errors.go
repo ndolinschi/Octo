@@ -31,6 +31,8 @@ type Error struct {
 	// model and what is missing.
 	Provider string
 	Reason   string
+	// Details is extra machine-readable data of the error (rewind_conflict lists the files).
+	Details any
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }

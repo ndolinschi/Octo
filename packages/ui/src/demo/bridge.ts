@@ -555,6 +555,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     compactNow: async (id) => {
       await delay();
       get(id);
+      return { upto_message_id: 0, at: new Date().toISOString(), summary_tokens: 0, message_count: 0, manual: true as const };
     },
     // Side questions (decision 40): stored apart from the orchestrator's messages; the answer streams as side.delta
     // events and ends with side.done, like the harness.

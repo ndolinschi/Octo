@@ -50,6 +50,15 @@ type runtime struct {
 	// rcpt is the context receipt of the turn (see window.go).
 	rcpt   *Receipt
 	rcptMu sync.Mutex
+	// request is the text of the user's request that started the turn ("" outside one).
+	request string
+	// mode is the turn's mode (the project's until a turn overrides it) and
+	// planText an approved plan pinned in the context.
+	mode     string
+	planText string
+	// instr caches the instruction files read for each agent this turn.
+	instrMu sync.Mutex
+	instr   map[string]instrEntry
 }
 
 func (rt *runtime) currentTask() string {
@@ -83,7 +92,11 @@ func (o *Orchestrator) newRuntime(ctx context.Context, db *projectstore.DB) (*ru
 	if err != nil {
 		return nil, err
 	}
-	return &runtime{o: o, db: db, info: info, models: models, folders: folders, notes: notes}, nil
+	mode := info.Mode
+	if !projectstore.ValidMode(mode) {
+		mode = projectstore.ModeAgent
+	}
+	return &runtime{o: o, db: db, info: info, models: models, folders: folders, notes: notes, mode: mode}, nil
 }
 
 func (rt *runtime) pid() string { return rt.db.ID() }
@@ -130,18 +143,33 @@ func (rt *runtime) roots() []local.Root {
 	return roots
 }
 
-// registry builds the tool set for an agent kind (see the spec's tool table).
+// registry builds the tool set for an agent kind (see the spec's tool table);
+// in an ask or plan turn the write tools, delegation and writing shell commands are refused.
 func (rt *runtime) registry(a projectstore.Agent) (*tools.Registry, error) {
+	reg, err := rt.baseRegistry(a)
+	if err != nil {
+		return nil, err
+	}
+	rt.guardMode(reg)
+	return reg, nil
+}
+
+func (rt *runtime) baseRegistry(a projectstore.Agent) (*tools.Registry, error) {
 	reg := tools.NewRegistry()
 	isOrch := a.ParentID == nil
 	names := local.AllTools
 	if isOrch {
-		names = []string{local.ToolListDir, local.ToolReadFile}
+		names = []string{local.ToolListDir, local.ToolReadFile, local.ToolEdit, local.ToolGlob}
 	}
 	if err := local.RegisterRootsLimits(reg, rt.roots(), rt.o.opts.Limits, names...); err != nil {
 		return nil, err
 	}
 	rt.guardTools(reg, a)
+	if rt.info.Network == projectstore.NetworkOn {
+		if err := reg.Register(rt.webFetchDef(a)); err != nil {
+			return nil, err
+		}
+	}
 	if err := reg.Register(rt.inputDef(a)); err != nil {
 		return nil, err
 	}
@@ -207,6 +235,7 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		Gate:            rt.loopGate(),
 	}
 	if a.ParentID == nil {
+		loop.Steer = rt.steerTexts
 		// Old tool results become stubs once a request passes 60% of the window,
 		// in both memory modes, before compaction is considered.
 		w := int64(defaultClearWindow)

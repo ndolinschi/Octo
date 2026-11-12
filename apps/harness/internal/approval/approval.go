@@ -19,13 +19,18 @@ const (
 	KindWrite   = "write"
 	KindCommand = "command"
 	KindACP     = "acp"
+	// KindNetwork is a web_fetch in a supervised project.
+	KindNetwork = "network"
 )
 
 // Decisions.
 const (
 	Allow        = "allow"
 	AllowForTurn = "allow_for_turn"
-	Deny         = "deny"
+	// AllowAlways allows this request and saves a rule (see rules.go) that
+	// allows the same kind of request in this project from now on.
+	AllowAlways = "allow_always"
+	Deny        = "deny"
 )
 
 // DefaultTimeout is how long a request waits for an answer before it is
@@ -59,6 +64,10 @@ type Detail struct {
 	Diff    *DiffStat `json:"diff,omitempty"`
 	Command string    `json:"command,omitempty"`
 	Options []Option  `json:"options,omitempty"`
+	// Patch is the change as a unified diff (write_file and edit; cut at 20 kB).
+	Patch string `json:"patch,omitempty"`
+	// URL is what a web_fetch would fetch.
+	URL string `json:"url,omitempty"`
 }
 
 // Approval is one pending request.
@@ -72,6 +81,11 @@ type Approval struct {
 	Title      string `json:"title"`
 	Detail     Detail `json:"detail"`
 	CreatedAt  string `json:"created_at"`
+	// Tool is the tool behind the request (bash, write_file, edit, web_fetch,
+	// acp:<kind>) and SuggestedRule the rule "allow_always" saves by default;
+	// it is absent when no rule can be saved for the request.
+	Tool          string    `json:"tool,omitempty"`
+	SuggestedRule *RuleSpec `json:"suggested_rule,omitempty"`
 }
 
 // Resolution is the user's answer (or the automatic one).
@@ -79,6 +93,8 @@ type Resolution struct {
 	Decision string
 	OptionID string
 	Note     string
+	// Match overrides the rule an allow_always saves (empty: the suggested one).
+	Match string
 }
 
 type item struct {
@@ -121,6 +137,11 @@ func New(publish func(pid, typ string, fields map[string]any), changed func(pid 
 // context ends (the turn was cancelled: denied) or the timeout passes (denied).
 func (m *Manager) Request(ctx context.Context, pid string, a Approval) Resolution {
 	a.ID, a.CreatedAt = projectstore.NewID("apr"), projectstore.Now()
+	if a.Tool != "" && a.SuggestedRule == nil {
+		if s, ok := Suggest(a.Tool, a.Detail); ok {
+			a.SuggestedRule = &s
+		}
+	}
 	it := &item{a: a, ch: make(chan Resolution, 1)}
 	m.mu.Lock()
 	if m.pending[pid] == nil {
@@ -164,7 +185,7 @@ func (m *Manager) autoDeny(pid string, it *item, why string) Resolution {
 
 // Resolve answers a pending approval.
 func (m *Manager) Resolve(pid, id string, r Resolution) error {
-	if !slices.Contains([]string{Allow, AllowForTurn, Deny}, r.Decision) {
+	if !slices.Contains([]string{Allow, AllowForTurn, AllowAlways, Deny}, r.Decision) {
 		return ErrInvalid
 	}
 	m.mu.Lock()
@@ -192,6 +213,16 @@ func (m *Manager) List(pid string) []Approval {
 	}
 	slices.SortFunc(out, func(a, b Approval) int { return strings.Compare(a.CreatedAt+a.ID, b.CreatedAt+b.ID) })
 	return out
+}
+
+// Pending returns one pending approval.
+func (m *Manager) Pending(pid, id string) (Approval, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if it := m.pending[pid][id]; it != nil && !it.done {
+		return it.a, true
+	}
+	return Approval{}, false
 }
 
 // Count is the number of pending approvals of a project.
