@@ -2030,3 +2030,17 @@ Owner: "remove the label from the project's folder choice altogether". Extends d
 to every other place: no label input exists. The label sent to the harness is the folder's name (the parent is added
 only to tell two equal names apart). Acceptance: no "Label" field in New project or in project settings; existing
 projects keep working; unit test on the label derivation.
+
+## Decision 81 — no coloured frames
+
+Owner: "the yellow frames are not good". Supersedes the border part of decision 46. A card that waits for the person
+(approval, form, plan, failed turn, queue) has the same neutral border and surface as any other card. What says "this
+needs you" is, in this order: its position (directly above the composer), the small state glyph in the warning colour
+next to the title, and the one filled primary button. Rules:
+a. No border, outline or ring in a warning, danger or accent colour anywhere, except the keyboard focus ring and a
+   field with a validation error.
+b. No pulsing border (decision 76 already forbids idle motion).
+c. Destructive and deny actions are quiet buttons with coloured text, not coloured outlines.
+d. Acceptance: a script check that no element in the demo states of the spacing audit has a computed border colour
+   from the warn/danger/accent tokens unless it is focused or `aria-invalid`; screenshots of an approval, a form, a
+   plan and a failed turn.
