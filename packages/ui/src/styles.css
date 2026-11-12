@@ -1380,3 +1380,14 @@
   scroll-behavior: auto !important;
 }
 /* end settings */
+/* review */
+/* Pull-request review (RV2): a finding's lines in the diff get a warn tint and rail; comments reuse the v7 rail. */
+.monaco-editor .octo-review-finding {
+  background: color-mix(in srgb, var(--octo-warn) 10%, transparent);
+}
+.monaco-editor .octo-review-finding-rail {
+  width: 2px !important;
+  margin-left: 3px;
+  background: var(--octo-warn);
+}
+/* /review */

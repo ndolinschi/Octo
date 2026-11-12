@@ -550,6 +550,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     const api: WorkspaceApi = {
       openAgent: (id) => valueRef.current.openAgent(id),
       focusChat: () => valueRef.current.focusChat(),
+      openTool: (tool) => valueRef.current.openTool(tool),
       actions: () => {
         const ws = valueRef.current;
         const active = L.focusedGroup(layoutRef.current).active;
@@ -560,6 +561,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
           { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
           { id: "tool-changes", label: "Show changes", detail: "what the agents changed", run: () => ws.openTool("changes") },
+          { id: "tool-review", label: "Review a pull request", detail: "pick one, read it, comment, submit", run: () => ws.openTool("review") },
           { id: "tool-memory", label: "Show memory", detail: "what the project remembers", run: () => ws.openTool("memory") },
           { id: "tool-usage", label: "Show usage", detail: "tokens, cost, limits", run: () => ws.openTool("usage") },
           { id: "tool-side", label: "Ask a side question", detail: "not added to the conversation", shortcut: `${MOD_LABEL};`, run: () => ws.openTool("side") },

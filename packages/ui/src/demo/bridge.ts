@@ -20,6 +20,7 @@ import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
 import { demoProviders } from "./providers";
 import { orbitLive } from "./orbit";
+import { withDemoReview } from "./review";
 import { withDemoV7 } from "./v7";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
 import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
@@ -679,5 +680,5 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
-  return withDemoV7(bridge, records);
+  return withDemoReview(withDemoV7(bridge, records), records);
 }

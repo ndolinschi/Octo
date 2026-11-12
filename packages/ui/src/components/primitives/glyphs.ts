@@ -2,6 +2,7 @@ import {
   Bot,
   Brain,
   FileDiff,
+  GitPullRequest,
   ChartNoAxesColumn,
   Folder,
   Gauge,
@@ -34,6 +35,8 @@ export const GLYPH = {
   usage: Gauge,
   /** What the agents changed in the project: diffs, revert (Changes tool). */
   changes: FileDiff,
+  /** Reading and reviewing a pull request or a local branch (Review tool). */
+  review: GitPullRequest,
   /** What the orchestrator remembers: tasks, files, context, search (Memory tool). */
   memory: Brain,
   /** A side question about the project that does not enter the orchestrator's history (decision 40). */

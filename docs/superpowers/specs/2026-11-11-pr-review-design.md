@@ -126,3 +126,49 @@ Closes the residual risk named above (an agent with a shell calling the unauthen
 - **What it does not stop, plainly.** The `bash` tool is not sandboxed: it runs `bash -c` with the harness's own privileges and the project folder as working directory; nothing confines it. A command such as `cat {data-dir}/api-token`, or reading the harness's environment from `/proc`, succeeds as the same OS user (the test `TestBashIsNotConfinedToTheDataDir` pins this so a change shows). So an agent in a `full`-access project that can run commands can still read the token and call the API, including `submit`; in a supervised project the command stops at an approval card, which is the earlier mitigation and still the only one for that case. The token does stop: processes without that access, a web page in a browser, any agent whose only reach is the harness's file tools or file API, and the harness's own children by environment. Proposed next step: run bash and ACP agents in an OS-level sandbox or as a separate user that cannot read the data directory or the harness process, or make `submit` need an interactive confirmation that does not travel over HTTP (a native dialog in the shell). Neither is built.
 - **Verified:** Go tests (`internal/apitoken`, `internal/bridge` auth and file tests, `cmd/harness` serve token tests, childenv, acptrace, local), agent-client and desktop tests, sidecar tests with fake binaries (fresh token per run, environment only, not seen by the router), the three e2e scripts. **Not verified:** the Tauri shell itself (`src-tauri/src/lib.rs` cannot be compiled here without WebKitGTK; `cargo fmt --check` and the sidecar tests pass), a real browser `EventSource` with `?token=` (the client builds the URL and the server accepts it; no browser was run), Windows.
 
+
+## As built — RV2 (UI)
+
+Code: `packages/ui/src/components/review/` (all lazy: `TabView` loads `ReviewTab` on first use), pure logic in `packages/ui/src/lib/review/`
+(reading-order grouping, change blocks and `j`/`k` stepping, comment-position rules, submit text and problems, key map, pull input; tests in
+`review.test.ts`), demo data in `packages/ui/src/demo/review*.ts`. Registered as a dock tool tab `"review"` (singleton, like Changes), a sidebar row
+"Review" under "Search", the palette entry "Review a pull request" (when a project is open) and the "+" picker (through `TOOL_TABS`).
+
+- **Pick.** Rows for the open project's repository: review-requested first, then the rest; title, author, files, `+/−`, checks glyph (with words for
+  assistive tech), age, "Review requested", "Draft", "New commits since your review". "Reviews in progress" (`listReviews`) resumes an open review.
+  `available:false` shows the API's message and command with a copy button. Open by pasted address or number (Enter opens) and "Review a local
+  branch" (base `main`, head defaults to the current branch of the project folder, read from the recent-folders list, else `HEAD`). A failed open says why inline.
+- **Review tab.** Header: title, author, branches, checks, commits, totals, viewed progress, Refresh, Pending, Submit; "Description, conversation,
+  checks" opens the pull request's own text (Markdown rendered through a component set that never fetches images and opens links outside; each block
+  is labelled as written by its author and "Octo does not act on it"). Left: files grouped (core, callers, tests, other, mechanical folded), each with a
+  "viewed" checkbox, "changed" mark, pending-comment count and size; below 760 px the list is a picker (select with groups, previous/next). Centre: Monaco
+  diff through the injected `loadMonaco` (the dock passes the files feature's loader), split when the window is ≥ 1100 px and the diff pane ≥ 720 px,
+  else unified; whitespace toggle (API `ignore_whitespace` and Monaco); "Expand context" (API `context=1000`, nothing folded); images side by side from
+  the raw endpoint; binary files as a size change; too-large notice; renamed-only notice. Keys `j k ] [ v c s`, registered on the review's own root in the
+  capture phase (they work inside Monaco, never in a text field).
+- **Comments.** Gutter "+" on commentable lines of either side, or `c` / `s` on the selection (or on the change `j` landed on). The "+" is offered only
+  where the harness will accept the comment (changed lines and three lines around them, one run per comment: `lib/review/position.ts`); the API's
+  `line_not_in_diff` is still explained inline if it comes back. The comment box is docked under the diff (it never covers the code); a suggestion adds a
+  second editor prefilled with the selected lines (new side only). File and general comments, edit and delete in the "Pending" panel, which also lists
+  findings with keep / dismiss (reason) / undo when the API returns any.
+- **Submit.** A sheet with verdict (Comment / Approve / Request changes), optional text and the `submit-preview` word for word (verdict, text, every
+  comment with its suggestion). The button says what happens: "Post 4 comments to owner/repo#123 as you"; a local review says "Mark … as submitted
+  (nothing is posted)". It sends exactly the comment ids the preview showed. `comments_changed` (reloads and says so), `not_logged_in` (command with copy),
+  `code_host_error` and others keep everything pending. After success: the result line and a link to the review.
+- **Demo.** Six pull requests (two ask for review, #476 has new commits since your review with a pending comment, one draft); #482 is a 14-file review
+  across all groups with an image, a binary file, a rename with edits, a pure rename, a generated file, a lock file too large to show, an existing
+  conversation, four commits, four checks and two findings; every method including submit (`posted:true` for GitHub, `false` for local). Knobs on the page
+  URL: `?review=nogh|notloggedin|empty|fail` (comma separated; `submitlogin` makes the first submit answer `not_logged_in`; `fail` also makes the first
+  submit answer `code_host_error`). Diffs come from real line diffs of two texts per file, so context and whitespace options work.
+
+Registration edits outside the owned files (all small): `state/workspace/layout.ts` (tool name), `components/primitives/glyphs.ts` (glyph),
+`components/dock/tabInfo.ts` (tab info), `components/dock/TabView.tsx` (lazy mount, own Monaco loader), `state/workspace/WorkspaceProvider.tsx` (palette
+action, `openTool` on the workspace API), `state/nav.tsx` (`WorkspaceApi.openTool`), `components/shell/Sidebar.tsx` + `app/AppShell.tsx` (row and its
+callback), `demo/bridge.ts` (one wrapper line), `styles.css` (a `/* review */` block at the end).
+
+Verified (Playwright, Chromium, demo bridge, dev server): list (normal, not logged in, gh missing, fail), open a pull request, `j k ] [ v`, a line
+comment, a multi-line suggestion, Pending panel, submit sheet, submit (GitHub and local), the not-logged-in submit error; dark and light; 1440 (unified in a
+half-width pane, split with the sidebar closed), 1100, 830, 640, 390 widths with no horizontal page scroll; console clean in all runs. Not verified: real
+`gh` and GitHub, other browsers, the live harness over HTTP (the demo bridge stands in), screen-reader output, very large pull requests (list virtualisation
+is not built), comments on removed lines in the one-column layout (the gutter of the removed side exists only in split view), "Ask" about a hunk and the AI
+summary (RV3), the 14-day cleanup interplay in the UI.

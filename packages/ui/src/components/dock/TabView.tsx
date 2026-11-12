@@ -23,6 +23,9 @@ const NotesPanel = lazy(() => import("../notes/NotesPanel").then((m) => ({ defau
 const ChangesPane = lazy(() => import("./ChangesPane").then((m) => ({ default: m.ChangesPane })));
 /** Memory (its own chunk). */
 const MemoryTab = lazy(() => import("../memory/MemoryTab").then((m) => ({ default: m.MemoryTab })));
+/** Review (RV2): pick a pull request, read it, comment, submit. Monaco comes from the files feature, as for Changes. */
+const ReviewTab = lazy(() => import("../review/ReviewTab").then((m) => ({ default: m.ReviewTab })));
+const loadReviewMonaco = () => import("../files/monaco");
 /** The side question (decision 40). */
 const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default: m.SidePanel })));
 /** The Usage tab too (v6.2). */
@@ -65,6 +68,13 @@ export function TabView({ tab }: { tab: TabId }) {
               <ChangesPane />
             </Suspense>
           </ToolView>
+        );
+      // Its own inputs and keys: no floating composer over it.
+      if (ref.tool === "review")
+        return (
+          <Suspense fallback={null}>
+            <ReviewTab loadMonaco={loadReviewMonaco} />
+          </Suspense>
         );
       if (ref.tool === "memory")
         return (

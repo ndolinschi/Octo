@@ -205,6 +205,10 @@ function Shell() {
     unseen,
     onNewProject: newProject,
     onSearch: openPalette,
+    onReview: () => {
+      setDrawerOpen(false);
+      nav.workspace()?.openTool("review");
+    },
     onSettings: () => openSettings(),
     // Picking a project closes the drawer even when it is the one already open (the route does not change then).
     onPick: () => setDrawerOpen(false),

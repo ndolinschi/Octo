@@ -33,6 +33,7 @@ const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> 
   usage: { label: "Usage", icon: GLYPH.usage, title: "Usage: tokens, cost and rate limits" },
   changes: { label: "Changes", icon: GLYPH.changes, title: "Changes: what the agents changed in this project, with diffs and revert" },
   memory: { label: "Memory", icon: GLYPH.memory, title: "Memory: what the orchestrator remembers about this project" },
+  review: { label: "Review", icon: GLYPH.review, title: "Review: read a pull request or a local branch, comment, and submit your review" },
   side: { label: "Side question", icon: GLYPH.side, title: "Ask about this project without interrupting the orchestrator" },
 };
 

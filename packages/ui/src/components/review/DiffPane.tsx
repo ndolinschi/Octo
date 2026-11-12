@@ -1,0 +1,151 @@
+import { ChevronDown, ChevronUp, MessageSquarePlus, Pilcrow, UnfoldVertical } from "lucide-react";
+import { useMemo, type ReactNode } from "react";
+import type { ReviewFile, ReviewFileDiff } from "@octo/agent-client";
+import { useDelayedLoading } from "../../lib/hooks";
+import { hunksToTexts } from "../../lib/review/changes";
+import { plural, sizeChange, splitPath } from "../../lib/review/files";
+import type { Anchor } from "../../lib/review/position";
+import { Button, IconButton } from "../primitives/Button";
+import { Spinner } from "../primitives/Status";
+import { ImageDiff } from "./ImageDiff";
+import { Counts, Key, Notice } from "./parts";
+import { ReviewDiff, runsOf, type Marked, type ReviewMonaco, type RevealRequest } from "./ReviewDiff";
+import type { DiffLoad } from "./useReview";
+
+const STATUS_WORD = { added: "Added", modified: "Modified", deleted: "Deleted", renamed: "Renamed", copied: "Copied", typechange: "Type changed" } as const;
+
+/** The centre of the review: a 40px toolbar for the file, then its diff (or why there is none), then the comment box. */
+export function DiffPane(props: {
+  file: ReviewFile;
+  diff: DiffLoad;
+  onRetry(): void;
+  theme: "dark" | "light";
+  loadMonaco(): Promise<ReviewMonaco>;
+  split: boolean;
+  ignoreWhitespace: boolean;
+  expanded: boolean;
+  /** The diff is the part that changed since the review was submitted. */
+  sinceReview: boolean;
+  rawUrl(side: "new" | "old"): string;
+  commented: readonly Marked[];
+  flagged: readonly Marked[];
+  reveal: RevealRequest | null;
+  onToggleWhitespace(): void;
+  onToggleExpanded(): void;
+  onViewed(viewed: boolean): void;
+  onFileComment(): void;
+  onStepChange(dir: 1 | -1): void;
+  onAnchor(anchor: Anchor): void;
+  onSelection(anchor: Anchor | null): void;
+  /** The comment box, docked under the diff. */
+  composer: ReactNode;
+  /** The list as a picker (narrow windows) sits above the toolbar. */
+  picker?: ReactNode;
+}) {
+  const f = props.file;
+  const { dir, name } = splitPath(f.path);
+  const loading = useDelayedLoading(props.diff.status === "loading");
+  return (
+    <div className="@container/diff flex min-h-0 min-w-0 flex-1 flex-col">
+      {props.picker}
+      <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-0 border-b border-line px-2">
+        <span className="flex min-w-32 flex-1 items-baseline gap-2 py-1.5 pl-1">
+          <span className="shrink-0 truncate text-sm text-fg" title={f.path}>
+            {name}
+          </span>
+          <span className="min-w-0 truncate text-xs text-fg-3 @max-md/diff:hidden">{f.old_path ? `renamed from ${f.old_path}` : dir}</span>
+          <Counts added={f.added} removed={f.removed} className={f.binary ? "hidden" : "@max-xs/diff:hidden"} />
+          {props.sinceReview && <span className="shrink-0 text-xs text-warn">since your review</span>}
+        </span>
+        <span className="flex shrink-0 items-center gap-1">
+          <label className="flex h-7 cursor-pointer items-center gap-2 rounded-sm px-2 text-sm text-fg-2 hover:bg-hover hover:text-fg max-md:h-10">
+            <input type="checkbox" className="size-3.5 accent-[var(--octo-primary)]" checked={f.viewed} onChange={(e) => props.onViewed(e.target.checked)} />
+            Viewed
+            <Key>v</Key>
+          </label>
+          <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} className="max-md:size-10" />
+          <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} className="max-md:size-10" />
+          <IconButton icon={Pilcrow} label="Ignore whitespace" pressed={props.ignoreWhitespace} onClick={props.onToggleWhitespace} className="max-md:size-10" />
+          <IconButton icon={UnfoldVertical} label="Expand context" pressed={props.expanded} onClick={props.onToggleExpanded} className="max-md:size-10" />
+          <Button variant="ghost" size="sm" icon={MessageSquarePlus} title="Comment on this file" onClick={props.onFileComment} className="max-md:h-10">
+            <span className="@max-lg/diff:sr-only">File comment</span>
+          </Button>
+        </span>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        {props.diff.status === "error" ? (
+          <Notice
+            tone="err"
+            title="The diff did not load"
+            actions={
+              <Button size="sm" variant="secondary" onClick={props.onRetry}>
+                Try again
+              </Button>
+            }
+          >
+            {props.diff.message}.
+          </Notice>
+        ) : props.diff.status !== "ready" ? (
+          loading ? (
+            <div className="grid flex-1 place-items-center">
+              <Spinner />
+            </div>
+          ) : null
+        ) : (
+          <Body {...props} file={f} diff={props.diff.diff} />
+        )}
+      </div>
+      {props.composer}
+    </div>
+  );
+}
+
+function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: ReviewFileDiff }) {
+  const { file: f, diff } = props;
+  const texts = useMemo(() => hunksToTexts(diff.hunks), [diff.hunks]);
+  const runs = useMemo(() => runsOf(diff.hunks), [diff.hunks]);
+  if (f.image) {
+    return <ImageDiff file={f} rawUrl={props.rawUrl} />;
+  }
+  if (f.binary)
+    return (
+      <Notice title="Binary file">
+        {STATUS_WORD[f.status]}: {sizeChange(f)}. There is no text to compare.
+      </Notice>
+    );
+  if (diff.too_large)
+    return (
+      <Notice title="This diff is too large to show here">
+        {plural(f.added + f.removed, "changed line")} in {f.path}. Read it in your editor or on the code host; you can still mark it viewed and comment on the
+        file.
+      </Notice>
+    );
+  if (diff.hunks.length === 0)
+    return (
+      <Notice title={f.status === "renamed" ? "Renamed, content unchanged" : "No lines to show"}>
+        {f.status === "renamed" && f.old_path
+          ? `${f.old_path} became ${f.path}.`
+          : diff.whitespace_ignored
+            ? "Only whitespace changed. Turn off “Ignore whitespace” to see it."
+            : "The file changed in a way that has no lines (for example its mode)."}
+      </Notice>
+    );
+  return (
+    <ReviewDiff
+      loadMonaco={props.loadMonaco}
+      theme={props.theme}
+      path={f.path}
+      before={texts.before}
+      after={texts.after}
+      split={props.split}
+      ignoreWhitespace={props.ignoreWhitespace}
+      expanded={props.expanded}
+      runs={runs}
+      commented={props.commented}
+      flagged={props.flagged}
+      reveal={props.reveal}
+      onAnchor={props.onAnchor}
+      onSelection={props.onSelection}
+    />
+  );
+}

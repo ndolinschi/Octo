@@ -1,4 +1,4 @@
-import { House, Plus, Search, Settings, type LucideIcon } from "lucide-react";
+import { GitPullRequest, House, Plus, Search, Settings, type LucideIcon } from "lucide-react";
 import { navigate } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
 import { useMemo, useRef, type ReactNode } from "react";
@@ -60,6 +60,8 @@ export function Sidebar(props: {
   unseen: Set<string>;
   onNewProject(): void;
   onSearch(): void;
+  /** Opens the Review tab of the open project. */
+  onReview(): void;
   onSettings(): void;
   /** A project row was picked (closes the drawer). */
   onPick(): void;
@@ -83,6 +85,7 @@ export function Sidebar(props: {
         <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
           <NavRow icon={Search} label="Search" onClick={props.onSearch} shortcut={{ hint: `${MOD}K`, keys: "Control+K Meta+K" }} />
+          <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} disabled={props.activeProjectId === null} />
           <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />
         </div>
 
