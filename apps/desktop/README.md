@@ -87,6 +87,23 @@ system theme, following later system changes; the `color-scheme` meta and the co
 start-up and failure screens (`HostStatus`, `HostNotice`) use the same tokens as the UI, and a fixed `data-theme="dark"` made them dark on a light system. The Tauri window sets no
 `backgroundColor` or `theme` (a single colour cannot suit both), so the window follows the system theme and the page paints its own colour.
 
+## Traffic lights and the title row (macOS)
+
+`src-tauri/tauri.macos.conf.json` (merged over `tauri.conf.json` by `tauri dev` and `tauri build` alike; `scripts/install.sh` passes no `--config`)
+sets `titleBarStyle: "Overlay"`, `hiddenTitle` and `trafficLightPosition {x: 16, y: 23}`. The key is applied (tauri-utils 2.10.2
+`WindowConfig::traffic_light_position`, needs Overlay and decorations), but `y` is not the lights' position: tao 0.37.2
+(`platform_impl/macos/view.rs`, `inset_traffic_lights`) makes the title bar container `button height + y` tall and leaves the buttons at
+their offset inside it, so the lights' centre is `y` plus a constant of the macOS version (measured about -3: `y: 14` gave a centre near 11 pt).
+`src/windowChrome.ts` holds the numbers (`MAC_LIGHTS_X`, `MAC_LIGHTS_Y`, `MAC_CONTROLS_CENTER_Y = 20`, `MAC_INSET_START`); a test keeps the
+config file equal to them. The shell passes the UI `chrome.controlsCenterY`, and the title row centres its controls on it.
+
+Check on your machine (`OCTO_DEBUG_CHROME=1`):
+
+1. Start the app with it: `OCTO_DEBUG_CHROME=1 pnpm --filter @octo/desktop tauri dev` (or run the installed binary with the variable set).
+2. A 1 px magenta line crosses the window at the row's control centre (20 pt). The lights' centres, the sidebar toggle, back and forward should all sit on it.
+3. If the lights are above or below the line, change `y` in `tauri.macos.conf.json` and `MAC_LIGHTS_Y` in `src/windowChrome.ts` by the offset in points (the lights move
+   down as `y` grows) and restart. The configured values and the row's centre are also logged (web inspector console, and stderr as `octo chrome: ...`).
+
 ## Demo mode
 
 Open `http://localhost:1420/?demo=1` to run against an in-memory bridge (`createDemoBridge()` from `@octo/ui/demo`, loaded only for `?demo=`)

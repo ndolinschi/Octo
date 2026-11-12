@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, PanelLeft } from "lucide-react";
 import { useHistoryAvailability } from "../../lib/history";
-import { useChrome } from "../../state/chrome";
+import { controlsPadding, useChrome } from "../../state/chrome";
 import { useShell } from "../../state/shell";
 import { IconButton } from "../primitives/Button";
 
@@ -21,7 +21,8 @@ const SIDE_PAD = 8;
  */
 export function TitleBar(props: { alignStart: boolean; startRef(el: HTMLElement | null): void; endRef(el: HTMLElement | null): void; title?: string }) {
   const { sidebarOpen, toggleSidebar } = useShell();
-  const { insetStart, insetEnd } = useChrome();
+  const { insetStart, insetEnd, controlsCenterY } = useChrome();
+  const pad = controlsPadding(controlsCenterY);
   const history = useHistoryAvailability();
   const padStart = Math.max(SIDE_PAD, insetStart);
   return (
@@ -30,7 +31,7 @@ export function TitleBar(props: { alignStart: boolean; startRef(el: HTMLElement 
       data-drag-region
       aria-label="Window"
       className="@container/title relative z-10 flex h-bar shrink-0 items-center gap-2 bg-window text-sm text-fg"
-      style={{ paddingInlineStart: padStart, paddingInlineEnd: Math.max(SIDE_PAD, insetEnd) }}
+      style={{ paddingInlineStart: padStart, paddingInlineEnd: Math.max(SIDE_PAD, insetEnd), paddingTop: pad.top, paddingBottom: pad.bottom }}
     >
       <div
         data-drag-region

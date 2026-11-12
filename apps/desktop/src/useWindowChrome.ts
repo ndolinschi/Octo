@@ -1,7 +1,7 @@
 import type { WindowChrome } from "@octo/ui";
 import { useEffect, useState } from "react";
 import { isTauri } from "./bridgeChoice";
-import { chromeFor, isDragTarget } from "./windowChrome";
+import { chromeFor, describeChrome, isDragTarget, type ChromeDebug } from "./windowChrome";
 
 /**
  * The window frame for `OctoApp`'s `chrome` prop. In a browser it is the default (nothing loaded). In the macOS app it also
@@ -42,4 +42,28 @@ export function useWindowChrome(): WindowChrome {
   }, [overlay]);
 
   return chrome;
+}
+
+/**
+ * `OCTO_DEBUG_CHROME=1` (read by the shell's `chrome_debug` command): logs the configured and effective chrome values to the
+ * console and returns the y of the guide line to draw (the row's control centre), else null.
+ */
+export function useChromeDebug(chrome: WindowChrome): number | null {
+  const tauri = isTauri(window);
+  const [debug, setDebug] = useState<ChromeDebug | null>(null);
+  useEffect(() => {
+    if (!tauri) return;
+    let live = true;
+    void import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke<ChromeDebug>("chrome_debug"))
+      .then((d) => live && d.enabled && setDebug(d))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [tauri]);
+  useEffect(() => {
+    if (debug) console.info(describeChrome(debug, chrome));
+  }, [debug, chrome]);
+  return debug ? (chrome.controlsCenterY ?? 20) : null;
 }

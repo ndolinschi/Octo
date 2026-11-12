@@ -67,10 +67,44 @@ async fn bridge_notices(state: tauri::State<'_, BridgeState>) -> Result<Vec<Noti
         .map_err(|e| e.to_string())
 }
 
+/// What `OCTO_DEBUG_CHROME=1` shows: whether the debug aid is on and the traffic-light position the window was created with
+/// (`trafficLightPosition` of the merged config: `tauri.macos.conf.json` on macOS, none elsewhere).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChromeDebug {
+    enabled: bool,
+    configured_x: Option<f64>,
+    configured_y: Option<f64>,
+}
+
+#[tauri::command]
+fn chrome_debug(app: tauri::AppHandle) -> ChromeDebug {
+    let enabled = std::env::var("OCTO_DEBUG_CHROME").is_ok_and(|v| !v.is_empty() && v != "0");
+    let pos = app
+        .config()
+        .app
+        .windows
+        .first()
+        .and_then(|w| w.traffic_light_position.as_ref());
+    let out = ChromeDebug {
+        enabled,
+        configured_x: pos.map(|p| p.x),
+        configured_y: pos.map(|p| p.y),
+    };
+    if enabled {
+        eprintln!(
+            "octo chrome: trafficLightPosition x={:?} y={:?}",
+            out.configured_x, out.configured_y
+        );
+    }
+    out
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?.join("harness");
             let log_dir = app.path().app_log_dir()?;
@@ -90,7 +124,8 @@ pub fn run() {
             bridge_url,
             bridge_restart,
             bridge_log_tail,
-            bridge_notices
+            bridge_notices,
+            chrome_debug
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
