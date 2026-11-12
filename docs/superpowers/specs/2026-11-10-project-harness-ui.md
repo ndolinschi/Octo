@@ -703,6 +703,32 @@ monochrome dithered illustration):
     separate "PCMS · Working" line under the tabs goes away: state lives on the tab glyph and in the title bar.
     Tool rows never show an empty input (`{}`) or an "Input" label with nothing to say: a row with no arguments
     shows only its name and result.
+64. **Calm, evenly distributed screens** (owner: "the UI must not be gaudy and cluttered; it must be neatly
+    distributed between the elements"). Rules every surface is checked against:
+    (a) **One job per row, few things per row.** A bar or header shows at most: one title, one state, and three
+    controls; everything else goes into "⋯" or a second level. The title bar: project name + state on the left,
+    at most three sub-agent chips (then "N agents"), and on the right the model chip and "⋯" — tokens, budget,
+    side question and help live in the "⋯" menu or the context ring, not as separate items.
+    (b) **One primary action per surface** (filled button); the rest are quiet. Never two filled buttons side by
+    side; destructive actions are never the filled one.
+    (c) **Whitespace groups, borders do not.** Related things sit 4–8px apart, groups 16–24px apart, sections
+    32px; a border or a card is used only when a group must be picked out from its surroundings — no card inside
+    a card, no hairline next to a border, no divider between items that spacing already separates.
+    (d) **Shared edges.** Everything in a column starts on the same left edge and ends on the same right edge
+    (the conversation text, tool rows, cards, the composer); icons sit on one optical line; numbers align right.
+    A screen has at most three vertical alignment lines.
+    (e) **Colour is information.** Neutral text and surfaces everywhere; the accent only for the one primary
+    action and for focus; warn/danger only for a real warning or failure; the streak colours only in the backdrop
+    and the working aurora. No coloured chips, badges or icons for decoration. At most two text weights and three
+    text sizes on a screen.
+    (f) **Show less, reveal on demand.** Secondary facts (ids, paths, timings, counts, token numbers) appear on
+    hover, focus or expansion, not permanently; a list row has one line of primary text and at most one dim
+    secondary fragment; captions and helper sentences are one line or removed.
+    (g) **Even density.** No screen has a crowded corner and an empty half: content is centred in a readable
+    column, long toolbars are split into "primary / more", and empty space is distributed (equal gutters), not
+    left over.
+    The spacing audit gains checks for (a) item count per bar, (b) more than one filled button in a surface, and
+    (c) nested bordered containers; a pass is not accepted while they report anything.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
