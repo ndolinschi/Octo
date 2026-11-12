@@ -314,6 +314,12 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 	if err := validMode(in.Mode); err != nil {
 		return Project{}, err
 	}
+	if err := checkCommands(in.Commands); err != nil {
+		return Project{}, err
+	}
+	if err := checkReview(in.Review); err != nil {
+		return Project{}, err
+	}
 	memJSON := ""
 	if in.Memory != nil {
 		if err := in.Memory.Validate(); err != nil {
@@ -336,6 +342,12 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 		Network: deref(in.Network), NetworkPrivate: in.NetworkPrivate != nil && *in.NetworkPrivate, Mode: deref(in.Mode),
 	})
 	if err != nil {
+		return Project{}, err
+	}
+	if err := saveCommands(ctx, db, in.Commands); err != nil {
+		return Project{}, err
+	}
+	if err := saveReview(ctx, db, in.Review); err != nil {
 		return Project{}, err
 	}
 	return s.load(ctx, db)
@@ -402,6 +414,12 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		return Project{}, err
 	}
 	patch.Mode = in.Mode
+	if err := checkCommands(in.Commands); err != nil {
+		return Project{}, err
+	}
+	if err := checkReview(in.Review); err != nil {
+		return Project{}, err
+	}
 	if in.Memory != nil {
 		if err := in.Memory.Validate(); err != nil {
 			return Project{}, invalid("%s", err.Error())
@@ -416,6 +434,12 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		}
 	}
 	if err := s.apply(ctx, db, patch, in.Folders != nil, folders); err != nil {
+		return Project{}, err
+	}
+	if err := saveCommands(ctx, db, in.Commands); err != nil {
+		return Project{}, err
+	}
+	if err := saveReview(ctx, db, in.Review); err != nil {
 		return Project{}, err
 	}
 	p, err := s.load(ctx, db)

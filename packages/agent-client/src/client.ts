@@ -1,4 +1,6 @@
+import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
 import type {
+  ListPullRequestsParams,
   PullRequestList,
   ReviewState,
   ReviewSummary,
@@ -18,6 +20,10 @@ import type {
   ReviewSubmitInput,
   ReviewSubmitPreview,
   ReviewSubmitResult,
+  ReviewThreads,
+  ReviewCheckoutInput,
+  ReviewCheckoutResult,
+  ReviewDirtyFile,
 } from "./review";
 import type {
   Agent,
@@ -89,8 +95,10 @@ export class BridgeError extends Error {
   readonly reason?: string;
   /** The command the server says fixes this (`not_logged_in`: "gh auth login"); additive, absent when it sends none. */
   readonly command?: string;
+  /** `dirty_working_copy` (409) of a working-copy checkout: the uncommitted changes. */
+  readonly files?: ReviewDirtyFile[];
 
-  constructor(status: number, code: string, message: string, detail?: { provider?: string; reason?: string; command?: string }) {
+  constructor(status: number, code: string, message: string, detail?: { provider?: string; reason?: string; command?: string; files?: ReviewDirtyFile[] }) {
     super(message);
     this.name = "BridgeError";
     this.status = status;
@@ -98,6 +106,7 @@ export class BridgeError extends Error {
     if (detail?.provider !== undefined) this.provider = detail.provider;
     if (detail?.reason !== undefined) this.reason = detail.reason;
     if (detail?.command !== undefined) this.command = detail.command;
+    if (detail?.files !== undefined) this.files = detail.files;
   }
 }
 
@@ -292,8 +301,11 @@ export interface Bridge {
    * RV1 members (pull-request review, apps/harness/docs/review.md). Optional: HTTP bridge only. Nothing is posted to a
    * code host except by `submitReview`, which the user's own button calls.
    */
-  /** Open pull requests of the project's repository (review requests first), or why they cannot be listed. */
-  listPullRequests?(projectId: string, params?: { folder?: string }): Promise<PullRequestList>;
+  /**
+   * All open pull requests of the project's repository, newest activity first, filtered and paged; or why they cannot be
+   * listed. Answered from a 60 s per-folder cache (`stale: true` while refreshing; `review.list_updated` when it is in).
+   */
+  listPullRequests?(projectId: string, params?: ListPullRequestsParams): Promise<PullRequestList>;
   listReviews?(projectId: string, state?: ReviewState): Promise<ReviewSummary[]>;
   /** Starts a review of a pull request or a local branch; the same source opened again returns the open review. */
   openReview?(projectId: string, input: OpenReviewInput): Promise<Review>;
@@ -305,6 +317,30 @@ export interface Bridge {
   /** URL of a file's bytes at the head (`new`) or the base (`old`), for images next to their diff. */
   reviewFileRawUrl?(projectId: string, reviewId: string, path: string, side: "new" | "old"): string;
   setReviewFileViewed?(projectId: string, reviewId: string, path: string, viewed: boolean): Promise<ReviewFile>;
+  /** The review threads the code host already has, grouped, with counts per file (refreshed with the review; `refresh` asks the host now). */
+  listReviewThreads?(projectId: string, reviewId: string, options?: { refresh?: boolean }): Promise<ReviewThreads>;
+  /**
+   * Check a pull request out. `workspace` points the project at the review's worktree (see `Project.review_workspace`);
+   * `working_copy` switches the project's own folder to a local branch: 409 `dirty_working_copy` (`BridgeError.files`) unless
+   * `confirm`, 409 `checkout_conflict` / `branch_diverged` / `detached_head` when git must not be forced.
+   */
+  checkoutReview?(projectId: string, reviewId: string, input: ReviewCheckoutInput): Promise<ReviewCheckoutResult>;
+  /** Points the project back at its own folders. */
+  clearReviewWorkspace?(projectId: string): Promise<void>;
+  /*
+   * Project commands (decision 68, apps/harness/docs/commands.md). Optional: HTTP bridge only. The list itself is
+   * `Project.commands` (set with `updateProject`). A command runs only when these are called, by the user's own button.
+   */
+  /** Commands the project's package.json scripts, Makefile targets and justfile recipes suggest; reads files, runs nothing. */
+  listCommandSuggestions?(projectId: string): Promise<CommandSuggestion[]>;
+  /** Runs the named command (case-insensitive) in the project's folder, or in the review's worktree with `reviewId`; output follows as `command.*` events. 409 `too_many_runs` above 4 at once. */
+  runCommand?(projectId: string, name: string, options?: { reviewId?: string }): Promise<StartedCommandRun>;
+  /** Newest first, without output; `reviewId` narrows to one review's runs. */
+  listCommandRuns?(projectId: string, options?: { reviewId?: string; limit?: number }): Promise<CommandRun[]>;
+  /** Status and the tail of the output. */
+  getCommandRun?(projectId: string, runId: string): Promise<CommandRun>;
+  /** Ends the run's process group (SIGTERM, then SIGKILL); answers with the run once it ended. */
+  stopCommandRun?(projectId: string, runId: string): Promise<CommandRun>;
   listReviewComments?(projectId: string, reviewId: string): Promise<ReviewComment[]>;
   createReviewComment?(projectId: string, reviewId: string, input: ReviewCommentInput): Promise<ReviewComment>;
   updateReviewComment?(projectId: string, reviewId: string, commentId: string, patch: ReviewCommentUpdate): Promise<ReviewComment>;
@@ -372,6 +408,11 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "task.updated",
   "memory.updated",
   "review.updated",
+  "review.list_updated",
+  "review.workspace",
+  "command.started",
+  "command.output",
+  "command.finished",
 ];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -403,6 +444,7 @@ function toBridgeError(status: number, text: string): BridgeError {
       ...(typeof err.provider === "string" ? { provider: err.provider } : {}),
       ...(typeof err.reason === "string" ? { reason: err.reason } : {}),
       ...(typeof err.command === "string" && err.command.trim() ? { command: err.command.trim() } : {}),
+      ...(Array.isArray(err.files) ? { files: err.files as ReviewDirtyFile[] } : {}),
     };
     return new BridgeError(status, code, err.message, detail);
   }
@@ -593,8 +635,16 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     deleteSecret: async (id, name) => {
       await request("DELETE", `${p(id)}/secrets/${encodeURIComponent(name)}`);
     },
-    listPullRequests: (id, params) =>
-      request("GET", `${p(id)}/prs${params?.folder ? `?folder=${encodeURIComponent(params.folder)}` : ""}`) as Promise<PullRequestList>,
+    listPullRequests: (id, params) => {
+      const q: string[] = [];
+      if (params?.folder) q.push(`folder=${encodeURIComponent(params.folder)}`);
+      if (params?.filter) q.push(`filter=${params.filter}`);
+      if (params?.q) q.push(`q=${encodeURIComponent(params.q)}`);
+      if (params?.page) q.push(`page=${params.page}`);
+      if (params?.per_page) q.push(`per_page=${params.per_page}`);
+      if (params?.refresh) q.push("refresh=1");
+      return request("GET", `${p(id)}/prs${q.length ? `?${q.join("&")}` : ""}`) as Promise<PullRequestList>;
+    },
     listReviews: (id, state) => unwrap<ReviewSummary[]>(request("GET", `${p(id)}/reviews${state ? `?state=${state}` : ""}`), "reviews"),
     openReview: (id, input) => request("POST", `${p(id)}/reviews`, input) as Promise<Review>,
     getReview: (id, rid) => request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}`) as Promise<Review>,
@@ -613,6 +663,27 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     reviewFileRawUrl: (id, rid, path, side) => `${base}${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}?raw=${side}`,
     setReviewFileViewed: (id, rid, path, viewed) =>
       request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}`, { viewed }) as Promise<ReviewFile>,
+    listReviewThreads: (id, rid, options) =>
+      request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/threads${options?.refresh ? "?refresh=1" : ""}`) as Promise<ReviewThreads>,
+    checkoutReview: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/checkout`, input) as Promise<ReviewCheckoutResult>,
+    clearReviewWorkspace: async (id) => {
+      await request("DELETE", `${p(id)}/review-workspace`);
+    },
+    listCommandSuggestions: (id) => unwrap<CommandSuggestion[]>(request("GET", `${p(id)}/commands/suggestions`), "suggestions"),
+    runCommand: (id, name, options) =>
+      request(
+        "POST",
+        `${p(id)}/commands/${encodeURIComponent(name)}/run`,
+        options?.reviewId ? { review_id: options.reviewId } : {},
+      ) as Promise<StartedCommandRun>,
+    listCommandRuns: (id, options) => {
+      const q: string[] = [];
+      if (options?.reviewId) q.push(`review_id=${encodeURIComponent(options.reviewId)}`);
+      if (options?.limit) q.push(`limit=${options.limit}`);
+      return unwrap<CommandRun[]>(request("GET", `${p(id)}/runs${q.length ? `?${q.join("&")}` : ""}`), "runs");
+    },
+    getCommandRun: (id, rid) => request("GET", `${p(id)}/runs/${encodeURIComponent(rid)}`) as Promise<CommandRun>,
+    stopCommandRun: (id, rid) => request("POST", `${p(id)}/runs/${encodeURIComponent(rid)}/stop`) as Promise<CommandRun>,
     listReviewComments: (id, rid) => unwrap<ReviewComment[]>(request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments`), "comments"),
     createReviewComment: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments`, input) as Promise<ReviewComment>,
     updateReviewComment: (id, rid, cid, patch) =>

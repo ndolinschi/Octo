@@ -57,6 +57,11 @@ func fileChanged() *Error {
 	return &Error{Kind: KindConflict, Code: "file_changed", Message: "file changed on disk"}
 }
 
+func reviewReadOnly() *Error {
+	return &Error{Kind: KindConflict, Code: "review_workspace_read_only",
+		Message: "the review workspace is read-only: refreshing the review moves its worktree and would discard edits"}
+}
+
 func fileTooLarge(msg string) *Error {
 	return &Error{Kind: KindTooLarge, Code: "file_too_large", Message: msg}
 }

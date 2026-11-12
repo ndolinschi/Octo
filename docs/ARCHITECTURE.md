@@ -90,7 +90,7 @@ Package map of `apps/harness/internal/` (one line each; deeper: `apps/harness/do
 | Package | Role |
 | --- | --- |
 | `bridge` | HTTP routes (`/v1/...`, `/health`, `/mcp/...`), SSE, CORS and loopback rules; `Version` |
-| `project`, `projectstore` | Project service (create, send, budget, files, notes, memory API); SQLite stores (registry, per project), migrations, `PRAGMA user_version` stamp (`SchemaVersion`, **7**) |
+| `project`, `projectstore` | Project service (create, send, budget, files, notes, memory API); SQLite stores (registry, per project), migrations, `PRAGMA user_version` stamp (`SchemaVersion`, **8**) |
 | `orchestrator` | One turn at a time per project; orchestrator and sub-agent runs; `spawn_agent` (tiers, `auto`, ACP agents); queue; approvals glue; compaction; memory tools, digest and window assembly; ACP orchestrator session (`acp_*.go`) |
 | `agent` | The Messages-API tool loop (`agent.Loop`), tool-result clearing |
 | `anthropicclient`, `router`, `budget`, `fakerouter` | Messages client (prompt caching, response observer); the router integration (detection, hints, result headers, route call); project spend meter; a stand-in router for tests |
@@ -481,7 +481,7 @@ Items fixed since 2026-11-11 were removed (the v7 header, the missing live check
 1. `specs/2026-11-11-orchestrator-memory-design.md`, "As built — M1", says "M2 and M3 are not built". The sections "As
    built — M2" and "As built — M3" below it say they are, and the code has both. The M1 sentence is stale.
 2. `specs/2026-11-11-packaging-design.md`, "As built — R1", says `projectstore.SchemaVersion` is **3** "now". The code has
-   `SchemaVersion = 7` in `apps/harness/internal/projectstore/migrate.go`.
+   `SchemaVersion = 8` in `apps/harness/internal/projectstore/migrate.go`.
 3. `specs/2026-11-11-router-harness-integration.md`, section I2, says the route call times out after 300 ms. The code
    (`DefaultRouteTimeout` in `apps/harness/internal/config/config.go`) and the spec's own "As built" note say 2500 ms.
 4. `apps/harness/README.md` says nobody has run Copilot or Grok, nor Codex. `apps/harness/scripts/test-subscriptions.sh`

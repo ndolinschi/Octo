@@ -32,6 +32,8 @@ const (
 	ReasonGenerated  = "generated"
 	ReasonRename     = "rename"
 	ReasonFormatting = "formatting"
+	// ReasonConfigured: the path matches one of the project's mechanical_globs.
+	ReasonConfigured = "configured"
 )
 
 var lockfiles = map[string]bool{

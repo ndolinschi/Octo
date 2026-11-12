@@ -7,6 +7,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -55,6 +56,14 @@ type Project struct {
 	// Mode is the project's default mode: "agent", "ask" (read-only answers) or "plan"
 	// (read-only, the answer is a plan to approve). A message may override it for one turn.
 	Mode string `json:"mode"`
+	// ReviewWorkspace is the review whose worktree the file tree, editor, search and language
+	// server are pointed at ("Open in workspace"); null when the project's own folders are shown.
+	// While it is set the file API accepts the folder "@review" (see Files).
+	ReviewWorkspace *projectstore.ReviewWorkspace `json:"review_workspace"`
+	// Commands are the project's named commands (decision 68), [] when none.
+	Commands []projcfg.Command `json:"commands"`
+	// Review is the review configuration (UI decision 78): commands to offer, extra mechanical globs, split or unified.
+	Review projcfg.ReviewConfig `json:"review"`
 	// ModelsUnavailable lists the stored models whose provider cannot run them
 	// now (never an error: the project is still readable and editable).
 	ModelsUnavailable []ModelIssue `json:"models_unavailable"`
@@ -86,6 +95,11 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 		Instructions: info.Instructions, Folders: folders, Models: models, MaxDepth: info.MaxDepth,
 		BudgetUSD: info.BudgetUSD, Access: info.Access, Memory: memory.ParseSettings(info.MemoryJSON),
 		Network: info.Network, NetworkPrivate: info.NetworkPrivate, Mode: info.Mode,
+	}
+	p.Commands = loadCommands(ctx, db)
+	p.Review = loadReviewConfig(ctx, db)
+	if ws, err := db.ReviewWorkspace(ctx); err == nil {
+		p.ReviewWorkspace = ws
 	}
 	p.PendingApprovals, p.PendingInputs = s.turns.Attention(info.ID)
 	p.NeedsYou = p.PendingApprovals+p.PendingInputs > 0

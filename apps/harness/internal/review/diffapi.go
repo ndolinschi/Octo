@@ -5,10 +5,21 @@ import (
 	"errors"
 	"mime"
 	"path"
+	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/gitx"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
+
+// reviewConfig is the project's review configuration (the defaults when none is set).
+func reviewConfig(ctx context.Context, db *projectstore.DB) projcfg.ReviewConfig {
+	raw, ok, err := db.Setting(ctx, projectstore.SettingReviewConfig)
+	if err != nil || !ok {
+		return projcfg.DefaultReview()
+	}
+	return projcfg.ParseReview(raw)
+}
 
 func (s *Service) invalidate(rid string) {
 	s.mu.Lock()
@@ -24,7 +35,8 @@ func (s *Service) repoDir(ctx context.Context, db *projectstore.DB, r projectsto
 
 // files returns the ordered file list of a review (cached per base and head).
 func (s *Service) files(ctx context.Context, db *projectstore.DB, r projectstore.Review) ([]File, error) {
-	key := r.BaseCommit + ".." + r.HeadCommit
+	cfg := reviewConfig(ctx, db)
+	key := r.BaseCommit + ".." + r.HeadCommit + "|" + strings.Join(cfg.MechanicalGlobs, "\x00")
 	s.mu.Lock()
 	if c, ok := s.cache[r.ID]; ok && c.key == key {
 		s.mu.Unlock()
@@ -35,7 +47,7 @@ func (s *Service) files(ctx context.Context, db *projectstore.DB, r projectstore
 	if err != nil {
 		return nil, err
 	}
-	files, err := computeFiles(ctx, dir, r.BaseCommit, r.HeadCommit)
+	files, err := computeFiles(ctx, dir, r.BaseCommit, r.HeadCommit, cfg.MechanicalGlobs)
 	if err != nil {
 		return nil, gitErr(err)
 	}
@@ -72,6 +84,15 @@ func (s *Service) overlay(ctx context.Context, db *projectstore.DB, r projectsto
 			fnd[f.Path]++
 		}
 	}
+	threadN, threadOpen := map[string]int{}, map[string]int{}
+	if list, _, ok := storedThreads(ctx, db, r.ID); ok {
+		for _, t := range list {
+			threadN[t.Path]++
+			if !t.Resolved {
+				threadOpen[t.Path]++
+			}
+		}
+	}
 	var changedSince map[string]bool
 	if r.LastSubmittedHead != "" && r.LastSubmittedHead != r.HeadCommit {
 		if dir, err := s.repoDir(ctx, db, r); err == nil {
@@ -90,6 +111,7 @@ func (s *Service) overlay(ctx context.Context, db *projectstore.DB, r projectsto
 		}
 		f.PendingComments = pend[f.Path]
 		f.Findings = fnd[f.Path]
+		f.Threads, f.UnresolvedThreads = threadN[f.Path], threadOpen[f.Path]
 		f.ChangedSinceSubmitted = changedSince[f.Path]
 	}
 	return nil

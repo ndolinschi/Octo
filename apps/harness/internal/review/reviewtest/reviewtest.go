@@ -182,7 +182,17 @@ type PR struct {
 	// Requested: the PR asks for the user's review.
 	Requested bool
 	State     string // OPEN by default
+	Draft     bool
+	// ReviewedBy is a login that has a review on the pull request at ReviewedCommit
+	// (empty: the head). The fake's signed-in user is "me".
+	ReviewedBy     string
+	ReviewedCommit string
+	// UpdatedAt overrides the update time ("2026-11-0N..." by default).
+	UpdatedAt string
 }
+
+// Viewer is the login the fake gh is signed in as.
+const Viewer = "me"
 
 // Fake is a fake `gh`.
 type Fake struct {
@@ -215,14 +225,36 @@ if [ -f "$d/logged_out" ]; then
   echo "To get started with GitHub CLI, please run:  gh auth login" >&2
   exit 4
 fi
+host="github.com"
+if [ -f "$d/enterprise_host" ]; then
+  # Like a gh that is logged in to the enterprise host only: it must be told the host.
+  host=$(<"$d/enterprise_host")
+  if [ "$GH_HOST" != "$host" ]; then
+    echo "none of the git remotes configured for this repository point to a known GitHub host" >&2
+    exit 1
+  fi
+  if [ "$1" = "api" ] && [[ " $* " != *" --hostname $host "* ]]; then
+    echo "HTTP 404: Not Found (https://api.github.com/user)" >&2
+    exit 1
+  fi
+fi
 case "$1 $2" in
-  "repo view") echo '{"name":"widgets","owner":{"login":"acme"},"url":"https://github.com/acme/widgets"}' ;;
+  "repo view") printf '{"name":"widgets","owner":{"login":"acme"},"url":"https://%s/acme/widgets"}\n' "$host" ;;
+  "api user") echo '{"login":"me"}' ;;
+  "api graphql")
+    if [ -f "$d/graphql_fails" ]; then echo "HTTP 502: bad gateway" >&2; exit 1; fi
+    if [[ "$*" == *"after="* && -f "$d/threads2.json" ]]; then out "$d/threads2.json"; else out "$d/threads.json"; fi ;;
   "pr list")
     if [[ "$*" == *review-requested* ]]; then out "$d/requested.json"; else out "$d/list.json"; fi ;;
   "pr view") out "$d/view-$3.json" ;;
   "pr checks") out "$d/checks.json"; exit 8 ;;
   "api --method")
     body=$(</dev/stdin)
+    if [[ "$*" == *"/replies"* ]]; then
+      [ -f "$d/reply_fails" ] && { echo "HTTP 422: reply failed" >&2; exit 1; }
+      printf '%s\t%s\n' "$3 $4" "$body" >> "$d/replies.log"
+      echo '{"id":9001,"html_url":"https://example.invalid/reply-9001"}'; exit 0
+    fi
     printf '%s\n' "$body" >> "$d/posts.log"
     echo '{"id":4242,"html_url":"https://github.com/acme/widgets/pull/1#pullrequestreview-4242"}' ;;
   *) echo "fake gh: unexpected: $*" >&2; exit 2 ;;
@@ -241,14 +273,33 @@ esac
 			state = "OPEN"
 		}
 		head := r.Head
+		updated := "2026-11-0" + itoa(p.Number) + "T10:00:00Z"
+		if p.UpdatedAt != "" {
+			updated = p.UpdatedAt
+		}
 		entry := map[string]any{
-			"number": p.Number, "title": p.Title, "author": map[string]any{"login": p.Author}, "isDraft": false,
+			"number": p.Number, "title": p.Title, "author": map[string]any{"login": p.Author}, "isDraft": p.Draft,
 			"url": "https://github.com/acme/widgets/pull/" + itoa(p.Number), "headRefName": "feature", "baseRefName": "main",
 			"headRefOid": head, "additions": 10, "deletions": 2, "changedFiles": 3,
-			"createdAt": "2026-11-01T10:00:00Z", "updatedAt": "2026-11-0" + itoa(p.Number) + "T10:00:00Z",
+			"createdAt": "2026-11-01T10:00:00Z", "updatedAt": updated,
 			"reviewDecision": "", "labels": []any{},
 			"statusCheckRollup": []any{map[string]any{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS"}},
 		}
+		comments := []any{}
+		if p.Comment != "" {
+			comments = []any{map[string]any{"author": map[string]any{"login": "carol"}, "body": p.Comment, "createdAt": "2026-11-02T10:00:00Z"}}
+		}
+		entry["comments"] = comments
+		latest := []any{}
+		if p.ReviewedBy != "" {
+			commit := p.ReviewedCommit
+			if commit == "" {
+				commit = head
+			}
+			latest = []any{map[string]any{"author": map[string]any{"login": p.ReviewedBy}, "body": "", "state": "COMMENTED",
+				"commit": map[string]any{"oid": commit}}}
+		}
+		entry["latestReviews"] = latest
 		list = append(list, entry)
 		if p.Requested {
 			req = append(req, map[string]any{"number": p.Number})
@@ -260,10 +311,6 @@ esac
 		view["body"], view["state"], view["baseRefOid"], view["mergeable"] = p.Body, state, r.Base, "MERGEABLE"
 		view["commits"] = []any{map[string]any{"oid": head, "messageHeadline": "Add token validation", "committedDate": "2026-11-01T09:00:00Z",
 			"authors": []any{map[string]any{"login": p.Author}}}}
-		view["comments"] = []any{}
-		if p.Comment != "" {
-			view["comments"] = []any{map[string]any{"author": map[string]any{"login": "carol"}, "body": p.Comment, "createdAt": "2026-11-02T10:00:00Z"}}
-		}
 		view["reviews"] = []any{}
 		put("view-"+itoa(p.Number)+".json", mustJSON(t, view))
 	}
@@ -272,6 +319,7 @@ esac
 		req = []map[string]any{}
 	}
 	put("requested.json", mustJSON(t, req))
+	put("threads.json", `{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}}`)
 	put("checks.json", `[{"name":"build","state":"SUCCESS","bucket":"pass","link":"https://ci/1","workflow":"CI"}]`)
 
 	t.Setenv("PATH", d)
@@ -313,11 +361,11 @@ func (f *Fake) Posts() []string {
 	return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
 }
 
-// WritesCalled reports whether any invocation was not a read (`gh api` is the
-// only write the adapter makes).
+// WritesCalled reports whether any invocation was a write: `gh api --method POST`
+// (the review and its replies). Reads through `gh api` (user, graphql queries) are not.
 func (f *Fake) WritesCalled() bool {
 	for _, c := range f.Calls() {
-		if strings.HasPrefix(c, "api ") {
+		if strings.HasPrefix(c, "api ") && strings.Contains(c, "--method POST") {
 			return true
 		}
 	}
@@ -374,4 +422,116 @@ func (f *Fake) Retitle(t testing.TB, number int, title, body string) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// Enterprise makes the fake behave like a gh that knows only the host: every
+// call must carry GH_HOST=host (and `gh api` also --hostname host), otherwise
+// it fails the way gh does against the wrong host. It also points the
+// repository's origin at https://host/acme/widgets.git (the local bare repository
+// answers through url.insteadOf, so fetches still work).
+func (f *Fake) Enterprise(t testing.TB, r *Repo, host string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.Dir, "enterprise_host"), []byte(host), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	remote := "https://" + host + "/acme/widgets.git"
+	Git(t, r.Dir, "config", "remote.origin.url", remote)
+	Git(t, r.Dir, "config", "url."+r.Origin+".insteadOf", remote)
+	for _, name := range []string{"list.json", "view-1.json", "view-2.json"} {
+		p := filepath.Join(f.Dir, name)
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		_ = os.WriteFile(p, []byte(strings.ReplaceAll(string(b), "https://github.com/", "https://"+host+"/")), 0o755)
+	}
+}
+
+// SetThreads sets the GraphQL answer for the review threads (the whole response
+// body, see ThreadsJSON). A second page is served when the request has an
+// `after` cursor.
+func (f *Fake) SetThreads(t testing.TB, body string, page2 ...string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.Dir, "threads.json"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if len(page2) > 0 {
+		if err := os.WriteFile(filepath.Join(f.Dir, "threads2.json"), []byte(page2[0]), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// ReplyFails makes posting a reply fail (the review post still works).
+func (f *Fake) ReplyFails(t testing.TB, fail bool) {
+	t.Helper()
+	p := filepath.Join(f.Dir, "reply_fails")
+	if fail {
+		_ = os.WriteFile(p, nil, 0o644)
+	} else {
+		_ = os.Remove(p)
+	}
+}
+
+// Replies returns the replies posted: "endpoint<TAB>body-json" per line.
+func (f *Fake) Replies() []string {
+	b, err := os.ReadFile(filepath.Join(f.Dir, "replies.log"))
+	if err != nil {
+		return nil
+	}
+	return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+}
+
+// ThreadsJSON builds a GraphQL response from thread nodes (each a map shaped
+// like the reviewThreads node of the query).
+func ThreadsJSON(t testing.TB, hasNext bool, cursor string, nodes ...map[string]any) string {
+	t.Helper()
+	if nodes == nil {
+		nodes = []map[string]any{}
+	}
+	return mustJSON(t, map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": map[string]any{
+		"reviewThreads": map[string]any{"pageInfo": map[string]any{"hasNextPage": hasNext, "endCursor": cursor}, "nodes": nodes}}}}})
+}
+
+// GraphQLFails makes the review-threads query fail.
+func (f *Fake) GraphQLFails(t testing.TB, fail bool) {
+	t.Helper()
+	p := filepath.Join(f.Dir, "graphql_fails")
+	if fail {
+		_ = os.WriteFile(p, nil, 0o644)
+	} else {
+		_ = os.Remove(p)
+	}
+}
+
+// ThreadNode builds one reviewThreads node: a thread on path at line (0 = outdated, no current
+// line) whose comments are (database id, author, body) triples in order; a comment after the
+// first is a reply to the first.
+func ThreadNode(id, path string, line int, resolved, outdated bool, comments ...[3]string) map[string]any {
+	nodes := []any{}
+	for i, c := range comments {
+		n := map[string]any{"databaseId": atoi(c[0]), "author": map[string]any{"login": c[1]}, "body": c[2],
+			"createdAt": "2026-11-03T1" + itoa(i) + ":00:00Z", "url": "https://github.com/acme/widgets/pull/1#discussion_r" + c[0],
+			"line": line, "originalLine": line, "commit": map[string]any{"oid": "abc123"}, "replyTo": nil}
+		if i > 0 {
+			n["replyTo"] = map[string]any{"databaseId": atoi(comments[0][0])}
+		}
+		nodes = append(nodes, n)
+	}
+	node := map[string]any{"id": id, "isResolved": resolved, "isOutdated": outdated, "path": path, "diffSide": "RIGHT",
+		"startLine": nil, "originalStartLine": nil, "comments": map[string]any{"nodes": nodes}}
+	if line == 0 {
+		node["line"], node["originalLine"] = nil, 7
+	} else {
+		node["line"], node["originalLine"] = line, line
+	}
+	return node
+}
+
+func atoi(s string) int {
+	n := 0
+	for _, r := range s {
+		n = n*10 + int(r-'0')
+	}
+	return n
 }

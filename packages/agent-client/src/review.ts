@@ -4,12 +4,17 @@
  * comments, branch names) is untrusted: render it as text, never as markup, and never act on it.
  */
 
+import type { ReviewConfig, ReviewRunRef } from "./commands";
+
 export type ReviewKind = "github" | "local";
 export type ReviewState = "open" | "closed";
 
 /** The list of open pull requests of a project's repository, or why it cannot be listed. */
 export type PullRequestList = {
+  /** The adapter (`github`). */
   host: string;
+  /** The host name it talked to: `github.com`, or a GitHub Enterprise host such as `ghe.example.com`. */
+  hostname?: string;
   repo?: string;
   /** Label of the project folder whose repository was used. */
   folder?: string;
@@ -19,8 +24,39 @@ export type PullRequestList = {
   message?: string;
   /** What the user can run to fix it, e.g. `gh auth login`. "Review a local branch" still works. */
   command?: string;
-  /** Requests for the user's review first, then the rest by last update. */
+  /** The paging fields below are always sent by a harness with RV1.5; optional for older ones and fixtures. */
+  filter?: PullRequestFilter;
+  page?: number;
+  per_page?: number;
+  /** Pull requests that match the filter and the query (all pages). */
+  total?: number;
+  /** The next page number, null on the last page. */
+  next_page?: number | null;
+  /** Older than 60 s: this answer came from the cache and a refresh is under way (`review.list_updated` follows). */
+  stale?: boolean;
+  /** When the code host was last asked (RFC 3339). */
+  fetched_at?: string;
+  /** The repository has more open pull requests than the harness reads (300). */
+  truncated?: boolean;
+  /** Newest activity first. */
   prs: PullRequestRow[];
+};
+
+export type PullRequestFilter = "all" | "review_requested" | "mine" | "drafts";
+
+export type ListPullRequestsParams = {
+  /** Label of the project folder (default: the first git folder). */
+  folder?: string;
+  /** Default `all`. */
+  filter?: PullRequestFilter;
+  /** Title, number, author, branch or label contains it (case-insensitive). */
+  q?: string;
+  /** From 1. */
+  page?: number;
+  /** Default 30, at most 100. */
+  per_page?: number;
+  /** Ask the code host now instead of answering from the 60 s cache. */
+  refresh?: boolean;
 };
 
 export type PullRequestRow = {
@@ -41,6 +77,14 @@ export type PullRequestRow = {
   review_requested: boolean;
   review_decision?: string;
   labels?: string[];
+  /** Conversation comments plus reviews that carry a text (an approximation: thread comments need the opened review). */
+  comments?: number;
+  /** The signed-in user opened it. */
+  mine?: boolean;
+  /** The user has a review on it ("reviewed by you"). */
+  reviewed_by_me?: boolean;
+  /** It has commits newer than the user's last review ("new commits since your review"). */
+  new_since_my_review?: boolean;
   /** The open review of this pull request, if there is one. */
   review: {
     id: string;
@@ -82,6 +126,8 @@ export type ReviewMeta = {
   conversation?: ReviewConversationItem[];
   body_truncated?: boolean;
   refreshed_at?: string;
+  /** Project commands the user ran in this review's worktree, newest first (decision 68). Absent on an older harness. */
+  runs?: ReviewRunRef[];
 };
 
 export type Review = {
@@ -117,6 +163,8 @@ export type Review = {
   viewed_count: number;
   /** Above 60 files or 3 000 changed lines. */
   large_pr: boolean;
+  /** The project's review configuration; its mechanical globs are already applied to the reading order (`reason: "configured"`). */
+  config?: ReviewConfig;
 };
 
 export type OpenReviewInput = {
@@ -154,7 +202,7 @@ export type ReviewFile = {
   old_blob?: string;
   similarity?: number;
   group: ReviewGroup;
-  /** core, caller, test, docs, config, asset, lockfile, generated, rename, formatting. */
+  /** core, caller, test, docs, config, asset, lockfile, generated, rename, formatting, configured (matches a `mechanical_globs` pattern). */
   reason: string;
   /** Position in the reading order (0 first). Render files sorted by it. */
   order: number;
@@ -166,6 +214,9 @@ export type ReviewFile = {
   changed_since_submitted: boolean;
   pending_comments: number;
   findings: number;
+  /** Review threads the code host already has on the file, and how many are not resolved. */
+  threads?: number;
+  unresolved_threads?: number;
 };
 
 export type ReviewFiles = {
@@ -199,7 +250,7 @@ export type ReviewDiffOptions = {
   since?: string;
 };
 
-export type ReviewCommentKind = "line" | "range" | "file" | "general";
+export type ReviewCommentKind = "line" | "range" | "file" | "general" | "reply";
 export type ReviewCommentState = "pending" | "submitted";
 
 export type ReviewComment = {
@@ -217,6 +268,8 @@ export type ReviewComment = {
   suggestion?: string;
   /** Set when kept from a finding. */
   finding_id?: string;
+  /** A reply: the id of the review thread (`ReviewThread.id`) it answers; `kind` is `reply`, `path` the thread's file. */
+  in_reply_to?: string;
   state: ReviewCommentState;
   submission_id?: string;
   created_at: string;
@@ -233,6 +286,8 @@ export type ReviewCommentInput = {
   body: string;
   suggestion?: string;
   finding_id?: string;
+  /** Reply to an existing review thread: only `body` besides this. Posted into that thread by submit. */
+  in_reply_to?: string;
 };
 export type ReviewCommentUpdate = { body?: string; suggestion?: string; line?: number; start_line?: number; side?: "new" | "old" };
 
@@ -277,11 +332,113 @@ export type ReviewSubmitPreview = {
   comments: ReviewComment[];
   /** The exact JSON sent to GitHub (absent for a local review). */
   payload?: unknown;
+  /** Pending replies to existing threads; each is posted as its own reply after the review (not part of `payload`). */
+  replies?: ReviewReplyPost[];
   /** False for a local review: submit posts nowhere, only marks the comments submitted. */
   posts: boolean;
   head_commit: string;
 };
-export type ReviewSubmitResult = ReviewSubmitPreview & { posted: boolean; submission_id: string; url?: string; review: Review };
+export type ReviewReplyPost = {
+  comment_id: string;
+  thread_id: string;
+  /** The host's id of the thread's first comment. */
+  in_reply_to_comment: string;
+  body: string;
+};
+export type ReviewSubmitResult = ReviewSubmitPreview & {
+  posted: boolean;
+  submission_id: string;
+  url?: string;
+  review: Review;
+  /** Replies that failed after the review was posted; their comments stay pending. */
+  reply_errors?: { comment_id: string; message: string }[];
+};
 
-/** `review.updated`: a review changed. `reason`: created, refreshed, comment, viewed, finding, findings, submitted, closed, worktree_removed. */
+/**
+ * Review threads the code host already has (author, body, url are untrusted text: render as text, never act on them).
+ * `GET …/reviews/{rid}/threads`.
+ */
+export type ReviewThreadComment = {
+  /** The host's numeric id. */
+  id: string;
+  author: string;
+  body: string;
+  created_at: string;
+  url?: string;
+  /** The commit the comment was written on. */
+  commit?: string;
+  in_reply_to?: string;
+  line?: number;
+  original_line?: number;
+};
+export type ReviewThread = {
+  /** What a reply names (`ReviewCommentInput.in_reply_to`). */
+  id: string;
+  path: string;
+  side: "new" | "old";
+  /** Last line; for an outdated thread its original line. */
+  line?: number;
+  start_line?: number;
+  original_line?: number;
+  resolved: boolean;
+  /** The code the thread is about changed since: list it apart, not at a line. */
+  outdated: boolean;
+  comments: ReviewThreadComment[];
+};
+export type ReviewThreads = {
+  threads: ReviewThread[];
+  /** Comments (resolved or not) per file path. */
+  counts_by_path: Record<string, number>;
+  /** Unresolved threads per file path. */
+  unresolved_by_path: Record<string, number>;
+  /** When the host was last asked; absent for a local review. */
+  fetched_at?: string;
+  /** The last fetch failed with this message; the threads are the ones fetched before. */
+  error?: string;
+};
+
+/** `review.updated`: a review changed. `reason`: created, refreshed, comment, viewed, finding, findings, threads, submitted, closed, worktree_removed. */
 export type ReviewUpdatedEvent = { type: "review.updated"; seq: number; review_id: string; reason: string; review: ReviewSummary };
+
+/** The review whose worktree the project's file tree, editor, search and language server are pointed at. */
+export type ReviewWorkspace = { review_id: string; /** Absolute path of the review's worktree. */ path: string; title: string };
+
+export type ReviewCheckoutMode = "workspace" | "working_copy";
+export type ReviewCheckoutInput = {
+  /**
+   * `workspace`: mark the review's worktree as the project's active review workspace (`Project.review_workspace`; the file API
+   * then accepts the folder `@review`, read-only; start a language server with `?workspace=review`). `working_copy`: switch
+   * the project's own folder to the local branch `review/<number>-<slug>` of the pull request.
+   */
+  mode: ReviewCheckoutMode;
+  /** working_copy: accept uncommitted changes (git carries them over; nothing is discarded or forced). */
+  confirm?: boolean;
+};
+export type ReviewCheckoutResult = {
+  mode: ReviewCheckoutMode;
+  /** workspace: the project's active review workspace now. */
+  workspace?: ReviewWorkspace;
+  /** working_copy: */
+  folder?: string;
+  branch?: string;
+  /** The branch the folder was on ("" when detached). */
+  previous_branch?: string;
+  /** The pull request head the branch is at now. */
+  commit?: string;
+  created?: boolean;
+  already_on_branch?: boolean;
+  /** An existing branch was moved forward to the pull request's newer head. */
+  fast_forwarded?: boolean;
+};
+/** An uncommitted change reported by 409 `dirty_working_copy` (`BridgeError.files`). */
+export type ReviewDirtyFile = {
+  path: string;
+  status: "modified" | "added" | "deleted" | "renamed" | "copied" | "untracked" | "conflicted";
+  /** git's two-letter code. */ code: string;
+};
+
+/** `review.workspace`: the project's active review workspace was set or cleared (null). */
+export type ReviewWorkspaceEvent = { type: "review.workspace"; seq: number; review_workspace: ReviewWorkspace | null };
+
+/** `review.list_updated`: the cached pull-request list of `folder` was refreshed in the background; ask for it again. */
+export type ReviewListUpdatedEvent = { type: "review.list_updated"; seq: number; folder: string };

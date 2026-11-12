@@ -23,6 +23,10 @@ type CommentInput struct {
 	Suggestion string `json:"suggestion,omitempty"`
 	// FindingID links a comment kept from a finding.
 	FindingID string `json:"finding_id,omitempty"`
+	// InReplyTo is the id of a review thread of the pull request (see …/threads): the
+	// comment becomes a pending reply, posted into that thread by submit. A reply has a body
+	// and nothing else.
+	InReplyTo string `json:"in_reply_to,omitempty"`
 }
 
 // CommentUpdate edits a pending comment (nil fields stay).
@@ -158,8 +162,12 @@ func (s *Service) CreateComment(ctx context.Context, pid, rid string, in Comment
 		return projectstore.ReviewComment{}, conflict("review_closed", "the review is closed; reopen it to comment")
 	}
 	c := projectstore.ReviewComment{ReviewID: rid, Path: in.Path, Side: in.Side, Line: in.Line, StartLine: in.StartLine,
-		Body: in.Body, Suggestion: in.Suggestion, FindingID: in.FindingID}
-	if err := s.validate(ctx, db, r, &c); err != nil {
+		Body: in.Body, Suggestion: in.Suggestion, FindingID: in.FindingID, InReplyTo: in.InReplyTo}
+	if c.InReplyTo != "" {
+		if err := s.validateReply(ctx, db, r, &c); err != nil {
+			return c, err
+		}
+	} else if err := s.validate(ctx, db, r, &c); err != nil {
 		return c, err
 	}
 	out, err := db.AddComment(ctx, c)
@@ -206,7 +214,14 @@ func (s *Service) UpdateComment(ctx context.Context, pid, rid, cid string, u Com
 	if u.Side != nil {
 		c.Side = *u.Side
 	}
-	if err := s.validate(ctx, db, r, &c); err != nil {
+	if c.InReplyTo != "" {
+		if u.Suggestion != nil || u.Line != nil || u.StartLine != nil || u.Side != nil {
+			return c, invalid("invalid_request", "a reply has a body, nothing else")
+		}
+		if err := s.validateReply(ctx, db, r, &c); err != nil {
+			return c, err
+		}
+	} else if err := s.validate(ctx, db, r, &c); err != nil {
 		return c, err
 	}
 	out, err := db.UpdateComment(ctx, rid, cid, projectstore.CommentPatch{

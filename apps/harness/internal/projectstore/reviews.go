@@ -295,7 +295,7 @@ func (d *DB) SetFindingStatus(ctx context.Context, reviewID, id, status, reason 
 type ReviewComment struct {
 	ID       string `json:"id"`
 	ReviewID string `json:"review_id"`
-	// Kind is line, range, file or general.
+	// Kind is line, range, file, general or reply.
 	Kind       string `json:"kind"`
 	Path       string `json:"path,omitempty"`
 	Side       string `json:"side,omitempty"` // new (default) or old
@@ -304,7 +304,9 @@ type ReviewComment struct {
 	Body       string `json:"body"`
 	Suggestion string `json:"suggestion,omitempty"`
 	// FindingID is set when the comment was kept from a finding.
-	FindingID    string `json:"finding_id,omitempty"`
+	FindingID string `json:"finding_id,omitempty"`
+	// InReplyTo is the id of the review thread (of the code host) this comment replies to; Kind is then "reply".
+	InReplyTo    string `json:"in_reply_to,omitempty"`
 	State        string `json:"state"` // pending, submitted
 	SubmissionID string `json:"submission_id,omitempty"`
 	CreatedAt    string `json:"created_at"`
@@ -318,11 +320,11 @@ const (
 	CommentSubmitted = "submitted"
 )
 
-const commentCols = `id, review_id, kind, path, side, line, start_line, body, suggestion, finding_id, state, submission_id, created_at, updated_at, submitted_at`
+const commentCols = `id, review_id, kind, path, side, line, start_line, body, suggestion, finding_id, in_reply_to, state, submission_id, created_at, updated_at, submitted_at`
 
 func scanComment(r scanner) (ReviewComment, error) {
 	var c ReviewComment
-	err := r.Scan(&c.ID, &c.ReviewID, &c.Kind, &c.Path, &c.Side, &c.Line, &c.StartLine, &c.Body, &c.Suggestion, &c.FindingID,
+	err := r.Scan(&c.ID, &c.ReviewID, &c.Kind, &c.Path, &c.Side, &c.Line, &c.StartLine, &c.Body, &c.Suggestion, &c.FindingID, &c.InReplyTo,
 		&c.State, &c.SubmissionID, &c.CreatedAt, &c.UpdatedAt, &c.SubmittedAt)
 	return c, err
 }
@@ -331,8 +333,8 @@ func scanComment(r scanner) (ReviewComment, error) {
 func (d *DB) AddComment(ctx context.Context, c ReviewComment) (ReviewComment, error) {
 	now := Now()
 	c.ID, c.CreatedAt, c.UpdatedAt, c.State = NewID("rcm"), now, now, CommentPending
-	_, err := d.sql.ExecContext(ctx, `INSERT INTO review_comments (`+commentCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.ID, c.ReviewID, c.Kind, c.Path, c.Side, c.Line, c.StartLine, c.Body, c.Suggestion, c.FindingID, c.State, c.SubmissionID,
+	_, err := d.sql.ExecContext(ctx, `INSERT INTO review_comments (`+commentCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.ReviewID, c.Kind, c.Path, c.Side, c.Line, c.StartLine, c.Body, c.Suggestion, c.FindingID, c.InReplyTo, c.State, c.SubmissionID,
 		c.CreatedAt, c.UpdatedAt, c.SubmittedAt)
 	return c, err
 }
@@ -448,7 +450,7 @@ func (d *DB) DeleteReview(ctx context.Context, id string) error {
 	defer func() { _ = tx.Rollback() }()
 	for _, q := range []string{
 		`DELETE FROM review_viewed WHERE review_id = ?`, `DELETE FROM review_findings WHERE review_id = ?`,
-		`DELETE FROM review_comments WHERE review_id = ?`, `DELETE FROM reviews WHERE id = ?`,
+		`DELETE FROM review_comments WHERE review_id = ?`, `DELETE FROM review_threads WHERE review_id = ?`, `DELETE FROM reviews WHERE id = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {
 			return err

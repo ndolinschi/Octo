@@ -3,7 +3,6 @@ package review
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -13,133 +12,9 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/codehost"
 	"github.com/ndolinschi/Octo/apps/harness/internal/gitx"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
-
-// PRList is the response of the pull-request list.
-type PRList struct {
-	Host   string `json:"host"`
-	Repo   string `json:"repo,omitempty"`
-	Folder string `json:"folder,omitempty"`
-	// Available is false when the code host cannot be used; Reason (gh_not_installed,
-	// not_logged_in, no_github_repo, no_host, not_a_git_repo), Message and
-	// Command say why and what to run. "Review a local branch" still works.
-	Available bool    `json:"available"`
-	Reason    string  `json:"reason,omitempty"`
-	Message   string  `json:"message,omitempty"`
-	Command   string  `json:"command,omitempty"`
-	PRs       []PRRow `json:"prs"`
-}
-
-// PRRow is a pull request of the list, with the open review of it if any.
-type PRRow struct {
-	codehost.PR
-	Review *PRReview `json:"review"`
-}
-
-// PRReview ties a list row to its review.
-type PRReview struct {
-	ID                string `json:"id"`
-	HeadCommit        string `json:"head_commit"`
-	LastSubmittedHead string `json:"last_submitted_head,omitempty"`
-	// NewCommits: the pull request has commits the review has not fetched.
-	NewCommits bool `json:"new_commits"`
-	// NewSinceSubmitted: the pull request moved since the last submitted review.
-	NewSinceSubmitted bool `json:"new_since_submitted"`
-	PendingComments   int  `json:"pending_comments"`
-}
-
-// ListPRs lists the open pull requests of the project's repository (those
-// that ask for the user's review first), tied to the reviews already open.
-func (s *Service) ListPRs(ctx context.Context, pid, folderLabel string) (PRList, error) {
-	db, err := s.db(ctx, pid)
-	if err != nil {
-		return PRList{}, err
-	}
-	out := PRList{Host: "github", PRs: []PRRow{}}
-	label, dir, err := s.folder(ctx, db, folderLabel)
-	if err != nil {
-		var e *Error
-		if errors.As(err, &e) && e.Code == "not_a_git_repo" || errors.As(err, &e) && e.Code == "no_folder" {
-			out.Reason, out.Message = e.Code, e.Message
-			return out, nil
-		}
-		return out, err
-	}
-	out.Folder = label
-	if s.host == nil {
-		out.Reason, out.Message = "no_host", "No code host is configured."
-		return out, nil
-	}
-	out.Host = s.host.Name()
-	repo, err := s.host.Repo(ctx, dir)
-	if err != nil {
-		if u, ok := codehost.IsUnavailable(err); ok {
-			out.Reason, out.Message, out.Command = u.Reason, u.Message, u.Command
-			return out, nil
-		}
-		return out, hostErr(err)
-	}
-	prs, err := s.host.ListPRs(ctx, dir)
-	if err != nil {
-		if u, ok := codehost.IsUnavailable(err); ok {
-			out.Reason, out.Message, out.Command = u.Reason, u.Message, u.Command
-			return out, nil
-		}
-		return out, hostErr(err)
-	}
-	out.Available, out.Repo = true, repo.String()
-
-	open, err := db.Reviews(ctx, projectstore.ReviewOpen)
-	if err != nil {
-		return out, err
-	}
-	byNumber := map[int]projectstore.Review{}
-	for _, r := range open {
-		if r.Kind == "github" && strings.EqualFold(r.Repo, repo.String()) {
-			byNumber[r.Number] = r
-		}
-	}
-	listed := map[int]bool{}
-	for _, p := range prs {
-		listed[p.Number] = true
-		row := PRRow{PR: p}
-		if r, ok := byNumber[p.Number]; ok {
-			n, _ := db.PendingComments(ctx, r.ID)
-			row.Review = &PRReview{ID: r.ID, HeadCommit: r.HeadCommit, LastSubmittedHead: r.LastSubmittedHead,
-				NewCommits:        p.HeadSHA != "" && p.HeadSHA != r.HeadCommit,
-				NewSinceSubmitted: r.LastSubmittedHead != "" && p.HeadSHA != "" && p.HeadSHA != r.LastSubmittedHead,
-				PendingComments:   n}
-		}
-		out.PRs = append(out.PRs, row)
-	}
-	sort.SliceStable(out.PRs, func(i, j int) bool {
-		a, b := out.PRs[i], out.PRs[j]
-		if a.ReviewRequested != b.ReviewRequested {
-			return a.ReviewRequested
-		}
-		return a.UpdatedAt > b.UpdatedAt
-	})
-
-	// Reviews of pull requests that left the open list: closed or merged.
-	checked := 0
-	for num, r := range byNumber {
-		if listed[num] || checked >= 10 {
-			continue
-		}
-		checked++
-		d, err := s.host.View(ctx, dir, repo, num)
-		if err != nil || d.State == "open" || d.State == "" {
-			continue
-		}
-		closed := projectstore.ReviewClosed
-		if cur, err := db.UpdateReview(ctx, r.ID, projectstore.ReviewPatch{State: &closed}); err == nil {
-			s.publish(ctx, db, pid, cur, "closed")
-		}
-	}
-	_ = s.Sweep(ctx, pid)
-	return out, nil
-}
 
 // OpenRequest starts a review.
 type OpenRequest struct {
@@ -157,17 +32,17 @@ type OpenRequest struct {
 
 var prURLRe = regexp.MustCompile(`^/([^/]+)/([^/]+)/pull/(\d+)`)
 
-func parsePRURL(raw string) (owner, name string, n int, ok bool) {
+func parsePRURL(raw string) (host, owner, name string, n int, ok bool) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return "", "", 0, false
+		return "", "", "", 0, false
 	}
 	m := prURLRe.FindStringSubmatch(u.Path)
 	if m == nil {
-		return "", "", 0, false
+		return "", "", "", 0, false
 	}
 	n, _ = strconv.Atoi(m[3])
-	return m[1], m[2], n, n > 0
+	return strings.ToLower(u.Host), m[1], m[2], n, n > 0
 }
 
 // View is a review with what the UI needs to draw its header.
@@ -180,14 +55,24 @@ type View struct {
 	FindingCount    int    `json:"findings"`
 	ViewedCount     int    `json:"viewed_count"`
 	LargePR         bool   `json:"large_pr"`
+	// Config is the project's review configuration: commands to offer, extra mechanical
+	// globs (already applied to the reading order), the preferred diff view.
+	Config projcfg.ReviewConfig `json:"config"`
 }
 
 func (s *Service) view(ctx context.Context, db *projectstore.DB, r projectstore.Review) (View, error) {
-	v := View{Review: r, WorktreePresent: worktreePresent(r)}
+	v := View{Review: r, WorktreePresent: worktreePresent(r), Config: reviewConfig(ctx, db)}
 	v.PendingComments, _ = db.PendingComments(ctx, r.ID)
 	_ = json.Unmarshal([]byte(r.MetaJSON), &v.Meta)
 	if v.Meta.Commits == nil {
 		v.Meta.Commits = []gitx.Commit{}
+	}
+	v.Meta.Runs = []RunRef{}
+	if runs, err := db.Runs(ctx, r.ID, 20); err == nil {
+		for _, run := range runs {
+			v.Meta.Runs = append(v.Meta.Runs, RunRef{ID: run.ID, Name: run.Name, Status: run.Status, ExitCode: run.ExitCode,
+				StartedAt: run.StartedAt, FinishedAt: run.FinishedAt})
+		}
 	}
 	if fs, err := db.Findings(ctx, r.ID); err == nil {
 		v.FindingCount = len(fs)
@@ -296,13 +181,13 @@ func (s *Service) openGitHub(ctx context.Context, db *projectstore.DB, pid, labe
 		return View{}, false, conflict("no_host", "no code host is configured; review a local branch instead")
 	}
 	number := req.PR
-	var urlOwner, urlName string
+	var urlHost, urlOwner, urlName string
 	if req.URL != "" {
-		o, n, num, ok := parsePRURL(req.URL)
+		h, o, n, num, ok := parsePRURL(req.URL)
 		if !ok {
 			return View{}, false, invalid("invalid_url", "not a pull request address (expected https://host/owner/repo/pull/N)")
 		}
-		urlOwner, urlName, number = o, n, num
+		urlHost, urlOwner, urlName, number = h, o, n, num
 	}
 	if number <= 0 {
 		return View{}, false, invalid("invalid_request", "pr (a number) or url is required")
@@ -313,6 +198,9 @@ func (s *Service) openGitHub(ctx context.Context, db *projectstore.DB, pid, labe
 	}
 	if urlOwner != "" && (!strings.EqualFold(urlOwner, repo.Owner) || !strings.EqualFold(urlName, repo.Name)) {
 		return View{}, false, invalid("repo_mismatch", "that pull request belongs to %s/%s, the folder's repository is %s", urlOwner, urlName, repo)
+	}
+	if urlHost != "" && repo.Host != "" && !strings.EqualFold(urlHost, repo.Host) {
+		return View{}, false, invalid("repo_mismatch", "that pull request is on %s, the folder's repository is on %s", urlHost, repo.Host)
 	}
 	source := projectstore.GitHubSource(repo.String(), number)
 	if ex, err := db.OpenReviewBySource(ctx, source); err == nil {
@@ -424,6 +312,11 @@ func (s *Service) finish(ctx context.Context, db *projectstore.DB, pid, dir stri
 	}
 	*r = cur
 	s.invalidate(r.ID)
+	if d != nil {
+		// The code host's review threads come with the review; a failed fetch is
+		// recorded (Threads says so) and never fails the open or the refresh.
+		_ = s.fetchThreads(ctx, db, *r)
+	}
 	return nil
 }
 

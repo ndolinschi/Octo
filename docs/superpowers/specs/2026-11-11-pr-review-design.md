@@ -172,3 +172,36 @@ half-width pane, split with the sidebar closed), 1100, 830, 640, 390 widths with
 `gh` and GitHub, other browsers, the live harness over HTTP (the demo bridge stands in), screen-reader output, very large pull requests (list virtualisation
 is not built), comments on removed lines in the one-column layout (the gutter of the removed side exists only in split view), "Ask" about a hunk and the AI
 summary (RV3), the 14-day cleanup interplay in the UI.
+
+## As built — RV1.5 (harness)
+
+Requirements: UI decisions 68, 77 (the caching sentence) and 78. Contract and exact shapes: `apps/harness/docs/review.md` and `apps/harness/docs/commands.md`;
+client types in `@octo/agent-client` (`review.ts`, `commands.ts`, all additive and optional). Schema 8 (`migrate_v8_review_workflow.go`, its own file):
+`review_threads`, `project_settings`, `command_runs` and the column `review_comments.in_reply_to`.
+
+1. **All open pull requests.** `GET /prs?filter&q&page&per_page&refresh` (newest activity first; filters all, review_requested, mine, drafts; rows gain
+   `comments`, `mine`, `reviewed_by_me`, `new_since_my_review`); a 60 s per-folder cache answered at once with `stale`/`fetched_at`, refreshed in the
+   background and announced by `review.list_updated {folder}`. **GitHub Enterprise:** the host is read from the folder's remote and passed to every `gh`
+   call as `GH_HOST` and to `gh api` as `--hostname`; a fake `gh` that, like a gh logged in to the enterprise host only, fails without them is the test.
+   `comments` counts conversation comments plus reviews with text (an approximation; thread comments come with the opened review).
+2. **Threads.** One read-only GraphQL query (`reviewThreads`) gives threads with path, side, lines, resolved, outdated, comments and `in_reply_to`;
+   `GET …/threads` (+ `?refresh=1`), counts per file, fetched with the review and stored. A pending comment with `in_reply_to: <thread id>` is a reply that
+   submit posts as `POST pulls/N/comments/ID/replies` after the review (replies-only submits post no review; a failed reply stays pending and is reported).
+   Thread text is untrusted data (safety tests: verbatim, no effect on the project, never in an agent transcript).
+3. **Check out.** `POST …/checkout`: `workspace` sets `project.review_workspace` (file API root `@review`, read-only; language server `?workspace=review`;
+   `DELETE /review-workspace`); `working_copy` switches the project folder to `review/<n>-<slug>`: dirty working copy is 409 with the file list unless
+   confirmed, fast-forward only, diverged branches and conflicting edits are refused, never forced (tests: clean, dirty, already on branch, diverged,
+   detached, conflict).
+4. **Project commands (decision 68).** `commands` project field, suggestions, run/stop/list/get, events, 4 concurrent, 5 MB cap; started only by the user's
+   HTTP call (import-graph test and an agent-turn test; no approval in a supervised project); runs tied to a review appear in `meta.runs`.
+5. **Review configuration.** `Project.review` (`commands`, `mechanical_globs`, `prefer`), applied to the reading order and returned as `Review.config`.
+
+Decisions made while building: the workspace is read-only for the file API (refreshing a review force-moves its worktree); `mine` and `reviewed_by_me` need
+one `gh api user` call per half hour; `pinned` is limited to two per project in the harness as in decision 68; the AI-pass depth setting of decision 78 is
+not stored (RV3). Shared files touched: `internal/bridge/bridge.go` (two lines), `internal/bridge/lsp.go` (the `workspace=review` parameter),
+`cmd/harness/serve.go` (commands service), `internal/projectstore/migrate.go` (version 8 and one call), `internal/project/{dto,input,service,files,errors}.go`.
+
+Verified: unit and API tests with the fake `gh` and temporary local repositories (`go test -race ./...`), the scripted e2e scripts, agent-client tests.
+Not verified: real `gh` against GitHub or an enterprise host (field names of `latestReviews`/`comments`, the GraphQL schema of an old GHES version), thread
+positions on a real pull request (`line` null for outdated threads is handled from the documented schema), forks, very large lists (300 read),
+Windows (bash, process groups), real dev servers as commands.

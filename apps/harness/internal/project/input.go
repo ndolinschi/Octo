@@ -11,6 +11,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -39,6 +40,10 @@ type Input struct {
 	NetworkPrivate *bool   `json:"network_private"`
 	// Mode is the project's default mode: "agent" (default), "ask" or "plan".
 	Mode *string `json:"mode"`
+	// Commands are the project's named commands (decision 68); a patch replaces the whole list.
+	Commands *[]projcfg.Command `json:"commands"`
+	// Review is the project's review configuration; a patch replaces it as a whole (missing fields take their defaults).
+	Review *projcfg.ReviewConfig `json:"review"`
 }
 
 // OptionalFloat distinguishes an absent JSON field from an explicit null.

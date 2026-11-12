@@ -1,4 +1,5 @@
-import type { ReviewUpdatedEvent } from "./review";
+import type { CommandFinishedEvent, CommandOutputEvent, CommandStartedEvent, ProjectCommand, ReviewConfig, ReviewConfigInput } from "./commands";
+import type { ReviewListUpdatedEvent, ReviewUpdatedEvent, ReviewWorkspace, ReviewWorkspaceEvent } from "./review";
 
 export type ShellKind = "desktop" | "web" | "vscode";
 
@@ -61,6 +62,10 @@ export type ProjectInput = {
   access?: AccessMode;
   /** M2: how the orchestrator's context is built; fields left out keep their value (PATCH merges). */
   memory?: Partial<MemorySettings>;
+  /** Decision 68: the project's named commands; a PATCH replaces the whole list (validated: 400 `invalid_request`). */
+  commands?: ProjectCommand[];
+  /** Review configuration; a PATCH replaces it as a whole (400 `invalid_request` when invalid). */
+  review?: ReviewConfigInput;
 };
 
 /** Project memory setting (M2). `full` sends the whole transcript (the default); `window` assembles the context from blocks with caps. */
@@ -112,6 +117,12 @@ export type Project = ProjectSummary & {
   network_private?: boolean;
   /** M2: the memory setting (`context: "full"`, 5 exchanges for projects that predate it). */
   memory?: MemorySettings;
+  /** Decision 68: the project's named commands (empty when none; absent on a harness that predates them). */
+  commands?: ProjectCommand[];
+  /** The review configuration (defaults when none was set; absent on a harness that predates it). */
+  review?: ReviewConfig;
+  /** RV1.5: the review whose worktree the file tree, editor, search and language server are pointed at; null/absent: the project's folders. */
+  review_workspace?: ReviewWorkspace | null;
   /** Stored models whose provider cannot run them now (see {@link ModelIssue}); empty when everything can run. */
   models_unavailable?: ModelIssue[];
 };
@@ -466,7 +477,12 @@ export type BridgeEvent =
   | ProvidersUpdatedEvent
   | TaskUpdatedEvent
   | MemoryUpdatedEvent
-  | ReviewUpdatedEvent;
+  | ReviewUpdatedEvent
+  | ReviewListUpdatedEvent
+  | ReviewWorkspaceEvent
+  | CommandStartedEvent
+  | CommandOutputEvent
+  | CommandFinishedEvent;
 
 export type BridgeEventType = BridgeEvent["type"];
 

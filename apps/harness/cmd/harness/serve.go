@@ -24,6 +24,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
 	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 	"github.com/ndolinschi/Octo/apps/harness/internal/codehost"
+	"github.com/ndolinschi/Octo/apps/harness/internal/commands"
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
 	"github.com/ndolinschi/Octo/apps/harness/internal/diag"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
@@ -289,6 +290,9 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	// PR review (RV1): the `gh` adapter; worktrees of finished reviews are swept at start and every 6 hours.
 	reviews := review.New(store, hub, review.Options{Host: codehost.NewGH()})
 	go reviews.Run(ctx, 6*time.Hour)
+	// Project commands (decision 68): started only by the user's own HTTP call, never by an agent.
+	cmds := commands.New(store, hub, commands.Options{})
+	cmds.Recover(ctx)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -319,7 +323,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
 			bridge.WithAPIToken(apiToken),
-			bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithReviews(reviews),
+			bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithReviews(reviews), bridge.WithCommands(cmds),
 			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
 			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
 			bridge.WithDiagnostics(func() any {
@@ -347,6 +351,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	if err := orch.Shutdown(shutdownCtx); err != nil {
 		slog.Error("orchestrator shutdown", "err", err)
 	}
+	cmds.Shutdown(shutdownCtx)
 	if err := lspMgr.Shutdown(shutdownCtx); err != nil {
 		slog.Error("language server shutdown", "err", err)
 	}

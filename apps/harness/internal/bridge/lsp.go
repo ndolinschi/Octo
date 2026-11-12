@@ -84,8 +84,18 @@ func (s *Server) createLSPSession(w http.ResponseWriter, r *http.Request) {
 	for _, f := range proj.Folders {
 		folders = append(folders, lspFolder{URI: fileURI(f.Path), Name: f.Label})
 	}
+	dir := proj.Folders[0].Path
+	if r.URL.Query().Get("workspace") == "review" {
+		// The review workspace (a review's worktree) instead of the project's folders.
+		if proj.ReviewWorkspace == nil {
+			writeError(w, http.StatusConflict, "no_review_workspace", "no review is open in the workspace")
+			return
+		}
+		dir = proj.ReviewWorkspace.Path
+		folders = []lspFolder{{URI: fileURI(dir), Name: "@review"}}
+	}
 	sess, err := s.lsp.Start(r.Context(), pid, lsp.Spec{
-		Name: ls.ID, Command: ls.Command, Args: ls.Args, Env: ls.Env, Dir: proj.Folders[0].Path,
+		Name: ls.ID, Command: ls.Command, Args: ls.Args, Env: ls.Env, Dir: dir,
 	})
 	if err != nil {
 		writeLSPErr(w, err)

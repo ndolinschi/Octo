@@ -32,6 +32,10 @@ func TestAgentSidePackagesCannotReachTheReviewService(t *testing.T) {
 		if d == mod+"review" || d == mod+"codehost" || strings.HasPrefix(d, mod+"review/") {
 			t.Fatalf("an agent-side package depends on %s", d)
 		}
+		// The command runner starts a user's project commands: nothing an agent runs may reach it.
+		if d == mod+"commands" {
+			t.Fatalf("an agent-side package depends on the command runner (%s)", d)
+		}
 	}
 
 	// And the bridge is the only package that imports the review service.
@@ -46,6 +50,10 @@ func TestAgentSidePackagesCannotReachTheReviewService(t *testing.T) {
 		}
 		if strings.Contains(imports, mod+"codehost") && !strings.HasPrefix(pkg, mod+"review") && !strings.HasPrefix(pkg, mod+"bridge") {
 			t.Fatalf("%s imports the code-host adapter", pkg)
+		}
+		if strings.Contains(" "+imports+" ", " "+mod+"commands ") && !strings.HasPrefix(pkg, mod+"bridge") && pkg != mod+"commands" &&
+			!strings.HasPrefix(pkg, "github.com/ndolinschi/Octo/apps/harness/cmd/") {
+			t.Fatalf("%s imports the command runner", pkg)
 		}
 	}
 }

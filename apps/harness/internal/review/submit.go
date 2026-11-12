@@ -28,9 +28,28 @@ type Preview struct {
 	Comments []projectstore.ReviewComment `json:"comments"`
 	// Payload is the exact JSON sent to the code host (GitHub), "" for a local review.
 	Payload json.RawMessage `json:"payload,omitempty"`
+	// Replies are the pending replies to existing threads, each posted as its own reply after
+	// the review (the review's payload does not carry them).
+	Replies []ReplyPost `json:"replies"`
 	// Posts is false for a local review: submit marks the comments submitted and posts nowhere.
 	Posts      bool   `json:"posts"`
 	HeadCommit string `json:"head_commit"`
+}
+
+// ReplyPost is one reply submit posts into an existing thread.
+type ReplyPost struct {
+	// CommentID is the pending comment; ThreadID the thread; InReplyToComment the host's id of the
+	// thread's first comment, which the reply is posted under.
+	CommentID        string `json:"comment_id"`
+	ThreadID         string `json:"thread_id"`
+	InReplyToComment string `json:"in_reply_to_comment"`
+	Body             string `json:"body"`
+}
+
+// ReplyError says a reply could not be posted (the review itself was).
+type ReplyError struct {
+	CommentID string `json:"comment_id"`
+	Message   string `json:"message"`
 }
 
 // SubmitResult is the outcome of a submit.
@@ -40,20 +59,22 @@ type SubmitResult struct {
 	SubmissionID string `json:"submission_id"`
 	URL          string `json:"url,omitempty"`
 	Review       View   `json:"review"`
+	// ReplyErrors lists the replies that failed after the review was posted; they stay pending.
+	ReplyErrors []ReplyError `json:"reply_errors,omitempty"`
 }
 
 // compose builds what would be posted from the pending comments.
-func (s *Service) compose(ctx context.Context, db *projectstore.DB, r projectstore.Review, req SubmitRequest) (codehost.Review, []projectstore.ReviewComment, error) {
+func (s *Service) compose(ctx context.Context, db *projectstore.DB, r projectstore.Review, req SubmitRequest) (codehost.Review, []projectstore.ReviewComment, []ReplyPost, error) {
 	var zero codehost.Review
 	if !codehost.ValidVerdict(req.Verdict) {
-		return zero, nil, invalid("invalid_verdict", "verdict must be comment, approve or request_changes")
+		return zero, nil, nil, invalid("invalid_verdict", "verdict must be comment, approve or request_changes")
 	}
 	if len(req.Body) > MaxCommentBytes {
-		return zero, nil, &Error{Kind: KindTooLarge, Code: "comment_too_large", Message: "the review body may be at most 64 KiB"}
+		return zero, nil, nil, &Error{Kind: KindTooLarge, Code: "comment_too_large", Message: "the review body may be at most 64 KiB"}
 	}
 	pending, err := db.Comments(ctx, r.ID, projectstore.CommentPending)
 	if err != nil {
-		return zero, nil, err
+		return zero, nil, nil, err
 	}
 	if req.CommentIDs != nil {
 		want, have := append([]string(nil), req.CommentIDs...), make([]string, 0, len(pending))
@@ -63,7 +84,7 @@ func (s *Service) compose(ctx context.Context, db *projectstore.DB, r projectsto
 		sort.Strings(want)
 		sort.Strings(have)
 		if strings.Join(want, ",") != strings.Join(have, ",") {
-			return zero, nil, conflict("comments_changed", "the pending comments changed since the summary was shown; review them again")
+			return zero, nil, nil, conflict("comments_changed", "the pending comments changed since the summary was shown; review them again")
 		}
 	}
 	out := codehost.Review{Verdict: req.Verdict, CommitID: r.HeadCommit, Comments: []codehost.ReviewComment{}}
@@ -71,7 +92,17 @@ func (s *Service) compose(ctx context.Context, db *projectstore.DB, r projectsto
 	if t := strings.TrimSpace(req.Body); t != "" {
 		body = append(body, req.Body)
 	}
+	replies := []ReplyPost{}
+	threads, _, _ := storedThreads(ctx, db, r.ID)
 	for _, c := range pending {
+		if c.Kind == "reply" {
+			target, ok := replyTarget(threads, c.InReplyTo)
+			if !ok {
+				return zero, nil, nil, conflict("thread_missing", "the thread a reply answers is no longer on the pull request; refresh the threads and review the reply")
+			}
+			replies = append(replies, ReplyPost{CommentID: c.ID, ThreadID: c.InReplyTo, InReplyToComment: target, Body: c.Body})
+			continue
+		}
 		if c.Kind == "general" {
 			body = append(body, c.Body)
 			continue
@@ -81,10 +112,16 @@ func (s *Service) compose(ctx context.Context, db *projectstore.DB, r projectsto
 		})
 	}
 	out.Body = strings.Join(body, "\n\n")
-	if len(out.Comments) == 0 && out.Body == "" && req.Verdict != codehost.VerdictApprove {
-		return zero, nil, invalid("empty_review", "there is nothing to post: add a comment or a summary, or approve")
+	if len(out.Comments) == 0 && out.Body == "" && len(replies) == 0 && req.Verdict != codehost.VerdictApprove {
+		return zero, nil, nil, invalid("empty_review", "there is nothing to post: add a comment or a summary, or approve")
 	}
-	return out, pending, nil
+	return out, pending, replies, nil
+}
+
+// needsReview: the review itself is posted unless the submit is replies only
+// with the plain "comment" verdict (a review with nothing in it is not posted).
+func needsReview(rv codehost.Review, replies []ReplyPost) bool {
+	return len(replies) == 0 || len(rv.Comments) > 0 || rv.Body != "" || rv.Verdict != codehost.VerdictComment
 }
 
 // SubmitPreview returns what Submit would post. It posts nothing.
@@ -97,12 +134,12 @@ func (s *Service) SubmitPreview(ctx context.Context, pid, rid string, req Submit
 	if err != nil {
 		return Preview{}, err
 	}
-	rv, pending, err := s.compose(ctx, db, r, req)
+	rv, pending, replies, err := s.compose(ctx, db, r, req)
 	if err != nil {
 		return Preview{}, err
 	}
-	p := Preview{Verdict: rv.Verdict, Body: rv.Body, Comments: pending, Posts: r.Kind == "github", HeadCommit: r.HeadCommit}
-	if p.Posts {
+	p := Preview{Verdict: rv.Verdict, Body: rv.Body, Comments: pending, Replies: replies, Posts: r.Kind == "github", HeadCommit: r.HeadCommit}
+	if p.Posts && needsReview(rv, replies) {
 		if b, err := codehost.Payload(rv); err == nil {
 			p.Payload = b
 		}
@@ -129,12 +166,13 @@ func (s *Service) Submit(ctx context.Context, pid, rid string, req SubmitRequest
 	if r.State == projectstore.ReviewClosed {
 		return SubmitResult{}, conflict("review_closed", "the review is closed; reopen it to submit")
 	}
-	rv, pending, err := s.compose(ctx, db, r, req)
+	rv, pending, replies, err := s.compose(ctx, db, r, req)
 	if err != nil {
 		return SubmitResult{}, err
 	}
 	res := SubmitResult{SubmissionID: projectstore.NewID("sub")}
-	res.Preview = Preview{Verdict: rv.Verdict, Body: rv.Body, Comments: pending, Posts: r.Kind == "github", HeadCommit: r.HeadCommit}
+	res.Preview = Preview{Verdict: rv.Verdict, Body: rv.Body, Comments: pending, Replies: replies, Posts: r.Kind == "github", HeadCommit: r.HeadCommit}
+	failed := map[string]bool{}
 	if res.Posts {
 		if s.host == nil {
 			return SubmitResult{}, conflict("no_host", "no code host is configured")
@@ -147,23 +185,50 @@ func (s *Service) Submit(ctx context.Context, pid, rid string, req SubmitRequest
 		if err != nil {
 			return SubmitResult{}, err
 		}
-		if b, err := codehost.Payload(rv); err == nil {
-			res.Payload = b
+		if needsReview(rv, replies) {
+			if b, err := codehost.Payload(rv); err == nil {
+				res.Payload = b
+			}
+			posted, err := s.host.PostReview(ctx, dir, repo, r.Number, rv)
+			if err != nil {
+				return SubmitResult{}, hostErr(err)
+			}
+			res.Posted, res.URL = true, posted.URL
 		}
-		posted, err := s.host.PostReview(ctx, dir, repo, r.Number, rv)
-		if err != nil {
-			return SubmitResult{}, hostErr(err)
+		// Replies are separate writes after the review: one that fails stays pending and is reported.
+		var firstErr error
+		for _, rp := range replies {
+			posted, err := s.host.PostReply(ctx, dir, repo, r.Number, rp.InReplyToComment, rp.Body)
+			if err != nil {
+				failed[rp.CommentID] = true
+				res.ReplyErrors = append(res.ReplyErrors, ReplyError{CommentID: rp.CommentID, Message: hostErr(err).Error()})
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			res.Posted = true
+			if res.URL == "" {
+				res.URL = posted.URL
+			}
 		}
-		res.Posted, res.URL = true, posted.URL
+		if !res.Posted && firstErr != nil {
+			return SubmitResult{}, hostErr(firstErr)
+		}
 	}
 	ids := make([]string, 0, len(pending))
 	for _, c := range pending {
-		ids = append(ids, c.ID)
+		if !failed[c.ID] {
+			ids = append(ids, c.ID)
+		}
 	}
 	if err := db.MarkSubmitted(ctx, rid, ids, res.SubmissionID, r.HeadCommit); err != nil {
 		return SubmitResult{}, err
 	}
 	for i := range res.Comments {
+		if failed[res.Comments[i].ID] {
+			continue
+		}
 		res.Comments[i].State = projectstore.CommentSubmitted
 		res.Comments[i].SubmissionID = res.SubmissionID
 	}

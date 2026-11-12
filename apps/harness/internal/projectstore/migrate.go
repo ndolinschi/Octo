@@ -50,7 +50,7 @@ var columnsAdded = []struct {
 // SchemaVersion is the schema generation this binary writes and understands
 // (PRAGMA user_version). Databases without a stamp (0) are older and are
 // migrated forward; a higher number was written by a newer binary and is refused.
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.
@@ -120,6 +120,10 @@ func (d *DB) migrate(ctx context.Context) error {
 	// Schema 7: saved approval rules (migrate_v7.go); the parity features' other
 	// additions are the project's network columns above.
 	if err := d.migrateV7(ctx); err != nil {
+		return err
+	}
+	// Schema 8: review threads, project settings, command runs (migrate_v8_review_workflow.go).
+	if err := d.migrateV8ReviewWorkflow(ctx); err != nil {
 		return err
 	}
 	if v, err := userVersion(ctx, d.sql); err != nil {

@@ -29,6 +29,12 @@ type Host interface {
 	// PostReview posts one review: a verdict, a body and line comments. It is the
 	// only write the interface has.
 	PostReview(ctx context.Context, dir string, repo Repo, number int, r Review) (Posted, error)
+	// Threads are the review threads already on a pull request (read only).
+	Threads(ctx context.Context, dir string, repo Repo, number int) ([]Thread, error)
+	// PostReply posts one reply to an existing review thread (the comment id is
+	// the thread's first comment). Like PostReview it is a write that only the
+	// review service's submit calls.
+	PostReply(ctx context.Context, dir string, repo Repo, number int, rootCommentID, body string) (Posted, error)
 }
 
 // Repo names a repository on a host.
@@ -37,6 +43,8 @@ type Repo struct {
 	Name  string `json:"name"`
 	// URL is the web address of the repository.
 	URL string `json:"url,omitempty"`
+	// Host is the host name of the code host ("github.com", "ghe.example.com").
+	Host string `json:"host,omitempty"`
 }
 
 func (r Repo) String() string { return r.Owner + "/" + r.Name }
@@ -99,6 +107,13 @@ type PR struct {
 	ReviewRequested bool     `json:"review_requested"`
 	ReviewDecision  string   `json:"review_decision,omitempty"`
 	Labels          []string `json:"labels,omitempty"`
+	// Comments counts the conversation comments plus the reviews that carry a text.
+	Comments int `json:"comments"`
+	// Mine: the signed-in user opened it. ReviewedByMe: the user has a review on
+	// it. NewSinceMyReview: it has commits newer than the user's last review.
+	Mine             bool `json:"mine"`
+	ReviewedByMe     bool `json:"reviewed_by_me"`
+	NewSinceMyReview bool `json:"new_since_my_review"`
 }
 
 // PRDetail is one pull request with its description and conversation.
@@ -175,4 +190,37 @@ type ReviewComment struct {
 type Posted struct {
 	ID  string `json:"id,omitempty"`
 	URL string `json:"url,omitempty"`
+}
+
+// Thread is one review thread of a pull request: the comments anchored at one
+// place of the diff, with the host's resolved and outdated state. Everything in
+// the comments is untrusted text.
+type Thread struct {
+	// ID is the host's id of the thread (what a reply names).
+	ID   string `json:"id"`
+	Path string `json:"path"`
+	// Side is "new" (the added or unchanged side) or "old" (the removed side).
+	Side      string `json:"side"`
+	Line      int    `json:"line,omitempty"`
+	StartLine int    `json:"start_line,omitempty"`
+	// OriginalLine is the line when the thread was written (an outdated thread's Line is its last known).
+	OriginalLine int             `json:"original_line,omitempty"`
+	Resolved     bool            `json:"resolved"`
+	Outdated     bool            `json:"outdated"`
+	Comments     []ThreadComment `json:"comments"`
+}
+
+// ThreadComment is one comment of a thread.
+type ThreadComment struct {
+	// ID is the host's numeric id of the comment (the first comment's id is what a reply names).
+	ID        string `json:"id"`
+	Author    string `json:"author"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+	URL       string `json:"url,omitempty"`
+	// Commit is the commit the comment was written on; OriginalCommit the one it was made against.
+	Commit       string `json:"commit,omitempty"`
+	InReplyTo    string `json:"in_reply_to,omitempty"`
+	Line         int    `json:"line,omitempty"`
+	OriginalLine int    `json:"original_line,omitempty"`
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/gitx"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 )
 
 // File is one changed file of a review, in reading order.
@@ -43,6 +44,9 @@ type File struct {
 	ChangedSinceSubmitted bool `json:"changed_since_submitted"`
 	PendingComments       int  `json:"pending_comments"`
 	Findings              int  `json:"findings"`
+	// Threads counts the code host's review threads on the file, UnresolvedThreads those not resolved.
+	Threads           int `json:"threads"`
+	UnresolvedThreads int `json:"unresolved_threads"`
 }
 
 // Files is the response of the file list.
@@ -75,7 +79,7 @@ const (
 )
 
 // computeFiles lists and orders the files between two commits (no per-user state).
-func computeFiles(ctx context.Context, dir, base, head string) ([]File, error) {
+func computeFiles(ctx context.Context, dir, base, head string, mechanical []string) ([]File, error) {
 	raw, err := gitx.Diff(ctx, dir, base, head)
 	if err != nil {
 		return nil, err
@@ -130,7 +134,7 @@ func computeFiles(ctx context.Context, dir, base, head string) ([]File, error) {
 	var cands []int
 	for i := range files {
 		f := &files[i]
-		f.Group, f.Reason = classify(f, ws, generatedByContent[i])
+		f.Group, f.Reason = classify(f, ws, generatedByContent[i], mechanical)
 		if f.Group == GroupCore {
 			cands = append(cands, i)
 		}
@@ -155,13 +159,15 @@ func blobSpec(blob string) string {
 	return blob
 }
 
-func classify(f *File, ws map[string][2]int, generatedContent bool) (group, reason string) {
+func classify(f *File, ws map[string][2]int, generatedContent bool, mechanical []string) (group, reason string) {
 	p := f.Path
 	switch {
 	case isLockfile(p):
 		return GroupMechanical, ReasonLockfile
 	case isGeneratedPath(p) || generatedContent:
 		return GroupMechanical, ReasonGenerated
+	case projcfg.MatchAny(mechanical, p):
+		return GroupMechanical, ReasonConfigured
 	case f.Status == "renamed" && f.Similarity == 100 && f.Added == 0 && f.Removed == 0:
 		return GroupMechanical, ReasonRename
 	}

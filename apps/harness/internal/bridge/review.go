@@ -27,6 +27,9 @@ func (s *Server) reviewRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/projects/{pid}/reviews/{rid}/files", s.reviewFiles)
 	mux.HandleFunc("GET /v1/projects/{pid}/reviews/{rid}/files/{path...}", s.reviewFile)
 	mux.HandleFunc("PATCH /v1/projects/{pid}/reviews/{rid}/files/{path...}", s.reviewFileViewed)
+	mux.HandleFunc("POST /v1/projects/{pid}/reviews/{rid}/checkout", s.checkoutReview)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/review-workspace", s.clearReviewWorkspace)
+	mux.HandleFunc("GET /v1/projects/{pid}/reviews/{rid}/threads", s.reviewThreads)
 	mux.HandleFunc("GET /v1/projects/{pid}/reviews/{rid}/comments", s.listReviewComments)
 	mux.HandleFunc("POST /v1/projects/{pid}/reviews/{rid}/comments", s.createReviewComment)
 	mux.HandleFunc("PATCH /v1/projects/{pid}/reviews/{rid}/comments/{cid}", s.updateReviewComment)
@@ -48,9 +51,12 @@ func writeReviewErr(w http.ResponseWriter, err error) {
 			review.KindUpstream:    http.StatusBadGateway,
 			review.KindUnsupported: http.StatusUnsupportedMediaType,
 		}[re.Kind]
-		body := map[string]string{"code": re.Code, "message": re.Message}
+		body := map[string]any{"code": re.Code, "message": re.Message}
 		if re.Command != "" {
 			body["command"] = re.Command
+		}
+		if len(re.Files) > 0 {
+			body["files"] = re.Files
 		}
 		writeJSON(w, status, map[string]any{"error": body})
 		return
@@ -59,7 +65,20 @@ func writeReviewErr(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) listPRs(w http.ResponseWriter, r *http.Request) {
-	out, err := s.reviews.ListPRs(r.Context(), r.PathValue("pid"), r.URL.Query().Get("folder"))
+	q := r.URL.Query()
+	o := review.ListOptions{Folder: q.Get("folder"), Filter: q.Get("filter"), Q: q.Get("q"),
+		Refresh: q.Get("refresh") == "1" || q.Get("refresh") == "true"}
+	for name, dst := range map[string]*int{"page": &o.Page, "per_page": &o.PerPage} {
+		if v := q.Get(name); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 {
+				writeError(w, http.StatusBadRequest, "invalid_request", name+" must be a positive integer")
+				return
+			}
+			*dst = n
+		}
+	}
+	out, err := s.reviews.ListPRs(r.Context(), r.PathValue("pid"), o)
 	if err != nil {
 		writeReviewErr(w, err)
 		return
@@ -178,6 +197,43 @@ func (s *Server) reviewFileViewed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, f)
+}
+
+// checkoutReview checks a pull request out: into the review workspace (the
+// project's file tree and editor point at its worktree) or into the project's
+// own folder as a local branch.
+func (s *Server) checkoutReview(w http.ResponseWriter, r *http.Request) {
+	var in review.CheckoutRequest
+	if !decode(w, r, &in) {
+		return
+	}
+	out, err := s.reviews.Checkout(r.Context(), r.PathValue("pid"), r.PathValue("rid"), in)
+	if err != nil {
+		writeReviewErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// clearReviewWorkspace points the project back at its own folders.
+func (s *Server) clearReviewWorkspace(w http.ResponseWriter, r *http.Request) {
+	if err := s.reviews.ClearWorkspace(r.Context(), r.PathValue("pid")); err != nil {
+		writeReviewErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// reviewThreads serves the review threads the code host already has (read only;
+// ?refresh=1 asks the host again).
+func (s *Server) reviewThreads(w http.ResponseWriter, r *http.Request) {
+	refresh := r.URL.Query().Get("refresh") == "1" || r.URL.Query().Get("refresh") == "true"
+	out, err := s.reviews.Threads(r.Context(), r.PathValue("pid"), r.PathValue("rid"), refresh)
+	if err != nil {
+		writeReviewErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) listReviewComments(w http.ResponseWriter, r *http.Request) {

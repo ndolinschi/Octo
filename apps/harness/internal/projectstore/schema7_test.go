@@ -87,7 +87,7 @@ func TestMigrateFromSchema6AddsApprovalRulesAndNetwork(t *testing.T) {
 	if err := db.DeleteApprovalRule(ctx, r1.ID); err != ErrNotFound {
 		t.Fatalf("second delete = %v", err)
 	}
-	if v, _ := userVersion(ctx, db.sql); v != SchemaVersion || SchemaVersion != 7 {
+	if v, _ := userVersion(ctx, db.sql); v != SchemaVersion || SchemaVersion != 8 {
 		t.Fatalf("user_version = %d, SchemaVersion = %d", v, SchemaVersion)
 	}
 }

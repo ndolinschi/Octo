@@ -57,6 +57,8 @@ type Error struct {
 	Message string
 	// Command is what the user can run to fix an unavailable code host.
 	Command string
+	// Files lists the uncommitted changes behind a dirty_working_copy conflict.
+	Files []DirtyFile
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -104,6 +106,7 @@ type Service struct {
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
 	cache map[string]cachedFiles
+	lists map[string]*listEntry
 }
 
 type cachedFiles struct {
@@ -121,7 +124,7 @@ type Options struct {
 
 // New returns the service.
 func New(store *projectstore.Store, hub *events.Hub, o Options) *Service {
-	s := &Service{store: store, hub: hub, host: o.Host, now: o.Now, locks: map[string]*sync.Mutex{}, cache: map[string]cachedFiles{}}
+	s := &Service{store: store, hub: hub, host: o.Host, now: o.Now, locks: map[string]*sync.Mutex{}, cache: map[string]cachedFiles{}, lists: map[string]*listEntry{}}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -230,6 +233,20 @@ type Meta struct {
 	Conversation   []codehost.Conversation `json:"conversation,omitempty"`
 	BodyTruncated  bool                    `json:"body_truncated,omitempty"`
 	RefreshedAt    string                  `json:"refreshed_at,omitempty"`
+	// Runs are the project commands the user ran in this review's worktree, newest first (read
+	// from the run history at view time, never stored here).
+	Runs []RunRef `json:"runs"`
+}
+
+// RunRef is a command run tied to a review.
+type RunRef struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"` // running, finished, stopped, error
+	// ExitCode is null while the run is going.
+	ExitCode   *int   `json:"exit_code"`
+	StartedAt  string `json:"started_at"`
+	FinishedAt string `json:"finished_at,omitempty"`
 }
 
 // removeWorktree deletes a review's worktree and its pinning refs.
@@ -237,6 +254,7 @@ func (s *Service) removeWorktree(ctx context.Context, db *projectstore.DB, r pro
 	if r.WorktreePath == "" {
 		return nil
 	}
+	s.clearWorkspaceOf(ctx, db, r.ID)
 	_, repo, err := s.folder(ctx, db, r.Folder)
 	if err == nil {
 		if rmErr := gitx.WorktreeRemove(ctx, repo, r.WorktreePath); rmErr != nil {

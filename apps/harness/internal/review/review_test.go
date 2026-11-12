@@ -29,10 +29,10 @@ type fixture struct {
 	data string
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T, prs ...reviewtest.PR) *fixture {
 	t.Helper()
 	repo := reviewtest.NewRepo(t)
-	gh := reviewtest.NewFakeGH(t, repo)
+	gh := reviewtest.NewFakeGH(t, repo, prs...)
 	data := t.TempDir()
 	store, err := projectstore.Open(data)
 	if err != nil {
@@ -81,7 +81,7 @@ func byPath(files []review.File, p string) review.File {
 func TestListPRsPutsReviewRequestedFirstAndTiesReviews(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	list, err := f.svc.ListPRs(ctx, f.pid, "")
+	list, err := f.svc.ListPRs(ctx, f.pid, review.ListOptions{})
 	if err != nil || !list.Available || list.Repo != "acme/widgets" || len(list.PRs) != 2 {
 		t.Fatalf("list = %+v %v", list, err)
 	}
@@ -92,7 +92,7 @@ func TestListPRsPutsReviewRequestedFirstAndTiesReviews(t *testing.T) {
 		t.Fatalf("row = %+v", list.PRs[1])
 	}
 	v := f.openPR(1)
-	list, _ = f.svc.ListPRs(ctx, f.pid, "")
+	list, _ = f.svc.ListPRs(ctx, f.pid, review.ListOptions{})
 	row := list.PRs[1]
 	if row.Review == nil || row.Review.ID != v.ID || row.Review.NewCommits {
 		t.Fatalf("review link = %+v", row.Review)
@@ -100,7 +100,7 @@ func TestListPRsPutsReviewRequestedFirstAndTiesReviews(t *testing.T) {
 	// New commits on the pull request are reported in the list.
 	f.repo.AddCommit(t, "src/extra.go", "package auth\n")
 	f.gh = reviewtest.NewFakeGH(t, f.repo)
-	list, _ = f.svc.ListPRs(ctx, f.pid, "")
+	list, _ = f.svc.ListPRs(ctx, f.pid, review.ListOptions{Refresh: true})
 	if r := list.PRs[1].Review; r == nil || !r.NewCommits {
 		t.Fatalf("new commits not reported: %+v", list.PRs[1].Review)
 	}
@@ -109,13 +109,13 @@ func TestListPRsPutsReviewRequestedFirstAndTiesReviews(t *testing.T) {
 func TestListPRsSaysWhyAndWhatToRun(t *testing.T) {
 	f := newFixture(t)
 	f.gh.LoggedOut(t, true)
-	list, err := f.svc.ListPRs(context.Background(), f.pid, "")
+	list, err := f.svc.ListPRs(context.Background(), f.pid, review.ListOptions{})
 	if err != nil || list.Available || list.Reason != "not_logged_in" || list.Command != "gh auth login" || len(list.PRs) != 0 {
 		t.Fatalf("logged out = %+v %v", list, err)
 	}
 	// No gh at all.
 	t.Setenv("PATH", t.TempDir())
-	list, err = f.svc.ListPRs(context.Background(), f.pid, "")
+	list, err = f.svc.ListPRs(context.Background(), f.pid, review.ListOptions{})
 	if err != nil || list.Available || list.Reason != "gh_not_installed" || list.Command == "" {
 		t.Fatalf("no gh = %+v %v", list, err)
 	}
@@ -734,7 +734,7 @@ func TestGHEnvironmentIsForThatCommandOnly(t *testing.T) {
 	t.Setenv("GH_HOST", "ghe.example.com")
 	t.Setenv("ANTHROPIC_API_KEY", "sk-must-not-leak")
 	t.Setenv("GITHUB_TOKEN", "must-not-leak-either")
-	if _, err := f.svc.ListPRs(context.Background(), f.pid, ""); err != nil {
+	if _, err := f.svc.ListPRs(context.Background(), f.pid, review.ListOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	env := f.gh.LastEnv()

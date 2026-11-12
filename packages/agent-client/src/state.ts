@@ -338,6 +338,11 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "project.updated":
     case "file.changed":
     case "review.updated": // reviews are loaded through their own API
+    case "review.list_updated":
+    case "review.workspace":
+    case "command.started": // runs are loaded through their own API
+    case "command.output":
+    case "command.finished":
     case "settings.changed": // not about this project
       return state;
   }
