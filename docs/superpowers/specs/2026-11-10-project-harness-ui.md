@@ -2091,3 +2091,22 @@ d. Acceptance: a script check that no element in the demo states of the spacing 
   file open, Home, Review, Settings). **Not verified:** WebKit (the owner's webview), the macOS overlay title bar and traffic-light
   inset with the new strip (only `controlsWidth` is unit-tested), Windows/Linux `insetEnd`, light theme, drag regions in the shell
   (`isDragTarget` logic unchanged, `[data-strip]` and `[data-title-bar]` carry the attribute).
+
+## Decision 82 — two rows of tabs never look alike, and a line separates them
+
+Owner (Memory tab screenshot): "I still don't see a line between the tabs Tasks / Files and the row below, All / Open /
+Done". Applies decision 67's levels inside a tab's content. Rules:
+a. **View switcher** (Tasks · Files · Search · Context; Sessions when M4 lands): one row at the top of the content,
+   full width, with a hairline under the whole row (the same separator as between frame levels). Built once as
+   `primitives/ViewTabs`; the active item is marked by text weight and an underline that sits on the hairline, not by
+   a filled pill.
+b. **Filters** (All · Open · Done · Dropped) belong to the list, not to the page: they sit inside the list column,
+   under the hairline, with the list's own inset, and look different from view tabs — small quiet segmented text
+   with counts dim; built once as `primitives/FilterTabs`.
+c. Never two pill rows stacked; never a filter row spanning the detail pane.
+d. The list column and the detail pane are separated by one vertical hairline that starts at the view-switcher's
+   hairline (no gap, no double line).
+e. Every screen with both levels uses the two primitives: Memory, Review (picker filters), Changes, Usage, Settings
+   sub-sections where they exist.
+Acceptance: screenshots of each at 1440×900 and 390×700; the spacing audit checks that a `ViewTabs` row has a bottom
+border and that no `FilterTabs` is a direct sibling above another tab row.
