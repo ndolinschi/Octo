@@ -20,7 +20,7 @@ func emptyEnv(t *testing.T) {
 	for _, k := range []string{
 		"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "HARNESS_OCTO_KEY", "HARNESS_PLUGINS_DIR", "HARNESS_DATA_DIR",
 		"HARNESS_NO_BUILTIN_PLUGINS", "HARNESS_MODEL_ORCHESTRATOR", "HARNESS_MODEL_FAST", "HARNESS_PROMPT_CACHING",
-		"HARNESS_CHILD_ENV_ALLOW",
+		"HARNESS_CHILD_ENV_ALLOW", "HARNESS_API_TOKEN", "HARNESS_NO_API_TOKEN",
 	} {
 		t.Setenv(k, "")
 		_ = os.Unsetenv(k)
@@ -49,6 +49,7 @@ func TestServeStartsWithoutAnyKey(t *testing.T) {
 	if ok, _ := cfg.BuiltinLoop(); ok {
 		t.Fatal("empty environment must not have the built-in loop")
 	}
+	cfg.APIToken = testAPIToken
 	addr := freeAddr(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -70,7 +71,9 @@ func TestServeStartsWithoutAnyKey(t *testing.T) {
 		var resp *http.Response
 		deadline := time.Now().Add(10 * time.Second)
 		for {
-			resp, err = http.Get(base + path)
+			req, _ := http.NewRequest("GET", base+path, nil)
+			req.Header.Set("Authorization", "Bearer "+testAPIToken)
+			resp, err = http.DefaultClient.Do(req)
 			if err == nil || time.Now().After(deadline) {
 				break
 			}

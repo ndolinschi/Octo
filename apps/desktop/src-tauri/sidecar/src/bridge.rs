@@ -19,6 +19,9 @@ use std::time::Duration;
 pub const LOG_NAME: &str = "harness.log";
 pub use crate::router::LOG_NAME as ROUTER_LOG_NAME;
 
+/// The harness reads its bridge API token from this variable.
+pub const TOKEN_ENV: &str = "HARNESS_API_TOKEN";
+
 /// How many log lines a notice carries.
 const NOTICE_LOG_LINES: usize = 30;
 /// The router opens SQLite and applies migrations before it listens.
@@ -34,6 +37,8 @@ pub struct BridgeConfig {
     pub log_dir: PathBuf,
     /// `OCTO_BRIDGE_URL`: when set and non-empty, nothing is started.
     pub override_url: Option<String>,
+    /// `OCTO_BRIDGE_TOKEN`: the API token of the harness at `override_url` (none: the webview sends no token).
+    pub override_token: Option<String>,
     /// The bundled router executable; None when the app was built without one.
     pub router_bin: Option<PathBuf>,
     /// The router's data: `config/` fragments, `history.sqlite`, `router.pid` (default: `{data_dir}/../router`).
@@ -62,6 +67,7 @@ impl BridgeConfig {
             data_dir,
             log_dir,
             override_url,
+            override_token: None,
             router_bin: None,
             router_dir,
             settings_path,
@@ -69,6 +75,14 @@ impl BridgeConfig {
             router_health_timeout: ROUTER_HEALTH_TIMEOUT,
             log_max_bytes: DEFAULT_MAX_BYTES,
         }
+    }
+
+    /// Sets the API token of an overridden (externally started) harness.
+    pub fn with_override_token(mut self, token: Option<String>) -> Self {
+        self.override_token = token
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty());
+        self
     }
 
     /// Sets the bundled router executable.
@@ -87,9 +101,19 @@ pub struct Notice {
     pub log_tail: String,
 }
 
+/// What the webview needs to reach the harness: its URL and the API token it requires on `/v1` (empty when the
+/// harness is an external one started without a token).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Connection {
+    pub url: String,
+    pub token: String,
+}
+
 /// A started (or overridden) bridge. Fields drop in order: harness first, then router.
 pub struct Running {
     pub url: String,
+    /// The API token this run's harness was started with (a new one for every start). Never logged.
+    token: String,
     harness: Option<Sidecar>,
     router: Option<Sidecar>,
 }
@@ -175,6 +199,12 @@ impl Bridge {
     /// The bridge URL, starting the harness on first use. Concurrent callers serialise; later ones get the same URL.
     /// A harness that has died since is restarted.
     pub fn url(&self) -> Result<String, String> {
+        self.connection().map(|c| c.url)
+    }
+
+    /// [`Bridge::url`] with the API token of the run, for the webview. The token is generated here for every start
+    /// and handed to the harness in its environment (`HARNESS_API_TOKEN`), never on the command line or in the log.
+    pub fn connection(&self) -> Result<Connection, String> {
         let mut guard = self
             .running
             .lock()
@@ -186,21 +216,32 @@ impl Bridge {
                 .map(|s| s.exited().is_none())
                 .unwrap_or(true);
             if alive {
-                return Ok(r.url.clone());
+                return Ok(Connection {
+                    url: r.url.clone(),
+                    token: r.token.clone(),
+                });
             }
             *guard = None; // dropped: reaps and sweeps the groups
             self.remove_pid_files();
         }
         let running = self.start()?;
-        let url = running.url.clone();
+        let conn = Connection {
+            url: running.url.clone(),
+            token: running.token.clone(),
+        };
         *guard = Some(running);
-        Ok(url)
+        Ok(conn)
     }
 
     /// Stops the harness and the router (if any) and starts them again with the current settings file.
     pub fn restart(&self) -> Result<String, String> {
+        self.restart_connection().map(|c| c.url)
+    }
+
+    /// [`Bridge::restart`] returning the new run's [`Connection`] (a new token).
+    pub fn restart_connection(&self) -> Result<Connection, String> {
         self.stop();
-        self.url()
+        self.connection()
     }
 
     /// Harness first (SIGTERM, 3 s, SIGKILL on its group), then the router. No-op when nothing runs.
@@ -300,6 +341,7 @@ impl Bridge {
             self.set_router_failure(None);
             return Ok(Running {
                 url,
+                token: self.cfg.override_token.clone().unwrap_or_default(),
                 harness: None,
                 router: None,
             });
@@ -369,6 +411,9 @@ impl Bridge {
             }
         }
         env.push(("PATH".into(), path));
+        // A new bridge token for every run, in the environment only (not an argument, not the log).
+        let token = router::generate_key();
+        env.push((TOKEN_ENV.into(), token.clone()));
 
         // On any failure below, `router_sc` is dropped, which stops the router.
         let mut sidecar = Sidecar::spawn(SpawnSpec {
@@ -384,6 +429,7 @@ impl Bridge {
         match health::wait_healthy(addr, cfg.health_timeout, || sidecar.exited()) {
             Ok(()) => Ok(Running {
                 url: format!("http://127.0.0.1:{port}"),
+                token,
                 harness: Some(sidecar),
                 router: router_sc,
             }),
@@ -454,6 +500,38 @@ mod tests {
         assert_eq!(b.url().unwrap(), "http://127.0.0.1:9");
         assert_eq!(b.url().unwrap(), "http://127.0.0.1:9");
         b.stop();
+    }
+
+    #[test]
+    fn an_overridden_harness_keeps_the_token_it_was_given() {
+        let mk = |token: Option<&str>| {
+            Bridge::new(
+                BridgeConfig::new(
+                    "/nonexistent".into(),
+                    "/nonexistent/d".into(),
+                    "/nonexistent/l".into(),
+                    Some("http://127.0.0.1:9/".into()),
+                )
+                .with_override_token(token.map(str::to_string)),
+            )
+        };
+        let c = mk(Some("  external-token  ")).connection().unwrap();
+        assert_eq!(c.url, "http://127.0.0.1:9");
+        assert_eq!(c.token, "external-token");
+        assert_eq!(mk(None).connection().unwrap().token, "");
+        assert_eq!(mk(Some("  ")).connection().unwrap().token, "");
+    }
+
+    #[test]
+    fn a_connection_serialises_as_url_and_token() {
+        let c = Connection {
+            url: "http://127.0.0.1:1".into(),
+            token: "t".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&c).unwrap(),
+            r#"{"url":"http://127.0.0.1:1","token":"t"}"#
+        );
     }
 
     #[test]

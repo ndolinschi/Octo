@@ -57,9 +57,11 @@ type Options struct {
 	// cost, for every request the classifier decided (not a hint): the real router
 	// counts its classify cost in spend, and the call record does not show it.
 	ClassifierUSD float64
-	// SpentAfter adds spent_after_usd (the key's spend once the call was charged,
-	// classifier cost included) to every call record.
-	SpentAfter bool
+	// NoSpentAfter leaves spent_after_usd out of the call records, as a router
+	// older than the post-call figure does. The default mirrors the real router:
+	// every call charged to a budget key carries the key's spend once the call
+	// was charged, classifier cost included.
+	NoSpentAfter bool
 	// DelayFor holds a request before it is answered, after its spend header was
 	// fixed (a way to make calls overlap and finish out of order).
 	DelayFor func(*http.Request) time.Duration

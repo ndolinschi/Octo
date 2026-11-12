@@ -12,7 +12,7 @@ const FAKE_PY: &str = r#"
 import http.server, json, os, re, signal, sys, time
 role, mode, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
 args = sys.argv[4:]
-rec = {"role": role, "args": args, "env": {k: os.environ.get(k) for k in ("HARNESS_OCTO_KEY", "ANTHROPIC_API_KEY", "OCTO_CONFIG", "HARNESS_EXIT_ON_STDIN_CLOSE", "OCTO_EXIT_ON_STDIN_CLOSE")}}
+rec = {"role": role, "args": args, "env": {k: os.environ.get(k) for k in ("HARNESS_OCTO_KEY", "HARNESS_API_TOKEN", "ANTHROPIC_API_KEY", "OCTO_CONFIG", "HARNESS_EXIT_ON_STDIN_CLOSE", "OCTO_EXIT_ON_STDIN_CLOSE")}}
 cfg = os.environ.get("OCTO_CONFIG")
 if cfg:
     for name in ("server.toml", "history.toml", "limits.toml"):
@@ -182,6 +182,50 @@ fn router_off_starts_the_harness_alone() {
     assert!(e.record("router").is_none(), "no router must be started");
     assert!(b.notices().is_empty());
     assert!(!e.router_dir().exists());
+    b.stop();
+}
+
+#[test]
+fn the_harness_gets_a_fresh_api_token_in_its_environment_only() {
+    need_python!();
+    let e = Env::new("token");
+    let b = e.bridge(None);
+    let first = b.connection().unwrap();
+    let h = e.record("harness").expect("harness ran");
+    let in_env = h["env"]["HARNESS_API_TOKEN"].as_str().unwrap().to_string();
+    assert_eq!(
+        in_env, first.token,
+        "the webview gets the token the harness has"
+    );
+    assert_eq!(in_env.len(), 64);
+    assert!(in_env.chars().all(|c| c.is_ascii_hexdigit()));
+    assert!(first.url.starts_with("http://127.0.0.1:"));
+    // Not an argument, not in the log the app keeps.
+    assert!(!args_of(&h).iter().any(|a| a.contains(&in_env)), "{h}");
+    assert!(!b.log_tail(500).contains(&in_env), "{}", b.log_tail(500));
+    // Same run, same token; a restart is a new run with a new token.
+    assert_eq!(b.connection().unwrap(), first);
+    assert_eq!(b.url().unwrap(), first.url);
+    e.forget("harness");
+    let second = b.restart_connection().unwrap();
+    assert_ne!(second.token, first.token);
+    assert_eq!(
+        e.record("harness").unwrap()["env"]["HARNESS_API_TOKEN"],
+        second.token
+    );
+    b.stop();
+}
+
+#[test]
+fn the_router_never_sees_the_api_token() {
+    need_python!();
+    let e = Env::new("tokenrouter");
+    e.settings(ON);
+    let b = e.bridge(Some("ok"));
+    let conn = b.connection().unwrap();
+    let r = e.record("router").expect("router ran");
+    assert!(r["env"]["HARNESS_API_TOKEN"].is_null(), "{r}");
+    assert!(!r.to_string().contains(&conn.token));
     b.stop();
 }
 

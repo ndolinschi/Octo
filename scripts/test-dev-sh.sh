@@ -25,6 +25,8 @@ unset OCTO_DEV_BRIDGE_PORT OCTO_DEV_ROUTER_PORT OCTO_DEV_MOCK_PORT OCTO_DEV_UI_P
 LOG="$(mktemp "${TMPDIR:-/tmp}/octo-dev-sh.XXXXXX")"
 DATA="$(mktemp -d "${TMPDIR:-/tmp}/octo-dev-sh-data.XXXXXX")"
 export HARNESS_DATA_DIR="$DATA"
+# The bridge API token dev.sh would generate; fixed here so the checks below can send it.
+export HARNESS_API_TOKEN="devsh-test-token-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -105,13 +107,18 @@ echo "ok: the busy default bridge port $BUSY_PORT was skipped; bridge on $BRIDGE
 curl -fsS "http://127.0.0.1:$BRIDGE_PORT/health" >/dev/null || fail "harness /health does not answer"
 curl -fsS "http://localhost:$UI_PORT/" >/dev/null || fail "UI dev server does not answer"
 echo "ok: harness /health and the UI answer"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$BRIDGE_PORT/v1/config")"
+[[ "$code" == 401 ]] || fail "harness answered $code (expected 401) to /v1/config without the API token"
+code="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $HARNESS_API_TOKEN" "http://127.0.0.1:$BRIDGE_PORT/v1/config")"
+[[ "$code" == 200 ]] || fail "harness answered $code (expected 200) to /v1/config with the API token"
+echo "ok: the harness enforces the API token on /v1 and /health stays open"
 if [[ "$WANT_ROUTER" -eq 1 ]]; then
   health="$(curl -fsS "http://127.0.0.1:$ROUTER_PORT/health")" || fail "router /health does not answer"
   [[ "$health" == *'"service":"octo"'* ]] || fail "port $ROUTER_PORT does not look like the Octo router: $health"
   # Unauthenticated calls are refused: the generated client key is really enforced.
   code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$ROUTER_PORT/autoroute/v1/messages" -d '{}')"
   [[ "$code" == 401 ]] || fail "router answered $code (expected 401) to a call without the client key"
-  config="$(curl -fsS "http://127.0.0.1:$BRIDGE_PORT/v1/config")" || fail "harness /v1/config does not answer"
+  config="$(curl -fsS -H "Authorization: Bearer $HARNESS_API_TOKEN" "http://127.0.0.1:$BRIDGE_PORT/v1/config")" || fail "harness /v1/config does not answer"
   [[ "$config" == *'"router":true'* ]] || fail "the harness did not detect the router: $config"
   echo "ok: the router answers, enforces its client key, and the harness is behind it"
 fi

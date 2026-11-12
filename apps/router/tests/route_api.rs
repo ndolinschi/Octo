@@ -726,10 +726,24 @@ async fn the_decision_is_a_call_record_with_the_classifier_cost() {
         3000,
         "spend counts on the key"
     );
+    assert!(
+        (row["spent_after_usd"].as_f64().unwrap() - 0.003).abs() < 1e-12,
+        "{row}"
+    );
 
     let (_, again) = route(&state, &body).await;
     assert_ne!(again["request_id"], value["request_id"]);
     assert_eq!(state.auto.budget_spent("proj-1"), 6000);
+    let id = again["request_id"].as_str().unwrap();
+    let (_, row) = call(
+        &state,
+        "GET",
+        &format!("/autoroute/v1/calls/{id}"),
+        &[],
+        Vec::new(),
+    )
+    .await;
+    assert!((row["spent_after_usd"].as_f64().unwrap() - 0.006).abs() < 1e-12);
 }
 
 #[tokio::test]

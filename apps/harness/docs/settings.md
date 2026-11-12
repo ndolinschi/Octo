@@ -93,6 +93,10 @@ If a file written earlier names an `acp:` agent that is no longer available, `ha
 
 The bridge has no global event stream, only one per project (`GET /v1/projects/{pid}/events`). After a `PUT` that changed something, the harness publishes `{ "type": "settings.changed", "seq": n, "ids": ["HARNESS_MODEL_FAST"] }` on **every** project stream (each with that stream's own `seq`). Only ids, never values; nothing is published for a request that changed nothing. On receipt a client refetches `GET /v1/settings` and `GET /v1/config`.
 
+## Bridge API token
+
+`HARNESS_API_TOKEN` and `HARNESS_NO_API_TOKEN` are not settings: they are read from the process environment only (the settings screen neither shows nor sets them). The settings routes are `/v1` routes like the rest and need the token. Details: the harness README, "Bridge API token".
+
 ## Security
 
 - **Loopback only.** The endpoints answer 403 `forbidden` when the bridge listens on a non-loopback address (`--addr 0.0.0.0:…`, `:8790`, a LAN IP), when the peer is not a loopback address, when the `Host` header is not `localhost`, `127.0.0.0/8` or `::1` (DNS rebinding), and when the request has an `Origin` the bridge does not allow (the same rule as CORS: `http(s)://localhost|127.0.0.1[:port]`, `tauri://localhost`, `http://tauri.localhost`; `Origin: null` is refused). Unlike the other routes, which merely withhold the CORS headers, a refused origin is rejected outright, because this endpoint writes keys.

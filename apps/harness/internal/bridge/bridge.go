@@ -39,6 +39,7 @@ type Server struct {
 	builtinFn   func() (bool, string)
 	providers   ProviderSource
 	defaultOrch func() string // the orchestrator a project without a choice runs now
+	apiToken    string        // required on /v1 routes when set (WithAPIToken)
 }
 
 // PluginSource is the read-only plugin view GET /v1/plugins serves.
@@ -93,7 +94,7 @@ func New(svc *project.Service, notes *project.Notes, files *project.Files, opts 
 	for _, o := range opts {
 		o(s)
 	}
-	return cors(s.routes())
+	return cors(s.requireToken(s.routes()))
 }
 
 func (s *Server) routes() *http.ServeMux {
@@ -185,7 +186,7 @@ func cors(next http.Handler) http.Handler {
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Add("Vary", "Origin")
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID")
 			h.Set("Access-Control-Max-Age", "600")
 		}
 		if r.Method == http.MethodOptions {

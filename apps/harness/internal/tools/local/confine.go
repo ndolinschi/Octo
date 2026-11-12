@@ -5,7 +5,42 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
+
+var (
+	protectedMu sync.RWMutex
+	protected   []string
+)
+
+// ProtectDir closes dir (the harness data directory, which holds the bridge
+// API token) to every path this package resolves, wherever a project folder
+// sits, including a folder that contains the data directory. It is for the
+// harness's own file tools and file API; a shell command is not confined.
+func ProtectDir(dir string) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return
+	}
+	protectedMu.Lock()
+	defer protectedMu.Unlock()
+	protected = append(protected, abs)
+	if real, err := filepath.EvalSymlinks(abs); err == nil && real != abs {
+		protected = append(protected, real)
+	}
+}
+
+// isProtected reports whether p (an absolute path) is in or under a protected directory.
+func isProtected(p string) bool {
+	protectedMu.RLock()
+	defer protectedMu.RUnlock()
+	for _, d := range protected {
+		if pathWithinRoot(p, d) {
+			return true
+		}
+	}
+	return false
+}
 
 // Resolve returns the absolute path of rel under root, rejecting absolute
 // paths, traversal and symlink escape. An empty rel is an error.
@@ -44,6 +79,9 @@ func resolveUnderWorkspace(workspace, rel string) (string, error) {
 	}
 	if !pathWithinRoot(realTarget, realWorkspace) {
 		return "", fmt.Errorf("path escapes workspace")
+	}
+	if isProtected(realTarget) || isProtected(absTarget) {
+		return "", fmt.Errorf("path is not available: it is inside the harness data directory")
 	}
 	return absTarget, nil
 }

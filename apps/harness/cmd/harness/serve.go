@@ -20,6 +20,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
 	"github.com/ndolinschi/Octo/apps/harness/internal/anthropicclient"
+	"github.com/ndolinschi/Octo/apps/harness/internal/apitoken"
 	"github.com/ndolinschi/Octo/apps/harness/internal/bridge"
 	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 	"github.com/ndolinschi/Octo/apps/harness/internal/codehost"
@@ -37,6 +38,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 	"github.com/ndolinschi/Octo/apps/harness/internal/settings"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/remote"
 )
 
@@ -75,6 +77,7 @@ func serveConfig(args []string) (config.Config, string, error) {
 	promptCaching := fs.Bool("prompt-caching", true, "Send cache_control breakpoints (or HARNESS_PROMPT_CACHING, default true); disable for gateways that reject them")
 	noBuiltin := fs.Bool("no-builtin-plugins", false, "Do not load the plugins embedded in the binary (or HARNESS_NO_BUILTIN_PLUGINS=1)")
 	exitOnStdin := fs.Bool("exit-on-stdin-close", false, "Shut down gracefully when standard input reaches EOF (or HARNESS_EXIT_ON_STDIN_CLOSE=1); for a parent that may die without stopping us")
+	noAPIToken := fs.Bool("no-api-token", false, "Do not require the API token on /v1 routes (or HARNESS_NO_API_TOKEN=1); for tests and scripts that have not been updated")
 	var remoteBases multiFlag
 	fs.Var(&remoteBases, "remote", "Remote tool server base URL (repeatable; sub-agents only)")
 	var pluginDirs multiFlag
@@ -115,6 +118,9 @@ func serveConfig(args []string) (config.Config, string, error) {
 	if *exitOnStdin || os.Getenv("HARNESS_EXIT_ON_STDIN_CLOSE") == "1" {
 		cfg.ExitOnStdinClose = true
 	}
+	if *noAPIToken {
+		cfg.NoAPIToken = true
+	}
 	if len(remoteBases) > 0 {
 		cfg.RemoteBases = remoteBases
 	}
@@ -151,6 +157,11 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 			slog.Error("close store", "err", err)
 		}
 	}()
+
+	apiToken, err := setupAPIToken(cfg)
+	if err != nil {
+		return err
+	}
 
 	remoteReg := tools.NewRegistry()
 	if err := remote.Register(ctx, remoteReg, cfg.RemoteBases, filepath.Join(cfg.DataDir, "cache")); err != nil {
@@ -274,6 +285,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	defer cancelRequests()
 	srv := &http.Server{
 		Handler: bridge.New(svc, notes, project.NewFiles(store, hub),
+			bridge.WithAPIToken(apiToken),
 			bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithReviews(reviews),
 			bridge.WithPlugins(pluginReg), bridge.WithLSP(pluginReg, lspMgr), bridge.WithLimits(limitStore), bridge.WithRouter(octo),
 			bridge.WithSettings(settingsMgr, isLoopbackAddr(ln.Addr())), bridge.WithBuiltinLoopFunc(builtin), bridge.WithProviders(provSvc), bridge.WithDefaultOrchestrator(orch.DefaultOrchestrator),
@@ -309,6 +321,31 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		return err
 	}
 	return nil
+}
+
+// setupAPIToken decides the bridge's API token: HARNESS_API_TOKEN when set,
+// else a new one written to {data-dir}/api-token (0600); "" with --no-api-token.
+// It also keeps the token away from what agents can see: the data directory
+// is closed to the file tools and the value is redacted from ACP traces and
+// the diagnostics log. Nothing secret is logged.
+func setupAPIToken(cfg config.Config) (string, error) {
+	if cfg.NoAPIToken {
+		slog.Warn("bridge API token is off (--no-api-token / HARNESS_NO_API_TOKEN): any local process can call /v1")
+		return "", nil
+	}
+	local.ProtectDir(cfg.DataDir)
+	token, generated, err := apitoken.Resolve(cfg.DataDir, cfg.APIToken)
+	if err != nil {
+		return "", fmt.Errorf("api token: %w", err)
+	}
+	acptrace.HideEverywhere(token)
+	logRing.Hide(token)
+	if generated {
+		slog.Info("bridge API token generated", "file", apitoken.Path(cfg.DataDir))
+	} else {
+		slog.Info("bridge API token taken from " + apitoken.EnvVar)
+	}
+	return token, nil
 }
 
 // loopbackHost is the host an ACP agent on this machine uses to reach the

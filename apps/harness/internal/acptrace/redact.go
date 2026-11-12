@@ -62,7 +62,7 @@ var assign = regexp.MustCompile(`(?i)([A-Za-z0-9_.-]*(?:key|token|secret|passwor
 
 func (t *Trace) redactString(s string) string {
 	t.mu.Lock()
-	exact := append([]string(nil), t.exact...)
+	exact := append(append([]string(nil), t.exact...), hiddenEverywhere()...)
 	t.mu.Unlock()
 	for _, v := range exact {
 		if strings.Contains(s, v) {

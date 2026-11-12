@@ -12,7 +12,7 @@ pub mod router;
 pub mod settings;
 pub mod shellenv;
 
-pub use bridge::{Bridge, BridgeConfig, Notice, Running};
+pub use bridge::{Bridge, BridgeConfig, Connection, Notice, Running};
 
 #[cfg(all(test, unix))]
 mod bridge_router_tests;

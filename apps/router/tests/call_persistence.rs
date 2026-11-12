@@ -407,6 +407,7 @@ fn row(model: &str, cost_usd: f64) -> CallRow {
         cost_source: "reported",
         estimate_ratio: None,
         upstream_id: None,
+        spent_after_usd: None,
         route: Some(RouteRecord {
             choice: "c".to_string(),
             band: "easy",

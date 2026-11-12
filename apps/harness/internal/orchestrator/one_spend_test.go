@@ -2,6 +2,7 @@ package orchestrator_test
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"sync"
 	"testing"
@@ -31,7 +32,7 @@ func rowsSum(t *testing.T, r *rig, pid string) float64 {
 // call records, which miss what the router charges for classifying.
 func TestRouterModeSpendIsTheRoutersNotASumOfRows(t *testing.T) {
 	const classify = 0.0004
-	r, fr := newFakeRig(t, mockllm.New(0), fakerouter.Options{ClassifierUSD: classify}, orchestrator.Options{})
+	r, fr := newFakeRig(t, mockllm.New(0), fakerouter.Options{ClassifierUSD: classify, NoSpentAfter: true}, orchestrator.Options{})
 	pid := r.project(t, 1)
 	r.update(t, pid, budgetInput(1000))
 	if st := r.run(t, pid, "build it", nil); st != "completed" {
@@ -77,7 +78,7 @@ func TestRouterSpendAfterConcurrentCallsFinishingOutOfOrder(t *testing.T) {
 		n++
 		return time.Duration(4-n) * 120 * time.Millisecond // the first call is the slowest
 	}
-	r, fr := newFakeRig(t, mockllm.New(0), fakerouter.Options{ClassifierUSD: classify, SpentAfter: true, DelayFor: delay}, orchestrator.Options{})
+	r, fr := newFakeRig(t, mockllm.New(0), fakerouter.Options{ClassifierUSD: classify, DelayFor: delay}, orchestrator.Options{})
 	pid := r.project(t, 1)
 	r.update(t, pid, project.Input{Models: &config.Models{Completion: "fast"}})
 	r.update(t, pid, budgetInput(1000))
@@ -97,8 +98,10 @@ func TestRouterSpendAfterConcurrentCallsFinishingOutOfOrder(t *testing.T) {
 	if err != nil || p.SpentUSD == nil {
 		t.Fatalf("project = %v %v", p.SpentUSD, err)
 	}
-	if !near(*p.SpentUSD, fr.Spent(pid)) {
-		t.Fatalf("harness spend %v != router spend %v after out-of-order completion", *p.SpentUSD, fr.Spent(pid))
+	micro := func(v float64) int64 { return int64(math.Round(v * 1e6)) }
+	if micro(*p.SpentUSD) != micro(fr.Spent(pid)) {
+		t.Fatalf("harness spend %v != router spend %v (micro-USD %d vs %d) after out-of-order completion",
+			*p.SpentUSD, fr.Spent(pid), micro(*p.SpentUSD), micro(fr.Spent(pid)))
 	}
 }
 

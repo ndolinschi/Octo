@@ -1,4 +1,4 @@
-use octo_sidecar::{Bridge, BridgeConfig, Notice};
+use octo_sidecar::{Bridge, BridgeConfig, Connection, Notice};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Manager, RunEvent};
@@ -25,21 +25,21 @@ fn sidecar_path(name: &str, env_override: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(file))
 }
 
-/// The harness URL for the webview: starts the harness on first call (or returns `OCTO_BRIDGE_URL`).
-/// Blocking work runs off the UI thread; concurrent calls share one start.
+/// The harness URL and API token for the webview (`{ url, token }`): starts the harness on first call (or returns
+/// `OCTO_BRIDGE_URL`). Blocking work runs off the UI thread; concurrent calls share one start.
 #[tauri::command]
-async fn bridge_url(state: tauri::State<'_, BridgeState>) -> Result<String, String> {
+async fn bridge_url(state: tauri::State<'_, BridgeState>) -> Result<Connection, String> {
     let bridge = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || bridge.url())
+    tauri::async_runtime::spawn_blocking(move || bridge.connection())
         .await
         .map_err(|e| e.to_string())?
 }
 
 /// Stops the harness and starts a fresh one (the "Retry" button).
 #[tauri::command]
-async fn bridge_restart(state: tauri::State<'_, BridgeState>) -> Result<String, String> {
+async fn bridge_restart(state: tauri::State<'_, BridgeState>) -> Result<Connection, String> {
     let bridge = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || bridge.restart())
+    tauri::async_runtime::spawn_blocking(move || bridge.restart_connection())
         .await
         .map_err(|e| e.to_string())?
 }
@@ -81,6 +81,7 @@ pub fn run() {
                 log_dir,
                 override_url,
             )
+            .with_override_token(std::env::var("OCTO_BRIDGE_TOKEN").ok())
             .with_router(sidecar_path("octo", "OCTO_ROUTER_BIN"));
             app.manage(BridgeState(Arc::new(Bridge::new(cfg))));
             Ok(())

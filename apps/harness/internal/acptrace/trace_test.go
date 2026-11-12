@@ -131,3 +131,15 @@ func TestRedactsEmailAddresses(t *testing.T) {
 		}
 	}
 }
+
+func TestHideEverywhereRedactsTheBridgeToken(t *testing.T) {
+	const tok = "bridge-api-token-0123456789abcdef"
+	HideEverywhere(tok)
+	tr := start(t, nil, nil)
+	tr.Sent([]byte(`{"jsonrpc":"2.0","id":1,"method":"x","params":{"note":"curl http://127.0.0.1:8790/v1/projects/p/events?x=` + tok + `"}}`))
+	tr.Received([]byte("plain line with " + tok))
+	tr.Stderr("stderr " + tok)
+	if got := read(t, tr); strings.Contains(got, tok) {
+		t.Fatalf("the bridge token is in the trace:\n%s", got)
+	}
+}

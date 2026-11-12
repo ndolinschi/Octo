@@ -99,9 +99,7 @@ pub async fn route(
             .ok_or_else(|| RouteError::Invalid("no usable candidate".to_string()))?;
         (classified, selection)
     };
-    if classified.cost_micros > 0 {
-        auto.charge(input.history, None, Some(&key), classified.cost_micros);
-    }
+    let spent_after = auto.charge(input.history, None, Some(&key), classified.cost_micros);
 
     let chosen = &candidates[selection.index];
     let swap = match chosen {
@@ -142,6 +140,7 @@ pub async fn route(
         cost_source: classified.cost_source,
         estimate_ratio: None,
         upstream_id: None,
+        spent_after_usd: spent_after.map(crate::auto::micros_usd),
         route: Some(RouteRecord {
             choice: chosen.id().to_string(),
             band: classified.band.as_str(),

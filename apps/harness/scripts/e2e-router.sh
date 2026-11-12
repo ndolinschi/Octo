@@ -11,6 +11,16 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# The harness requires a bridge API token on /v1: every harness started below gets this one, every curl sends it
+# (except to the router, which would forward it upstream). The check itself is exercised by the 401 test further down.
+export HARNESS_API_TOKEN="e2e-token-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+curl() {
+  case "$*" in
+    *127.0.0.1:8811*|*127.0.0.1:8812*) command curl "$@" ;;
+    *) command curl -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@" ;;
+  esac
+}
 jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 
 (cd "$ROOT/apps/harness" && go build -o "$TMP/harness" ./cmd/harness && go build -o "$TMP/mockllm" ./examples/mockllm)
@@ -53,6 +63,8 @@ run_turn() { # $1 bridge, $2 project, $3 text -> prints turn status
 }
 
 echo "== config"
+[ "$(command curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8815/v1/config)" = 401 ] || fail "harness 8815 answered /v1/config without the API token"
+[ "$(command curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8815/health)" = 200 ] || fail "harness 8815 /health is not open"
 curl -fsS http://127.0.0.1:8815/v1/config | jget 'd["router"], d["router_capabilities"]' | grep -q "True" || fail "harness 8815 did not detect the router"
 curl -fsS http://127.0.0.1:8816/v1/config | jget 'd["router"]' | grep -q "False" || fail "harness 8816 detected a router at the mock"
 

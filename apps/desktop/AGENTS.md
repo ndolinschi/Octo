@@ -19,13 +19,13 @@ screens live in [`packages/ui`](../../packages/ui/AGENTS.md), the bridge client 
 
 - Inside Tauri the shell runs the harness (design P5). `src/hostBridge.ts` (`useHostBridge`) calls the Rust commands
   `bridge_url` / `bridge_restart` / `bridge_log_tail` (the Tauri API is `import()`ed on demand), `src/HostStatus.tsx` is the
-  "Starting Octo…" / failure screen (message, last 20 log lines, Retry), and `chooseBridge(search, env, hostUrl)` takes the URL.
+  "Starting Octo…" / failure screen (message, last 20 log lines, Retry), and `chooseBridge(search, env, hostUrl, hostToken)` takes the URL and the API token (`bridge_url` / `bridge_restart` return `{ url, token }`; `src/hostConnection.ts` also reads an older shell's bare URL string as "no token"). In a browser dev setup the token is `VITE_HARNESS_API_TOKEN` (set by `scripts/dev.sh`; never set it for a production build, Vite would bake it in).
   In a browser nothing changes (no Tauri API is loaded).
 - `src-tauri/sidecar/` is the `octo-sidecar` crate (no `tauri` dependency, so `cargo test -p octo-sidecar` runs anywhere):
   `port` (free port), `shellenv` (login-shell PATH, parser, fallback dirs), `process` (own process group, SIGTERM, 3 s, SIGKILL; pid file for crash cleanup),
   `logfile` (capped `harness.log` / `router.log`, tail), `health` (`GET /health` wait), `settings` (the three `OCTO_ROUTER_*` keys of `{app data}/harness/harness.env`,
-  tolerant parser, values never logged), `router` (the router's config fragments, generated client key, pid-file name), `bridge` (the sequence; `OCTO_BRIDGE_URL` starts nothing).
-  `src-tauri/src/lib.rs` is only glue: four commands (`bridge_url`, `bridge_restart`, `bridge_log_tail`, `bridge_notices`) and the exit hook.
+  tolerant parser, values never logged), `router` (the router's config fragments, generated client key, pid-file name), `bridge` (the sequence; `OCTO_BRIDGE_URL` starts nothing; a new 256-bit API token per run goes to the harness as `HARNESS_API_TOKEN` in its environment only, never an argument or the log, and to the webview in `Connection { url, token }`; `OCTO_BRIDGE_TOKEN` supplies the token of an overridden harness; the router never sees it).
+  `src-tauri/src/lib.rs` is only glue: four commands (`bridge_url` and `bridge_restart` returning `{ url, token }`, `bridge_log_tail`, `bridge_notices`) and the exit hook.
 - The router (design P8): `bridge` reads `harness.env` at every (re)start. `OCTO_ROUTER_ENABLED=1` plus `OCTO_ROUTER_UPSTREAM_KEY` starts the bundled `octo`
   binary first (free loopback port, random client key per launch, config fragments and `history.sqlite` under `{app data}/router`, `OCTO_CONFIG` the only way to
   configure it), waits for its `/health`, then starts the harness with `--base-url http://127.0.0.1:<port>/autoroute`, `HARNESS_OCTO_KEY=<client key>` and

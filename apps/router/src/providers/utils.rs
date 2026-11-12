@@ -281,14 +281,12 @@ impl Capture {
             request_id: self.observe.request_id.clone(),
         });
         if let Some(auto) = &self.observe.auto {
-            if let Some(cost) = resolved.cost {
-                auto.charge(
-                    &self.observe.history,
-                    self.observe.session_id.as_deref(),
-                    self.observe.budget_key.as_deref(),
-                    cost.0,
-                );
-            }
+            let spent_after = auto.charge(
+                &self.observe.history,
+                self.observe.session_id.as_deref(),
+                self.observe.budget_key.as_deref(),
+                resolved.cost.map_or(0, |c| c.0),
+            );
             if let Some(request_id) = &self.observe.request_id {
                 let row = crate::auto::CallRow {
                     model: call_model,
@@ -303,6 +301,7 @@ impl Capture {
                     cost_source: cost_source_label(resolved.source),
                     estimate_ratio,
                     upstream_id: generation_id_for_row,
+                    spent_after_usd: spent_after.map(crate::auto::micros_usd),
                     route: None,
                 };
                 auto.record_call_persisted(

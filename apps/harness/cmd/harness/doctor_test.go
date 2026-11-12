@@ -46,6 +46,8 @@ func fakePlugins(t *testing.T) string {
 	return filepath.Dir(dir)
 }
 
+const secretAPIToken = "bridge-api-token-doctor-0123456789"
+
 func TestHarnessDoctorReportsAgentsAndLeaksNothing(t *testing.T) {
 	plugins := fakePlugins(t)
 	run := func(extra string) string {
@@ -55,7 +57,7 @@ func TestHarnessDoctorReportsAgentsAndLeaksNothing(t *testing.T) {
 			"HARNESS_TEST_ARGS=--data-dir " + t.TempDir() + " --plugins-dir " + plugins + " " + extra,
 			"ANTHROPIC_API_KEY=" + secretKey, "HARNESS_OCTO_KEY=" + secretOcto,
 			"ANTHROPIC_BASE_URL=http://u:" + secretURLPw + "@127.0.0.1:1/autoroute?key=" + secretQuery,
-			"GITHUB_TOKEN=ghp_doctorsecrettoken123456",
+			"GITHUB_TOKEN=ghp_doctorsecrettoken123456", "HARNESS_API_TOKEN=" + secretAPIToken,
 		}
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -70,7 +72,7 @@ func TestHarnessDoctorReportsAgentsAndLeaksNothing(t *testing.T) {
 			t.Errorf("doctor output lacks %q:\n%s", want, text)
 		}
 	}
-	for _, s := range []string{secretKey, secretOcto, secretURLPw, secretQuery, "ghp_doctorsecrettoken123456"} {
+	for _, s := range []string{secretKey, secretOcto, secretURLPw, secretQuery, "ghp_doctorsecrettoken123456", secretAPIToken} {
 		if strings.Contains(text, s) {
 			t.Errorf("doctor output contains the secret %q", s)
 		}
@@ -94,7 +96,7 @@ func TestHarnessDoctorReportsAgentsAndLeaksNothing(t *testing.T) {
 	if got["out"] == nil || *got["out"] || got["in"] == nil || !*got["in"] || got["gone"] != nil {
 		t.Fatalf("probes = %v", got)
 	}
-	for _, s := range []string{secretKey, secretOcto, secretURLPw, secretQuery} {
+	for _, s := range []string{secretKey, secretOcto, secretURLPw, secretQuery, secretAPIToken} {
 		if strings.Contains(js, s) {
 			t.Errorf("doctor json contains the secret %q", s)
 		}
@@ -111,6 +113,7 @@ func TestDiagnosticsEndpointAndTraceSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.BaseURL = "http://u:" + secretURLPw + "@127.0.0.1:1/x?key=" + secretQuery
+	cfg.APIToken = testAPIToken
 	addr := freeAddr(t)
 	done := make(chan error, 1)
 	ctx, cancel := contextWithCancel(t)
@@ -127,7 +130,7 @@ func TestDiagnosticsEndpointAndTraceSetting(t *testing.T) {
 	var body string
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		resp, err := http.Get(base + "/v1/diagnostics")
+		resp, err := getAuth(base + "/v1/diagnostics")
 		if err == nil {
 			b := new(strings.Builder)
 			buf := make([]byte, 4096)
@@ -147,7 +150,7 @@ func TestDiagnosticsEndpointAndTraceSetting(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	for _, s := range []string{secretKey, secretURLPw, secretQuery} {
+	for _, s := range []string{secretKey, secretURLPw, secretQuery, testAPIToken} {
 		if strings.Contains(body, s) {
 			t.Errorf("GET /v1/diagnostics contains %q", s)
 		}
@@ -172,6 +175,7 @@ func TestDiagnosticsEndpointAndTraceSetting(t *testing.T) {
 	put := func(v string) {
 		req, _ := http.NewRequest("PUT", base+"/v1/settings", strings.NewReader(`{"set":{"HARNESS_ACP_TRACE":`+v+`}}`))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+testAPIToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -182,7 +186,7 @@ func TestDiagnosticsEndpointAndTraceSetting(t *testing.T) {
 		}
 	}
 	enabled := func() bool {
-		resp, err := http.Get(base + "/v1/diagnostics")
+		resp, err := getAuth(base + "/v1/diagnostics")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,6 +207,12 @@ func TestDiagnosticsEndpointAndTraceSetting(t *testing.T) {
 	if enabled() {
 		t.Fatal("the setting did not switch the trace off")
 	}
+}
+
+func getAuth(url string) (*http.Response, error) {
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+testAPIToken)
+	return http.DefaultClient.Do(req)
 }
 
 func contextWithCancel(t *testing.T) (context.Context, context.CancelFunc) {

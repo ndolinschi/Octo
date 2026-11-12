@@ -257,8 +257,10 @@ Set on the response head, so they are available before a streamed body starts. S
 ### `GET /autoroute/v1/calls/{request-id}`
 
 ```json
-{"model":"deepseek/deepseek-v4.1-flash","tier":"low","trigger":"hint","input_tokens":1000,"output_tokens":500,"cache_read_tokens":0,"cache_write_tokens":0,"cost_usd":0.002,"cost_source":"estimated"}
+{"model":"deepseek/deepseek-v4.1-flash","tier":"low","trigger":"hint","input_tokens":1000,"output_tokens":500,"cache_read_tokens":0,"cache_write_tokens":0,"cost_usd":0.002,"cost_source":"estimated","spent_after_usd":0.002}
 ```
+
+`spent_after_usd` (present for every call charged to a budget key, absent otherwise) is the key's spend once this call was charged, classifier cost included, to the micro-USD. It is read under the same lock as the charge, so overlapping calls each carry a figure that includes their own cost; the highest one is the key's spend. `x-octo-spent-usd` stays the spend before the response it travels with (a streamed response's cost is known only at its end, after the headers are sent), so a client that wants the exact post-call number reads this field. The proxy path, compaction and `POST /autoroute/v1/route` (classifier cost) all set it. Tests: `tests/harness_integration.rs` (`call_record_carries_the_post_call_spend_of_the_budget_key`, streamed too), `tests/route_api.rs`.
 
 A call that reached an upstream may also carry `upstream_id` and `estimate_ratio` (below).
 

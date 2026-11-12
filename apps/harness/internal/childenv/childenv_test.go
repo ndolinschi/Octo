@@ -2,6 +2,7 @@ package childenv_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
@@ -182,4 +183,27 @@ func TestSetAllowSwapsTheOperatorListSafelyUnderConcurrency(t *testing.T) {
 		_ = childenv.Build(environ, nil)
 	}
 	<-done
+}
+
+// The bridge API token never reaches a child, not even when the operator
+// allow-list names it or matches it by prefix.
+func TestAPITokenNeverReachesAChild(t *testing.T) {
+	env := []string{"PATH=/usr/bin", "HARNESS_API_TOKEN=bridge-token-0123456789", "HARNESS_NO_API_TOKEN=1"}
+	for _, op := range []string{"", "HARNESS_API_TOKEN", "HARNESS_*", "*", "harness_api_token"} {
+		got := childenv.ScrubWith(env, childenv.ParseAllow(op))
+		for _, kv := range got {
+			if strings.Contains(kv, "bridge-token") || strings.HasPrefix(kv, "HARNESS_") {
+				t.Errorf("operator allow %q lets %q through", op, kv)
+			}
+		}
+		if !slices.Contains(got, "PATH=/usr/bin") {
+			t.Errorf("operator allow %q lost PATH: %v", op, got)
+		}
+	}
+	got := childenv.Build(env, nil)
+	for _, kv := range got {
+		if strings.Contains(kv, "bridge-token") {
+			t.Errorf("Build passed %q", kv)
+		}
+	}
 }

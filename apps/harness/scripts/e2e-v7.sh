@@ -10,6 +10,16 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; sleep 0.3; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# The harness requires a bridge API token on /v1: every harness started below gets this one, every curl sends it
+# (except to the router, which would forward it upstream). The check itself is exercised by the 401 test further down.
+export HARNESS_API_TOKEN="e2e-token-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+curl() {
+  case "$*" in
+    *127.0.0.1:8811*|*127.0.0.1:8812*) command curl "$@" ;;
+    *) command curl -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@" ;;
+  esac
+}
 jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 SECRET="sk-e2e-Zq81xT0pL9vB"
 
@@ -28,6 +38,8 @@ HARNESS_DEFAULT_ACCESS=supervised HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY
 for _ in $(seq 60); do curl -fsS "$BASE/health" >/dev/null 2>&1 && break; sleep 0.2; done
 curl -fsS "$BASE/health" >/dev/null 2>&1 || fail "harness did not start: $(cat "$TMP/harness.log")"
 
+[ "$(command curl -s -o /dev/null -w '%{http_code}' "$BASE/v1/projects")" = 401 ] || fail "/v1/projects answered without the API token"
+[ "$(command curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer wrong' "$BASE/v1/projects")" = 401 ] || fail "/v1/projects accepted a wrong token"
 post() { curl -fsS -X "$1" "$BASE$2" -H 'content-type: application/json' ${3:+-d "$3"}; }
 newproject() { # name access [orchestrator] -> prints id; folder $TMP/$1
   mkdir -p "$TMP/$1" && printf '# demo\n' >"$TMP/$1/README.md"
@@ -203,10 +215,11 @@ idle "$P6"
 waitfor "the Russian digest" nfacts $(( facts_before + 1 ))
 sleep 1
 python3 - "$BASE" "$P6" <<'PY' || fail "a Russian word form was not found, or the task is not closed"
-import json, sys, urllib.parse, urllib.request
+import json, os, sys, urllib.parse, urllib.request
 base, pid = sys.argv[1], sys.argv[2]
 def get(path):
-    return json.load(urllib.request.urlopen(base + path))
+    req = urllib.request.Request(base + path, headers={"Authorization": "Bearer " + os.environ["HARNESS_API_TOKEN"]})
+    return json.load(urllib.request.urlopen(req))
 for q, want in [("Кишинев", "Кишинёв"), ("калькуляторами", "калькулятор"), ("скобок", "скобками")]:
     hits = get("/v1/projects/%s/memory/search?q=%s" % (pid, urllib.parse.quote(q)))["hits"]
     assert any(want in (h.get("snippet") or "") for h in hits), (q, hits)

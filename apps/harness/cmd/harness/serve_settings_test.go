@@ -24,6 +24,16 @@ func startServe(t *testing.T, dataDir, bindHost string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.APIToken = testAPIToken
+	return startServeWith(t, cfg, bindHost)
+}
+
+// testAPIToken is the bridge token the serve tests configure and send.
+const testAPIToken = "serve-test-token-0123456789abcdef"
+
+// startServeWith is startServe for a ready Config.
+func startServeWith(t *testing.T, cfg config.Config, bindHost string) string {
+	t.Helper()
 	_, port, _ := strings.Cut(freeAddr(t), ":")
 	addr := bindHost + ":" + port
 	ctx, cancel := context.WithCancel(context.Background())
@@ -60,6 +70,7 @@ func request(t *testing.T, method, url string, body any) (int, []byte) {
 		rdr = bytes.NewReader(b)
 	}
 	req, _ := http.NewRequest(method, url, rdr)
+	req.Header.Set("Authorization", "Bearer "+testAPIToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

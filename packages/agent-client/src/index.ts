@@ -1,4 +1,4 @@
-export { resolveBridgeUrl, type EnvLike } from "./bridge";
+export { resolveBridgeToken, resolveBridgeUrl, type EnvLike } from "./bridge";
 export * from "./types";
 export * from "./review";
 export * from "./client";

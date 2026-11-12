@@ -44,7 +44,7 @@ func (r *Router) finishCall(e Request, key string, in, out int) {
 		"input_tokens": in, "output_tokens": out, "cache_read_tokens": 0, "cache_write_tokens": 0,
 		"cost_usd": cost, "cost_source": source,
 	}}
-	if r.opts.SpentAfter {
+	if !r.opts.NoSpentAfter && key != "" {
 		r.records[e.ID].body["spent_after_usd"] = r.spent[key]
 	}
 }

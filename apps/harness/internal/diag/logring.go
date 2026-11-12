@@ -18,6 +18,8 @@ type LogRing struct {
 	max   int
 	text  slog.Handler
 	buf   *bytes.Buffer
+	// hidden values are replaced wherever they occur in a recorded line.
+	hidden []string
 }
 
 // NewLogRing makes a ring of n lines.
@@ -63,6 +65,18 @@ func (r *LogRing) add(rec slog.Record) {
 	if len(r.lines) > r.max {
 		r.lines = r.lines[len(r.lines)-r.max:]
 	}
+}
+
+// Hide makes the ring replace v (a secret the harness itself holds, such as
+// the bridge API token) wherever it occurs in lines recorded from now on.
+// Values under 8 bytes are ignored.
+func (r *LogRing) Hide(v string) {
+	if len(v) < 8 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hidden = append(r.hidden, v)
 }
 
 // Lines returns the last n recorded lines.

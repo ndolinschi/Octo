@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage } from "./errorMessage";
+import { parseConnection } from "./hostConnection";
 import { parseNotices, type HostNotice } from "./hostNotices";
 
 /** Where the Tauri shell's harness is: still starting, up at `url` (with any notices, e.g. the router did not start), or failed with its message and log tail. */
-export type HostState = { phase: "starting" } | { phase: "ready"; url: string; notices: HostNotice[] } | { phase: "failed"; message: string; log: string };
+export type HostState =
+  { phase: "starting" } | { phase: "ready"; url: string; token: string; notices: HostNotice[] } | { phase: "failed"; message: string; log: string };
 
 const LOG_LINES = 20;
 
@@ -33,7 +35,7 @@ async function failure(e: unknown): Promise<HostState> {
 }
 
 /**
- * Asks the Tauri shell for the harness URL (`bridge_url` starts the harness on first use), and restarts it on retry
+ * Asks the Tauri shell for the harness URL and API token (`bridge_url` starts the harness on first use), and restarts it on retry
  * (`bridge_restart`). Disabled (`enabled` false) it stays in `starting` and calls nothing.
  */
 export function useHostBridge(enabled: boolean): { state: HostState; retry: () => void; retrying: boolean } {
@@ -46,8 +48,8 @@ export function useHostBridge(enabled: boolean): { state: HostState; retry: () =
     void (async () => {
       let next: HostState;
       try {
-        const url = await invoke<string>(attempt === 0 ? "bridge_url" : "bridge_restart");
-        next = { phase: "ready", url, notices: await notices() };
+        const { url, token } = parseConnection(await invoke<unknown>(attempt === 0 ? "bridge_url" : "bridge_restart"));
+        next = { phase: "ready", url, token, notices: await notices() };
       } catch (e) {
         next = await failure(e);
       }

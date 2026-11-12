@@ -96,7 +96,7 @@ Built in `apps/router` (20 new tests in `tests/harness_integration.rs`; 219 pass
 - **A budget sent in `x-octo-budget-usd` always rejects (402)** when it is the effective one, whatever
   `session_budget_action` says; the configured budget keeps its configured action when it is the smaller.
 - `x-octo-budget-usd` is ignored without `x-octo-budget-key`; the key needs no session id.
-- `x-octo-spent-usd` is the spend **before** the response it is on.
+- `x-octo-spent-usd` is the spend **before** the response it is on. The post-call figure is `spent_after_usd` in the call record (see "As built — spend after the call").
 - `x-octo-request-id` is `octo_<hex>` (the final attempt's id on a retry), not a history row id. Call records are
   kept in memory only (4096 rows); the SQLite history has no request id yet.
 - A call with neither a reported cost nor a price entry reads `cost_usd: 0`, `cost_source: "estimated"`.
@@ -401,3 +401,27 @@ Items 2 to 9 and 11 of "Owner's live run 2", in `apps/harness/` and `packages/ag
 11. **Trace** redacts e-mail addresses.
 
 Not verified: nothing was run against a real router, Claude Code, Grok, Copilot or Codex. Whether a real Claude Code reports `usage` on `session/prompt` (the harness handles both cases) is for the owner's trace to show; whether `window` now costs no more than `full` on a real caching provider is likewise not measured here (the test proves the byte-identical prefix, not the bill). The stemmer's behaviour on words outside the test corpus (irregular forms) is the standard algorithm's; the fleeting-vowel fold trades some precision for recall (`сон`/`сна` meet, as do a few unrelated words).
+
+## As built — spend after the call
+
+Closes the "ask for the router side" of live run 2, item 2.
+
+- **Router.** `CallRow.spent_after_usd` (`apps/router/src/auto/calls.rs`) is set for every call charged to a budget key (the
+  key from `x-octo-budget-key` or the one bound to the session): `Auto::charge` now adds the cost and reads the key's spend
+  under one ledger lock and returns it, so overlapping calls each get a figure that includes their own cost and the highest is
+  the key's spend. It covers the proxy path (non-streamed and streamed; the figure is taken when the response has finished),
+  compaction and the route endpoint (the classifier's cost; a call that costs nothing still reports the current spend). Calls
+  without a budget key have no such field. It is also in the persisted record. The micro-USD figure is serialised as USD
+  (f64), exact to six decimals.
+- **No header or SSE trailer.** `x-octo-spent-usd` stays "before this response": a streamed response's cost is known only after
+  the headers are sent, and the harness reads the call record after every response (`FetchCall`, which already retries a 404
+  once), so a final SSE comment/event would add a second path nothing consumes. Not built on purpose.
+- **Harness.** `Call.SpentAfterUSD` was already read (`internal/agent/route.go`); nothing changed there. The fake router now
+  mirrors the real behaviour: `spent_after_usd` on every keyed call by default, `NoSpentAfter` for an older router.
+- **Tests.** Router: `tests/harness_integration.rs::call_record_carries_the_post_call_spend_of_the_budget_key` (two buffered
+  and one streamed call, the next header equals the previous post-call figure, no key means no field), `tests/route_api.rs`
+  (classifier cost). Harness: `TestRouterSpendAfterConcurrentCallsFinishingOutOfOrder` (three overlapping calls with classifier
+  cost, finishing in reverse order, harness and router equal to the micro-USD); `TestRouterModeSpendIsTheRoutersNotASumOfRows`
+  runs with `NoSpentAfter` to keep covering the older-router path.
+- **Not verified:** against a real router process end to end beyond `scripts/e2e-router.sh` (see the run notes); no real upstream.
+

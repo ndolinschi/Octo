@@ -1236,6 +1236,72 @@ async fn call_record_carries_estimate_ratio_and_upstream_id() {
     assert_eq!(rows[1]["upstream_id"], "gen-near");
 }
 
+#[tokio::test]
+async fn call_record_carries_the_post_call_spend_of_the_budget_key() {
+    let reply = r#"{"type":"message","role":"assistant","content":[],"usage":{"input_tokens":10,"output_tokens":5,"cost":0.001234}}"#;
+    let sse = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":100,\"output_tokens\":1,\"cost\":0.000500}}}\n\n";
+    let mock = spawn_mock(
+        vec![
+            json_reply(reply),
+            json_reply(reply),
+            Reply {
+                status: 200,
+                content_type: "text/event-stream",
+                body: sse.to_string(),
+            },
+            json_reply(reply),
+        ],
+        JEV_LOW,
+    )
+    .await;
+    let state = priced_state(mock.addr);
+    let hints = [
+        ("x-octo-budget-key", "spend-key"),
+        ("x-octo-budget-usd", "100"),
+        ("x-octo-tier-hint", "fast"),
+    ];
+    let mut spent_after = Vec::new();
+    let mut headers_before = Vec::new();
+    for (i, session) in ["sa-1", "sa-2", "sa-3"].iter().enumerate() {
+        let mut body = session_turn(session);
+        if i == 2 {
+            body["stream"] = json!(true);
+        }
+        let response = send(&state, &body, &hints).await;
+        headers_before.push(hv(&response, "x-octo-spent-usd"));
+        let id = hv(&response, "x-octo-request-id");
+        let _ = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let (status, row) = get(&state, &format!("/autoroute/v1/calls/{id}")).await;
+        assert_eq!(status, StatusCode::OK);
+        spent_after.push(row["spent_after_usd"].as_f64().expect("spent_after_usd"));
+    }
+    let micros = |v: f64| (v * 1_000_000.0).round() as i64;
+    assert_eq!(micros(spent_after[0]), 1234);
+    assert_eq!(micros(spent_after[1]), 2468);
+    assert_eq!(
+        micros(spent_after[2]),
+        2968,
+        "streamed: known only at the end"
+    );
+    assert_eq!(headers_before, ["0.000000", "0.001234", "0.002468"]);
+    assert_eq!(state.auto.budget_spent("spend-key"), 2968);
+
+    let response = send(&state, &session_turn("sa-4"), &hints).await;
+    assert_eq!(hv(&response, "x-octo-spent-usd"), "0.002968");
+    let _ = body_json(response).await;
+
+    let response = send(
+        &state,
+        &session_turn("sa-nokey"),
+        &[("x-octo-tier-hint", "fast")],
+    )
+    .await;
+    let id = hv(&response, "x-octo-request-id");
+    let _ = body_json(response).await;
+    let (_, row) = get(&state, &format!("/autoroute/v1/calls/{id}")).await;
+    assert!(row.get("spent_after_usd").is_none(), "{row}");
+}
+
 #[test]
 fn estimate_ratio_needs_a_reported_cost_and_a_gap_over_25_percent() {
     use octo::history::{estimate_ratio, CostMicros, CostSource, ResolvedCost};

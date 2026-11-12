@@ -189,14 +189,12 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         .as_deref()
         .and_then(parent_session_id)
         .map(str::to_string);
-    if let Some(cost) = resolved.cost {
-        plan.state.auto.charge(
-            &plan.state.history,
-            session.as_deref(),
-            plan.hints.budget_key.as_deref(),
-            cost.0,
-        );
-    }
+    let spent_after = plan.state.auto.charge(
+        &plan.state.history,
+        session.as_deref(),
+        plan.hints.budget_key.as_deref(),
+        resolved.cost.map_or(0, |c| c.0),
+    );
     let served = model.clone().unwrap_or_default();
     let estimate_ratio = crate::history::estimate_ratio(&resolved);
     if let Some(ratio) = estimate_ratio {
@@ -219,6 +217,7 @@ fn record(plan: RecordPlan<'_>) -> Recorded {
         cost_source: crate::providers::utils::cost_source_label(resolved.source),
         estimate_ratio,
         upstream_id: generation_id.clone(),
+        spent_after_usd: spent_after.map(crate::auto::micros_usd),
         route: None,
     };
     plan.state.auto.record_call_persisted(

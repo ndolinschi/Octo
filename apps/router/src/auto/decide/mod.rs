@@ -249,23 +249,32 @@ impl Auto {
         }
     }
 
+    /// Charges a call and returns the budget key's spend once it was charged (micro-USD), under one lock so
+    /// overlapping calls each see a value that includes their own cost. `None` when the call has no budget key.
     pub fn charge(
         &self,
         history: &History,
         session_key: Option<&str>,
         budget_key: Option<&str>,
         micros: u64,
-    ) {
-        if micros == 0 {
-            return;
-        }
+    ) -> Option<u64> {
         let key = budget_key
             .map(str::to_string)
             .or_else(|| session_key.and_then(|id| self.budget_key_of(id)));
-        self.add_cost(session_key, budget_key, micros);
-        if let Some(key) = key {
+        let Some(key) = key else {
+            self.add_cost(session_key, budget_key, micros);
+            return None;
+        };
+        let after = self.ledger.lock().ok().map(|mut ledger| {
+            if micros > 0 {
+                ledger.add(&key, micros);
+            }
+            ledger.spent(&key)
+        });
+        if micros > 0 {
             history.add_budget_spend(key, micros);
         }
+        after
     }
 
     pub fn record_call_persisted(&self, history: &History, call: super::calls::PersistedCall) {

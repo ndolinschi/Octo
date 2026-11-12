@@ -70,7 +70,7 @@ func searchFilesHandler(rs *rootSet) tools.Handler {
 				return nil
 			}
 			if d.IsDir() {
-				if p != start && skipDirs[d.Name()] {
+				if p != start && (skipDirs[d.Name()] || isProtected(p)) {
 					return filepath.SkipDir
 				}
 				return nil

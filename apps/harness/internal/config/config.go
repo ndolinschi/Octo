@@ -164,8 +164,13 @@ type Config struct {
 	// standard input reaches EOF, so a harness started by a desktop app does not
 	// outlive it (--exit-on-stdin-close, HARNESS_EXIT_ON_STDIN_CLOSE=1; off by default).
 	ExitOnStdinClose bool
-	MaxTurns         int
-	Stream           bool
+	// APIToken is the bearer token the bridge's /v1 routes require
+	// (HARNESS_API_TOKEN); empty means serve generates one. NoAPIToken turns
+	// the check off (--no-api-token, HARNESS_NO_API_TOKEN=1: tests and scripts).
+	APIToken   string
+	NoAPIToken bool
+	MaxTurns   int
+	Stream     bool
 	// PromptCaching adds cache_control breakpoints to Messages requests
 	// (HARNESS_PROMPT_CACHING, default true). Turn it off for a gateway that
 	// rejects the field.
@@ -225,6 +230,14 @@ func Load() (Config, error) {
 		}
 		cfg.NoBuiltinPlugins = b
 	}
+	if v := os.Getenv("HARNESS_NO_API_TOKEN"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("HARNESS_NO_API_TOKEN: want bool, got %q", v)
+		}
+		cfg.NoAPIToken = b
+	}
+	cfg.APIToken = strings.TrimSpace(os.Getenv("HARNESS_API_TOKEN"))
 	if v := os.Getenv("HARNESS_DATA_DIR"); v != "" {
 		cfg.DataDir = v
 	}

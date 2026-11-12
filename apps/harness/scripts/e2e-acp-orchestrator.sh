@@ -12,6 +12,16 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; sleep 0.3; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# The harness requires a bridge API token on /v1: every harness started below gets this one, every curl sends it
+# (except to the router, which would forward it upstream). The check itself is exercised by the 401 test further down.
+export HARNESS_API_TOKEN="e2e-token-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+curl() {
+  case "$*" in
+    *127.0.0.1:8811*|*127.0.0.1:8812*) command curl "$@" ;;
+    *) command curl -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@" ;;
+  esac
+}
 jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 
 (cd "$ROOT/apps/harness" && go build -o "$TMP/harness" ./cmd/harness && go build -o "$TMP/fakeacp" ./examples/fakeacp \
@@ -60,6 +70,7 @@ scenario() { # $1 name, $2 port, $3 extra agent env, $4 expected transport, $5 e
   serve "$port" "$TMP/$name-data" "$TMP/$name-plugins"
   local serve_pid=$SERVE_PID
 
+  [ "$(command curl -s -o /dev/null -w '%{http_code}' "$base/v1/config")" = 401 ] || fail "/v1/config answered without the API token"
   curl -fsS "$base/v1/config" | jget '[o["value"] for o in d["acp_orchestrators"]]' | grep -q "acp:scripted" || fail "/v1/config does not list acp:scripted"
   code=$(curl -s -o "$TMP/bad.json" -w '%{http_code}' -X POST "$base/v1/projects" -H 'content-type: application/json' \
     -d '{"name":"x","models":{"orchestrator":"acp:nope"}}')

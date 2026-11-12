@@ -265,6 +265,12 @@ export interface Bridge {
 
 export type HttpBridgeOptions = {
   baseUrl: string;
+  /**
+   * The harness API token. Sent as `Authorization: Bearer <token>` on every request except `/health`; the two SSE
+   * streams (project events, language-server sessions) take it as a `?token=` query parameter instead, because
+   * `EventSource` cannot set headers. Leave it out when the harness runs with `--no-api-token`.
+   */
+  token?: string;
   fetch?: FetchLike;
   EventSource?: EventSourceCtor;
 };
@@ -356,15 +362,21 @@ export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSett
 
 export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
+  const token = (options.token ?? "").trim();
+  /** An SSE URL: EventSource sends no headers, so the token travels in the query. */
+  const streamUrl = (path: string) => `${base}${path}${token === "" ? "" : `${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`}`;
 
   async function request(method: string, path: string, body?: unknown, signal?: AbortSignalLike): Promise<unknown> {
     const doFetch = options.fetch ?? globalFetch();
     const init: { method: string; headers?: Record<string, string>; body?: string; signal?: AbortSignalLike } = { method };
     if (signal) init.signal = signal;
+    const headers: Record<string, string> = {};
+    if (token !== "" && path !== "/health") headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) {
-      init.headers = { "Content-Type": "application/json" };
+      headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
+    if (Object.keys(headers).length > 0) init.headers = headers;
     let res: FetchResponseLike;
     let text: string;
     try {
@@ -554,14 +566,14 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       openLspSession(
         {
           request,
-          openStream: (path) => new (options.EventSource ?? globalEventSource())(`${base}${path}`),
+          openStream: (path) => new (options.EventSource ?? globalEventSource())(streamUrl(path)),
         },
         p(id),
         serverId,
       ),
     subscribe(id, handlers) {
       const Ctor = options.EventSource ?? globalEventSource();
-      const source = new Ctor(`${base}${p(id)}/events`);
+      const source = new Ctor(streamUrl(`${p(id)}/events`));
       source.onopen = () => handlers.onOpen?.();
       source.onerror = (err) => handlers.onError?.(err);
       for (const type of BRIDGE_EVENT_TYPES) {

@@ -26,8 +26,16 @@ pub struct CallRow {
     /// it returned one, else whatever `id` the response carried (Anthropic-style `msg_…` on the messages path).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream_id: Option<String>,
+    /// The budget key's spend (USD, micro-USD precision) once this call was charged, classifier cost included.
+    /// Set for every call charged to a budget key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spent_after_usd: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub route: Option<RouteRecord>,
+}
+
+pub fn micros_usd(micros: u64) -> f64 {
+    micros as f64 / 1_000_000.0
 }
 
 #[derive(Debug, Clone, PartialEq)]

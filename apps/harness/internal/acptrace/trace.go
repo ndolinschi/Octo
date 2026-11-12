@@ -46,6 +46,28 @@ func Configure(dataDir string, on bool) {
 	enabled.Store(on)
 }
 
+var (
+	everywhereMu sync.Mutex
+	everywhere   []string
+)
+
+// HideEverywhere makes every trace redact v, whichever process it belongs to
+// (the harness's own bridge API token). Values under 8 bytes are ignored.
+func HideEverywhere(v string) {
+	if len(v) < 8 {
+		return
+	}
+	everywhereMu.Lock()
+	defer everywhereMu.Unlock()
+	everywhere = append(everywhere, v)
+}
+
+func hiddenEverywhere() []string {
+	everywhereMu.Lock()
+	defer everywhereMu.Unlock()
+	return append([]string(nil), everywhere...)
+}
+
 // SetEnabled switches tracing on or off for sessions that start afterwards.
 func SetEnabled(on bool) { enabled.Store(on) }
 

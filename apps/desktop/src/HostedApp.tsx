@@ -15,7 +15,8 @@ export default function HostedApp({ search }: { search: string }) {
   // A dismissal belongs to the url it was made on: a restart starts a new run with new notices.
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
   const hostUrl = state.phase === "ready" ? state.url : null;
-  const choice = useMemo(() => chooseBridge(search, import.meta.env, hostUrl), [search, hostUrl]);
+  const hostToken = state.phase === "ready" ? state.token : null;
+  const choice = useMemo(() => chooseBridge(search, import.meta.env, hostUrl, hostToken), [search, hostUrl, hostToken]);
   if (state.phase !== "ready") return <HostStatus state={state} retrying={retrying} onRetry={retry} />;
   const notice = dismissedFor === state.url ? undefined : state.notices[0];
   return (

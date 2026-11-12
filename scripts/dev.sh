@@ -42,6 +42,8 @@ Ctrl+C stops everything. Runs `pnpm install` first when node_modules is missing.
   --bridge-port PORT   harness port (default 8790, or $OCTO_DEV_BRIDGE_PORT); the UI is pointed at it
   -h, --help           this text
 
+The harness requires a bridge API token (HARNESS_API_TOKEN) on /v1: dev.sh generates one per run, or uses the
+HARNESS_API_TOKEN you export, and gives it to the harness and to the UI dev server.
 The harness keeps its data in its default data directory; set HARNESS_DATA_DIR to use another one.
 USAGE
 }
@@ -238,6 +240,11 @@ if [[ "$MOCK" -eq 1 ]]; then
   port_in_use "$MOCK_PORT" || { echo "dev.sh: the mock model server did not start on port $MOCK_PORT" >&2; exit 1; }
 fi
 
+# One bridge API token per run (HARNESS_API_TOKEN from the caller wins, so a script can know it): the harness
+# requires it on /v1, the UI dev server sends it (VITE_HARNESS_API_TOKEN). It travels in the environment only.
+API_TOKEN="${HARNESS_API_TOKEN:-$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')}"
+export HARNESS_API_TOKEN="$API_TOKEN"
+
 HARNESS_ARGS=(serve --addr "127.0.0.1:$BRIDGE_PORT")
 if [[ "$ROUTER" -eq 1 ]]; then
   # The router first, then the harness behind it. Like the app, the router needs only OCTO_CONFIG; it forwards the
@@ -281,7 +288,7 @@ if [[ "$healthy" -ne 1 ]]; then
   exit 1
 fi
 
-bg_quiet env VITE_HARNESS_BRIDGE_URL="http://127.0.0.1:$BRIDGE_PORT" OCTO_DEV_UI_PORT="$UI_PORT" pnpm --filter @octo/desktop dev
+bg_quiet env VITE_HARNESS_BRIDGE_URL="http://127.0.0.1:$BRIDGE_PORT" VITE_HARNESS_API_TOKEN="$API_TOKEN" OCTO_DEV_UI_PORT="$UI_PORT" pnpm --filter @octo/desktop dev
 PIDS+=("$!")
 UI_PID="$!"
 
