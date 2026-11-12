@@ -787,6 +787,63 @@ monochrome dithered illustration):
     - Below 720px of panel width the list and the detail are two steps with a back arrow, not two cramped columns.
     The same list + detail frame (header row, 340px list, readable detail, first item selected) is used by Changes
     and Review, so the three read as one family.
+67. **The frame: tabs live in the top row, content is only content** (owner, 2026-11-12, with screenshots of
+    OpenCode's desktop app as a reference to analyse and adapt, not copy: "main tabs on top, sub-tabs here, a
+    sidebar there, and it is not distributed … it would be interesting to move the tabs into the header, outside
+    the content, so that content answers only for content … top right it is unclear why there is a model choice
+    when the prompt input has one … useful things can live at the top: the project's name, hooks to run, e.g.
+    starting the project"). Supersedes the title-bar contents of decisions 54 and 64(a):
+    - **One top row (40px) across the window, made of each group's header.** Panels reach the top of the window;
+      a group's first row *is* its tab strip and sits at title-bar height. The left-most group's row starts with
+      the window-controls inset, the sidebar toggle and back/forward. With one group the row reads: controls ·
+      tabs · project actions. Empty areas of every row drag the window.
+    - **The conversation tab is the project's breadcrumb:** "Project / what this conversation is about" (the
+      latest task title, dim), with the state glyph; its "⋯" holds project actions (settings, export, rewind…).
+    - **Right end of the top row: project actions, not model choice.** The model chip is removed from the top
+      row — the composer is the one place to choose a model. In its place: at most two pinned **project
+      commands** (decision 68) and the "+" that opens a tab. Sub-agent chips stay next to the breadcrumb.
+    - **Three levels, three looks — never two rows that both look like tabs.** Level 1: tabs, only in the top
+      row. Level 2: a view's own switcher is a segmented control inside a 44px content header that ends in a
+      hairline. Level 3: a list column is separated from its detail by a full-height hairline. A view with no
+      switcher has no content header at all.
+    - **Width floors.** The conversation column is never narrower than 420px: a divider drag stops there, and
+      when the window cannot give every group its floor the right-most group becomes a tab in the remaining
+      group instead of squeezing the conversation. Lists 280px, editors 360px.
+68. **Project commands in the top row.** A project has named commands (for example "Dev server", "Tests",
+    "Build"): a name, a shell command, a working folder. Up to two are pinned as quiet buttons in the top row; the
+    rest are in a "Run ▾" menu; suggestions come from the project's `package.json` scripts, `Makefile` targets
+    and `justfile` (shown as suggestions, never run unasked). Running one opens a "Run: <name>" tab with live
+    output, Stop and Re-run; a running command shows a small spinner on its button; exit status is shown, and
+    "Send output to the conversation" attaches the tail as context. Commands are started by the user, never by an
+    agent, and run with the same environment rules as the shell tool. Harness: project field `commands`,
+    `POST /v1/projects/{id}/commands/{name}/run` → run id, output over the event stream, `POST …/runs/{rid}/stop`.
+69. **Nothing flickers, nothing jerks** (owner: "the UI flickers very often — I do something and it flickers;
+    it jerks in an ugly way when I write a long prompt"). Rules, each with a test that fails when it is broken:
+    - **Typing never touches the conversation.** A keystroke re-renders the composer only (0 renders of the
+      transcript, measured); when the composer grows, the conversation's bottom inset changes in the same frame
+      and the last line stays exactly where it was (0px movement while pinned to the bottom, 0px of the reading
+      position otherwise); growth is not animated; the composer stops growing at 10 lines and scrolls inside.
+    - **No remounts on interaction.** Clicking a row, tab, chip or button never unmounts and remounts a panel
+      (stable keys; a test counts mounts across the standard click path = 0 beyond the opened surface).
+    - **No fallback flashes.** A lazy view keeps the previous content until it is ready (transition), or shows a
+      skeleton of the final size; chunks for the next likely views are fetched when idle and on hover/focus of
+      their trigger. A spinner replacing content for less than 300 ms is a defect.
+    - **Popovers and dialogs are positioned before their first paint** (never drawn at 0,0 or at a wrong size
+      for a frame); they fade in opacity only, 120 ms.
+    - **No layout shift from late content** (scrollbars reserved with `scrollbar-gutter: stable`, images and
+      skeletons sized, fonts with matching fallbacks).
+    - A frame-by-frame script (record 2 s around each action of the standard path; compare frames outside the
+      acted-on surface) runs in Chromium here and is written so the owner can run it against the app's WebKit
+      window (`pnpm ui:flicker --url …`).
+70. **The composer highlights what it understands.** `@file` mentions, `/commands`, `#task` references and inline
+    `` `code` `` are tinted in the text as they are typed (mention: accent-tinted pill-less text with the file
+    glyph on hover; command: weight 500; unknown `@`/`/` stay plain), without changing metrics — the highlight is a
+    layer under the text, so the caret, selection, IME and undo are the browser's own. Pasted long text over 2 000
+    characters becomes an attachment pill ("Pasted text, 3.2k chars") that can be expanded back.
+71. **A folder has no label field.** Choosing a folder is enough: its label is the folder's own name (made unique
+    with the parent's name when two folders share one); it can be renamed later in project settings, never asked
+    for up front. "New project" shows chosen folders as removable chips with one "Add folder" that opens the
+    picker with **Browse…** first; the project's name defaults to the first folder's name.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
