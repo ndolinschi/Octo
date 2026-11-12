@@ -1,177 +1,220 @@
-# Handover — status on 2026-11-11
+# Handover — status on 2026-11-12
 
-For whoever continues the work in a new session. It says what exists, what was verified and by whom, what is open,
-how the work is run, and what to do next, in order. It links to the specs instead of repeating them. The system
-overview (parts, flows, data locations, every environment variable, status table, specs index) is
-[`../ARCHITECTURE.md`](../ARCHITECTURE.md); the monorepo map and commands are [`../../AGENTS.md`](../../AGENTS.md).
+For whoever continues the work: what exists and how far it is verified, what is open, how work runs, what comes next.
+The specs hold the detail; the system overview is [`../ARCHITECTURE.md`](../ARCHITECTURE.md), the monorepo map and
+commands are [`../../AGENTS.md`](../../AGENTS.md).
 
-**Branch:** `claude/harness-ui-v6-completion-8ynrkq`, to be merged to `main` by pull request (none opened yet);
-follow-up work starts from fresh `main`. At the time of writing other executors were editing `packages/ui/src`,
-`apps/desktop/src`, `apps/harness` and the specs in the same working tree, uncommitted (memory M2 among them), so the
-tree may not build until they finish.
+**Branch:** `claude/harness-ui-v6-completion-8ynrkq`. Code at `7d9fe19` (UI decision 78); this file is the commit on top.
+Not merged to `main`; PR status not recorded. The live checklist asks for `4a22c5f` or later; its items still apply.
 
 ## 1. What exists
 
-| Part | State |
-| --- | --- |
-| Harness (`apps/harness`) | Projects, orchestrator + nested sub-agents, per-project SQLite, file API, plugin registry (language servers, ACP agents, tool servers), ACP orchestrator with an MCP server, router integration (hints, ledger, budget, compaction, `tier: auto`), usage / cost / limits, v7 (changes and diffs, approvals, queue, forms and secrets), memory M1, settings API over `harness.env`, `harness doctor` + `GET /v1/diagnostics` + ACP wire trace, schema version stamps, child-environment allow-list, eleven agent manifests (embedded) |
-| Router (`apps/router`) | Proxy + autoroute ladder; never-pay-more-for-less price rule; route endpoint for delegation; hint and result headers; budget keys; call records and spend persisted in SQLite; `OCTO_EXIT_ON_STDIN_CLOSE` |
-| agent-client | HTTP + SSE client, reducer, message-port bridge, LSP sessions; optional `Bridge` members for settings, diagnostics, v7, memory |
-| UI (`packages/ui`) | Workspace tabs, orchestrator header and team line, chat, delegation cards, agent transcripts, file view with Monaco, code comments, LSP client, usage tab, command palette, demo bridge. Layer rule as lint errors, no cycles. **Does not yet use** the v7, settings, diagnostics or memory `Bridge` methods |
-| Desktop (`apps/desktop`) | Vite host (`BridgeShell`, `HostedApp`, host status and notice screens); Tauri shell with the `octo-sidecar` crate: free ports, login-shell `PATH`, health waits, router first then harness, stop order, stdin-close exit, pid files, `bridge_*` commands; `scripts/dev.sh`, `build-sidecar.sh`, `install.sh` |
-| Specs | `specs/` and `research/` are listed with their status in `../ARCHITECTURE.md#specs-index`. Newest: UI decisions 45-48 (aurora while working, small effects, borrowed behaviours, one model name) in the UI spec |
+Marks: **verified live by the owner** (the owner's Linux runs 1 and 2 of 2026-11-11) · **verified here on scripted
+agents and demo data** (tests, mock model, scripted ACP agent, fake router, fake `gh`, real router with a mock upstream,
+Playwright on `?demo=1`) · **built, not verified** · **designed, not built**. No mark recorded: "status not recorded".
+Only Claude Code has run as a working agent with a real CLI; Copilot and Grok were run by the owner logged out. Not
+verified anywhere: Windows, the macOS window, the Tauri glue in a real webview, touch, screen readers, WebKit for the newer UI.
 
-## 2. What was verified, and by whom
+### Router (`apps/router`)
 
-Three kinds of evidence exist. Do not mix them in a report.
+- Proxy for OpenAI-style, Anthropic Messages and OpenRouter; forwards the caller's credential. **Verified live** (run 2:
+  router cost matched the OpenRouter bill).
+- Autoroute ladder and price rule (`x-octo-decided-tier`, `x-octo-price-swap`). **Verified live** (run 2; the packaged-app
+  check is checklist 0.2). A low-tier price against a billed call: **not verified**.
+- `POST /autoroute/v1/route` for `tier: auto`. **Verified live** (run 1: classifier 49–93 ms; easy went to Claude Code,
+  hard to the deep tier).
+- Budget stop: **verified live** (run 2). Spend restored after a restart, `spent_after_usd`, tier hints and their 400s,
+  SQLite call records, embedded default configuration: **verified here** (tests, `e2e-router.sh`).
+- Compaction for the client (`x-octo-trigger: compact`): **built, not verified**; the mock upstream cannot produce it.
+- 326 tests at the last run of the gates here.
 
-1. **The orchestrator (the build environment).** No provider key, no vendor agent CLI, no WebKitGTK, no macOS. It ran
-   the gates of section 4 and the scripted end-to-end checks against the mock model, the scripted ACP agent
-   (`internal/fakeacp`), the fake router and a real router with a mock upstream: `e2e-acp-orchestrator.sh`,
-   `e2e-router.sh`, `e2e-v7.sh`, `scripts/test-dev-sh.sh` (plain and `--router --mock`), the `octo-sidecar` tests, frontend
-   lint / tests / build / bundle size, and screenshots of the UI on demo data. Counts (tests, bytes) are in each spec's
-   "As built" note, taken on the day they were written.
-2. **Executors (sub-agents).** Their own acceptance scripts (UI workspace and comments suites, spacing audit, contrast
-   tables) are theirs; the orchestrator re-ran the gates but not those scripts. The spec notes say which is which.
-3. **The owner's live Linux run (2026-11-11).** Real Claude Code over ACP as orchestrator, a real router, the real
-   classifier (answered in 49-93 ms; an easy task went to Claude Code on the subscription, a hard one to the deep tier).
-   It found: a flat-rate agent's cost counted as spend (fixed: estimates are not spend), two budget numbers (fixed:
-   one), sidecars surviving a killed app (fixed: stdin-close exit), install and first-run defects (P8b), and a silent
-   Copilot turn that was **not reproduced** (the wire trace is there to catch it). Copilot and Grok were started by the
-   owner; the other seven agent manifests have never been run.
+### Harness (`apps/harness`)
 
-**Not verified anywhere:** a billed upstream call and the low-tier price against it; real models using memory search; the
-Tauri glue compiled in this environment (CI compiles it); `scripts/install.sh` on macOS and the installed app; the Tauri
-window and themes in a real webview; touch, screen reader and forced colours in the UI; each real agent CLI's handling of
-MCP servers, `session/load`, tool titles and permission requests; Windows.
+- Bridge over HTTP and SSE, projects, per-project SQLite, file API, events with `seq`: **verified live** (the app used it
+  in both runs); routes **verified here** (Go tests, `e2e-acp-orchestrator.sh`).
+- ACP orchestrator with Claude Code (one session across requests, sub-agents, stop, logged-out error) and `spawn_agent`
+  with a fixed tier or agent: **verified live** (runs 1 and 2).
+- Copilot and Grok logged out ("not logged in", with the hint): **verified live** (run 2). Logged in: **built, not
+  verified**. Run 1's silent Copilot turn: **not reproduced**.
+- Codex, cursor, opencode, antigravity, devin, droid, omp and pi: manifests from vendor docs; **built, not verified**,
+  no run recorded.
+- Built-in loop (Messages API) with tiers: **built, not verified** with a real key (the owner's billed calls went through
+  the router; the tests use the mock model).
+- Router client (hints, one spend number, budget gate, `tier: auto` fallbacks): **verified live** (runs 1 and 2). Equal
+  spend after the last call: checklist 1.2.
+- Usage, cost and limits (a flat-rate agent's cost is an estimate, not spend): **verified live** for run 1's defects; the
+  fixes wait for checklist 1.1.
+- Memory M1 (task records, facts, memory files, FTS5 search, digest): **verified live** for some word forms and the task
+  rules (run 2); the rest **verified here**.
+- Memory M2 (window context and receipts, opt-in): **verified here** (300 scripted exchanges). Run 2 measured the first
+  version 15% dearer than `full` on a caching provider, so it stays opt-in. The stepped window is **built, not verified**.
+- Live activity (thinking, plan, tool rows, "quiet" notice), settings API over `harness.env`, providers
+  (`GET /v1/providers`, `422`, `409`, live key), v7 API (changes, approvals, queue, forms, secrets), inline completion
+  endpoint: **verified here**. Real agents' chunks (checklist 2.3), a supervised run (2.9), completion latency (2.11).
+- Pull-request review RV1 (list, worktrees, comments, one atomic submit): **verified here** with a fake `gh`; list and diff
+  **verified live** with a real `gh` on a GitHub Enterprise host (owner, run 2); posting a review is not verified. The AI pass (RV3): **designed, not built**.
+- Bridge API token, `harness doctor`, `GET /v1/diagnostics`, ACP wire trace, schema versions (now 6; a newer database is
+  refused), child environment allow-list, files, plugins, LSP relay: **verified here** (the owner's report is checklist 1.3
+  and 1.4).
 
-## 3. What is open
+### agent-client (`packages/agent-client`)
 
-- **Owner decisions:** S3 a or b (default a: the route endpoint; b, proxying vendors' private endpoints, is not built and
-  not recommended); Grok in automated tests (no documented headless login: test with an API key in CI, the subscription on
-  a developer machine); bots questions 1-2 (`specs/2026-11-11-bots-design.md`). The router ladder decision is closed by
-  the price rule (`specs/2026-11-11-router-harness-integration.md`, "Decisions after the owner's live run").
-- **Defaults waiting on the UI:** `HARNESS_DEFAULT_ACCESS` is `full` until approval cards exist, then it flips to
-  `supervised`; ACP permission requests are auto-approved in a `full` project.
-- **Gaps recorded in specs:** a router that dies after a successful start is not watched; an ACP `session/load` into a new
-  process may count a continued agent's counters twice once; linking an MCP `spawn_agent` call to the agent's tool-call row is
-  a heuristic; thinking and plan updates of ACP agents are dropped; the compaction summary is not shown in the UI (a
-  "History compacted" marker is to do); settings and the harness writing `harness.env` at the same moment were not tested.
-- **Doc debt:** differences between specs and code are listed in `../ARCHITECTURE.md#known-contradictions`. The owner
-  checklist `docs/superpowers/LIVE-CHECKLIST.md` (R1 item 7) is not written.
-- **Code debt:** `packages/ui` Q5 (split `WorkspaceProvider.tsx`, `lib/streak.ts`, providers; `plans/2026-11-10-frontend-code-quality.md`);
-  the harness items of `research/2026-11-11-synara-gap.md`; the open majors of `research/2026-11-11-ui-review-v6.2.md`.
+- HTTP and SSE client, reducer, message-port bridge, LSP sessions, optional `Bridge` members, token option: **verified
+  here** by the package tests.
 
-## 4. Working rules
+### UI (`packages/ui`)
+
+- Workspace tabs, title bar as the header (decision 54), conversation, composer, delegation cards, transcripts, Usage,
+  palette, files with Monaco, comments, LSP client: **verified here** on demo data.
+- One model control in the composer, title bar and project dialog; sub-agents in the title bar (decision 34): **verified
+  here** (usability pass, 2026-11-12; 383 unit tests).
+- Settings page, providers pane, connect screen (decisions 53, 58, 59): **verified here** on demo data, not against a live
+  `/v1/providers`. Settings has one scope only.
+- Memory view, review workspace RV2 (pick, diff, comments, submit), inline completion UI: **verified here** on demo data;
+  not against a real harness, real GitHub or a real model.
+- Approval cards, forms, queue and the Changes tab (v7 UI, mounted in `cedc10c`): verification status not recorded.
+- Layer rules, the cycle check and the spacing audit: **verified here** (`pnpm lint`, `pnpm audit:spacing`).
+
+### Desktop (`apps/desktop`)
+
+- Tauri shell with the `octo-sidecar` crate (free ports, login-shell `PATH`, health waits, router before harness, stop
+  order, stdin-close exit): **verified live** (run 2: sidecars exit with the app in under a second). The crate's tests:
+  **verified here** with fake binaries.
+- `scripts/install.sh`: one pass on Linux, **verified live** (run 2). macOS: **built, not verified**.
+- macOS title bar (overlay, traffic lights, drag, double-click zoom, full screen): **built, not verified**; the Rust side
+  is not compiled here.
+- Tauri system folder dialog: **designed, not built**. "Browse…" is absent until the dialog plugin is added (checklist 2.5).
+- Host screens; `scripts/dev.sh` (`pnpm dev:all`) and `scripts/test-dev-sh.sh`, plain and `--router --mock`: **verified here**.
+
+### Designed, not built
+
+Parity backlog B1–B10 (`specs/2026-11-12-parity-backlog.md`): approved, no commits. Bots (`specs/2026-11-11-bots-design.md`):
+draft. Savings view I3. Subscription routing through the router S3b: not recommended; an owner decision.
+
+## 2. Open UI decisions not built yet
+
+Decisions 64–78 in [`specs/2026-11-10-project-harness-ui.md`](specs/2026-11-10-project-harness-ui.md); designed, with no
+"As built" note. Brackets say what exists.
+
+64. Calm, evenly distributed screens: one job per bar, one filled button per surface, whitespace instead of borders.
+65. Context indicator with a breakdown popover, "Compact now" and "≈" estimates. [A ring exists; no popover.]
+66. Memory as one header row and one list-and-detail frame, not tabs. [Four tabs in one control today.]
+67. The frame: tabs in the top row, three levels, width floors, the conversation tab as the project breadcrumb.
+68. Project commands in the top row: two pinned, a "Run" menu, output in a tab.
+69. Nothing flickers or jerks, with frame tests. [`pnpm ui:flicker` is not in `package.json`.]
+70. Composer highlights `@file`, `/command` and `#task`; a long paste becomes an attachment.
+71. A folder has no label field; "Browse…" comes first. [The label field is still there, decision 51.]
+72. Provider marks, a preferred model and roles; connected means selectable; `PUT /v1/providers/{id}/prefs`.
+73. A status bar: branch and changes, running commands, agents working, spend, connection.
+74. Settings in two scopes, Defaults and the project. [One scope today.]
+75. Remove every element that does not help the user do or decide something (Home's recap and statistics).
+76. Motion only while work is in progress; tests on `document.getAnimations()`.
+77. Skeletons for anything slower than 150 ms; the cached pull-request list with `stale: true`; the picker layout.
+78. Review as a workspace: all open PRs, whole screen, threads inline, check out, run. [RV2 has diff, comments, submit.]
+
+## 3. In progress
+
+- Nothing else is in progress in this worktree. Decisions 64–78 exist as documents only; item 1 builds them.
+
+## 4. Next, in order
+
+1. agent model picker with provider marks, preferred model and roles; folder Browse and no label field; shared empty
+   states; clickable context indicator
+2. harness: model discovery, connected-means-selectable, provider prefs, system folder dialog
+3. harness parity B1–B7
+4. harness review additions: all PRs, threads, checkout, project commands
+5. merge the macOS traffic-light fix and the Tauri folder dialog (uncompiled Rust, owner must run `OCTO_DEBUG_CHROME=1`)
+6. the frame: tabs in the top row, three levels, width floors, status bar
+7. no-flicker and motion tests
+8. Memory, Changes and Review on one list+detail frame
+9. settings scopes
+10. project commands UI
+11. composer highlighting
+12. Home clean-up and skeletons
+13. notifications, quick open, skills
+
+Notes: item 1 has the UI part of decision 72, item 2 its harness part. Items 3 and 13 are the parity backlog (B1–B7,
+B8–B10). `OCTO_DEBUG_CHROME` is not in this branch's code yet; item 5 adds it.
+
+## 5. What is open
+
+- **The owner's run.** [`LIVE-CHECKLIST.md`](LIVE-CHECKLIST.md) (checklist 3) is written and not run. Send back the step
+  number, the `harness doctor` output and the trace file.
+- **Default access.** `HARNESS_DEFAULT_ACCESS` is still `full` (`apps/harness/cmd/harness/serve.go`), though the UI shows
+  approval cards. The flip to `supervised` is a decision; the parity backlog wants "allow always" (B4) first.
+- **Owner decisions.** S3: a or b (default a). Bots questions 1–2. Grok in automated tests: an API key in CI, the
+  subscription on a developer machine (default).
+- **Gaps in the specs.** A router that dies after start is not watched. An ACP `session/load` may count a continued
+  agent's counters twice. No "History compacted" marker (gap G4 of the comparison). A note edited mid-turn is not
+  announced to an ACP agent.
+- **Security.** `bash` is not sandboxed and can read the bridge token file as the harness's user; a supervised project
+  stops the command at an approval card (see [`specs/2026-11-11-pr-review-design.md`](specs/2026-11-11-pr-review-design.md)).
+- **Code debt.** `packages/ui` Q5 ([`plans/2026-11-10-frontend-code-quality.md`](plans/2026-11-10-frontend-code-quality.md)):
+  `WorkspaceProvider.tsx` (543 lines at v6.3) and `lib/streak.ts` (354) not split; not measured again.
+- **Doc debt.** Spec and code differences: [`../ARCHITECTURE.md`](../ARCHITECTURE.md#known-contradictions).
+
+## 6. Working rules
 
 **Roles.** One orchestrator session decides, writes contracts (specs with numbered acceptance criteria), briefs, verifies
-independently, commits, and reports to the owner. Executors do bounded pieces of work in the shared working tree: Go and
-client code, UI where visual judgment matters, documentation, read-only research, read-only review. The owner reviews
-finished work and tries what cannot be tried here.
+independently, commits and reports. Executors do bounded pieces: Go and client code, UI where visual judgment matters,
+documentation, read-only research and review.
 
-**The loop for each feature.** Look (read the code, measure instead of guessing) → write the contract and commit it →
-dispatch executors only on disjoint paths (one per directory: `apps/harness`, `packages/agent-client`, `packages/ui`,
-`apps/desktop`, docs) → brief like a peer (goal, files to read first, exact scope, constraints, mandatory verification, a
-final report that separates "ran" from "did not run") → verify independently (re-run the gates, read key screenshots,
-run the live stack for behaviour claims) → commit per finished piece, only when its gates pass → review as a separate
-read-only agent → show the owner what is still wrong or unproven.
+**Models.** Sonnet writes code, tests and UI. Haiku does research, documentation and small mechanical edits, each with an
+exact contract. Opus only when the owner asks. The orchestrator re-runs every gate itself before committing.
+
+**Worktrees.** An executor first runs `git reset --hard <work branch>` in its worktree and checks `git log --oneline -1`.
+It never uses `git stash` (the stack is shared); it sets work aside with a WIP commit, and commits only when briefed.
+
+**Third-party CLIs.** No third-party agent CLI runs with this sandbox's environment. Run one only with an empty
+environment (`env -i`), and only on the owner's machine for anything that needs a login.
+
+**The loop for each feature.** Look (measure, do not guess) → contract, committed → executors on disjoint paths
+(`apps/harness`, `packages/agent-client`, `packages/ui`, `apps/desktop`, docs) → verify independently → commit per
+finished piece → read-only review → tell the owner what is still wrong or unproven.
 
 **Rules that are easy to break.**
 
-- Executors never run git write commands (add, commit, push, checkout, stash); the orchestrator commits after review.
-- Every harness started by a test or script sets `HARNESS_NO_BUILTIN_PLUGINS=1`; otherwise the router can pick
+- Executors never run git write commands unless the brief names one; the orchestrator commits after review.
+- Every harness started by a test or script sets `HARNESS_NO_BUILTIN_PLUGINS=1`, or the router may pick
   `acp:claude-code` and the harness fetches an adapter with `npx`.
-- No third-party agent CLI and no provider key in this environment. Test with `examples/mockllm`, `examples/fakeacp`,
-  `internal/fakerouter`. Say "not verified" for anything that needs the real thing.
-- A change to the shared `Bridge`: client first (`types.ts`, `client.ts`, message-bridge allow-list, tests), then the UI's demo
-  bridge if the member is not optional. The UI does not type-check until both are done.
-- The three persistence layers (harness, router, shell) share no file. Do not import Tauri in `packages/ui`.
+- No vendor CLI and no provider key here: test with `examples/mockllm`, `examples/fakeacp`, `internal/fakerouter`; say
+  "not verified" for anything that needs the real thing.
+- A change to the shared `Bridge`: client first (`types.ts`, `client.ts`, the message-bridge allow-list, tests), then the
+  UI's demo bridge if the member is not optional.
+- The harness, the router and the shell share no file. Do not import Tauri in `packages/ui`.
 - A behaviour change updates the spec's "As built" section and the feature's doc page in the same commit.
-- A stop hook asks to commit whenever the tree is dirty; while an executor is mid-edit the tree does not build, so commit
-  when it finishes. The container is ephemeral: whatever is not pushed is lost, including the scratchpad (screenshots,
-  review reports). UI executors wipe their screenshot folders: copy what you want to keep.
-- Owner feedback that arrives late can be forwarded to a running executor as a numbered addendum.
+- Commit when a finished piece's gates pass. The container is ephemeral: anything uncommitted or unpushed is lost,
+  including the scratchpad. UI executors wipe their screenshot folders; copy what to keep.
+- Late owner feedback goes to a running executor as a numbered addendum.
 
 **Gates per area** (from the repo root unless a `cd` is shown):
 
 | Area | Commands |
 | --- | --- |
-| Router | `cargo fmt --check` · `cargo clippy -p octo --all-targets -- -D warnings` · `cargo test -p octo` (remove proxy variables from the environment first) |
-| Harness | `cd apps/harness && gofmt -l . && go vet ./... && go test -race ./...` |
-| Harness end to end | `bash apps/harness/scripts/e2e-acp-orchestrator.sh` · `cargo build -p octo && bash apps/harness/scripts/e2e-router.sh` · `bash apps/harness/scripts/e2e-v7.sh` (each needs Go and python3, touches only a temp dir) |
-| agent-client | `pnpm --filter @octo/agent-client lint` · `pnpm --filter @octo/agent-client test` · `pnpm --filter @octo/agent-client format:check` |
-| ui | `pnpm --filter @octo/ui lint` · `... test` · `... format:check`; with a dev server up: `node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420` must print `total=0`; drive `?demo=1` with Playwright in dark and light at 1440, 1100, 390 and read the screenshots |
-| desktop | `pnpm --filter @octo/desktop lint` · `... test` · `... build` · `node scripts/check-bundle-size.mjs` |
-| whole frontend | `pnpm lint` (includes `scripts/check-cycles.mjs`) · `pnpm format:check` · `pnpm test:scripts` |
-| Shell | `cd apps/desktop/src-tauri && cargo test -p octo-sidecar` (python3 for the router tests); `cargo check` needs the sidecar binaries (`bash scripts/build-sidecar.sh --no-router`) and WebKitGTK |
-| Dev stack | `pnpm test:dev-sh` and `pnpm test:dev-sh -- --router --mock` |
+| Router | `cargo fmt --check` · `cargo clippy -p octo --all-targets -- -D warnings` · `cargo test -p octo` (proxy variables removed) |
+| Harness | `cd apps/harness && gofmt -l . && go vet ./... && go test -race ./...` (CI also runs `go build`) |
+| Harness end to end | `bash apps/harness/scripts/e2e-acp-orchestrator.sh` · `cargo build -p octo && bash apps/harness/scripts/e2e-router.sh` · `bash apps/harness/scripts/e2e-v7.sh` |
+| agent-client | `pnpm --filter @octo/agent-client lint` · `... test` · `... format:check` |
+| ui | `pnpm --filter @octo/ui lint` · `... test` · `... format:check`; with a dev server up, `pnpm --filter @octo/ui audit:spacing` prints `total=0`; `packages/ui/scripts/layout-shift.mjs` for layout shift |
+| desktop | `pnpm --filter @octo/desktop lint` · `... test` · `... build`, then `pnpm check:bundle` |
+| whole frontend | `pnpm lint` (includes `scripts/check-cycles.mjs`) · `pnpm format:check` · `pnpm test:scripts` (`scripts/eslint/`) |
+| Shell | `cd apps/desktop/src-tauri && cargo test -p octo-sidecar`; `cargo check` needs `bash scripts/build-sidecar.sh --no-router` and WebKitGTK |
+| Dev stack and installer | `pnpm test:dev-sh` · `pnpm test:dev-sh -- --router --mock` · `bash scripts/install.sh --no-install` |
 | Live (owner) | `bash apps/harness/scripts/test-subscriptions.sh [agent ...]` (or `all`); `harness doctor` for the report |
 
-## 5. How to run
+## 7. How to run
 
 ```bash
 git submodule update --init --recursive && pnpm install
-pnpm dev:all                    # harness (no key needed) + UI at http://localhost:1420; `-- --mock` adds the mock model;
-                                # `-- --router` puts the router in front (needs OCTO_ROUTER_UPSTREAM_KEY or --mock)
-pnpm --filter @octo/desktop dev # UI only; add ?demo=1 for demo data (?demo=one|many|empty, ?lsp=..., ?plugins=none)
+pnpm dev:all                    # harness (no key) + UI at :1420; `-- --mock` adds the mock model; `-- --router` adds the router
+pnpm --filter @octo/desktop dev # UI only; ?demo=1 for demo data (also ?providers=none, ?review=...)
 pnpm install:app                # build both sidecars and the Tauri app, install it (owner's machine)
 cd apps/harness && go run ./cmd/harness doctor     # what the harness sees on this machine
 ```
 
-Mock-model triggers in a user message: `quick` (no delegation), `[write]`, `[acp]`; the fake ACP agent understands
-`[silent]`, `[refuse]`, `[max-tokens]`, `[crash]`; the memory tests use `[search: ...]`, `[recall: id]`, `[mem-create: ...]`,
-`[task-update: ...]`, `[fact: ...]`, `[goal: ...]`, `[quote: ...]`, `[decision: ...]`.
+Mock triggers: `quick`, `[write]`, `[acp]` in a message; `[silent]`, `[refuse]`, `[max-tokens]`, `[crash]` for the fake
+ACP agent; memory markers in `apps/harness/docs/memory.md`.
 
-## 6. Next steps, in order
+## 8. Where the older handovers went
 
-1. **R1 — ready for the owner's daily use** (the R1 section at the end of `specs/2026-11-11-packaging-design.md` is the
-   bar). Harness side is built (items 3-6: agents first-class with install and login hints, failures never silent, doctor
-   and trace, data safe across updates). Left: (1) prove the branch builds from a clean clone (`pnpm install && pnpm lint
-   && pnpm --filter @octo/desktop build`, `scripts/install.sh`, CI green at HEAD; state unknown at the time of writing);
-   (2) the first-run screen and Settings "Models and keys" (P9, below); (4) check that every failure reaches the user as a
-   visible message in the UI, including the router-down and budget-reached cases; (5) Settings "Copy report" on
-   `getDiagnostics` and the trace switch; (7) write `docs/superpowers/LIVE-CHECKLIST.md`: install, first run, one task per
-   agent (Claude Code, Copilot, Grok) as orchestrator and as sub-agent, router on and off, quit and kill, what to send back
-   (the doctor report and the trace file). Then the owner's live run; every agent-specific path stays unverified until it.
-2. **UI v7 and P9 first-run.** v7 UI (`specs/2026-11-10-v7-changes-queue-approvals.md`, decisions 43 and 44 of the UI
-   spec): changes and diffs per turn, queue, approval cards (which also receive ACP permission requests), forms and the
-   secret field, tables; then flip `HARNESS_DEFAULT_ACCESS` to `supervised`. P9: first-run screen ("How should Octo run
-   agents?": agents found with ready / not logged in / not installed, or an API key) and Settings on `getSettings` /
-   `putSettings` with "Restart to apply" through `bridge_restart`; demo states `?demo=1&firstrun=...`. Also UI part 2
-   (decisions 24, 26-28, 30, 31, 37-40, 45-48; show `served_model`; thinking and plan updates). The demo bridge needs the
-   optional members for the demo states. Decision 42 is the bar for every pass.
-3. **Memory M2 and M3** (`specs/2026-11-11-orchestrator-memory-design.md`, `apps/harness/docs/memory.md`). M2 (window
-   context, receipts, tool-result clearing) is in the working tree, uncommitted: review it against the spec's M2 acceptance
-   items (300 scripted turns stay under the caps, a five-message window is exactly five, cache-read share does not drop
-   by more than 10 points, receipts match what was sent), then commit and update the spec's "As built". M3: the UI view of
-   task records, facts, memory files and the receipt; embeddings only after the owner's first month with receipts.
-4. **Inline completion** (`specs/2026-11-11-inline-completion-design.md`): `models.completion`, `POST
-   /v1/projects/{id}/complete`, Monaco provider, Settings row, status item. Latency with a real model is the owner's
-   measurement.
-5. **I3 — savings view** (`specs/2026-11-11-router-harness-integration.md`, section I3): Usage → Cost "Auto-routing" (actual
-   cost vs the same tokens at the hinted tier, tokens handled by flat-rate agents, marked as an estimate) and the project
-   budget as `spent / budget` in the orchestrator header.
-6. **Bots** (`specs/2026-11-11-bots-design.md`) after the owner answers questions 1-2; builds on v7 approvals.
-7. Later: Q5; the harness items of the Synara gap report; a "History compacted" marker; a watch on a router that dies
-   after start; signed builds, auto-update and Windows are out of scope until the owner says otherwise.
-
-## 7. Where the older handovers went
-
-The 2026-11-10 handovers (v6 pass, shelved VS Code direction, the screenshot references that are gone, the v6 brief) were
-superseded by the specs' "As built" sections and by this file. `git log -- docs/superpowers/HANDOVER.md` has them. The
-owner's design direction still stands: a premium desktop agent tool, balanced and exact spacing, comments in code exact,
-own app with an embedded Monaco editor (not a VS Code fork), one orchestrator conversation per project, projects spanning
-several folders, sub-agent transcripts read-only; use references for structure and finish only, never copy another
-product's name, icons or assets.
-
-## Roles (owner, 2026-11-11, replaces earlier wording)
-
-Always delegate to the selected models: **Opus 5.5 — review** (and UI/design work the owner assigns to it),
-**Sonnet 5.5 — writing code and tests**, **Haiku 5.5 — research**. The orchestrator decides, writes contracts,
-re-runs the gates itself and commits; independent review of each pass goes to an Opus reviewer.
-
-### Cost rule (owner, 2026-11-11, later the same day)
-
-Opus spends too much: **do as much as possible with Sonnet** — code, tests, UI implementation and routine review.
-Opus only where the owner asks for it or for a final design/review pass on something already working. Haiku for
-research. Fewer, narrower briefs; hand back at the first green state.
+Older handovers: `git log -- docs/superpowers/HANDOVER.md`. Design direction: the UI spec's "Principles" section.

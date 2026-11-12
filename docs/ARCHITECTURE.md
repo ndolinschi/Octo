@@ -297,7 +297,9 @@ is **not built** in the UI.
 
 ## Environment variables and settings
 
-Collected by grepping `HARNESS_`, `OCTO_`, `VITE_` and the credential names in code and scripts on 2026-11-11.
+Collected by grepping `HARNESS_`, `OCTO_`, `VITE_` and the credential names in code and scripts on 2026-11-11, and
+checked again on 2026-11-12: `HARNESS_API_TOKEN`, `HARNESS_NO_API_TOKEN`, `VITE_HARNESS_API_TOKEN`, `OCTO_BRIDGE_TOKEN`
+and `HARNESS_ACP_TRACE` are in the code and in the tables below. `OCTO_DEBUG_CHROME` is not in the code and is not listed.
 "Settings" = editable through `GET/PUT /v1/settings` (stored in `harness.env`). Process environment beats the file;
 flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
 
@@ -364,78 +366,94 @@ way can switch an agent from the subscription to per-token billing.
 
 ## Status
 
-Taken from the "As built" and "Not verified" notes of the specs, checked against the code. "Orchestrator" is the agent
-session that wrote the specs and ran the gates in the build environment (no API key, no vendor CLI, no WebKitGTK, no
-macOS). "Owner" is the project owner's live run on Linux.
+Taken from the "As built" and "Not verified" notes of the specs, the live checklist and the owner's two live runs of
+2026-11-11 (run 1, and run 2 at `a375955`), checked against the code on 2026-11-12. "Verified here" is the build
+environment: scripted agents, the mock model, the fake router, a real router with a mock upstream, a fake `gh`, and demo
+data. "Owner" is the owner's Linux runs. "status not recorded" where no note says.
 
-| Area | State | Verified here (scripted: mock model, scripted ACP agent, fake router, real router with a mock upstream) | Not verified |
+| Area | State | Verified here | Not verified |
 | --- | --- | --- | --- |
-| Harness project server, orchestrator, sub-agents, files, plugins, LSP relay | Built | Go gates; real `gopls` at harness level | A real model with a key; the UI's LSP client against a real server |
-| Usage, cost, limits (phase A) | Built | Go gates; live on an existing data dir | Subscription limits (not read by design) |
-| Router: ladder, price rule, harness hints and headers, route endpoint, persisted call records and spend, stdin exit | Built | `cargo fmt`, clippy, 302 tests with proxy variables removed (last count in the specs) | A live billed upstream; the low-tier price against a billed call |
-| Harness side of router integration (I1, I2), budget, flat-rate rule | Built | Go gates, `e2e-router.sh` | Compaction jointly with `ceiling`/`fixed` on the real router (covered on each side separately) |
-| Router decision quality | Built | Owner's live run: classifier answered in 49-93 ms, an easy task went to Claude Code, a hard one to the deep tier | Quality of bands beyond that run |
-| ACP orchestrator (S2), MCP server, relay | Built | Go gates, `e2e-acp-orchestrator.sh` (scripted agent) | Copilot, Grok and other CLIs; each CLI's handling of `mcpServers`, `session/load`, tool titles |
-| ACP agent manifests (11) | Written | Claude Code (owner's run); Copilot and Grok started by the owner, a silent Copilot turn was reported and not reproduced | cursor, opencode, antigravity, devin, droid, omp, pi: never run; commands from vendor docs or secondary sources |
-| Settings API (P7), `harness.env`, no-key start (P1-P4) | Built | Go gates, both e2e scripts | A hand-run server with a browser or the shell writing `harness.env` at the same moment |
-| R1 harness: doctor, diagnostics, wire trace, no silent failures, schema versions | Built | Go gates (incl. migration from an older schema, newer database refused) | Any real CLI; the owner checklist file named in the spec does not exist yet |
-| v7 harness: changes and diffs, approvals, queue, forms, secrets | Built | Go gates, `e2e-v7.sh` | The UI (not built); an ACP agent that really asks for permissions |
-| Memory M1 (task records, facts, memory files, search, digest) | Built | Go gates | Whether real models use search when they should |
-| Memory M2 (window context, receipts) | **In progress** in the working tree (code, tests and docs present, uncommitted) | Unknown at the time of writing | Everything real; the spec still says M2 is not built |
-| Memory M3 (UI, embeddings) | Not built | | |
-| Desktop sidecars: ports, PATH, health, stop order, stdin exit, router sidecar | Built | `cargo test -p octo-sidecar` (61-64 tests in the specs), `pnpm test:dev-sh` incl. `--router --mock` | The Tauri glue (`lib.rs`) is not compiled here (no WebKitGTK; CI does it); `install.sh` on macOS; the installed app; the Tauri window and themes in a real webview |
-| UI up to v6.3 part 1 (workspace, tabs, files, comments, LSP, usage, orchestrator header) | Built | Frontend gates, screenshots | Touch, screen reader, forced colours, Tauri shell |
-| UI part 2 (decisions 24, 26-28, 30, 31, 37-40) | Partly in progress (other executors editing `packages/ui`) | Unknown | |
-| UI for v7 (changes, queue, approvals, forms, tables) | Not built (no use of the v7 `Bridge` methods in `packages/ui/src`) | | |
-| UI first run and Settings "Models and keys" (P9), diagnostics "Copy report" | Not built (`getSettings`, `getDiagnostics` unused by the UI; the demo bridge lacks them) | | |
-| Inline completion | Not built (design only) | | |
-| Bots | Not built (draft) | | Owner questions 1-2 open |
-| Subscription routing through the router (S3b) | Not built, not recommended | | Needs an explicit owner decision |
+| Harness project server, bridge, orchestrator loop, sub-agents, files, plugins, LSP relay | Built | Go gates; `gopls` test when installed | Built-in loop with a real key (the owner's billed calls went through the router) |
+| Usage, cost, limits | Built; run 1 defects found by the owner | Go gates | Fixes of run 1 wait for checklist 1.1; subscription limits (not read by design) |
+| Router: ladder, price rule, hints, headers, route endpoint, call records, persisted spend, stdin exit | Built; verified live (run 2) | `cargo test -p octo` (302 tests at the last count in the specs) | Low-tier price against a billed call; compaction on a real upstream |
+| Harness router integration (I1, I2): hints, one spend number, budget gate, `tier: auto` | Built; verified live (runs 1 and 2) | `e2e-router.sh` | Equal spend after the last call (checklist 1.2); compaction with `ceiling` or `fixed` on a real router |
+| Router decision quality | Verified live (run 1): classifier answered in 49–93 ms | | Bands beyond that run |
+| ACP orchestrator (S2), MCP server, relay | Built; verified live with Claude Code (runs 1 and 2) | `e2e-acp-orchestrator.sh` | Copilot and Grok logged in; each CLI's handling of `mcpServers`, `session/load`, tool titles |
+| ACP agent manifests (11) | Written from vendor docs and the ACP registry | Claude Code (owner); Copilot and Grok logged out (owner, run 2) | codex, cursor, opencode, antigravity, devin, droid, omp, pi: no run recorded; run 1's silent Copilot turn not reproduced |
+| Live activity (thinking, plan, tool rows, quiet notice) | Built | Scripted agent: timing; secrets never leave the harness | Whether real agents send chunks at all (the wire trace shows it) |
+| Settings API (`harness.env`), no-key start | Built | Go gates; both e2e scripts | Harness and shell writing `harness.env` at the same moment |
+| Providers endpoint (`GET /v1/providers`, `422`, `409`) | Built | Go tests with fake probe commands | Real CLI probes; "connected means selectable" and provider preferences (not built) |
+| R1 harness: doctor, diagnostics, wire trace, schema versions | Built | Go gates; migration from an older schema; newer database refused | Any real CLI (checklist 1.3, 1.4) |
+| v7 harness: changes, approvals, queue, forms, secrets | Built | Go gates; `e2e-v7.sh` | An ACP agent asking for permission in a supervised project (checklist 2.9) |
+| Memory M1 (task records, facts, memory files, search, digest) | Built; partly verified live (run 2: some word forms) | Go gates | Whether models search when they should |
+| Memory M2 (window context, receipts) | Built, opt-in; first version measured 15% dearer than `full` (run 2) | 300 scripted exchanges; receipts | The stepped window on a real caching provider |
+| Memory M3 (UI view) | Built | Playwright on demo data | A real harness; embeddings (not built) |
+| Inline completion (harness endpoint and UI) | Built | `e2e-v7.sh` case; Playwright on demo data | Latency and suggestion quality with a real model (checklist 2.11) |
+| Pull-request review: RV1 harness, RV2 UI | Built; RV3 (AI pass) designed, not built | Fake `gh`; Playwright on demo data | Real `gh` and GitHub (checklist 2.13); very large pull requests |
+| Bridge API token | Built | Go and sidecar tests; e2e scripts | Tauri shell not compiled here; browser `EventSource` with `?token=` |
+| Desktop sidecars: ports, PATH, health, stop order, stdin exit, router sidecar | Built; verified live (run 2: sidecars exit with the app) | `cargo test -p octo-sidecar`; `pnpm test:dev-sh`, incl. `--router --mock` | The Tauri glue compiled in CI only; the installed app on macOS |
+| Installer (`scripts/install.sh`) | Verified live on Linux (run 2) | Prerequisite output with a stub `PATH` (P8b) | macOS |
+| Desktop title bar (decision 54) | Built | Desktop unit tests | macOS: traffic lights, drag, zoom, full screen; Rust not compiled here; fix pending (handover, item 5) |
+| UI: workspace, tabs, files, comments, LSP, usage, palette, demo | Built (up to v6.3 part 1) | Frontend gates; Playwright on demo data; screenshots | Touch, screen readers, forced colours; WebKit |
+| UI: shell pass, settings page, providers, connect screen (decisions 51–60) | Built | Playwright on demo data; 383 UI unit tests (2026-11-12) | A live harness's `/v1/providers`; WebKit |
+| UI: usability pass (2026-11-12) | Built | Playwright on demo data; unit tests | WebKit; light theme for the new controls |
+| UI: v7 (changes, queue, approvals, forms) | Built (mounted in `cedc10c`) | status not recorded | Live use in a supervised project (checklist 2.9) |
+| UI part 2 (decisions 24, 26–28, 30, 31, 37–40) | Partly built; per decision not recorded | status not recorded | The rest |
+| UI decisions 64–78 | Designed, not built (handover, section 2) | | All of them |
+| Parity backlog B1–B10 | Approved; not started (no commits) | | All of them |
+| Live checklist 3 (`docs/superpowers/LIVE-CHECKLIST.md`) | Written; the owner's run is pending | | Every item |
+| Bots | Draft; not built | | Owner questions 1–2 |
+| Subscription routing through the router (S3b) | Not built; not recommended | | Owner decision |
 | I3 savings view | Not built | | |
 | Packaging for release: signed builds, auto-update, Windows | Out of scope for R1 | | |
 
 ## Specs index
 
-Every file in `docs/superpowers/specs/` and `docs/superpowers/research/`, with its own status line (the status written
-in the file, shortened). Files in `docs/superpowers/plans/` are listed last for completeness.
+Every file in `docs/superpowers/specs/`, `docs/superpowers/research/` and `docs/superpowers/plans/`, with the status
+written in the file, shortened.
 
 ### Specs (`docs/superpowers/specs/`)
 
 | File | What it is | Status in the file |
 | --- | --- | --- |
-| `2026-11-09-desktop-ui-design.md` | Tauri desktop shell and shared UI, future web host | Approved for Phase 1 (scaffold); built |
-| `2026-11-10-project-harness-design.md` | Projects, orchestrator, sub-agents, bridge API contract | Approved (decisions by the orchestrating agent for the owner); built |
-| `2026-11-10-project-harness-ui.md` | UI design, decisions 1-44, tokens, workspace; "As built" for v6, v6.1, v6.2, v6.3 part 1 | No status line; the "As built" sections are the status. Part 2 and decision 43/44 UI work open |
-| `2026-11-10-code-pane-design.md` | Own app with a built-in Monaco code pane, file API | Approved (owner: build our own and embed Monaco); built |
+| `2026-11-09-desktop-ui-design.md` | Tauri desktop shell and shared UI, future web host | Approved for Phase 1; built |
+| `2026-11-10-project-harness-design.md` | Projects, orchestrator, sub-agents, bridge API contract | Approved; built |
+| `2026-11-10-project-harness-ui.md` | UI design, decisions 1–78, tokens, workspace | No status line; "As built" sections for v6 to v6.3 part 1, the 2026-11-11 passes and the 2026-11-12 usability pass. Decisions 64–78 designed, not built |
+| `2026-11-10-code-pane-design.md` | Own app with a built-in Monaco code pane, file API | Approved; built |
 | `2026-11-10-workspace-plugins-acp-design.md` | Workspace tabs, code comments, plugins (LSP), ACP sub-agents | Approved; built |
-| `2026-11-10-usage-design.md` | Tokens, cost and limits (Usage panel) | Phase A approved and built; subscriptions option B1; open questions on real ACP traffic and default prices |
-| `2026-11-10-subscription-agents-design.md` | Copilot, Grok, Codex and eleven agents over ACP; S2 orchestrator on a subscription; S3 routing | S1 and S2 built, run against the scripted agent only; S3a done as the route endpoint; S3b not built, needs an owner decision |
-| `2026-11-10-v7-changes-queue-approvals.md` | Changes per turn, message queue, approvals, forms and secrets | Header says "not built"; its "As built - v7 (harness)" section says the harness side is built. UI not built |
+| `2026-11-10-usage-design.md` | Tokens, cost and limits (Usage panel) | Phase A approved and built; subscriptions option B1; open: real ACP traffic, default prices |
+| `2026-11-10-subscription-agents-design.md` | Copilot, Grok, Codex and eleven agents over ACP; orchestrator on a subscription; routing | S1 and S2 built; live activity and providers built; S3a built as the route endpoint; S3b not built (owner decision) |
+| `2026-11-10-v7-changes-queue-approvals.md` | Changes per turn, queue, approvals, forms and secrets | Harness built (its "As built — v7" section); UI mounted in `cedc10c` |
 | `2026-11-10-vscode-agents-window-design.md` | Octo as a VS Code Agents window | Shelved; kept for its findings |
-| `2026-11-11-router-harness-integration.md` | Auto-routing that saves the harness money: hints, ledger, budget, route endpoint, price rule | I1 and I2 built (both sides) with later fixes; I3 not built |
-| `2026-11-11-packaging-design.md` | Running and installing: no-key start, `harness.env`, sidecars, settings API, installer, R1 bar | P1-P8b and R1 (harness) built; P9 (UI first run) and the owner's live checklist not built |
-| `2026-11-11-orchestrator-memory-design.md` | Task records, facts, memory files, search, bounded context | Approved after R1; "As built - M1" built; M2 and M3 stated as not built (M2 code is in the working tree) |
-| `2026-11-11-inline-completion-design.md` | Ghost-text completion in the editor with its own model | Approved to build; not built |
+| `2026-11-11-router-harness-integration.md` | Auto-routing: hints, ledger, budget, route endpoint, price rule | I1 and I2 built on both sides, with later fixes; I3 not built |
+| `2026-11-11-packaging-design.md` | No-key start, `harness.env`, sidecars, settings API, installer, R1 | P1–P8b and R1 (harness) built; the first-run screen is built as the connect screen (decision 53) |
+| `2026-11-11-orchestrator-memory-design.md` | Task records, facts, memory files, search, bounded context | M1, M2 and M3 built; embeddings not built |
+| `2026-11-11-inline-completion-design.md` | Ghost-text completion with its own model | Built on both sides; not verified with a real model |
+| `2026-11-11-pr-review-design.md` | Pull-request review | RV1 (harness) and RV2 (UI) built; RV3 (AI pass) not built |
 | `2026-11-11-bots-design.md` | Standing autonomous agents with permissions | Draft for the owner; not built |
+| `2026-11-12-parity-backlog.md` | Features to add after the OpenCode and Cursor comparison (B1–B10) | Approved to build; not started |
 
 ### Research (`docs/superpowers/research/`)
 
 | File | What it is | Status in the file |
 | --- | --- | --- |
-| `2026-11-10-cost-audit.md` | Read-only audit of router and harness cost behaviour | Findings drove the cost fixes; "confirmed" means run; lists what it could not measure |
-| `2026-11-10-t3code-gap.md` | Feature gap against another agent GUI (source read at a commit) | Source analysis; basis of the v7 scope |
-| `2026-11-10-ui-review-v6.md` | Independent UI review of v6 (P0-P2 findings) | Read-only review; superseded by the later reviews |
-| `2026-11-10-ui-review-v6.1.md` | Independent review of v6.1 with a regression table | Read-only review |
-| `2026-11-11-ui-review-v6.2.md` | Independent review of v6.2: 0 blockers, 6 major, 13 minor | Read-only review; its majors feed UI part 2 |
-| `2026-11-11-synara-gap.md` | Feature gap against another multi-agent app and the ten agents | A sub-agent's sourced report; no agent CLI was installed or run; one claim confirmed in code |
+| `2026-11-10-cost-audit.md` | Read-only audit of router and harness cost behaviour | Findings drove the cost fixes |
+| `2026-11-10-t3code-gap.md` | Feature gap against another agent GUI (source read at a commit) | Basis of the v7 scope |
+| `2026-11-10-ui-review-v6.md` | Independent UI review of v6 | Read-only; superseded by later reviews |
+| `2026-11-10-ui-review-v6.1.md` | Independent review of v6.1 with a regression table | Read-only |
+| `2026-11-11-ui-review-v6.2.md` | Independent review of v6.2: 0 blockers, 6 major, 13 minor | Read-only; its majors feed UI part 2 |
+| `2026-11-11-synara-gap.md` | Gap against another multi-agent app and the ten agents | Sub-agent's sourced report; no agent CLI run; one claim confirmed in code |
+| `2026-11-11-editor-ui-references.md` | Reference study for borrowed UI behaviours (decision 47) | Adapted, not copied |
+| `2026-11-12-feature-comparison.md` | Comparison with OpenCode and Cursor: inventory, scoreboard, 25 ranked gaps | Nothing built from it directly; source of the parity backlog |
 
 ### Plans (`docs/superpowers/plans/`)
 
 | File | Status |
 | --- | --- |
-| `2026-11-09-desktop-ui-phase1.md` | Phase 1 plan (monorepo slice, scaffold); done |
+| `2026-11-09-desktop-ui-phase1.md` | Phase 1 plan; done |
 | `2026-11-09-harness-bridge-phase2.md` | Superseded by the project-based bridge spec; kept for history |
-| `2026-11-10-frontend-code-quality.md` | Approved; Q1-Q4 done, Q5 (split providers and large components) pending |
+| `2026-11-10-frontend-code-quality.md` | Approved; Q1–Q4 done, Q5 (split providers and large components) pending |
+
 
 ## Gates and scripts
 
@@ -456,21 +474,20 @@ agent CLI.
 
 ## Known contradictions
 
-Differences between a spec or doc and the code, found while writing this file. The code is described above.
+Differences between a spec or doc and the code, found while checking this file on 2026-11-12. The code is described above.
+Items fixed since 2026-11-11 were removed (the v7 header, the missing live checklist, the router status file).
 
-1. `specs/2026-11-10-v7-changes-queue-approvals.md` header says "not built"; its own "As built - v7 (harness)" section
-   and the code say the harness side is built.
-2. `specs/2026-11-11-orchestrator-memory-design.md` "As built - M1" says M2 is not built; the working tree has M2
-   (`orchestrator/window.go`, `projectstore/receipts.go`, `memory/settings.go`, `GET .../turns/{tid}/context`) and
-   `apps/harness/docs/memory.md` documents it. The two files are being edited by other executors.
-3. `specs/2026-11-11-packaging-design.md` "As built - R1" says `projectstore.SchemaVersion = 1`; the code has `3`
-   (and `apps/harness/docs/memory.md` says 2).
-4. `specs/2026-11-11-packaging-design.md` R1 item 7 names `docs/superpowers/LIVE-CHECKLIST.md`; the file does not exist.
-5. `apps/harness/README.md` says no vendor CLI has been started from the repository's tooling, and
-   `apps/harness/scripts/test-subscriptions.sh` says only the first three agents were run by a person; the router-integration spec
-   records the owner's live run with Claude Code over ACP and a real router. The honest statement is: the owner ran
-   Claude Code (and started Copilot and Grok); the orchestrator ran none of them.
-6. `specs/2026-11-11-router-harness-integration.md` text for I2 says the route call times out after 300 ms; the code
-   and its "As built" note say 2500 ms (`HARNESS_ROUTE_TIMEOUT`).
-7. `apps/router/docs/status.md` listed "budget key state in memory, restart resets key budgets" and the ladder order
-   as an open owner decision; the code persists budget-key spend and the price rule is built (corrected in that file).
+1. `specs/2026-11-11-orchestrator-memory-design.md`, "As built — M1", says "M2 and M3 are not built". The sections "As
+   built — M2" and "As built — M3" below it say they are, and the code has both. The M1 sentence is stale.
+2. `specs/2026-11-11-packaging-design.md`, "As built — R1", says `projectstore.SchemaVersion` is **3** "now". The code has
+   `SchemaVersion = 6` in `apps/harness/internal/projectstore/migrate.go`. The package table above also says 3.
+3. `specs/2026-11-11-router-harness-integration.md`, section I2, says the route call times out after 300 ms. The code
+   (`DefaultRouteTimeout` in `apps/harness/internal/config/config.go`) and the spec's own "As built" note say 2500 ms.
+4. `apps/harness/README.md` says nobody has run Copilot or Grok, nor Codex. `apps/harness/scripts/test-subscriptions.sh`
+   says copilot, grok and codex were run by a person. The owner's run 2 records logged-out Copilot and Grok failures and no
+   logged-in run; no record of a Codex run exists. The status table above is the current statement.
+5. The "Main flows" section (1.4, 6.1, 7.5, 9) and the "Where to look" rows for memory and inline completion still say that
+   M2 is in progress, that the UI shows no approval cards, that inline completion is not built and that the first-run
+   screen is not built. All four are built now (M2 in the harness; approval cards, inline completion and the connect
+   screen in the UI); the status table is current. `HARNESS_DEFAULT_ACCESS` still defaults to `full` in
+   `apps/harness/cmd/harness/serve.go`.
