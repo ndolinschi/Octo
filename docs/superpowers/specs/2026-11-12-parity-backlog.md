@@ -76,3 +76,35 @@ Contracts, JSON shapes and events: `apps/harness/docs/parity.md`. Scripted check
 - **B7 history.** Manual compaction uses the side model (one call, role `compact`) and holds the project's turn slot meanwhile; not available for ACP orchestrators and the window memory mode. The "marker" is the compaction row (`label`, `manual`, `message_count` on `compactions` of the message list) rather than a separate message. Export and search as specified (search is `GET /v1/search`, global). Not verified: the quality of a real model's summary.
 - **Context report (decision 65).** `GET /v1/projects/{id}/context` is extended additively (`source`, `window`, `window_source`, `reserved_tokens`, `free_tokens`, `compacted_at`, `categories`, `last_request`); the old fields are untouched. The categories are the estimator's split of the request the loop would build, scaled to `used_tokens`; the default window is 200,000 (the figure tool-result clearing uses). Tests: categories sum to `used_tokens`, the report plus the next request agrees with the next turn's receipt within the estimator's tolerance (full and window memory modes), ACP shape (`source: "agent"`, empty categories). `context.updated` is published after turns, compactions, rewinds, note changes and writes of `AGENTS.md`/`CLAUDE.md`. Not verified: that an ACP agent's `usage_update` is used/size as a real agent reports it (only the scripted agent).
 - `packages/agent-client`: optional `steerQueued`, `getLatestPlan`, `approvePlan`, `rewind`, `compactNow`, `exportConversationUrl`, `searchRequests`; `mode` on `ProjectInput`/`Project`/`QueuedMessage` and as an option of `sendOrQueueMessage`; `sendQueuedNow(..., {interrupt})`; extended `ContextBreakdown` and `CompactionMarker`; the five new events (reducer no-ops).
+
+## B11 — slash commands, ours and the agent's (owner: "support commands like /compact and the others the provider supports")
+
+One menu in the composer, opened by `/` at the start of the text, listing two groups:
+1. **Octo commands** (work with any orchestrator): `/compact` (B7; for an ACP orchestrator it is passed to the agent
+   when the agent advertises its own `compact`, otherwise the row is shown disabled with the reason), `/clear` (start
+   a new conversation in the project: history kept and searchable, context empty), `/mode ask|plan|agent` (B3),
+   `/model <name>` (opens the model picker filtered by the text), `/rewind` (B5, opens the dialog on the last
+   request), `/export` (B7), `/review [pr]` (opens the review picker or the PR), `/context` (opens the context
+   popover), `/memory` , `/settings`, `/help` (this list). Each is run by the UI or the harness, never sent as text.
+2. **The agent's commands** (ACP orchestrator): what the agent advertises in the session
+   (`available_commands_update`: name, description, input hint), e.g. Claude Code's own commands. Choosing one sends
+   `/<name> <args>` as the prompt, which is how ACP agents take them. They are listed under the agent's name with its
+   mark; a name that collides with an Octo command is shown in both groups, the Octo one first.
+Harness:
+a. Keep the last advertised command list per ACP session; `GET /v1/projects/{id}/slash-commands` →
+   `{octo:[{name,description,args?,available,reason?}], agent:{id,label,commands:[{name,description,input_hint?}]}|null}`;
+   event `slash_commands.updated {project_id}`. Before the first session of an ACP orchestrator the agent list is
+   empty with `pending: true`; the harness does not start a session only to read it.
+b. `POST /v1/projects/{id}/clear` → 200 `{conversation_id}`: closes the open task in memory, drops the ACP session
+   (next turn starts a new one without the recap), marks a boundary in the transcript ("New conversation"); 409
+   `turn_in_progress`.
+c. A user message that starts with `/name` where `name` is an Octo command is refused with 400 `octo_command` (the
+   client must call the endpoint instead), so a command never reaches a model as text by accident; one that matches an
+   advertised agent command passes through unchanged and is recorded with `command: name` on the message.
+d. Built-in loop: only the Octo group.
+UI: menu with keyboard (↑↓ Enter Tab Esc), fuzzy filter, descriptions, argument hint after choosing; decision 70
+highlighting uses this list (known commands only); unknown `/text` is plain text and is sent as typed.
+Acceptance: harness unit tests with the scripted agent advertising commands (list, update event, pass-through,
+`octo_command` refusal, clear resets the session and the context report); e2e case in `e2e-parity.sh`; UI tests for
+the list model (grouping, collision, disabled reason) and a Playwright walk of the menu.
+Not verified until the owner's run: which commands each real agent advertises.
