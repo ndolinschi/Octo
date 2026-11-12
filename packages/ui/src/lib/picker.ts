@@ -12,9 +12,14 @@ export type PickerRow = {
   lead?: ReactNode;
   title?: string;
   disabled?: boolean;
+  /** A second, dim line under the name (a folder's path relative to home); the row is two lines tall. */
+  sub?: string;
+  /** The row does its work and the picker stays open (it closes itself when the work is done). */
+  keepOpen?: boolean;
+  /** The row is waiting for something (a spinner replaces its glyph). */
+  busy?: boolean;
   /** The current value of a choice. */
   checked?: boolean;
-  star?: { on: boolean; toggle(): void };
   run(): void;
 };
 

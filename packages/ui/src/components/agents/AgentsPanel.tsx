@@ -1,3 +1,4 @@
+import { EmptyState } from "../primitives/EmptyState";
 import type { Agent } from "@octo/agent-client";
 import { ChevronRight } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef } from "react";
@@ -100,22 +101,25 @@ export function AgentsPanel() {
       ref={scroller}
       data-agents
       onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}
-      className="h-full min-h-0 overflow-y-auto overscroll-contain px-pane pt-pane pb-4"
+      className={cn("h-full min-h-0 overflow-y-auto overscroll-contain px-pane pt-pane pb-4", empty && "flex flex-col")}
     >
-      <div ref={rows} className="mx-auto flex w-full max-w-details flex-col gap-5">
+      <div ref={rows} className={cn("mx-auto flex w-full max-w-details flex-col gap-5", empty && "min-h-0 flex-1")}>
         {empty && (
-          <div className="flex flex-col gap-2 px-2 pt-2">
-            <p className="text-sm text-fg-2">No agents yet</p>
-            <p className="text-xs text-fg-3">They appear here when a request is split into tasks.</p>
-            <button
-              type="button"
-              data-row
-              onClick={ws.focusChat}
-              className="-ml-2 h-row w-fit rounded-sm px-2 text-sm text-fg press-row focus-inset hover:bg-hover max-md:h-bar"
-            >
-              Give the orchestrator a task
-            </button>
-          </div>
+          <EmptyState
+            title="No agents yet"
+            actions={
+              <button
+                type="button"
+                data-row
+                onClick={ws.focusChat}
+                className="h-row w-fit rounded-sm px-2 text-sm text-fg-2 press-row focus-inset hover:bg-hover hover:text-fg max-md:h-bar"
+              >
+                Give the project a task
+              </button>
+            }
+          >
+            They appear here when a request is split into tasks.
+          </EmptyState>
         )}
         {groups.running.length > 0 && (
           <InfoSection title={`Running ${groups.running.length}`} labelId="agents-running">

@@ -6,6 +6,9 @@ import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { StateGlyph } from "../primitives/StateGlyph";
 
+/** Decision 64 a: the most chips the title bar shows before they fold into one. */
+const MAX_CHIPS = 3;
+
 const CHIP = "flex h-chip shrink-0 items-center gap-1.5 rounded-sm px-1.5 text-xs whitespace-nowrap press-row focus-inset hover:bg-hover";
 
 /**
@@ -21,7 +24,8 @@ export function TitleBarTeam({ orchestrator }: { orchestrator: OrchestratorState
   const team = orchestrator.kind === "working" ? orchestrator.agents : orchestrator.kind === "new" ? [] : lastTeam(agents);
   const roles = teamRoles(team);
   const box = useRef<HTMLDivElement>(null);
-  const fits = useFitsAll(box, roles.map((r) => `${r.role}${r.count}${r.status}`).join("|"));
+  // Decision 64 a: at most three chips; more fold into "N agents".
+  const fits = useFitsAll(box, roles.map((r) => `${r.role}${r.count}${r.status}`).join("|")) && roles.length <= MAX_CHIPS;
   if (team.length === 0) return null;
   const working = orchestrator.kind === "working";
   const label = `${team.length} ${team.length === 1 ? "agent" : "agents"}`;

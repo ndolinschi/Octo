@@ -43,6 +43,7 @@ import type {
   BridgeEvent,
   BridgeEventType,
   ContextBreakdown,
+  ContextOverview,
   FileContent,
   FileEntry,
   FileStat,
@@ -60,6 +61,8 @@ import type {
   FolderEntry,
   CompletionResult,
   SideMessage,
+  PickFolderResult,
+  Provider,
   ProvidersResponse,
   SettingsUpdate,
   SettingsView,
@@ -77,14 +80,17 @@ export class BridgeError extends Error {
   /** `model_unavailable` (422): the provider that would run the model, and what is missing. */
   readonly provider?: string;
   readonly reason?: string;
+  /** The command the server says fixes this (`not_logged_in`: "gh auth login"); additive, absent when it sends none. */
+  readonly command?: string;
 
-  constructor(status: number, code: string, message: string, detail?: { provider?: string; reason?: string }) {
+  constructor(status: number, code: string, message: string, detail?: { provider?: string; reason?: string; command?: string }) {
     super(message);
     this.name = "BridgeError";
     this.status = status;
     this.code = code;
     if (detail?.provider !== undefined) this.provider = detail.provider;
     if (detail?.reason !== undefined) this.reason = detail.reason;
+    if (detail?.command !== undefined) this.command = detail.command;
   }
 }
 
@@ -136,6 +142,13 @@ export interface Bridge {
   cancelTurn(projectId: string): Promise<void>;
   /** The orchestrator's context by part, or another agent's with `agentId`. */
   getContext(projectId: string, agentId?: string): Promise<ContextBreakdown>;
+  /**
+   * Decision 65: the context window by category, for the composer's context button. The same URL as `getContext` on
+   * a harness that sends the new shape; the UI reads either (`ContextBreakdown` is the older one). Optional.
+   */
+  getContextOverview?(projectId: string): Promise<ContextOverview | ContextBreakdown>;
+  /** `POST /v1/projects/{id}/compact`: compacts the conversation now. Optional; "Compact now" is hidden without it. */
+  compactNow?(projectId: string): Promise<void>;
   /** Ask the side question; resolves with the stored question, the answer streams as side.* events. */
   askSide(projectId: string, text: string): Promise<SideStarted>;
   listSide(projectId: string): Promise<SideMessage[]>;
@@ -169,6 +182,13 @@ export interface Bridge {
    */
   listProviders?(): Promise<ProvidersResponse>;
   /**
+   * `POST /v1/providers/{id}/refresh-models`: starts the agent, reads the models it advertises (no prompt is sent) and
+   * stores them; answers the provider (read `models_error` for a failure that is not an HTTP error). Optional.
+   */
+  refreshProviderModels?(id: string): Promise<Provider | null>;
+  /** `PUT /v1/providers/{id}/custom-models`: replaces the model names the user added for an agent. Optional. */
+  setProviderCustomModels?(id: string, models: string[]): Promise<Provider | null>;
+  /**
    * Folder picker. `path` is a directory path or a prefix of one (`~` is the home directory, empty is home): the
    * child directories of its directory whose names start with the last segment (case-insensitive, hidden ones only
    * when that segment starts with a dot), at most 50. HTTP bridge only; the harness answers 403 unless it listens on
@@ -177,6 +197,11 @@ export interface Bridge {
   listDirs?(path: string): Promise<DirListing>;
   /** The folders of existing projects, newest first, at most 8. */
   recentFolders?(): Promise<FolderEntry[]>;
+  /**
+   * `POST /v1/fs/pick-folder`: the harness opens the operating system's folder dialog (starting at `start`) and answers the
+   * chosen `path`, `cancelled`, or `error` + `message`. Loopback only; check `BridgeConfig.pick_folder`. Optional.
+   */
+  pickFolder?(start?: string): Promise<PickFolderResult>;
   /** R1: the diagnostics report (versions, PATH, per-agent resolution and login state, last 200 log lines). */
   getDiagnostics?(): Promise<Diagnostics>;
   /**
@@ -323,6 +348,13 @@ function parseJson(text: string): unknown {
   }
 }
 
+/** The answer of a provider call: the provider itself, or the whole list it sits in; null when the body says neither. */
+function asProvider(body: unknown, id: string): Provider | null {
+  if (!isRecord(body)) return null;
+  if (Array.isArray(body.providers)) return (body.providers.find((p) => isRecord(p) && p.id === id) as Provider | undefined) ?? null;
+  return typeof body.id === "string" && Array.isArray(body.models) ? (body as Provider) : null;
+}
+
 function toBridgeError(status: number, text: string): BridgeError {
   const body = parseJson(text);
   const err = isRecord(body) ? body.error : undefined;
@@ -331,6 +363,7 @@ function toBridgeError(status: number, text: string): BridgeError {
     const detail = {
       ...(typeof err.provider === "string" ? { provider: err.provider } : {}),
       ...(typeof err.reason === "string" ? { reason: err.reason } : {}),
+      ...(typeof err.command === "string" && err.command.trim() ? { command: err.command.trim() } : {}),
     };
     return new BridgeError(status, code, err.message, detail);
   }
@@ -358,7 +391,7 @@ function parseEvent(data: unknown): BridgeEvent | undefined {
 }
 
 /** What {@link createHttpBridge} returns: every method is implemented, the optional ones included. */
-export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSettings" | "listProviders">>;
+export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSettings" | "listProviders" | "refreshProviderModels" | "setProviderCustomModels">>;
 
 export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
@@ -539,6 +572,10 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     previewReviewSubmit: (id, rid, input) =>
       request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/submit-preview`, input) as Promise<ReviewSubmitPreview>,
     submitReview: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/submit`, input) as Promise<ReviewSubmitResult>,
+    getContextOverview: (id) => request("GET", `${p(id)}/context`) as Promise<ContextOverview | ContextBreakdown>,
+    compactNow: async (id) => {
+      await request("POST", `${p(id)}/compact`, {});
+    },
     getTurnContext: (id, turnId) => request("GET", `${p(id)}/turns/${turnId}/context`) as Promise<ContextReceipt>,
     listTasks: (id) => unwrap<Task[]>(request("GET", `${p(id)}/tasks`), "tasks"),
     listMemory: (id) => request("GET", `${p(id)}/memory`) as Promise<MemoryList>,
@@ -558,10 +595,13 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     },
     listDirs: (path) => request("GET", `/v1/fs/dirs?path=${encodeURIComponent(path)}`) as Promise<DirListing>,
     recentFolders: () => unwrap<FolderEntry[]>(request("GET", "/v1/fs/recent"), "entries"),
+    pickFolder: (start) => request("POST", "/v1/fs/pick-folder", start ? { start } : {}) as Promise<PickFolderResult>,
     getDiagnostics: () => request("GET", "/v1/diagnostics") as Promise<Diagnostics>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
+    refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),
+    setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
     openLanguageServer: (id, serverId) =>
       openLspSession(
         {

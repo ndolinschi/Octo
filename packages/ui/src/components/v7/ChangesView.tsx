@@ -1,12 +1,10 @@
-import { FileDiff } from "lucide-react";
+import { EmptyState } from "../primitives/EmptyState";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { TurnChanges } from "@octo/agent-client";
-import { cn } from "../../lib/cn";
 import { useMediaQuery } from "../../lib/hooks";
 import { DIFF_SPLIT_MIN, diffLayout, filesChanged, neighbours, rowKey, splitPath } from "../../lib/v7/changes";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
-import { Glyph } from "../primitives/Glyph";
 import { SkeletonRows } from "../primitives/InfoList";
 import { Presence } from "../primitives/Presence";
 import type { DiffMonaco } from "./DiffEditor";
@@ -187,11 +185,8 @@ function RevertDialog({ confirm, onCancel, onConfirm }: { confirm: NonNullable<C
 
 function Empty({ title, text, children }: { title: string; text: string; children?: ReactNode }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-      <Glyph icon={FileDiff} size={16} className="text-fg-3" />
-      <p className="text-heading text-fg">{title}</p>
-      <p className={cn("max-w-sm text-sm text-fg-2")}>{text}</p>
-      {children}
-    </div>
+    <EmptyState title={title} actions={children ? <div className="flex flex-wrap items-center justify-center gap-2">{children}</div> : undefined}>
+      {text}
+    </EmptyState>
   );
 }

@@ -98,6 +98,19 @@ function Ready(props: {
   const [composer, setComposer] = useState<{ n: number; state: ComposerState } | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // "Update" shows only when the code host has commits this review has not fetched (the list's `new_commits`).
+  const [behind, setBehind] = useState(false);
+  useEffect(() => {
+    if (review.kind !== "github") return;
+    let alive = true;
+    api.listPullRequests(review.folder).then(
+      (l) => alive && setBehind(l.prs.some((p) => p.review?.id === review.id && p.review.new_commits)),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, review.id, review.folder, review.kind, review.head_commit]);
   const [explicitReveal, setReveal] = useState<RevealRequest | null>(null);
   const [cursor, setCursor] = useState<{ path: string | null; index: number | null }>({ path: null, index: null });
   const [edge, setEdge] = useState<{ at: "first" | "last"; n: number } | null>(null);
@@ -185,6 +198,7 @@ function Ready(props: {
     try {
       await api.patch(reviewId, { refresh: true });
       await props.reload();
+      setBehind(false);
     } catch (e) {
       setHint(`Refresh failed: ${errorMessage(e)}. Check your connection and try again.`);
     } finally {
@@ -241,7 +255,7 @@ function Ready(props: {
         review={review}
         viewed={data.files.viewed_count}
         pending={comments.length}
-        findings={findings.filter((f) => f.status === "new").length}
+        behind={behind}
         overviewOpen={overview}
         refreshing={refreshing}
         onOverview={() => setOverview((o) => !o)}

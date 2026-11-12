@@ -77,7 +77,9 @@ function charge(ctx: Ctx, agentId: string, outputChars: number) {
     input_tokens: input,
     output_tokens: agent.output_tokens + Math.ceil(outputChars / 3.6) + 24,
     // An ACP agent reports its context occupancy (`usage_update`): the demo's grows with its transcript.
-    ...(agent.model.startsWith("acp:") ? { context_used: Math.min(ACP_CONTEXT, 1800 + history * 640), context_size: ACP_CONTEXT } : {}),
+    ...(agent.model.startsWith("acp:")
+      ? { context_used: Math.min(ACP_CONTEXT, 1800 + history * 640), context_size: ACP_CONTEXT }
+      : { context_used: Math.min(ACP_CONTEXT * 0.9, 3200 + history * 1900), context_size: ACP_CONTEXT }),
   });
 }
 

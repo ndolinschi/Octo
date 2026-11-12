@@ -1,13 +1,27 @@
 import type { DirListing, FolderEntry } from "@octo/agent-client";
 import { Check, Folder, FolderOpen, FolderX, GitBranch } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { chosenFrom, completion, folderName, looksLikePath, mergeRecent, parentOf, rememberFolder } from "../../lib/folderPick";
+import { errorMessage } from "../../lib/format";
+import { MOD_LABEL } from "../../lib/keys";
+import {
+  browseOutcome,
+  browseRow,
+  chosenFrom,
+  completion,
+  folderName,
+  looksLikePath,
+  mergeRecent,
+  parentOf,
+  rememberFolder,
+  tildePath,
+} from "../../lib/folderPick";
 import { middleTruncate } from "../../lib/format";
 import { rowMatches, type PickerRow, type PickerSection } from "../../lib/picker";
 import { jsonCodec, PREFS, usePersistentState } from "../../lib/storage";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { Glyph } from "../primitives/Glyph";
+import { Spinner } from "../primitives/Status";
 import { Picker } from "../primitives/Picker";
 
 const chosenCodec = jsonCodec(chosenFrom);
@@ -33,8 +47,19 @@ export function FolderPicker(props: {
   onClose(): void;
   side?: "top" | "bottom";
 }) {
-  const { bridge } = useApp();
-  const { pickFolder } = useHost();
+  const { bridge, config } = useApp();
+  const { pickFolder: hostPick } = useHost();
+  // Decision 49: the system dialog from the host (the desktop shell) first, else the harness's (`pick_folder`).
+  const bridgePick = bridge.pickFolder && config?.pick_folder === true ? bridge.pickFolder.bind(bridge) : null;
+  const search = useRef<HTMLInputElement>(null);
+  const mounted = useRef(true);
+  const [browse, setBrowse] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [chosen, setChosen] = usePersistentState(PREFS.chosenFolders, chosenCodec, { persistInitial: false });
   const [recent, setRecent] = useState<FolderEntry[]>([]);
   const [load, setLoad] = useState<Load | null>(null);
@@ -68,6 +93,27 @@ export function FolderPicker(props: {
     }, DEBOUNCE_MS);
   };
 
+  const canBrowse = hostPick !== undefined || bridgePick !== null;
+  const startDir = parentOf((props.current ?? []).at(-1) ?? "");
+  /** Opens the system dialog; the popover stays open meanwhile and the row says it is waiting. */
+  const runBrowse = async () => {
+    if (browse.busy || !canBrowse) return;
+    setBrowse({ busy: true, error: null });
+    const out = await (hostPick ? hostPick() : bridgePick ? bridgePick(startDir || undefined) : Promise.resolve(null)).then(browseOutcome, (e: unknown) => ({
+      kind: "error" as const,
+      message: errorMessage(e),
+    }));
+    if (!mounted.current) return;
+    if (out.kind === "chosen") {
+      setBrowse({ busy: false, error: null });
+      choose(out.path);
+      props.onClose();
+    } else {
+      setBrowse({ busy: false, error: out.kind === "error" ? out.message : null });
+      if (out.kind === "cancelled") search.current?.focus();
+    }
+  };
+
   const choose = (path: string) => {
     setChosen((list) => rememberFolder(list, path));
     props.onChoose(path);
@@ -77,8 +123,9 @@ export function FolderPicker(props: {
     const on = current.has(e.path.replace(/[\\/]+$/, ""));
     return {
       id: `${section}:${e.path}`,
-      label: e.name || folderName(e.path),
-      ...(parent ? { detail: middleTruncate(parent, 36) } : {}),
+      // The name keeps its room (the branch gives way first, then the name is cut in the middle); the path is a second dim line.
+      label: middleTruncate(e.name || folderName(e.path), 30),
+      ...(parent ? { sub: middleTruncate(tildePath(parent), 40) } : {}),
       ...(e.git ? { hint: e.git.branch } : {}),
       title: e.git ? `${e.path} (git: ${e.git.branch})` : e.path,
       lead: <Glyph icon={e.git ? GitBranch : on ? Check : Folder} size={14} />,
@@ -87,9 +134,42 @@ export function FolderPicker(props: {
     };
   };
 
+  /** A parent path that is the same on every row says nothing: it is dropped (the row's tooltip still has the full path). */
+  const quiet = (rows: PickerRow[]): PickerRow[] => {
+    if (rows.length < 2 || new Set(rows.map((r) => r.sub ?? "")).size > 1) return rows;
+    return rows.map(({ sub: _sub, ...rest }) => rest);
+  };
+
   const sections = (q: string): PickerSection[] => {
     const out: PickerSection[] = [];
     const typed = q.trim();
+    if (canBrowse) {
+      const b = browseRow(browse, `${MOD_LABEL}O`);
+      const rows: PickerRow[] = [
+        {
+          id: "browse",
+          label: b.label,
+          ...(b.hint ? { hint: b.hint } : {}),
+          lead: b.busy ? <Spinner /> : <Glyph icon={FolderOpen} size={14} />,
+          title: "Choose a folder with the system dialog",
+          disabled: b.disabled,
+          busy: b.busy,
+          keepOpen: true,
+          run: () => void runBrowse(),
+        },
+      ];
+      if (b.error)
+        rows.push({
+          id: "browse-error",
+          label: "The folder dialog did not open",
+          sub: b.error,
+          lead: <Glyph icon={FolderX} size={14} />,
+          title: b.error,
+          disabled: true,
+          run: () => undefined,
+        });
+      out.push({ title: "", rows });
+    }
     if (looksLikePath(typed)) {
       if (bridge.listDirs) {
         const l = load?.query.trim() === typed ? load : null;
@@ -116,7 +196,7 @@ export function FolderPicker(props: {
               label: `Use ${folderName(base)}`,
               lead: <Glyph icon={FolderOpen} size={14} />,
             });
-          out.push({ title: rows.length ? "Folders" : "No folders here", rows });
+          out.push({ title: rows.length ? "Folders" : "No folders here", rows: quiet(rows) });
         }
       } else {
         out.push({
@@ -128,25 +208,7 @@ export function FolderPicker(props: {
     const rec = mergeRecent(chosen, recent)
       .map((e) => row(e, "recent"))
       .filter((r) => looksLikePath(typed) || rowMatches(r, typed));
-    if (rec.length) out.push({ title: "Recent", rows: rec });
-    if (pickFolder)
-      out.push({
-        title: "Other",
-        rows: [
-          {
-            id: "browse",
-            label: "Browse…",
-            lead: <Glyph icon={FolderOpen} size={14} />,
-            title: "Choose a folder with the system dialog",
-            // Cancelled or failed: the picker stays as it was (the dialog says why it failed itself).
-            run: () =>
-              void pickFolder().then(
-                (p) => p && choose(p),
-                () => undefined,
-              ),
-          },
-        ],
-      });
+    if (rec.length) out.push({ title: "Recent", rows: quiet(rec) });
     return out;
   };
 
@@ -158,6 +220,14 @@ export function FolderPicker(props: {
       side={props.side ?? "bottom"}
       {...(props.side === "top" ? { gap: 4 } : {})}
       onQuery={onQuery}
+      searchRef={search}
+      onShortcut={(e) => {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "o" && canBrowse) {
+          void runBrowse();
+          return true;
+        }
+        return false;
+      }}
       complete={(r) => (r.id.startsWith("dir:") ? completion(r.id.slice(4)) : null)}
       sections={sections}
       empty={query ? "No folders match" : "No recent folders yet. Type a path to find one."}

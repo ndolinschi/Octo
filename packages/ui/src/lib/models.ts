@@ -33,6 +33,32 @@ export function displayId(id: string): string {
   return slash >= 0 && slash < id.length - 1 ? id.slice(slash + 1) : id;
 }
 
+const ACRONYMS = new Set(["gpt", "glm", "llm", "xai"]);
+
+/**
+ * A model's display name for lists: the harness's own label when it has one, else the id made readable. An agent reports
+ * its models by id only ("claude-sonnet-5-5", "openai/gpt-5-mini"), so the label equals the id: the vendor prefix goes, the
+ * family is title-cased and the version kept ("Sonnet 5.5", "GPT 5 Mini"). The id itself is stored and shown in tooltips.
+ */
+export function modelLabel(m: { id: string; label: string }): string {
+  if (m.label && m.label !== m.id) return m.label;
+  const short = displayId(m.id);
+  if (short !== m.id && m.id.startsWith("claude-")) return short;
+  const tokens = short.split("-").filter(Boolean);
+  const out: string[] = [];
+  for (const t of tokens) {
+    const prev = out[out.length - 1];
+    if (/^\d+$/.test(t) && prev !== undefined && /^\d+(\.\d+)*$/.test(prev) && prev.length <= 2) out[out.length - 1] = `${prev}.${t}`;
+    else out.push(ACRONYMS.has(t) ? t.toUpperCase() : /^[a-z]/.test(t) ? `${t.charAt(0).toUpperCase()}${t.slice(1)}` : t);
+  }
+  return out.join(" ") || m.id;
+}
+
+/** The label of an agent's model: a name the user typed is kept as typed, anything else is made readable. */
+export function agentModelLabel(m: { id: string; label: string; source?: string }): string {
+  return m.source === "custom" ? m.id : modelLabel(m);
+}
+
 /**
  * A model setting as people read it: a Claude id as its family and version, an `acp:` value as the agent's label and
  * its model ("Claude Code · Opus 5.5", never the raw string), anything else whole.

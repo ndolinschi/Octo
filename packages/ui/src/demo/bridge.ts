@@ -135,8 +135,8 @@ function seed(): ProjectRecord[] {
   const atlas = makeProject(
     {
       name: "Atlas API",
-      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
-      models: { orchestrator: "claude-opus-5-5" },
+      // Deliberately on Opus, through Claude Code (the ready agent): the normal look of a chip. Projects on the API model show the warning.
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
       description: "Accounts + billing service and its web dashboard",
       instructions: "Prefer small, reviewable changes. Never edit migrations without asking. Every fix needs a test that failed first.",
       folders: [
@@ -154,8 +154,8 @@ function seed(): ProjectRecord[] {
   const orbit = makeProject(
     {
       name: "Orbit mobile",
-      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
-      models: { orchestrator: "claude-opus-5-5" },
+      // Deliberately on Opus, through Claude Code (the ready agent): the normal look of a chip. Projects on the API model show the warning.
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
       description: "iOS + Android client (React Native)",
       instructions: "Keep the old-architecture interop until native-camera is rewritten.",
       folders: [{ path: "/Users/maya/code/orbit-app", label: "orbit-app" }],
@@ -186,8 +186,8 @@ function seed(): ProjectRecord[] {
   const payments = makeProject(
     {
       name: "Payments ledger reconciliation and nightly settlement jobs",
-      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
-      models: { orchestrator: "claude-opus-5-5" },
+      // Deliberately on Opus, through Claude Code (the ready agent): the normal look of a chip. Projects on the API model show the warning.
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
       description: "Settlement batch jobs and the reconciliation report",
       folders: [{ path: "/Users/maya/code/ledger", label: "ledger" }],
     },
@@ -229,8 +229,8 @@ function seed(): ProjectRecord[] {
   const infra = makeProject(
     {
       name: "Infrastructure: Terraform modules for staging and production clusters",
-      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
-      models: { orchestrator: "claude-opus-5-5" },
+      // Deliberately on Opus, through Claude Code (the ready agent): the normal look of a chip. Projects on the API model show the warning.
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
       description: "Shared Terraform modules and environment stacks",
       folders: [{ path: "/Users/maya/code/infra", label: "infra" }],
     },
@@ -436,13 +436,15 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
         default_model: "claude-sonnet-5-5",
       };
       const copilot = { value: "acp:copilot" as const, id: "copilot", label: "GitHub Copilot", models: [] };
+      const codex = { value: "acp:codex" as const, id: "codex", label: "Codex", models: [] };
       return {
+        pick_folder: true,
         default_models: { ...DEFAULT_MODELS },
         default_max_depth: 3,
         // An Octo router in front of the harness (decision 37), unless the no-key variant is asked for.
         router: !nokey,
         ...(nokey ? {} : { router_capabilities: ["autoroute", "route_hints", "result_headers", "budget_key"] }),
-        acp_orchestrators: pluginsOn ? [claude, copilot] : [],
+        acp_orchestrators: pluginsOn ? [claude, copilot, codex] : [],
         builtin_loop: nokey
           ? { available: false, reason: "No API key: set ANTHROPIC_API_KEY for the harness, or run it behind an Octo router." }
           : { available: true },
@@ -517,6 +519,42 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       ];
       const used = parts.reduce((n, p) => n + p.tokens, 0);
       return { agent_id: agent, model: rec.project.models.orchestrator, window_tokens: 1_000_000, used_tokens: used, estimated: true, parts };
+    },
+    // Decision 65: the context button's popover. A harness project: seven categories at 41% of 200k, compacted two turns ago;
+    // an agent project: only what the agent reports.
+    getContextOverview: async (id) => {
+      await delay();
+      const rec = get(id);
+      if (rec.project.models.orchestrator.startsWith("acp:"))
+        return {
+          window: 200_000,
+          used: 61_000,
+          source: "agent" as const,
+          estimated: false,
+          categories: [],
+          last_request: { input: 58_000, cached: 49_000, output: 2_800 },
+        };
+      return {
+        window: 200_000,
+        used: 82_000,
+        reserved: 8_000,
+        source: "harness" as const,
+        compacted_turns_ago: 2,
+        categories: [
+          { id: "messages", label: "Conversation", tokens: 21_400 },
+          { id: "tool_results", label: "Tool results", tokens: 29_800 },
+          { id: "tools", label: "Tool definitions", tokens: 9_300 },
+          { id: "system", label: "Instructions and briefing", tokens: 7_200 },
+          { id: "notes", label: "Project notes and memory", tokens: 6_100 },
+          { id: "summary", label: "Compacted summary", tokens: 5_400 },
+          { id: "files", label: "Project instruction files", tokens: 2_800 },
+        ],
+        last_request: { input: 64_000, cached: 49_600, output: 3_100 },
+      };
+    },
+    compactNow: async (id) => {
+      await delay();
+      get(id);
     },
     // Side questions (decision 40): stored apart from the orchestrator's messages; the answer streams as side.delta
     // events and ends with side.done, like the harness.
@@ -627,6 +665,14 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       await delay();
       const { demoListDirs } = await import("./dirs");
       return demoListDirs(path);
+    },
+    // The system folder dialog (harness side): a fake path after a beat; `?pick=cancel` and `?pick=fail` are the other answers.
+    pickFolder: async () => {
+      await new Promise((r) => setTimeout(r, 400));
+      const how = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("pick");
+      if (how === "cancel") return { cancelled: true };
+      if (how === "fail") return { error: "no_dialog", message: "No folder dialog is available on this machine (no display)." };
+      return { path: "/Users/maya/code/picked-from-dialog" };
     },
     recentFolders: async () => {
       await delay();

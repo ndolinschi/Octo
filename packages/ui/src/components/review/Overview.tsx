@@ -3,7 +3,7 @@ import type { Components } from "react-markdown";
 import type { Review, ReviewConversationItem } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { timeAgo } from "../../lib/format";
-import { plural } from "../../lib/review/files";
+import { plural, totalsText } from "../../lib/review/files";
 import { Markdown } from "../shared/Markdown";
 import { Segmented } from "../primitives/Segmented";
 import { ChecksMark, checksState } from "./parts";
@@ -60,8 +60,21 @@ export function Overview({ review }: { review: Review }) {
   const conversation = review.meta.conversation ?? [];
   const checks = review.meta.checks ?? [];
   const [section, setSection] = useState<Section>("description");
+  const web = review.url && /^https?:\/\//.test(review.url) ? review.url : null;
   return (
     <section aria-label="Pull request overview" className="flex max-h-[45%] shrink-0 flex-col gap-2 overflow-y-auto border-b border-line bg-panel p-3">
+      {/* The facts the header does not carry (decision 64): size, checks, the link, and a large pull request's warning. */}
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-2">
+        <span>{plural(review.meta.commits.length, "commit")}</span>
+        <span>{totalsText(review.totals)}</span>
+        {review.kind === "github" && <ChecksMark state={checksState(review.meta.checks_state)} withLabel />}
+        {review.large_pr && <span className="text-warn">Large pull request: take it group by group</span>}
+        {web && (
+          <a href={web} target="_blank" rel="noreferrer noopener" className="text-link underline-offset-2 hover:underline">
+            Open on {new URL(web).host}
+          </a>
+        )}
+      </p>
       <Segmented<Section>
         label="Overview section"
         value={section}
@@ -73,11 +86,6 @@ export function Overview({ review }: { review: Review }) {
           { id: "commits", label: `Commits ${review.meta.commits.length}` },
         ]}
       />
-      {review.url && /^https?:\/\//.test(review.url) && (
-        <a href={review.url} target="_blank" rel="noreferrer noopener" className="w-fit text-sm text-link underline-offset-2 hover:underline sm:hidden">
-          Open on {new URL(review.url).host}
-        </a>
-      )}
       {section === "description" &&
         (review.body.trim() ? (
           <>

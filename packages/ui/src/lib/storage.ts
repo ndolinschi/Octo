@@ -26,8 +26,8 @@ export const PREFS = {
   fileTree: (projectId: string) => key(`fileTree.${projectId}`),
   /** Pending code comments of one project (JSON list). */
   comments: (projectId: string) => key(`comments.${projectId}`),
-  /** Starred models and agents of the model picker (decision 27): a JSON list of setting strings. */
-  favouriteModels: key("favouriteModels"),
+  /** Model names typed in the picker's "Other model…", per agent id: `{ [agentId]: string[] }` (the fallback for a harness that cannot store them). */
+  customModels: key("customModels"),
   /** Folders chosen in the folder picker (decision 49), newest first: a JSON list of paths. */
   chosenFolders: key("chosenFolders"),
   /** The conversation's width in px beside a side group, as plain text: where the first split opens (decision 60). */

@@ -1416,6 +1416,42 @@ Defect list with severities: the executor's `defects.md` (scratchpad); summary o
   1100/830/640/390/320; unit tests (383 UI, new: `agentDisplayName`, `extraReason`). **Not verified**: WebKit (the owner's webview),
   a live harness, light theme screenshots for the new controls, the flows listed as not walked in `defects.md`.
 
+### As built — usability pass 2 (2026-11-12)
+
+Cut short by the owner's new frame (decisions 67-71); what is built, what is not. Defect list: the executor's `ux2/defects.md`.
+
+- **Models (58, revised)**: `lib/providers/modelList` — top level is the API/router groups, then one flat "Agents" group (a row per ready
+  agent, its chosen model dim on the right, chevron); every ready agent opens a second level even with no known model: "Default (the
+  agent decides)", known models (stale dim, typed names removable), "Other model…" (an inline field, Enter chooses
+  `acp:<agent>/<name>`); "Refresh models" in the header (spinner, `models_error`). Providers not ready sit under "Not connected" and
+  open the connect sheet. Typed names are kept per agent in `PREFS.customModels` and sent through `setProviderCustomModels` when the
+  bridge has it. agent-client (all optional/additive): `refreshProviderModels`, `setProviderCustomModels`, `Provider.models_error |
+  models_refreshed_at | accepts_custom_model`, model sources `custom | command`. `modelLabel` makes an id-only label readable.
+  **Not built**: decision 72 b-d (two-pane at 560 px, roles, `setProviderPrefs`, `login: unchecked`, the Settings pane); the 16 px
+  `ProviderMark` exists and is used in the picker only.
+- **Folders (49, 71)**: "Browse…" first row (host `pickFolder`, else `Bridge.pickFolder` when `BridgeConfig.pick_folder`), busy/cancel/
+  error states (`browseOutcome`, `browseRow`), Ctrl/Cmd+O; rows show the name first, the branch, and the path relative to home on a
+  second line (hidden when identical for all rows). New project: chips + "Add folder", no label field, label = folder name (`folderLabels`),
+  name follows the first folder. Editing a project keeps the label inputs.
+- **Empty states (64 h)**: `primitives/EmptyState` (42:58 spacers, one centred axis) used by the side question, Review, Memory, Changes,
+  Agents, Usage and Notes. Not yet: Home with no projects, the empty conversation, palette search.
+- **Context (65)**: `chat/ContextRing` is a button with the popover; view model `lib/contextView` (categories largest first, shares sum to
+  100, "≈" unless the agent or provider reported, agent variant, "from the last turn" fallback); agent-client `getContextOverview?`,
+  `compactNow?`, `ContextOverview` (same URL as `getContext`; the view reads either shape). "Open context details" opens Memory on Context
+  once (`MEMORY_START`; a Memory tab that is already mounted does not switch). **Not built**: the `context.updated` event.
+- **Title bar**: the model chip, token count and side-question icon are gone (side question and tokens are in "⋯"; the budget shows only
+  from 80%); sub-agent chips fold above three.
+- **Review**: header is a title row (one primary action), a quiet meta line and "Details"; "New commits: update" only when the list reports
+  `new_commits`; `BridgeError.command` (additive) feeds the submit sheet. Demo: Orbit, Atlas, Payments, Infra run on Claude Code (ready
+  chips), the API-model projects warn; Codex is ready with no models; `?pick=cancel|fail`, `?refresh=fail`.
+- Removed: `PREFS.favouriteModels`, the picker's digit and star code. Placeholders in `Input`/`Textarea` are italic and lighter with "e.g.".
+- **Verified**: Chromium via Playwright against `?demo=1` at 1440×900 (and 390×700, 560/830 for the picker, context and side question): model
+  picker three levels and typing, folder Browse (ok, cancel, fail), context popover (agent and harness), side-question empty state, console
+  clean. Unit tests: modelList, contextView, folderPick, models, client `command`. **Not verified**: WebKit, a live harness, light theme,
+  the flows listed as not walked, contrast numbers, `?demo` variants other than the default.
+- **Open (handed on)**: decision 72 b-d, 64 b-g beyond the above, quick open (B9), Review wide width and remembered conversation column,
+  spacing-audit bar/filled-button/nested-border checks, decisions 66-70.
+
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)

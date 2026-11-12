@@ -17,6 +17,11 @@ import {
  */
 export type DemoProvidersOptions = { none?: boolean };
 
+/** `?refresh=fail` makes "Refresh models" report that the agent did not start. */
+function refreshFails(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("refresh") === "fail";
+}
+
 const CLAUDE_LOGIN = "Log in once: run `claude` and type /login (or run `claude auth login`).";
 const CLAUDE_INSTALL = "Install Node.js and the Claude Code CLI: `npm install -g @anthropic-ai/claude-code`";
 const COPILOT_LOGIN =
@@ -33,6 +38,11 @@ const API_MODELS: ProviderModel[] = [
 ];
 /** An agent's models carry their id as the label (the harness has no better name); one was not advertised last time. */
 const manifest = (id: string): ProviderModel => ({ id, label: id, source: "manifest" });
+/** What a refresh finds for Codex, which starts with no known model (the empty second level of the picker). */
+const CODEX_FOUND: ProviderModel[] = [
+  { id: "gpt-5-codex", label: "gpt-5-codex", source: "advertised" },
+  { id: "gpt-5.1", label: "gpt-5.1", source: "advertised" },
+];
 const SEEN_AT = "2026-11-11T12:00:00Z";
 
 const settingDefs: Omit<Setting, "source" | "editable">[] = [
@@ -96,11 +106,17 @@ function noneFromUrl(): boolean {
 
 const delay = () => new Promise((r) => setTimeout(r, 120));
 
-export function demoProviders(options: DemoProvidersOptions = {}): Required<Pick<Bridge, "listProviders" | "getSettings" | "putSettings" | "getDiagnostics">> {
+export function demoProviders(
+  options: DemoProvidersOptions = {},
+): Required<Pick<Bridge, "listProviders" | "refreshProviderModels" | "setProviderCustomModels" | "getSettings" | "putSettings" | "getDiagnostics">> {
   const none = options.none ?? noneFromUrl();
   // The file: id → value. Secrets are kept only to know they are set; they are never returned.
   const file = new Map<string, string | boolean | string[]>([["HARNESS_ACP_TRACE", false]]);
   const restart = new Set<string>();
+  /** Per agent: names typed by the user (`custom-models`), and whether a refresh has found its models. */
+  const custom = new Map<string, string[]>();
+  const refreshed = new Set<string>();
+  const failed = new Map<string, string>();
   const trace = (event: string, detail: unknown) => console.debug(`[octo demo] ${event}`, JSON.stringify(detail));
 
   const view = (): SettingsView => ({
@@ -151,6 +167,19 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<Pick
         flat_rate: true,
       },
       {
+        // Ready, but it lists no model (the harness found none): the picker's second level is Default + "Other model…".
+        id: "codex",
+        kind: "agent",
+        label: "Codex",
+        state: none ? "not_logged_in" : "ready",
+        reason: none ? "not logged in" : "",
+        install_hint: "Install the Codex CLI: `npm install -g @openai/codex`",
+        login_hint: "Log in once: run `codex login`.",
+        models: [],
+        default_model: "",
+        flat_rate: true,
+      },
+      {
         id: "copilot",
         kind: "agent",
         label: "GitHub Copilot",
@@ -175,6 +204,17 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<Pick
         flat_rate: true,
       },
     ];
+    const withCustom = (p: Provider): Provider => {
+      const found = p.id === "codex" && refreshed.has("codex") ? CODEX_FOUND : [];
+      const typed = (custom.get(p.id) ?? []).map((id): ProviderModel => ({ id, label: id, source: "custom" }));
+      const error = failed.get(p.id);
+      return {
+        ...p,
+        models: [...p.models, ...found, ...typed.filter((t) => ![...p.models, ...found].some((m) => m.id === t.id))],
+        ...(p.kind === "agent" ? { accepts_custom_model: true } : {}),
+        ...(error ? { models_error: error } : {}),
+      };
+    };
     const connected = list.filter((p) => p.state === "ready").length;
     const agent = !apiReady && !none ? "acp:claude-code" : null;
     const m = (id: string) => agent ?? (typeof file.get(id) === "string" ? String(file.get(id)) : (BUILTIN[id] ?? ""));
@@ -186,12 +226,30 @@ export function demoProviders(options: DemoProvidersOptions = {}): Required<Pick
         balanced: m("HARNESS_MODEL_BALANCED"),
         deep: m("HARNESS_MODEL_DEEP"),
       },
-      providers: list,
+      providers: list.map(withCustom),
     };
   };
 
   return {
     listProviders: async () => (await delay(), providers()),
+    refreshProviderModels: async (id) => {
+      await new Promise((r) => setTimeout(r, 700));
+      const p = providers().providers.find((x) => x.id === id);
+      if (!p) throw new BridgeError(404, "not_found", `no provider ${id}`);
+      if (refreshFails()) failed.set(id, `${p.label} did not start: exit status 1`);
+      else {
+        failed.delete(id);
+        refreshed.add(id);
+      }
+      return providers().providers.find((x) => x.id === id) ?? null;
+    },
+    setProviderCustomModels: async (id, models) => {
+      await delay();
+      if (!providers().providers.some((x) => x.id === id && x.kind === "agent")) throw new BridgeError(404, "not_found", `no agent ${id}`);
+      custom.set(id, models);
+      trace("custom-models", { id, models });
+      return providers().providers.find((x) => x.id === id) ?? null;
+    },
     getSettings: async () => (await delay(), view()),
     putSettings: async (update: SettingsUpdate) => {
       await delay();

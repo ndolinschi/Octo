@@ -1,3 +1,4 @@
+import { EmptyState } from "../primitives/EmptyState";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { truncateDistinct } from "../../lib/models";
 import { cn } from "../../lib/cn";
@@ -26,13 +27,7 @@ export function UsageState({ load, empty, children }: { load: Load<UsageData>; e
         Couldn't read usage: {load.message}. Check that the harness is running, then reopen this tab.
       </p>
     );
-  if (empty)
-    return (
-      <div className="flex flex-col gap-1 px-2 py-6 text-center">
-        <p className="text-sm text-fg-2">No usage in this range</p>
-        <p className="text-xs text-fg-3">Tokens appear here after a request or an agent gets a model response.</p>
-      </div>
-    );
+  if (empty) return <EmptyState title="No usage in this range">Tokens appear here after a request or an agent gets a model response.</EmptyState>;
   return <>{children}</>;
 }
 

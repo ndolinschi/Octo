@@ -1,3 +1,5 @@
+import { cn } from "../../lib/cn";
+import { EmptyState } from "../primitives/EmptyState";
 import type { Note } from "@octo/agent-client";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useId, useMemo, useRef, useState } from "react";
@@ -20,7 +22,7 @@ export function NotesPanel() {
         <span className="min-w-0 truncate">Read at the start of every request</span>
         <IconButton icon={Plus} label="Add note" size="sm" className="ml-auto" onClick={() => setEditing("new")} disabled={editing === "new"} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
+      <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4", notes.length === 0 && editing !== "new" && "flex flex-col")}>
         {editing === "new" && (
           <NoteEditor
             onCancel={() => setEditing(null)}
@@ -31,13 +33,16 @@ export function NotesPanel() {
           />
         )}
         {notes.length === 0 && editing !== "new" && (
-          <div className="px-2 py-3 text-sm">
-            <p className="text-fg">No notes yet</p>
-            <p className="mt-0.5 text-fg-2">Decisions and facts saved while working appear here.</p>
-            <Button size="sm" className="mt-3" onClick={() => setEditing("new")}>
-              Add note
-            </Button>
-          </div>
+          <EmptyState
+            title="No notes yet"
+            actions={
+              <Button size="sm" variant="secondary" onClick={() => setEditing("new")}>
+                Add note
+              </Button>
+            }
+          >
+            Decisions and facts saved while working appear here.
+          </EmptyState>
         )}
         <ul className="flex flex-col">
           {notes.map((note) =>

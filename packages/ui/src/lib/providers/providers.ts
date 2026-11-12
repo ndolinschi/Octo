@@ -1,5 +1,5 @@
 import type { Provider, ProvidersResponse, ProviderState } from "@octo/agent-client";
-import { displayId, modelName } from "../models";
+import { agentModelLabel, displayId, modelLabel, modelName } from "../models";
 
 /** Ids of the two providers that are not agents (`GET /v1/providers` uses the same ones). */
 export const API_PROVIDER = "api";
@@ -55,12 +55,15 @@ export function chipLabel(value: string, list: ProvidersResponse | null): string
   if (value.startsWith("acp:")) {
     const [id, model] = value.slice(4).split("/", 2);
     const agent = agents.find((p) => p.id === id);
-    if (agent && model) return `${agent.label} · ${agent.models.find((m) => m.id === model)?.label ?? displayId(model)}`;
+    if (agent && model) {
+      const known = agent.models.find((m) => m.id === model);
+      return `${agent.label} · ${known ? agentModelLabel(known) : displayId(model)}`;
+    }
     return modelName(value, agents);
   }
   for (const p of list.providers) {
     const m = p.models.find((x) => x.id === value);
-    if (m) return m.label;
+    if (m) return modelLabel(m);
   }
   return displayId(value);
 }

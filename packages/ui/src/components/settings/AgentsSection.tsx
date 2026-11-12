@@ -1,4 +1,5 @@
 import type { Provider } from "@octo/agent-client";
+import { modelLabel } from "../../lib/models";
 import { commandsIn, stateText, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
@@ -93,9 +94,9 @@ function AgentCard({ agent: a, refreshing, onCheck }: { agent: Provider; refresh
         description={
           a.models.length === 0
             ? "The agent picks its own model."
-            : a.models.map((m) => (m.id === a.default_model ? `${m.label} (default)` : m.label)).join(", ")
+            : a.models.map((m) => (m.id === a.default_model ? `${modelLabel(m)} (default)` : modelLabel(m))).join(", ")
         }
-        control={def ? <span className="text-sm text-fg-2">Default: {def.label}</span> : undefined}
+        control={def ? <span className="text-sm text-fg-2">Default: {modelLabel(def)}</span> : undefined}
       />
     </SettingsGroup>
   );

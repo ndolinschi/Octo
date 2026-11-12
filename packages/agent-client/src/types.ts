@@ -194,6 +194,29 @@ export type ContextBreakdown = {
   parts: ContextPart[];
 };
 
+/** One slice of the context window in the overview (`GET …/context`, decision 65). */
+export type ContextCategory = { id: string; label: string; tokens: number };
+
+/**
+ * Decision 65: the context window as the indicator's popover shows it. `source: "agent"`: the agent manages its own
+ * context (only `window` / `used` when it reports them, no categories). Numbers are estimates unless `estimated` is false.
+ */
+export type ContextOverview = {
+  window: number | null;
+  used: number;
+  free?: number;
+  /** Tokens the model keeps for its answer, when it reserves them. */
+  reserved?: number;
+  /** RFC 3339 of the last compaction; `compacted_turns_ago` says how many turns back when the harness knows. */
+  compacted_at?: string;
+  compacted_turns_ago?: number;
+  source: "harness" | "agent";
+  estimated?: boolean;
+  categories: ContextCategory[];
+  /** Tokens of the latest request: what was read, how much of it from the cache, what came out. */
+  last_request?: { input: number; cached: number; output: number };
+};
+
 /** One turn of the project's side conversation. A question and its answer share `side_id`. */
 export type SideMessage = {
   id: number;
@@ -398,7 +421,8 @@ export type BridgeEventType = BridgeEvent["type"];
 export type ProviderKind = "api" | "router" | "agent";
 /** `error` is reserved for a provider that is set up but failing; the harness does not report it yet. */
 export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "error";
-export type ProviderModelSource = "catalogue" | "manifest" | "advertised";
+/** `custom`: a name the user added for an agent; `command`: printed by the agent's own models command (e.g. `grok models`). */
+export type ProviderModelSource = "catalogue" | "manifest" | "advertised" | "custom" | "command";
 
 export type ProviderModel = {
   id: string;
@@ -427,6 +451,12 @@ export type Provider = {
   default_model: string;
   /** A flat-rate subscription: no per-token charge at the margin. */
   flat_rate: boolean;
+  /** Why the last model discovery failed ("agent did not start"); empty or absent when it did not. */
+  models_error?: string;
+  /** RFC 3339: when the models were last read from the agent. */
+  models_refreshed_at?: string;
+  /** The agent takes a model name that is not in its list (every ACP agent does); the picker offers "Other model…". */
+  accepts_custom_model?: boolean;
 };
 
 /** The models a new project gets when the request names none; empty strings when nothing is ready. */
@@ -439,6 +469,9 @@ export type ProvidersResponse = {
   suggested: SuggestedModels;
   providers: Provider[];
 };
+
+/** The answer of the system folder dialog: a path, or the user cancelled, or it could not open (`message`). */
+export type PickFolderResult = { path?: string; cancelled?: boolean; error?: string; message?: string };
 
 export type BridgeConfig = {
   default_models: Models;
@@ -461,6 +494,8 @@ export type BridgeConfig = {
    * agent while the built-in loop is unavailable, else the default orchestrator model.
    */
   default_orchestrator?: string;
+  /** The harness can open the operating system's folder dialog (`POST /v1/fs/pick-folder`); absent on an older harness. */
+  pick_folder?: boolean;
 };
 
 export type BuiltinLoopStatus = {

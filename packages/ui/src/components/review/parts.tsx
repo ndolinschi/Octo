@@ -4,6 +4,7 @@ import type { PullRequestRow, ReviewFile } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { CHECKS_LABEL } from "../../lib/review/pull";
 import { formatBytes } from "../../lib/review/files";
+import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
 
 /** `+12 −3` for a text file; a size for a binary one. */
@@ -39,16 +40,16 @@ export function checksState(s: string | undefined): PullRequestRow["checks"] {
   return s === "success" || s === "failure" || s === "pending" ? s : "none";
 }
 
-/** A centred message block: title, one line of text, then actions. Used for empty, error and unavailable states. */
+/** A centred message block (the shared `EmptyState`): empty, error and unavailable states of the review screens. */
 export function Notice(props: { title: string; children?: ReactNode; actions?: ReactNode; tone?: "err" | "plain" }) {
   return (
-    <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-sm">
-      <p role={props.tone === "err" ? "alert" : undefined} className={cn("text-heading", props.tone === "err" ? "text-err" : "text-fg")}>
-        {props.title}
-      </p>
-      {props.children && <div className="max-w-prose text-fg-2">{props.children}</div>}
-      {props.actions && <div className="mt-2 flex flex-wrap items-center justify-center gap-2">{props.actions}</div>}
-    </div>
+    <EmptyState
+      title={props.title}
+      tone={props.tone ?? "plain"}
+      actions={props.actions ? <div className="flex flex-wrap items-center justify-center gap-2">{props.actions}</div> : undefined}
+    >
+      {props.children}
+    </EmptyState>
   );
 }
 

@@ -64,6 +64,8 @@ export function Home({
       <div data-home-scroll data-start-scroll className="relative h-full overflow-x-hidden overflow-y-auto overscroll-none">
         <div className="relative mx-auto flex w-full max-w-home flex-col gap-4 px-6 pt-8 pb-8 max-sm:px-4">
           <div className="relative flex flex-col gap-3">
+            {/* The bright band runs behind the heading: the same wash as the connect screen keeps the muted lead-in readable. */}
+            {backdrop !== "off" && <span aria-hidden className="octo-streak-scrim" />}
             {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
             <h1 id="home-title" className="relative text-center text-display text-fg">
               {count > 0 && <span className="octo-lead">{count === 1 ? "One project. " : `${count} projects. `}</span>}

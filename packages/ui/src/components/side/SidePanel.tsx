@@ -9,6 +9,7 @@ import { toolTab } from "../../state/workspace/layout";
 import { SIDE_PINNED } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 import { Button } from "../primitives/Button";
+import { EmptyState } from "../primitives/EmptyState";
 import { FloatRoom } from "../primitives/floatRoom";
 import { Glyph } from "../primitives/Glyph";
 import { SkeletonRows } from "../primitives/InfoList";
@@ -84,22 +85,22 @@ export function SidePanel() {
   const failed = side.error && !pending ? side.error.message : null;
   return (
     <div data-side className="flex h-full min-h-0 flex-col px-pane pt-pane">
-      <div className="mx-auto flex w-full max-w-details items-start gap-2 px-2 pb-2">
-        <p className="min-w-0 flex-1 text-xs text-fg-3">Ask about this project without interrupting the work. Nothing here is added to its history.</p>
-        <button
-          type="button"
-          aria-pressed={pinned}
-          title={pinned ? "Kept when this tab closes" : "Cleared when this tab closes; keep it instead"}
-          onClick={() => setPinned(!pinned)}
-          className={cn(
-            "flex h-chip shrink-0 press items-center gap-1 rounded-sm px-1.5 text-xs hover:bg-hover hover:text-fg max-md:h-10",
-            pinned ? "bg-hover text-fg" : "text-fg-3",
-          )}
-        >
-          <Glyph icon={Pin} size={14} />
-          Keep
-        </button>
-        {list.length > 0 && (
+      {(list.length > 0 || pending) && (
+        <div className="mx-auto flex w-full max-w-details items-center gap-1 px-2 pb-2">
+          <p className="min-w-0 flex-1 truncate text-xs text-fg-3">Nothing here is added to the project's history.</p>
+          <button
+            type="button"
+            aria-pressed={pinned}
+            title={pinned ? "Kept when this tab closes" : "Cleared when this tab closes; keep it instead"}
+            onClick={() => setPinned(!pinned)}
+            className={cn(
+              "flex h-chip shrink-0 press items-center gap-1 rounded-sm px-1.5 text-xs hover:bg-hover hover:text-fg max-md:h-10",
+              pinned ? "text-fg" : "text-fg-3",
+            )}
+          >
+            <Glyph icon={Pin} size={14} />
+            {pinned ? "Kept" : "Keep"}
+          </button>
           <button
             type="button"
             onClick={() => void clearSide().catch(() => undefined)}
@@ -107,9 +108,34 @@ export function SidePanel() {
           >
             Clear
           </button>
+        </div>
+      )}
+      {load !== "loading" && list.length === 0 && !pending && load !== "error" && !failed && (
+        <EmptyState
+          title="Ask about this project"
+          actions={STARTERS.map((q) => (
+            <button
+              key={q}
+              type="button"
+              data-row
+              onClick={() => void ask(q)}
+              className="flex h-row w-full items-center justify-center rounded-sm px-2 text-sm text-fg-2 press-row focus-inset hover:bg-hover hover:text-fg max-md:h-bar"
+            >
+              {q}
+            </button>
+          ))}
+        >
+          Without interrupting the work. Nothing is added to its history.
+        </EmptyState>
+      )}
+      <div
+        ref={scroller}
+        data-side-list
+        className={cn(
+          "min-h-0 overflow-y-auto overscroll-contain",
+          list.length > 0 || pending || load === "loading" || load === "error" || failed ? "flex-1" : "hidden",
         )}
-      </div>
-      <div ref={scroller} data-side-list className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      >
         <div className="mx-auto flex w-full max-w-details flex-col gap-4 px-2 pb-4">
           {load === "loading" && list.length === 0 && <SkeletonRows count={2} />}
           {load === "error" && list.length === 0 && (
@@ -128,21 +154,6 @@ export function SidePanel() {
                 Try again
               </button>
             </p>
-          )}
-          {load !== "loading" && list.length === 0 && !pending && (
-            <div className="flex flex-col">
-              {STARTERS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  data-row
-                  onClick={() => void ask(s)}
-                  className="-mx-2 flex h-row items-center rounded-sm px-2 text-left text-sm text-fg-2 press-row focus-inset hover:bg-hover hover:text-fg max-md:h-bar"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
           )}
           {list.map((ex) => (
             <div key={ex.id} data-side-exchange className="flex flex-col gap-2">

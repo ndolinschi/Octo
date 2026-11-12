@@ -1,7 +1,6 @@
-import { Search, Star } from "lucide-react";
+import { Search } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { cn } from "../../lib/cn";
-import { MOD_LABEL } from "../../lib/keys";
 import { pickerIndex, type PickerRow, type PickerSection } from "../../lib/picker";
 import { Glyph } from "./Glyph";
 import { Highlight } from "./Highlight";
@@ -15,9 +14,8 @@ const ROW = 28;
 
 /**
  * A searchable quick picker anchored to a control (decisions 25 and 27): a search field on top, then sections of
- * 28px rows (leading glyph, name with the match highlighted, muted detail, an optional star and a right-aligned hint).
- * The field keeps focus: ↑/↓ move the active row (disabled rows are skipped), Enter runs it, `Ctrl/Cmd+1…9` runs the
- * nth enabled row (`digits`), `Ctrl/Cmd+D` toggles the active row's star; Esc or a click outside closes and focus
+ * 28px rows (leading glyph, name with the match highlighted, muted detail and a right-aligned hint).
+ * The field keeps focus: ↑/↓ move the active row (disabled rows are skipped), Enter runs it; Esc or a click outside closes and focus
  * returns to the opener (the `Popover`). `sections` is computed by the caller from the query.
  */
 export function Picker(props: {
@@ -28,8 +26,6 @@ export function Picker(props: {
   onClose(): void;
   side?: "top" | "bottom";
   align?: "start" | "end";
-  /** Show `Ctrl/Cmd+1…9` on the first nine enabled rows and accept those keys. */
-  digits?: boolean;
   /** Under the list, after a hairline (the model picker's Routing row). */
   footer?: ReactNode;
   empty?: string;
@@ -43,6 +39,10 @@ export function Picker(props: {
   gap?: number;
   /** Width class of the popover (default 320px). */
   widthClass?: string;
+  /** The search field, for a caller that returns focus to it (after a system dialog was cancelled). */
+  searchRef?: RefObject<HTMLInputElement | null>;
+  /** A key the picker does not know: return true when it was the caller's (a row's shortcut). */
+  onShortcut?(e: KeyboardEvent<HTMLInputElement>): boolean;
 }) {
   const { onClose } = props;
   const [query, setQuery] = useState("");
@@ -52,7 +52,8 @@ export function Picker(props: {
   const [active, setActive] = useState<string | null>(null);
   const current = enabled.find((r) => r.id === active) ?? enabled[0] ?? null;
   const list = useRef<HTMLDivElement>(null);
-  const search = useRef<HTMLInputElement>(null);
+  const ownSearch = useRef<HTMLInputElement>(null);
+  const search = props.searchRef ?? ownSearch;
   const baseId = useId();
   const optionId = (id: string) => `${baseId}-o-${id.replace(/[^\w-]/g, "_")}`;
 
@@ -63,13 +64,17 @@ export function Picker(props: {
   const run = (id: string | undefined) => {
     const row = flat.find((r) => r.id === id);
     if (!row || row.disabled) return;
-    onClose();
+    if (!row.keepOpen) onClose();
     row.run();
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const at = current ? enabled.indexOf(current) : -1;
     const mod = e.ctrlKey || e.metaKey;
+    if (props.onShortcut?.(e)) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       const next = pickerIndex(at, enabled.length, e.key === "ArrowDown" ? 1 : -1);
@@ -93,20 +98,8 @@ export function Picker(props: {
       run(current?.id);
       return;
     }
-    if (mod && !e.altKey && props.digits && /^Digit[1-9]$/.test(e.code)) {
-      e.preventDefault();
-      e.stopPropagation();
-      run(enabled[Number(e.code.slice(5)) - 1]?.id);
-      return;
-    }
-    if (mod && !e.altKey && e.key.toLowerCase() === "d" && current?.star) {
-      e.preventDefault();
-      current.star.toggle();
-    }
   };
 
-  // Ctrl/Cmd+1…9 number the first nine enabled rows.
-  const digitOf = new Map(enabled.slice(0, 9).map((r, i) => [r.id, i + 1]));
   return (
     <Popover
       anchor={props.anchor}
@@ -158,12 +151,17 @@ export function Picker(props: {
       >
         {sections.map((s) =>
           s.rows.length === 0 ? null : (
-            <div key={s.title} role="group" aria-labelledby={`${baseId}-g-${s.title.replace(/\W/g, "_")}`}>
-              <div id={`${baseId}-g-${s.title.replace(/\W/g, "_")}`} className="flex h-row items-center px-2 text-xs text-fg-3">
-                {s.title}
-              </div>
+            <div
+              key={s.title}
+              role="group"
+              {...(s.title ? { "aria-labelledby": `${baseId}-g-${s.title.replace(/\W/g, "_")}` } : { "aria-label": props.label })}
+            >
+              {s.title && (
+                <div id={`${baseId}-g-${s.title.replace(/\W/g, "_")}`} className="flex h-row items-center px-2 text-xs text-fg-3">
+                  {s.title}
+                </div>
+              )}
               {s.rows.map((r) => {
-                const digit = props.digits ? (digitOf.get(r.id) ?? null) : null;
                 const on = current?.id === r.id;
                 return (
                   <div
@@ -176,49 +174,31 @@ export function Picker(props: {
                     title={r.title}
                     data-picker-row={r.id}
                     onPointerMove={() => !r.disabled && !on && setActive(r.id)}
+                    aria-busy={r.busy || undefined}
                     className={cn(
-                      "group flex h-row min-w-0 items-center gap-2 rounded-sm px-2 press-row max-md:h-bar",
+                      "group flex min-w-0 items-center gap-2 rounded-sm px-2 press-row max-md:h-bar",
+                      r.sub ? "h-10" : "h-row",
                       r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg",
                     )}
                   >
                     <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
                       {r.lead}
                     </span>
-                    <span className="min-w-0 shrink truncate">
-                      <Highlight text={r.label} query={query} />
-                    </span>
-                    {r.checked && <span className="sr-only">(current)</span>}
-                    {/* On the active row the muted detail steps up to fg-2 (fg-3 over the active fill measured 4.06:1). */}
-                    {r.detail && <span className={cn("min-w-0 flex-1 truncate text-xs", on ? "text-fg-2" : "text-fg-3")}>{r.detail}</span>}
-                    <span className="ml-auto flex shrink-0 items-center gap-1 pl-1">
-                      {r.hint && <span className={cn("text-xs", on ? "text-fg-2" : "text-fg-3")}>{r.hint}</span>}
-                      {digit !== null && (
-                        <kbd aria-hidden className={cn("font-sans text-xs tabular-nums", on ? "text-fg-2" : "text-fg-3")}>
-                          {MOD_LABEL}
-                          {digit}
-                        </kbd>
-                      )}
-                      {r.checked && <span aria-hidden className="size-1.5 rounded-full bg-fg-2" />}
-                      {r.star && (
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          aria-label={r.star.on ? `Remove ${r.label} from favourites` : `Add ${r.label} to favourites`}
-                          title={`${r.star.on ? "Remove from" : "Add to"} favourites (${MOD_LABEL}D)`}
-                          aria-pressed={r.star.on}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            r.star?.toggle();
-                          }}
-                          className={cn(
-                            "-mr-1 grid size-6 place-items-center rounded-sm hover:bg-hover hover:text-fg",
-                            r.star.on ? "text-fg-2" : "text-fg-3 opacity-0 group-hover:opacity-100",
-                            (on || r.star.on) && "opacity-100",
-                          )}
-                        >
-                          <Glyph icon={Star} size={14} fill={r.star.on ? "currentColor" : "none"} />
-                        </button>
-                      )}
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      {/* The name keeps its room: the detail and the hint give way first (decision 64 f). */}
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="min-w-0 shrink-[0.1] truncate">
+                          <Highlight text={r.label} query={query} />
+                        </span>
+                        {r.checked && <span className="sr-only">(current)</span>}
+                        {/* On the active row the muted detail steps up to fg-2 (fg-3 over the active fill measured 4.06:1). */}
+                        {r.detail && <span className={cn("min-w-0 flex-1 shrink-[10] truncate text-xs", on ? "text-fg-2" : "text-fg-3")}>{r.detail}</span>}
+                        <span className="ml-auto flex min-w-0 shrink-[10] items-center gap-1 pl-1">
+                          {r.hint && <span className={cn("min-w-0 truncate text-xs", on ? "text-fg-2" : "text-fg-3")}>{r.hint}</span>}
+                          {r.checked && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-fg-2" />}
+                        </span>
+                      </span>
+                      {r.sub && <span className={cn("min-w-0 truncate text-xs", on ? "text-fg-2" : "text-fg-3")}>{r.sub}</span>}
                     </span>
                   </div>
                 );

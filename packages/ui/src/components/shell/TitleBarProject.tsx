@@ -6,19 +6,16 @@ import { cn } from "../../lib/cn";
 import { formatTokens } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
 import { MOD_LABEL } from "../../lib/keys";
-import { budgetState, modelName, servedModel } from "../../lib/models";
+import { budgetState } from "../../lib/models";
 import { liveOrchestratorState, stateLine } from "../../lib/orchestrator";
-import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
 import { useTitleBarSlots } from "../../state/titleBar";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
-import { GLYPH } from "../primitives/glyphs";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { OrchestratorGlyph } from "../primitives/Status";
-import { ModelPicker } from "../shared/ModelPicker";
 import { TitleBarTeam } from "./TitleBarTeam";
 
 /**
@@ -73,8 +70,7 @@ function Start() {
 }
 
 function End() {
-  const { project, state, update } = useProject();
-  const { config } = useApp();
+  const { project, state } = useProject();
   const { openProjectInEditor } = useHost();
   const ws = useOptionalWorkspace();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -82,63 +78,21 @@ function End() {
   if (!project) return null;
   const tokens = totalTokens(state);
   const total = tokens.input + tokens.output;
-  const acp = config?.acp_orchestrators ?? [];
-  const root = state.agents[project.orchestrator_agent_id];
-  // The model that answered the latest request (a router may pick another); the setting when nothing was reported.
-  const served = root?.served_model ? servedModel({ model: project.models.orchestrator, served_model: root.served_model }, acp) : null;
-  // Decision 48: one display label everywhere (middle-truncated here); "chosen → served" in the tooltip.
-  const chosen = modelName(project.models.orchestrator, acp);
   const budget = budgetState(project.spent_usd, project.budget_usd);
   return (
     <>
-      <span className="flex shrink-0 @max-[640px]/title:hidden">
-        {/* Decision 48 and 56: the same control as the composer's chip (same words, same list); only where it opens differs. */}
-        <ModelPicker
-          label="Model"
-          value={project.models.orchestrator}
-          side="bottom"
-          onChoose={(m) => void update({ models: { orchestrator: m } }).catch(() => undefined)}
-          warn={project.models_unavailable?.some((i) => i.field === "orchestrator") === true}
-          tip={
-            project.models_unavailable?.some((i) => i.field === "orchestrator")
-              ? "This model's provider is not connected"
-              : served?.asked
-                ? `${served.asked} → ${served.name} (chosen → served by the router)`
-                : `Model: ${served?.name ?? chosen}`
-          }
-        />
-      </span>
-      {budget && (
+      {budget && budget.tone !== "fg-3" && (
+        // Decision 64 a: the budget is a bar item only when it is a warning (80% and up); otherwise it is a line in "⋯".
         <span
           data-budget
-          className={cn(
-            "shrink-0 text-xs tabular-nums @max-[520px]/title:hidden",
-            budget.tone === "err" ? "text-err" : budget.tone === "warn" ? "text-warn" : "text-fg-3",
-          )}
+          className={cn("shrink-0 text-xs tabular-nums @max-[520px]/title:hidden", budget.tone === "err" ? "text-err" : "text-warn")}
           title={`${budget.reached ? "Project budget reached. Raise it in project settings to continue. " : ""}Spent ${budget.text} of the project's budget`}
         >
           <span className="sr-only">Budget: </span>
           {budget.reached ? "Project budget reached" : budget.text}
         </span>
       )}
-      {total > 0 && (
-        <span
-          className="shrink-0 text-xs text-fg-3 tabular-nums @max-[800px]/title:hidden"
-          title={`${total.toLocaleString()} tokens used in this project (${tokens.input.toLocaleString()} in, ${tokens.output.toLocaleString()} out)`}
-        >
-          <span className="sr-only">Tokens used: </span>
-          {formatTokens(total)}
-        </span>
-      )}
       <span className="flex shrink-0 items-center gap-1">
-        {ws && (
-          <IconButton
-            icon={GLYPH.side}
-            label="Ask a side question"
-            title={`Ask a side question (${MOD_LABEL};) without interrupting the work`}
-            onClick={() => ws.openTool("side")}
-          />
-        )}
         <IconButton
           ref={button}
           icon={Ellipsis}
@@ -166,6 +120,18 @@ function End() {
               { id: "usage", label: "Show usage", disabled: !ws, run: () => ws?.openTool("usage") },
               { id: "side", label: "Ask a side question", shortcut: `${MOD_LABEL};`, disabled: !ws, run: () => ws?.openTool("side") },
               { id: "sep", separator: true },
+              ...(total > 0
+                ? [
+                    {
+                      id: "tokens",
+                      label: `${formatTokens(total)} tokens used`,
+                      title: `${total.toLocaleString()} tokens used in this project (${tokens.input.toLocaleString()} in, ${tokens.output.toLocaleString()} out)`,
+                      disabled: true,
+                      run: () => undefined,
+                    },
+                  ]
+                : []),
+              ...(budget && budget.tone === "fg-3" ? [{ id: "budget", label: `Budget: ${budget.text}`, disabled: true, run: () => undefined }] : []),
               ...(openProjectInEditor
                 ? [{ id: "editor", label: "Open in editor", disabled: project.folders.length === 0, run: () => openProjectInEditor(project.id) }]
                 : []),

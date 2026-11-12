@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  modelLabel,
   routeLine,
   modelIds,
   budgetState,
@@ -109,4 +110,13 @@ test("routeLine reads a route decision as one quiet line", () => {
   );
   assert.equal(routeLine({ route_choice: "fast", route_band: "easy", route_reason: null }), "Chosen automatically: easy task; the fast tier");
   assert.equal(routeLine({ route_choice: "deep", route_band: null, route_reason: "no router" }), "Chosen automatically: no router (the deep tier)");
+});
+
+test("modelLabel: a label that is the id becomes a readable name; a real label is kept", () => {
+  assert.equal(modelLabel({ id: "claude-sonnet-5-5", label: "claude-sonnet-5-5" }), "Sonnet 5.5");
+  assert.equal(modelLabel({ id: "claude-opus-4-1", label: "claude-opus-4-1" }), "Opus 4.1");
+  assert.equal(modelLabel({ id: "gpt-5", label: "gpt-5" }), "GPT 5");
+  assert.equal(modelLabel({ id: "openai/gpt-5-mini", label: "openai/gpt-5-mini" }), "GPT 5 Mini");
+  assert.equal(modelLabel({ id: "deepseek/deepseek-v4.1-flash", label: "deepseek/deepseek-v4.1-flash" }), "Deepseek V4.1 Flash");
+  assert.equal(modelLabel({ id: "claude-opus-5-5", label: "Claude Opus 5.5" }), "Claude Opus 5.5");
 });

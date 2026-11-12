@@ -56,6 +56,8 @@ export function submitProblem(e: unknown): SubmitProblem {
   const raw: unknown = typeof e === "object" && e !== null && "code" in e ? e.code : "";
   const code = typeof raw === "string" ? raw : "";
   const message = e instanceof Error ? e.message : String(e);
+  // The server's own command wins (`BridgeError.command`); "gh auth login" is what a GitHub host needs when it says none.
+  const own = typeof e === "object" && e !== null && "command" in e && typeof e.command === "string" && e.command ? e.command : "";
   switch (code) {
     case "comments_changed":
       return {
@@ -68,7 +70,7 @@ export function submitProblem(e: unknown): SubmitProblem {
         kind: "not_logged_in",
         title: "You are not logged in to GitHub",
         advice: "Nothing was posted and every comment is still pending. Log in with the command below, then submit again.",
-        command: "gh auth login",
+        command: own || "gh auth login",
       };
     case "code_host_error":
       return {

@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Provider, ProviderList, ProviderModel } from "@octo/agent-client";
-import { choosable, hiddenModelsCodec, pickerKey, pickerRows, pickerView } from "./modelList";
+import {
+  choosable,
+  cleanModelName,
+  customModelsCodec,
+  hiddenModelsCodec,
+  pickerKey,
+  pickerRows,
+  pickerView,
+  withCustomModel,
+  withoutCustomModel,
+} from "./modelList";
 
 const model = (id: string, label: string): ProviderModel => ({ id, label, source: "manifest" });
 /** A provider as the harness sends it: every field present, empty when unknown. */
@@ -43,11 +53,12 @@ const list: ProviderList = {
       models: [model("gpt-5", "GPT-5"), model("claude-sonnet-5-5", "Sonnet 5.5")],
     }),
     provider({ id: "solo", kind: "agent", label: "Solo", state: "ready", models: [model("only", "Only")] }),
+    provider({ id: "empty", kind: "agent", label: "Empty", state: "ready", models: [] }),
     provider({ id: "grok", kind: "agent", label: "Grok", state: "not_installed", models: [model("grok-5", "Grok 5")] }),
   ],
 };
 
-test("pickerView: only what can run, grouped by provider; the rest one connect row each", () => {
+test("pickerView: only what can run; the API's models grouped, every ready agent one flat row; the rest one connect row each", () => {
   const v = pickerView(list);
   assert.equal(v.level, "top");
   if (v.level !== "top") return;
@@ -55,9 +66,7 @@ test("pickerView: only what can run, grouped by provider; the rest one connect r
     v.groups.map((g) => [g.label, g.rows.map((r) => r.key)]),
     [
       ["Anthropic API", ["anthropic-api:claude-sonnet-5-5", "anthropic-api:claude-haiku-5-5"]],
-      ["Claude Code", ["acp:claude-code"]],
-      ["GitHub Copilot", ["acp:copilot"]],
-      ["Solo", ["acp:solo"]],
+      ["Agents", ["acp:claude-code", "acp:copilot", "acp:solo", "acp:empty"]],
     ],
   );
   // Grok's models are not listed; it is one row that opens the connect sheet.
@@ -69,25 +78,93 @@ test("pickerView: only what can run, grouped by provider; the rest one connect r
     ],
   );
   const agentRow = v.groups[1]?.rows[0];
-  assert.ok(agentRow?.kind === "agent" && agentRow.hasModels && agentRow.detail === "Sonnet 5.5");
-  // One model: no "›".
-  const solo = v.groups[3]?.rows[0];
-  assert.ok(solo?.kind === "agent" && !solo.hasModels);
+  assert.ok(agentRow?.kind === "agent" && agentRow.detail === "Sonnet 5.5");
+  // The chosen model of an agent is what its row shows on the right.
+  const chosen = pickerView(list, { current: "acp:claude-code/claude-opus-5-5" });
+  const chosenRow = chosen.level === "top" ? chosen.groups[1]?.rows[0] : undefined;
+  assert.ok(chosenRow?.kind === "agent" && chosenRow.detail === "Opus 5.5");
 });
 
-test("pickerView: an agent's second level lists its default first and writes acp:<agent>/<model>", () => {
-  const v = pickerView(list, { agent: "claude-code" });
+test("pickerView: an agent with no known model still has a second level (Default, Other model…)", () => {
+  const v = pickerView(list, { agent: "empty" });
   assert.equal(v.level, "agent");
   if (v.level !== "agent") return;
   assert.deepEqual(
-    v.rows.map((r) => (r.kind === "model" ? [r.value, r.isDefault] : null)),
+    v.rows.map((r) => [r.kind, r.key]),
     [
-      ["acp:claude-code/claude-sonnet-5-5", true],
-      ["acp:claude-code/claude-opus-5-5", false],
+      ["default", "acp:empty"],
+      ["other", "other:empty"],
     ],
   );
-  // An agent that is not ready cannot be opened.
+  // One model is a second level too.
+  const solo = pickerView(list, { agent: "solo" });
+  assert.deepEqual(solo.level === "agent" && solo.rows.map((r) => r.kind), ["default", "model", "other"]);
+  // Enter on an agent row opens it; Enter on "Other model…" starts typing; Enter on Default chooses the bare agent.
+  const top = pickerView(list);
+  const rows = pickerRows(top);
+  assert.deepEqual(
+    pickerKey(
+      top,
+      rows.findIndex((r) => r.key === "acp:empty"),
+      "Enter",
+    ),
+    { do: "open", agent: "empty" },
+  );
+  assert.deepEqual(pickerKey(v, 0, "Enter"), { do: "choose", value: "acp:empty" });
+  assert.deepEqual(pickerKey(v, 1, "Enter"), { do: "other", agent: "empty" });
+});
+
+test("pickerView: names typed for an agent are listed (as typed), removable, and not duplicated with the harness's own", () => {
+  const v = pickerView(list, { agent: "empty", custom: { empty: ["opus", "gpt-5.1-codex"] } });
+  assert.ok(v.level === "agent");
+  const models = v.rows.filter((r) => r.kind === "model");
+  assert.deepEqual(
+    models.flatMap((r) => (r.kind === "model" ? [[r.label, r.removable, r.value]] : [])),
+    [
+      ["opus", true, "acp:empty/opus"],
+      ["gpt-5.1-codex", true, "acp:empty/gpt-5.1-codex"],
+    ],
+  );
+  // A harness that already lists the name (source: command) wins; the local copy is not shown twice.
+  const known = pickerView(
+    { ...list, providers: list.providers.map((p) => (p.id === "empty" ? { ...p, models: [{ id: "opus", label: "opus", source: "command" as const }] } : p)) },
+    { agent: "empty", custom: { empty: ["opus"] } },
+  );
+  assert.ok(known.level === "agent" && known.rows.filter((r) => r.kind === "model").length === 1);
+  // Adding and removing.
+  assert.deepEqual(withCustomModel(["a"], " b "), ["a", "b"]);
+  assert.deepEqual(withCustomModel(["a"], "a"), ["a"]);
+  assert.deepEqual(withCustomModel(["a"], "two words"), ["a"]);
+  assert.deepEqual(withCustomModel([], "acp:grok/grok-4"), ["grok-4"]);
+  assert.deepEqual(withoutCustomModel(["a", "b"], "a"), ["b"]);
+  assert.equal(cleanModelName("  "), "");
+  assert.deepEqual(customModelsCodec.parse('{"x":["a",3,""],"y":"no"}'), { x: ["a"] });
+});
+
+test("pickerView: a provider that is not ready is a connect row, never a model or agent row, and cannot be opened", () => {
+  const v = pickerView(list);
+  assert.ok(v.level === "top");
+  const kinds = new Map(pickerRows(v).map((r) => [r.key, r.kind]));
+  assert.equal(kinds.get("connect:grok"), "connect");
+  assert.equal(kinds.has("acp:grok"), false);
   assert.equal(pickerView(list, { agent: "grok" }).level, "top");
+  const rows = pickerRows(v);
+  assert.deepEqual(
+    pickerKey(
+      v,
+      rows.findIndex((r) => r.key === "connect:grok"),
+      "Enter",
+    ),
+    { do: "connect", providerId: "grok" },
+  );
+  assert.equal(
+    pickerKey(
+      v,
+      rows.findIndex((r) => r.key === "connect:grok"),
+      "ArrowRight",
+    ),
+    null,
+  );
 });
 
 test("pickerView: search matches across both levels ('copilot gpt')", () => {
@@ -113,10 +190,10 @@ test("pickerView: hidden models are left out; an agent's own row stays", () => {
     pickerRows(v)
       .filter((r) => r.kind !== "connect")
       .map((r) => r.key),
-    ["anthropic-api:claude-sonnet-5-5", "acp:claude-code", "acp:copilot", "acp:solo"],
+    ["anthropic-api:claude-sonnet-5-5", "acp:claude-code", "acp:copilot", "acp:solo", "acp:empty"],
   );
   const open = pickerView(list, { agent: "claude-code", hidden: new Set(["acp:claude-code/claude-opus-5-5"]) });
-  assert.equal(pickerRows(open).length, 1);
+  assert.equal(pickerRows(open).length, 3); // Default, Sonnet, Other model…
 });
 
 test("pickerKey: arrows move and wrap, → opens an agent, ← returns to its row, Enter chooses or connects", () => {
@@ -126,18 +203,20 @@ test("pickerKey: arrows move and wrap, → opens an agent, ← returns to its ro
   assert.deepEqual(pickerKey(top, rows.length - 1, "ArrowDown"), { do: "move", active: 0 });
   assert.deepEqual(pickerKey(top, 0, "ArrowUp"), { do: "move", active: rows.length - 1 });
   assert.deepEqual(pickerKey(top, agentAt, "ArrowRight"), { do: "open", agent: "claude-code" });
-  assert.equal(
+  // Every ready agent opens, even one with a single model or none.
+  assert.deepEqual(
     pickerKey(
       top,
-      rows.findIndex((r) => r.key === "acp:solo"),
+      rows.findIndex((r) => r.key === "acp:empty"),
       "ArrowRight",
     ),
-    null,
+    { do: "open", agent: "empty" },
   );
   assert.equal(pickerKey(top, 0, "ArrowLeft"), null);
   const second = pickerView(list, { agent: "claude-code" });
   assert.deepEqual(pickerKey(second, 0, "ArrowLeft", top), { do: "back", active: agentAt });
-  assert.deepEqual(pickerKey(second, 1, "Enter"), { do: "choose", value: "acp:claude-code/claude-opus-5-5" });
+  // Row 0 is "Default", row 1 the agent's default model, row 2 the other known one.
+  assert.deepEqual(pickerKey(second, 2, "Enter"), { do: "choose", value: "acp:claude-code/claude-opus-5-5" });
   assert.deepEqual(pickerKey(top, rows.length - 1, "Enter"), { do: "connect", providerId: "grok" });
   assert.equal(pickerKey(top, 0, "a"), null);
 });

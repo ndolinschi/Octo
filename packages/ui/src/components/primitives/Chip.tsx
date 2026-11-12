@@ -1,11 +1,22 @@
 import { ChevronsUpDown, type LucideIcon } from "lucide-react";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
-import { middleTruncate } from "../../lib/format";
 import { Glyph } from "./Glyph";
 
-/** A chip label is cut in the middle past this many characters (decision 62), the tooltip has it whole. */
-const LABEL_MAX = 28;
+/**
+ * A label cut in the middle only when its row is too narrow (CSS, no character budget): the head gives way with an
+ * ellipsis while the last few characters stay ("product-configura…nager"). A short label is one plain span. The tooltip has it whole.
+ */
+function MiddleLabel({ text }: { text: string }) {
+  if (text.length <= 14) return <span className="min-w-0 truncate">{text}</span>;
+  const tail = Math.min(8, Math.floor(text.length / 3));
+  return (
+    <span className="flex min-w-0 items-baseline">
+      <span className="min-w-0 truncate">{text.slice(0, text.length - tail)}</span>
+      <span className="shrink-0">{text.slice(text.length - tail)}</span>
+    </span>
+  );
+}
 
 /**
  * A ghost chip (decision 62: the composer's control row, and the same model chip in the title bar): 28px, glyph + label + the up-down chevron pair (it opens
@@ -42,7 +53,7 @@ export const Chip = forwardRef<
       <Glyph icon={icon} size={14} className="shrink-0" />
       {!bare && (
         <span data-chip-label className="flex min-w-0 items-center gap-1.5">
-          <span className="min-w-0 truncate">{middleTruncate(label, LABEL_MAX)}</span>
+          <MiddleLabel text={label} />
           <Glyph icon={ChevronsUpDown} size={14} className="shrink-0 text-fg-3" />
         </span>
       )}

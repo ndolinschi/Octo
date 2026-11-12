@@ -1,3 +1,4 @@
+import { EmptyState } from "../primitives/EmptyState";
 import { ArrowLeft } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
@@ -104,12 +105,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 }
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="px-4 py-3 text-sm">
-      <p className="text-fg">{title}</p>
-      {children && <p className="mt-0.5 text-fg-2">{children}</p>}
-    </div>
-  );
+  return <EmptyState title={title}>{children}</EmptyState>;
 }
 
 /** A detail's title row: the title, a status, and optional actions. */

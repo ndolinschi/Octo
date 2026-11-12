@@ -203,6 +203,10 @@ test("submit problems keep everything pending and carry the command", () => {
   const coded = (code: string, message: string) => Object.assign(new Error(message), { code });
   assert.equal(submitProblem(coded("comments_changed", "x")).kind, "comments_changed");
   assert.equal(submitProblem(coded("not_logged_in", "x")).command, "gh auth login");
+  assert.equal(
+    submitProblem(Object.assign(coded("not_logged_in", "x"), { command: "gh auth login -h ghe.example.com" })).command,
+    "gh auth login -h ghe.example.com",
+  );
   assert.match(submitProblem(coded("code_host_error", "422 Unprocessable")).advice, /422 Unprocessable.*still pending/);
   assert.equal(submitProblem(new Error("net")).kind, "other");
 });

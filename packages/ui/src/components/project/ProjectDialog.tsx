@@ -12,6 +12,7 @@ import { Glyph } from "../primitives/Glyph";
 import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
 import { basename, errorMessage } from "../../lib/format";
+import { folderLabels, folderName } from "../../lib/folderPick";
 import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
@@ -37,6 +38,8 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const editing = Boolean(props.project);
   const initialModels = props.project?.models ?? config?.default_models ?? FALLBACK_MODELS;
   const [name, setName] = useState(props.project?.name ?? "");
+  /** The name follows the first folder until the person types one (decision 71). */
+  const [nameTouched, setNameTouched] = useState(editing);
   const [description, setDescription] = useState(props.project?.description ?? "");
   const [instructions, setInstructions] = useState(props.project?.instructions ?? "");
   const [folders, setFolders] = useState<FolderRow[]>(() => {
@@ -68,6 +71,13 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const budgetError = !budgetOk ? "Enter an amount in US dollars, like 25 or 12.50." : null;
   const spent = budgetState(props.project?.spent_usd, props.project?.budget_usd);
 
+  const addFolder = (path: string) => {
+    const clean = path.trim().replace(/[\\/]+$/, "");
+    if (!clean || folders.some((f) => f.path.trim() === clean)) return;
+    setFolders((rows) => [...rows.filter((r) => r.path), { key: Math.max(-1, ...rows.map((r) => r.key)) + 1, path: clean, label: "" }]);
+    if (!nameTouched && filled.length === 0) setName(folderName(clean));
+  };
+  const removeFolder = (key: number) => setFolders((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== key) : [{ key: key + 1, path: "", label: "" }]));
   const updateFolder = (key: number, patch: Partial<FolderRow>) => setFolders((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const submit = async (e: FormEvent) => {
@@ -92,7 +102,11 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         name: name.trim(),
         description: description.trim(),
         instructions: instructions.trim(),
-        folders: filled.map((f) => ({ path: f.path.trim(), ...(f.label.trim() ? { label: f.label.trim() } : {}) })),
+        folders: filled.map((f, i) => {
+          // Decision 71: no label is asked for; a folder is named after itself, with its parent only when two share a name.
+          const label = f.label.trim() || (editing ? "" : (folderLabels(filled.map((x) => x.path.trim()))[i] ?? ""));
+          return { path: f.path.trim(), ...(label ? { label } : {}) };
+        }),
         models: changedModels,
         max_depth: maxDepth,
         ...budgetPatch,
@@ -157,15 +171,18 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
               id={`${id}-name`}
               data-autofocus
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Billing service"
+              onChange={(e) => {
+                setNameTouched(true);
+                setName(e.target.value);
+              }}
+              placeholder="e.g. Billing service"
               aria-required
               aria-invalid={nameError ? true : undefined}
               aria-describedby={nameError ? `${id}-name-error` : undefined}
             />
           </Field>
           <Field label="Description" htmlFor={`${id}-desc`} optional>
-            <Input id={`${id}-desc`} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Payments API and webhook workers" />
+            <Input id={`${id}-desc`} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Payments API and webhook workers" />
           </Field>
           <Field label="Instructions" htmlFor={`${id}-instr`} optional>
             <Textarea
@@ -173,7 +190,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
               rows={3}
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Prefer small, reviewable changes. Never touch the migrations folder without asking."
+              placeholder="e.g. Prefer small, reviewable changes. Never touch the migrations folder without asking."
             />
           </Field>
         </div>
@@ -182,57 +199,77 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           <legend className="mb-1.5 text-sm text-fg-2">
             Folders <span className="text-xs text-fg-3">agents can only work inside these</span>
           </legend>
-          {folders.map((f, i) => {
-            const invalid = f.path.trim() !== "" && !isAbsolute(f.path.trim());
-            return (
-              <div key={f.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto] items-center gap-2">
-                {/* Decision 49: a folder is chosen in a picker (recent, Browse…, path completion), never typed raw. */}
-                <FolderField
-                  id={`${id}-folder-${f.key}`}
-                  index={i}
-                  path={f.path}
-                  invalid={invalid}
-                  describedBy={invalid ? `${id}-folder-error` : undefined}
-                  autoOpen={f.key === openFolderKey}
-                  current={folders.map((x) => x.path).filter(Boolean)}
-                  onChoose={(path) => updateFolder(f.key, { path })}
-                />
-                <Input
-                  aria-label={`Folder ${i + 1} label`}
-                  value={f.label}
-                  onChange={(e) => updateFolder(f.key, { label: e.target.value })}
-                  placeholder="Label (optional)"
-                  title={f.path.trim() ? `Shown as "${basename(f.path.trim())}" when empty` : "Defaults to the folder's name"}
-                  className="min-w-0"
-                />
-                <IconButton
-                  icon={X}
-                  label={`Remove folder ${i + 1}`}
-                  onClick={() => setFolders((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== f.key) : [{ key: f.key + 1, path: "", label: "" }]))}
-                />
-              </div>
-            );
-          })}
+          {!editing && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {filled.map((f) => (
+                <span key={f.key} title={f.path} className="inline-flex h-7 max-w-full items-center gap-1 rounded-sm bg-raised pl-2 text-sm text-fg">
+                  <Glyph icon={FolderOpen} size={14} className="shrink-0 text-fg-3" />
+                  <span className="min-w-0 truncate">{folderName(f.path)}</span>
+                  <IconButton icon={X} label={`Remove ${folderName(f.path)}`} onClick={() => removeFolder(f.key)} className="size-7" />
+                </span>
+              ))}
+              <AddFolder
+                first={filled.length === 0}
+                current={filled.map((f) => f.path)}
+                onChoose={(path) => {
+                  addFolder(path);
+                }}
+              />
+            </div>
+          )}
+          {editing &&
+            folders.map((f, i) => {
+              const invalid = f.path.trim() !== "" && !isAbsolute(f.path.trim());
+              return (
+                <div key={f.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto] items-center gap-2">
+                  <FolderField
+                    id={`${id}-folder-${f.key}`}
+                    index={i}
+                    path={f.path}
+                    invalid={invalid}
+                    describedBy={invalid ? `${id}-folder-error` : undefined}
+                    autoOpen={f.key === openFolderKey}
+                    current={folders.map((x) => x.path).filter(Boolean)}
+                    onChoose={(path) => updateFolder(f.key, { path })}
+                  />
+                  <Input
+                    aria-label={`Folder ${i + 1} label`}
+                    value={f.label}
+                    onChange={(e) => updateFolder(f.key, { label: e.target.value })}
+                    placeholder="Label"
+                    title={f.path.trim() ? `Shown as "${basename(f.path.trim())}" when empty` : "Defaults to the folder's name"}
+                    className="min-w-0"
+                  />
+                  <IconButton
+                    icon={X}
+                    label={`Remove folder ${i + 1}`}
+                    onClick={() => setFolders((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== f.key) : [{ key: f.key + 1, path: "", label: "" }]))}
+                  />
+                </div>
+              );
+            })}
           {folderError && (
             <p id={`${id}-folder-error`} className="text-xs text-err">
               {folderError}
             </p>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={Plus}
-            className="-ml-3 w-fit"
-            onClick={() =>
-              setFolders((rows) => {
-                const key = Math.max(...rows.map((r) => r.key)) + 1;
-                setOpenFolderKey(key);
-                return [...rows, { key, path: "", label: "" }];
-              })
-            }
-          >
-            Add folder
-          </Button>
+          {editing && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Plus}
+              className="-ml-3 w-fit"
+              onClick={() =>
+                setFolders((rows) => {
+                  const key = Math.max(...rows.map((r) => r.key)) + 1;
+                  setOpenFolderKey(key);
+                  return [...rows, { key, path: "", label: "" }];
+                })
+              }
+            >
+              Add folder
+            </Button>
+          )}
         </fieldset>
 
         <div>
@@ -374,6 +411,35 @@ function FolderField(props: {
               onChoose={props.onChoose}
               onClose={() => setOpen(false)}
             />
+          </Suspense>
+        )}
+      </Presence>
+    </>
+  );
+}
+
+/** "Add folder" (or "Choose a folder…" while there is none): opens the folder picker, Browse… first (decision 71). */
+function AddFolder(props: { first: boolean; current: string[]; onChoose(path: string): void }) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <Button
+        ref={button}
+        size="sm"
+        variant="ghost"
+        icon={Plus}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className={props.first ? undefined : "text-fg-2"}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {props.first ? "Choose a folder…" : "Add folder"}
+      </Button>
+      <Presence show={open} exitMs={0}>
+        {open && (
+          <Suspense fallback={null}>
+            <FolderPicker anchor={button} label="Add folder" current={props.current} onChoose={props.onChoose} onClose={() => setOpen(false)} />
           </Suspense>
         )}
       </Presence>

@@ -197,6 +197,15 @@ test("error body maps to BridgeError", async () => {
   });
 });
 
+test("error body carries the server's command when it sends one", async () => {
+  const { bridge } = bridgeWith(409, '{"error":{"code":"not_logged_in","message":"not logged in","command":" gh auth login --hostname ghe.example.com "}}');
+  await assert.rejects(bridge.sendMessage("p", "x"), (e: unknown) => {
+    assert.ok(e instanceof BridgeError);
+    assert.equal(e.command, "gh auth login --hostname ghe.example.com");
+    return true;
+  });
+});
+
 test("writeFile 409 maps to BridgeError file_changed", async () => {
   const { bridge } = bridgeWith(409, '{"error":{"code":"file_changed","message":"changed on disk"}}');
   await assert.rejects(bridge.writeFile("p", { folder: "f", path: "a", content: "x", expected_mtime: "t" }), (e: unknown) => {
