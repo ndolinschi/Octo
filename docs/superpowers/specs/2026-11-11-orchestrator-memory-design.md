@@ -178,3 +178,34 @@ Layout: container query, list and detail side by side from 640px of view width, 
 Demo: `?demo=1#/p/<id>/memory` renders the view alone (route handled in `app/AppShell.tsx`, lazy, demo only). The demo's receipts now exist for every request but the oldest, the second oldest being a full-mode turn; a request made after the memory first loaded is found by re-reading the thread (the 404 gap is closed).
 
 **Verified:** Playwright against `?demo=1` (dark and light at 1440x900, dark at 390x700, console clean): tab switching, task filter, keyboard row moves, superseded facts, file edit / save / too-large / delete with cancel and confirm, search with kinds, empty query, no-result, `?memory=fail|empty|none`. **Not verified:** against a real harness (shapes taken from the types and `memory.md`); the dock tab (not registered, see the handover for the snippet); screen-reader behaviour beyond roles and labels; the spacing audit does not reach the Memory route.
+
+## M4 — sessions: what was asked and what was answered (owner, 2026-11-12)
+
+Owner: "memory should contain the user's ask and the model's answer, like a session." Tasks and facts are digests;
+the person also wants the plain record. Rules:
+1. **An exchange is a memory record.** For every finished orchestrator turn the harness stores one exchange: the
+   request as typed (redacted for stored secrets), the final answer text (the last assistant text of the turn, not
+   the tool chatter), when, how long, the model or agent that answered, the outcome (completed / failed / stopped),
+   files changed (count and paths, from the changes ledger), sub-agents used (names), tokens and cost, the task it
+   was filed under. Nothing is summarised: the texts are kept whole (answer capped at 64 KiB with a marker).
+2. **Sessions group exchanges.** A session is a run of exchanges in one conversation: it starts at project creation,
+   after `/clear` (B11), after a rewind that cut everything, or after 6 h without a request; it carries a title (the
+   first request's first line, trimmed to 80 characters) and its dates. Old data is back-filled from stored messages
+   on migration.
+3. **API.** `GET /v1/projects/{id}/memory/sessions?limit=&before=` → `{sessions:[{id,title,started_at,ended_at,
+   exchanges,open}]}`; `GET …/memory/sessions/{sid}` → `{session, exchanges:[{id,turn_id,message_id,request,answer,
+   answer_truncated,status,started_at,duration_ms,model,files:[…],agents:[…],tokens,cost_usd,task_id?}]}`;
+   `GET …/memory/search` also searches exchanges (request and answer, same FTS5 index rules incl. Russian stemming)
+   and returns hits of kind `exchange` with `session_id`. Event `memory.updated` already exists and fires.
+4. **The orchestrator can read it.** `recall_message` gains `exchange_id`/`session_id` forms, and the context for a
+   new session gets a three-line pointer to the previous session (title, date, how to recall it), not its text.
+5. **UI.** The Memory tab opens on **Sessions** (list-detail, decision 66): sessions newest first; a session shows
+   its exchanges as request → answer pairs, answers rendered as Markdown and folded after 12 lines, with the meta
+   line (when, model, duration, files changed, cost) quiet under each; "Open in conversation" scrolls the transcript
+   to that request; search covers them. Tasks, Facts and Files stay as further views.
+6. **Privacy.** Stored locally in the project's database only; removed with the project; "Forget this exchange"
+   deletes one (also from the search index) and leaves a "removed" marker in its session.
+Acceptance: unit tests (exchange written once per turn incl. failed and stopped, final-answer extraction with tool
+calls and sub-agents, secret redaction, session boundaries incl. the 6 h rule with an injected clock, back-fill
+migration, search hits, forget); e2e case in `e2e-v7.sh` or `e2e-parity.sh`; UI tests for the view model and
+screenshots. Not verified until the owner's run: answer extraction for real ACP agents' message shapes.
