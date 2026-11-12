@@ -218,3 +218,21 @@ ACP agent; memory markers in `apps/harness/docs/memory.md`.
 ## 8. Where the older handovers went
 
 Older handovers: `git log -- docs/superpowers/HANDOVER.md`. Design direction: the UI spec's "Principles" section.
+
+## Working rule (owner, 2026-11-12) — executors check what they changed; the full gates run once, at merge
+
+Many executors running every gate at once made the machine crawl. From now on:
+- **An executor runs only what its change can break.**
+  - UI change: `pnpm --filter @octo/ui exec tsc --noEmit`, `eslint` and `prettier --check` on the files it touched,
+    the `*.test.ts` files next to what it changed (`node --test` on those files, or the package test once at the
+    end), and the browser scripts against **the dev server** (`vite` on its own port) for the screens it changed.
+    No `pnpm --filter @octo/desktop build`, no bundle check, no Tauri or sidecar build.
+  - agent-client change: its `tsc`, its tests, and `tsc` of `packages/ui`.
+  - Harness change: `gofmt`, `go vet` and `go test -race` for the packages it touched and the ones that import them
+    (`go list -deps`/reverse deps), plus the one e2e script that covers the feature. Not the whole tree, not every
+    e2e script.
+  - Never a Rust or Tauri build unless the change is in Rust.
+- **The orchestrator runs the full set once per merge**: lint, format, cycles, all package tests, the production
+  build, the bundle budget, the whole Go tree with `-race`, every e2e script, sidecar tests when Rust changed, and
+  the browser scripts on the merged tree.
+- One heavy command at a time per executor; no parallel test runs.
