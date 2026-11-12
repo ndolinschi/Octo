@@ -6,7 +6,7 @@ import { cn } from "../../lib/cn";
 import { formatTokens } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
 import { MOD_LABEL } from "../../lib/keys";
-import { budgetState, middleEllipsis, modelIds, modelName, servedModel } from "../../lib/models";
+import { budgetState, modelName, servedModel } from "../../lib/models";
 import { liveOrchestratorState, stateLine } from "../../lib/orchestrator";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
@@ -19,6 +19,7 @@ import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { OrchestratorGlyph } from "../primitives/Status";
 import { ModelPicker } from "../shared/ModelPicker";
+import { TitleBarTeam } from "./TitleBarTeam";
 
 /**
  * What the open project puts in the title bar (decision 54; it replaces the conversation header of decision 23). Rendered
@@ -54,19 +55,20 @@ function Start() {
   if (!project) return null;
   const working = orchestrator.kind === "working";
   return (
-    <p className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <span className="min-w-0 shrink truncate font-medium text-fg" title={project.name}>
         {project.name}
       </span>
       <span
         className={cn("flex shrink-0 items-center gap-1.5 text-xs", orchestrator.kind === "needs" ? "text-warn" : running ? "text-fg-2" : "text-fg-3")}
-        title={orchestrator.kind === "needs" ? (orchestrator.error ?? "The last turn failed") : `Orchestrator: ${line}`}
+        title={orchestrator.kind === "needs" ? (orchestrator.error ?? "The last turn failed") : line}
       >
         <OrchestratorGlyph state={orchestrator.kind} />
-        <span className="sr-only">Orchestrator: </span>
+        <span className="sr-only">State: </span>
         <span className="@max-[520px]/title:hidden">{working ? "Working" : line}</span>
       </span>
-    </p>
+      <TitleBarTeam orchestrator={orchestrator} />
+    </div>
   );
 }
 
@@ -86,36 +88,25 @@ function End() {
   const served = root?.served_model ? servedModel({ model: project.models.orchestrator, served_model: root.served_model }, acp) : null;
   // Decision 48: one display label everywhere (middle-truncated here); "chosen → served" in the tooltip.
   const chosen = modelName(project.models.orchestrator, acp);
-  const shownModel = middleEllipsis(served?.name ?? chosen, 24, 8);
   const budget = budgetState(project.spent_usd, project.budget_usd);
-  const known = modelIds(
-    project.models.orchestrator,
-    project.models.deep,
-    project.models.balanced,
-    project.models.fast,
-    ...Object.values(config?.default_models ?? {}),
-  );
   return (
     <>
       <span className="flex shrink-0 @max-[640px]/title:hidden">
+        {/* Decision 48 and 56: the same control as the composer's chip (same words, same list); only where it opens differs. */}
         <ModelPicker
-          label="Orchestrator model"
-          variant="text"
+          label="Model"
           value={project.models.orchestrator}
-          known={known}
-          tiers={{ fast: project.models.fast, balanced: project.models.balanced, deep: project.models.deep }}
-          policy={
-            config?.router
-              ? { value: project.models.tier_policy ?? "auto", onChange: (p) => void update({ models: { tier_policy: p } }).catch(() => undefined) }
-              : null
-          }
+          side="bottom"
           onChoose={(m) => void update({ models: { orchestrator: m } }).catch(() => undefined)}
-          {...(project.models_unavailable?.some((i) => i.field === "orchestrator") ? { warning: "This model's provider is not connected" } : {})}
-          title={served?.asked ? `${served.asked} → ${served.name} (chosen → served by the router)` : `Orchestrator model: ${served?.name ?? chosen}`}
-          className="-mx-1.5"
-        >
-          {shownModel}
-        </ModelPicker>
+          warn={project.models_unavailable?.some((i) => i.field === "orchestrator") === true}
+          tip={
+            project.models_unavailable?.some((i) => i.field === "orchestrator")
+              ? "This model's provider is not connected"
+              : served?.asked
+                ? `${served.asked} → ${served.name} (chosen → served by the router)`
+                : `Model: ${served?.name ?? chosen}`
+          }
+        />
       </span>
       {budget && (
         <span
@@ -144,14 +135,14 @@ function End() {
           <IconButton
             icon={GLYPH.side}
             label="Ask a side question"
-            title={`Ask a side question (${MOD_LABEL};) without interrupting the orchestrator`}
+            title={`Ask a side question (${MOD_LABEL};) without interrupting the work`}
             onClick={() => ws.openTool("side")}
           />
         )}
         <IconButton
           ref={button}
           icon={Ellipsis}
-          label="Orchestrator actions"
+          label="Project actions"
           aria-haspopup="menu"
           aria-expanded={menu !== null}
           className={cn(menu && "bg-active text-fg")}
@@ -164,7 +155,7 @@ function End() {
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Menu
-            label="Orchestrator actions"
+            label="Project actions"
             x={menu.x}
             y={menu.y}
             alignEnd

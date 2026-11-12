@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnsweredInput, Approval, ApprovalAnswer, Bridge, InputAnswer, InputRequest } from "@octo/agent-client";
 import { useLatest } from "../../lib/hooks";
+import { agentDisplayName } from "../../lib/orchestrator";
 import { approvalDeadline, approvalItems, resolutionCause, type Resolution } from "../../lib/v7/approval";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
@@ -99,7 +100,8 @@ export function ApprovalsSlot(props: ApprovalsSlotProps) {
 
 function Live({ onOpenAgent }: ApprovalsSlotProps) {
   const { bridge } = useApp();
-  const { projectId } = useProject();
+  const { projectId, project } = useProject();
+  const name = (label: string) => agentDisplayName(label, project?.name);
   const approvals = useApprovals({ projectId, bridge });
   const forms = useForms({ projectId, bridge });
   const resolve = useCallback(
@@ -115,7 +117,7 @@ function Live({ onOpenAgent }: ApprovalsSlotProps) {
       {approvals.items.map(({ approval, resolution }) => (
         <ApprovalCard
           key={approval.id}
-          approval={approval}
+          approval={{ ...approval, agent_label: name(approval.agent_label) }}
           resolution={resolution}
           focusOnArrival={approval.id === newest}
           onResolve={resolve}
@@ -126,7 +128,7 @@ function Live({ onOpenAgent }: ApprovalsSlotProps) {
       {forms.forms.map((request) => (
         <InputFormCard
           key={request.id}
-          request={request}
+          request={{ ...request, agent_label: name(request.agent_label) }}
           answered={forms.answered[request.id] ?? null}
           onSubmit={submit}
           onAnswered={forms.markAnswered}

@@ -17,7 +17,7 @@ export function NotesPanel() {
   return (
     <div className="flex h-full min-h-0 flex-col pt-pane">
       <div className="flex h-8 shrink-0 items-center gap-2 pr-2 pl-4 text-xs text-fg-3">
-        <span className="min-w-0 truncate">The orchestrator reads these every turn</span>
+        <span className="min-w-0 truncate">Read at the start of every request</span>
         <IconButton icon={Plus} label="Add note" size="sm" className="ml-auto" onClick={() => setEditing("new")} disabled={editing === "new"} />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
@@ -33,7 +33,7 @@ export function NotesPanel() {
         {notes.length === 0 && editing !== "new" && (
           <div className="px-2 py-3 text-sm">
             <p className="text-fg">No notes yet</p>
-            <p className="mt-0.5 text-fg-2">Decisions and facts the orchestrator saves appear here.</p>
+            <p className="mt-0.5 text-fg-2">Decisions and facts saved while working appear here.</p>
             <Button size="sm" className="mt-3" onClick={() => setEditing("new")}>
               Add note
             </Button>
@@ -119,7 +119,7 @@ function NoteEditor(props: { note?: Note; onCancel(): void; onSave(input: { titl
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const id = useId();
   const titleError = submitted && !title.trim() ? "Give the note a title." : null;
-  const contentError = submitted && !content.trim() ? "Write what the orchestrator should remember." : null;
+  const contentError = submitted && !content.trim() ? "Write what should be remembered." : null;
 
   const save = async () => {
     setSubmitted(true);
@@ -169,7 +169,7 @@ function NoteEditor(props: { note?: Note; onCancel(): void; onSave(input: { titl
       <Textarea
         ref={contentRef}
         aria-label="Note content"
-        placeholder="What should the orchestrator remember?"
+        placeholder="What should be remembered?"
         rows={4}
         value={content}
         onChange={(e) => setContent(e.target.value)}

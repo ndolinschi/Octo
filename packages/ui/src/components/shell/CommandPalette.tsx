@@ -127,7 +127,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
                 const root = a.parent_id === null;
                 return {
                   id: `a:${a.id}`,
-                  label: root ? "Orchestrator" : a.role,
+                  label: root ? "Conversation" : a.role,
                   detail: root ? undefined : a.title,
                   glyph: agentGlyph(a.status),
                   run: go(() => {

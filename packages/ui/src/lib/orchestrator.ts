@@ -138,3 +138,11 @@ export function roleText(role: string | null | undefined): string {
 export function roleName(agent: Pick<Agent, "parent_id" | "role">): string {
   return agent.parent_id === null ? "Orchestrator" : roleText(agent.role);
 }
+
+/**
+ * Decision 63: the word "orchestrator" is never a name on screen. A label a harness gives the project's own agent
+ * ("orchestrator", as approvals and forms carry it) reads as the project's name; any other agent keeps its label.
+ */
+export function agentDisplayName(label: string, projectName: string | null | undefined): string {
+  return label.trim().toLowerCase() === "orchestrator" ? projectName?.trim() || "Assistant" : label;
+}

@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyProjectState, type Agent } from "@octo/agent-client";
-import { roleText, agentActivity, agentStack, lastTeam, orchestratorState, runningAgents, stateLine, teamLine, teamRoles } from "./orchestrator";
+import {
+  agentDisplayName,
+  roleText,
+  agentActivity,
+  agentStack,
+  lastTeam,
+  orchestratorState,
+  runningAgents,
+  stateLine,
+  teamLine,
+  teamRoles,
+} from "./orchestrator";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
 function agent(p: Partial<Agent> & { id: string }): Agent {
@@ -158,4 +169,11 @@ test("a failed orchestrator that never started still needs you; a warning does n
   assert.equal(orchestratorState([{ ...base, status: "failed", error: "not logged in" }], "idle").kind, "needs");
   assert.equal(orchestratorState([{ ...base, status: "idle", error: "ACP agent copilot could not start" }], "idle").kind, "needs");
   assert.equal(orchestratorState([{ ...base, status: "idle", error: "warning: no MCP" }], "idle").kind, "new");
+});
+
+test("agentDisplayName: the project's own agent reads as the project, others keep their label", () => {
+  assert.equal(agentDisplayName("orchestrator", "Atlas API"), "Atlas API");
+  assert.equal(agentDisplayName(" Orchestrator ", "Atlas API"), "Atlas API");
+  assert.equal(agentDisplayName("orchestrator", ""), "Assistant");
+  assert.equal(agentDisplayName("Reviewer", "Atlas API"), "Reviewer");
 });

@@ -12,7 +12,7 @@ import { Glyph } from "../primitives/Glyph";
 export function ObserverBar() {
   const { projectId } = useProject();
   const ws = useOptionalWorkspace();
-  const note = "Read-only. Only the orchestrator can direct this agent.";
+  const note = "Read-only. Only the conversation can direct this agent.";
   return (
     <div role="note" className="@container/obs">
       <div className="flex h-bar items-center gap-2 rounded-xl bg-raised p-1.5 text-sm outline -outline-offset-1 outline-line">
@@ -21,8 +21,8 @@ export function ObserverBar() {
         </p>
         <a
           href={hrefFor(projectId)}
-          aria-label="Back to orchestrator"
-          title="Back to orchestrator"
+          aria-label="Back to conversation"
+          title="Back to conversation"
           onClick={(e) => {
             if (!ws || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
             e.preventDefault();
@@ -31,7 +31,7 @@ export function ObserverBar() {
           className="inline-flex h-7 shrink-0 press items-center gap-2 rounded-sm px-2 text-fg hover:bg-hover @max-[360px]/obs:w-7 @max-[360px]/obs:justify-center @max-[360px]/obs:px-0"
         >
           <Glyph icon={ArrowLeft} size={16} className="hidden @max-[360px]/obs:block" />
-          <span className="@max-[360px]/obs:hidden">Back to orchestrator</span>
+          <span className="@max-[360px]/obs:hidden">Back to conversation</span>
         </a>
       </div>
     </div>

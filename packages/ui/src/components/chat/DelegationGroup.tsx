@@ -40,8 +40,8 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
   return (
     <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container rounded-md border border-line">
       <div className="flex h-8 items-center gap-3 px-3 text-sm">
-        <span className="text-fg-2">{caption}</span>
-        <span className={cn("ml-auto text-xs tabular-nums", failed && status.endsWith("failed") ? "text-err" : "text-fg-3")}>{status}</span>
+        <span className="shrink-0 whitespace-nowrap text-fg-2">{caption}</span>
+        <span className={cn("ml-auto min-w-0 truncate text-xs tabular-nums", failed && status.endsWith("failed") ? "text-err" : "text-fg-3")}>{status}</span>
       </div>
       {/* Zero-width edge tracks + the 8px column gap are the rows' inside padding (a subgrid's own
           padding would eat into its first and last tracks): glyph on the caption's 12px line (4 + 8). */}

@@ -1,5 +1,5 @@
 import type { Models, Project, ProjectInput, TierPolicy } from "@octo/agent-client";
-import { budgetState, modelIds, parseBudget, TIER_POLICIES } from "../../lib/models";
+import { budgetState, parseBudget, TIER_POLICIES } from "../../lib/models";
 import { ModelPicker } from "../shared/ModelPicker";
 import { Segmented } from "../primitives/Segmented";
 import { ChevronDown, ChevronRight, FolderOpen, Plus, X } from "lucide-react";
@@ -20,7 +20,7 @@ import { Field, Input, Textarea } from "../primitives/Field";
 type FolderRow = { key: number; path: string; label: string };
 
 const MODEL_FIELDS: { key: "orchestrator" | "fast" | "balanced" | "deep"; label: string }[] = [
-  { key: "orchestrator", label: "Orchestrator" },
+  { key: "orchestrator", label: "Main model" },
   { key: "fast", label: "Fast tier" },
   { key: "balanced", label: "Balanced tier" },
   { key: "deep", label: "Deep tier" },
@@ -48,7 +48,6 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const [budget, setBudget] = useState(props.project?.budget_usd ? String(props.project.budget_usd) : "");
   const [policy, setPolicy] = useState<TierPolicy>(props.project?.models.tier_policy ?? "auto");
   const router = config?.router === true;
-  const known = modelIds(...Object.values(initialModels), ...Object.values(config?.default_models ?? {}));
   const [advanced, setAdvanced] = useState(false);
   /** The folder row whose picker opens by itself ("Add folder"). */
   const [openFolderKey, setOpenFolderKey] = useState<number | null>(null);
@@ -255,10 +254,9 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                     <ModelPicker
                       variant="field"
                       custom
+                      side="bottom"
                       label={`${m.label} model`}
                       value={models[m.key]}
-                      known={known}
-                      {...(m.key === "orchestrator" ? { tiers: { fast: models.fast, balanced: models.balanced, deep: models.deep } } : {})}
                       onChoose={(v) => setModels((cur) => ({ ...cur, [m.key]: v }))}
                     />
                   </Field>

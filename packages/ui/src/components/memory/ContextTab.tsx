@@ -41,13 +41,12 @@ export function ContextTab(props: {
   const current =
     turns.find((t) => t.id === props.selected) ?? (props.selected !== null ? { id: props.selected, text: `Request ${props.selected}`, at: "" } : null);
   if (!messages) return <Loading />;
-  if (turns.length === 0)
-    return <Empty title="No requests yet">Send the orchestrator a request; the receipt of what it had in front of it appears here.</Empty>;
+  if (turns.length === 0) return <Empty title="No requests yet">Send a request; the receipt of what was in front of the model appears here.</Empty>;
   return (
     <ListDetail
       label="Context"
       listLabel="Requests"
-      placeholder="Choose a request to see what the orchestrator had in front of it."
+      placeholder="Choose a request to see what the model had in front of it."
       onBack={() => props.onSelect(null)}
       listHeader={<p className="flex h-row shrink-0 items-center px-4 text-xs text-fg-3">Newest first</p>}
       list={

@@ -15,10 +15,10 @@ const DEFAULTS = [
   {
     id: SETTING_IDS.modelOrchestrator,
     rowId: "default-orchestrator",
-    title: "Default orchestrator",
-    description: "Runs the orchestrator of projects created from now on.",
+    title: "Default model",
+    description: "Answers in projects created from now on.",
   },
-  { id: SETTING_IDS.modelFast, rowId: "tier-fast", title: "Fast tier", description: "Small, quick tasks the orchestrator hands out." },
+  { id: SETTING_IDS.modelFast, rowId: "tier-fast", title: "Fast tier", description: "Small, quick tasks handed out to agents." },
   { id: SETTING_IDS.modelBalanced, rowId: "tiers", title: "Balanced tier", description: "Most delegated work." },
   { id: SETTING_IDS.modelDeep, rowId: "tier-deep", title: "Deep tier", description: "Hard problems that need the strongest model." },
 ] as const;

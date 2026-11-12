@@ -106,7 +106,7 @@ export function AgentsPanel() {
         {empty && (
           <div className="flex flex-col gap-2 px-2 pt-2">
             <p className="text-sm text-fg-2">No agents yet</p>
-            <p className="text-xs text-fg-3">They appear here when the orchestrator delegates a task.</p>
+            <p className="text-xs text-fg-3">They appear here when a request is split into tasks.</p>
             <button
               type="button"
               data-row
@@ -145,7 +145,7 @@ function AgentRow(props: { agent: Agent; now: number; quiet: boolean; via?: stri
       data-row
       data-agent-row={a.status}
       onClick={(e) => props.onOpen(e.altKey)}
-      title={`${a.role}${a.title ? `: ${a.title}` : ""}${a.status === "failed" && a.error ? ` — failed: ${a.error}` : ""}\nOpens beside the orchestrator`}
+      title={`${a.role}${a.title ? `: ${a.title}` : ""}${a.status === "failed" && a.error ? ` — failed: ${a.error}` : ""}\nOpens in its own tab`}
       className={ROW}
     >
       <span className="grid size-4 shrink-0 place-items-center">

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { BridgeConfig, Plugin, ProviderList, SettingsView } from "@octo/agent-client";
-import { API_PROVIDER, ROUTER_PROVIDER, canRun, chipLabel, connectAction, deriveProviders, providerOf, stateText } from "./providers";
+import { deriveProviders } from "./derive";
+import { API_PROVIDER, ROUTER_PROVIDER, canRun, chipLabel, connectAction, extraReason, providerOf, stateText } from "./providers";
 
 const config = (over: Partial<BridgeConfig> = {}): BridgeConfig => ({
   default_models: { orchestrator: "claude-sonnet-5-5", fast: "claude-haiku-5-5", balanced: "claude-sonnet-5-5", deep: "claude-opus-5-5" },
@@ -135,4 +136,10 @@ test("canRun: only what a ready provider runs", () => {
 test("providerOf: the provider a setting runs on", () => {
   assert.equal(providerOf(list, "acp:claude-code/claude-opus-5-5")?.id, "claude-code");
   assert.equal(providerOf(list, "claude-sonnet-5-5")?.id, API_PROVIDER);
+});
+
+test("extraReason drops a reason that only repeats the state", () => {
+  assert.equal(extraReason({ state: "not_logged_in", reason: "not logged in" }), "");
+  assert.equal(extraReason({ state: "not_installed", reason: "grok: command not found on PATH" }), "grok: command not found on PATH");
+  assert.equal(extraReason({ state: "ready", reason: "" }), "");
 });

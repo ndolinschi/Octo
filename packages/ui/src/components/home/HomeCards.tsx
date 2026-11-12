@@ -50,8 +50,8 @@ export function TeamCard({ projects, agents }: { projects: ProjectSummary[] | nu
   return (
     <Card
       icon={GLYPH.agents}
-      title="Orchestrators at work"
-      label="Orchestrators at work"
+      title="Agents at work"
+      label="Agents at work"
       aside={busy > 0 && <span className="shrink-0 text-xs text-fg-3">{busy === 1 ? "1 project" : `${busy} projects`}</span>}
     >
       {!agents ? (

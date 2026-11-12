@@ -1,16 +1,14 @@
 import type { Folder, TierPolicy } from "@octo/agent-client";
-import { Bot, Layers, Sparkles } from "lucide-react";
+import { Layers } from "lucide-react";
 import { lazy, Suspense, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { GLYPH } from "../primitives/glyphs";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
-import { ComposerChip } from "./ComposerChip";
-import { chipLabel, parseModelRef } from "./modelPicker";
-import { useModelPickerData } from "./modelPickerData";
+import { Chip } from "../primitives/Chip";
+import { ModelPicker } from "../shared/ModelPicker";
 
 /** The folder picker loads when first opened (decision 49; its own chunk). */
-const ModelPicker = lazy(() => import("./ModelPicker").then((m) => ({ default: m.ModelPicker })));
 const FolderPicker = lazy(() => import("../shared/FolderPicker").then((m) => ({ default: m.FolderPicker })));
 
 /** Gap between a chip and the menu it opens (decision 56). */
@@ -60,33 +58,20 @@ function useChipMenu(onOpenChange: (open: boolean) => void) {
   return { ref, open, setOpen, at };
 }
 
-/** The orchestrator's model or agent (decision 58): "Claude Code · Opus". */
+/** The project's model or agent (decision 58): the shared model control, the same one the title bar shows. */
 export function ModelChip(props: ChipProps & { value: string; title?: string | undefined; unavailable?: boolean; onChoose(value: string): void }) {
-  const { ref, open, setOpen } = useChipMenu(props.onOpenChange);
-  const source = useModelPickerData();
-  const ref0 = parseModelRef(props.value);
   return (
-    <>
-      <ComposerChip
-        ref={ref}
-        icon={ref0.kind === "acp" ? Bot : Sparkles}
-        name="Model"
-        label={chipLabel(props.value, source.data)}
-        bare={props.bare}
-        open={open}
-        disabled={props.disabled}
-        aria-haspopup="dialog"
-        onClick={() => setOpen(!open)}
-        tip={props.unavailable ? "This model's provider is not connected" : props.title}
-        warn={props.unavailable === true}
-        className="max-w-60"
-      />
-      <Presence show={open}>
-        <Suspense fallback={null}>
-          <ModelPicker anchor={ref} data={source.data} loading={source.loading} value={props.value} onChoose={props.onChoose} onClose={() => setOpen(false)} />
-        </Suspense>
-      </Presence>
-    </>
+    <ModelPicker
+      label="Model"
+      value={props.value}
+      onChoose={props.onChoose}
+      bare={props.bare}
+      disabled={props.disabled}
+      side="top"
+      warn={props.unavailable === true}
+      tip={props.unavailable ? "This model's provider is not connected" : props.title}
+      onOpenChange={props.onOpenChange}
+    />
   );
 }
 
@@ -105,7 +90,7 @@ export function FolderChip(props: ChipProps & { folders: Folder[]; onAdd?: ((pat
   const pos = open ? at() : null;
   return (
     <>
-      <ComposerChip
+      <Chip
         ref={ref}
         icon={GLYPH.files}
         name="Folders"
@@ -181,7 +166,7 @@ export function TierChip(props: ChipProps & { value: TierPolicy; onChoose(value:
   const pos = open ? at() : null;
   return (
     <>
-      <ComposerChip
+      <Chip
         ref={ref}
         icon={Layers}
         name="Routing"

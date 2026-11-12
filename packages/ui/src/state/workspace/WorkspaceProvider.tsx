@@ -315,15 +315,17 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         focusSoon(() => document.getElementById("octo-composer"));
       },
       openAgent,
-      // The Files tab is a file view (editor + tree column): it opens at half the row like a file.
+      // The Files tab is a file view (editor + tree column) and Changes is a list beside a diff: both open at the width of a
+      // file (the rest of the row after the conversation), not at a tool's 366px where the diff is cramped.
       openTool: (tool) => {
         const tab = L.toolTab(tool);
         // Decision 35: the opened tool takes focus (the header button that opened it may re-mount in another strip).
         // The side question's input takes the caret (Ctrl/Cmd+; means "ask now").
         if (tool === "side") focusSoon(() => document.getElementById("octo-side-input"), { timeout: 3000 });
         else if (tool !== "files") focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
-        openSide(tab, tool === "files" ? fileFraction() : toolFraction());
-        if (tool === "files") {
+        const roomy = tool === "files" || tool === "changes";
+        openSide(tab, roomy ? fileFraction() : toolFraction());
+        if (roomy) {
           const g = L.groupOf(layoutRef.current, tab);
           if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
             commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
@@ -558,9 +560,9 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
           { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
           { id: "tool-changes", label: "Show changes", detail: "what the agents changed", run: () => ws.openTool("changes") },
-          { id: "tool-memory", label: "Show memory", detail: "what the orchestrator remembers", run: () => ws.openTool("memory") },
+          { id: "tool-memory", label: "Show memory", detail: "what the project remembers", run: () => ws.openTool("memory") },
           { id: "tool-usage", label: "Show usage", detail: "tokens, cost, limits", run: () => ws.openTool("usage") },
-          { id: "tool-side", label: "Ask a side question", detail: "not added to the orchestrator", shortcut: `${MOD_LABEL};`, run: () => ws.openTool("side") },
+          { id: "tool-side", label: "Ask a side question", detail: "not added to the conversation", shortcut: `${MOD_LABEL};`, run: () => ws.openTool("side") },
           { id: "new-tab", label: "Open a tab…", detail: "tools, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },
         ];
         if (ws.canMoveToOtherSide(active))

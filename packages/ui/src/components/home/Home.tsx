@@ -219,7 +219,7 @@ function Projects({
   const shown = groups.reduce((n, g) => n + g.rows.length, 0);
   const rest = (filter ? items.filter((x) => x.triage === filter).length : items.length) - shown;
   return (
-    <div ref={list} role="group" aria-label="Projects and their orchestrators" className="octo-card octo-card-dense flex flex-col rounded-lg p-1">
+    <div ref={list} role="group" aria-label="Projects" className="octo-card octo-card-dense flex flex-col rounded-lg p-1">
       {data.projects === null && <SkeletonRows count={3} />}
       {filter && shown === 0 && (
         <p className="flex h-bar items-center px-2 text-sm text-fg-3">

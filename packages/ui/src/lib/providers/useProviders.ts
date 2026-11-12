@@ -42,7 +42,7 @@ export async function fetchProviders(bridge: Bridge): Promise<ProviderList> {
     bridge.getSettings ? bridge.getSettings().catch(() => null) : Promise.resolve(null),
   ]);
   // Only for a harness that predates /v1/providers: loaded on demand, so the app shell's chunk stays small.
-  const { deriveProviders } = await import("./providers");
+  const { deriveProviders } = await import("./derive");
   return deriveProviders({ config, plugins, settings });
 }
 

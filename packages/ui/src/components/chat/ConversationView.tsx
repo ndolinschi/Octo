@@ -272,8 +272,8 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
                   messages={messages ?? []}
                   now={now}
                   watched={watched}
-                  speaker={roleName(agent)}
-                  promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
+                  speaker={agent?.parent_id === null ? (project?.name ?? "Assistant") : roleName(agent)}
+                  promptAuthor={isOrchestrator ? "You" : parent ? (parent.parent_id === null ? (project?.name ?? "Assistant") : roleName(parent)) : "Parent"}
                   hideFirstPrompt={!isOrchestrator}
                 />
                 {isOrchestrator && slots?.approvals?.({ onOpenAgent: (id) => ws?.openAgent(id) })}

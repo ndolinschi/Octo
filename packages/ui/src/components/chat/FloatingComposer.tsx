@@ -92,12 +92,12 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
         {chips && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {turn && (
-              <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the orchestrator">
+              <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the conversation">
                 {turn}
               </button>
             )}
             {agentsRunning > 0 && (
-              <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the orchestrator">
+              <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the conversation">
                 <RunningDot />
                 {agentsRunning}&nbsp;{agentsRunning === 1 ? "agent" : "agents"} running
               </button>
@@ -106,7 +106,7 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
         )}
         {/* State changes only (not the ticking timer) are announced. */}
         <p role="status" className="sr-only">
-          {last?.state === "working" ? "The orchestrator is working" : last?.state === "failed" ? "Turn failed" : last?.state === "done" ? "Turn finished" : ""}
+          {last?.state === "working" ? "Working" : last?.state === "failed" ? "Turn failed" : last?.state === "done" ? "Turn finished" : ""}
         </p>
         <Composer
           {...composer}

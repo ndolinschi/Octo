@@ -1156,6 +1156,32 @@ a live backend.
   Models at 390×700 and light, Providers at 1100×700, 800×600, 640×480, the sheets and the connect screen; console
   clean, no horizontal scroll). Not verified against a live harness's `/v1/providers` (not built when this was).
 
+### As built — usability pass (2026-11-12)
+
+Defect list with severities: the executor's `defects.md` (scratchpad); summary of what changed:
+
+- **Sub-agents in the title bar** (decision 34 returns): `shell/TitleBarTeam` — chips for the running agents, the latest team when idle,
+  click opens the agent's tab, folds into one "N agents" chip (opens Agents) when the chips do not fit (measured). The unused
+  `chat/TeamLine` is gone.
+- **One model control**: `shared/ModelPicker` (chip on `primitives/Chip`, the former `ComposerChip`) is used by the composer, the title
+  bar and the project dialog; its list (`ModelPickerPanel`) renders `lib/providers` (`useModelPicker`, `pickerView`, `pickerKey`):
+  only ready providers' models, grouped; a not-connected provider is one row that opens its connect sheet (`ShellContext.openConnect`);
+  an agent's models under "›"; a `stale` model is dim with "not offered in the last session"; the project form keeps "Use <id>". Both
+  chips show the chosen model's label (decision 48's served model is in the tooltip); a setting that `canRun` rejects turns the chip
+  warn (53 d). Removed: `chat/ModelPicker`, `chat/modelPicker*`, `lib/modelPicker` (tiers/favourites rows of decision 27; tiers stay
+  in project settings, routing stays on the composer's chip). The picker's chunk graph keeps `deriveProviders` lazy (`lib/providers/derive`),
+  and the chip imports `providers.ts` / `useProviders.ts` directly, not the index: initial JS stays 152.89 kB gzip.
+- **Settings**: the title bar's sidebar toggle is hidden there. **Changes** opens at the file width (`openTool` treats it like Files).
+- **Following new cards**: `useStickToBottom` re-observes after a remount, follows `initialStick` until the reader has moved, and does
+  not read a clamp from shorter content as scrolling up. Reproduced with the approvals chunk delayed 3.5 s (before: not at the end).
+- **Wording**: "orchestrator" is no longer shown as a name (`agentDisplayName`: project name for approval and form labels, transcript
+  speaker; "Conversation", "Agents at work", "Project actions", prose rephrased). **Markdown chunk** warmed in an idle callback.
+  Connect screen/sheet no longer repeat the state as the reason (`extraReason`). Home keeps an intentional scroll below ~1200px of
+  content (backdrop outside the scroller; end of scroll checked at 390 and 768).
+- **Verified**: Chromium via Playwright against `?demo=1` (flows listed in `defects.md`), console clean, no horizontal scroll at
+  1100/830/640/390/320; unit tests (383 UI, new: `agentDisplayName`, `extraReason`). **Not verified**: WebKit (the owner's webview),
+  a live harness, light theme screenshots for the new controls, the flows listed as not walked in `defects.md`.
+
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)

@@ -1,27 +1,26 @@
-import type { Models, TierPolicy } from "@octo/agent-client";
 import type { ReactNode } from "react";
 
-/** The model picker's props (decision 27): shared by the button and its lazy list without an import cycle. */
+/** The model picker's props (decisions 53, 56, 58): shared by the chip and its lazy list without an import cycle. */
 export type ModelPickerProps = {
-  /** What the setting is, for the button's and the picker's names ("Orchestrator model"). */
+  /** What the setting is, for the chip's and the picker's names ("Model", "Fast tier model"). */
   label: string;
+  /** The setting: a model id or `acp:<agent>[/<model>]`. */
   value: string;
   onChoose(value: string): void;
-  /** The project's tiers, offered first (the orchestrator's picker). */
-  tiers?: Pick<Models, "fast" | "balanced" | "deep">;
-  /** Model ids the harness knows (the project's and the bridge's defaults). */
-  known: readonly string[];
-  /** The project's routing policy (decision 37), shown under the list when a router is detected. */
-  policy?: { value: TierPolicy; onChange(policy: TierPolicy): void } | null;
-  disabled?: boolean;
-  /** `bar`: the composer's context bar (14px glyph, 24px); `field`: the project dialog (a 32px input-like button). */
-  variant?: "bar" | "field" | "text";
-  className?: string;
-  /** Text shown on the button instead of the model's name (the header shows the served model). */
-  children?: ReactNode;
-  title?: string;
-  /** The harness cannot run this model now (`models_unavailable`): the button turns warn-coloured with this text as its tooltip. */
-  warning?: string;
   /** Offer the typed text as a model id of its own (project settings: any id the provider accepts). */
   custom?: boolean;
+  disabled?: boolean;
+  /** `chip`: the composer's and the title bar's one model control; `field`: the project dialog (a 32px input-like button). */
+  variant?: "chip" | "field";
+  /** The composer sheds the label when its row is too narrow. */
+  bare?: boolean;
+  /** Where the list opens: above a control at the bottom of the window, below one at the top. */
+  side?: "top" | "bottom";
+  /** The harness cannot run this setting now: the chip turns warn-coloured. */
+  warn?: boolean;
+  /** Tooltip (the served model, the unavailable reason); default "Model: <label>". */
+  tip?: string | undefined;
+  onOpenChange?(open: boolean): void;
+  className?: string;
+  children?: ReactNode;
 };

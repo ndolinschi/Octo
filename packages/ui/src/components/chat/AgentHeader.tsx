@@ -99,7 +99,7 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
       )}
       {agent.status === "failed" && (
         <p role="note" className="mt-1.5 text-sm text-fg-2">
-          <span className="text-err">{(agent.error || "No error details were reported").replace(/\.$/, "")}.</span> Ask the orchestrator to retry it.
+          <span className="text-err">{(agent.error || "No error details were reported").replace(/\.$/, "")}.</span> Ask in the conversation to retry it.
         </p>
       )}
       {agent.task && (

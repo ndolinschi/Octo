@@ -18,6 +18,8 @@ export type PickerRow =
       isDefault: boolean;
       /** An agent model found by a top-level search: shown as "Agent · Model". */
       agentLabel?: string;
+      /** The agent's latest session did not advertise it any more (kept, dimmed: "not offered in the last session"). */
+      stale?: boolean;
     }
   | {
       kind: "agent";
@@ -77,6 +79,7 @@ function agentModelRow(agent: Provider, m: ProviderModel, withAgent: boolean): P
     providerId: agent.id,
     isDefault: m.id === agent.default_model,
     ...(withAgent ? { agentLabel: agent.label } : {}),
+    ...(m.stale ? { stale: true } : {}),
   };
 }
 

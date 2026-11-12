@@ -1,7 +1,7 @@
 import type { Provider } from "@octo/agent-client";
 import { KeyRound } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { API_PROVIDER, connectAction, isReady, stateText, useProviders } from "../../lib/providers";
+import { API_PROVIDER, connectAction, extraReason, isReady, stateText, useProviders } from "../../lib/providers";
 import { STREAK_HERO } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
@@ -94,7 +94,7 @@ function ProviderLine({ provider: p, onConnect }: { provider: Provider; onConnec
         <span className="block text-base text-fg">{p.label}</span>
         <span className="block text-sm text-fg-3">
           {stateText(p.state)}
-          {p.reason && !isReady(p) ? ` · ${p.reason}` : ""}
+          {extraReason(p) && !isReady(p) ? ` · ${extraReason(p)}` : ""}
         </span>
       </span>
       <Button

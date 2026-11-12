@@ -172,7 +172,7 @@ function CompactedMarker({ marker }: { marker: CompactionMarker }) {
       data-compacted
       role="separator"
       aria-label="History compacted"
-      title={`Everything above was compacted${size} on ${new Date(marker.at).toLocaleString()}. The orchestrator works from that summary; the full text stays here.`}
+      title={`Everything above was compacted${size} on ${new Date(marker.at).toLocaleString()}. Everything after it works from that summary; the full text stays here.`}
       className="flex h-4 items-center gap-3 text-xs text-fg-3"
     >
       <span aria-hidden className="h-px flex-1 bg-line" />

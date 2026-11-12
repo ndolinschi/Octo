@@ -24,7 +24,7 @@ export function FilesTab(props: { projectId: string; load: Load<MemoryFile[]>; r
   const current = files?.find((f) => f.path === props.selected) ?? null;
   if (props.load.status === "loading") return <Loading />;
   if (props.load.status === "error") return <ErrorState message={props.load.message} onRetry={props.reload} />;
-  if (sorted.length === 0) return <Empty title="No memory files">Files the orchestrator writes to remember things between requests appear here.</Empty>;
+  if (sorted.length === 0) return <Empty title="No memory files">Files written to remember things between requests appear here.</Empty>;
   return (
     <ListDetail
       label="Files"
@@ -156,7 +156,7 @@ function FileEditor(props: { file: MemoryFile; onCancel(): void; onSave(content:
         if (!problem && dirty && !busy) void save();
       }}
     >
-      <Field label="Summary" htmlFor={`${id}-s`} hint="One line; the orchestrator sees it in the memory index.">
+      <Field label="Summary" htmlFor={`${id}-s`} hint="One line; it shows in the memory index.">
         <Input id={`${id}-s`} value={summary} onChange={(e) => setSummary(e.target.value)} ref={first} />
       </Field>
       <Field label="Text" htmlFor={`${id}-c`} error={problem && summary.trim() !== "" ? problem : null} errorId={`${id}-e`}>
@@ -199,7 +199,7 @@ function DeleteDialog(props: { path: string; onClose(): void; onDelete(): Promis
   return (
     <Dialog
       title="Delete this file?"
-      description={`${props.path} leaves the memory index. The orchestrator will no longer see it. This cannot be undone.`}
+      description={`${props.path} leaves the memory index. It will no longer be remembered. This cannot be undone.`}
       onClose={props.onClose}
       width="sm"
       footer={

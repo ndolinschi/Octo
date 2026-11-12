@@ -29,13 +29,13 @@ const PAGE = 8;
 /** Outputs of the latest request shown before "Show more" (decision 38). */
 const OUTPUTS = 5;
 const TIERS = [
-  ["orchestrator", "Orchestrator"],
+  ["orchestrator", "Conversation"],
   ["fast", "Fast"],
   ["balanced", "Balanced"],
   ["deep", "Deep"],
 ] as const;
 
-const roleOf = (a: Agent) => (a.parent_id === null ? "Orchestrator" : roleText(a.role));
+const roleOf = (a: Agent) => (a.parent_id === null ? "Conversation" : roleText(a.role));
 
 /**
  * The Details tab as stacked sections (decision 38): one scroll of plain sections, each a 12px caption and 28px rows,

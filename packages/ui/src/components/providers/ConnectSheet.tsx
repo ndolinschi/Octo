@@ -2,7 +2,7 @@ import type { Provider, SettingsUpdate, SettingsView } from "@octo/agent-client"
 import { SETTING_IDS } from "@octo/agent-client";
 import { useEffect, useState } from "react";
 import { errorMessage } from "../../lib/format";
-import { API_PROVIDER, ROUTER_PROVIDER, commandsIn, isReady, refreshProviders, stateText, useProviders } from "../../lib/providers";
+import { API_PROVIDER, ROUTER_PROVIDER, commandsIn, extraReason, isReady, refreshProviders, stateText, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { Button } from "../primitives/Button";
@@ -140,7 +140,7 @@ function AgentSteps({ provider: p }: { provider: Provider }) {
   steps.push({ title: "Log in", text: p.login_hint, commands: commandsIn(p.login_hint) });
   return (
     <div className="flex flex-col gap-4">
-      {p.reason && <p className="text-xs text-fg-3">{p.reason}</p>}
+      {extraReason(p) && <p className="text-xs text-fg-3">{extraReason(p)}</p>}
       <ol className="flex flex-col gap-4">
         {steps.map((s, i) => (
           <li key={s.title} className="flex flex-col gap-2">

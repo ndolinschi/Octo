@@ -2,16 +2,16 @@ import { ChevronsUpDown, type LucideIcon } from "lucide-react";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
 import { middleTruncate } from "../../lib/format";
-import { Glyph } from "../primitives/Glyph";
+import { Glyph } from "./Glyph";
 
 /** A chip label is cut in the middle past this many characters (decision 62), the tooltip has it whole. */
 const LABEL_MAX = 28;
 
 /**
- * A ghost chip in the composer's control row (decision 62): 28px, glyph + label + the up-down chevron pair (it opens
+ * A ghost chip (decision 62: the composer's control row, and the same model chip in the title bar): 28px, glyph + label + the up-down chevron pair (it opens
  * upward, decision 56). `bare` drops the label (the row is too narrow); the accessible name keeps it.
  */
-export const ComposerChip = forwardRef<
+export const Chip = forwardRef<
   HTMLButtonElement,
   ButtonHTMLAttributes<HTMLButtonElement> & {
     icon: LucideIcon;
@@ -22,7 +22,7 @@ export const ComposerChip = forwardRef<
     open?: boolean;
     warn?: boolean;
   }
->(function ComposerChip({ icon, label, name, tip, bare = false, open = false, warn = false, className, ...rest }, ref) {
+>(function Chip({ icon, label, name, tip, bare = false, open = false, warn = false, className, ...rest }, ref) {
   return (
     <button
       ref={ref}

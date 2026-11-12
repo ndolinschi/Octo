@@ -43,7 +43,7 @@ export function TasksTab(props: {
   if (props.load.status === "loading") return <Loading />;
   if (props.load.status === "error") return <ErrorState message={props.load.message} onRetry={props.reload} />;
   if (!tasks || tasks.length === 0) {
-    return <Empty title="No tasks yet">Each request opens a task record. The orchestrator fills in its goal, decisions and facts as the work goes on.</Empty>;
+    return <Empty title="No tasks yet">Each request opens a task record. Its goal, decisions and facts are filled in as the work goes on.</Empty>;
   }
   return (
     <ListDetail

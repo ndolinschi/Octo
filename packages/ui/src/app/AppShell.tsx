@@ -104,6 +104,18 @@ function Shell() {
   useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, drawerMode]);
   useEscape(drawerMode && drawerOpen && !palette, () => setDrawerOpen(false));
 
+  // The first assistant message must not flash as plain text before Markdown arrives: fetch that chunk right after first
+  // paint (idle callback; WebKit has none, so a short timer), still outside the initial bundle.
+  useEffect(() => {
+    const warm = () => void import("../components/shared/Markdown").catch(() => undefined);
+    if (Reflect.has(window, "requestIdleCallback")) {
+      const id = window.requestIdleCallback(warm, { timeout: 500 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(warm, 50);
+    return () => window.clearTimeout(id);
+  }, []);
+
   // Warm the palette's chunk once the app is idle, so Ctrl/Cmd+K opens it without a wait.
   useEffect(() => {
     // A failed warm-up is retried by the first Ctrl/Cmd+K (which shows the error if it fails again).
@@ -208,7 +220,7 @@ function Shell() {
   ];
 
   return (
-    <ShellContext.Provider value={{ sidebarOpen, toggleSidebar }}>
+    <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect: setConnectTarget }}>
       {/* The project's name and model show in the title bar only while the project is on screen; the settings page sets its own title. */}
       <TitleBarSlotsContext.Provider value={{ start: settings === null ? titleStart : null, end: settings === null ? titleEnd : null }}>
         <div className="flex h-full flex-col overflow-hidden bg-window text-fg">

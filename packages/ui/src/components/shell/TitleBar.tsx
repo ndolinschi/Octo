@@ -37,7 +37,14 @@ export function TitleBar(props: { alignStart: boolean; startRef(el: HTMLElement 
         className="flex shrink-0 items-center gap-1"
         style={props.alignStart ? { minWidth: `calc(var(--spacing-sidebar) + var(--spacing-gutter) - ${padStart}px)` } : undefined}
       >
-        <IconButton icon={PanelLeft} label={sidebarOpen ? "Hide sidebar" : "Show sidebar"} aria-expanded={sidebarOpen} onClick={toggleSidebar} />
+        {/* Settings replaces the sidebar with its own navigation: the toggle would act on a sidebar nobody sees. Hidden, not removed, so Back keeps its place. */}
+        <IconButton
+          icon={PanelLeft}
+          label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+          aria-expanded={sidebarOpen}
+          onClick={toggleSidebar}
+          {...(props.title !== undefined ? { className: "invisible", tabIndex: -1 } : {})}
+        />
         <IconButton icon={ArrowLeft} label="Back" onClick={() => window.history.back()} disabled={!history.back} />
         <IconButton icon={ArrowRight} label="Forward" onClick={() => window.history.forward()} disabled={!history.forward} />
       </div>

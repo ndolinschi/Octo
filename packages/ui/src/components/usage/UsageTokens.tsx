@@ -30,7 +30,7 @@ export function UsageState({ load, empty, children }: { load: Load<UsageData>; e
     return (
       <div className="flex flex-col gap-1 px-2 py-6 text-center">
         <p className="text-sm text-fg-2">No usage in this range</p>
-        <p className="text-xs text-fg-3">Tokens appear here after the orchestrator or an agent gets a model response.</p>
+        <p className="text-xs text-fg-3">Tokens appear here after a request or an agent gets a model response.</p>
       </div>
     );
   return <>{children}</>;

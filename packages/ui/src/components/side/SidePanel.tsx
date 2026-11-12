@@ -19,7 +19,7 @@ const TAB = toolTab("side");
 /** The input's id: `Ctrl/Cmd+;` and the "+" picker focus it when the pane opens. */
 export const SIDE_INPUT_ID = "octo-side-input";
 
-const STARTERS = ["What is the orchestrator doing right now?", "Why did it pick these agents?", "What changed in this project today?"];
+const STARTERS = ["What is happening right now?", "Why did it pick these agents?", "What changed in this project today?"];
 
 type Exchange = { id: string; question: SideMessage | null; answer: SideMessage | null };
 
@@ -85,7 +85,7 @@ export function SidePanel() {
   return (
     <div data-side className="flex h-full min-h-0 flex-col px-pane pt-pane">
       <div className="mx-auto flex w-full max-w-details items-start gap-2 px-2 pb-2">
-        <p className="min-w-0 flex-1 text-xs text-fg-3">Ask about this project without interrupting the orchestrator. Nothing here is added to its history.</p>
+        <p className="min-w-0 flex-1 text-xs text-fg-3">Ask about this project without interrupting the work. Nothing here is added to its history.</p>
         <button
           type="button"
           aria-pressed={pinned}
