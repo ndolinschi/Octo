@@ -108,3 +108,38 @@ Acceptance: harness unit tests with the scripted agent advertising commands (lis
 `octo_command` refusal, clear resets the session and the context report); e2e case in `e2e-parity.sh`; UI tests for
 the list model (grouping, collision, disabled reason) and a Playwright walk of the menu.
 Not verified until the owner's run: which commands each real agent advertises.
+
+### B11 revision (owner, same day) — `/clear` tidies, it does not forget
+
+Owner: "/clear should clean the chat but not delete the context: clean the user's chat and summarise. He does
+tasks, /clear cleans the context and the messages on screen so it is easier to follow; and the agent, after finished
+tasks or when it saw something important, may decide to remember it." This replaces rule (b)'s "context empty" and
+"without the recap":
+1. **What `/clear` does.** (i) The screen: the transcript starts empty under a quiet line "New session · earlier:
+   <title>" that opens the previous session (M4 / project sessions). (ii) The model's context: the conversation
+   history is dropped. (iii) What is carried over, in this order and within 600 tokens in total: a **summary of the
+   session** written at the moment of clearing (what was asked, what was done, decisions taken, what is unfinished,
+   files touched — the same shape as a compaction summary, stored on the session record and shown in the Memory
+   tab), the open tasks' titles, and the pointer to recall the rest (`recall_message`, `search`). Project
+   instructions, notes index, facts and memory files are untouched: they were never part of the chat.
+2. **Who writes the summary.** Built-in loop: one model call with the summary prompt (fast tier, counted in usage as
+   role `summary`); if it fails, the last compaction summary plus the last three request titles are used and the
+   line says "summary unavailable". ACP orchestrator: the agent is asked for the summary in its live session before
+   the session is dropped (one prompt, 30 s limit); on failure the harness builds it from the stored exchanges'
+   requests and final answers without a model.
+3. **`/clear` never deletes.** Sessions, exchanges, changes and search stay. Deleting is a separate, explicit action
+   in the Sessions tab.
+4. **The agent may remember.** A tool `remember {text, kind: "fact"|"decision"|"preference"|"todo", about?}` for the
+   orchestrator and sub-agents (built-in tool and the harness MCP server for ACP agents). The briefing tells the
+   agent when to use it: after finishing a task, when it learns something that will matter later (a constraint, a
+   decision, where something lives, what failed and why), never for what is already in the instruction files, and
+   at most three per turn. A remembered item is a dated fact (M1 rules: superseding, source turn), appears in the
+   Memory tab with "remembered by <agent>", and the transcript shows a quiet line "Remembered: …" with Undo. The
+   person can do the same from the composer: `/remember <text>`.
+5. API: `POST …/clear` → `{session_id, previous_session_id, summary, summary_source:"model"|"agent"|"stored"}`;
+   event `conversation.cleared {session_id, previous_session_id}`; `fact.remembered` (or the existing memory event)
+   carries the turn and the agent.
+Acceptance adds: summary carried into the next turn's prompt (mock model sees it and not the old messages), the 600
+token bound, both fallbacks, nothing deleted (search still finds an old exchange), `remember` stores a fact with its
+source and is refused in read-only modes only for `kind: todo` writes that touch files (a fact is always allowed),
+the three-per-turn cap, Undo.
