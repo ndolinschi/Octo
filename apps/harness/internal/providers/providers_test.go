@@ -267,8 +267,8 @@ func TestAdvertisedModelsMergeStaleAndPersist(t *testing.T) {
 			t.Fatalf("seen_at = %q", m.SeenAt)
 		}
 	}
-	// opus is in the manifest only: not advertised in the latest session, so flagged; kept.
-	want := []view{{"opus", "manifest", true}, {"sonnet", "manifest", false}, {"haiku", "advertised", false}}
+	// opus is in the manifest only: never flagged stale (a manifest alias is the CLI's own name).
+	want := []view{{"opus", "manifest", false}, {"sonnet", "manifest", false}, {"haiku", "advertised", false}}
 	if !slices.Equal(have, want) {
 		t.Fatalf("models = %+v, want %+v", have, want)
 	}
@@ -285,14 +285,14 @@ func TestAdvertisedModelsMergeStaleAndPersist(t *testing.T) {
 		}
 	}
 	// A later session no longer advertises sonnet: it stays, flagged.
-	r.svc.Record("claude-code", []string{"haiku"}, "haiku")
+	r.svc.Record("claude-code", []string{"kite"}, "kite")
 	got = byID(t, r.svc.Snapshot(), "claude-code")
 	for _, m := range got.Models {
-		if m.ID == "sonnet" && !m.Stale {
-			t.Fatalf("sonnet = %+v", m)
-		}
-		if m.ID == "haiku" && m.Stale {
+		if m.ID == "haiku" && !m.Stale {
 			t.Fatalf("haiku = %+v", m)
+		}
+		if (m.ID == "kite" || m.Source == "manifest") && m.Stale {
+			t.Fatalf("%s = %+v", m.ID, m)
 		}
 	}
 
@@ -303,7 +303,7 @@ func TestAdvertisedModelsMergeStaleAndPersist(t *testing.T) {
 	}
 	r.rebuild()
 	again := byID(t, r.svc.Snapshot(), "claude-code")
-	if len(again.Models) != 3 || again.Models[2].ID != "haiku" || again.Models[2].SeenAt == "" {
+	if len(again.Models) != 4 || again.Models[2].ID != "kite" || again.Models[2].SeenAt == "" {
 		t.Fatalf("after restart = %+v", again.Models)
 	}
 }

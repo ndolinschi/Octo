@@ -671,7 +671,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       await new Promise((r) => setTimeout(r, 400));
       const how = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("pick");
       if (how === "cancel") return { cancelled: true };
-      if (how === "fail") return { error: "no_dialog", message: "No folder dialog is available on this machine (no display)." };
+      if (how === "fail") return { error: "unavailable", message: "No folder dialog is available on this machine (no display)." };
       return { path: "/Users/maya/code/picked-from-dialog" };
     },
     recentFolders: async () => {

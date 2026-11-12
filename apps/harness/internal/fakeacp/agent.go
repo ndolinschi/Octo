@@ -122,6 +122,7 @@ func (a *agent) serve(ctx context.Context) error {
 }
 
 func (a *agent) handleRequest(ctx context.Context, m message) {
+	a.logRequest(m)
 	switch m.Method {
 	case "initialize":
 		version := 1

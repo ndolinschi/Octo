@@ -11,6 +11,7 @@
 package providers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -39,11 +40,43 @@ const (
 	StateError        = "error"
 )
 
+// Login values of an agent provider.
+const (
+	LoginOK          = "ok"
+	LoginNotLoggedIn = "not_logged_in"
+	LoginUnchecked   = "unchecked"
+)
+
+// preferredOf is the user's preferred model of an agent ("" = none).
+func preferredOf(adv advertised) string {
+	if adv.Preferred == nil {
+		return ""
+	}
+	return *adv.Preferred
+}
+
+// effectiveRoles is the manifest's role models overlaid by the user's own
+// (a stored "" means the agent's default, overriding a manifest hint).
+func effectiveRoles(a plugins.Agent, adv advertised) map[string]string {
+	out := map[string]string{}
+	for k, v := range a.Roles {
+		out[k] = v
+	}
+	for k, v := range adv.Roles {
+		out[k] = v
+	}
+	return out
+}
+
 // Model sources.
 const (
 	SourceCatalogue  = "catalogue"
 	SourceManifest   = "manifest"
 	SourceAdvertised = "advertised"
+	// SourceCustom: a name the user typed for the agent (PUT custom-models).
+	SourceCustom = "custom"
+	// SourceCommand: printed by the manifest's models command.
+	SourceCommand = "command"
 )
 
 // IDs of the two non-agent providers.
@@ -77,6 +110,31 @@ type Provider struct {
 	DefaultModel string `json:"default_model"`
 	// FlatRate: a flat-rate subscription, no per-token charge at the margin.
 	FlatRate bool `json:"flat_rate"`
+	// ModelsRefreshedAt is when the agent's models were last looked for (RFC 3339;
+	// agents only), ModelsError why the last look failed, ModelsNote the manifest's
+	// remark on its model list.
+	ModelsRefreshedAt string `json:"models_refreshed_at,omitempty"`
+	ModelsError       string `json:"models_error,omitempty"`
+	ModelsNote        string `json:"models_note,omitempty"`
+	// AcceptsCustomModel: any model name may be chosen for this provider (true
+	// for every agent).
+	AcceptsCustomModel bool `json:"accepts_custom_model"`
+	// Login (agents): "ok" when the login probe succeeded, "not_logged_in" when it
+	// positively said so, "unchecked" when there is no probe or it failed to run,
+	// timed out or printed something unexpected (the agent can be used all the same).
+	Login string `json:"login,omitempty"`
+	// PreferredModel is the model used when this agent is chosen without one
+	// ("" = the agent's own default). Roles say which model does the work of a
+	// delegation decided fast, balanced or deep ("" = the agent's default).
+	PreferredModel string `json:"preferred_model,omitempty"`
+	Roles          *Roles `json:"roles,omitempty"`
+}
+
+// Roles is the model per tier of one agent ("" = the agent's own default).
+type Roles struct {
+	Fast     string `json:"fast"`
+	Balanced string `json:"balanced"`
+	Deep     string `json:"deep"`
 }
 
 // Suggested are the models a new project gets when the request names none:
@@ -126,6 +184,8 @@ type Options struct {
 	Publish func(connected int)
 	// Now is the clock (default time.Now).
 	Now func() time.Time
+	// Discovery turns on model discovery (nil: off). See Discovery.
+	Discovery *Discovery
 }
 
 // Service computes the provider picture. Safe for concurrent use.
@@ -135,6 +195,10 @@ type Service struct {
 
 	mu          sync.Mutex
 	fingerprint string
+	disc        map[string]chan struct{} // agents with a discovery running
+	bg          context.Context          // lifetime of background discoveries (Watch)
+	login       map[string]string        // last login value seen per agent (kickDiscovery)
+	wg          sync.WaitGroup           // background discoveries (WaitIdle)
 }
 
 // New builds a Service and loads the advertised-models cache; an unreadable
@@ -253,7 +317,7 @@ func orderAgents(in []plugins.Agent) []plugins.Agent {
 func (s *Service) agentProvider(a plugins.Agent) Provider {
 	p := Provider{
 		ID: a.ID, Kind: KindAgent, Label: a.Label, InstallHint: a.InstallHint, LoginHint: a.Hint,
-		DefaultModel: a.DefaultModel, FlatRate: a.FlatRate,
+		DefaultModel: a.DefaultModel, FlatRate: a.FlatRate, ModelsNote: a.ModelsNote, AcceptsCustomModel: true,
 	}
 	if p.Label == "" {
 		p.Label = a.ID
@@ -267,39 +331,62 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 		}
 	case a.LoggedIn != nil && !*a.LoggedIn:
 		p.State, p.Reason = StateNotLoggedIn, "not logged in"
+		p.Login = LoginNotLoggedIn
+	case a.LoggedIn != nil:
+		p.State, p.Login = StateReady, LoginOK
 	default:
-		p.State = StateReady
+		// No probe, or one that could not tell: usable, login not checked.
+		p.State, p.Login = StateReady, LoginUnchecked
 	}
 	adv := s.cache.get(a.ID)
+	p.PreferredModel = preferredOf(adv)
+	r := effectiveRoles(a, adv)
+	p.Roles = &Roles{Fast: r["fast"], Balanced: r["balanced"], Deep: r["deep"]}
 	p.Models = agentModels(a, adv)
+	p.ModelsRefreshedAt, p.ModelsError = adv.RefreshedAt, adv.Error
 	if p.DefaultModel == "" && adv.Current != "" {
 		p.DefaultModel = adv.Current
 	}
 	return p
 }
 
-// agentModels is the manifest's models followed by those the agent advertised
-// in earlier sessions. A model carries seen_at when the agent advertised it,
-// and stale when the agent's latest session did not.
+// agentModels is the manifest's models, then those a models command printed,
+// then those the agent advertised in earlier sessions, then the names the user
+// typed; a model is listed once, under the first source that has it. An
+// advertised model carries seen_at, and stale when the agent's latest session
+// did not advertise it (a manifest alias is the CLI's own name and is not
+// expected in its list, so it is never flagged).
 func agentModels(a plugins.Agent, adv advertised) []Model {
 	out := []Model{}
 	index := map[string]int{}
-	add := func(id, source string) {
+	add := func(id, label, source string) {
 		if _, dup := index[id]; dup {
 			return
 		}
+		if label == "" {
+			label = id
+		}
 		index[id] = len(out)
-		out = append(out, Model{ID: id, Label: id, Source: source})
+		out = append(out, Model{ID: id, Label: label, Source: source})
 	}
 	for _, id := range a.Models {
-		add(id, SourceManifest)
+		add(id, a.ModelLabels[id], SourceManifest)
+	}
+	for _, id := range adv.Cmd {
+		add(id, adv.Labels[id], SourceCommand)
 	}
 	for _, id := range adv.Order {
-		add(id, SourceAdvertised)
+		add(id, adv.Labels[id], SourceAdvertised)
+	}
+	for _, id := range adv.Custom {
+		add(id, "", SourceCustom)
 	}
 	for i := range out {
 		if at, ok := adv.Seen[out[i].ID]; ok {
 			out[i].SeenAt = at
+		}
+		if out[i].Source != SourceAdvertised {
+			continue
 		}
 		if len(adv.Last) > 0 && !slices.Contains(adv.Last, out[i].ID) {
 			out[i].Stale = true
@@ -444,10 +531,12 @@ func (s *Service) Agents() []plugins.Agent {
 	out := make([]plugins.Agent, len(in))
 	for i, a := range in {
 		out[i] = a
+		adv := s.cache.get(a.ID)
+		out[i].PreferredModel = preferredOf(adv)
+		out[i].Roles = effectiveRoles(a, adv)
 		if len(a.Models) == 0 {
 			continue
 		}
-		adv := s.cache.get(a.ID)
 		models := slices.Clone(a.Models)
 		for _, id := range adv.Order {
 			if !slices.Contains(models, id) {
@@ -463,6 +552,15 @@ func (s *Service) Agents() []plugins.Agent {
 // one in use). `harness serve` calls it from Orchestrator.OnAdvertisedModels; an empty list is ignored. When the set of models changed
 // it refreshes the picture.
 func (s *Service) Record(agentID string, models []string, current string) {
+	infos := make([]ModelInfo, len(models))
+	for i, id := range models {
+		infos[i] = ModelInfo{ID: id}
+	}
+	s.RecordModels(agentID, infos, current)
+}
+
+// RecordModels is Record with a display name per model.
+func (s *Service) RecordModels(agentID string, models []ModelInfo, current string) {
 	if s == nil {
 		return
 	}
@@ -483,6 +581,7 @@ func (s *Service) Refresh() {
 	if prev != "" && prev != fp.key && s.opts.Publish != nil {
 		s.opts.Publish(fp.connected)
 	}
+	s.kickDiscovery()
 }
 
 type fp struct {
@@ -499,6 +598,7 @@ func fingerprint(r Response) fp {
 			ms[j].SeenAt = ""
 		}
 		cp.Providers[i].Models = ms
+		cp.Providers[i].ModelsRefreshedAt = ""
 	}
 	b, _ := json.Marshal(cp)
 	return fp{key: string(b), connected: r.Connected}

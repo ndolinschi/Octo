@@ -39,6 +39,9 @@ type provEnv struct {
 	dir  string // a folder to work in
 }
 
+// provDiscovery, when set by a test, turns model discovery on in newProvEnv.
+var provDiscovery *providers.Discovery
+
 // agentManifest is a scripted agent with the given extras (models, auth ...).
 func agentManifest(id string, extra map[string]any) map[string]any {
 	m := map[string]any{
@@ -83,7 +86,7 @@ func newProvEnv(t *testing.T, key string, agents ...map[string]any) *provEnv {
 	hub := events.NewHub()
 	var svcRef atomic.Pointer[project.Service]
 	prov := providers.New(providers.Options{
-		DataDir: data, Builtin: builtin, Agents: reg.Agents,
+		DataDir: data, Builtin: builtin, Agents: reg.Agents, Discovery: provDiscovery,
 		Defaults: func() config.Models {
 			if s := svcRef.Load(); s != nil {
 				return s.Defaults().Models
@@ -92,6 +95,7 @@ func newProvEnv(t *testing.T, key string, agents ...map[string]any) *provEnv {
 		},
 		Publish: func(n int) { hub.PublishAll(events.ProvidersUpdated, map[string]any{"connected": n}) },
 	})
+	t.Cleanup(prov.WaitIdle)
 	reg.OnProbeChange(prov.Refresh)
 	reg.StartProbes(ctx)
 
@@ -201,7 +205,7 @@ func (e *provEnv) putSettings(t *testing.T, body map[string]any) {
 // notReady is the scripted agent whose login probe says "logged out".
 func notLoggedIn(id string) map[string]any {
 	return agentManifest(id, map[string]any{
-		"auth":    map[string]any{"probe": []string{"sh", "-c", "exit 1"}, "hint": "Run `" + id + " login` once."},
+		"auth":    map[string]any{"probe": []string{"sh", "-c", "exit 1"}, "notLoggedInExit": []int{1}, "hint": "Run `" + id + " login` once."},
 		"install": "Install " + id + " with your package manager.",
 	})
 }
@@ -503,8 +507,8 @@ func TestAdvertisedModelsAreListedAndRemembered(t *testing.T) {
 	// An advertised model can be chosen for a project (manifest ∪ advertised).
 	var p struct{ ID string }
 	e.createProject(t, map[string]string{"orchestrator": "acp:scripted/beta"}, http.StatusCreated, &p)
-	e.wantError(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"deep": "acp:scripted/gamma"}},
-		http.StatusBadRequest, "invalid_request")
+	// ... and so can a model nobody listed: the user types it, the agent says whether it knows it.
+	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"deep": "acp:scripted/gamma"}}, http.StatusOK, nil)
 	// The cache is a file in the data directory, readable by the owner only.
 	st, err := os.Stat(filepath.Join(e.env.dir, providers.CacheFile))
 	if err != nil || st.Mode().Perm() != 0o600 {

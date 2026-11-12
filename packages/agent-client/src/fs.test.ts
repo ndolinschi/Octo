@@ -53,3 +53,24 @@ test("complete surfaces the harness's error codes", async () => {
     (e: unknown) => e instanceof BridgeError && e.code === "completion_off" && e.status === 409,
   );
 });
+
+test("pickFolder posts the start folder (or nothing) and returns the result as is", async () => {
+  const chosen = { path: "/home/u/Мои проекты/my folder" };
+  const { bridge, calls } = bridgeWith(200, JSON.stringify(chosen));
+  assert.deepEqual(await bridge.pickFolder?.("/home/u"), chosen);
+  assert.equal(calls[0]?.method, "POST");
+  assert.equal(calls[0]?.url, "http://h:1/v1/fs/pick-folder");
+  assert.deepEqual(JSON.parse(calls[0]?.body ?? "null"), { start: "/home/u" });
+  await bridge.pickFolder?.();
+  assert.equal(calls[1]?.body, undefined);
+});
+
+test("pickFolder: cancelled and unavailable are results, busy is an error", async () => {
+  assert.deepEqual(await bridgeWith(200, '{"cancelled":true}').bridge.pickFolder?.(), { cancelled: true });
+  const none = { error: "unavailable", message: "No folder chooser is available: there is no display." };
+  assert.deepEqual(await bridgeWith(200, JSON.stringify(none)).bridge.pickFolder?.(), none);
+  await assert.rejects(
+    bridgeWith(409, '{"error":{"code":"busy","message":"a folder chooser is already open"}}').bridge.pickFolder?.() ?? Promise.resolve(),
+    (err) => err instanceof BridgeError && err.status === 409 && err.code === "busy",
+  );
+});

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"slices"
 	"sync"
 	"time"
 
@@ -55,6 +56,15 @@ func (p *prober) result(id string) *bool {
 	return nil
 }
 
+// done reports whether a probe of id has finished at least once and none is
+// running now.
+func (p *prober) done(id string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	st := p.state[id]
+	return st != nil && !st.at.IsZero() && !st.running
+}
+
 // refresh starts a background probe for each agent whose last one is older
 // than ProbeInterval and is not already running.
 func (p *prober) refresh(agents []Agent) {
@@ -99,10 +109,12 @@ func sameResult(a, b *bool) bool {
 	return *a == *b
 }
 
-// runProbe executes the manifest's probe command: exit 0 is logged in (unless
-// its output matches the agent's notLoggedInPattern), a non-zero exit is logged
-// out, anything else (not startable, timed out) is unknown. Its output is never
-// kept or shown.
+// runProbe executes the manifest's probe command. Exit 0 is logged in; the
+// agent counts as logged out only when the probe positively says so: its output
+// matches the agent's notLoggedInPattern, or it exits with a status the manifest
+// lists in auth.notLoggedInExit. Any other outcome (another exit status, a
+// timeout, a probe that cannot start) is unknown (nil): the agent stays usable
+// with its login "unchecked". Its output is never kept or shown.
 func runProbe(ctx context.Context, a Agent) *bool {
 	r := probeOnce(ctx, a)
 	if r.LoggedIn == nil {
@@ -125,18 +137,22 @@ func probeOnce(ctx context.Context, a Agent) ProbeReport {
 	}
 	err := cmd.Run()
 	var exit *exec.ExitError
+	matched := a.ProbeNotLoggedIn != nil && a.ProbeNotLoggedIn.Match(out.b)
 	switch {
+	case matched:
+		return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: "the probe's output says the agent is not logged in"}
 	case err == nil:
-		if a.ProbeNotLoggedIn != nil && a.ProbeNotLoggedIn.Match(out.b) {
-			return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: "the probe exited 0 but its output says the agent is not logged in"}
-		}
 		return ProbeReport{Ran: true, LoggedIn: boolPtr(true), Reason: "the probe exited 0"}
 	case errors.As(err, &exit) && pctx.Err() == nil:
-		return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: fmt.Sprintf("the probe exited with status %d", exit.ExitCode())}
+		code := exit.ExitCode()
+		if slices.Contains(a.ProbeNotLoggedInExit, code) {
+			return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: fmt.Sprintf("the probe exited with status %d, which the manifest lists as logged out", code)}
+		}
+		return ProbeReport{Ran: true, Reason: fmt.Sprintf("the probe exited with status %d, which the manifest does not list as logged out: login not checked", code)}
 	case pctx.Err() != nil:
-		return ProbeReport{Ran: true, Reason: "the probe timed out"}
+		return ProbeReport{Ran: true, Reason: "the probe timed out: login not checked"}
 	}
-	return ProbeReport{Ran: true, Reason: "the probe could not be started"}
+	return ProbeReport{Ran: true, Reason: "the probe could not be started: login not checked"}
 }
 
 // capped keeps the first 64 KiB written to it.

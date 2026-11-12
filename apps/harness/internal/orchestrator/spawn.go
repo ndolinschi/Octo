@@ -90,6 +90,10 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		tier, in.Tier, route, budgetErr = plan.tier, string(plan.tier), &plan.info, plan.budget
 		if plan.agent != "" {
 			in.Agent, in.Model = plan.agent, plan.model
+			if in.Model == "" {
+				// The router decided a difficulty band: the agent's model for that role.
+				in.Model = rt.roleModel(plan.agent, in.Tier)
+			}
 		}
 		if plan.info.RequestID != "" {
 			// The classifier's cost is fetched while the sub-agent runs.
@@ -115,6 +119,11 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 	} else if plugins.IsACPRef(model) {
 		// The tier is mapped to an ACP agent (models.<tier> = acp:<id>[/<model>]).
 		id, m, _ := plugins.ParseACPRef(model)
+		if m == "" {
+			// No model named on the tier: the agent's model for this role, else its
+			// preferred one (pickACPAgent). An explicit acp:<id>/<model> always wins.
+			m = rt.roleModel(id, in.Tier)
+		}
 		target, msg := rt.pickACPAgent(id, m)
 		if msg != "" {
 			return fmt.Sprintf("tier %q is mapped to %q: %s", in.Tier, model, msg), true, nil

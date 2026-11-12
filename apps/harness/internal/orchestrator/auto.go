@@ -86,16 +86,20 @@ func (rt *runtime) apiCandidate(tier string) (autoCand, bool) {
 }
 
 // agentCandidate offers an available ACP agent. Its login state comes from the
-// probe; an agent with a probe whose result is not in yet is left out, and one
-// without a probe counts as logged in (as for the default orchestrator).
+// probe; only a probe that positively says "logged out" marks it so, an
+// unchecked login counts as logged in (as for the default orchestrator).
 func (rt *runtime) agentCandidate(a plugins.Agent, model string) (autoCand, bool) {
-	if !a.Available || len(rt.folders) == 0 || (a.ProbeCommand != "" && a.LoggedIn == nil) {
+	if !a.Available || len(rt.folders) == 0 {
 		return autoCand{}, false
 	}
 	id, label := plugins.ACPPrefix+a.ID, a.Label
-	if model != "" {
+	switch {
+	case model != "":
 		id += "/" + model
 		label += " (" + model + ")"
+	case a.PreferredModel != "":
+		// The id stays the agent's; the label says which model it would run on.
+		label += " (" + a.PreferredModel + ")"
 	}
 	flat, in := a.FlatRate, loggedIn(a)
 	return autoCand{
@@ -228,9 +232,10 @@ func (rt *runtime) resolveAuto(ctx context.Context, parent projectstore.Agent, i
 		return fb
 	}
 	if model == "" && d.Model != "" {
-		// The router may name a model for the agent; ignored when the agent
-		// does not accept it.
-		if _, msg := rt.pickACPAgent(c.agent, d.Model); msg == "" {
+		// The router may name a model for the agent; ignored when the manifest
+		// lists models and this is not one of them (a user may type any model,
+		// but the router is not the user).
+		if _, msg := rt.pickACPAgent(c.agent, d.Model); msg == "" && rt.manifestAllows(c.agent, d.Model) {
 			model = d.Model
 		}
 	}
@@ -308,4 +313,15 @@ func clipRunes(s string, n int) string {
 		return string(r[:n])
 	}
 	return s
+}
+
+// manifestAllows reports whether the agent's manifest allows the model: it lists
+// no models, or lists this one.
+func (rt *runtime) manifestAllows(agentID, model string) bool {
+	for _, a := range rt.acpAgents() {
+		if a.ID == agentID {
+			return len(a.Models) == 0 || slices.Contains(a.Models, model)
+		}
+	}
+	return false
 }

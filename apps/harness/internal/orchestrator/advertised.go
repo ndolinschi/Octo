@@ -23,6 +23,51 @@ type advertisedStore struct {
 	mu       sync.Mutex
 	byAgent  map[string]Advertised
 	onChange []func(agentID string)
+	// inUse counts running sub-agent processes per agent id.
+	inUse map[string]int
+}
+
+// running notes a sub-agent process of agentID and returns the function that
+// ends the note.
+func (s *advertisedStore) running(agentID string) func() {
+	s.mu.Lock()
+	if s.inUse == nil {
+		s.inUse = map[string]int{}
+	}
+	s.inUse[agentID]++
+	s.mu.Unlock()
+	return func() {
+		s.mu.Lock()
+		s.inUse[agentID]--
+		s.mu.Unlock()
+	}
+}
+
+// AgentInUse reports whether a process of the ACP agent is running for a
+// project (an orchestrator session or a sub-agent). Model discovery leaves such
+// an agent alone: its live session already reports its models.
+func (o *Orchestrator) AgentInUse(agentID string) bool {
+	o.adv.mu.Lock()
+	n := o.adv.inUse[agentID]
+	o.adv.mu.Unlock()
+	if n > 0 {
+		return true
+	}
+	o.acp.mu.Lock()
+	all := make([]*orchSession, 0, len(o.acp.sessions))
+	for _, s := range o.acp.sessions {
+		all = append(all, s)
+	}
+	o.acp.mu.Unlock()
+	for _, s := range all {
+		s.mu.Lock()
+		live := s.client != nil && s.pluginID == agentID
+		s.mu.Unlock()
+		if live {
+			return true
+		}
+	}
+	return false
 }
 
 // AdvertisedModels returns the models agentID advertised in its last session

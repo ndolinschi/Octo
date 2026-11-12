@@ -97,10 +97,9 @@ func (o *Orchestrator) DefaultOrchestrator() string {
 	return o.EffectiveOrchestrator(o.serverDefault())
 }
 
-// loggedIn: the probe says true, or the agent has no probe.
+// loggedIn: nothing says the agent is logged out. A probe that has not
+// answered, failed to run or printed something unexpected leaves the login
+// unchecked, and an unchecked agent can be used.
 func loggedIn(a plugins.Agent) bool {
-	if a.ProbeCommand == "" {
-		return true
-	}
-	return a.LoggedIn != nil && *a.LoggedIn
+	return a.LoggedIn == nil || *a.LoggedIn
 }

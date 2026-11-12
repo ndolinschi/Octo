@@ -30,7 +30,7 @@ func TestValidateACPRef(t *testing.T) {
 		{ID: "listed", Available: true, Models: []string{"a", "b"}},
 		{ID: "gone", Available: false},
 	}
-	for _, ok := range []string{"claude-sonnet-5-5", "", "acp:fake", "acp:fake/anything-1", "acp:listed/a"} {
+	for _, ok := range []string{"claude-sonnet-5-5", "", "acp:fake", "acp:fake/anything-1", "acp:listed/a", "acp:listed/not-listed", "acp:fake/opus[1m]"} {
 		if err := ValidateACPRef(ok, agents); err != nil {
 			t.Errorf("ValidateACPRef(%q) = %v", ok, err)
 		}
@@ -38,7 +38,6 @@ func TestValidateACPRef(t *testing.T) {
 	for ref, want := range map[string]string{
 		"acp:nope":       `unknown ACP agent "nope"`,
 		"acp:gone":       "not available",
-		"acp:listed/c":   "choose one of: a, b",
 		"acp:fake/-bad":  "invalid model",
 		"acp:":           "not a valid ACP setting",
 		"acp:nope/model": "available: fake, listed",

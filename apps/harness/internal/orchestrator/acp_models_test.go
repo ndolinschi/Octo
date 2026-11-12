@@ -96,40 +96,54 @@ func TestACPModelSelectionRecorded(t *testing.T) {
 	}
 }
 
-func TestACPModelRejectedBeforeSpawn(t *testing.T) {
+// A model the manifest does not list still reaches the agent: through the
+// start-up argument, the model list's set_model, or the model config option.
+func TestACPTypedModelReachesTheAgent(t *testing.T) {
 	withModels := func(a *plugins.Agent) { a.Models, a.DefaultModel = []string{"alpha", "beta"}, "alpha" }
 	tests := []struct {
-		name, prompt, wantMsg string
+		name string
+		env  map[string]string
+		edit func(*plugins.Agent)
 	}{
-		{"not in the manifest list", "[acp] [model:gamma] go", `has no model "gamma"; choose one of: alpha, beta`},
+		{"set_model", map[string]string{fakeacp.EnvModels: "alpha,beta"}, withModels},
+		{"config option", map[string]string{fakeacp.EnvModels: "alpha,beta", fakeacp.EnvModelsVia: "config"}, withModels},
+		{"grouped config option", map[string]string{fakeacp.EnvModels: "alpha,beta", fakeacp.EnvModelsVia: "config-grouped"}, withModels},
+		{"agent lists nothing", map[string]string{fakeacp.EnvModels: "alpha,beta", fakeacp.EnvModelsVia: "none"}, nil},
+		{"start-up argument", nil, func(a *plugins.Agent) { a.Models = []string{"alpha"}; a.ModelArg = []string{"--model", "{model}"} }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := newACPRig(t, mockllm.New(0), modelAgent(map[string]string{fakeacp.EnvModels: "alpha,beta"}, withModels))
+			r := newACPRig(t, mockllm.New(0), modelAgent(tc.env, tc.edit))
 			pid := projectWithReadme(t, r)
-			r.runCollect(t, pid, tc.prompt, nil)
-			res, isErr := orchestratorToolResult(t, r, pid)
-			if !isErr || !strings.Contains(res, tc.wantMsg) {
-				t.Fatalf("tool result = %q (error=%v), want %q", res, isErr, tc.wantMsg)
-			}
-			for _, a := range r.agents(t, pid) {
-				if a.ParentID != nil {
-					t.Fatalf("a sub-agent was created for a rejected model: %+v", a)
-				}
+			r.runCollect(t, pid, "[acp] [model:gamma] go", nil)
+			child := r.acpChild(t, pid)
+			if child.Status != projectstore.StatusCompleted || child.Model != "acp:fake/gamma" ||
+				child.Result == nil || !strings.Contains(*child.Result, "Model in use: gamma.") {
+				t.Fatalf("child = %+v result %v", child, child.Result)
 			}
 		})
 	}
 }
 
 func TestACPModelRefusedByAgentFailsSubAgent(t *testing.T) {
-	// The manifest lists no models, so the request reaches the agent, which refuses it.
-	env := map[string]string{fakeacp.EnvModels: "alpha", fakeacp.EnvRefuseModel: "1"}
-	r := newACPRig(t, mockllm.New(0), modelAgent(env, nil))
-	pid := projectWithReadme(t, r)
-	r.runCollect(t, pid, "[acp] [model:zeta] go", nil)
-	child := r.acpChild(t, pid)
-	if child.Status != projectstore.StatusFailed || child.Error == nil || !strings.Contains(*child.Error, "unknown model zeta") {
-		t.Fatalf("child = %+v", child)
+	for _, via := range []string{"models", "config", "none"} {
+		t.Run(via, func(t *testing.T) {
+			env := map[string]string{fakeacp.EnvModels: "alpha,beta", fakeacp.EnvModelsVia: via, fakeacp.EnvRefuseModel: "1"}
+			r := newACPRig(t, mockllm.New(0), modelAgent(env, nil))
+			pid := projectWithReadme(t, r)
+			r.runCollect(t, pid, "[acp] [model:zeta] go", nil)
+			child := r.acpChild(t, pid)
+			if child.Status != projectstore.StatusFailed || child.Error == nil || *child.Error != "Fake fake does not accept model zeta" {
+				t.Fatalf("child = %+v (error %v)", child, child.Error)
+			}
+			want := "It advertises: alpha, beta."
+			if via == "none" {
+				want = "It advertised no models in this session"
+			}
+			if child.ErrorHint == nil || !strings.Contains(*child.ErrorHint, want) {
+				t.Fatalf("hint = %v, want %q", child.ErrorHint, want)
+			}
+		})
 	}
 }
 

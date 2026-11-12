@@ -199,7 +199,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
 	})
 	if err != nil {
-		return false, acpFailure(ag, "start ACP agent", err)
+		return false, startFailure(t, err)
 	}
 	token := s.h.tokens.Issue(mcp.Binding{ProjectID: rt.pid(), AgentID: orch.ID})
 	client.TraceHide(token)

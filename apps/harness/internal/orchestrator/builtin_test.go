@@ -93,8 +93,8 @@ func TestEffectiveOrchestrator(t *testing.T) {
 		"copilot before the rest": {[]plugins.Agent{agentWith("grok", false, nil), agentWith("copilot", false, nil)}, def, "acp:copilot"},
 		"rest in load order":      {[]plugins.Agent{agentWith("zed", false, nil), agentWith("grok", false, nil)}, def, "acp:zed"},
 		"probe false is skipped":  {[]plugins.Agent{agentWith("claude-code", true, bp(false)), agentWith("codex", true, bp(true))}, def, "acp:codex"},
-		"probe unknown is not logged in": {
-			[]plugins.Agent{agentWith("claude-code", true, nil), agentWith("grok", false, nil)}, def, "acp:grok"},
+		"probe unknown leaves the login unchecked, which is usable": {
+			[]plugins.Agent{agentWith("claude-code", true, nil), agentWith("grok", false, nil)}, def, "acp:claude-code"},
 		"unavailable is skipped": {[]plugins.Agent{unavailable, agentWith("grok", false, nil)}, def, "acp:grok"},
 		"none logged in keeps the built-in default": {
 			[]plugins.Agent{agentWith("claude-code", true, bp(false)), unavailable}, def, def},
@@ -131,7 +131,7 @@ func TestDefaultOrchestratorFromManifestsAndProbes(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := `{"name":"fakes","version":"1","agents":[
-	  {"id":"claude-code","command":"sh","auth":{"probe":["false"]}},
+	  {"id":"claude-code","command":"sh","auth":{"probe":["false"],"notLoggedInExit":[1]}},
 	  {"id":"codex","command":"sh","auth":{"probe":["true"]}},
 	  {"id":"copilot","command":"sh"}]}`
 	if err := os.WriteFile(filepath.Join(dir, plugins.ManifestName), []byte(manifest), 0o644); err != nil {

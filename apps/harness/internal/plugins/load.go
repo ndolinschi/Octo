@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -191,12 +192,20 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			Models: append([]string{}, a.Models...), DefaultModel: a.DefaultModel, ModelArg: slices.Clone(a.ModelArg),
 			InstallHint: strings.TrimSpace(a.Install), Requires: slices.Clone(a.Requires), FlatRate: a.FlatRate != nil && *a.FlatRate, Strengths: slices.Clone(a.Strengths), BillingEnv: slices.Clone(a.BillingEnv),
 		}
+		ag.Roles = maps.Clone(a.Roles)
+		ag.ModelLabels, ag.ModelsNote = maps.Clone(a.ModelLabels), strings.TrimSpace(a.ModelsNote)
+		if mc := a.ModelsCommand; mc != nil {
+			path, _ := resolveCommand(mc.Command[0], p.Dir)
+			re, _ := regexp.Compile(mc.Pattern) // validated with the manifest
+			ag.ModelsCommand = &ModelsCommand{Command: path, Args: slices.Clone(mc.Command[1:]), Pattern: re, LabelGroup: mc.LabelGroup, Dir: p.Dir}
+		}
 		if a.Auth != nil {
 			ag.Hint = strings.TrimSpace(a.Auth.Hint)
 			ag.AuthMethods, ag.AuthSkip = slices.Clone(a.Auth.Methods), slices.Clone(a.Auth.Skip)
 			if len(a.Auth.Probe) > 0 {
 				ag.ProbeCommand, _ = resolveCommand(a.Auth.Probe[0], p.Dir)
 				ag.ProbeArgs = slices.Clone(a.Auth.Probe[1:])
+				ag.ProbeNotLoggedInExit = slices.Clone(a.Auth.NotLoggedInExit)
 				if a.Auth.NotLoggedInPattern != "" {
 					ag.ProbeNotLoggedIn, _ = regexp.Compile(a.Auth.NotLoggedInPattern) // validated with the manifest
 				}

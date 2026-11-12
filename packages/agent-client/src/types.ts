@@ -421,8 +421,12 @@ export type BridgeEventType = BridgeEvent["type"];
 export type ProviderKind = "api" | "router" | "agent";
 /** `error` is reserved for a provider that is set up but failing; the harness does not report it yet. */
 export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "error";
-/** `custom`: a name the user added for an agent; `command`: printed by the agent's own models command (e.g. `grok models`). */
-export type ProviderModelSource = "catalogue" | "manifest" | "advertised" | "custom" | "command";
+/**
+ * Where a model came from: `catalogue` (the built-in loop's tiers), `manifest` (the plugin lists it), `advertised`
+ * (the agent said so in a session), `command` (the manifest's models command printed it), `custom` (a name the user
+ * typed for the agent).
+ */
+export type ProviderModelSource = "catalogue" | "manifest" | "advertised" | "command" | "custom";
 
 export type ProviderModel = {
   id: string;
@@ -451,13 +455,31 @@ export type Provider = {
   default_model: string;
   /** A flat-rate subscription: no per-token charge at the margin. */
   flat_rate: boolean;
-  /** Why the last model discovery failed ("agent did not start"); empty or absent when it did not. */
-  models_error?: string;
-  /** RFC 3339: when the models were last read from the agent. */
+  /** Agents: when the harness last looked for the agent's models (RFC 3339), found or not. */
   models_refreshed_at?: string;
-  /** The agent takes a model name that is not in its list (every ACP agent does); the picker offers "Other model…". */
+  /** Agents: why the last look failed (short text); absent when it worked. Not an error of the provider. */
+  models_error?: string;
+  /** Agents: the manifest's remark on its model list (where it comes from, how far to trust it). */
+  models_note?: string;
+  /** Agents: any model name may be chosen, listed or not (`acp:<id>/<anything>`). */
   accepts_custom_model?: boolean;
+  /**
+   * Agents: `ok` the login probe succeeded; `not_logged_in` it positively said so (state `not_logged_in`);
+   * `unchecked` there is no probe, or it failed to run, timed out or printed something unexpected (state `ready`:
+   * the agent can be chosen).
+   */
+  login?: "ok" | "not_logged_in" | "unchecked";
+  /** Agents: the model used when `acp:<id>` names none ("" or absent: the agent's own default). */
+  preferred_model?: string;
+  /** Agents: the model per delegation tier ("" = the agent's default); prefilled from the manifest's hints. */
+  roles?: ProviderRoles;
 };
+
+/** The model an agent uses for a delegation decided fast / balanced / deep; "" means the agent's own default. */
+export type ProviderRoles = { fast: string; balanced: string; deep: string };
+
+/** `PUT /v1/providers/{id}/prefs`: every field optional; roles are merged key by key, "" resets one to the default. */
+export type ProviderPrefs = { preferred_model?: string; roles?: Partial<ProviderRoles> };
 
 /** The models a new project gets when the request names none; empty strings when nothing is ready. */
 export type SuggestedModels = { orchestrator: string; fast: string; balanced: string; deep: string };
@@ -470,9 +492,6 @@ export type ProvidersResponse = {
   providers: Provider[];
 };
 
-/** The answer of the system folder dialog: a path, or the user cancelled, or it could not open (`message`). */
-export type PickFolderResult = { path?: string; cancelled?: boolean; error?: string; message?: string };
-
 export type BridgeConfig = {
   default_models: Models;
   default_max_depth: number;
@@ -482,6 +501,8 @@ export type BridgeConfig = {
   router_capabilities?: string[];
   /** The router announced `route_api`: spawn_agent defaults to tier `auto` and the router chooses who does a task. */
   route_api?: boolean;
+  /** `POST /v1/fs/pick-folder` can open the operating system's folder chooser on this machine (show "Browse..."). */
+  pick_folder?: boolean;
   /** ACP agents that can run a project's orchestrator (or a tier): the valid `acp:` settings. */
   acp_orchestrators?: AcpOrchestratorChoice[];
   /**
@@ -494,8 +515,6 @@ export type BridgeConfig = {
    * agent while the built-in loop is unavailable, else the default orchestrator model.
    */
   default_orchestrator?: string;
-  /** The harness can open the operating system's folder dialog (`POST /v1/fs/pick-folder`); absent on an older harness. */
-  pick_folder?: boolean;
 };
 
 export type BuiltinLoopStatus = {
@@ -920,6 +939,18 @@ export type CompletionResult = { text: string; model: string; ms: number };
 
 /** A directory in the folder picker. `git` is read from `.git/HEAD` (no git process): the branch, or a short commit id when detached. */
 export type FolderEntry = { name: string; path: string; git: { branch: string } | null };
+
+/**
+ * `POST /v1/fs/pick-folder`: `path` is the folder the user chose (absolute, an existing directory); `cancelled` the
+ * user closed the dialog; `error: "unavailable"` there is no chooser here (headless, tool missing), `"failed"` it
+ * crashed or timed out, `"invalid"` it returned something that is not a folder. `message` explains an error.
+ */
+export type PickFolderResult = {
+  path?: string;
+  cancelled?: boolean;
+  error?: "unavailable" | "failed" | "invalid";
+  message?: string;
+};
 
 /** `GET /v1/fs/dirs`: child directories (never files) of `base` that match the typed prefix, at most 50. */
 export type DirListing = {

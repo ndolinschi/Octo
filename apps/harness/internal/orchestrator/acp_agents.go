@@ -74,13 +74,16 @@ func (rt *runtime) pickACPAgent(id, model string) (acpTarget, string) {
 		}
 		t := acpTarget{agent: a, model: a.DefaultModel}
 		if model == "" {
+			// `acp:<agent>` with no model: the user's preferred model for the agent,
+			// else the agent's own default.
+			if a.PreferredModel != "" {
+				t.model, t.requested = a.PreferredModel, true
+			}
 			return t, ""
 		}
 		switch {
 		case !plugins.ModelPattern.MatchString(model):
 			return acpTarget{}, fmt.Sprintf("invalid model %q", model)
-		case len(a.Models) > 0 && !slices.Contains(a.Models, model):
-			return acpTarget{}, fmt.Sprintf("ACP agent %q has no model %q; choose one of: %s", id, model, strings.Join(a.Models, ", "))
 		}
 		t.model, t.requested = model, true
 		return t, ""
@@ -88,14 +91,23 @@ func (rt *runtime) pickACPAgent(id, model string) (acpTarget, string) {
 	return acpTarget{}, fmt.Sprintf("unknown or unavailable ACP agent %q", id)
 }
 
+// roleModel is the model an agent uses for a delegation decided as tier ("" when
+// none is set: the agent's preferred or own default model then applies).
+func (rt *runtime) roleModel(agentID, tier string) string {
+	for _, a := range rt.acpAgents() {
+		if a.ID == agentID {
+			return a.Roles[tier]
+		}
+	}
+	return ""
+}
+
 // modelChoices describes the models of the available agents for the schema:
 // the union (an enum only when every agent lists its models) and a sentence.
 func modelChoices(agents []plugins.Agent) (enum []string, desc string) {
-	allListed := true
 	var parts []string
 	for _, a := range agents {
 		if len(a.Models) == 0 {
-			allListed = false
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("%s: %s", a.ID, strings.Join(a.Models, ", ")))
@@ -105,9 +117,8 @@ func modelChoices(agents []plugins.Agent) (enum []string, desc string) {
 			}
 		}
 	}
-	if !allListed {
-		enum = nil
-	}
+	// Never an enum: any model name may be tried; the agent says whether it knows it.
+	enum = nil
 	if len(parts) > 0 {
 		desc = " Models by agent: " + strings.Join(parts, "; ") + "."
 	}

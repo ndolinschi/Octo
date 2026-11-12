@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -32,7 +33,7 @@ func TestProbeOutputPatternTurnsExitZeroIntoLoggedOut(t *testing.T) {
 		{"logged in, pattern does not match", "grok 1.0.77: model list", 0, pat, true},
 		{"exit 0 but says not authenticated", "You are not authenticated.", 0, pat, false},
 		{"without a pattern exit 0 is logged in", "You are not authenticated.", 0, nil, true},
-		{"non-zero exit is logged out whatever it prints", "all good", 1, pat, false},
+		{"non-zero exit that prints the signal is logged out", "You are not authenticated.", 1, pat, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := fakeProbe(t, tc.text, tc.code)
@@ -46,5 +47,43 @@ func TestProbeOutputPatternTurnsExitZeroIntoLoggedOut(t *testing.T) {
 				t.Fatalf("ProbeNow = %+v", rep)
 			}
 		})
+	}
+}
+
+// A probe that fails or prints something unexpected does not make the agent
+// unavailable: the login is unchecked (nil), with the reason kept for diagnostics.
+func TestUnexpectedProbeOutcomesLeaveLoginUnchecked(t *testing.T) {
+	pat := regexp.MustCompile(`(?i)not authenticated`)
+	for _, tc := range []struct {
+		name  string
+		text  string
+		code  int
+		exits []int
+	}{
+		{"unexpected output, exit 0 is fine", "grok 1.0.77", 0, nil},
+		{"unexpected non-zero exit", "Segmentation fault", 3, nil},
+		{"exit 1 that is not documented", "boom", 1, nil},
+		{"exit 3 with only 1 documented", "boom", 3, []int{1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := fakeProbe(t, tc.text, tc.code)
+			a.ProbeNotLoggedIn, a.ProbeNotLoggedInExit = pat, tc.exits
+			rep := a.ProbeNow(context.Background())
+			if tc.code == 0 {
+				if rep.LoggedIn == nil || !*rep.LoggedIn {
+					t.Fatalf("exit 0 = %+v, want logged in", rep)
+				}
+				return
+			}
+			if rep.LoggedIn != nil || !strings.Contains(rep.Reason, "login not checked") || strings.Contains(rep.Reason, tc.text) {
+				t.Fatalf("report = %+v, want unchecked with a reason that does not quote the output", rep)
+			}
+		})
+	}
+	// A listed exit status is a positive "logged out".
+	a := fakeProbe(t, "boom", 1)
+	a.ProbeNotLoggedInExit = []int{1}
+	if got := a.Probe(context.Background()); got == nil || *got {
+		t.Fatalf("listed exit = %v, want false", got)
 	}
 }

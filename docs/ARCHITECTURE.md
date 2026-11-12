@@ -330,6 +330,7 @@ flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
 | `OCTO_BRIDGE_TOKEN` | Tauri shell | none | The API token of the harness at `OCTO_BRIDGE_URL` (an externally started harness) |
 | `HARNESS_EXIT_ON_STDIN_CLOSE` (flag `--exit-on-stdin-close`) | harness | off | The shell sets `1` |
 | `HARNESS_ACP_TRACE` | harness (setting, applies at once) | off | Wire trace under `{data-dir}/traces/` |
+| `HARNESS_MODEL_DISCOVERY` | harness | on | `0` turns off the discovery of agents' models (throw-away session / manifest models command when an agent becomes ready; `POST /v1/providers/{id}/refresh-models`); see `apps/harness/docs/providers.md` |
 | `HARNESS_CHILD_ENV_ALLOW` | harness (setting, applies at once) | empty | Extra names or `PREFIX_*` passed to every child process. Without it children get only the allow-list of `internal/childenv`; names containing KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL and `*_BASE_URL` are dropped unless named here or passed by a manifest's `env` |
 | `OCTO_ROUTER_ENABLED`, `OCTO_ROUTER_UPSTREAM_KEY`, `OCTO_ROUTER_BASE_URL` | stored by the harness (settings, restart), **read by the desktop shell** | off, empty, empty | Never passed to child processes |
 | `OCTO_MCP_TOKEN` | `harness mcp-relay` (set by the harness for the relay child) | internal | Not for users |

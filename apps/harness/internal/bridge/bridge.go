@@ -38,6 +38,7 @@ type Server struct {
 	builtinOff  string // reason the built-in loop is unavailable; "" = available
 	builtinFn   func() (bool, string)
 	providers   ProviderSource
+	picker      picker
 	defaultOrch func() string // the orchestrator a project without a choice runs now
 	apiToken    string        // required on /v1 routes when set (WithAPIToken)
 }
@@ -108,11 +109,17 @@ func (s *Server) routes() *http.ServeMux {
 	}
 	if s.providers != nil {
 		mux.HandleFunc("GET /v1/providers", s.listProviders)
+		if _, ok := s.providers.(ProviderEditor); ok {
+			mux.HandleFunc("POST /v1/providers/{id}/refresh-models", s.refreshProviderModels)
+			mux.HandleFunc("PUT /v1/providers/{id}/custom-models", s.putCustomModels)
+			mux.HandleFunc("PUT /v1/providers/{id}/prefs", s.putProviderPrefs)
+		}
 	}
 	if s.diagnostics != nil {
 		mux.HandleFunc("GET /v1/diagnostics", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, s.diagnostics()) })
 	}
 	mux.HandleFunc("GET /v1/fs/dirs", s.fsDirs)
+	mux.HandleFunc("POST /v1/fs/pick-folder", s.pickFolder)
 	mux.HandleFunc("GET /v1/fs/recent", s.fsRecent)
 	mux.HandleFunc("GET /v1/usage", s.usage)
 	mux.HandleFunc("GET /v1/limits", s.listLimits)

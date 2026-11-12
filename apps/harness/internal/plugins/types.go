@@ -46,7 +46,11 @@ type Agent struct {
 	LoggedIn          *bool    `json:"logged_in"`
 	Models            []string `json:"models"`
 	DefaultModel      string   `json:"default_model,omitempty"`
-	Hint              string   `json:"hint,omitempty"`
+	// ModelLabels are the manifest's display names for some of Models; ModelsNote
+	// is its one-line remark on where the list comes from.
+	ModelLabels map[string]string `json:"model_labels,omitempty"`
+	ModelsNote  string            `json:"models_note,omitempty"`
+	Hint        string            `json:"hint,omitempty"`
 	// InstallHint says how to install the agent (manifest `install`).
 	InstallHint string `json:"install_hint,omitempty"`
 	// FlatRate: the agent runs on a flat-rate subscription; set by the manifest's
@@ -63,11 +67,24 @@ type Agent struct {
 	Requires []string `json:"-"`
 
 	// ModelArg is the start-up argument template; "{model}" is replaced.
-	ModelArg     []string `json:"-"`
-	ProbeCommand string   `json:"-"` // resolved path; empty when there is no probe
-	ProbeArgs    []string `json:"-"`
+	ModelArg []string `json:"-"`
+	// ModelsCommand lists the agent's models by running a command (nil: none).
+	ModelsCommand *ModelsCommand `json:"-"`
+	ProbeCommand  string         `json:"-"` // resolved path; empty when there is no probe
+	ProbeArgs     []string       `json:"-"`
 	// ProbeNotLoggedIn, when set, turns a probe whose output matches it into "logged out".
 	ProbeNotLoggedIn *regexp.Regexp `json:"-"`
+	// ProbeNotLoggedInExit lists the probe exit statuses that mean "logged out".
+	ProbeNotLoggedInExit []int `json:"-"`
+	// Roles are the models this agent uses for delegations decided fast, balanced
+	// or deep (manifest `roles`, overlaid by the user's own); PreferredModel is
+	// the model used when `acp:<id>` names none. Both are filled by the providers
+	// service when it serves the agent; empty means the agent's own default.
+	// ProbeDone says the login probe has run at least once and is not running now
+	// (LoggedIn nil then means "unchecked", not "not asked yet").
+	ProbeDone      bool              `json:"-"`
+	Roles          map[string]string `json:"-"`
+	PreferredModel string            `json:"-"`
 	// AuthMethods and AuthSkip steer which ACP auth methods are tried.
 	AuthMethods []AuthMethodRef `json:"-"`
 	AuthSkip    []string        `json:"-"`

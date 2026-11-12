@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 )
 
@@ -33,11 +32,49 @@ type RunOptions struct {
 }
 
 type modelState struct {
-	CurrentModelID  string `json:"currentModelId"`
-	AvailableModels []struct {
-		ModelID string `json:"modelId"`
-		Name    string `json:"name"`
-	} `json:"availableModels"`
+	CurrentModelID  string      `json:"currentModelId"`
+	AvailableModels []modelInfo `json:"availableModels"`
+}
+
+// modelInfo is one entry of a session's model list: the ACP schema's ModelInfo
+// ({modelId, name}); `id` is accepted for agents that name it so.
+type modelInfo struct {
+	ModelID string `json:"modelId"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+}
+
+func (m modelInfo) id() string {
+	if m.ModelID != "" {
+		return m.ModelID
+	}
+	return m.ID
+}
+
+// parseModelState reads a session's model list from every shape agents send:
+// the schema's object ({currentModelId, availableModels}) or a bare array of
+// entries or ids.
+func parseModelState(raw json.RawMessage) (modelState, bool) {
+	if len(raw) == 0 {
+		return modelState{}, false
+	}
+	var ms modelState
+	if json.Unmarshal(raw, &ms) == nil && len(ms.AvailableModels) > 0 {
+		return ms, true
+	}
+	var infos []modelInfo
+	if json.Unmarshal(raw, &infos) == nil && len(infos) > 0 {
+		return modelState{AvailableModels: infos}, true
+	}
+	var ids []string
+	if json.Unmarshal(raw, &ids) == nil && len(ids) > 0 {
+		var out modelState
+		for _, id := range ids {
+			out.AvailableModels = append(out.AvailableModels, modelInfo{ModelID: id})
+		}
+		return out, true
+	}
+	return modelState{CurrentModelID: ms.CurrentModelID}, false
 }
 
 // AdvertisedModel is a model an agent says a session can use.
@@ -65,17 +102,29 @@ func advertised(sess newSessionResult) ([]AdvertisedModel, string) {
 			return out, opt.current()
 		}
 	}
-	var ms modelState
-	if len(sess.Models) > 0 && json.Unmarshal(sess.Models, &ms) == nil {
-		var out []AdvertisedModel
-		for _, m := range ms.AvailableModels {
-			if m.ModelID != "" {
-				out = append(out, AdvertisedModel{ID: m.ModelID, Label: cmpLabel(m.Name, m.ModelID)})
-			}
+	if ms, ok := parseModelState(sess.Models); ok {
+		return modelsOf(ms), ms.CurrentModelID
+	}
+	// Some agents nest the list under the result's _meta.
+	var meta struct {
+		Models json.RawMessage `json:"models"`
+	}
+	if len(sess.Meta) > 0 && json.Unmarshal(sess.Meta, &meta) == nil {
+		if ms, ok := parseModelState(meta.Models); ok {
+			return modelsOf(ms), ms.CurrentModelID
 		}
-		return out, ms.CurrentModelID
 	}
 	return nil, ""
+}
+
+func modelsOf(ms modelState) []AdvertisedModel {
+	var out []AdvertisedModel
+	for _, m := range ms.AvailableModels {
+		if id := m.id(); id != "" {
+			out = append(out, AdvertisedModel{ID: id, Label: cmpLabel(m.Name, id)})
+		}
+	}
+	return out
 }
 
 func cmpLabel(name, id string) string {
@@ -136,37 +185,55 @@ func modelOption(raw []json.RawMessage) (configOption, bool) {
 	return configOption{}, false
 }
 
+// ModelError says the agent did not take the model that was asked for. Offers
+// are the models its new session advertised (none when it advertised none).
+type ModelError struct {
+	Model  string
+	Offers []string
+	Cause  error
+}
+
+func (e *ModelError) Error() string {
+	msg := fmt.Sprintf("select model %q: %v", e.Model, e.Cause)
+	if len(e.Offers) > 0 {
+		msg += "; the agent offers " + strings.Join(e.Offers, ", ")
+	}
+	return msg
+}
+
+func (e *ModelError) Unwrap() error { return e.Cause }
+
 // selectModel makes the session use opts.Model through what the agent
-// advertises: a model config option first, then session/set_model.
+// advertises: a model config option first, then session/set_model. A model the
+// agent did not list is still sent (the user may type any name): the agent says
+// whether it knows it.
 func (c *Client) selectModel(ctx context.Context, sess newSessionResult, opts RunOptions) error {
-	if opts.OnModels != nil {
-		if models, cur := advertised(sess); len(models) > 0 {
-			opts.OnModels(models, cur)
-		}
+	models, cur := advertised(sess)
+	if opts.OnModels != nil && len(models) > 0 {
+		opts.OnModels(models, cur)
 	}
 	want := opts.Model
 	if want == "" {
 		return nil
 	}
-	var ms modelState
-	haveModels := len(sess.Models) > 0 && json.Unmarshal(sess.Models, &ms) == nil && len(ms.AvailableModels) > 0
+	offers := make([]string, len(models))
+	for i, m := range models {
+		offers[i] = m.ID
+	}
+	ms, haveModels := parseModelState(sess.Models)
 	opt, haveOpt := modelOption(sess.ConfigOptions)
 	var err error
 	switch {
 	case haveOpt && opt.current() == want, haveModels && !haveOpt && ms.CurrentModelID == want:
 		return nil
 	case haveOpt:
-		if !slices.Contains(opt.values(), want) {
-			err = fmt.Errorf("the agent offers %s", strings.Join(opt.values(), ", "))
-			break
-		}
 		err = c.conn.call(ctx, methodSetConfig, map[string]string{"sessionId": sess.SessionID, "configId": opt.ID, "value": want}, nil)
-	case haveModels:
-		err = c.conn.call(ctx, methodSetModel, map[string]string{"sessionId": sess.SessionID, "modelId": want}, nil)
 	case opts.ModelApplied:
 		return nil
 	default:
-		err = fmt.Errorf("the agent advertises no model selection")
+		// Either a model list, or nothing at all: session/set_model is the one
+		// method left to try, and an agent without it answers with an error.
+		err = c.conn.call(ctx, methodSetModel, map[string]string{"sessionId": sess.SessionID, "modelId": want}, nil)
 	}
 	if err == nil {
 		return nil
@@ -175,8 +242,20 @@ func (c *Client) selectModel(ctx context.Context, sess newSessionResult, opts Ru
 		return ctx.Err()
 	}
 	if opts.ModelRequired && !opts.ModelApplied {
-		return fmt.Errorf("select model %q: %w", want, err)
+		return &ModelError{Model: want, Offers: offers, Cause: err}
 	}
 	slog.Warn("acp: model not selected; the agent keeps its own", "agent", c.name, "model", want, "err", err)
 	return nil
+}
+
+// Discover asks the agent for the models it offers without using it: it opens a
+// session at cwd with no MCP servers and reads the models the answer lists,
+// then returns. No prompt is sent. The caller closes the Client.
+func (c *Client) Discover(ctx context.Context, cwd string, opts RunOptions) (models []AdvertisedModel, current string, err error) {
+	sess, err := c.newSession(ctx, cwd, nil, opts.AuthHint, opts.Auth)
+	if err != nil {
+		return nil, "", err
+	}
+	models, current = advertised(sess)
+	return models, current, nil
 }

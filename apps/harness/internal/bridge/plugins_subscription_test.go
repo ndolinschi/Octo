@@ -37,7 +37,7 @@ func subscriptionRegistry(t *testing.T, loginFile string) *plugins.Registry {
 					fakeacp.EnvChild: "1", "GORACE": "atexit_sleep_ms=0", fakeacp.EnvAuth: "ok",
 					fakeacp.EnvModels: "alpha,beta", fakeacp.EnvLoginFile: loginFile,
 				},
-				"auth": map[string]any{"probe": []string{"sh", "-c", `test -f "$0"`, loginFile}, "hint": "Run fake login."},
+				"auth": map[string]any{"probe": []string{"sh", "-c", `test -f "$0"`, loginFile}, "notLoggedInExit": []int{1}, "hint": "Run fake login."},
 			},
 			{"id": "noprobe", "command": os.Args[0], "env": map[string]string{fakeacp.EnvChild: "1"}},
 		},

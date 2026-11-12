@@ -263,7 +263,7 @@ func TestExplicitTierDoesNotRoute(t *testing.T) {
 func TestAutoRoutesToACPAgent(t *testing.T) {
 	flat := fakeAgent("fake", true)
 	flat.FlatRate, flat.Strengths = true, []string{"easy", "medium"}
-	unknown := fakeAgent("pending", true) // probe configured, no result yet: left out
+	unknown := fakeAgent("pending", true) // probe configured, no result yet: login unchecked, still offered
 	unknown.ProbeCommand = "/nonexistent"
 	out := fakeAgent("loggedout", true)
 	out.ProbeCommand = "/nonexistent"
@@ -277,7 +277,7 @@ func TestAutoRoutesToACPAgent(t *testing.T) {
 		t.Fatalf("turn = %s (%q)", a.status, a.result)
 	}
 	body := a.routeBody(t)
-	if body.ids() != "fast,balanced,deep,acp:fake,acp:loggedout" {
+	if body.ids() != "fast,balanced,deep,acp:fake,acp:pending,acp:loggedout" {
 		t.Fatalf("candidates = %s", body.ids())
 	}
 	f := body.Candidates[3]
@@ -285,7 +285,10 @@ func TestAutoRoutesToACPAgent(t *testing.T) {
 		strings.Join(f.Strengths, ",") != "easy,medium" {
 		t.Fatalf("agent candidate = %+v", f)
 	}
-	if lo := body.Candidates[4]; lo.LoggedIn == nil || *lo.LoggedIn || *lo.FlatRate {
+	if pe := body.Candidates[4]; pe.LoggedIn == nil || !*pe.LoggedIn {
+		t.Fatalf("unchecked candidate = %+v, want offered as logged in", pe)
+	}
+	if lo := body.Candidates[5]; lo.LoggedIn == nil || *lo.LoggedIn || *lo.FlatRate {
 		t.Fatalf("logged-out candidate = %+v", lo)
 	}
 	c := a.child

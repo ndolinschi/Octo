@@ -141,6 +141,36 @@ func init() {
 // hook reports (the router answering, or going away).
 const providersWatchEvery = 15 * time.Second
 
+// modelDiscovery configures model discovery of ACP agents (see providers.Discovery);
+// HARNESS_MODEL_DISCOVERY=0 turns it off, and agents then show only the manifest's
+// models, those they advertised in real sessions and the names typed by the user.
+func modelDiscovery(orchRef *atomic.Pointer[orchestrator.Orchestrator]) *providers.Discovery {
+	if v, ok := os.LookupEnv("HARNESS_MODEL_DISCOVERY"); ok && !traceOn(v) {
+		return nil
+	}
+	return &providers.Discovery{
+		InUse: func(id string) bool {
+			o := orchRef.Load()
+			return o != nil && o.AgentInUse(id)
+		},
+		Live: func(id string) ([]providers.ModelInfo, string, bool) {
+			o := orchRef.Load()
+			if o == nil {
+				return nil, "", false
+			}
+			a, ok := o.AdvertisedModels(id)
+			if !ok || len(a.Models) == 0 {
+				return nil, "", false
+			}
+			infos := make([]providers.ModelInfo, len(a.Models))
+			for i, m := range a.Models {
+				infos[i] = providers.ModelInfo{ID: m.ID, Label: m.Label}
+			}
+			return infos, a.Current, true
+		},
+	}
+}
+
 func traceOn(v string) bool { b, err := strconv.ParseBool(v); return err == nil && b }
 
 func serve(ctx context.Context, cfg config.Config, addr string) error {
@@ -194,8 +224,10 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	hub := events.NewHub()
 	// svc exists only after the orchestrator; a probe result can arrive before that.
 	var svcRef atomic.Pointer[project.Service]
+	var orchRef atomic.Pointer[orchestrator.Orchestrator]
 	provSvc := providers.New(providers.Options{
-		DataDir: cfg.DataDir, Builtin: builtin, Router: octo, Agents: pluginReg.Agents,
+		Discovery: modelDiscovery(&orchRef),
+		DataDir:   cfg.DataDir, Builtin: builtin, Router: octo, Agents: pluginReg.Agents,
 		Defaults: func() config.Models {
 			if s := svcRef.Load(); s != nil {
 				return s.Defaults().Models
@@ -227,13 +259,14 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 		BuiltinUnavailable:  builtinReason,
 		DefaultOrchestrator: cfg.Models.Orchestrator,
 	})
+	orchRef.Store(orch)
 	orch.OnAdvertisedModels(func(agentID string) {
 		if a, ok := orch.AdvertisedModels(agentID); ok {
-			ids := make([]string, len(a.Models))
+			infos := make([]providers.ModelInfo, len(a.Models))
 			for i, m := range a.Models {
-				ids[i] = m.ID
+				infos[i] = providers.ModelInfo{ID: m.ID, Label: m.Label}
 			}
-			provSvc.Record(agentID, ids, a.Current)
+			provSvc.RecordModels(agentID, infos, a.Current)
 		}
 	})
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: cfg.Models, MaxDepth: config.DefaultMaxDepth, Access: access},

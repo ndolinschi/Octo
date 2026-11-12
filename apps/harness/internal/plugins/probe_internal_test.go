@@ -119,17 +119,21 @@ func TestRunProbeOutcomes(t *testing.T) {
 	tests := []struct {
 		name  string
 		probe string
+		exits []int // the manifest's notLoggedInExit
 		want  *bool
 	}{
-		{"exit 0", `["sh","-c","exit 0"]`, boolPtr(true)},
-		{"exit 1", `["sh","-c","exit 1"]`, boolPtr(false)},
-		{"not startable", `["definitely-not-a-command-xyz"]`, nil},
-		{"timeout", `["sh","-c","sleep 5"]`, nil},
+		{"exit 0", `["sh","-c","exit 0"]`, nil, boolPtr(true)},
+		{"exit 1 the manifest lists as logged out", `["sh","-c","exit 1"]`, []int{1}, boolPtr(false)},
+		{"exit 1 nobody documented: login not checked", `["sh","-c","exit 1"]`, nil, nil},
+		{"exit 2 when only 1 is listed: login not checked", `["sh","-c","exit 2"]`, []int{1}, nil},
+		{"not startable", `["definitely-not-a-command-xyz"]`, nil, nil},
+		{"timeout", `["sh","-c","sleep 5"]`, []int{1}, nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			r := loadProbeRegistry(t, tc.probe)
 			a, _ := r.Agent("a")
+			a.ProbeNotLoggedInExit = tc.exits
 			start := time.Now()
 			got := runProbe(context.Background(), a)
 			if time.Since(start) > 3*time.Second {

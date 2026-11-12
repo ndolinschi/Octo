@@ -63,6 +63,7 @@ import type {
   SideMessage,
   PickFolderResult,
   Provider,
+  ProviderPrefs,
   ProvidersResponse,
   SettingsUpdate,
   SettingsView,
@@ -188,6 +189,11 @@ export interface Bridge {
   refreshProviderModels?(id: string): Promise<Provider | null>;
   /** `PUT /v1/providers/{id}/custom-models`: replaces the model names the user added for an agent. Optional. */
   setProviderCustomModels?(id: string, models: string[]): Promise<Provider | null>;
+  /**
+   * `PUT /v1/providers/{id}/prefs`: the agent's preferred model and role models, stored globally by the harness.
+   * Answers the updated provider entry. Optional.
+   */
+  setProviderPrefs?(id: string, prefs: ProviderPrefs): Promise<Provider | null>;
   /**
    * Folder picker. `path` is a directory path or a prefix of one (`~` is the home directory, empty is home): the
    * child directories of its directory whose names start with the last segment (case-insensitive, hidden ones only
@@ -595,13 +601,14 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     },
     listDirs: (path) => request("GET", `/v1/fs/dirs?path=${encodeURIComponent(path)}`) as Promise<DirListing>,
     recentFolders: () => unwrap<FolderEntry[]>(request("GET", "/v1/fs/recent"), "entries"),
-    pickFolder: (start) => request("POST", "/v1/fs/pick-folder", start ? { start } : {}) as Promise<PickFolderResult>,
+    pickFolder: (start) => request("POST", "/v1/fs/pick-folder", start === undefined ? undefined : { start }) as Promise<PickFolderResult>,
     getDiagnostics: () => request("GET", "/v1/diagnostics") as Promise<Diagnostics>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
     refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
+    setProviderPrefs: async (id, prefs) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/prefs`, prefs), id),
     openLanguageServer: (id, serverId) =>
       openLspSession(
         {

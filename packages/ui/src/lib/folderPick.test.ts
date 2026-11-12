@@ -71,8 +71,8 @@ test("browseOutcome: a path is chosen, a cancel is not an error, a failure says 
   assert.deepEqual(browseOutcome(null), { kind: "cancelled" });
   assert.deepEqual(browseOutcome({ path: "/x" }), { kind: "chosen", path: "/x" });
   assert.deepEqual(browseOutcome({ cancelled: true }), { kind: "cancelled" });
-  assert.deepEqual(browseOutcome({ error: "no_dialog", message: "No display." }), { kind: "error", message: "No display." });
-  assert.deepEqual(browseOutcome({ error: "no_dialog" }), { kind: "error", message: "The folder dialog could not be opened." });
+  assert.deepEqual(browseOutcome({ error: "unavailable", message: "No display." }), { kind: "error", message: "No display." });
+  assert.deepEqual(browseOutcome({ error: "unavailable" }), { kind: "error", message: "The folder dialog could not be opened." });
 });
 
 test("browseRow: idle shows the shortcut, busy waits and cannot be pressed again, an error shows under it", () => {

@@ -22,7 +22,7 @@ func TestSpawnSchemaModel(t *testing.T) {
 	}{
 		{"no agents, no model", nil, false, nil, ""},
 		{"agent without a list is free text", []plugins.Agent{listed("a")}, true, nil, ""},
-		{"all list: union enum", []plugins.Agent{listed("a", "x", "y"), listed("b", "y", "z")}, true, []string{"x", "y", "z"}, "a: x, y; b: y, z"},
+		{"all list: described, never an enum (any model may be typed)", []plugins.Agent{listed("a", "x", "y"), listed("b", "y", "z")}, true, nil, "a: x, y; b: y, z"},
 		{"mixed: no enum, still described", []plugins.Agent{listed("a", "x"), listed("b")}, true, nil, "a: x"},
 	}
 	for _, tc := range tests {

@@ -108,3 +108,46 @@ test("project.attention carries the failed state until the next turn clears it; 
   s = applyEvent(s, { type: "project.attention", seq: 3, needs_you: false, approvals: 0, inputs: 0, state: "none" });
   assert.deepEqual(s.attention, { needs_you: false, approvals: 0, inputs: 0, state: "none" });
 });
+
+test("model endpoints: refresh, custom models and preferences use the provider paths", async () => {
+  const seen: { method: string | undefined; url: string; body: unknown }[] = [];
+  const entry = { ...sample.providers[1], models_refreshed_at: "2026-11-12T12:00:00Z", login: "unchecked", accepts_custom_model: true };
+  const fetch: FetchLike = async (url, init) => {
+    seen.push({ method: init?.method, url, body: init?.body === undefined ? undefined : JSON.parse(init.body) });
+    return { ok: true, status: 200, text: async () => JSON.stringify(entry) };
+  };
+  const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
+  const refreshed = await bridge.refreshProviderModels?.("claude-code");
+  assert.equal(refreshed?.models_refreshed_at, "2026-11-12T12:00:00Z");
+  await bridge.setProviderCustomModels?.("a b", ["my-model", "vendor/x:7b"]);
+  await bridge.setProviderPrefs?.("claude-code", { preferred_model: "opus", roles: { fast: "haiku", deep: "" } });
+  assert.deepEqual(seen, [
+    { method: "POST", url: "http://h:1/v1/providers/claude-code/refresh-models", body: undefined },
+    { method: "PUT", url: "http://h:1/v1/providers/a%20b/custom-models", body: { models: ["my-model", "vendor/x:7b"] } },
+    { method: "PUT", url: "http://h:1/v1/providers/claude-code/prefs", body: { preferred_model: "opus", roles: { fast: "haiku", deep: "" } } },
+  ]);
+  for (const m of ["refreshProviderModels", "setProviderCustomModels", "setProviderPrefs"]) {
+    assert.equal((BRIDGE_METHODS as readonly string[]).includes(m), false, `${m} is HTTP-only`);
+  }
+});
+
+test("a failed model look is data on the provider; the new optional fields type-check", () => {
+  const base = sample.providers[1];
+  if (!base) throw new Error("fixture");
+  const p: ProvidersResponse["providers"][number] = {
+    ...base,
+    models: [
+      { id: "opus", label: "Opus", source: "manifest" },
+      { id: "grok-4", label: "grok-4", source: "command" },
+      { id: "mine", label: "mine", source: "custom" },
+    ],
+    models_error: "timed out after 20s",
+    models_note: "aliases",
+    accepts_custom_model: true,
+    login: "ok",
+    preferred_model: "opus",
+    roles: { fast: "haiku", balanced: "sonnet", deep: "opus" },
+  };
+  assert.equal(p.models[1]?.source, "command");
+  assert.equal(p.roles?.deep, "opus");
+});

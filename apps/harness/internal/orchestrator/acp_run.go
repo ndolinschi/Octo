@@ -23,9 +23,10 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: t.processEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
 	})
 	if err != nil {
-		return "", acpFailure(ag, "start ACP agent", err)
+		return "", startFailure(t, err)
 	}
 	defer client.Close()
+	defer rt.o.adv.running(ag.ID)()
 
 	h := newACPSession(rt, child.ID, ag.ID, child.Model)
 	h.flat = ag.FlatRateIn(t.processEnv())

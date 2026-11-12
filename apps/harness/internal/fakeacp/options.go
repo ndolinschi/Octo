@@ -22,11 +22,18 @@ const (
 	EnvLoginFile = "OCTO_FAKEACP_LOGIN_FILE"
 	// EnvModels is a comma-separated list of models the agent advertises.
 	EnvModels = "OCTO_FAKEACP_MODELS"
-	// EnvModelsVia selects how they are advertised: "models" (session/set_model,
-	// the default) or "config" (a model config option).
+	// EnvModelsVia selects where session/new lists them: "models" (the
+	// result's models object, the default), "config" (a flat model config
+	// option), "config-grouped" (a model config option whose options are
+	// groups), "models-array" (models as a bare array of {id, name}), "meta"
+	// (models under the result's _meta), or "none" (the models are accepted by
+	// session/set_model but not listed).
 	EnvModelsVia = "OCTO_FAKEACP_MODELS_VIA"
 	// EnvRefuseModel makes set-model refuse ids outside EnvModels.
 	EnvRefuseModel = "OCTO_FAKEACP_REFUSE_MODEL"
+	// EnvRequestLog is a file every request the agent receives is appended to,
+	// one line each: the method, and for session/new "cwd=<dir> mcp=<n>".
+	EnvRequestLog = "OCTO_FAKEACP_REQUEST_LOG"
 	// EnvAuthMethods is a JSON array of auth methods to advertise verbatim;
 	// session/new then refuses until one listed in EnvAuthOK is accepted.
 	EnvAuthMethods = "OCTO_FAKEACP_AUTH_METHODS"
@@ -61,7 +68,7 @@ type options struct {
 	auth        string
 	loginFile   string
 	models      []string
-	viaConfig   bool
+	via         string
 	refuseUnk   bool
 	startModel  string
 	methods     []any
@@ -79,7 +86,7 @@ type options struct {
 func optionsFromEnv(args []string) options {
 	o := options{
 		auth: os.Getenv(EnvAuth), loginFile: os.Getenv(EnvLoginFile),
-		viaConfig: os.Getenv(EnvModelsVia) == "config", refuseUnk: os.Getenv(EnvRefuseModel) == "1",
+		via: os.Getenv(EnvModelsVia), refuseUnk: os.Getenv(EnvRefuseModel) == "1",
 		loadSession: os.Getenv(EnvLoadSession) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
 		mcpReject: os.Getenv(EnvMCPReject) == "1", promptUsage: os.Getenv(EnvPromptUsage), unique: os.Getenv(EnvUniqueSessions) == "1",
 	}

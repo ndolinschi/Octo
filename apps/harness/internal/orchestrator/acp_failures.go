@@ -89,5 +89,32 @@ func acpFailure(ag plugins.Agent, what string, err error) error {
 	if isAuthFailure(err) {
 		return &userError{msg: ag.Label + " is not logged in", hint: loginHint(ag), cause: err}
 	}
+	var me *acp.ModelError
+	if errors.As(err, &me) {
+		return &userError{msg: fmt.Sprintf("%s does not accept model %s", ag.Label, me.Model), hint: modelHint(ag, me.Offers), cause: err}
+	}
 	return fmt.Errorf("%s %q: %w", what, ag.ID, err)
+}
+
+// modelHint says what to choose instead of a model the agent refused: what it
+// advertised in the session, else what the manifest lists.
+func modelHint(ag plugins.Agent, offers []string) string {
+	switch {
+	case len(offers) > 0:
+		return "It advertises: " + strings.Join(offers, ", ") + ". Choose one of those, or the agent's default."
+	case len(ag.Models) > 0:
+		return "It advertised no models in this session; the manifest lists: " + strings.Join(ag.Models, ", ") + ". Choose one of those, or the agent's default."
+	}
+	return "It advertised no models in this session. Choose the agent's default, or check the model name."
+}
+
+// startFailure is acpFailure for an agent that did not start; when the model
+// was passed as a start-up argument, a refusal of it shows as an early exit.
+func startFailure(t acpTarget, err error) error {
+	ag := t.agent
+	if t.requested && len(ag.ModelArg) > 0 && !isAuthFailure(err) {
+		return &userError{msg: fmt.Sprintf("%s does not accept model %s (it did not start with it)", ag.Label, t.model),
+			hint: modelHint(ag, nil), cause: err}
+	}
+	return acpFailure(ag, "start ACP agent", err)
 }

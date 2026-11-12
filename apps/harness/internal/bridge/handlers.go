@@ -34,6 +34,8 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		"router": s.router != nil && s.router.Enabled(), "router_capabilities": caps,
 		"route_api":         slices.Contains(caps, router.CapRouteAPI),
 		"acp_orchestrators": s.acpOrchestrators(),
+		// Whether POST /v1/fs/pick-folder can open the system's folder chooser here.
+		"pick_folder": pickFolderAvailable(),
 	})
 }
 

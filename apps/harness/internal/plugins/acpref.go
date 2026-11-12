@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 )
 
@@ -28,7 +27,8 @@ func ParseACPRef(s string) (id, model string, ok bool) {
 }
 
 // ValidateACPRef checks an `acp:` setting against the loaded agents: the agent
-// must exist and be available, and a model must be one the manifest allows.
+// must exist and be available. Any well-formed model name is accepted, listed
+// or not: the agent itself says whether it knows the model when the turn starts.
 // Settings without the prefix are not this function's business (nil).
 func ValidateACPRef(ref string, agents []Agent) error {
 	if !IsACPRef(ref) {
@@ -53,8 +53,6 @@ func ValidateACPRef(ref string, agents []Agent) error {
 		case model == "":
 		case !ModelPattern.MatchString(model):
 			return fmt.Errorf("invalid model %q for ACP agent %q", model, id)
-		case len(a.Models) > 0 && !slices.Contains(a.Models, model):
-			return fmt.Errorf("ACP agent %q has no model %q; choose one of: %s", id, model, strings.Join(a.Models, ", "))
 		}
 		return nil
 	}

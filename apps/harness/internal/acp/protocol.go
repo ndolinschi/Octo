@@ -179,6 +179,7 @@ type newSessionResult struct {
 	// unreadable one must not fail the session.
 	Models        json.RawMessage   `json:"models"`
 	ConfigOptions []json.RawMessage `json:"configOptions"`
+	Meta          json.RawMessage   `json:"_meta"`
 }
 
 type contentBlock struct {
