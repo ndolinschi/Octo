@@ -1,4 +1,4 @@
-import type { Provider, ProviderList, ProviderModel, ProviderModelSource } from "@octo/agent-client";
+import type { Provider, ProviderList, ProviderModel, ProviderModelSource, ProviderRoles } from "@octo/agent-client";
 import { agentModelLabel, modelLabel } from "../models";
 import { jsonCodec, type Codec } from "../storage";
 import { connectAction, isReady, stateText } from "./providers";
@@ -67,7 +67,20 @@ export type PickerRow =
 export type PickerGroup = { key: string; label: string; rows: PickerRow[] };
 
 /** What the second level's header needs of the agent: its name, and what the last model discovery said. */
-export type PickerAgent = { id: string; label: string; error: string; refreshedAt: string };
+export type PickerAgent = {
+  id: string;
+  label: string;
+  error: string;
+  refreshedAt: string;
+  /** The manifest's remark on the model list (where it comes from, how far to trust it); "" when none. */
+  note: string;
+  /** How many models the harness lists for the agent (typed names not counted): 0 means the list is empty. */
+  known: number;
+  /** Any model name may be chosen: "Other model…" is shown (absent from the harness reads as yes). */
+  acceptsCustom: boolean;
+  /** A model name for the "Other model…" placeholder: the first listed one, else "opus". */
+  example: string;
+};
 
 export type PickerView = { level: "top"; groups: PickerGroup[]; unavailable: PickerRow[] } | { level: "agent"; agent: PickerAgent; rows: PickerRow[] };
 
@@ -81,7 +94,12 @@ export type PickerOptions = {
   current?: string;
   /** Names the user typed for an agent (this browser's memory; the harness's own list wins when it has the name too). */
   custom?: Readonly<Record<string, readonly string[]>>;
+  /** Preferred model per agent kept in this browser, for a harness that cannot store preferences (the harness's own wins). */
+  localPrefs?: Readonly<Record<string, AgentPrefsLocal>>;
 };
+
+/** What this browser remembers of an agent's preferences when the bridge cannot store them (decision 72 b-c). */
+export type AgentPrefsLocal = { preferred_model?: string; roles?: Partial<ProviderRoles> };
 
 const tokens = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean);
 const matches = (words: string[], text: string) => {
@@ -114,6 +132,35 @@ function agentModelRow(agent: Provider, m: ProviderModel, withAgent: boolean): P
   };
 }
 
+/** The agent's preferred model id: the harness's, else this browser's; "" when neither names one (the agent decides). */
+export function preferredModel(agent: Pick<Provider, "id" | "preferred_model">, local?: PickerOptions["localPrefs"]): string {
+  return agent.preferred_model || local?.[agent.id]?.preferred_model || "";
+}
+
+/** The model of a delegation role, harness first, then this browser's memory; "" is the agent's default. */
+export function roleModel(agent: Pick<Provider, "id" | "roles">, role: keyof ProviderRoles, local?: PickerOptions["localPrefs"]): string {
+  return agent.roles?.[role] || local?.[agent.id]?.roles?.[role] || "";
+}
+
+/**
+ * Why an agent's list is short (decision 58): shown under the second level's header while no model is listed.
+ * `null` when the list has models. `reason` is the harness's error, else a plain sentence; `note` is the manifest's remark.
+ */
+export function emptyListNote(agent: PickerAgent, refreshing: boolean): { reason: string; note: string } | null {
+  if (agent.known > 0) return null;
+  const reason = refreshing ? `Asking ${agent.label} for its models…` : agent.error.trim() || `${agent.label} has not reported its models yet`;
+  return { reason, note: agent.note.trim() };
+}
+
+/** The options of a model select for `agent` (preferred model, roles): its models, plus `current` when it is a name the list lacks. */
+export function selectOptions(agent: Provider, current: string, custom?: PickerOptions["custom"]): { id: string; label: string }[] {
+  const all = agentModels(agent, custom).map((m) => ({ id: m.id, label: agentModelLabel(m) }));
+  return current && !all.some((o) => o.id === current) ? [...all, { id: current, label: current }] : all;
+}
+
+/** Whether opening the agent's second level should ask the harness for its models: nothing listed, or never looked. */
+export const needsModelRefresh = (agent: Pick<PickerAgent, "known" | "refreshedAt">): boolean => agent.known === 0 || agent.refreshedAt === "";
+
 /** The model an `acp:<agent>/<model>` setting names for `agentId`, if it is that agent's. */
 function chosenModel(current: string | undefined, agentId: string): string | null {
   if (!current?.startsWith("acp:")) return null;
@@ -145,8 +192,23 @@ export function pickerView(list: ProviderList, opts: PickerOptions = {}): Picker
       });
     for (const m of agentModels(open, opts.custom))
       if (!hidden.has(`acp:${open.id}/${m.id}`) && matches(words, `${m.label} ${m.id}`)) rows.push(agentModelRow(open, m, false));
-    if (words.length === 0) rows.push({ kind: "other", key: `other:${open.id}`, label: "Other model…", providerId: open.id });
-    return { level: "agent", agent: { id: open.id, label: open.label, error: open.models_error ?? "", refreshedAt: open.models_refreshed_at ?? "" }, rows };
+    const acceptsCustom = open.accepts_custom_model !== false;
+    if (words.length === 0 && acceptsCustom) rows.push({ kind: "other", key: `other:${open.id}`, label: "Other model…", providerId: open.id });
+    const first = open.models.find((m) => m.id !== open.default_model) ?? open.models[0];
+    return {
+      level: "agent",
+      agent: {
+        id: open.id,
+        label: open.label,
+        error: open.models_error ?? "",
+        refreshedAt: open.models_refreshed_at ?? "",
+        note: open.models_note ?? "",
+        known: open.models.length,
+        acceptsCustom,
+        example: first ? cleanModelName(first.id) || "opus" : "opus",
+      },
+      rows,
+    };
   }
   const groups: PickerGroup[] = [];
   const agents: PickerRow[] = [];
@@ -162,7 +224,12 @@ export function pickerView(list: ProviderList, opts: PickerOptions = {}): Picker
       const chosen = chosenModel(opts.current, p.id);
       const shown = chosen ? models.find((m) => m.id === chosen) : undefined;
       const def = p.models.find((m) => m.id === p.default_model);
-      const detail = chosen ? (shown ? agentModelLabel(shown) : chosen) : def ? agentModelLabel(def) : undefined;
+      const preferredId = preferredModel(p, opts.localPrefs);
+      const preferred = preferredId
+        ? (models.find((m) => m.id === preferredId) ?? { id: preferredId, label: preferredId, source: "custom" as const })
+        : undefined;
+      // Decision 72 c: the row shows the model chosen now, else the agent's preferred model, else its own default (dim).
+      const detail = chosen ? (shown ? agentModelLabel(shown) : chosen) : preferred ? agentModelLabel(preferred) : def ? agentModelLabel(def) : undefined;
       if (matches(words, `${p.label} ${p.id}`))
         agents.push({ kind: "agent", key: `acp:${p.id}`, value: `acp:${p.id}`, label: p.label, providerId: p.id, ...(detail ? { detail } : {}) });
       // Decision 58: "copilot gpt" finds the model one level down — shown flat while searching.
@@ -265,6 +332,33 @@ export function withCustomModel(names: readonly string[], name: string): string[
   const n = cleanModelName(name);
   if (!n || names.includes(n)) return [...names];
   return [...names, n].slice(-20);
+}
+
+/** Agent preferences kept in this browser, by agent id (malformed text reads as none). */
+export const agentPrefsCodec: Codec<Record<string, AgentPrefsLocal>> = jsonCodec((v) => {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return {};
+  const str = (x: unknown): string | undefined => (typeof x === "string" ? x : undefined);
+  const out: Record<string, AgentPrefsLocal> = {};
+  for (const [id, raw] of Object.entries(v)) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    const r = raw as Record<string, unknown>;
+    const roles: Partial<ProviderRoles> = {};
+    if (typeof r.roles === "object" && r.roles !== null)
+      for (const k of ["fast", "balanced", "deep"] as const) {
+        const m = str((r.roles as Record<string, unknown>)[k]);
+        if (m !== undefined) roles[k] = m;
+      }
+    const preferred = str(r.preferred_model);
+    out[id] = { ...(preferred !== undefined ? { preferred_model: preferred } : {}), ...(Object.keys(roles).length ? { roles } : {}) };
+  }
+  return out;
+});
+
+/** `prefs` of one agent with a change applied (roles merge key by key; "" resets to the default). */
+export function withAgentPrefs(prefs: AgentPrefsLocal | undefined, change: { preferred_model?: string; roles?: Partial<ProviderRoles> }): AgentPrefsLocal {
+  const roles = { ...prefs?.roles, ...change.roles };
+  const preferred = change.preferred_model ?? prefs?.preferred_model;
+  return { ...(preferred !== undefined ? { preferred_model: preferred } : {}), ...(Object.keys(roles).length ? { roles } : {}) };
 }
 
 export const withoutCustomModel = (names: readonly string[], name: string): string[] => names.filter((x) => x !== name);

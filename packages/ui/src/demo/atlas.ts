@@ -20,6 +20,7 @@ Two tabs — or a tab and the service worker — can refresh at the same moment.
 | API | \`src/auth/refresh.ts\` | Rotation is immediate; no grace window for the previous token |
 | Web | \`src/lib/session.ts\` | No single-flight lock — every tab refreshes on its own |
 | Web | \`src/lib/http.ts\` | Any \`401\` from refresh signs the user out |
+| Log | \`GET /auth/refresh\` | ${"eyJhbGciOiJFUzI1NiJ9".repeat(8)} |
 
 The debugger reproduced it with a new failing test, \`refresh.concurrent.test.ts\`: 7 of 10 runs log the user out.
 
@@ -37,6 +38,12 @@ if (token.revokedAt) {
   if (age < GRACE_MS && token.successorId) return pairFor(token.successorId);
   throw new AuthError("refresh_reused");
 }
+\`\`\`
+
+A request that hit the race, as the API logged it:
+
+\`\`\`text
+${'{"level":"warn","route":"/auth/refresh","reason":"refresh_reused","token":"' + "eyJhbGciOiJFUzI1NiJ9".repeat(12) + '"}'}
 \`\`\`
 
 Nothing has been changed yet. Say **go** and I'll hand the API and web changes to two implementers in parallel, with the new test as the gate.`;

@@ -20,9 +20,10 @@ pnpm test:scripts                               # from the repo root: the layer-
 pnpm --filter @octo/desktop build               # also reports chunk sizes
 node scripts/check-bundle-size.mjs              # after the build: initial JS gzip must stay within the budget
 node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420   # must print total=0
+node packages/ui/scripts/width-stability.mjs --url http://localhost:1420   # decision 79: must print "width-stability: ok" (also at --width 900 --height 600)
 ```
 
-Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`. Without `?demo` the app uses the
+Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty`, `?refresh=fail|none`. Without `?demo` the app uses the
 harness at `VITE_HARNESS_BRIDGE_URL` (default `http://127.0.0.1:8790`).
 
 ## Rules that are easy to break

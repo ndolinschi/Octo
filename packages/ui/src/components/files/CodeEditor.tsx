@@ -219,10 +219,10 @@ export function CodeEditor(props: {
   }
 
   return (
-    <div className="relative h-full min-h-0">
+    <div className="relative h-full min-h-0 min-w-0 overflow-clip">
       {/* Decision 60: grey lines in the editor's own box until Monaco is in, shown at once (no empty frame, no late spinner). */}
       {!editor && !failed && <EditorSkeleton />}
-      <div ref={host} className="h-full min-h-0" data-testid="code-editor" />
+      <div ref={host} className="h-full min-h-0 min-w-0" data-testid="code-editor" />
       {mod && editor && <mod.EditorComments editor={editor} monaco={mod.monaco} buffers={buffers} folder={file.folder} path={file.path} />}
       {mod && editor && (
         <Suspense fallback={null}>

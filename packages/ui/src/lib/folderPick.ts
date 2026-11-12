@@ -90,3 +90,12 @@ export function folderLabels(paths: readonly string[]): string[] {
     return same && parent ? `${names[i]} (${parent})` : (names[i] ?? "");
   });
 }
+
+/**
+ * The folders of a project request (decision 80): a folder that is already in the project keeps its label, a new one is
+ * named after itself (`folderLabels`). No screen asks for a label.
+ */
+export function labelsForFolders(paths: readonly string[], existing: readonly { path: string; label: string }[] = []): { path: string; label: string }[] {
+  const derived = folderLabels(paths);
+  return paths.map((path, i) => ({ path, label: existing.find((f) => f.path === path)?.label || (derived[i] ?? folderName(path)) }));
+}

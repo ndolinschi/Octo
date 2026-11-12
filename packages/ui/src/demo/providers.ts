@@ -4,6 +4,7 @@ import {
   type Diagnostics,
   type Provider,
   type ProviderModel,
+  type ProviderPrefs,
   type ProvidersResponse,
   type Setting,
   type SettingsUpdate,
@@ -17,10 +18,13 @@ import {
  */
 export type DemoProvidersOptions = { none?: boolean };
 
-/** `?refresh=fail` makes "Refresh models" report that the agent did not start. */
+const knob = (name: string): string | null => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(name));
+
+/** `?refresh=fail` makes "Refresh models" report that the agent did not start; `?refresh=none` makes it find nothing. */
 function refreshFails(): boolean {
-  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("refresh") === "fail";
+  return knob("refresh") === "fail";
 }
+const refreshFindsNothing = () => knob("refresh") === "none";
 
 const CLAUDE_LOGIN = "Log in once: run `claude` and type /login (or run `claude auth login`).";
 const CLAUDE_INSTALL = "Install Node.js and the Claude Code CLI: `npm install -g @anthropic-ai/claude-code`";
@@ -43,6 +47,13 @@ const CODEX_FOUND: ProviderModel[] = [
   { id: "gpt-5-codex", label: "gpt-5-codex", source: "advertised" },
   { id: "gpt-5.1", label: "gpt-5.1", source: "advertised" },
 ];
+/** What a refresh finds for Claude Code when `?claude=empty` starts it with no models (the aliases its docs name). */
+const CLAUDE_ALIASES: ProviderModel[] = [
+  { id: "opus", label: "opus", source: "manifest" },
+  { id: "sonnet", label: "sonnet", source: "manifest" },
+  { id: "haiku", label: "haiku", source: "manifest" },
+];
+const CLAUDE_NOTE = "Claude Code does not list its models; the aliases come from its documentation.";
 const SEEN_AT = "2026-11-11T12:00:00Z";
 
 const settingDefs: Omit<Setting, "source" | "editable">[] = [
@@ -108,7 +119,9 @@ const delay = () => new Promise((r) => setTimeout(r, 120));
 
 export function demoProviders(
   options: DemoProvidersOptions = {},
-): Required<Pick<Bridge, "listProviders" | "refreshProviderModels" | "setProviderCustomModels" | "getSettings" | "putSettings" | "getDiagnostics">> {
+): Required<
+  Pick<Bridge, "listProviders" | "refreshProviderModels" | "setProviderCustomModels" | "setProviderPrefs" | "getSettings" | "putSettings" | "getDiagnostics">
+> {
   const none = options.none ?? noneFromUrl();
   // The file: id → value. Secrets are kept only to know they are set; they are never returned.
   const file = new Map<string, string | boolean | string[]>([["HARNESS_ACP_TRACE", false]]);
@@ -117,6 +130,9 @@ export function demoProviders(
   const custom = new Map<string, string[]>();
   const refreshed = new Set<string>();
   const failed = new Map<string, string>();
+  /** Per agent: preferred model and role models saved through `setProviderPrefs`. */
+  const prefs = new Map<string, ProviderPrefs>();
+  const claudeEmpty = knob("claude") === "empty";
   const trace = (event: string, detail: unknown) => console.debug(`[octo demo] ${event}`, JSON.stringify(detail));
 
   const view = (): SettingsView => ({
@@ -157,13 +173,15 @@ export function demoProviders(
         reason: none ? "not logged in" : "",
         install_hint: CLAUDE_INSTALL,
         login_hint: CLAUDE_LOGIN,
-        models: [
-          manifest("claude-sonnet-5-5"),
-          manifest("claude-opus-5-5"),
-          manifest("claude-haiku-5-5"),
-          { id: "claude-opus-4-1", label: "claude-opus-4-1", source: "advertised", seen_at: SEEN_AT, stale: true },
-        ],
-        default_model: "claude-sonnet-5-5",
+        models: claudeEmpty
+          ? []
+          : [
+              manifest("claude-sonnet-5-5"),
+              manifest("claude-opus-5-5"),
+              manifest("claude-haiku-5-5"),
+              { id: "claude-opus-4-1", label: "claude-opus-4-1", source: "advertised", seen_at: SEEN_AT, stale: true },
+            ],
+        default_model: claudeEmpty ? "" : "claude-sonnet-5-5",
         flat_rate: true,
       },
       {
@@ -205,13 +223,24 @@ export function demoProviders(
       },
     ];
     const withCustom = (p: Provider): Provider => {
-      const found = p.id === "codex" && refreshed.has("codex") ? CODEX_FOUND : [];
+      const found =
+        !refreshed.has(p.id) || refreshFindsNothing() ? [] : p.id === "codex" ? CODEX_FOUND : p.id === "claude-code" && claudeEmpty ? CLAUDE_ALIASES : [];
+      const saved = prefs.get(p.id);
       const typed = (custom.get(p.id) ?? []).map((id): ProviderModel => ({ id, label: id, source: "custom" }));
       const error = failed.get(p.id);
       return {
         ...p,
         models: [...p.models, ...found, ...typed.filter((t) => ![...p.models, ...found].some((m) => m.id === t.id))],
-        ...(p.kind === "agent" ? { accepts_custom_model: true } : {}),
+        ...(p.kind === "agent"
+          ? {
+              accepts_custom_model: true,
+              login: p.id === "codex" ? ("unchecked" as const) : p.state === "ready" ? ("ok" as const) : ("not_logged_in" as const),
+              preferred_model: saved?.preferred_model ?? "",
+              roles: { fast: "", balanced: "", deep: "", ...saved?.roles },
+              ...(p.id === "claude-code" ? { models_note: CLAUDE_NOTE } : {}),
+              ...(refreshed.has(p.id) || (p.id === "claude-code" && !claudeEmpty) ? { models_refreshed_at: SEEN_AT } : {}),
+            }
+          : {}),
         ...(error ? { models_error: error } : {}),
       };
     };
@@ -241,6 +270,19 @@ export function demoProviders(
         failed.delete(id);
         refreshed.add(id);
       }
+      return providers().providers.find((x) => x.id === id) ?? null;
+    },
+    setProviderPrefs: async (id, change) => {
+      await delay();
+      if (!providers().providers.some((x) => x.id === id && x.kind === "agent")) throw new BridgeError(404, "not_found", `no agent ${id}`);
+      const before = prefs.get(id);
+      prefs.set(id, {
+        ...(change.preferred_model !== undefined || before?.preferred_model !== undefined
+          ? { preferred_model: change.preferred_model ?? before?.preferred_model ?? "" }
+          : {}),
+        roles: { ...before?.roles, ...change.roles },
+      });
+      trace("prefs", { id, change });
       return providers().providers.find((x) => x.id === id) ?? null;
     },
     setProviderCustomModels: async (id, models) => {

@@ -10,6 +10,7 @@ import { Input } from "../primitives/Field";
 import { Glyph } from "../primitives/Glyph";
 import { useHarnessSettings } from "./harnessSettings";
 import { useSettingsActions } from "./pageContext";
+import { AgentPrefsPane } from "./AgentPrefsPane";
 import { SaveStatus, SettingsGroup, SettingsRow, SkeletonRow, StateDot, Switch } from "./parts";
 import { useSave } from "./useSave";
 
@@ -21,40 +22,53 @@ export function ProvidersSection() {
   const { bridge } = useApp();
   const providers = useProviders(bridge);
   const list = providers.status === "ready" ? providers.list : providers.status === "error" ? providers.list : null;
+  const [picked, setPicked] = useState<string | null>(null);
+  // Decision 72 b-c: the agent whose preferred model and roles are shown on the right (the first ready one until another is picked).
+  const agents = list?.providers.filter((p) => p.kind === "agent" && p.state === "ready") ?? [];
+  const selected = agents.find((p) => p.id === picked) ?? agents[0];
   return (
     <>
-      <SettingsGroup
-        label="What can run a model"
-        footer={
-          list
-            ? list.connected === 0
-              ? "Nothing is connected: connect one provider to create projects."
-              : `${list.connected === 1 ? "One provider" : `${list.connected} providers`} connected. Model pickers list only what these can run.`
-            : undefined
-        }
-      >
-        {providers.status === "loading" && [0, 1, 2].map((i) => <SkeletonRow key={i} />)}
-        {providers.status === "error" && (
-          <SettingsRow
-            title={<span className="text-err">Couldn't load providers</span>}
-            description={`${providers.message.replace(/\.$/, "")}. Check that the harness is running, then retry.`}
-            control={
-              <Button size="sm" onClick={() => void providers.refresh()}>
-                Retry
-              </Button>
+      <div className="flex items-start gap-4 max-settings:flex-col max-settings:items-stretch">
+        <div className="min-w-0 flex-1">
+          <SettingsGroup
+            label="What can run a model"
+            footer={
+              list
+                ? list.connected === 0
+                  ? "Nothing is connected: connect one provider to create projects."
+                  : `${list.connected === 1 ? "One provider" : `${list.connected} providers`} connected. Model pickers list only what these can run.`
+                : undefined
             }
-          />
+          >
+            {providers.status === "loading" && [0, 1, 2].map((i) => <SkeletonRow key={i} />)}
+            {providers.status === "error" && (
+              <SettingsRow
+                title={<span className="text-err">Couldn't load providers</span>}
+                description={`${providers.message.replace(/\.$/, "")}. Check that the harness is running, then retry.`}
+                control={
+                  <Button size="sm" onClick={() => void providers.refresh()}>
+                    Retry
+                  </Button>
+                }
+              />
+            )}
+            {list?.providers.map((p) => (
+              <ProviderRow key={p.id} provider={p} selected={selected?.id === p.id} onSelect={() => setPicked(p.id)} />
+            ))}
+          </SettingsGroup>
+        </div>
+        {selected && (
+          <div className="w-72 shrink-0 max-settings:w-full">
+            <AgentPrefsPane key={selected.id} agent={selected} />
+          </div>
         )}
-        {list?.providers.map((p) => (
-          <ProviderRow key={p.id} provider={p} />
-        ))}
-      </SettingsGroup>
+      </div>
       <ApiKeys />
     </>
   );
 }
 
-function ProviderRow({ provider: p }: { provider: Provider }) {
+function ProviderRow({ provider: p, selected, onSelect }: { provider: Provider; selected: boolean; onSelect(): void }) {
   const { connect, restart } = useSettingsActions();
   const harness = useHarnessSettings();
   const [saved, run] = useSave();
@@ -79,7 +93,16 @@ function ProviderRow({ provider: p }: { provider: Provider }) {
     <SettingsRow
       rowId={`provider-${p.id}`}
       leading={<StateDot tone={toneOf(p)} />}
-      title={p.label}
+      title={
+        p.kind === "agent" && p.state === "ready" ? (
+          <button type="button" onClick={onSelect} aria-pressed={selected} className="rounded-xs text-left hover:underline">
+            {p.label}
+          </button>
+        ) : (
+          p.label
+        )
+      }
+      {...(p.kind === "agent" && p.state === "ready" ? { selected } : {})}
       description={
         <>
           <span className={cn(p.state !== "ready" && p.state !== "not_connected" && "text-warn")}>{stateText(p.state)}</span>

@@ -2,7 +2,7 @@ import { Check, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-r
 import { Fragment, useId, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { cn } from "../../lib/cn";
 import { parseAcp } from "../../lib/models";
-import { cleanModelName, pickerKey, pickerRows, pickerView, useModelPicker, type PickerRow } from "../../lib/providers";
+import { cleanModelName, emptyListNote, pickerKey, pickerRows, pickerView, useModelPicker, type PickerRow } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { useShell } from "../../state/shell";
 import { Glyph } from "../primitives/Glyph";
@@ -19,8 +19,6 @@ const STALE_NOTE = "not offered in the last session";
 
 /** A model typed by hand: at the top level (project settings) a model id of any provider, in an agent's list a name for that agent. */
 type Custom = { kind: "custom"; key: string; value: string; label: string; agentId: string | null };
-
-const OTHER_PLACEHOLDER = "Model name, then Enter";
 
 /**
  * The model picker's list (decisions 53, 56, 58), loaded with the first open: a 320px popover attached to its chip. It renders
@@ -51,7 +49,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const single = typed !== "" && !/\s/.test(typed);
   const taken = rows.some((r) => r.kind !== "connect" && r.kind !== "other" && r.value.replace(/^acp:[^/]*\//, "") === typed);
   const custom: Custom | null =
-    !single || taken
+    !single || taken || (agent && !agent.acceptsCustom)
       ? null
       : agent
         ? { kind: "custom", key: `custom:${typed}`, value: `acp:${agent.id}/${typed}`, label: typed, agentId: agent.id }
@@ -173,7 +171,9 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         ? "Nothing matches"
         : "Nothing can run yet. Connect a provider."
       : null;
-  const error = agent ? (refreshNote ?? agent.error) : "";
+  const why = agent ? emptyListNote({ ...agent, error: refreshNote ?? agent.error }, refreshing) : null;
+  // An empty list explains itself in the dim line; a short list with a failed look keeps the warning.
+  const error = agent && !why ? (refreshNote ?? agent.error) : "";
   return (
     <Popover
       anchor={props.anchor}
@@ -230,6 +230,12 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
           </button>
         </div>
       )}
+      {why && (
+        <p className="mx-1 shrink-0 px-2 pt-1 text-xs text-fg-3">
+          {why.reason}
+          {why.note && <span className="mt-0.5 line-clamp-2 block">{why.note}</span>}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mx-1 shrink-0 px-2 pt-1 text-xs text-warn">
           {error}
@@ -253,7 +259,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
                   ref={other}
                   value={draft}
                   aria-label={`Model name for ${agent?.label ?? "the agent"}`}
-                  placeholder={OTHER_PLACEHOLDER}
+                  placeholder={`e.g. ${agent?.example ?? "opus"}`}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {

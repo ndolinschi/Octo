@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   folderLabels,
+  labelsForFolders,
   browseOutcome,
   browseRow,
   chosenFrom,
@@ -90,4 +91,15 @@ test("browseRow: idle shows the shortcut, busy waits and cannot be pressed again
 test("folderLabels: a folder is named after itself; the parent only breaks a tie", () => {
   assert.deepEqual(folderLabels(["/a/atlas-api", "/a/atlas-web"]), ["atlas-api", "atlas-web"]);
   assert.deepEqual(folderLabels(["/work/web/app", "/work/mobile/app", "/x/other"]), ["app (web)", "app (mobile)", "other"]);
+});
+
+test("labelsForFolders: nobody types a label; a folder already in the project keeps its own, a new one is named after itself", () => {
+  assert.deepEqual(labelsForFolders(["/a/atlas-api", "/b/web"], [{ path: "/a/atlas-api", label: "api" }]), [
+    { path: "/a/atlas-api", label: "api" },
+    { path: "/b/web", label: "web" },
+  ]);
+  assert.deepEqual(labelsForFolders(["/work/web/app", "/work/mobile/app"]), [
+    { path: "/work/web/app", label: "app (web)" },
+    { path: "/work/mobile/app", label: "app (mobile)" },
+  ]);
 });

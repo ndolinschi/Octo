@@ -2,6 +2,14 @@
 export { API_PROVIDER, ROUTER_PROVIDER, canRun, chipLabel, connectAction, extraReason, isReady, providerOf, stateText } from "./providers";
 export {
   agentModels,
+  agentPrefsCodec,
+  emptyListNote,
+  needsModelRefresh,
+  preferredModel,
+  roleModel,
+  selectOptions,
+  withAgentPrefs,
+  type AgentPrefsLocal,
   choosable,
   cleanModelName,
   customModelsCodec,
@@ -18,4 +26,5 @@ export {
 } from "./modelList";
 export { refreshProviders, useProviders, type ProvidersLoad } from "./useProviders";
 export { useHiddenModels, useModelPicker } from "./useModelPicker";
+export { useAgentPrefs } from "./useAgentPrefs";
 export { commandsIn } from "./hints";

@@ -1,11 +1,13 @@
 import type { Bridge } from "@octo/agent-client";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { errorMessage } from "../format";
 import { PREFS, usePersistentState } from "../storage";
 import {
+  agentPrefsCodec,
   cleanModelName,
   customModelsCodec,
   hiddenModelsCodec,
+  needsModelRefresh,
   pickerView,
   withCustomModel,
   withoutCustomModel,
@@ -17,6 +19,18 @@ import { useProviders, type ProvidersLoad } from "./useProviders";
 /** Values left out of pickers (Settings → Models), persisted. */
 export function useHiddenModels() {
   return usePersistentState(PREFS.hiddenModels, hiddenModelsCodec, { persistInitial: false });
+}
+
+/** Agents whose models were asked for by opening the picker, per bridge: once each for the life of the app, so it never loops. */
+const autoAsked = new WeakMap<Bridge, Set<string>>();
+
+/** True the first time it is called for this agent and bridge. */
+function firstAsk(bridge: Bridge, agentId: string): boolean {
+  let set = autoAsked.get(bridge);
+  if (!set) autoAsked.set(bridge, (set = new Set()));
+  if (set.has(agentId)) return false;
+  set.add(agentId);
+  return true;
 }
 
 export type ModelPickerData = {
@@ -42,6 +56,7 @@ export function useModelPicker(bridge: Bridge, opts: Omit<PickerOptions, "hidden
   const providers = useProviders(bridge);
   const [hiddenList] = useHiddenModels();
   const [custom, setCustom] = usePersistentState(PREFS.customModels, customModelsCodec, { persistInitial: false });
+  const [localPrefs] = usePersistentState(PREFS.agentPrefs, agentPrefsCodec, { persistInitial: false });
   const [refreshing, setRefreshing] = useState(false);
   const hidden = useMemo(() => new Set(hiddenList), [hiddenList]);
   const list = providers.status === "ready" ? providers.list : providers.status === "error" ? providers.list : null;
@@ -52,12 +67,13 @@ export function useModelPicker(bridge: Bridge, opts: Omit<PickerOptions, "hidden
         ? pickerView(list, {
             hidden,
             custom,
+            localPrefs,
             ...(query !== undefined ? { query } : {}),
             ...(agent !== undefined ? { agent } : {}),
             ...(current !== undefined ? { current } : {}),
           })
         : null,
-    [list, hidden, custom, query, agent, current],
+    [list, hidden, custom, localPrefs, query, agent, current],
   );
   const { refresh } = providers;
   const store = useCallback(
@@ -103,5 +119,13 @@ export function useModelPicker(bridge: Bridge, opts: Omit<PickerOptions, "hidden
     },
     [bridge, refresh],
   );
+  // Opening an agent whose list is empty or never read asks the harness once (decision 58); "Refresh models" asks again by hand.
+  const open = view?.level === "agent" ? view.agent : null;
+  const openId = open?.id;
+  const stale = open ? needsModelRefresh(open) : false;
+  useEffect(() => {
+    // Deferred a tick: the effect starts a request, it does not set state of its own.
+    if (openId && stale && firstAsk(bridge, openId)) void Promise.resolve().then(() => refreshModels(openId));
+  }, [bridge, openId, stale, refreshModels]);
   return { load: providers, view, refresh, refreshModels, addModel, removeModel, refreshing };
 }

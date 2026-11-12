@@ -219,7 +219,7 @@ function Shell() {
     <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect: setConnectTarget }}>
       {/* The project's name and model show in the title bar only while the project is on screen; the settings page sets its own title. */}
       <TitleBarSlotsContext.Provider value={{ start: settings === null ? titleStart : null, end: settings === null ? titleEnd : null }}>
-        <div className="flex h-full flex-col overflow-hidden bg-window text-fg">
+        <div className="flex h-full flex-col overflow-clip bg-window text-fg">
           {/* Decision 54: the title bar is the header. One row across the window, whether the sidebar is open or closed. */}
           <TitleBar
             alignStart={settings !== null || (!drawerMode && inlineOpen)}

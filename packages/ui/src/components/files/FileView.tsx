@@ -220,7 +220,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         />
       </div>
       <div className="relative flex min-h-0 flex-1">
-        <div data-editor-area className="relative flex min-w-0 flex-1 flex-col">
+        <div data-editor-area className="relative flex min-w-0 flex-1 flex-col overflow-clip contain-inline-size">
           {file && <Notice file={file} />}
           <div className="min-h-0 flex-1">{body}</div>
           {floating && floatingComposer(setFloatHeight)}

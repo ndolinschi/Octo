@@ -38,12 +38,15 @@ export function SettingsRow(props: {
   rowId?: string;
   leading?: ReactNode;
   className?: string;
+  /** A row whose title picks something to show beside the list (decision 72 b). */
+  selected?: boolean;
 }) {
   return (
     <div
       id={props.rowId ? `row-${props.rowId}` : undefined}
       data-settings-row
       className={cn(
+        props.selected && "bg-active",
         "flex min-h-14 scroll-mt-6 items-center gap-4 px-4 py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-3",
         props.className,
       )}

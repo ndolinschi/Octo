@@ -28,6 +28,8 @@ export const PREFS = {
   comments: (projectId: string) => key(`comments.${projectId}`),
   /** Model names typed in the picker's "Other model…", per agent id: `{ [agentId]: string[] }` (the fallback for a harness that cannot store them). */
   customModels: key("customModels"),
+  /** Preferred model and role models per agent id, kept when the bridge cannot store them: `{ [agentId]: { preferred_model?, roles? } }`. */
+  agentPrefs: key("agentPrefs"),
   /** Folders chosen in the folder picker (decision 49), newest first: a JSON list of paths. */
   chosenFolders: key("chosenFolders"),
   /** The conversation's width in px beside a side group, as plain text: where the first split opens (decision 60). */

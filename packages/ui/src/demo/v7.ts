@@ -101,6 +101,11 @@ function seed(rec: ProjectRecord): V7 {
   add(change(2, turnA, orch.id, "src/lib/format.test.ts", "created", 6, 0), null, TEST_AFTER);
   add(change(3, turnA, orch.id, "dist/app.wasm", "modified", null, null, { note: "binary", source: "bash" }), null, null);
   add(change(4, turnB, orch.id, "docs/notes.md", "modified", null, null, { note: "no_preimage", source: "acp_turn" }), null, null);
+  add(
+    change(6, turnB, orch.id, "width/wide.txt", "modified", 1, 1),
+    "wide line: " + "0123456789 ".repeat(40) + "\n",
+    "wide line: " + "0123456789 ".repeat(40) + "changed\n",
+  );
   add(change(5, turnB, orch.id, "src/stale.ts", "modified", 1, 1), "export const retries = 2;\n", "export const retries = 5;\n");
   v.approvals.push({
     id: newId("apr"),

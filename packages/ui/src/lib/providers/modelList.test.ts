@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Provider, ProviderList, ProviderModel } from "@octo/agent-client";
 import {
+  agentPrefsCodec,
   choosable,
+  emptyListNote,
+  needsModelRefresh,
+  roleModel,
+  selectOptions,
+  withAgentPrefs,
   cleanModelName,
   customModelsCodec,
   hiddenModelsCodec,
@@ -234,4 +240,92 @@ test("hiddenModelsCodec: malformed text reads as none hidden", () => {
   assert.deepEqual(hiddenModelsCodec.parse("not json"), []);
   assert.deepEqual(hiddenModelsCodec.parse('["a", 2, "b"]'), ["a", "b"]);
   assert.deepEqual(hiddenModelsCodec.parse(null), []);
+});
+
+const open = (id: string, p: ProviderList = list) => {
+  const v = pickerView(p, { agent: id });
+  assert.equal(v.level, "agent");
+  return v as Extract<ReturnType<typeof pickerView>, { level: "agent" }>;
+};
+
+test("an agent with no models says why, with the harness's error before a plain sentence and the note after", () => {
+  const empty = open("empty").agent;
+  assert.deepEqual(emptyListNote(empty, false), { reason: "Empty has not reported its models yet", note: "" });
+  assert.equal(emptyListNote(empty, true)?.reason, "Asking Empty for its models…");
+  const failed = open("empty", {
+    ...list,
+    providers: list.providers.map((p) => (p.id === "empty" ? { ...p, models_error: "Empty did not start", models_note: "Aliases from its docs." } : p)),
+  }).agent;
+  assert.deepEqual(emptyListNote(failed, false), { reason: "Empty did not start", note: "Aliases from its docs." });
+  assert.equal(emptyListNote(open("claude-code").agent, false), null);
+});
+
+test("opening an agent asks for its models when the list is empty or was never read, and only then", () => {
+  assert.equal(needsModelRefresh({ known: 0, refreshedAt: "2026-11-11T12:00:00Z" }), true);
+  assert.equal(needsModelRefresh({ known: 2, refreshedAt: "" }), true);
+  assert.equal(needsModelRefresh({ known: 2, refreshedAt: "2026-11-11T12:00:00Z" }), false);
+});
+
+test("'Other model…' is offered unless the agent says it accepts no model name", () => {
+  const kinds = (accepts?: boolean) =>
+    open("empty", {
+      ...list,
+      providers: list.providers.map((p) => (p.id === "empty" ? { ...p, ...(accepts === undefined ? {} : { accepts_custom_model: accepts }) } : p)),
+    }).rows.map((r) => r.kind);
+  assert.deepEqual(kinds(), ["default", "other"]);
+  assert.deepEqual(kinds(true), ["default", "other"]);
+  assert.deepEqual(kinds(false), ["default"]);
+});
+
+test("an agent whose login is unchecked is ready and chosen like any other; only a failed login goes under Not connected", () => {
+  const withLogin = (login: "ok" | "unchecked", state: "ready" | "not_logged_in") => ({
+    ...list,
+    providers: list.providers.map((p) => (p.id === "solo" ? { ...p, login, state } : p)),
+  });
+  const rows = (l: ProviderList) => pickerRows(pickerView(l));
+  assert.ok(rows(withLogin("unchecked", "ready")).some((r) => r.kind === "agent" && r.providerId === "solo"));
+  assert.ok(rows(withLogin("ok", "not_logged_in")).some((r) => r.kind === "connect" && r.providerId === "solo"));
+});
+
+test("the agent's row shows the chosen model, else the preferred one (the harness's, else this browser's), else the default", () => {
+  const detail = (current: string | undefined, local?: Record<string, { preferred_model?: string }>, preferred?: string) => {
+    const l = { ...list, providers: list.providers.map((p) => (p.id === "claude-code" && preferred ? { ...p, preferred_model: preferred } : p)) };
+    const row = pickerRows(pickerView(l, { ...(current ? { current } : {}), ...(local ? { localPrefs: local } : {}) })).find(
+      (r) => r.kind === "agent" && r.providerId === "claude-code",
+    );
+    return row?.kind === "agent" ? row.detail : undefined;
+  };
+  assert.equal(detail(undefined), "Sonnet 5.5");
+  assert.equal(detail(undefined, undefined, "claude-opus-5-5"), "Opus 5.5");
+  assert.equal(detail(undefined, { "claude-code": { preferred_model: "claude-opus-5-5" } }), "Opus 5.5");
+  assert.equal(detail(undefined, { "claude-code": { preferred_model: "claude-opus-5-5" } }, "claude-sonnet-5-5"), "Sonnet 5.5");
+  assert.equal(detail("acp:claude-code/claude-opus-5-5", undefined, "claude-sonnet-5-5"), "Opus 5.5");
+  assert.equal(detail(undefined, { "claude-code": { preferred_model: "mystery" } }), "mystery");
+});
+
+test("a model select lists the agent's models and keeps a stored name the list lacks", () => {
+  const agent = list.providers.find((p) => p.id === "claude-code");
+  assert.ok(agent);
+  assert.deepEqual(
+    selectOptions(agent, "").map((o) => o.id),
+    ["claude-sonnet-5-5", "claude-opus-5-5"],
+  );
+  assert.deepEqual(
+    selectOptions(agent, "opus").map((o) => o.id),
+    ["claude-sonnet-5-5", "claude-opus-5-5", "opus"],
+  );
+  assert.equal(roleModel({ id: "x", roles: { fast: "haiku", balanced: "", deep: "" } }, "fast"), "haiku");
+  assert.equal(roleModel({ id: "x" }, "deep", { x: { roles: { deep: "opus" } } }), "opus");
+});
+
+test("agent preferences kept in this browser: malformed text reads as none, a change merges role by role", () => {
+  assert.deepEqual(agentPrefsCodec.parse("not json"), {});
+  assert.deepEqual(agentPrefsCodec.parse(JSON.stringify({ a: { preferred_model: "opus", roles: { fast: "haiku", deep: 3 } }, b: 7 })), {
+    a: { preferred_model: "opus", roles: { fast: "haiku" } },
+  });
+  const one = withAgentPrefs(undefined, { roles: { fast: "haiku" } });
+  assert.deepEqual(withAgentPrefs(one, { preferred_model: "opus", roles: { deep: "opus", fast: "" } }), {
+    preferred_model: "opus",
+    roles: { fast: "", deep: "opus" },
+  });
 });

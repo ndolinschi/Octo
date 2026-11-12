@@ -11,14 +11,14 @@ const FolderPicker = lazy(() => import("../shared/FolderPicker").then((m) => ({ 
 import { Glyph } from "../primitives/Glyph";
 import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
-import { basename, errorMessage } from "../../lib/format";
-import { folderLabels, folderName } from "../../lib/folderPick";
+import { errorMessage } from "../../lib/format";
+import { folderName, labelsForFolders } from "../../lib/folderPick";
 import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Field, Input, Textarea } from "../primitives/Field";
 
-type FolderRow = { key: number; path: string; label: string };
+type FolderRow = { key: number; path: string };
 
 const MODEL_FIELDS: { key: "orchestrator" | "fast" | "balanced" | "deep"; label: string }[] = [
   { key: "orchestrator", label: "Main model" },
@@ -43,8 +43,8 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const [description, setDescription] = useState(props.project?.description ?? "");
   const [instructions, setInstructions] = useState(props.project?.instructions ?? "");
   const [folders, setFolders] = useState<FolderRow[]>(() => {
-    const rows = props.project?.folders.map((f, i) => ({ key: i, path: f.path, label: f.label })) ?? [];
-    return rows.length ? rows : [{ key: 0, path: "", label: "" }];
+    const rows = props.project?.folders.map((f, i) => ({ key: i, path: f.path })) ?? [];
+    return rows.length ? rows : [{ key: 0, path: "" }];
   });
   const [models, setModels] = useState<Models>(initialModels);
   const [maxDepth, setMaxDepth] = useState(props.project?.max_depth ?? config?.default_max_depth ?? 3);
@@ -74,10 +74,10 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const addFolder = (path: string) => {
     const clean = path.trim().replace(/[\\/]+$/, "");
     if (!clean || folders.some((f) => f.path.trim() === clean)) return;
-    setFolders((rows) => [...rows.filter((r) => r.path), { key: Math.max(-1, ...rows.map((r) => r.key)) + 1, path: clean, label: "" }]);
+    setFolders((rows) => [...rows.filter((r) => r.path), { key: Math.max(-1, ...rows.map((r) => r.key)) + 1, path: clean }]);
     if (!nameTouched && filled.length === 0) setName(folderName(clean));
   };
-  const removeFolder = (key: number) => setFolders((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== key) : [{ key: key + 1, path: "", label: "" }]));
+  const removeFolder = (key: number) => setFolders((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== key) : [{ key: key + 1, path: "" }]));
   const updateFolder = (key: number, patch: Partial<FolderRow>) => setFolders((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const submit = async (e: FormEvent) => {
@@ -102,11 +102,11 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
         name: name.trim(),
         description: description.trim(),
         instructions: instructions.trim(),
-        folders: filled.map((f, i) => {
-          // Decision 71: no label is asked for; a folder is named after itself, with its parent only when two share a name.
-          const label = f.label.trim() || (editing ? "" : (folderLabels(filled.map((x) => x.path.trim()))[i] ?? ""));
-          return { path: f.path.trim(), ...(label ? { label } : {}) };
-        }),
+        // Decisions 71 and 80: no label is asked for; a folder keeps the label it has, a new one is named after itself.
+        folders: labelsForFolders(
+          filled.map((f) => f.path.trim()),
+          props.project?.folders ?? [],
+        ),
         models: changedModels,
         max_depth: maxDepth,
         ...budgetPatch,
@@ -221,7 +221,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             folders.map((f, i) => {
               const invalid = f.path.trim() !== "" && !isAbsolute(f.path.trim());
               return (
-                <div key={f.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,8rem)_auto] items-center gap-2">
+                <div key={f.key} className="flex items-center gap-2">
                   <FolderField
                     id={`${id}-folder-${f.key}`}
                     index={i}
@@ -232,18 +232,10 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                     current={folders.map((x) => x.path).filter(Boolean)}
                     onChoose={(path) => updateFolder(f.key, { path })}
                   />
-                  <Input
-                    aria-label={`Folder ${i + 1} label`}
-                    value={f.label}
-                    onChange={(e) => updateFolder(f.key, { label: e.target.value })}
-                    placeholder="Label"
-                    title={f.path.trim() ? `Shown as "${basename(f.path.trim())}" when empty` : "Defaults to the folder's name"}
-                    className="min-w-0"
-                  />
                   <IconButton
                     icon={X}
                     label={`Remove folder ${i + 1}`}
-                    onClick={() => setFolders((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== f.key) : [{ key: f.key + 1, path: "", label: "" }]))}
+                    onClick={() => setFolders((rows) => (rows.length > 1 ? rows.filter((r) => r.key !== f.key) : [{ key: f.key + 1, path: "" }]))}
                   />
                 </div>
               );
@@ -263,7 +255,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                 setFolders((rows) => {
                   const key = Math.max(...rows.map((r) => r.key)) + 1;
                   setOpenFolderKey(key);
-                  return [...rows, { key, path: "", label: "" }];
+                  return [...rows, { key, path: "" }];
                 })
               }
             >

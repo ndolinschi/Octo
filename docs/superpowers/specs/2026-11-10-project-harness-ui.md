@@ -1452,6 +1452,43 @@ Cut short by the owner's new frame (decisions 67-71); what is built, what is not
 - **Open (handed on)**: decision 72 b-d, 64 b-g beyond the above, quick open (B9), Review wide width and remembered conversation column,
   spacing-audit bar/filled-button/nested-border checks, decisions 66-70.
 
+### As built — usability pass 3 (2026-11-12)
+
+Three complaints from the owner's live run: no model choice, the folder label, the jerking window.
+
+- **Models (58, 72 b-d)**: opening an agent's second level asks the harness once per agent per app session when the list is empty
+  or `models_refreshed_at` is absent (`useModelPicker`, `firstAsk`; the "Refresh models" spinner shows; never repeated). While the
+  list is empty a dim line under the header says why (`emptyListNote`: `models_error`, else "<Agent> has not reported its models
+  yet", then `models_note`). "Other model…" is a labelled row (shown only when `accepts_custom_model !== false`); Enter or a click turns it into
+  a field with the placeholder "e.g. opus" (the agent's first model name when it has one). `login: "unchecked"` needs no code: the harness
+  reports such an agent `ready`, so it is selectable (unit test); only `not_logged_in` / `not_installed` go under "Not connected". The
+  agent row shows the chosen model, else the preferred one (harness, else this browser), else the default, dim. Settings → Providers:
+  the first ready agent is selected (its name is the button); on the right `AgentPrefsPane` shows Preferred model and Fast / Balanced /
+  Deep, each a select over the agent's models plus "Default" and "Other…", saved through `setProviderPrefs`; a bridge without it keeps
+  them in `PREFS.agentPrefs` (`useAgentPrefs`). Stacks below 760 px. Demo: `setProviderPrefs`, `login`, `preferred_model`, `roles`,
+  `models_note`; knobs `?claude=empty` (Claude Code starts with no models), `?refresh=fail|none` (the refresh fails / finds nothing);
+  Codex starts empty with login unchecked and finds two models on the automatic refresh.
+- **Folder label (80)**: no label input in New project or project settings; `labelsForFolders` keeps the label a folder already has and
+  names a new one after itself (`folderLabels`); unit test.
+- **Width (79)**: not reproduced in Chromium: before the change every pane (both groups, the editor area, the conversation column)
+  was identical to the pixel across the three files, the diff and the wide blocks. The structural defects found, all fixed: panels
+  and the window root used `overflow: hidden`, which is still a scroll container (a programmatic scroll or a focused input at the end
+  of a long line can move the pane sideways: the likely WebKit "jerk"); the editor host had no `min-width: 0` or clip; no pane was
+  immune to content-derived min-content width. Now `panelClass` is `overflow-clip contain-inline-size`, the window root and the
+  editor area are `overflow-clip` (the area also `contain-inline-size`), and the editor wrapper has `min-w-0 overflow-clip`. The cause
+  in WebKit is therefore a hypothesis. `packages/ui/scripts/width-stability.mjs` is the guard: conversation top, wide table, wide code
+  block (one group), then a 20-column file, a 400-column file (caret at the end), a one-line bundle, and the Changes diff with a wide
+  line (split); asserts equal group and editor-area widths, no sideways scroll on any scroller and `scrollWidth === clientWidth`.
+  Demo fixtures: `atlas-api/width/{narrow.txt,wide.txt,minified.js}`, a wide table row and log line in the Atlas answer, a wide change
+  in Changes.
+- **Verified**: Chromium via Playwright against `?demo=1`: width-stability ok at 1440x900 and 900x600; picker with models, auto
+  refresh, empty with error, empty with note, "Other model…" row and field, at 1440 and 390; Settings → Providers with the roles pane;
+  New project and project settings without label; unit tests (modelList, folderPick); `pnpm lint`, `format:check`, cycles, tests, build,
+  bundle budget (154.28 of 155.90 kB gzip). `spacing-audit`: total 0, 5 states skipped (its model-picker and project-settings-models steps
+  look for labels that decision 67 renamed; not fixed here).
+- **Not verified**: WebKit (the width fix is untested where the jerk was seen), a live harness (`setProviderPrefs`, refresh against the real
+  Claude Code), light theme, saving roles with a real `harness serve`.
+
 ## Workspace v4 (2026-11-10; supersedes the docked/overlay side pane of v3)
 
 Implements §4 of [`2026-11-10-workspace-plugins-acp-design.md`](./2026-11-10-workspace-plugins-acp-design.md)
