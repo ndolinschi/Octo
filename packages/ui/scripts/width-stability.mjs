@@ -7,6 +7,8 @@
  *   files          a 20-column file, a 400-column file and a one-line minified bundle, each opened from the tree and
  *                  once more with the caret at the end of the longest line (the editor scrolls, the pane must not)
  *   changes        the Changes tab on a diff with a very wide line
+ *   memory         the Memory tab with an exchange expanded (a long answer with a code block and a table): decision 93, the
+ *                  pane's width, the page's sideways overflow and the position of the row you opened do not move
  *
  * Asserts, per layout (one group, then the split), that the bounding width of every dock group and of the editor area is
  * identical in every state, that no scroll container on the way (the conversation's scroller, the groups) has scrolled
@@ -199,6 +201,60 @@ await page
   });
 await page.waitForTimeout(900);
 await measure("split", "changes, diff with a wide line");
+
+// 3b. Memory (decision 93): expanding an exchange changes its own height only.
+await page.locator("[data-tab-plus]:visible").last().click();
+await page.locator('[role=option][data-picker-row="tool:memory"]').first().click();
+await page
+  .locator("[data-memory]:visible")
+  .first()
+  .waitFor({ timeout: 8000 })
+  .catch(() => fail("the Memory tab did not open"));
+await page.waitForTimeout(600);
+const memory = page.locator("[data-memory]:visible").first();
+await memory.locator("[data-row]").first().click();
+const exchanges = memory.locator("[data-exchange] [data-row]");
+await exchanges
+  .first()
+  .waitFor({ timeout: 8000 })
+  .catch(() => fail("the first demo session lists no exchanges"));
+await page.waitForTimeout(300);
+await measure("split", "memory, session with exchanges collapsed");
+const rowTop = (i) => exchanges.nth(i).evaluate((e) => Math.round(e.getBoundingClientRect().top * 10) / 10);
+const listScroll = () =>
+  memory
+    .locator("[data-exchange]")
+    .first()
+    .evaluate((e) => {
+      for (let n = e.parentElement; n; n = n.parentElement)
+        if (n.scrollHeight > n.clientHeight && getComputedStyle(n).overflowY !== "visible") return n.scrollTop;
+      return 0;
+    });
+const memoryProblems = [];
+const topBefore = await rowTop(1);
+const firstBefore = await rowTop(0);
+const scrollBefore = await listScroll();
+await exchanges.first().click();
+await page.waitForTimeout(400);
+await measure("split", "memory, long answer expanded (code block and table)");
+if (Math.abs((await rowTop(0)) - firstBefore) > TOL) memoryProblems.push("memory: the row you opened moved when it expanded");
+await exchanges.nth(1).click();
+await page.waitForTimeout(400);
+await measure("split", "memory, second exchange expanded (the first closed)");
+if ((await memory.locator("[data-exchange] .octo-mem-expand").count()) !== 1) memoryProblems.push("memory: more than one exchange is open at a time");
+await exchanges.nth(1).click();
+await page.waitForTimeout(300);
+const topAfter = await rowTop(1);
+const scrollAfter = await listScroll();
+if (Math.abs(topAfter - topBefore) > TOL) memoryProblems.push(`memory: the second row is at ${topAfter}px after open and close (${topBefore}px before)`);
+if (scrollAfter !== scrollBefore) memoryProblems.push(`memory: the list scrolled from ${scrollBefore} to ${scrollAfter} while exchanges opened and closed`);
+await exchanges.first().click();
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+if ((await memory.locator("[data-exchange] .octo-mem-expand").count()) !== 0) memoryProblems.push("memory: Esc did not close the open exchange");
+const memOverflow = await memory.evaluate((e) => e.scrollWidth - e.clientWidth);
+if (memOverflow !== 0) memoryProblems.push(`memory: the view scrolls sideways by ${memOverflow}px`);
+errors.push(...memoryProblems);
 
 // 4. Tabs (decision 83): a tab's width does not change on hover, nor while its state glyph changes (a command running, then done).
 const tabWidths = () =>

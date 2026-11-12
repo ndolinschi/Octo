@@ -1,82 +1,121 @@
 import type { ProviderList } from "@octo/agent-client";
-import { SETTING_IDS } from "@octo/agent-client";
-import { Search } from "lucide-react";
 import { useId, useMemo, useState } from "react";
-import { canRun, chipLabel, choosable, useHiddenModels, useProviders } from "../../lib/providers";
+import { canRun, chipLabel, useHiddenModels, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
-import { Glyph } from "../primitives/Glyph";
+import { Notice } from "../primitives/Notice";
+import { Select } from "../primitives/Select";
+import { SkeletonList } from "../primitives/Skeleton";
+import { ViewTabs } from "../primitives/ViewTabs";
 import { useHarnessSettings } from "./harnessSettings";
+import { modelOptions, MODEL_ROWS, type ModelRow } from "./modelRows";
 import { useSettingsActions } from "./pageContext";
-import { SaveStatus, Select, SettingsGroup, SettingsRow, SkeletonRow, Switch } from "./parts";
+import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { ProjectModels } from "./ProjectModels";
+import { useProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
+import { VisibleModels } from "./VisibleModels";
 
-const DEFAULTS = [
-  {
-    id: SETTING_IDS.modelOrchestrator,
-    rowId: "default-orchestrator",
-    title: "Default model",
-    description: "Answers in projects created from now on.",
-  },
-  { id: SETTING_IDS.modelFast, rowId: "tier-fast", title: "Fast tier", description: "Small, quick tasks handed out to agents." },
-  { id: SETTING_IDS.modelBalanced, rowId: "tiers", title: "Balanced tier", description: "Most delegated work." },
-  { id: SETTING_IDS.modelDeep, rowId: "tier-deep", title: "Deep tier", description: "Hard problems that need the strongest model." },
-] as const;
+type Scope = "defaults" | "project";
 
-/** Decision 59 Models: defaults for new projects (only what can run, decision 53 a) and which models pickers show. */
-export function ModelsSection() {
+/**
+ * Decisions 59 and 74: Models has two scopes. "Defaults" is this machine (the models new projects start with, and which models
+ * pickers show); the second tab is a project (its own four models, inherited from the defaults until changed). The tabs are
+ * only offered while a project exists. Models are the one setting that has both levels today.
+ */
+export function ModelsSection(props: { projectId?: string | null }) {
   const { bridge } = useApp();
   const providers = useProviders(bridge);
   const harness = useHarnessSettings();
+  const { details, update } = useProjectDetails();
+  const [scope, setScope] = useState<Scope>("defaults");
+  // The project tab opens on the project that is open in the app (when it still exists), else the most recently updated one.
+  const [pick, setPick] = useState<string | null>(props.projectId ?? null);
   const list = providers.status === "ready" ? providers.list : null;
+  const projects = details.status === "ready" ? details.projects : [];
+  const project = projects.find((p) => p.id === pick) ?? projects[0];
+  const projectScope = scope === "project" && project !== undefined;
+  const loading = providers.status === "loading" || harness.load.status === "loading";
   return (
     <>
-      <SettingsGroup label="Defaults for new projects" footer="A project keeps its own models; change them in its settings.">
-        {(providers.status === "loading" || harness.load.status === "loading") && DEFAULTS.map((d) => <SkeletonRow key={d.id} />)}
-        {harness.load.status === "unavailable" && (
-          <SettingsRow title="Not available here" description="This connection cannot change the harness's default models." />
-        )}
-        {harness.load.status === "error" && (
-          <SettingsRow
-            title={<span className="text-err">Couldn't load settings</span>}
-            description={`${harness.load.message}. Retry once the harness is running.`}
-            control={
-              <Button size="sm" onClick={harness.reload}>
-                Retry
-              </Button>
-            }
-          />
-        )}
-        {providers.status === "error" && (
-          <SettingsRow
-            title={<span className="text-err">Couldn't load providers</span>}
-            description={`${providers.message.replace(/\.$/, "")}. Retry once the harness is running.`}
-            control={
-              <Button size="sm" onClick={() => void providers.refresh()}>
-                Retry
-              </Button>
-            }
-          />
-        )}
-        {list && harness.load.status === "ready" && DEFAULTS.map((d) => <DefaultModelRow key={d.id} def={d} list={list} />)}
-      </SettingsGroup>
-      {list && <VisibleModels list={list} />}
+      {project && (
+        <ViewTabs<Scope>
+          label="Settings scope"
+          value={projectScope ? "project" : "defaults"}
+          onChange={setScope}
+          options={[
+            { id: "defaults", label: "Defaults", title: "What this machine starts new projects with" },
+            { id: "project", label: project.name, title: "This project's own models" },
+          ]}
+          className="px-0"
+        />
+      )}
+      {projectScope && projects.length > 1 && (
+        <SettingsGroup label="Project">
+          <ProjectPick projects={projects} value={project.id} onChange={setPick} />
+        </SettingsGroup>
+      )}
+      {projectScope && list && <ProjectModels key={project.id} project={project} list={list} update={update} />}
+      {projectScope && !list && <SkeletonList count={4} size="lg" twoLine />}
+      {!projectScope && (
+        <>
+          <SettingsGroup label="Defaults for new projects" footer="A project keeps the models it was created with; change them in its own tab.">
+            {loading && <SkeletonList count={MODEL_ROWS.length} size="lg" twoLine />}
+            {harness.load.status === "unavailable" && (
+              <SettingsRow title="Not available here" description="This connection cannot change the harness's default models." />
+            )}
+            {harness.load.status === "error" && (
+              <LoadErrorRow what="settings" message={harness.load.message} hint="Retry once the harness is running." onRetry={harness.reload} />
+            )}
+            {providers.status === "error" && (
+              <LoadErrorRow
+                what="providers"
+                message={providers.message.replace(/\.$/, "")}
+                hint="Retry once the harness is running."
+                onRetry={() => void providers.refresh()}
+              />
+            )}
+            {list && harness.load.status === "ready" && MODEL_ROWS.map((d) => <DefaultModelRow key={d.id} def={d} list={list} />)}
+          </SettingsGroup>
+          {list && <VisibleModels list={list} />}
+        </>
+      )}
     </>
   );
 }
 
-function DefaultModelRow({ def, list }: { def: (typeof DEFAULTS)[number]; list: ProviderList }) {
+function ProjectPick(props: { projects: readonly { id: string; name: string }[]; value: string; onChange(id: string): void }) {
+  const id = useId();
+  return (
+    <SettingsRow
+      title="Settings for"
+      htmlFor={id}
+      description="Pick the project whose models to show."
+      control={
+        <Select
+          id={id}
+          label="Settings for"
+          value={props.value}
+          options={props.projects.map((p) => ({ value: p.id, label: p.name }))}
+          onChange={props.onChange}
+          className={CONTROL_W.md}
+        />
+      }
+    />
+  );
+}
+
+function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
   const harness = useHarnessSettings();
   const { connect } = useSettingsActions();
   const [saved, run] = useSave();
   const [hidden] = useHiddenModels();
   const id = useId();
   const s = harness.get(def.id);
-  const options = useMemo(() => choosable(list, new Set(hidden)), [list, hidden]);
+  const value = typeof s?.value === "string" ? s.value : "";
+  const options = useMemo(() => modelOptions(list, new Set(hidden), value), [list, hidden, value]);
   if (!s) return null;
-  const value = typeof s.value === "string" ? s.value : "";
   const runs = !value || canRun(list, value);
-  const groups = [...new Set(options.map((o) => o.group))];
   return (
     <SettingsRow
       rowId={def.rowId}
@@ -85,12 +124,17 @@ function DefaultModelRow({ def, list }: { def: (typeof DEFAULTS)[number]; list: 
       description={s.editable ? def.description : (s.note ?? `Set by the ${s.source}.`)}
       status={
         !runs ? (
-          <p role="status" className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-warn">
+          <Notice
+            tone="warn"
+            className="mt-1"
+            action={
+              <Button variant="link" size="xs" onClick={() => connect("providers")}>
+                Connect a provider
+              </Button>
+            }
+          >
             {chipLabel(value, list)} cannot run: its provider is not connected.
-            <button type="button" className="rounded-xs text-link underline-offset-2 hover:underline" onClick={() => connect("providers")}>
-              Connect a provider
-            </button>
-          </p>
+          </Notice>
         ) : (
           <SaveStatus state={saved} />
         )
@@ -98,82 +142,14 @@ function DefaultModelRow({ def, list }: { def: (typeof DEFAULTS)[number]; list: 
       control={
         <Select
           id={id}
+          label={def.title}
           value={value}
-          disabled={!s.editable || options.length === 0}
-          onChange={(e) => void run(() => harness.save({ set: { [def.id]: e.target.value } }))}
-          className="w-64"
-        >
-          {!runs && <option value={value}>{chipLabel(value, list)} (not available)</option>}
-          {options.length === 0 && <option value="">Connect a provider first</option>}
-          {groups.map((g) => (
-            <optgroup key={g} label={g}>
-              {options
-                .filter((o) => o.group === g)
-                .map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
-        </Select>
+          options={options}
+          disabled={!s.editable || list.providers.every((p) => p.state !== "ready")}
+          onChange={(v) => void run(() => harness.save({ set: { [def.id]: v } }))}
+          className={CONTROL_W.lg}
+        />
       }
     />
-  );
-}
-
-/** "Which models appear in pickers": every model a connected provider runs, each with a switch; searchable. */
-function VisibleModels({ list }: { list: ProviderList }) {
-  const [hidden, setHidden] = useHiddenModels();
-  const [query, setQuery] = useState("");
-  const all = useMemo(() => choosable(list).filter((o) => o.value.includes("/") || !o.value.startsWith("acp:")), [list]);
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = all.filter((o) => words.every((w) => `${o.group} ${o.label} ${o.value}`.toLowerCase().includes(w)));
-  const hiddenSet = new Set(hidden);
-  const searchId = useId();
-  return (
-    <section className="flex flex-col gap-2" id="row-visible">
-      <div className="flex flex-wrap items-end gap-x-3 gap-y-2 px-1">
-        <h2 className="flex-1 text-xs text-fg-3">Models in pickers</h2>
-        <label
-          htmlFor={searchId}
-          className="flex h-8 w-64 items-center gap-2 rounded-md border border-input-border bg-panel px-3 text-fg-3 focus-within:border-fg max-settings:w-full"
-        >
-          <Glyph icon={Search} size={14} className="shrink-0" />
-          <span className="sr-only">Search models</span>
-          <input
-            id={searchId}
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search models"
-            spellCheck={false}
-            autoComplete="off"
-            className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
-          />
-        </label>
-      </div>
-      <div className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel">
-        {all.length === 0 && <SettingsRow title="No models yet" description="Connect a provider: its models appear here." />}
-        {all.length > 0 && shown.length === 0 && (
-          <SettingsRow title="No model matches" description={`Nothing matches “${query.trim()}”. Clear the search to see all ${all.length}.`} />
-        )}
-        {shown.map((o) => (
-          <SettingsRow
-            key={o.value}
-            title={o.label}
-            description={o.group}
-            control={
-              <Switch
-                label={`Show ${o.label} in pickers`}
-                checked={!hiddenSet.has(o.value)}
-                onChange={(on) => setHidden((h) => (on ? h.filter((x) => x !== o.value) : [...h, o.value]))}
-              />
-            }
-          />
-        ))}
-      </div>
-      <p className="px-1 text-xs text-fg-3">Hidden models stay usable by projects that already chose them.</p>
-    </section>
   );
 }

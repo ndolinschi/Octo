@@ -189,8 +189,12 @@ the person also wants the plain record. Rules:
    files changed (count and paths, from the changes ledger), sub-agents used (names), tokens and cost, the task it
    was filed under. Nothing is summarised: the texts are kept whole (answer capped at 64 KiB with a marker).
 2. **Sessions group exchanges.** A session is a run of exchanges in one conversation: it starts at project creation,
-   after `/clear` (B11), after a rewind that cut everything, or after 6 h without a request; it carries a title (the
-   first request's first line, trimmed to 80 characters) and its dates. Old data is back-filled from stored messages
+   after `/clear` (B11), after a rewind that cut everything, or when the person starts a new session; it carries a
+   title (the first request's first line, trimmed to 80 characters) and its dates. *Corrected at the batch-4 merge:* the
+   first draft also started a session "after 6 h without a request". Project sessions removed that rule: a session is the
+   model's context until `/clear` or New session, so a long pause never splits it (see
+   `2026-11-12-project-sessions-design.md`). A memory session is a main session of that design; the 6 h gap now only
+   splits exchanges recorded without a session (old data, unit tests). Old data is back-filled from stored messages
    on migration.
 3. **API.** `GET /v1/projects/{id}/memory/sessions?limit=&before=` → `{sessions:[{id,title,started_at,ended_at,
    exchanges,open}]}`; `GET …/memory/sessions/{sid}` → `{session, exchanges:[{id,turn_id,message_id,request,answer,
@@ -206,7 +210,7 @@ the person also wants the plain record. Rules:
 6. **Privacy.** Stored locally in the project's database only; removed with the project; "Forget this exchange"
    deletes one (also from the search index) and leaves a "removed" marker in its session.
 Acceptance: unit tests (exchange written once per turn incl. failed and stopped, final-answer extraction with tool
-calls and sub-agents, secret redaction, session boundaries incl. the 6 h rule with an injected clock, back-fill
+calls and sub-agents, secret redaction, session boundaries (the 6 h rule of the first draft applies only to exchanges without a session; tested with an injected clock), back-fill
 migration, search hits, forget); e2e case in `e2e-v7.sh` or `e2e-parity.sh`; UI tests for the view model and
 screenshots. Not verified until the owner's run: answer extraction for real ACP agents' message shapes.
 
@@ -266,7 +270,7 @@ bodies; `read_note` returns a body); UI view-model tests and screenshots.
 Harness, agent-client and the Memory tab are built; exact JSON and the write path are in `apps/harness/docs/memory.md` ("Sessions").
 
 - Rule 1: written by `orchestrator/exchanges.go` after every finished turn (completed, failed, stopped), before the digest. The answer is the last assistant text of the turn read from the stored messages, so a failed or stopped turn keeps what it said. Tokens and cost are the usage rows since the request (agents and router classifier, not digest or side calls). The 64 KiB cap, redaction and the once-per-turn rule (a retry replaces the record) are tested.
-- Rule 2: the 6 h rule uses the exchange's own start time against the session's end (tested with explicit times; the service has an injectable clock for the pointer). `(*memory.Service).StartSession(ctx, reason, carry...)` is the boundary: `POST …/clear` calls it with `clear` and the carried summary (wired at merge; `ClearResult` and the `conversation.cleared` event gain `session_id` / `previous_session_id`). It closes the latest session, stores the summary and its source on that session's record (`sessions.summary`, `summary_source`; returned by `GET …/memory/sessions/{sid}`) and opens an empty session (not listed until its first request) the next request joins and names, even after more than 6 h; calling it again changes nothing. A rewind that cut every request calls it with `rewind` (tested only through the function, not through the rewind endpoint). Exchanges stay after both. Back-fill is the schema 12 migration (tested from schemas 8, 9, 10 and 11 with a failed, a stopped, a gap and a rewound case; a `/clear` boundary found in the compactions ends a session and gives it the clear's summary). The service's old `Forget(exchange)` is `ForgetExchange` (the facts' undo took the name).
+- Rule 2 (the 6 h rule was removed for sessions by the project-sessions work, see the correction at the end; what follows is what was built at M4): the 6 h rule uses the exchange's own start time against the session's end (tested with explicit times; the service has an injectable clock for the pointer). `(*memory.Service).StartSession(ctx, reason, carry...)` is the boundary: `POST …/clear` calls it with `clear` and the carried summary (wired at merge; `ClearResult` and the `conversation.cleared` event gain `session_id` / `previous_session_id`). It closes the latest session, stores the summary and its source on that session's record (`sessions.summary`, `summary_source`; returned by `GET …/memory/sessions/{sid}`) and opens an empty session (not listed until its first request) the next request joins and names, even after more than 6 h; calling it again changes nothing. A rewind that cut every request calls it with `rewind` (tested only through the function, not through the rewind endpoint). Exchanges stay after both. Back-fill is the schema 12 migration (tested from schemas 8, 9, 10 and 11 with a failed, a stopped, a gap and a rewound case; a `/clear` boundary found in the compactions ends a session and gives it the clear's summary). The service's old `Forget(exchange)` is `ForgetExchange` (the facts' undo took the name).
 - Rule 3: the three routes and the `exchange` hit are built as specified; with `in` empty a message hit already shown by an exchange hit is dropped, so the default search shows a request once. Two existing bridge assertions changed for that.
 - Rule 4: `recall_message` takes `exchange_id` and `session_id`. The three-line pointer is in the window-mode memory index and in the ACP recap; in full mode the transcript is the context and the built-in orchestrator gets no pointer (a decision, not an omission).
 - Rule 5: Sessions is the first Memory view (list-detail, newest first, skeleton rows, request then answer, answers as Markdown folded after 12 lines, quiet meta line, "Open in conversation" through the dock's existing `nav.requestTurn`, "Forget this exchange" behind "⋯" with a confirm, search with an Exchanges kind that opens the session and marks the exchange). Below 640px it is one column with Back. The view switcher is the new `primitives/ViewTabs` and the task filters `primitives/FilterTabs` (decision 82).
@@ -300,3 +304,20 @@ Acceptance: tests with the mock model — ten question-only turns create zero ta
 edits a file creates one task with files and state; a follow-up joins; a repeat does not duplicate; the 7-day drop
 with an injected clock; the clean-up migration on a fixture shaped like the owner's list (ten request-only tasks →
 zero) with the backup written; e2e case in `e2e-v7.sh`.
+
+### As built — M6
+
+Why the earlier rule failed on the owner's machine: the record was opened unconditionally at turn start, and "trivial" was `turnTools == 0 && reply <= 400 characters` (`orchestrator/memory_tools.go`, old `closeTurnTask`); `noteTool` was only called by the built-in loop's sink, so an ACP turn never counted a tool call and the test was reply length alone (a long answer to a question stayed, a short answer after real work was deleted); the digest (which did the follow-up joins, goals and drops) ran only when `builtinOff() == ""`, so with Copilot/Claude Code and no API key nothing but the raw-request fallback goal ever existed, nothing joined, nothing was dropped; a failed turn stayed open forever; and with a key the digest's `DropIfEmpty` applied only to "trivial" turns, while the digest prompt extracts facts from any answer.
+
+Rules 1-6 are built as specified (details and the exact task shape in `apps/harness/docs/memory.md`). Decisions: "commands run" counts only state-changing commands (read-only allow-list), because every question about a repo runs `ls`/`cat`; a turn with no digest closes its task as "turn completed" unless the reply ends in a question; the digest's facts of a taskless turn go to the `Remembered` record; `task_update` creates a record when the turn has none; `goal_by: "rule"` replaces the "first words" label.
+
+**Verified:** Go tests (memory, projectstore incl. migrations from 12- and 13-stamped databases, orchestrator, bridge) with the mock model and the scripted ACP agent (digest asked in the live session, refusal, non-JSON), ten question-only turns → zero tasks and ten exchanges, the 7-day drop with an injected clock, `e2e-v7.sh` (new M6 case), agent-client tests, `tsc` of agent-client, ui and desktop. **Not verified:** a real ACP agent's answer to the digest prompt (Copilot, Claude Code: whether they answer JSON only and without tools), the digest prompt in the agent's own context (it stays there), token/cost of that prompt (not recorded), a state-changing command run by an ACP agent that gives no `rawInput` (only its ledger effects count), a real model's `goal_met` quality.
+
+### As built — batch-4 merge correction (project sessions, M6 and remembered subjects)
+
+- **M4 rule 2 changed.** A session no longer ends after 6 h without a request (project sessions, schema 13). `Sessions()` lists
+  main sessions only; `open` is the session entity's `current` (and not closed), so the UI marks "current" from
+  `state.sessions.currentId` and falls back to `open` only while the entity is not loaded.
+- **Remembered subjects.** A fact the digest produced gets `about` = the digest's own `about` (new optional field of a digest
+  fact), else its task's title (not for the `Remembered` record), so the Knowledge view groups what the harness learnt by
+  the piece of work it came from instead of "General". Test: `TestDigestFactsAreAboutTheirTaskUnlessTheDigestSaysOtherwise`.

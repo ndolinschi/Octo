@@ -110,6 +110,20 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) agentMessages(w http.ResponseWriter, r *http.Request) {
+	if sid := r.URL.Query().Get("session_id"); sid != "" {
+		// One main session's part of the orchestrator's conversation (project sessions).
+		if _, err := s.svc.Agent(r.Context(), r.PathValue("pid"), r.PathValue("aid")); err != nil {
+			writeErr(w, err)
+			return
+		}
+		out, err := s.svc.MessagesOfSession(r.Context(), r.PathValue("pid"), r.PathValue("aid"), sid)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	msgs, err := s.svc.Messages(r.Context(), r.PathValue("pid"), r.PathValue("aid"))
 	if err != nil {
 		writeErr(w, err)

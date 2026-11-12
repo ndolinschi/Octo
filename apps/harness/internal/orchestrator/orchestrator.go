@@ -137,6 +137,8 @@ type Orchestrator struct {
 
 	mu    sync.Mutex
 	turns map[string]context.CancelFunc
+	// runs are the sub-agent runs that can be stopped or messaged from their session, by agent id (sessions.go).
+	runs map[string]*agentRun
 	// live: a turn started and its turn.finished is not published yet (see finish).
 	live   map[string]bool
 	sides  map[string]*side
@@ -314,7 +316,13 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string, opts S
 	// A retry sends the text of a turn that failed before it answered: the
 	// stored user message is run again, not stored a second time.
 	msg, retried := rt.failedRequest(ctx, orch, text)
+	reportNote := ""
+	if sid, err := db.CurrentSessionID(ctx); err == nil {
+		rt.sessionID = sid
+	}
 	if !retried {
+		// What the user collected from sub-agent sessions for the orchestrator is stored before the request.
+		reportNote = rt.pendingReportNote(ctx, orch.ID)
 		content, err := rt.userContent(ctx, text, opts.Attachments)
 		if err != nil {
 			return projectstore.Message{}, nil, projectstore.Agent{}, err
@@ -331,13 +339,12 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string, opts S
 	}
 	rt.turnID = msg.ID
 	rt.request = text
+	rt.reportNote = reportNote
 	if projectstore.ValidMode(opts.Mode) {
 		rt.mode = opts.Mode
 	}
 	rt.planText = opts.PlanText
-	if !retried || !rt.reuseTurnTask(ctx, msg.ID) {
-		rt.openTurnTask(ctx, text, msg.ID)
-	}
+	o.memoryOf(db).ExpireStale(ctx)
 	if !retried {
 		rt.publish(events.MessageCreated, map[string]any{"message": msg})
 	}
@@ -354,6 +361,7 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string, opts S
 		return projectstore.Message{}, nil, projectstore.Agent{}, err
 	}
 	rt.publishAgent(events.AgentUpdated, orch)
+	rt.publishSession(rt.sessionID, false)
 	if retried {
 		rt.publishTurnState(attentionNone, "")
 	}
@@ -381,15 +389,14 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 		}
 	}
 	o.approvals.EndTurn(rt.pid(), rt.turnID)
-	trivial, _ := o.closeTurnTask(rt, status, res.Text)
 	if status == projectstore.StatusCompleted && rt.mode == projectstore.ModePlan {
+		rt.turnPlan.Store(true)
 		o.savePlan(rt, res.Text)
 	}
 	finished := rt.finishTurn(orch.ID, status, res.Text, errText, hint)
 	rt.publish(events.ContextUpdated, map[string]any{"project_id": rt.pid()})
 	o.recordExchange(rt, orch.ID, status, res.Text)
-	if status == projectstore.StatusCompleted {
-		o.digestTurn(rt, orch.ID, rt.currentTask(), rt.turnID, res.Text, trivial)
-	}
+	rt.publishSession(rt.sessionID, false)
+	o.settleTurn(rt, orch.ID, status, res.Text)
 	return status, finished
 }

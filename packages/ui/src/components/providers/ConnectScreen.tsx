@@ -5,7 +5,10 @@ import { API_PROVIDER, connectAction, extraReason, isReady, stateText, useProvid
 import { STREAK_HERO } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
-import { SkeletonRows } from "../primitives/InfoList";
+import { ListFrame } from "../primitives/Card";
+import { Notice } from "../primitives/Notice";
+import { SectionHeader } from "../primitives/SectionHeader";
+import { SkeletonList } from "../primitives/Skeleton";
 import { StreakLayer } from "../primitives/StreakLayer";
 
 /**
@@ -35,38 +38,42 @@ export function ConnectScreen({ onConnect }: { onConnect(target: string): void }
           </div>
 
           <div className="flex flex-col gap-2">
-            <h2 className="px-1 text-xs text-fg-3">Agents on this machine</h2>
-            <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel">
+            <SectionHeader inset>Agents on this machine</SectionHeader>
+            <ListFrame as="ul">
               {providers.status === "loading" && (
-                <li className="px-4 py-3">
-                  <SkeletonRows count={3} />
+                <li>
+                  <SkeletonList count={3} size="lg" twoLine />
                 </li>
               )}
               {providers.status === "error" && !list && (
-                <li role="alert" className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm text-fg-2">
-                  <span className="min-w-0 flex-1">
-                    <span className="text-err">Couldn't check this machine.</span> {providers.message.replace(/\.$/, "")}. Check that the harness is running.
-                  </span>
-                  <Button size="sm" onClick={() => void providers.refresh()}>
-                    Retry
-                  </Button>
+                <li className="px-4 py-3">
+                  <Notice
+                    tone="error"
+                    action={
+                      <Button size="sm" onClick={() => void providers.refresh()}>
+                        Retry
+                      </Button>
+                    }
+                  >
+                    Couldn&apos;t check this machine. {providers.message.replace(/\.$/, "")}. Check that the harness is running.
+                  </Notice>
                 </li>
               )}
               {list && agents.length === 0 && <li className="px-4 py-3 text-sm text-fg-3">No agent plugins are installed. Use an API key below.</li>}
               {agents.map((p) => (
                 <ProviderLine key={p.id} provider={p} onConnect={onConnect} />
               ))}
-            </ul>
+            </ListFrame>
           </div>
 
           {others.length > 0 && (
             <div className="flex flex-col gap-2">
-              <h2 className="px-1 text-xs text-fg-3">Or pay per token</h2>
-              <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel">
+              <SectionHeader inset>Or pay per token</SectionHeader>
+              <ListFrame as="ul">
                 {others.map((p) => (
                   <ProviderLine key={p.id} provider={p} onConnect={onConnect} />
                 ))}
-              </ul>
+              </ListFrame>
             </div>
           )}
 

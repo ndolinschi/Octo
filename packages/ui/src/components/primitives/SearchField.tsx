@@ -1,5 +1,5 @@
 import { Search, X } from "lucide-react";
-import type { InputHTMLAttributes, KeyboardEvent, ReactNode, Ref } from "react";
+import { useRef, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { cn } from "../../lib/cn";
 import { CONTROL, FIELD_FRAME, type ControlSize } from "../../lib/controls";
 import { Glyph } from "./Glyph";
@@ -46,6 +46,12 @@ export function SearchField({
   className?: string;
 }) {
   const variant = props.variant ?? "bordered";
+  const own = useRef<HTMLInputElement | null>(null);
+  const setRef = (el: HTMLInputElement | null) => {
+    own.current = el;
+    if (typeof ref === "function") ref(el);
+    else if (ref) ref.current = el;
+  };
   const clearOnEscape = props.clearOnEscape ?? true;
   return (
     <div
@@ -59,7 +65,7 @@ export function SearchField({
     >
       <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />
       <input
-        ref={ref}
+        ref={setRef}
         type="search"
         aria-label={props.label}
         placeholder={props.placeholder ?? props.label}
@@ -78,7 +84,18 @@ export function SearchField({
         {...props.inputProps}
       />
       {props.value !== "" ? (
-        <IconButton icon={X} label="Clear search" size="xs" tabIndex={-1} onClick={() => props.onChange("")} className="-mr-1.5" />
+        <IconButton
+          icon={X}
+          label="Clear search"
+          size="xs"
+          tabIndex={-1}
+          onClick={() => {
+            props.onChange("");
+            // The button unmounts with the text; focus would fall to the page.
+            own.current?.focus();
+          }}
+          className="-mr-1.5"
+        />
       ) : (
         props.shortcut
       )}

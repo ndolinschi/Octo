@@ -212,6 +212,9 @@ func (s *acpSession) Plan(ctx context.Context, entries []acp.PlanEntry) {
 	if _, err := s.rt.db.SetPlan(c, s.agentID, plan); err != nil {
 		s.rt.logErr("store plan", err)
 	}
+	if len(plan) >= 2 {
+		s.rt.turnPlan.Store(true)
+	}
 	s.rt.publish(events.AgentPlan, map[string]any{"agent_id": s.agentID, "entries": plan})
 }
 
@@ -722,6 +725,14 @@ func (s *acpSession) touchLocationsLocked(call acp.ToolCall) {
 	case "read", "edit", "delete", "move":
 		for _, l := range call.Locations {
 			s.rt.touchFile(l.Path)
+		}
+	case "execute":
+		var in struct {
+			Command string `json:"command"`
+		}
+		// Only a command the agent states counts: a title is not one (a ledger entry still shows what changed).
+		if json.Unmarshal(call.RawInput, &in) == nil {
+			s.rt.noteCommand(in.Command)
 		}
 	}
 }

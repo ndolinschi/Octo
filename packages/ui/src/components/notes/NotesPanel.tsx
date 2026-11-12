@@ -1,25 +1,30 @@
-import { ArrowLeft, Pin, Plus, Upload } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Pin, Plus, Upload } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { Note } from "@octo/agent-client";
-import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
-import { useRowKeys } from "../../lib/hooks";
 import { filterNotes, indexFooter, noteFileName, sortNotes, titleFromFileName } from "../../lib/notes";
 import { useProject } from "../../state/project";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
 import { EmptyState } from "../primitives/EmptyState";
-import { Input } from "../primitives/Field";
+import { FileInputButton } from "../primitives/FileInputButton";
 import { Glyph } from "../primitives/Glyph";
-import { FloatRoom } from "../primitives/floatRoom";
+import { IconButton } from "../primitives/IconButton";
+import { ListDetail } from "../primitives/ListDetail";
+import { ListRow } from "../primitives/ListRow";
+import { Notice } from "../primitives/Notice";
+import { SearchField } from "../primitives/SearchField";
 import { NoteDetail } from "./NoteDetail";
 import { NoteEditor } from "./NoteEditor";
 import { useNoteDoc } from "./useNoteDoc";
 
 type Mode = { kind: "view" } | { kind: "edit" } | { kind: "new" };
 
+/** The id `ListDetail` holds while the new-note form is open, so one column shows it as a detail. */
+const NEW_NOTE = "new-note-form";
+
 /**
  * Project notes (M5): Markdown documents the model sees as an index of titles and descriptions. List and detail, as
- * Memory (decision 66): side by side from 640px of panel width, two steps below. The footer says what the model gets.
+ * Memory (decision 66, `ListDetail`): side by side from 640px of panel width, one column below. The footer says what the model gets.
  */
 export function NotesPanel() {
   const { state, createNote, updateNote, deleteNote } = useProject();
@@ -28,9 +33,6 @@ export function NotesPanel() {
   const [query, setQuery] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [pinError, setPinError] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const list = useRef<HTMLUListElement>(null);
-  useRowKeys(list);
   const now = Date.now();
 
   const sorted = useMemo(() => sortNotes(state.notes), [state.notes]);
@@ -39,7 +41,6 @@ export function NotesPanel() {
   // Wide: the first note is open so the detail is never an empty sentence in a corner. Narrow: nothing is open until chosen.
   const current = mode.kind === "new" ? null : (selected ?? shown[0] ?? null);
   const doc = useNoteDoc(current);
-  const open = chosen !== null || mode.kind === "new";
 
   const pick = (id: string | null) => {
     setChosen(id);
@@ -112,39 +113,24 @@ export function NotesPanel() {
       />
     );
 
+  const toolbar = (
+    <div className="box-content flex h-ctl-md shrink-0 items-center gap-1 px-pane pt-pane pb-1">
+      <SearchField label="Search notes" size="sm" value={query} onChange={setQuery} className="min-w-0 flex-1" />
+      <FileInputButton icon={Upload} label="Import a .md file" accept=".md,.markdown,.txt,text/markdown,text/plain" onFile={(f) => void importFile(f)} />
+      <IconButton icon={Plus} label="Add note" onClick={() => setMode({ kind: "new" })} disabled={mode.kind === "new"} />
+    </div>
+  );
+
   return (
-    <div className="@container/notes flex h-full min-h-0 flex-col pt-pane" data-notes>
-      <div className="flex h-row shrink-0 items-center gap-1 px-pane">
-        <Input
-          type="search"
-          aria-label="Search notes"
-          placeholder="Search notes"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="h-7 min-w-0 flex-1"
-        />
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".md,.markdown,.txt,text/markdown,text/plain"
-          hidden
-          aria-label="Import a note from a .md file"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = "";
-            if (file) void importFile(file);
-          }}
-        />
-        <IconButton icon={Upload} label="Import a .md file" onClick={() => fileInput.current?.click()} />
-        <IconButton icon={Plus} label="Add note" onClick={() => setMode({ kind: "new" })} disabled={mode.kind === "new"} />
-      </div>
+    <div className="flex h-full min-h-0 flex-col" data-notes>
       {problem && (
-        <p role="alert" className="px-pane pb-1 text-xs text-err">
+        <Notice tone="error" className="px-pane pt-pane">
           {problem}
-        </p>
+        </Notice>
       )}
       {state.notes.length === 0 && mode.kind !== "new" ? (
         <div className="flex min-h-0 flex-1 flex-col">
+          {toolbar}
           <EmptyState
             title="No notes yet"
             actions={
@@ -157,36 +143,23 @@ export function NotesPanel() {
           </EmptyState>
         </div>
       ) : (
-        <div role="group" aria-label="Notes" className="flex min-h-0 flex-1 flex-col border-t border-line @min-[640px]/notes:flex-row">
-          <section
-            aria-label="Note list"
-            className={cn(
-              "min-h-0 flex-col @min-[640px]/notes:flex @min-[640px]/notes:w-[clamp(220px,34%,340px)] @min-[640px]/notes:shrink-0 @min-[640px]/notes:border-r @min-[640px]/notes:border-line",
-              open ? "hidden" : "flex flex-1",
-            )}
-          >
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-pane py-2">
-              {shown.length === 0 ? (
-                <p className="px-2 py-3 text-sm text-fg-3">No note matches "{query}".</p>
-              ) : (
-                <ul ref={list} aria-label="Notes" className="flex flex-col">
-                  {shown.map((n) => (
-                    <NoteRow key={n.id} note={n} active={current?.id === n.id && mode.kind !== "new"} onPick={() => pick(n.id)} />
-                  ))}
-                </ul>
-              )}
-              <FloatRoom />
-            </div>
-          </section>
-          <section aria-label="Detail" className={cn("min-h-0 min-w-0 flex-1 flex-col @min-[640px]/notes:flex", open ? "flex" : "hidden")}>
-            <div className="flex h-row shrink-0 items-center px-pane @min-[640px]/notes:hidden">
-              <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={() => pick(null)}>
-                Notes
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{detail}</div>
-          </section>
-        </div>
+        <ListDetail
+          label="Notes"
+          listLabel="Notes"
+          placeholder="Choose a note to read it."
+          selected={mode.kind === "new" ? NEW_NOTE : chosen}
+          onSelect={(id) => pick(id === NEW_NOTE ? null : id)}
+          listHeader={toolbar}
+          detail={detail}
+          detailClassName="p-0"
+          list={(select) =>
+            shown.length === 0 ? (
+              <p className="px-2 py-3 text-sm text-fg-3">No note matches "{query}".</p>
+            ) : (
+              shown.map((n) => <NoteRow key={n.id} note={n} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />)
+            )
+          }
+        />
       )}
       <p className="line-clamp-2 shrink-0 border-t border-line px-pane py-1 text-xs text-fg-3" data-notes-footer>
         {indexFooter(state.notes)}
@@ -198,31 +171,15 @@ export function NotesPanel() {
 function NoteRow(props: { note: Note; active: boolean; onPick(): void }) {
   const { note } = props;
   return (
-    <li>
-      <button
-        type="button"
-        data-row
-        aria-current={props.active ? "true" : undefined}
-        onClick={props.onPick}
-        className={cn(
-          "flex h-10 w-full min-w-0 flex-col justify-center rounded-sm px-2 text-left press-row focus-inset hover:bg-hover",
-          props.active && "bg-active",
-        )}
-      >
-        <span className="flex min-w-0 items-center gap-1.5">
-          {note.pinned && <Glyph icon={Pin} size={14} aria-label="Pinned" className="shrink-0 text-fg-3" />}
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{note.title}</span>
-          {note.tags.length > 0 && <span className="max-w-[40%] shrink-0 truncate text-xs text-fg-3">{note.tags.map((t) => `#${t}`).join(" ")}</span>}
-        </span>
-        <span className="flex min-w-0 items-center gap-1.5 text-xs">
-          <span className="min-w-0 flex-1 truncate text-fg-2">{note.description || "No description"}</span>
-          {note.description_auto && (
-            <span className="shrink-0 text-fg-3" title="Auto description: taken from the first line of the note">
-              auto description
-            </span>
-          )}
-        </span>
-      </button>
-    </li>
+    <ListRow
+      size="md"
+      selected={props.active}
+      leading={note.pinned ? <Glyph icon={Pin} size={14} aria-label="Pinned" /> : undefined}
+      title={note.title}
+      description={note.description || "No description"}
+      meta={note.tags.length > 0 ? note.tags.map((t) => `#${t}`).join(" ") : undefined}
+      tip={note.description_auto ? "Auto description: taken from the first line of the note" : note.title}
+      onClick={props.onPick}
+    />
   );
 }

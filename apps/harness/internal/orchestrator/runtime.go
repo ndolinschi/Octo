@@ -32,8 +32,10 @@ type runtime struct {
 	// actMu guards lastAct, the last agent.activity published per agent.
 	actMu   sync.Mutex
 	lastAct map[string]string
-	// turnTools counts the turn's tool calls; touched are the files they read or changed.
-	turnTools atomic.Int32
+	// turnCommands counts the turn's commands that can change state and turnPlan says it produced a
+	// plan (memory M6: facts the harness has without a model); touched are the files tool calls read or changed.
+	turnCommands atomic.Int32
+	turnPlan     atomic.Bool
 	// remembered counts the items the turn's agents kept with the remember tool.
 	remembered atomic.Int32
 	touchMu    sync.Mutex
@@ -46,6 +48,8 @@ type runtime struct {
 	notes      []projectstore.Note
 	// turnID is the id of the user message that started the turn (0 outside a turn).
 	turnID int64
+	// sessionID is the main session the turn runs in; reportNote the note of sub-agent results handed over at its start.
+	sessionID, reportNote string
 	// taskID is the task record of the turn's request ("" when none was opened).
 	taskID string
 	taskMu sync.Mutex
@@ -131,6 +135,14 @@ func (rt *runtime) activity(agentID, kind, label, toolID string) {
 
 func (rt *runtime) publishAgent(typ string, a projectstore.Agent) {
 	rt.publish(typ, map[string]any{"agent": a})
+	if typ == events.AgentUpdated && a.ParentID != nil {
+		// The sub-agent's session follows its row (state, model, last activity).
+		c, cancel := dbCtx(context.Background())
+		defer cancel()
+		if info, err := rt.db.SessionOfAgent(c, a.ID); err == nil {
+			rt.publish(events.SessionUpdated, map[string]any{"session": rt.o.SessionView(c, rt.db, info)})
+		}
+	}
 }
 
 func dbCtx(parent context.Context) (context.Context, context.CancelFunc) {
@@ -245,6 +257,9 @@ func (rt *runtime) runAgent(ctx context.Context, a projectstore.Agent, history [
 		Hints:           rt.hints(a),
 		Gate:            rt.loopGate(),
 	}
+	if a.ParentID != nil {
+		loop.Steer = rt.o.steerTextsOf(a.ID) // a message the user sent to this sub-agent's session
+	}
 	if a.ParentID == nil {
 		loop.Steer = rt.steerTexts
 		// Old tool results become stubs once a request passes 60% of the window,
@@ -304,6 +319,9 @@ func (rt *runtime) finishTurn(orchID string, status projectstore.AgentStatus, te
 	if agents, err := rt.db.Agents(c); err == nil {
 		for _, a := range agents {
 			if a.ParentID != nil && a.Status == projectstore.StatusRunning {
+				if r := rt.o.runOf(a.ID); r != nil && r.detached {
+					continue // continued by the user from its session: not part of this turn
+				}
 				rt.settle(ctx, a.ID, projectstore.StatusCancelled, "", "")
 			}
 		}

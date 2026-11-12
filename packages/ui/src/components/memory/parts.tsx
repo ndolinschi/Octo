@@ -1,146 +1,132 @@
-import { EmptyState } from "../primitives/EmptyState";
-import { ArrowLeft } from "lucide-react";
-import { useRef, type ReactNode } from "react";
-import { cn } from "../../lib/cn";
-import { useRowKeys } from "../../lib/hooks";
+import "./memory.css";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { errorMessage } from "../../lib/format";
 import { Button } from "../primitives/Button";
-import { INFO_ROW, SkeletonRows } from "../primitives/InfoList";
+import { Dialog } from "../primitives/Dialog";
+import { EmptyState } from "../primitives/EmptyState";
+import { Notice } from "../primitives/Notice";
+
+/** A read failure with its next step: "Try again" when the view can retry (rule 20; decision 81: a glyph, not a red sentence). */
+export function MemoryError({ message, onRetry }: { message: string; onRetry?: (() => void) | undefined }) {
+  return (
+    <div className="p-4">
+      <Notice
+        form="block"
+        tone="error"
+        title="Could not read memory"
+        actions={
+          onRetry && (
+            <Button size="sm" onClick={onRetry}>
+              Try again
+            </Button>
+          )
+        }
+      >
+        {message}
+      </Notice>
+    </div>
+  );
+}
+
+/** The reading width of a detail pane: prose and rows stop growing at 48rem, so a maximised pane does not make 150-character lines. */
+export const DETAIL_MAX = "max-w-3xl";
 
 /**
- * List and detail. Wide (the view is 640px or more): the list on the left (a third, 220 to 320px), the detail beside
- * it, each scrolling by itself. Narrow: one column; the detail replaces the list under a Back button, and the list's
- * scroll position survives (the list stays mounted, hidden).
+ * Rows with a "⋯" reserve its width at the right (the row's `trailing` slot); rows without actions reserve the same, so
+ * the times and sizes of every Memory list end on one edge.
  */
-export function ListDetail(props: {
-  label: string;
-  /** What the list is called for the screen reader, and the Back button's target. */
-  listLabel: string;
-  list: ReactNode;
-  /** The header row of the list column (filters, counts). */
-  listHeader?: ReactNode;
-  detail: ReactNode | null;
-  onBack(): void;
-  /** What the detail pane says when nothing is chosen (wide layout only). */
-  placeholder: string;
-}) {
-  const open = props.detail !== null;
+export const ROW_TAIL = <span aria-hidden className="size-6" />;
+
+/**
+ * The dim second line of a two-line row: text that gives way (ellipsis) and, at the right, a short tail that never does (a
+ * time, a size, "current"). A one-line row puts its date in the row's own `meta` slot instead (same dim small style).
+ */
+export function RowLine({ children, end }: { children: ReactNode; end?: ReactNode }) {
   return (
-    <div role="group" aria-label={props.label} className="flex h-full min-h-0 flex-col @min-[640px]/memory:flex-row">
-      <section
-        aria-label={props.listLabel}
-        className={cn(
-          "flex min-h-0 flex-col @min-[640px]/memory:w-[clamp(220px,34%,320px)] @min-[640px]/memory:shrink-0 @min-[640px]/memory:border-r @min-[640px]/memory:border-line",
-          open ? "hidden @min-[640px]/memory:flex" : "flex-1 @min-[640px]/memory:flex-none",
-        )}
-      >
-        {props.listHeader}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-pane pb-4">{props.list}</div>
-      </section>
-      <section aria-label="Detail" className={cn("min-h-0 min-w-0 flex-1 flex-col", open ? "flex" : "hidden @min-[640px]/memory:flex")}>
-        {props.detail === null ? (
-          <p className="px-4 py-3 text-sm text-fg-3">{props.placeholder}</p>
-        ) : (
-          <>
-            <div className="flex h-row shrink-0 items-center px-pane @min-[640px]/memory:hidden">
-              <Button variant="ghost" size="sm" icon={ArrowLeft} onClick={props.onBack}>
-                {props.listLabel}
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6">{props.detail}</div>
-          </>
-        )}
-      </section>
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {end !== undefined && <span className="shrink-0 tabular-nums">{end}</span>}
+    </span>
+  );
+}
+
+/** An empty view: `EmptyState` centres itself in a flex column that owns the height, which a view's container is not. */
+export function PaneEmpty(props: { title: string; children?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <EmptyState title={props.title} actions={props.actions}>
+        {props.children}
+      </EmptyState>
     </div>
   );
 }
 
-/** A rows container: ↑/↓/Home/End move between its `[data-row]` buttons. */
-export function RowList({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
-  const ref = useRef<HTMLUListElement>(null);
-  useRowKeys(ref);
+/** The part of a row that opens under it: 32px in, so it lines up with the row's text (inset 8 + glyph 16 + gap 8). */
+export function Expansion({ children }: { children: ReactNode }) {
   return (
-    <ul ref={ref} aria-label={label} className={cn("flex flex-col", className)}>
-      {children}
-    </ul>
-  );
-}
-
-/** A caption (12px, fg-3) over its content. */
-export function Block(props: { title: string; children: ReactNode; aside?: ReactNode; id?: string }) {
-  return (
-    <section aria-labelledby={props.id} className="flex flex-col gap-1.5 pt-4">
-      <div className="flex min-w-0 items-center gap-2 text-xs text-fg-3">
-        <h3 id={props.id} className="min-w-0 flex-1 truncate">
-          {props.title}
-        </h3>
-        {props.aside}
-      </div>
-      {props.children}
-    </section>
-  );
-}
-
-export function Loading({ rows = 6 }: { rows?: number }) {
-  return (
-    <div role="status" aria-label="Loading" className="px-pane pt-1">
-      <SkeletonRows count={rows} widths={[72, 55, 80, 48, 64]} />
-    </div>
-  );
-}
-
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <div role="alert" className="flex flex-col items-start gap-3 px-4 py-3 text-sm">
+    <div className="octo-mem-expand">
       <div>
-        <p className="text-fg">Could not read memory</p>
-        <p className="mt-0.5 break-words text-fg-2">{message}</p>
+        <div className="@container/ex flex min-w-0 flex-col gap-3 pt-1 pr-2 pb-3 pl-8">{children}</div>
       </div>
-      {onRetry && (
-        <Button size="sm" onClick={onRetry}>
-          Try again
-        </Button>
-      )}
     </div>
   );
 }
 
-export function Empty({ title, children }: { title: string; children?: ReactNode }) {
-  return <EmptyState title={title}>{children}</EmptyState>;
+/**
+ * Esc on an open row closes it and puts the focus back on the row's own button (decision 93: keyboard throughout). The key
+ * is consumed, so the list-detail layout above does not also go back.
+ */
+export function useCollapseOnEscape(open: boolean, close: () => void) {
+  const box = useRef<HTMLLIElement>(null);
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== "Escape" || !open || e.defaultPrevented) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+    box.current?.querySelector<HTMLElement>("[data-row]")?.focus();
+  };
+  return { box, onKeyDown };
 }
 
-/** A detail's title row: the title, a status, and optional actions. */
-export function DetailTitle(props: { title: string; children?: ReactNode; actions?: ReactNode }) {
-  return (
-    <header className="flex flex-col gap-1 pt-3">
-      <div className="flex min-w-0 items-start gap-2">
-        <h2 className="min-w-0 flex-1 text-heading break-words text-fg">{props.title}</h2>
-        {props.actions}
-      </div>
-      {props.children && <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-fg-3">{props.children}</div>}
-    </header>
-  );
+/** Scrolls an item into view once, when it is shown because something else (a search hit) asked for it. */
+export function useReveal(box: React.RefObject<HTMLElement | null>, reveal: boolean) {
+  useEffect(() => {
+    if (reveal) box.current?.scrollIntoView({ block: "center" });
+  }, [box, reveal]);
 }
 
-/** A row button in a list: 32px, `[slot] label … trailing`; the chosen one carries the `active` fill. */
-export function ListRow(props: { selected: boolean; onClick(): void; leading?: ReactNode; label: ReactNode; trailing?: ReactNode; title?: string }) {
+/** A forget is always confirmed: nothing here can be brought back. */
+export function ConfirmDialog(props: { title: string; description: string; confirm: string; busyText: string; onClose(): void; onConfirm(): Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
-    <li>
-      <button
-        type="button"
-        data-row
-        aria-current={props.selected ? "true" : undefined}
-        title={props.title}
-        onClick={props.onClick}
-        className={cn(
-          INFO_ROW,
-          "h-row-nav w-full text-left press-row focus-inset",
-          props.selected ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
-        )}
-      >
-        {props.leading && <span className="flex size-4 shrink-0 items-center justify-center">{props.leading}</span>}
-        <span className="min-w-0 flex-1 truncate">{props.label}</span>
-        {props.trailing && <span className="shrink-0 text-xs text-fg-3">{props.trailing}</span>}
-      </button>
-    </li>
+    <Dialog
+      title={props.title}
+      description={props.description}
+      onClose={props.onClose}
+      width="sm"
+      footer={
+        <>
+          <Button variant="quiet" onClick={props.onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            loading={busy}
+            onClick={() => {
+              setBusy(true);
+              props.onConfirm().then(props.onClose, (err: unknown) => {
+                setError(`${errorMessage(err)} Try again.`);
+                setBusy(false);
+              });
+            }}
+          >
+            {busy ? props.busyText : props.confirm}
+          </Button>
+        </>
+      }
+    >
+      {error && <Notice tone="error">{error}</Notice>}
+    </Dialog>
   );
 }

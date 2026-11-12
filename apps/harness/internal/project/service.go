@@ -45,6 +45,12 @@ type Turns interface {
 	// CompactViaAgent sends /compact to an ACP orchestrator that advertises it.
 	Clear(ctx context.Context, projectID string) (orchestrator.ClearResult, error)
 	SlashCommands(ctx context.Context, projectID string) (orchestrator.SlashReport, error)
+	// Project sessions: a view with the live state, new / resume / stop, and a message to a sub-agent's session.
+	SessionView(ctx context.Context, db *projectstore.DB, info projectstore.SessionInfo) orchestrator.SessionView
+	NewSession(ctx context.Context, projectID, title string) (orchestrator.SessionView, error)
+	ResumeSession(ctx context.Context, projectID, sessionID string) (orchestrator.SessionView, error)
+	StopSession(ctx context.Context, projectID, sessionID string) (orchestrator.SessionView, error)
+	MessageAgentSession(ctx context.Context, projectID, sessionID, text string, reportToParent bool) (orchestrator.MessageOutcome, orchestrator.SessionView, error)
 	CompactViaAgent(ctx context.Context, projectID string) (projectstore.Message, bool, error)
 	// Redact replaces the project's stored secret values in s.
 	Redact(projectID, s string) string

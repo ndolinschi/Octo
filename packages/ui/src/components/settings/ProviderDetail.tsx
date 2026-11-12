@@ -13,7 +13,9 @@ import {
 } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
+import { ListFrame } from "../primitives/Card";
 import { CommandLine } from "../primitives/CommandLine";
+import { Notice } from "../primitives/Notice";
 import { AgentPrefs } from "./AgentPrefsPane";
 import { ProviderKey } from "./ProviderKey";
 import { ProviderModels } from "./ProviderModels";
@@ -44,43 +46,39 @@ export function ProviderDetail({ provider: p }: { provider: Provider }) {
   const connect = () => pane.current?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
   const reason = reasonLine(p);
   return (
-    <div
-      ref={pane}
-      data-provider-detail
-      className="@container flex min-w-0 flex-1 flex-col gap-6 rounded-lg border border-panel-edge bg-panel p-5 shadow-panel"
-    >
-      <div className="flex min-h-8 flex-wrap items-center gap-x-4 gap-y-2">
-        <ProviderTitle provider={p} tone={stateTone(p)} />
-        {p.experimental && (
-          <span className="text-xs text-fg-3" title={EXPERIMENTAL_TIP}>
-            experimental
-          </span>
-        )}
-        {action && (
-          <div className="flex items-center gap-2">
-            {checked && !checking && p.state !== "ready" && (
-              <span role="status" className="text-xs text-warn">
-                Still not ready.
+    <div ref={pane} className="@container flex min-w-0 flex-1 flex-col">
+      <ListFrame>
+        <div data-provider-detail className="flex min-w-0 flex-col gap-6 p-5">
+          <div className="flex min-h-8 flex-wrap items-center gap-x-4 gap-y-2">
+            <ProviderTitle provider={p} tone={stateTone(p)} />
+            {p.experimental && (
+              <span className="text-xs text-fg-3" title={EXPERIMENTAL_TIP}>
+                experimental
               </span>
             )}
-            <Button variant="primary" disabled={checking} aria-busy={checking} onClick={() => (action === "Check again" ? void check() : connect())}>
-              {checking ? "Checking…" : action}
-            </Button>
+            {action && (
+              <div className="flex items-center gap-2">
+                {checked && !checking && p.state !== "ready" && <Notice tone="warn">Still not ready.</Notice>}
+                <Button variant="primary" disabled={checking} aria-busy={checking} onClick={() => (action === "Check again" ? void check() : connect())}>
+                  {checking ? "Checking…" : action}
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      <div className="flex max-w-measure min-w-0 flex-col gap-6">
-        {reason && <Reason provider={p} text={reason} />}
-        {p.kind === "api" && <ProviderKey provider={p} />}
-        {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}
-        {p.kind === "agent" && p.state === "ready" && <AgentPrefs agent={p} />}
-        {p.state !== "not_installed" && p.state !== "not_connected" && (
-          <section className="flex flex-col gap-1">
-            <SectionTitle>Billing</SectionTitle>
-            <p className="text-sm text-fg-2">{billingLine(p)}</p>
-          </section>
-        )}
-      </div>
+          <div className="flex max-w-measure min-w-0 flex-col gap-6">
+            {reason && <Reason provider={p} text={reason} />}
+            {p.kind === "api" && <ProviderKey provider={p} />}
+            {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}
+            {p.kind === "agent" && p.state === "ready" && <AgentPrefs agent={p} />}
+            {p.state !== "not_installed" && p.state !== "not_connected" && (
+              <section className="flex flex-col gap-1">
+                <SectionTitle>Billing</SectionTitle>
+                <p className="text-sm text-fg-2">{billingLine(p)}</p>
+              </section>
+            )}
+          </div>
+        </div>
+      </ListFrame>
     </div>
   );
 }

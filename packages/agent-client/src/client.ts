@@ -39,6 +39,10 @@ import type {
   MemorySession,
   MemorySessionDetail,
   MemorySessionsParams,
+  ProjectSession,
+  ProjectSessionDetail,
+  SessionMessageResult,
+  SessionsParams,
   Task,
   Diagnostics,
   Approval,
@@ -198,7 +202,8 @@ export interface Bridge {
   getAgent(projectId: string, agentId: string): Promise<Agent>;
   listMessages(projectId: string, agentId: string): Promise<Message[]>;
   /** Same request as listMessages, plus the compaction markers of the transcript. */
-  getTranscript(projectId: string, agentId: string): Promise<Transcript>;
+  /** With `sessionId`, only that main session's part of the orchestrator's conversation (project sessions). */
+  getTranscript(projectId: string, agentId: string, opts?: { sessionId?: string }): Promise<Transcript>;
   sendMessage(projectId: string, text: string): Promise<Message>;
   cancelTurn(projectId: string): Promise<void>;
   /** The orchestrator's context by part, or another agent's with `agentId`. */
@@ -367,6 +372,22 @@ export interface Bridge {
   listMemorySessions?(projectId: string, params?: MemorySessionsParams): Promise<MemorySession[]>;
   getMemorySession?(projectId: string, sessionId: string): Promise<MemorySessionDetail>;
   forgetExchange?(projectId: string, exchangeId: string): Promise<void>;
+  /** Project sessions: list (default: not archived, newest first), one with its exchanges and children, and its own transcript. */
+  listSessions?(projectId: string, params?: SessionsParams): Promise<ProjectSession[]>;
+  getSession?(projectId: string, sessionId: string): Promise<ProjectSessionDetail>;
+  getSessionTranscript?(projectId: string, sessionId: string): Promise<Transcript>;
+  /** A new main session, made current (like `/clear`); 409 `turn_in_progress` while a turn runs. */
+  createSession?(projectId: string, title?: string): Promise<ProjectSession>;
+  /** Makes a main session current; 409 `turn_in_progress`, `not_main_session`. */
+  resumeSession?(projectId: string, sessionId: string): Promise<ProjectSession>;
+  /** Title and/or archive flag; 409 `current_session` when archiving the current one. */
+  patchSession?(projectId: string, sessionId: string, patch: { title?: string; archived?: boolean }): Promise<ProjectSession>;
+  /** 409 `current_session`, `session_running`. */
+  deleteSession?(projectId: string, sessionId: string): Promise<void>;
+  /** Stops the project's running turn (current main session) or one sub-agent; 409 `not_running`. */
+  stopSession?(projectId: string, sessionId: string): Promise<ProjectSession>;
+  /** A message to a sub-agent's session; 409 `steer_unsupported`, `not_continuable`, `not_running`, `builtin_loop_unavailable`, `not_agent_session`. */
+  messageSession?(projectId: string, sessionId: string, text: string, opts?: { reportToParent?: boolean }): Promise<SessionMessageResult>;
   /*
    * Inline completion. Optional: HTTP bridge only, and not on the message bridge (an AbortSignal cannot cross a port).
    */
@@ -477,6 +498,9 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "context.updated",
   "slash_commands.updated",
   "conversation.cleared",
+  "session.created",
+  "session.updated",
+  "session.current",
   "fact.remembered",
   "fact.forgotten",
   "side.delta",
@@ -641,8 +665,9 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     listAgents: (id) => unwrap<Agent[]>(request("GET", `${p(id)}/agents`), "agents"),
     getAgent: (id, agentId) => request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}`) as Promise<Agent>,
     listMessages: (id, agentId) => unwrap<Message[]>(request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages`), "messages"),
-    getTranscript: async (id, agentId) => {
-      const body = await request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages`);
+    getTranscript: async (id, agentId, opts) => {
+      const q = opts?.sessionId !== undefined ? `?session_id=${encodeURIComponent(opts.sessionId)}` : "";
+      const body = await request("GET", `${p(id)}/agents/${encodeURIComponent(agentId)}/messages${q}`);
       if (!isRecord(body) || !Array.isArray(body.messages)) {
         throw new BridgeError(0, "invalid_response", 'missing "messages" in response');
       }
@@ -881,6 +906,39 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getMemorySession: (id, sid) => request("GET", `${p(id)}/memory/sessions/${encodeURIComponent(sid)}`) as Promise<MemorySessionDetail>,
     forgetExchange: async (id, eid) => {
       await request("DELETE", `${p(id)}/memory/exchanges/${encodeURIComponent(eid)}`);
+    },
+    listSessions: (id, params) => {
+      const q: string[] = [];
+      if (params?.kind !== undefined) q.push(`kind=${params.kind}`);
+      if (params?.state !== undefined) q.push(`state=${params.state}`);
+      if (params?.archived !== undefined) q.push(`archived=${params.archived}`);
+      if (params?.limit !== undefined) q.push(`limit=${params.limit}`);
+      if (params?.before !== undefined) q.push(`before=${encodeURIComponent(params.before)}`);
+      return unwrap<ProjectSession[]>(request("GET", `${p(id)}/sessions${q.length ? `?${q.join("&")}` : ""}`), "sessions");
+    },
+    getSession: (id, sid) => request("GET", `${p(id)}/sessions/${encodeURIComponent(sid)}`) as Promise<ProjectSessionDetail>,
+    getSessionTranscript: async (id, sid) => {
+      const body = await request("GET", `${p(id)}/sessions/${encodeURIComponent(sid)}/messages`);
+      if (!isRecord(body) || !Array.isArray(body.messages)) {
+        throw new BridgeError(0, "invalid_response", 'missing "messages" in response');
+      }
+      return {
+        messages: body.messages as Message[],
+        compactions: Array.isArray(body.compactions) ? (body.compactions as Transcript["compactions"]) : [],
+        ...(Array.isArray(body.conversations) ? { conversations: body.conversations as ConversationMarker[] } : {}),
+      };
+    },
+    createSession: (id, title) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions`, title === undefined ? undefined : { title }), "session"),
+    resumeSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/resume`), "session"),
+    patchSession: (id, sid, patch) => unwrap<ProjectSession>(request("PATCH", `${p(id)}/sessions/${encodeURIComponent(sid)}`, patch), "session"),
+    deleteSession: async (id, sid) => {
+      await request("DELETE", `${p(id)}/sessions/${encodeURIComponent(sid)}`);
+    },
+    stopSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/stop`), "session"),
+    messageSession: async (id, sid, text, opts) => {
+      const body: { text: string; report_to_parent?: boolean } = { text };
+      if (opts?.reportToParent) body.report_to_parent = true;
+      return (await request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/messages`, body)) as SessionMessageResult;
     },
     listDirs: (path) => request("GET", `/v1/fs/dirs?path=${encodeURIComponent(path)}`) as Promise<DirListing>,
     recentFolders: () => unwrap<FolderEntry[]>(request("GET", "/v1/fs/recent"), "entries"),

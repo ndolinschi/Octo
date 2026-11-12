@@ -2,9 +2,11 @@ import type { Limit, Project, ProjectInput } from "@octo/agent-client";
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from "react";
 import { errorMessage } from "../../lib/format";
 import { useApp } from "../../state/app";
-import { Button } from "../primitives/Button";
-import { Input } from "../primitives/Field";
-import { SaveStatus, Select, SettingsGroup, SettingsRow, SkeletonRow } from "./parts";
+import { Notice } from "../primitives/Notice";
+import { Select } from "../primitives/Select";
+import { SkeletonList } from "../primitives/Skeleton";
+import { TextField } from "../primitives/TextField";
+import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { useProjectDetails, type ProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
 import { UsageByProject } from "./UsageByProject";
@@ -20,17 +22,9 @@ function PerProject(props: { label: string; rowId: string; details: ProjectDetai
       id={`row-${props.rowId}`}
       footer={details.status === "ready" && details.more > 0 ? `${details.more} more in each project's own settings.` : props.footer}
     >
-      {details.status === "loading" && [0, 1].map((i) => <SkeletonRow key={i} />)}
+      {details.status === "loading" && <SkeletonList count={2} size="lg" twoLine />}
       {details.status === "error" && (
-        <SettingsRow
-          title={<span className="text-err">Couldn't load projects</span>}
-          description={`${details.message}. Check that the harness is running, then retry.`}
-          control={
-            <Button size="sm" onClick={props.retry}>
-              Retry
-            </Button>
-          }
-        />
+        <LoadErrorRow what="projects" message={details.message} hint="Check that the harness is running, then retry." onRetry={props.retry} />
       )}
       {details.status === "ready" && details.projects.length === 0 && (
         <SettingsRow title="No projects yet" description="Each project you create gets its own row here." />
@@ -44,6 +38,8 @@ function ProjectSelect<T extends string>(props: {
   project: Project;
   value: T;
   options: readonly { id: T; label: string }[];
+  /** What the control sets, for its accessible name. */
+  title: string;
   description: string;
   patch(v: T): Partial<ProjectInput>;
   update(id: string, patch: Partial<ProjectInput>): Promise<void>;
@@ -59,19 +55,15 @@ function ProjectSelect<T extends string>(props: {
       control={
         <Select
           id={id}
+          label={`${props.project.name}: ${props.title}`}
           value={props.value}
-          onChange={(e) => {
-            const v = props.options.find((o) => o.id === e.target.value)?.id;
+          options={props.options.map((o) => ({ value: o.id, label: o.label }))}
+          onChange={(value) => {
+            const v = props.options.find((o) => o.id === value)?.id;
             if (v !== undefined) void run(() => props.update(props.project.id, props.patch(v)));
           }}
-          className="w-48"
-        >
-          {props.options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
+          className={CONTROL_W.md}
+        />
       }
     />
   );
@@ -103,6 +95,7 @@ export function EditorSection() {
               project={p}
               value={value}
               options={known ? COMPLETION : [...COMPLETION, { id: value, label: value }]}
+              title="Inline completion"
               description={value === "off" ? "No suggestions." : "Suggestions on."}
               patch={(v) => ({ models: { completion: v } })}
               update={update}
@@ -143,6 +136,7 @@ export function MemorySection() {
             project={p}
             value={m.context}
             options={CONTEXT}
+            title="Context mode"
             description={m.context === "window" ? `The last ${m.recent_exchanges} exchanges, plus memory.` : "Every message, summarised when it gets long."}
             patch={(v) => ({ memory: { context: v } })}
             update={update}
@@ -189,15 +183,11 @@ function BudgetRow({ project: p, update }: { project: Project; update(id: string
       title={p.name}
       htmlFor={id}
       description={
-        invalid ? (
-          <span className="text-err">A positive amount in USD, or empty for no budget.</span>
-        ) : (
-          `${spent}. ${stored ? `Budget $${stored}.` : "No budget."}`
-        )
+        invalid ? <Notice tone="error">A positive amount in USD, or empty for no budget.</Notice> : `${spent}. ${stored ? `Budget $${stored}.` : "No budget."}`
       }
       status={<SaveStatus state={saved} />}
       control={
-        <Input
+        <TextField
           id={id}
           inputMode="decimal"
           value={value}
@@ -206,7 +196,7 @@ function BudgetRow({ project: p, update }: { project: Project; update(id: string
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => e.key === "Enter" && commit()}
-          className="w-32 text-right tabular-nums max-settings:w-full max-settings:text-left max-sm:text-input-touch"
+          className={`${CONTROL_W.sm} text-right tabular-nums max-settings:text-left`}
         />
       }
     />
@@ -231,22 +221,16 @@ function Limits() {
   }, [bridge, attempt]);
   return (
     <SettingsGroup label="Plan limits" id="row-limits">
-      {load.status === "loading" && <SkeletonRow />}
+      {load.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}
       {load.status === "error" && (
-        <SettingsRow
-          title={<span className="text-err">Couldn't load limits</span>}
-          description={`${load.message}. Retry once the harness is running.`}
-          control={
-            <Button
-              size="sm"
-              onClick={() => {
-                setLoad({ status: "loading" });
-                setAttempt((n) => n + 1);
-              }}
-            >
-              Retry
-            </Button>
-          }
+        <LoadErrorRow
+          what="limits"
+          message={load.message}
+          hint="Retry once the harness is running."
+          onRetry={() => {
+            setLoad({ status: "loading" });
+            setAttempt((n) => n + 1);
+          }}
         />
       )}
       {load.status === "ready" && load.limits.length === 0 && (

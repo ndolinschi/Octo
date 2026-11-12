@@ -153,6 +153,7 @@ func (d *DB) UpdateAgent(ctx context.Context, id string, p AgentPatch) (Agent, e
 	if err := set.exec(ctx, d.sql, "agents", "id = ?", id); err != nil {
 		return Agent{}, err
 	}
+	d.syncAgentSession(ctx, id)
 	if err := d.Touch(ctx); err != nil {
 		return Agent{}, err
 	}
@@ -168,6 +169,10 @@ func (d *DB) RecoverInterrupted(ctx context.Context) error {
 	}
 	if _, err := d.sql.ExecContext(ctx,
 		`UPDATE agents SET status = 'failed', error = 'interrupted', finished_at = ? WHERE status = 'running'`, now); err != nil {
+		return err
+	}
+	if _, err := d.sql.ExecContext(ctx,
+		`UPDATE sessions SET state = 'failed', ended_at = ? WHERE kind = 'agent' AND state = 'working'`, now); err != nil {
 		return err
 	}
 	// Queued messages survive a restart but never run on their own after one:

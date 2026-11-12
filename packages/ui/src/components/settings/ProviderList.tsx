@@ -3,15 +3,17 @@ import { useRef } from "react";
 import { cn } from "../../lib/cn";
 import { useRowKeys } from "../../lib/hooks";
 import type { ProviderGroupView, ProviderRowView } from "../../lib/providers";
+import { ListFrame } from "../primitives/Card";
 import { Glyph } from "../primitives/Glyph";
+import { ListRow } from "../primitives/ListRow";
 import { ProviderMark } from "../primitives/ProviderMark";
+import { SectionHeader } from "../primitives/SectionHeader";
 import { StateDot } from "./parts";
 
-const ROW = "flex h-10 w-full items-center gap-3 px-3 text-left press-row focus-inset hover:bg-hover";
-
 /**
- * Decision 89 a-c: the list column. Rows are one height (name, one dim status line), nothing in them but a state dot at a
- * fixed x, the mark and the text; the whole row selects. "Not set up" folds to one summary row while something is connected.
+ * Decision 89 a-c: the list column. Rows are one height (name, one dim status line), nothing in them but the mark, the text
+ * and a state dot at a fixed x (the right edge); the whole row selects. "Not set up" folds to one summary row while
+ * something is connected.
  */
 export function ProviderList(props: {
   groups: readonly ProviderGroupView[];
@@ -23,55 +25,64 @@ export function ProviderList(props: {
   const list = useRef<HTMLDivElement>(null);
   useRowKeys(list);
   return (
-    <div
-      ref={list}
-      role="group"
-      aria-label="Providers"
-      className={cn("flex flex-col overflow-hidden rounded-lg border border-panel-edge bg-panel py-1 shadow-panel", props.className)}
-    >
-      {props.groups.map((g) => (
-        <div key={g.id} role="group" aria-label={g.label} className="flex flex-col">
-          <h3 className="flex h-8 items-center px-3 text-xs text-fg-3">{g.label}</h3>
-          {g.rows.map((r) => (
-            <Row key={r.id} row={r} selected={r.id === props.selectedId} onSelect={() => props.onSelect(r.id)} />
-          ))}
-          {g.foldedLabel && (
-            <button type="button" data-row aria-expanded={false} onClick={() => props.onExpand(true)} className={cn(ROW, "text-sm text-fg-2")}>
-              <Glyph icon={ChevronRight} size={14} className="shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{g.foldedLabel}</span>
-            </button>
-          )}
-          {g.foldable && (
-            <button type="button" data-row aria-expanded onClick={() => props.onExpand(false)} className={cn(ROW, "text-sm text-fg-3")}>
-              <Glyph icon={ChevronDown} size={14} className="shrink-0" />
-              Show fewer
-            </button>
-          )}
-        </div>
-      ))}
-    </div>
+    <ListFrame {...(props.className ? { className: props.className } : {})}>
+      <div ref={list} role="group" aria-label="Providers" className="flex flex-col py-1">
+        {props.groups.map((g) => (
+          <div key={g.id} role="group" aria-label={g.label} className="flex flex-col">
+            <SectionHeader as="h3" inset className="px-3">
+              {g.label}
+            </SectionHeader>
+            {g.rows.map((r) => (
+              <Row key={r.id} row={r} selected={r.id === props.selectedId} onSelect={() => props.onSelect(r.id)} />
+            ))}
+            {g.foldedLabel && (
+              <ListRow
+                size="lg"
+                tone="quiet"
+                expanded={false}
+                title={g.foldedLabel}
+                leading={<Glyph icon={ChevronRight} size={14} />}
+                onClick={() => props.onExpand(true)}
+              />
+            )}
+            {g.foldable && (
+              <ListRow
+                size="lg"
+                tone="quiet"
+                expanded
+                title="Show fewer"
+                leading={<Glyph icon={ChevronDown} size={14} />}
+                onClick={() => props.onExpand(false)}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </ListFrame>
   );
 }
 
 function Row({ row, selected, onSelect }: { row: ProviderRowView; selected: boolean; onSelect(): void }) {
   return (
-    <button
-      type="button"
-      data-row
+    <ListRow
       id={`row-provider-${row.id}`}
-      aria-current={selected ? "true" : undefined}
+      size="lg"
+      selected={selected}
       onClick={onSelect}
-      className={cn(ROW, selected && "bg-active hover:bg-active")}
-    >
-      <StateDot tone={row.tone} />
-      <ProviderMark id={row.id} label={row.label} className="text-fg-2" />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-baseline gap-1.5 text-sm leading-5 text-fg">
+      leading={<ProviderMark id={row.id} label={row.label} className="text-fg-2" />}
+      title={
+        <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="min-w-0 truncate">{row.label}</span>
-          {row.experimental && <span className="shrink-0 text-xs text-fg-3">Experimental</span>}
+          {row.experimental && <span className={cn("shrink-0 text-xs text-fg-3")}>Experimental</span>}
         </span>
-        <span className="truncate text-xs leading-4 text-fg-3">{row.status}</span>
-      </span>
-    </button>
+      }
+      description={row.status}
+      meta={
+        <span className="flex">
+          <StateDot tone={row.tone} />
+        </span>
+      }
+      className="mx-1"
+    />
   );
 }

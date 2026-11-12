@@ -112,20 +112,23 @@ func addUnique(dst []string, add []string, max int) ([]string, error) {
 	return dst, nil
 }
 
-// OpenTask opens the task record for a user request: its title and goal come
-// from the request (the goal is the first 400 characters: the fallback when no
-// side model digests the turn) and it holds the message.
+// OpenTask opens a task record for a request: the title is its first 80
+// characters, the goal its minimal rewrite by rule (GoalFromRequest). The
+// harness opens none at the start of a turn (SettleTurn decides at its end);
+// this is for callers that make a record on purpose.
 func (s *Service) OpenTask(ctx context.Context, text string, messageID int64) (projectstore.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	text = strings.TrimSpace(s.redact(text))
-	title := strings.Join(strings.Fields(text), " ")
 	t := projectstore.Task{
-		Title: clip(title, 80), Status: projectstore.TaskOpen, Goal: clip(text, GoalFallback), GoalBy: "harness", Auto: true,
-		MessageIDs: []int64{messageID},
+		Title: clip(strings.Join(strings.Fields(text), " "), 80), Status: projectstore.TaskOpen, Goal: projectstore.GoalFromRequest(text),
+		GoalBy: "rule", Auto: true, MessageIDs: []int64{messageID},
 	}
 	if t.Title == "" {
 		t.Title = "Request"
+	}
+	if sid, err := s.DB.SessionOfTurn(ctx, messageID); err == nil {
+		t.SessionID = sid
 	}
 	t, err := s.DB.CreateTask(ctx, t)
 	if err == nil {
@@ -135,4 +138,7 @@ func (s *Service) OpenTask(ctx context.Context, text string, messageID int64) (p
 }
 
 // Tasks lists the task records, newest update first.
-func (s *Service) Tasks(ctx context.Context) ([]projectstore.Task, error) { return s.DB.Tasks(ctx) }
+func (s *Service) Tasks(ctx context.Context) ([]projectstore.Task, error) {
+	s.ExpireStale(ctx)
+	return s.DB.Tasks(ctx)
+}

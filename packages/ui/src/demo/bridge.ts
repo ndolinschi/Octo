@@ -21,6 +21,8 @@ import { demoProviders } from "./providers";
 import { createDemoNote, docOf, listed, patchDemoNote, seedNotes } from "./notes";
 import { orbitLive } from "./orbit";
 import { withDemoCommands } from "./commands";
+import { withDemoSessions } from "./sessions";
+import { sideModeFromUrl, withDemoSide } from "./side";
 import { withDemoReview } from "./review";
 import { withDemoParity } from "./parity";
 import { withDemoV7 } from "./v7";
@@ -541,13 +543,75 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
         categories: [
           { id: "messages", label: "Conversation", tokens: 21_400 },
           { id: "tool_results", label: "Tool results", tokens: 29_800 },
-          { id: "tools", label: "Tool definitions", tokens: 9_300 },
+          {
+            id: "tools",
+            label: "Tool definitions",
+            tokens: 9_300,
+            // Decision 88: what is inside; the rows add up to the category.
+            items: [
+              ["read_file", 1_900, "Harness tools"],
+              ["write_file", 1_700, "Harness tools"],
+              ["run_command", 1_500, "Harness tools"],
+              ["spawn_agent", 1_400, "Harness tools"],
+              ["search_files", 900, "Harness tools"],
+              ["list_dir", 700, "Harness tools"],
+              ["web_fetch", 700, "Harness tools"],
+              ["task_update", 500, "Harness tools"],
+            ].map(([label, tokens, group]) => ({
+              id: `tool:${String(label)}`,
+              label: String(label),
+              tokens: Number(tokens),
+              group: String(group),
+              loaded: true,
+              estimated: true,
+            })),
+          },
           { id: "system", label: "Instructions and briefing", tokens: 7_200 },
-          { id: "notes", label: "Project notes and memory", tokens: 6_100 },
+          {
+            id: "notes",
+            label: "Project notes and memory",
+            tokens: 6_100,
+            items: [
+              { id: "mem:index", label: "Memory index", tokens: 3_900, group: "Memory", loaded: true, estimated: true },
+              { id: "mem:notes", label: "Pinned notes", tokens: 2_200, group: "Memory", loaded: true, estimated: true },
+            ],
+          },
           { id: "summary", label: "Compacted summary", tokens: 5_400 },
-          { id: "files", label: "Project instruction files", tokens: 2_800 },
+          {
+            id: "files",
+            label: "Project instruction files",
+            tokens: 2_800,
+            items: [{ id: "file:agents", label: "AGENTS.md", tokens: 2_800, path: "app:AGENTS.md", actions: ["open"], loaded: true, estimated: true }],
+          },
         ],
         last_request: { input: 64_000, cached: 49_600, output: 3_100 },
+        not_loaded: [
+          {
+            id: "mf:release",
+            label: "release-checklist.md",
+            tokens: 1_800,
+            group: "Memory files",
+            path: "/memories/release-checklist.md",
+            actions: ["open"],
+            loaded: false,
+            estimated: true,
+          },
+          {
+            id: "mf:ports",
+            label: "dev-ports.md",
+            tokens: 420,
+            group: "Memory files",
+            path: "/memories/dev-ports.md",
+            actions: ["open"],
+            loaded: false,
+            estimated: true,
+          },
+        ],
+        buffer_tokens: 12_000,
+        largest_messages: [
+          { message_id: 3, role: "user" as const, tokens: 4_100, preview: "Please read the migration guide and plan the upgrade of every package" },
+          { message_id: 12, role: "assistant" as const, tokens: 3_600, preview: "Here is the plan: first the lockfile, then the build scripts" },
+        ],
       };
     },
     compactNow: async (id) => {
@@ -731,5 +795,9 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
-  return withDemoCommands(withDemoReview(withDemoParity(withDemoV7(bridge, records), records), records), records);
+  return withDemoSide(
+    withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records),
+    records,
+    sideModeFromUrl(),
+  );
 }

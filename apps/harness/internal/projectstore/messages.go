@@ -17,8 +17,10 @@ type Message struct {
 	// Stopped marks an assistant message cut short because the turn was cancelled.
 	Stopped bool `json:"stopped,omitempty"`
 	// Command is the name of the agent slash command a user message ran ("" for plain text).
-	Command string          `json:"command,omitempty"`
-	Raw     json.RawMessage `json:"-"`
+	Command string `json:"command,omitempty"`
+	// SessionID is the main session an orchestrator message was stored in ("" for other agents' messages).
+	SessionID string          `json:"session_id,omitempty"`
+	Raw       json.RawMessage `json:"-"`
 }
 
 func (d *DB) AppendMessage(ctx context.Context, agentID, role string, contentJSON []byte) (Message, error) {
@@ -33,9 +35,17 @@ func (d *DB) AppendMessageCommand(ctx context.Context, agentID, role string, con
 		return Message{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	sid := ""
+	if isOrchestrator(ctx, tx, agentID) {
+		if sid, err = ensureCurrentMain(ctx, tx); err != nil {
+			return Message{}, err
+		}
+	} else if _, err := tx.ExecContext(ctx, `UPDATE sessions SET ended_at = ? WHERE kind = 'agent' AND agent_id = ?`, now, agentID); err != nil {
+		return Message{}, err
+	}
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO messages (agent_id, role, content_json, created_at, command) VALUES (?, ?, ?, ?, ?)`,
-		agentID, role, string(contentJSON), now, command)
+		`INSERT INTO messages (agent_id, role, content_json, created_at, command, session_id) VALUES (?, ?, ?, ?, ?, ?)`,
+		agentID, role, string(contentJSON), now, command, sid)
 	if err != nil {
 		return Message{}, err
 	}
@@ -59,7 +69,7 @@ func (d *DB) AppendMessageCommand(ctx context.Context, agentID, role string, con
 		return Message{}, err
 	}
 	m := newMessage(id, agentID, role, contentJSON, now)
-	m.Command = command
+	m.Command, m.SessionID = command, sid
 	return m, nil
 }
 
@@ -71,19 +81,25 @@ func (d *DB) LiveMessages(ctx context.Context, agentID string) ([]Message, error
 		return nil, err
 	}
 	upto, err := d.LatestClearUpto(ctx, agentID)
-	if err != nil || upto == 0 {
-		return all, err
+	if err != nil {
+		return nil, err
 	}
-	i := 0
-	for i < len(all) && all[i].ID <= upto {
-		i++
+	sid, err := d.scopeSession(ctx, agentID)
+	if err != nil {
+		return nil, err
 	}
-	return all[i:], nil
+	out := all[:0:0]
+	for _, m := range all {
+		if m.ID > upto && (sid == "" || m.SessionID == sid) {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 func (d *DB) Messages(ctx context.Context, agentID string) ([]Message, error) {
 	rows, err := d.sql.QueryContext(ctx,
-		`SELECT id, role, content_json, created_at, stopped, command FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id`, agentID)
+		`SELECT id, role, content_json, created_at, stopped, command, session_id FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id`, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,13 +107,13 @@ func (d *DB) Messages(ctx context.Context, agentID string) ([]Message, error) {
 	out := []Message{}
 	for rows.Next() {
 		var id int64
-		var role, content, created, command string
+		var role, content, created, command, sid string
 		var stopped bool
-		if err := rows.Scan(&id, &role, &content, &created, &stopped, &command); err != nil {
+		if err := rows.Scan(&id, &role, &content, &created, &stopped, &command, &sid); err != nil {
 			return nil, err
 		}
 		m := newMessage(id, agentID, role, []byte(content), created)
-		m.Stopped, m.Command = stopped, command
+		m.Stopped, m.Command, m.SessionID = stopped, command, sid
 		out = append(out, m)
 	}
 	return out, rows.Err()
@@ -140,10 +156,10 @@ func (d *DB) UpdateMessageContent(ctx context.Context, id int64, contentJSON []b
 // LastMessage is the newest message of the agent; ErrNotFound when it has none.
 func (d *DB) LastMessage(ctx context.Context, agentID string) (Message, error) {
 	var id int64
-	var role, content, created, command string
+	var role, content, created, command, sid string
 	err := d.sql.QueryRowContext(ctx,
-		`SELECT id, role, content_json, created_at, command FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id DESC LIMIT 1`, agentID).
-		Scan(&id, &role, &content, &created, &command)
+		`SELECT id, role, content_json, created_at, command, session_id FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id DESC LIMIT 1`, agentID).
+		Scan(&id, &role, &content, &created, &command, &sid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, ErrNotFound
 	}
@@ -151,6 +167,6 @@ func (d *DB) LastMessage(ctx context.Context, agentID string) (Message, error) {
 		return Message{}, err
 	}
 	m := newMessage(id, agentID, role, []byte(content), created)
-	m.Command = command
+	m.Command, m.SessionID = command, sid
 	return m, nil
 }

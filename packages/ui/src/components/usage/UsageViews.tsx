@@ -9,7 +9,8 @@ import { useModelNames } from "../../state/models";
 import { useProject } from "../../state/project";
 import { DayBars } from "../primitives/DayBars";
 import { EmptyState } from "../primitives/EmptyState";
-import { SkeletonRows } from "../primitives/InfoList";
+import { Notice } from "../primitives/Notice";
+import { SkeletonList } from "../primitives/Skeleton";
 import { UsageTable, type UsageTableRow } from "../shared/UsageTable";
 import type { Load, UsageData } from "./useUsage";
 
@@ -22,12 +23,12 @@ export function dayLabel(key: string): string {
 
 /** Loading / error / empty, in one place for the views. */
 function UsageState({ load, empty, children }: { load: Load<UsageData>; empty: boolean; children: React.ReactNode }) {
-  if (load.status === "loading") return <SkeletonRows count={6} />;
+  if (load.status === "loading") return <SkeletonList count={6} size="md" />;
   if (load.status === "error")
     return (
-      <p role="alert" className="px-2 text-sm text-fg-2">
-        Couldn't read usage: {load.message}. Check that the harness is running, then reopen this tab.
-      </p>
+      <Notice form="block" tone="error" title="Couldn't read usage">
+        {load.message}. Check that the harness is running, then reopen this tab.
+      </Notice>
     );
   if (empty) return <EmptyState title="No usage in this range">Tokens appear here after a request or an agent gets a model response.</EmptyState>;
   return <>{children}</>;

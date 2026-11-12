@@ -205,8 +205,10 @@ export type Message = {
   created_at: string;
   /** The turn was stopped while this reply was being written (its text is cut). */
   stopped?: boolean;
-  /** B11: on a user message that ran an ACP agent's slash command, the command's name (without the slash). */
+  /** B11: on a user message that ran an ACP agent's slash command, the command's name (without the slash); `session_report` marks a note of sub-agent results handed to the orchestrator (show it as a quiet note, not as typed text). */
   command?: string;
+  /** Project sessions: the main session an orchestrator message was stored in (absent on a sub-agent's messages). */
+  session_id?: string;
 };
 
 /** A transcript marker: the history up to and including message `upto_message_id` was replaced by a summary at `at`. */
@@ -489,6 +491,12 @@ export type MessageSteeredEvent = { type: "message.steered"; seq: number; queue_
 /** B11: the ACP agent's slash commands (or their pending state) changed: refetch `getSlashCommands`. */
 export type SlashCommandsUpdatedEvent = { type: "slash_commands.updated"; seq: number; project_id: string };
 /** B11: `/clear` started a new session; the fields are those of `ClearResult`. */
+/** Project sessions: a session appeared (a new main session, a sub-agent's session). */
+export type SessionCreatedEvent = { type: "session.created"; seq: number; session: ProjectSession };
+/** A session's fields changed (state, title, archive, counts), or it was deleted (`deleted: true`, only `session_id`). */
+export type SessionUpdatedEvent = { type: "session.updated"; seq: number; session?: ProjectSession; session_id?: string; deleted?: boolean };
+/** Another main session became the current one (resume, new session, /clear). */
+export type SessionCurrentEvent = { type: "session.current"; seq: number; session_id: string; previous_session_id: string };
 export type ConversationClearedEvent = {
   type: "conversation.cleared";
   seq: number;
@@ -630,6 +638,9 @@ export type BridgeEvent =
   | ContextUpdatedEvent
   | SlashCommandsUpdatedEvent
   | ConversationClearedEvent
+  | SessionCreatedEvent
+  | SessionUpdatedEvent
+  | SessionCurrentEvent
   | FactRememberedEvent
   | FactForgottenEvent
   | SideDeltaEvent
@@ -1205,8 +1216,12 @@ export type Task = {
   title: string;
   status: TaskStatus;
   goal: string;
-  /** Who wrote the goal: the harness (fallback: the first 400 characters of the request), the orchestrator, or the digest. */
-  goal_by: "harness" | "orchestrator" | "digest";
+  /**
+   * Who wrote the goal: `rule` (the request minimally rewritten by a rule, when no model digested the turn), the
+   * orchestrator, or the digest. `harness` (the raw first words of the request) is only on tasks from before M6
+   * that the clean-up kept.
+   */
+  goal_by: "harness" | "rule" | "orchestrator" | "digest";
   /** True while the record is the one the harness opened for a request and nobody has edited. */
   auto: boolean;
   constraints: string[];
@@ -1219,6 +1234,18 @@ export type Task = {
   message_ids: number[];
   created_at: string;
   updated_at: string;
+  /** M6: what is done and what is left (a model's digest, or built from the changes ledger without one). Always sent by a harness that has M6. */
+  state_summary?: string;
+  /** M6: unanswered questions the digest found; a task with some is unfinished. */
+  open_questions?: string[];
+  /** M6: the digest said the goal is not met or left questions, or the last turn failed: `/clear` keeps such a task open. */
+  unfinished?: boolean;
+  /** M6: why a done or dropped task closed: "goal met", "turn completed", "cleared", "stopped", "closed by the orchestrator", "dropped: no activity". Absent while open. */
+  closed_reason?: string;
+  /** M6: the memory session the task started in (absent on a task from before sessions). */
+  session_id?: string;
+  /** M6: the exchanges (M4) of the turns that worked on the task, oldest first. */
+  exchange_ids?: string[];
 };
 export type MemoryFile = { path: string; summary: string; content?: string; size: number; created_at: string; updated_at: string };
 /** `GET .../memory`: the files without content and the harness-generated INDEX.md text. */
@@ -1284,6 +1311,54 @@ export type MemoryExchange = {
   removed?: boolean;
 };
 export type MemorySessionDetail = { session: MemorySession; exchanges: MemoryExchange[] };
+
+// --- Project sessions -----------------------------------------------------------------------------------------
+export type ProjectSessionKind = "main" | "agent";
+export type ProjectSessionState = "working" | "waiting" | "idle" | "failed" | "stopped";
+/**
+ * A session of the project: a conversation with the orchestrator (`main`) or the session of one sub-agent (`agent`,
+ * `parent_session_id` = the main session whose turn spawned it, `turn_id` = that turn's request, 0/absent when the data
+ * did not say). Exactly one main session is `current`: what the project's composer writes to.
+ */
+export type ProjectSession = {
+  id: string;
+  kind: ProjectSessionKind;
+  parent_session_id?: string;
+  agent_id?: string;
+  turn_id?: number;
+  title: string;
+  state: ProjectSessionState;
+  model: string;
+  started_at: string;
+  last_activity_at: string;
+  /** Exchanges that were not forgotten (main sessions; 0 for an agent session). */
+  exchanges: number;
+  /** Agent sessions a main session started. */
+  children: number;
+  current: boolean;
+  archived: boolean;
+  /** The summary a `/clear` wrote when it ended this main session. */
+  summary?: string;
+  /**
+   * A message can be sent now. Main session: it is the current one (its messages go through `sendOrQueueMessage`);
+   * agent session: `messageSession` is accepted (steered while it runs, continued after it finished).
+   */
+  can_message: boolean;
+  /** Why not, for a disabled composer. `code`: `not_current`, `steer_unsupported`, `not_running`, `not_continuable`, `builtin_loop_unavailable`. */
+  message_blocked?: { code: string; message: string };
+};
+export type SessionsParams = { kind?: ProjectSessionKind; state?: ProjectSessionState; archived?: boolean | "all"; limit?: number; before?: string };
+export type ProjectSessionDetail = {
+  session: ProjectSession;
+  /** A main session's requests and answers (the memory exchange shape). */
+  exchanges: MemoryExchange[];
+  /** The agent sessions a main session started, oldest first. */
+  children: ProjectSession[];
+  /** An agent session's agent row (task, result, usage). */
+  agent?: Agent;
+};
+/** `steered`: a running built-in agent takes the text at its next tool boundary; `continued`: a finished agent runs again with it. */
+export type SessionMessageResult = { outcome: "steered" | "continued"; session: ProjectSession };
 export type MemorySessionsParams = { limit?: number; before?: string };
 
 // --- M2: context receipts -------------------------------------------------------------------------------------

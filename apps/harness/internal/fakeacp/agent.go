@@ -227,6 +227,10 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 			a.respondError(m.ID, -32602, "sessionId and cwd required")
 			return
 		}
+		if a.opts.loadFail {
+			a.respondError(m.ID, -32002, "session not found: "+p.SessionID)
+			return
+		}
 		if a.opts.mcpReject && len(p.McpServers) > 0 {
 			a.respondError(m.ID, -32602, "MCP servers are not supported by this agent")
 			return

@@ -36,10 +36,15 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	}
 	endSpan := rt.trackSpan(ctx, child.ID, toolUse, changes.SourceACPTurn)
 	defer endSpan()
-	stop, err := client.RunWith(ctx, cwd, child.Task, h, acp.RunOptions{
+	sess, err := client.NewSession(ctx, cwd, nil, acp.RunOptions{
 		Model: t.model, ModelRequired: t.requested, ModelApplied: t.model != "" && len(ag.ModelArg) > 0, AuthHint: ag.Hint, Auth: authPolicy(ag),
 		OnModels: func(m []acp.AdvertisedModel, cur string) { rt.o.noteAdvertised(ag.ID, m, cur) },
 	})
+	var stop acp.StopReason
+	if err == nil {
+		rt.keepAgentSession(ctx, child.ID, ag.ID, t.recorded(), sess.ID)
+		stop, err = client.Prompt(ctx, sess.ID, child.Task, h)
+	}
 	h.finish(ctx, err != nil)
 	if err != nil {
 		return "", acpFailure(ag, "ACP agent", err)

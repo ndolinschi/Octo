@@ -1,97 +1,137 @@
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import type { HitTarget } from "../../lib/memory/search";
 import { useApp } from "../../state/app";
+import { SearchField } from "../primitives/SearchField";
+import { WindowReport } from "../shared/WindowReport";
 import { ViewTabs } from "../primitives/ViewTabs";
-import { ContextTab } from "./ContextTab";
-import { FilesTab } from "./FilesTab";
-import { Empty } from "./parts";
-import { SearchTab } from "./SearchTab";
-import { SessionsTab } from "./SessionsTab";
-import { TasksTab } from "./TasksTab";
+import { FilesView } from "./FilesView";
+import { PaneEmpty } from "./parts";
+import { KnowledgeView, type KnowledgeFocus } from "./KnowledgeView";
+import { SearchResults } from "./SearchResults";
+import { SessionsView } from "./SessionsView";
+import { useMemorySearch } from "./useMemorySearch";
 import { useMemoryFiles, useTasks } from "./useMemory";
 
-export type MemoryTab = "sessions" | "tasks" | "files" | "search" | "context";
+export type MemoryTab = "sessions" | "knowledge" | "files";
 
 const TABS: readonly { id: MemoryTab; label: string }[] = [
   { id: "sessions", label: "Sessions" },
-  { id: "tasks", label: "Tasks" },
+  { id: "knowledge", label: "Knowledge" },
   { id: "files", label: "Files" },
-  { id: "search", label: "Search" },
-  { id: "context", label: "Context" },
 ];
 
 /**
- * What the orchestrator remembers about a project (orchestrator memory M3, M4): its sessions (what was asked and answered), task records, memory files, a search
- * over all of it, and per request the context receipt (what it had in front of it). It fills the space it is given
- * (a dock tab or a page) and sizes itself by container width: list and detail side by side from 640px, one column below.
- * Hosts pass `onOpenMessage` (open a request in the chat) and `onOpenFile` (open a project file); without them the
- * links are plain text. Needs a bridge with the memory methods, and says so when it has none.
+ * What the orchestrator remembers about a project (decision 93): one search field above three views, Sessions (what was
+ * asked and answered), Knowledge (what is remembered, and the tasks) and Files. While the field has text its results
+ * replace the views, grouped by kind; Esc clears it. It fills the space it is given and sizes itself by container width:
+ * list and detail side by side from 640 px, one column below, where rows open in place. Hosts pass `onOpenMessage` (a
+ * request in the chat), `onOpenFile` (a project file) and `onOpenNote`; without them those links are plain text or absent.
+ * `reportRequests` opens the context window report over the view (the context popover's "Open context details").
  */
 export function MemoryView(props: {
   projectId: string;
-  onOpenMessage?: (messageId: number) => void;
-  onOpenFile?: (path: string) => void;
-  /** Opens on this tab (default Sessions). */
-  initialTab?: MemoryTab;
-  /** With the Context tab: the request whose receipt is shown first. */
-  turnId?: number;
+  onOpenMessage?: ((messageId: number) => void) | undefined;
+  onOpenFile?: ((path: string) => void) | undefined;
+  onOpenNote?: ((noteId: string) => void) | undefined;
+  initialView?: MemoryTab;
+  /** Each increase opens the context window report as a sheet (the context popover's "Open context details"). */
+  reportRequests?: number;
 }) {
   const { bridge } = useApp();
-  const { projectId, onOpenMessage, onOpenFile } = props;
-  const [tab, setTab] = useState<MemoryTab>(props.initialTab ?? (props.turnId !== undefined ? "context" : "sessions"));
-  const [task, setTask] = useState<{ id: string | null; fact: string | null }>({ id: null, fact: null });
+  const { projectId, onOpenMessage, onOpenFile, onOpenNote } = props;
+  const [view, setView] = useState<MemoryTab>(props.initialView ?? "sessions");
+  const [query, setQuery] = useState("");
   const [session, setSession] = useState<{ id: string | null; exchange: string | null }>({ id: null, exchange: null });
+  const [focus, setFocus] = useState<KnowledgeFocus & { nonce: number }>({ task: null, fact: null, nonce: 0 });
   const [file, setFile] = useState<string | null>(null);
-  const [turn, setTurn] = useState<number | null>(props.turnId ?? null);
+  const [dismissed, setDismissed] = useState(0);
+  const reportRequests = props.reportRequests ?? 0;
   const tasks = useTasks(projectId);
   const files = useMemoryFiles(projectId);
+  const search = useMemorySearch(projectId, query);
+  const field = useRef<HTMLInputElement>(null);
+  const searching = query.trim() !== "";
 
   if (!bridge.listTasks && !bridge.listMemory && !bridge.listMemorySessions) {
-    return <Empty title="This harness has no memory">Update the harness to see task records, memory files and context receipts here.</Empty>;
+    return <PaneEmpty title="This harness has no memory">Update the harness to see sessions, what is remembered and memory files here.</PaneEmpty>;
   }
 
-  const open = (t: NonNullable<HitTarget>) => {
+  const open = (t: HitTarget) => {
+    setQuery("");
     if (t.to === "task") {
-      setTask({ id: t.taskId, fact: t.factId });
-      setTab("tasks");
+      setFocus((f) => ({ task: t.factId ? null : t.taskId, fact: t.factId ? `${t.taskId}/${t.factId}` : null, nonce: f.nonce + 1 }));
+      setView("knowledge");
     } else if (t.to === "file") {
       setFile(t.path);
-      setTab("files");
+      setView("files");
     } else if (t.to === "session") {
       setSession({ id: t.sessionId, exchange: t.exchangeId });
-      setTab("sessions");
-    } else onOpenMessage?.(t.messageId);
+      setView("sessions");
+    } else if (t.to === "message") onOpenMessage?.(t.messageId);
+    else onOpenNote?.(t.noteId);
   };
-  const canOpenMessage = onOpenMessage !== undefined;
+  const onKeyDown = (e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      field.current?.focus();
+      field.current?.select();
+    }
+  };
 
   return (
-    <div className="@container/memory flex h-full min-h-0 flex-col" data-memory>
-      <ViewTabs<MemoryTab> label="Memory" options={TABS} value={tab} onChange={setTab} />
-      <div className="min-h-0 flex-1">
-        {tab === "sessions" && (
-          <SessionsTab
-            projectId={projectId}
-            selected={session.id}
-            focusExchange={session.exchange}
-            onSelect={(id, exchange) => setSession({ id, exchange: exchange ?? null })}
-            onOpenMessage={onOpenMessage}
-          />
-        )}
-        {tab === "tasks" && (
-          <TasksTab
-            load={tasks.load}
-            reload={tasks.reload}
-            selected={task.id}
-            focusFact={task.fact}
-            onSelect={(id, fact) => setTask({ id, fact: fact ?? null })}
-            onOpenMessage={onOpenMessage}
-            onOpenFile={onOpenFile}
-          />
-        )}
-        {tab === "files" && <FilesTab projectId={projectId} load={files.load} reload={files.reload} selected={file} onSelect={setFile} />}
-        {tab === "search" && <SearchTab projectId={projectId} onOpen={open} canOpenMessage={canOpenMessage} />}
-        {tab === "context" && <ContextTab projectId={projectId} selected={turn} onSelect={setTurn} onOpen={open} canOpenMessage={canOpenMessage} />}
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Ctrl/Cmd+F while the tab has focus goes to its search field (decision 93 b)
+    <div className="flex h-full min-h-0 flex-col" data-memory onKeyDown={onKeyDown}>
+      <div className="shrink-0 px-pane pt-2 pb-2">
+        <SearchField ref={field} label="Search memory" placeholder="Search exchanges, knowledge, files and notes" size="sm" value={query} onChange={setQuery} />
       </div>
+      {searching ? (
+        <div className="min-h-0 flex-1 border-t border-line">
+          <SearchResults state={search} query={query} canOpenMessage={onOpenMessage !== undefined} onOpen={open} />
+        </div>
+      ) : (
+        <>
+          <ViewTabs<MemoryTab> label="Memory" options={TABS} value={view} onChange={setView} />
+          <div className="min-h-0 flex-1">
+            {view === "sessions" && (
+              <SessionsView
+                projectId={projectId}
+                selected={session.id}
+                focusExchange={session.exchange}
+                onSelect={(id) => setSession({ id, exchange: null })}
+                onOpenMessage={onOpenMessage}
+              />
+            )}
+            {view === "knowledge" && (
+              <KnowledgeView key={focus.nonce} load={tasks.load} reload={tasks.reload} focus={focus} onOpenMessage={onOpenMessage} onOpenFile={onOpenFile} />
+            )}
+            {view === "files" && <FilesView projectId={projectId} load={files.load} reload={files.reload} selected={file} onSelect={setFile} />}
+          </div>
+        </>
+      )}
+      {reportRequests > dismissed && (
+        <WindowReport
+          onClose={() => setDismissed(reportRequests)}
+          onOpenMemoryFile={(path) => {
+            setFile(path);
+            setView("files");
+            setDismissed(reportRequests);
+          }}
+          onOpenFile={
+            onOpenFile &&
+            ((path) => {
+              onOpenFile(path);
+              setDismissed(reportRequests);
+            })
+          }
+          onOpenMessage={
+            onOpenMessage &&
+            ((id) => {
+              onOpenMessage(id);
+              setDismissed(reportRequests);
+            })
+          }
+        />
+      )}
     </div>
   );
 }

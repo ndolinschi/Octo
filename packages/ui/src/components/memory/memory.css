@@ -1,0 +1,34 @@
+/* Expanding an exchange, a fact or a task in place (decision 93 d): the height grows in 100 ms, nothing else moves.
+   The inner box clips only while it animates, so focus rings are not cut afterwards. */
+@keyframes octo-mem-open {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+@keyframes octo-mem-clip {
+  from,
+  to {
+    overflow: hidden;
+  }
+}
+.octo-mem-expand {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: octo-mem-open 100ms ease-out;
+}
+.octo-mem-expand > div {
+  min-height: 0;
+  min-width: 0;
+  animation: octo-mem-clip 100ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .octo-mem-expand,
+  .octo-mem-expand > div {
+    animation: none;
+  }
+}

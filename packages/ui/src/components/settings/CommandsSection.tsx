@@ -3,8 +3,10 @@ import { useId, useState } from "react";
 import { renameOffered } from "../../lib/commands/config";
 import { errorMessage } from "../../lib/format";
 import { Button } from "../primitives/Button";
+import { Select } from "../primitives/Select";
+import { SkeletonList } from "../primitives/Skeleton";
 import { CommandDialog, GlobsDialog, OfferedDialog } from "./CommandDialogs";
-import { SaveStatus, Select, SettingsGroup, SettingsRow, SkeletonRow } from "./parts";
+import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { useProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
 
@@ -30,22 +32,13 @@ export function CommandsSection() {
   if (details.status === "loading")
     return (
       <SettingsGroup label="Commands">
-        <SkeletonRow />
-        <SkeletonRow />
+        <SkeletonList count={2} size="lg" twoLine />
       </SettingsGroup>
     );
   if (details.status === "error")
     return (
       <SettingsGroup label="Commands">
-        <SettingsRow
-          title={<span className="text-err">Couldn't load projects</span>}
-          description={`${details.message}. Check that the harness is running, then retry.`}
-          control={
-            <Button size="sm" onClick={retry}>
-              Retry
-            </Button>
-          }
-        />
+        <LoadErrorRow what="projects" message={details.message} hint="Check that the harness is running, then retry." onRetry={retry} />
       </SettingsGroup>
     );
   if (details.projects.length === 0)
@@ -76,13 +69,14 @@ function ProjectPick(props: { projects: readonly Project[]; value: string; onCha
       htmlFor={id}
       description="Commands belong to one project."
       control={
-        <Select id={id} value={props.value} onChange={(e) => props.onChange(e.target.value)} className="w-48">
-          {props.projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </Select>
+        <Select
+          id={id}
+          label="Settings for"
+          value={props.value}
+          options={props.projects.map((p) => ({ value: p.id, label: p.name }))}
+          onChange={props.onChange}
+          className={CONTROL_W.md}
+        />
       }
     />
   );
@@ -176,19 +170,15 @@ function ProjectCommands({ project, update }: { project: Project; update: Update
           control={
             <Select
               id={preferId}
+              label="Diff layout"
               value={review.prefer}
-              onChange={(e) => {
-                const v = PREFER.find((o) => o.id === e.target.value)?.id;
+              options={PREFER.map((o) => ({ value: o.id, label: o.label }))}
+              onChange={(value) => {
+                const v = PREFER.find((o) => o.id === value)?.id;
                 if (v) void run(() => update(project.id, { review: { ...review, prefer: v } }));
               }}
-              className="w-48"
-            >
-              {PREFER.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
+              className={CONTROL_W.md}
+            />
           }
         />
       </SettingsGroup>

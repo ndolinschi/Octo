@@ -64,6 +64,8 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	defer cancel()
 
 	s := rt.o.acp.session(rt.pid())
+	s.digestMu.Lock() // a digest prompt of the last turn may still be open in the session
+	s.digestMu.Unlock()
 	handler := newACPSession(rt, orch.ID, target.agent.ID, orch.Model)
 	handler.orchestrator = true
 	handler.flat = target.agent.FlatRateIn(target.processEnv())
@@ -277,6 +279,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	}); err != nil {
 		rt.logErr("save acp session", err)
 	}
+	rt.noteACPSession(ctx, ag.ID, t.recorded(), sess.ID)
 	return true, nil
 }
 
@@ -431,6 +434,9 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 	}
 	if rt.planText != "" {
 		b.WriteString("Approved plan (pinned; the user approved it, carry it out and report against it):\n" + rt.planText + "\n\n")
+	}
+	if rt.reportNote != "" {
+		b.WriteString(rt.reportNote + "\n\n")
 	}
 	if n := modeNote(rt.mode); n != "" {
 		b.WriteString("[" + n + "]\n")

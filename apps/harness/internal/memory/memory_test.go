@@ -191,7 +191,7 @@ func TestDigestNeverRewritesWhatTheOrchestratorOrUserWrote(t *testing.T) {
 	// The fallback goal is replaced by the digest while nobody wrote one.
 	m2 := r.say("user", "second request about logging")
 	t2, _ := r.svc.OpenTask(ctx, "second request about logging", m2.ID)
-	if t2.Goal != "second request about logging" || t2.GoalBy != "harness" {
+	if t2.Goal != "Second request about logging" || t2.GoalBy != "rule" {
 		t.Fatalf("fallback goal = %+v", t2)
 	}
 	d2, _ := r.svc.ApplyDigest(ctx, t2.ID, m2.ID, Digest{Goal: "Add structured logging"})

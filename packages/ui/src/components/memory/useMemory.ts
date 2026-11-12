@@ -1,4 +1,4 @@
-import type { ContextReceipt, MemoryFile, MemorySession, MemorySessionDetail, Task } from "@octo/agent-client";
+import type { MemoryFile, MemorySession, MemorySessionDetail, Task } from "@octo/agent-client";
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage } from "../../lib/format";
 import { isNotFound, type Load } from "../../lib/memory/load";
@@ -65,15 +65,6 @@ export function useMemoryFile(projectId: string, path: string, revision: number)
   const get = bridge.getMemoryFile;
   const load = useRead(`file|${projectId}|${path}`, get ? () => get.call(bridge, projectId, path) : null, revision);
   return load.status === "none" ? { status: "loading" } : load;
-}
-
-/** `none` is a turn without a receipt (it ran before receipts existed): an empty state, not an error. */
-export type ReceiptLoad = Load<ContextReceipt> | { status: "none" };
-
-export function useReceipt(projectId: string, turnId: number): ReceiptLoad {
-  const { bridge } = useApp();
-  const get = bridge.getTurnContext;
-  return useRead(`receipt|${projectId}|${turnId}`, get ? () => get.call(bridge, projectId, turnId) : null, 0, isNotFound);
 }
 
 /** Sessions, newest first (the latest 50), re-read after `memory.updated` (an exchange recorded or forgotten, a session ended). */

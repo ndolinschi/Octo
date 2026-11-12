@@ -93,14 +93,18 @@ export function receiptView(r: ContextReceipt): ReceiptView {
   };
 }
 
-/**
- * What an id in a block names: a message id (digits), a memory file path, a task id, or `task/fact`. The Context tab
- * links the first and the second to the chat and the Files tab.
- */
-export function idKind(blockName: string, id: string): "message" | "file" | "task" | "fact" | "other" {
-  if (blockName === "memory_index") return "file";
-  if (blockName === "open_tasks" || blockName === "changed_tasks") return "task";
-  if (blockName === "facts") return "fact";
-  if (/^\d+$/.test(id)) return "message";
-  return "other";
+const NOUN: Record<string, [string, string]> = {
+  memory_index: ["memory file", "memory files"],
+  open_tasks: ["open task", "open tasks"],
+  recent_window: ["recent exchange", "recent exchanges"],
+  facts: ["fact", "facts"],
+  current_turn: ["message", "messages"],
+  history: ["message", "messages"],
+  changed_tasks: ["changed task", "changed tasks"],
+};
+
+/** "3 open tasks", "1 memory file"; an unknown block (a newer harness) counts "items". */
+export function countText(name: string, count: number): string {
+  const [one, many] = NOUN[name] ?? ["item", "items"];
+  return `${count} ${count === 1 ? one : many}`;
 }

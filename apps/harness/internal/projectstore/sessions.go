@@ -193,15 +193,26 @@ func recordExchange(ctx context.Context, tx txer, e Exchange, gap time.Duration,
 }
 
 func pickSession(ctx context.Context, tx txer, e Exchange, gap time.Duration) (string, error) {
+	// The turn's own session: the one its user message was stored in (project sessions, schema 13).
+	var own string
+	if err := tx.QueryRowContext(ctx, `SELECT s.id FROM messages m JOIN sessions s ON s.id = m.session_id WHERE m.id = ? AND s.kind = 'main'`, e.TurnID).Scan(&own); err == nil && own != "" {
+		var held int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM exchanges WHERE session_id = ?`, own).Scan(&held); err != nil {
+			return "", err
+		}
+		if held == 0 {
+			return own, nameSession(ctx, tx, own, e)
+		}
+		return own, nil
+	}
 	var sid, ended string
 	var closed bool
 	var held int
 	err := tx.QueryRowContext(ctx, `SELECT id, ended_at, closed, (SELECT COUNT(*) FROM exchanges x WHERE x.session_id = sessions.id)
-		FROM sessions ORDER BY started_at DESC, rowid DESC LIMIT 1`).Scan(&sid, &ended, &closed, &held)
+		FROM sessions WHERE kind = 'main' ORDER BY current DESC, started_at DESC, rowid DESC LIMIT 1`).Scan(&sid, &ended, &closed, &held)
 	if err == nil && !closed && held == 0 {
 		// A boundary (/clear) left an empty session open for this request: it names and dates the session.
-		_, err = tx.ExecContext(ctx, `UPDATE sessions SET title = ?, started_at = ?, ended_at = ? WHERE id = ?`, SessionTitle(e.Request), e.StartedAt, e.StartedAt, sid)
-		return sid, err
+		return sid, nameSession(ctx, tx, sid, e)
 	}
 	if err == nil && !closed && parseStamp(e.StartedAt).Sub(parseStamp(ended)) <= gap {
 		return sid, nil
@@ -210,9 +221,19 @@ func pickSession(ctx context.Context, tx txer, e Exchange, gap time.Duration) (s
 		return "", err
 	}
 	sid = NewID("ses")
-	_, err = tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason) VALUES (?,?,?,?,0,'')`,
+	if _, err = tx.ExecContext(ctx, `UPDATE sessions SET current = 0 WHERE kind = 'main'`); err != nil {
+		return "", err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason, current) VALUES (?,?,?,?,0,'',1)`,
 		sid, SessionTitle(e.Request), e.StartedAt, e.StartedAt)
 	return sid, err
+}
+
+// nameSession titles and dates an empty session by its first request; a title the person set stays.
+func nameSession(ctx context.Context, tx txer, sid string, e Exchange) error {
+	_, err := tx.ExecContext(ctx, `UPDATE sessions SET title = CASE WHEN title_edited = 1 THEN title ELSE ? END, started_at = ?, ended_at = ? WHERE id = ?`,
+		SessionTitle(e.Request), e.StartedAt, e.StartedAt, sid)
+	return err
 }
 
 type rower interface {
@@ -224,7 +245,7 @@ func loadSession(ctx context.Context, x rower, id string) (Session, error) {
 	var closed bool
 	err := x.QueryRowContext(ctx, `SELECT s.id, s.title, s.started_at, s.ended_at, s.closed, s.reason, s.summary, s.summary_source,
 		(SELECT COUNT(*) FROM exchanges e WHERE e.session_id = s.id AND e.removed = 0),
-		s.id = (SELECT id FROM sessions ORDER BY started_at DESC, rowid DESC LIMIT 1)
+		s.current = 1
 		FROM sessions s WHERE s.id = ?`, id).Scan(&s.ID, &s.Title, &s.StartedAt, &s.EndedAt, &closed, &s.Reason, &s.Summary, &s.SummarySource, &s.Exchanges, &s.Open)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, ErrNotFound
@@ -241,7 +262,7 @@ func loadSession(ctx context.Context, x rower, id string) (Session, error) {
 // is already closed.
 func (d *DB) CloseSession(ctx context.Context, reason string) error {
 	_, err := d.sql.ExecContext(ctx, `UPDATE sessions SET closed = 1, reason = ? WHERE closed = 0 AND id =
-		(SELECT id FROM sessions ORDER BY started_at DESC, rowid DESC LIMIT 1)`, reason)
+		(SELECT id FROM sessions WHERE kind = 'main' ORDER BY current DESC, started_at DESC, rowid DESC LIMIT 1)`, reason)
 	return err
 }
 
@@ -260,7 +281,7 @@ func (d *DB) StartNewSession(ctx context.Context, reason, summary, source string
 	var closed bool
 	var held int
 	err = tx.QueryRowContext(ctx, `SELECT id, closed, (SELECT COUNT(*) FROM exchanges x WHERE x.session_id = sessions.id)
-		FROM sessions ORDER BY started_at DESC, rowid DESC LIMIT 1`).Scan(&sid, &closed, &held)
+		FROM sessions WHERE kind = 'main' ORDER BY current DESC, started_at DESC, rowid DESC LIMIT 1`).Scan(&sid, &closed, &held)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		// Nothing ran yet.
@@ -268,6 +289,9 @@ func (d *DB) StartNewSession(ctx context.Context, reason, summary, source string
 		return "", "", err
 	case !closed && held == 0:
 		current = sid
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET current = (id = ?) WHERE kind = 'main'`, sid); err != nil {
+			return "", "", err
+		}
 		err = tx.QueryRowContext(ctx, `SELECT s.id FROM sessions s WHERE s.id != ? AND EXISTS (SELECT 1 FROM exchanges e WHERE e.session_id = s.id)
 			ORDER BY s.started_at DESC, s.rowid DESC LIMIT 1`, sid).Scan(&previous)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -284,7 +308,10 @@ func (d *DB) StartNewSession(ctx context.Context, reason, summary, source string
 	}
 	current = NewID("ses")
 	at := Stamp(now)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason) VALUES (?, '', ?, ?, 0, '')`, current, at, at); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET current = 0 WHERE kind = 'main'`); err != nil {
+		return "", "", err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions (id, title, started_at, ended_at, closed, reason, current) VALUES (?, '', ?, ?, 0, '', 1)`, current, at, at); err != nil {
 		return "", "", err
 	}
 	return previous, current, tx.Commit()
@@ -296,7 +323,7 @@ func (d *DB) Sessions(ctx context.Context, limit int, before string) ([]Session,
 		limit = 50
 	}
 	// A session a boundary left open and empty is not listed until its first request.
-	q, args := `SELECT id FROM sessions WHERE EXISTS (SELECT 1 FROM exchanges x WHERE x.session_id = sessions.id)`, []any{}
+	q, args := `SELECT id FROM sessions WHERE kind = 'main' AND EXISTS (SELECT 1 FROM exchanges x WHERE x.session_id = sessions.id)`, []any{}
 	if before != "" {
 		q += ` AND started_at < ?`
 		args = append(args, before)
@@ -386,7 +413,7 @@ func (d *DB) ForgetExchange(ctx context.Context, id string) (string, error) {
 // PreviousSession is the newest session other than id that holds an exchange.
 func (d *DB) PreviousSession(ctx context.Context, id string) (Session, error) {
 	var sid string
-	err := d.sql.QueryRowContext(ctx, `SELECT s.id FROM sessions s WHERE s.id != ? AND EXISTS
+	err := d.sql.QueryRowContext(ctx, `SELECT s.id FROM sessions s WHERE s.kind = 'main' AND s.id != ? AND EXISTS
 		(SELECT 1 FROM exchanges e WHERE e.session_id = s.id AND e.removed = 0) ORDER BY s.started_at DESC, s.rowid DESC LIMIT 1`, id).Scan(&sid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrNotFound

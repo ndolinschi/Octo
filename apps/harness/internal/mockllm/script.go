@@ -25,6 +25,9 @@ func plan(r *request) reply {
 	if strings.Contains(r.system(), sideMarker) {
 		return sideReply(r)
 	}
+	if rep, ok := ctxReply(r); ok {
+		return rep
+	}
 	if r.hasTool("save_note") {
 		return orchestratorReply(r)
 	}

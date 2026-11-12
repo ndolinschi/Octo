@@ -58,6 +58,19 @@ type Task struct {
 	MessageIDs  []int64  `json:"message_ids"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
+	// StateSummary says what is done and what is left (M6 rule 4); never empty on a task the harness made.
+	StateSummary string `json:"state_summary"`
+	// OpenQuestions are what the digest found still unanswered; a task with some is unfinished.
+	OpenQuestions []string `json:"open_questions"`
+	// Unfinished is true when the digest said the goal is not met or left questions: /clear keeps such a task open.
+	Unfinished bool `json:"unfinished"`
+	// ClosedReason says why a done or dropped task closed ("goal met", "turn completed", "cleared",
+	// "dropped: no activity", "stopped", "closed by the orchestrator"); empty while open.
+	ClosedReason string `json:"closed_reason,omitempty"`
+	// SessionID is the memory session the task started in ("" for a task that predates M6).
+	SessionID string `json:"session_id,omitempty"`
+	// ExchangeIDs are the exchanges (M4) of the turns that worked on the task, oldest first; filled on read.
+	ExchangeIDs []string `json:"exchange_ids"`
 }
 
 type taskData struct {
@@ -68,9 +81,17 @@ type taskData struct {
 	Files       []string `json:"files"`
 	Facts       []Fact   `json:"facts"`
 	MessageIDs  []int64  `json:"message_ids"`
+	OpenQs      []string `json:"open_questions,omitempty"`
+	Unfinished  bool     `json:"unfinished,omitempty"`
 }
 
 func (t *Task) normalize() {
+	if t.OpenQuestions == nil {
+		t.OpenQuestions = []string{}
+	}
+	if t.ExchangeIDs == nil {
+		t.ExchangeIDs = []string{}
+	}
 	if t.Constraints == nil {
 		t.Constraints = []string{}
 	}
@@ -96,23 +117,23 @@ func (t *Task) normalize() {
 
 func (t Task) data() ([]byte, error) {
 	t.normalize()
-	return json.Marshal(taskData{t.Constraints, t.Acceptance, t.Quotes, t.Decisions, t.Files, t.Facts, t.MessageIDs})
+	return json.Marshal(taskData{t.Constraints, t.Acceptance, t.Quotes, t.Decisions, t.Files, t.Facts, t.MessageIDs, t.OpenQuestions, t.Unfinished})
 }
 
-const taskCols = `id, title, status, goal, goal_by, auto, data_json, outcome, created_at, updated_at`
+const taskCols = `id, title, status, goal, goal_by, auto, data_json, outcome, created_at, updated_at, state_summary, closed_reason, session_id`
 
 func scanTask(sc interface{ Scan(...any) error }) (Task, error) {
 	var t Task
 	var data string
-	if err := sc.Scan(&t.ID, &t.Title, &t.Status, &t.Goal, &t.GoalBy, &t.Auto, &data, &t.Outcome, &t.CreatedAt, &t.UpdatedAt); err != nil {
+	if err := sc.Scan(&t.ID, &t.Title, &t.Status, &t.Goal, &t.GoalBy, &t.Auto, &data, &t.Outcome, &t.CreatedAt, &t.UpdatedAt, &t.StateSummary, &t.ClosedReason, &t.SessionID); err != nil {
 		return t, err
 	}
 	var d taskData
 	if err := json.Unmarshal([]byte(data), &d); err != nil {
 		return t, err
 	}
-	t.Constraints, t.Acceptance, t.Quotes, t.Decisions, t.Files, t.Facts, t.MessageIDs =
-		d.Constraints, d.Acceptance, d.Quotes, d.Decisions, d.Files, d.Facts, d.MessageIDs
+	t.Constraints, t.Acceptance, t.Quotes, t.Decisions, t.Files, t.Facts, t.MessageIDs, t.OpenQuestions, t.Unfinished =
+		d.Constraints, d.Acceptance, d.Quotes, d.Decisions, d.Files, d.Facts, d.MessageIDs, d.OpenQs, d.Unfinished
 	t.normalize()
 	return t, nil
 }
@@ -185,12 +206,13 @@ func (d *DB) writeTask(ctx context.Context, t Task, create bool) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	if create {
-		_, err = tx.ExecContext(ctx, `INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			t.ID, t.Title, t.Status, t.Goal, t.GoalBy, t.Auto, string(data), t.Outcome, t.CreatedAt, t.UpdatedAt)
+		_, err = tx.ExecContext(ctx, `INSERT INTO tasks (`+taskCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			t.ID, t.Title, t.Status, t.Goal, t.GoalBy, t.Auto, string(data), t.Outcome, t.CreatedAt, t.UpdatedAt,
+			t.StateSummary, t.ClosedReason, t.SessionID)
 	} else {
 		var res sql.Result
-		res, err = tx.ExecContext(ctx, `UPDATE tasks SET title=?, status=?, goal=?, goal_by=?, auto=?, data_json=?, outcome=?, updated_at=? WHERE id=?`,
-			t.Title, t.Status, t.Goal, t.GoalBy, t.Auto, string(data), t.Outcome, t.UpdatedAt, t.ID)
+		res, err = tx.ExecContext(ctx, `UPDATE tasks SET title=?, status=?, goal=?, goal_by=?, auto=?, data_json=?, outcome=?, updated_at=?, state_summary=?, closed_reason=?, session_id=? WHERE id=?`,
+			t.Title, t.Status, t.Goal, t.GoalBy, t.Auto, string(data), t.Outcome, t.UpdatedAt, t.StateSummary, t.ClosedReason, t.SessionID, t.ID)
 		if err == nil {
 			if n, _ := res.RowsAffected(); n == 0 {
 				err = ErrNotFound
@@ -212,6 +234,9 @@ func (d *DB) Task(ctx context.Context, id string) (Task, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, ErrNotFound
 	}
+	if err == nil {
+		t.ExchangeIDs = d.exchangeIDsOf(ctx, t.ID)
+	}
 	return t, err
 }
 
@@ -230,7 +255,16 @@ func (d *DB) Tasks(ctx context.Context) ([]Task, error) {
 		}
 		out = append(out, t)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	by := d.exchangeIDsByTask(ctx)
+	for i := range out {
+		if ids := by[out[i].ID]; ids != nil {
+			out[i].ExchangeIDs = ids
+		}
+	}
+	return out, nil
 }
 
 // DeleteTask removes a task record and its search documents.

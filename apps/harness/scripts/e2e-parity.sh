@@ -547,4 +547,59 @@ assert sum(n["read_count"] for n in notes) == 1 and [n for n in notes if n["read
 PY
 echo "   ok"
 
-echo "PARITY OK (B1, B2, B3, B4, B5, B6, B7, B11, B12, B13, M5)"
+echo "== S1 project sessions: new session, resume the old one (the model sees the old context), agent sessions, message, stop"
+PS1=$(newproject s1)
+cur_session() { curl -fsS "$BASE/v1/projects/$1/sessions?kind=main" | jget '[s["id"] for s in d["sessions"] if s["current"]][0]'; }
+session_state() { curl -fsS "$BASE/v1/projects/$1/sessions/$2" | jget 'd["session"]["state"]'; }
+is_state() { [ "$(session_state "$1" "$2")" = "$3" ]; }
+agents_ge() { [ "$(curl -fsS "$BASE/v1/projects/$1/sessions?kind=agent" | jget 'len(d["sessions"])')" -ge "$2" ]; }
+agent_continued() { is_state "$1" "$2" idle && curl -fsS "$BASE/v1/projects/$1/sessions/$2/messages" | grep -q 'follow up' && [ "$(curl -fsS "$BASE/v1/projects/$1/sessions/$2/messages" | jget '[m["role"] for m in d["messages"]][-1]')" = assistant ]; }
+last_answer() { curl -fsS "$BASE/v1/projects/$1/sessions/$2" | jget 'd["exchanges"][-1]["answer"]'; }
+post POST "/v1/projects/$PS1/messages" '{"text":"[ctx] alpha one"}' >/dev/null; idle "$PS1"
+S1A=$(cur_session "$PS1")
+S1B=$(post POST "/v1/projects/$PS1/sessions" '{"title":"Beta"}' | jget 'd["session"]["id"]')
+[ "$(cur_session "$PS1")" = "$S1B" ] || fail "the new session is not current"
+post POST "/v1/projects/$PS1/messages" '{"text":"[ctx] beta two"}' >/dev/null; idle "$PS1"
+last_answer "$PS1" "$S1B" | grep -q 'beta two' || fail "the new session's answer lacks its own request"
+last_answer "$PS1" "$S1B" | grep -q 'alpha one' && fail "the new session sees the old session's request"
+post POST "/v1/projects/$PS1/sessions/$S1A/resume" >/dev/null
+[ "$(cur_session "$PS1")" = "$S1A" ] || fail "resume did not make the old session current"
+post POST "/v1/projects/$PS1/messages" '{"text":"[ctx] gamma three"}' >/dev/null; idle "$PS1"
+ans=$(last_answer "$PS1" "$S1A")
+echo "$ans" | grep -q 'alpha one' || fail "the resumed session lost its context: $ans"
+echo "$ans" | grep -q 'gamma three' || fail "the resumed session's answer lacks the new request: $ans"
+echo "$ans" | grep -q 'beta two' && fail "the resumed session sees the other session's request: $ans"
+[ "$(curl -fsS "$BASE/v1/projects/$PS1/sessions/$S1A" | jget 'd["session"]["exchanges"]')" = 2 ] || fail "the resumed session did not take the exchange"
+# Agent sessions: one per sub-agent, linked to the session and the turn that spawned it.
+post POST "/v1/projects/$PS1/messages" '{"text":"build it"}' >/dev/null; idle "$PS1"
+waitfor "agent sessions" agents_ge "$PS1" 3
+AS=$(curl -fsS "$BASE/v1/projects/$PS1/sessions?kind=agent" | jget '[s["id"] for s in d["sessions"] if s["title"]=="Map the repository layout"][0]')
+curl -fsS "$BASE/v1/projects/$PS1/sessions/$AS" | python3 -c '
+import json,sys
+d=json.load(sys.stdin); s=d["session"]
+assert s["kind"]=="agent" and s["parent_session_id"]=="'"$S1A"'" and s["turn_id"]>0 and s["state"]=="idle" and s["can_message"], s
+assert d["agent"]["role"]=="Code explorer", d["agent"]
+' || fail "agent session fields"
+[ "$(curl -fsS "$BASE/v1/projects/$PS1/sessions/$S1A" | jget 'd["session"]["children"]')" -ge 3 ] || fail "children not counted"
+# A message continues the finished built-in agent from its stored messages; report_to_parent hands the answer to the next turn.
+out=$(post POST "/v1/projects/$PS1/sessions/$AS/messages" '{"text":"[ctx] follow up","report_to_parent":true}' | jget 'd["outcome"]')
+[ "$out" = continued ] || fail "outcome $out"
+waitfor "the continued agent" agent_continued "$PS1" "$AS"
+sleep 0.5
+post POST "/v1/projects/$PS1/messages" '{"text":"[ctx] what came back"}' >/dev/null; idle "$PS1"
+last_answer "$PS1" "$S1A" | grep -q 'Results the user collected' || fail "the report did not reach the orchestrator's next turn"
+[ "$(http_code POST "/v1/projects/$PS1/sessions/$S1A/messages" '{"text":"x"}')" = 409 ] || fail "message to a main session was not refused"
+# Stop: an ACP orchestrator's running turn, through its session; resume and new session refuse meanwhile.
+PS1A=$(newproject s1a full ',"models":{"orchestrator":"acp:scripted"}')
+post POST "/v1/projects/$PS1A/messages" '{"text":"[echo] first"}' >/dev/null; idle "$PS1A"
+S1C=$(cur_session "$PS1A")
+post POST "/v1/projects/$PS1A/messages" '{"text":"[hang] stuck"}' >/dev/null
+waitfor "the ACP turn to run" is_state "$PS1A" "$S1C" working
+[ "$(curl -s -X POST "$BASE/v1/projects/$PS1A/sessions" | jget 'd["error"]["code"]')" = turn_in_progress ] || fail "new session while running"
+[ "$(http_code POST "/v1/projects/$PS1A/sessions/$S1C/stop")" = 200 ] || fail "stop"
+idle "$PS1A"
+[ "$(curl -fsS "$BASE/v1/projects/$PS1A/sessions/$S1C" | jget 'd["session"]["state"]')" = stopped ] || fail "session not stopped"
+[ "$(curl -s -X POST "$BASE/v1/projects/$PS1A/sessions/$S1C/stop" | jget 'd["error"]["code"]')" = not_running ] || fail "second stop"
+echo "   ok"
+
+echo "PARITY OK (B1, B2, B3, B4, B5, B6, B7, B11, B12, B13, M5, S1)"

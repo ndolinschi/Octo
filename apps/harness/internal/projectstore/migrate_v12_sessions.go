@@ -57,6 +57,10 @@ func (d *DB) migrateV12Sessions(ctx context.Context) error {
 	if _, err := d.sql.ExecContext(ctx, sessionsSchema); err != nil {
 		return fmt.Errorf("sessions schema (v%d): %w", sessionsSchemaVersion, err)
 	}
+	// The exchange code reads schema 13's columns, so they exist before any back-fill runs.
+	if err := d.addSessionColumns(ctx); err != nil {
+		return err
+	}
 	if v, err := userVersion(ctx, d.sql); err != nil {
 		return err
 	} else if v >= sessionsSchemaVersion {

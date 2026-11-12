@@ -42,7 +42,13 @@ func (s *Service) UpdateTask(ctx context.Context, in UpdateInput, turn Turn) (pr
 		id = turn.TaskID
 	}
 	if id == "" {
-		return projectstore.Task{}, bad("there is no task for this request; pass an id")
+		// The orchestrator states a goal for this request: that is a task (M6 rule 1).
+		t, err := s.createTurnTask(ctx, in, turn)
+		if err != nil {
+			return t, err
+		}
+		id = t.ID
+		turn.TaskID = id
 	}
 	t, err := s.DB.Task(ctx, id)
 	if errors.Is(err, projectstore.ErrNotFound) {
@@ -132,67 +138,11 @@ func (s *Service) addQuotes(t *projectstore.Task, quotes []string, messageID int
 	return nil
 }
 
-// TurnEnd says how a turn ended, for CloseTurn.
-type TurnEnd struct {
-	// Completed closes the record (done, with an outcome); a cancelled turn
-	// drops it; a failed one leaves it open.
-	Completed, Cancelled bool
-	// Outcome is the fallback outcome (the reply), used while the record has none.
-	Outcome string
-	// Files are the files the turn's tool calls read or changed.
-	Files []string
-	// Trivial: no tool call and a short answer. A trivial turn's record is
-	// deleted now when it is untouched, unless KeepForDigest says the digest
-	// will decide.
-	Trivial, KeepForDigest bool
-}
-
-// CloseTurn settles the record the harness opened for a turn once the turn is
-// over: files from its tool calls, then done (with an outcome) when it
-// completed, dropped when it was cancelled. A trivial exchange leaves no record
-// (deleted if nobody edited it). deleted reports that.
-func (s *Service) CloseTurn(ctx context.Context, id string, end TurnEnd) (t projectstore.Task, deleted bool, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	t, err = s.DB.Task(ctx, id)
-	if err != nil {
-		return t, false, err
-	}
-	if end.Trivial && end.Completed && t.Auto && !end.KeepForDigest {
-		if err := s.DB.DeleteTask(ctx, id); err != nil {
-			return t, false, err
-		}
-		s.publish("task.updated", map[string]any{"task_id": id, "deleted": true})
-		return t, true, nil
-	}
-	files := make([]string, len(end.Files))
-	for i, f := range end.Files {
-		files[i] = s.redact(f)
-	}
-	t.Files, _ = addUnique(t.Files, cleanList(files, MaxItem), MaxItems)
-	switch {
-	case end.Completed:
-		if t.Status == projectstore.TaskOpen {
-			t.Status = projectstore.TaskDone
-		}
-		if t.Outcome == "" {
-			t.Outcome = clip(strings.TrimSpace(s.redact(end.Outcome)), 300)
-		}
-	case end.Cancelled:
-		if t.Status == projectstore.TaskOpen {
-			t.Status = projectstore.TaskDropped
-		}
-	}
-	t, err = s.DB.SaveTask(ctx, t)
-	if err == nil {
-		s.publish("task.updated", map[string]any{"task": t})
-	}
-	return t, false, err
-}
-
-// Candidates are the earlier tasks a digest may attach a follow-up to: the open
-// ones and the three most recently finished, newest first, at most 6.
-func (s *Service) Candidates(ctx context.Context, except string) []projectstore.Task {
+// Candidates are the earlier tasks of this session a digest may attach a
+// follow-up to: the open ones and the three most recently finished, newest
+// first, at most 6. A task of another session is not offered (a new session is
+// a new conversation); neither is a dropped one.
+func (s *Service) Candidates(ctx context.Context, sessionID string) []projectstore.Task {
 	tasks, err := s.DB.Tasks(ctx)
 	if err != nil {
 		return nil
@@ -200,7 +150,7 @@ func (s *Service) Candidates(ctx context.Context, except string) []projectstore.
 	var out []projectstore.Task
 	done := 0
 	for _, t := range tasks {
-		if t.ID == except || t.Status == projectstore.TaskDropped {
+		if t.Status == projectstore.TaskDropped || t.SessionID != sessionID || t.Title == RememberedTaskTitle {
 			continue
 		}
 		if t.Status == projectstore.TaskDone {

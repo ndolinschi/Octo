@@ -29,6 +29,9 @@ func (rt *runtime) failedRequest(ctx context.Context, orch projectstore.Agent, t
 	if err != nil || last.Role != "user" {
 		return projectstore.Message{}, false
 	}
+	if sid, err := rt.db.CurrentSessionID(c); err != nil || last.SessionID != sid {
+		return projectstore.Message{}, false // the failed request belongs to another session
+	}
 	var parts []string
 	for _, b := range last.Content {
 		if b.Type != "text" || b.Text == nil {
@@ -40,25 +43,6 @@ func (rt *runtime) failedRequest(ctx context.Context, orch projectstore.Agent, t
 		return projectstore.Message{}, false
 	}
 	return last, true
-}
-
-// reuseTurnTask makes a retried request continue the task record its failed
-// attempt opened (still open, the request's only message) instead of opening a
-// second one. It reports whether there was one.
-func (rt *runtime) reuseTurnTask(ctx context.Context, messageID int64) bool {
-	c, cancel := dbCtx(ctx)
-	defer cancel()
-	tasks, err := rt.db.Tasks(c)
-	if err != nil {
-		return false
-	}
-	for _, t := range tasks {
-		if t.Auto && t.Status == projectstore.TaskOpen && len(t.MessageIDs) == 1 && t.MessageIDs[0] == messageID {
-			rt.setTask(t.ID)
-			return true
-		}
-	}
-	return false
 }
 
 // Project states carried by project.attention beside the counts.

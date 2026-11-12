@@ -6,11 +6,13 @@ import { errorMessage } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
-import { Input } from "../primitives/Field";
+import { SkeletonList } from "../primitives/Skeleton";
+import { Switch } from "../primitives/Switch";
+import { TextField } from "../primitives/TextField";
 import { diagnosticReport } from "./diagnosticReport";
 import { useHarnessSettings } from "./harnessSettings";
 import { useSettingsActions } from "./pageContext";
-import { SaveStatus, SettingsGroup, SettingsRow, SkeletonRow, Switch } from "./parts";
+import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 
 type DiagLoad = { status: "loading" } | { status: "unavailable" } | { status: "error"; message: string } | { status: "ready"; d: Diagnostics };
@@ -47,7 +49,7 @@ export function PrivacySection() {
         <TraceRow />
       </SettingsGroup>
       <SettingsGroup label="Data">
-        {diag.status === "loading" ? <SkeletonRow /> : <DataDirRow dir={diag.status === "ready" ? diag.d.data_dir : null} />}
+        {diag.status === "loading" ? <SkeletonList count={1} size="lg" twoLine /> : <DataDirRow dir={diag.status === "ready" ? diag.d.data_dir : null} />}
         <ChildEnvRow />
       </SettingsGroup>
     </>
@@ -60,18 +62,7 @@ function ReportRow({ diag, retry }: { diag: DiagLoad; retry(): void }) {
   if (diag.status === "unavailable")
     return <SettingsRow rowId="diagnostics" title="Copy diagnostic report" description="This connection does not offer diagnostics." />;
   if (diag.status === "error")
-    return (
-      <SettingsRow
-        rowId="diagnostics"
-        title="Copy diagnostic report"
-        description={<span className="text-err">{diag.message}. Retry once the harness is running.</span>}
-        control={
-          <Button size="sm" onClick={retry}>
-            Retry
-          </Button>
-        }
-      />
-    );
+    return <LoadErrorRow what="the diagnostic report" message={diag.message} hint="Retry once the harness is running." onRetry={retry} />;
   const problems = diag.status === "ready" ? diag.d.problems.length : 0;
   return (
     <SettingsRow
@@ -98,7 +89,7 @@ function TraceRow() {
   const [saved, run] = useSave();
   const id = useId();
   const s = harness.get(SETTING_IDS.acpTrace);
-  if (harness.load.status === "loading") return <SkeletonRow />;
+  if (harness.load.status === "loading") return <SkeletonList count={1} size="lg" twoLine />;
   return (
     <SettingsRow
       rowId="trace"
@@ -165,7 +156,7 @@ function ChildEnvRow() {
       description="Extra variable names (or PREFIX_*) agents and tools may see."
       status={<SaveStatus state={saved} />}
       control={
-        <Input
+        <TextField
           id={id}
           value={draft ?? stored}
           disabled={!s.editable}
@@ -175,7 +166,7 @@ function ChildEnvRow() {
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => e.key === "Enter" && commit()}
-          className="w-64 font-mono text-xs max-settings:w-full max-sm:text-input-touch"
+          className={`${CONTROL_W.lg} font-mono`}
         />
       }
     />

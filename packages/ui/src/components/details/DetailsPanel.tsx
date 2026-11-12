@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { fileName, parentPath } from "../../lib/files";
 import { formatRelative, formatTokens, middleTruncate } from "../../lib/format";
-import { useDelayedLoading, useNow, useRowKeys, useScrollFade } from "../../lib/hooks";
+import { useDelayedLoading, useNow, useRowKeys } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
@@ -13,7 +13,13 @@ import { FloatRoom } from "../primitives/floatRoom";
 import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
-import { INFO_ROW, INFO_ROW_BUTTON, InfoSection, MoreRow, SkeletonRows } from "../primitives/InfoList";
+import { Button } from "../primitives/Button";
+import { INFO_ROW, MoreRow } from "../primitives/InfoList";
+import { ListRow } from "../primitives/ListRow";
+import { Notice } from "../primitives/Notice";
+import { ScrollArea } from "../primitives/ScrollArea";
+import { SectionHeader } from "../primitives/SectionHeader";
+import { SkeletonList } from "../primitives/Skeleton";
 import { StatusIcon } from "../primitives/Status";
 import { groupWrites, useWrittenFiles } from "./useWrittenFiles";
 import { Server, type LucideIcon } from "lucide-react";
@@ -45,14 +51,12 @@ const roleOf = (a: Agent) => (a.parent_id === null ? "Conversation" : roleText(a
  */
 export function DetailsPanel() {
   const { project } = useProject();
-  const scroller = useRef<HTMLDivElement>(null);
-  // Rows reaching the fold fade out instead of being cut (the list's scrollbar is hidden, like the sidebar's).
-  useScrollFade(scroller, "y");
   const rows = useRef<HTMLDivElement>(null);
   useRowKeys(rows);
   if (!project) return null;
   return (
-    <div ref={scroller} data-details className="h-full min-h-0 overflow-y-auto overscroll-contain fade-y px-pane pt-pane pb-4">
+    // Rows reaching the fold fade out instead of being cut (the list's scrollbar is hidden, like the sidebar's).
+    <ScrollArea fade data-details className="h-full min-h-0 px-pane pt-pane pb-4">
       <div ref={rows} className="mx-auto flex w-full max-w-details flex-col gap-5">
         <Folders />
         <Context />
@@ -62,7 +66,19 @@ export function DetailsPanel() {
         <Activity />
       </div>
       <FloatRoom />
-    </div>
+    </ScrollArea>
+  );
+}
+
+/** A captioned group of rows: the caption, an optional quiet action at its right, then the rows. */
+function InfoSection(props: { title: string; labelId: string; aside?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section aria-labelledby={props.labelId} className="flex flex-col">
+      <SectionHeader inset id={props.labelId} as="h3" {...(props.aside ? { aside: props.aside } : {})}>
+        {props.title}
+      </SectionHeader>
+      {props.children}
+    </section>
   );
 }
 
@@ -83,11 +99,14 @@ function Folders() {
     <InfoSection title="Project" labelId="details-folders">
       {folders.length === 0 && <p className={cn(INFO_ROW, "text-fg-3")}>No folders attached.</p>}
       {folders.map((f) => (
-        <button key={f.id} type="button" data-row title={f.path} onClick={() => code.revealDir(f.label, "")} className={INFO_ROW_BUTTON}>
-          <Slot icon={GLYPH.files} />
-          <span className="shrink-0 text-fg">{f.label}</span>
-          <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">{middleTruncate(f.path, 40)}</span>
-        </button>
+        <ListRow
+          key={f.id}
+          leading={<Glyph icon={GLYPH.files} size={14} />}
+          title={f.label}
+          meta={middleTruncate(f.path, 40)}
+          tip={f.path}
+          onClick={() => code.revealDir(f.label, "")}
+        />
       ))}
     </InfoSection>
   );
@@ -132,16 +151,20 @@ function Context() {
     >
       {ctx.status === "loading" && (
         <div className={cn(!slow && "opacity-0")}>
-          <SkeletonRows count={2} />
+          <SkeletonList count={2} />
         </div>
       )}
       {ctx.status === "error" && (
-        <p className={cn(INFO_ROW, "text-fg-3")}>
+        <Notice
+          className="px-2"
+          action={
+            <Button variant="link" size="xs" onClick={ctx.retry}>
+              Try again
+            </Button>
+          }
+        >
           Couldn't read the context.
-          <button type="button" onClick={ctx.retry} className="ml-auto text-xs text-fg-2 underline underline-offset-2 hover:text-fg">
-            Try again
-          </button>
-        </p>
+        </Notice>
       )}
       {meter && (
         <>
@@ -261,11 +284,11 @@ function PluginsInUse() {
   const empty = load !== null && servers !== null && servers.length + load.agents.length === 0;
   return (
     <InfoSection title="Plugins in use" labelId="details-plugins">
-      {failed && <p className={cn(INFO_ROW, "text-fg-3")}>Couldn't read the plugins. Reopen this tab to try again.</p>}
+      {failed && <Notice className="px-2">Couldn't read the plugins. Reopen this tab to try again.</Notice>}
       {(load === null || servers === null) && !failed && (
         // The skeleton holds its room from the start and shows only once loading is slow (no jump either way).
         <div className={cn(!slow && "opacity-0")}>
-          <SkeletonRows count={2} />
+          <SkeletonList count={2} />
         </div>
       )}
       {empty && <p className={cn(INFO_ROW, "text-fg-3")}>No language servers or agents available.</p>}
@@ -306,23 +329,23 @@ function Activity() {
     <InfoSection title="Activity" labelId="details-activity">
       {agents.length === 0 && <p className={cn(INFO_ROW, "text-fg-3")}>No agents have run yet.</p>}
       {shown.map((a) => (
-        <button
+        <ListRow
           key={a.id}
-          type="button"
-          data-row
+          leading={<StatusIcon status={a.status} />}
+          title={
+            <>
+              {roleOf(a)}
+              <span className="ml-2 text-fg-3">{a.title}</span>
+            </>
+          }
+          meta={
+            <time dateTime={a.created_at} className="tabular-nums">
+              {formatRelative(a.created_at, now)}
+            </time>
+          }
+          tip={a.title ? `${roleOf(a)}: ${a.title}` : roleOf(a)}
           onClick={(e) => ws.openAgent(a.id, { otherSide: e.altKey })}
-          title={a.title ? `${roleOf(a)}: ${a.title}` : roleOf(a)}
-          className={INFO_ROW_BUTTON}
-        >
-          <span className="grid size-4 shrink-0 place-items-center">
-            <StatusIcon status={a.status} />
-          </span>
-          <span className="max-w-[45%] shrink-0 truncate text-fg">{roleOf(a)}</span>
-          <span className="min-w-0 flex-1 truncate text-fg-3">{a.title}</span>
-          <time dateTime={a.created_at} className="shrink-0 text-xs text-fg-3 tabular-nums">
-            {formatRelative(a.created_at, now)}
-          </time>
-        </button>
+        />
       ))}
       {agents.length > PAGE && <MoreRow slot label={all ? "Show fewer" : `Show all (${agents.length})`} expanded={all} onClick={() => setAll((x) => !x)} />}
     </InfoSection>
@@ -357,42 +380,37 @@ function Outputs() {
   const row = (f: { folder: string; path: string; count: number }) => {
     const dir = parentPath(f.path);
     return (
-      <button
+      <ListRow
         key={`${f.folder}/${f.path}`}
-        type="button"
-        data-row
-        title={`${f.folder}/${f.path}`}
+        leading={<Glyph icon={fileIcon(f.path)} size={14} />}
+        title={
+          <>
+            {fileName(f.path)}
+            <span className="ml-2 text-xs text-fg-3">{dir ? `${f.folder}/${dir}` : f.folder}</span>
+          </>
+        }
+        meta={
+          f.count > 1 ? (
+            <span className="tabular-nums" aria-label={`written ${f.count} times`}>
+              ×{f.count}
+            </span>
+          ) : undefined
+        }
+        tip={`${f.folder}/${f.path}`}
         onClick={() => code.openFile(f.folder, f.path)}
-        className={INFO_ROW_BUTTON}
-      >
-        <Slot icon={fileIcon(f.path)} />
-        <span className="min-w-0 shrink truncate text-fg">{fileName(f.path)}</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
-          <bdi>{dir ? `${f.folder}/${dir}` : f.folder}</bdi>
-        </span>
-        {f.count > 1 && (
-          <span className="shrink-0 text-xs text-fg-3 tabular-nums" aria-label={`written ${f.count} times`}>
-            ×{f.count}
-          </span>
-        )}
-      </button>
+      />
     );
   };
   const toggle = groups && groups.length > 0 && (
-    <button
-      type="button"
-      aria-pressed={all}
-      onClick={() => setAll((x) => !x)}
-      className="-mr-1 h-chip shrink-0 rounded-sm px-1 text-xs text-fg-3 hover:bg-hover hover:text-fg"
-    >
+    <Button variant="quiet" size="xs" pressed={all} className="-mr-1" onClick={() => setAll((x) => !x)}>
       {all ? "This request" : "All files"}
-    </button>
+    </Button>
   );
   return (
     <InfoSection title={all ? "Files written" : "Outputs"} labelId="details-files" aside={toggle}>
       {groups === null && (
         <div className={cn(!slow && "opacity-0")}>
-          <SkeletonRows count={3} />
+          <SkeletonList count={3} />
         </div>
       )}
       {!all && writes !== null && (

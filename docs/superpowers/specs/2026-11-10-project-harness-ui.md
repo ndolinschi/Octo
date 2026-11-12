@@ -2436,6 +2436,66 @@ prettier on the touched files, unit tests, the gallery script in dark and light 
 errors), two spacing-audit scenes. Not verified: touch behaviour on a real device (only the CSS rule), keyboard use of `Select` and
 `ListRow` in a real screen reader, any feature migration (none done).
 
+### As built — library migration B1 (Settings; 2026-11-12)
+
+Every Settings section and the Connect sheet and screen (`components/settings`, `components/providers`) now compose the library:
+no native `<button>/<input>/<select>/<textarea>` is left (`octo/no-native-controls` in those folders: 15 before, 0 after; eslint 0 errors).
+`parts.tsx` keeps only `SettingsGroup` (`SectionHeader` + `ListFrame`), `SettingsRow`, `LoadErrorRow` (the one "Couldn't load X" row),
+`SaveStatus` (on `Notice`), `CONTROL_W` (layout widths) and `StateDot` (the provider dot, which has no primitive); its local `Switch`,
+`Select` and `SkeletonRow` are gone, as are the hand-written touch and size classes. Selects are the menu `Select` (providers' Preferred
+model and roles, the models and tiers with provider groups, completion, context, diff layout, the period, the section picker below 760px);
+the nav, the search results, the provider list and the plugin rows are `ListRow`; searches are `SearchField`; the plugin kinds are
+`FilterTabs`; `AgentPrefs` and the command form use `FieldRow`; the provider detail is a `ListFrame` like its list.
+Decision 74: only **models** exist at both levels today (the harness's `HARNESS_MODEL_*` defaults and each project's `models`), so only Models
+has the scope row: `ViewTabs` "Defaults | <project name>", shown while a project exists, with a project picker when there are several. In the
+project tab each of the four models says "Inherited from defaults" while it equals the default (the harness copies defaults at project creation,
+so inherited means equal now) and shows "Reset to default" once it differs. Completion, context mode, budget, commands and review exist only per
+project (no default level in the API) and stay per-project rows; providers, appearance, privacy and about are machine-only. Access mode, network and
+the side-question model are not in Settings today. The project tab starts on the project that is open in the app (batch-4 merge: `AppShell` passes it to `SettingsPage`), else on
+the most recently updated project.
+Primitive fixes found by driving the gallery: the `touch` variant (comma list in one line) never matched narrow windows, so rows and fields
+stayed 28-32px at 390px (styles.css); `Select` lost focus after choosing, ignored Tab, had no type-ahead, did not scroll the active row into view and
+had no group headings (added `group`); disabled `TextField`/`TextArea` looked enabled; `SearchField`'s clear button dropped focus; two-line `ListRow`
+was 44px and its button 36px (now 40, whole row); `ListRow` gained `expanded`; `ViewTabs` tabs were 31px (row now `box-content`).
+Verified: type check, eslint, prettier, tests next to the changed logic, spacing audit (`settings-page`, `providers`, `providers-open`, `integrations`,
+`command-dialog`, `usage`: total 0), `width-stability.mjs` at 1440x900, Playwright flows on the gallery and the Models scopes (project tab, long select
+list, type-ahead, reset, search, narrow section select), screenshots dark and light at 1440x900 and 390x700 (no console errors). Not verified: touch
+on a real device, a screen reader, the project tab on a harness (demo bridge only), the audit on the Models project tab, jumping from a search result
+into a per-project row while its data still loads (focus stays on the page).
+
+### As built — library migration B2 (Memory, Notes, Usage, Agents, Details, side question; 2026-11-12)
+
+Decision 90's second batch, in `components/{memory,notes,usage,agents,details,side}` and `components/shared/UsageTable.tsx`.
+
+- **`ListDetail` (decision 66), `primitives/ListDetail.tsx`.** One layout for "list left, detail right". Props: `label`, `listLabel` (also the Back control's text),
+  `selected` + `onSelect(id | null)` (the owner's remembered choice), `list(select)` (render rows; `select(id)` from a row's `onClick`), `listHeader`, `detail`
+  (`null` = nothing to show), `placeholder`/`empty` (the empty-detail slot, an `EmptyState`), `loading` with `listSkeleton`/`detailSkeleton`, `detailClassName`.
+  A container query on the component itself (floor 640px, `LIST_DETAIL_FLOOR`): wide = a 280px list column (`w-70`), one vertical hairline that starts at the
+  view-tabs hairline, each side its own `ScrollArea`; narrow = one column with a Back control, the selection remembered (the row stays marked and takes
+  focus on Back; choosing it again reopens the detail), the list kept mounted so its scroll survives. Keys: ↑/↓/Home/End between `[data-row]` rows, Esc in the
+  detail goes back (one column) or to the chosen row (two). Pure state in `lib/listDetail.ts` (`paneReducer`, `escapeTarget`, `isNarrow`) with `listDetail.test.ts`.
+  Used by Memory (Sessions, Tasks, Files, Context) and Notes. New small primitives: `IconMenu` (an `IconButton` that opens a `Menu`: the "⋯"), `FileInputButton`
+  (a hidden file input behind an `IconButton`).
+- **Migration.** No native `<button>/<input>/<select>/<textarea>` is left in these folders (`octo/no-native-controls`: 29 before, 0 after). Rows are `ListRow`
+  (sessions, tasks, facts, files, notes, agents, folders, outputs, activity, search hits, plan-limit agents), errors and info lines are `Notice` (the failed
+  exchange is a `Notice` with a glyph, not a red sentence), loading is `Skeleton*` (`ListDetail loading` in Memory), search is `SearchField`, section titles
+  `SectionHeader`, scrollers `ScrollArea`, the Usage period and scope are `Select`s above the table. `memory/parts` lost `ListDetail`, `ListRow`, `RowList`,
+  `Loading`, `ErrorState` and `Empty`.
+- **Polish.** Model names in meta lines use `useModelNames().name` (the exchange line reads "Sonnet 4", never `claude-sonnet-4`). Usage share bars are 4px
+  (track `active`, fill `fg-2`, at least 2px wide) and "no price" is dotted-underlined with a tooltip that says why and what to do (also in the narrow detail
+  line). Memory → Tasks: the `tsk_…` id moved to the "⋯" menu as "Copy id" and the "First words of the request" caption is gone (decision 75).
+- **Side question (decision 64h, B13).** Question, answer and input share the conversation's column (`max-w-measure`, `--pad` 24, 16 below 560px); the input
+  is the composer's frame (`octo-composer`) with a send button and a small model control (`ModelPicker`) that writes `models.side` (shown as the fast tier until
+  chosen); Stop calls `stopSide` while an answer runs; `side.activity` and `side.thinking` show while it streams; `no_provider` (the typed 409 or a
+  `side.error`) is one `Notice` with a "Connect a provider" button to Settings → Providers. Demo knobs: `?side=none` (409 `no_provider`) and `?side=hold`
+  (an answer that stays in flight with activity and thinking until Stop).
+- **Verified:** type check; eslint on the folders (0 errors; the remaining warnings are older: `autoFocus` in the note forms, `Date.now` in `NotesPanel`);
+  prettier; `listDetail.test.ts`; Playwright screenshots of every screen in dark and light at 1440x900 and 390x700 against `?demo=1`.
+  **Not verified:** the harness (the side question needs a real ACP agent or key), touch behaviour on a device, a screen reader on `ListDetail`'s Back/Esc
+  focus moves, "Send to the orchestrator" (B13 rule 4: the composer exposes no public entry for it).
+- **Gaps left for others.** `ListRow` has no `aria-expanded` (the Agents fold is a `Button`); the chat `Composer` needs a minimal-props variant to be reused by the
+  side question; `SelectButton`/`Meter` are still not built (the context and limit bars stay local spans).
+
 ## Decision 91 — UI review round 1
 
 The orchestrator's own review of the screenshots (`docs/superpowers/research/2026-11-12-ui-review-round-1.md`, 15
@@ -2521,6 +2581,102 @@ Acceptance: view-model tests (search grouping, one-expanded rule, meta line trun
 screenshots dark and light at pane width 480, at 760 and maximised 1440, each view, search with hits, an expanded
 exchange with a long answer and a table, a failed exchange, empty states; spacing audit scenes for each view; the
 `width-stability` script covers expanding an exchange (the pane's width and the list's scroll position do not move).
+
+### As built — decision 93 (Memory redesigned; 2026-11-12)
+
+Built in `components/memory/**`, `lib/memory/**`, `components/primitives/Prose.{tsx,css}` and `components/shared/Prose.tsx`, plus the demo data.
+
+- **a. Three views.** `ViewTabs` Sessions · Knowledge · Files (opens on Sessions). Tasks and Context tabs are gone; facts moved out of the task detail
+  into Knowledge. `MEMORY_START` still accepts "tasks" (to Knowledge), "files", "sessions", "context" (below).
+- **b. One search.** `SearchField` above the views; Ctrl/Cmd+F while the tab has focus focuses it; Esc clears (the primitive) and returns to the
+  view. 200 ms after typing stops, from two characters; one request to the harness's memory search plus the project's notes filtered here (the
+  harness does not search notes: `MemoryHit` has no `note` kind). Results are grouped Exchanges (exchange and request hits) · Knowledge (tasks,
+  facts) · Files · Notes, current before replaced; the row's title is a window of the snippet around the matched word, so a one-line row always shows
+  the match. Opening a hit clears the field, switches the view and opens the item (an exchange opens expanded and is scrolled to; a fact opens, with its
+  earlier versions when the hit is one; a note opens the Notes tool).
+- **c. Context left Memory.** An exchange's "⋯" has "Context": `ReceiptPopover`, anchored under the exchange, one line per block (name, tokens,
+  "3 open tasks", "at its limit"), never ids. The window report is `WindowReport` (a sheet). "Open context details" in `chat/ContextPopover` is
+  unchanged and still writes `MEMORY_START = "context"` and opens the Memory tool; `MemoryTab` reads the slot on mount and every 250 ms while mounted
+  (the slot has no events) and opens `WindowReport` over Sessions. Integrator: move `ReceiptPopover` and `WindowReport` to `components/shared`, call them from
+  `ContextPopover` and the turn's "⋯" directly, then delete the slot value and the 250 ms read in `MemoryTab`.
+- **d. Sessions.** Rows are `ListRow` two-line: title; "Nov 12 · 5 exchanges" with a quiet "current" at the right; the working glyph on the current session
+  while the orchestrator works. A session opens as a page with one back control (narrow) or beside the list (from 640 px). Exchanges are rows: outcome
+  glyph (answered, failed in `err`, stopped), the request on one line, the first line of prose of the answer dim under it, the time at the right; the
+  open row shows the full request only when the row cut it, the answer in compact prose, a failure's next step, and one meta line. One open at a time,
+  Esc closes it and returns focus to the row, 100 ms height-only motion (`octo-mem-expand`, off under reduced motion).
+- **e. Knowledge.** Remembered (newest first; folded after eight with "Show N more"; kind shown in the dim line as Decision / Preference / To do, plain
+  facts carry none; the open row shows the source "Remembered by Orchestrator · Nov 12" as a link to the request, and a replaced item folded under its
+  successor with "Show N earlier versions"; "Forget" in the row's "⋯", confirmed; "Add" opens a one-line form with a kind, `rememberFact`) and Tasks
+  (`FilterTabs` Open · Done · Dropped with counts; a task row opens to goal, constraints, done when, decisions, outcome, what was asked, files).
+- **f. Files.** Rows: path (end kept), one-line summary, "2.4 kB · Nov 8"; the detail has "Edit" and "Delete" as labelled quiet buttons and the file in compact prose.
+- **g. Prose.** `primitives/Prose.tsx` exports `proseClass("compact" | "reading")` and `ProseFallback`, with `Prose.css` (13/20 body, every heading 13 semibold,
+  12 px code, 28 px table rows that scroll inside their frame, all on the spacing scale). The renderer is `shared/Prose.tsx` wrapping the lazy `Markdown`:
+  the layer rule forbids a primitive from importing `shared`, so the wrapper cannot live in `primitives`. The conversation keeps `octo-prose` (= `reading`).
+  Not yet used by Notes, review threads or the side question (not in this batch's area).
+- **h. One meta line.** `metaParts` builds time · model (readable name) · duration · N files · cost, in that order, empties dropped; CSS ellipsis cuts it
+  from the right (the cost goes first), the full text is the tooltip; "Open in conversation" ends the line and hides below 380 px of pane (it is also in the "⋯").
+- **i. Widths.** Verified at a 480 px pane, 760, maximised 1440 and 390 px wide. Rows put their time or size in the dim second line (`RowLine`), because
+  `ListRow`'s own `meta` slot shrinks with the title and clipped a time to "9:26…"; rows without a "⋯" reserve its width (`ROW_TAIL`) so the right edge is shared.
+  Details stop at 48 rem.
+- **j. Nothing unexplained.** No ids anywhere (the receipt shows counts in words), no "no cap", no "Content" label, labelled Edit/Delete.
+
+Primitive gaps worked around, to fix at their source: (1) `ListDetail` puts its root in a row with a container query on itself (`@container/ld` +
+`@min-[640px]/ld:flex-row` on one element), which never matches, so the detail sat under the list at every width; Memory marks a wrapper
+`@container/memory` and passes `SPLIT` as `className`. (2) `ListRow` has no `expanded` prop, so the open exchange, fact and task carry `aria-current`
+instead of `aria-expanded`. (3) `ListRow`'s `meta` clips (above). (4) `Button variant="link" tone="quiet"` loses to `text-link` (specificity tie), so the quiet
+links carry `text-fg-2!`. (5) `ViewTabs` here is 31 px (border inside 32); Memory passes `box-content` (the 32 px fix is on another branch; drop it after the merge).
+(6) `useRowKeys` binds at mount, so a list that mounts after a load (the exchanges) uses `onKeyDown={moveInList}` instead. (7) `env.d.ts` gained `declare module "*.css"`.
+
+Verified: ui `tsc --noEmit`, eslint (0 errors, 0 warnings) and prettier on the touched files, `lib/memory` tests (view-model: search grouping and hit targets, one-open rule,
+meta line and its order, superseded folding, session row model), `spacing-audit.mjs` on five new scenes (`memory-sessions`, `memory-exchange`, `memory-knowledge`,
+`memory-files`, `memory-search`; 1440, 1100 and 390 wide: total=0), `width-stability.mjs` at 1440x900 with the new memory check (pane width, sideways overflow, row position,
+one open at a time, Esc), keyboard (arrows, Enter/Space, Esc, Ctrl+F), add and forget of an item, the receipt popover and the window report, in a browser against `?demo=1`, dark and light.
+Not verified: a screen reader; a real harness (the demo supplies `kind`, `remembered_by`, summaries and receipts); touch on a device; Notes and review adopting `Prose`.
+
+#### Decision 93, round 2 (coordinator review; 2026-11-12)
+
+- **Search hits.** Line 1 is the item's own name (exchange: its request's first line; fact: its text; task: its title; file: its path; note: its title),
+  the match marked when it is in the name. Line 2 is the matching passage of one field (the sentence around the first match, never across a field
+  boundary: a line break in a snippet is one), or, when the match was in the name, the usual second line (a fact's task, a task's first goal sentence, a
+  note's description); with nothing to say the row is one line and its date ends line 1. One hit per item (`dedupeHits`). The harness decides what a
+  snippet holds; where it runs fields together without a line break the passage can still span them (the demo keeps line breaks). Tests: hit anatomy per
+  kind, field boundary, dedupe, list markers.
+- **Remembered by subject.** Grouped by the fact's `about` ("General" without one; a fact the harness learnt itself has none, so most real items will be
+  General until the harness fills `about`); a collapsible quiet header with the count, the group touched most recently first; five items per group before
+  "Show N more". Line 2 carries only the kind and "N earlier versions"; with neither the row is one line (32 px). The open row names its task ("In task ...").
+- **One surface.** An open exchange, remembered item or task has the selected fill (`bg-active`, standard radius, 4 px below) behind the row and its whole
+  expansion; the meta line and "Open in conversation" sit at the bottom edge inside it; collapsed rows stay flat.
+- `RowLine` gained `fill` (a row's title box is content-sized, so a tail inside it only reached the right edge with `w-[100rem] max-w-full`).
+
+### As built — batch-4 merge (library B1 + B2, Memory redesign, project sessions, M6; 2026-11-12)
+
+The four branches were merged by the integrator and reconciled; what changed beyond the branches:
+
+- **Primitives.** One `ViewTabs` (32 px through `box-content` inside the primitive; the callers' own `box-content` is gone). `ListRow` `expanded` is used
+  by the open exchange, remembered item and task rows of Memory, the Remembered group headers and the Agents fold row (a `ListRow`, no longer a quiet
+  `Button`); `selected` stays for real selections. `ListRow`'s `meta` no longer shrinks (`shrink-0`, at most 40% of the row), so a short time never clips
+  to "9:26…"; one-line Memory rows (a fact without a second line, a search hit with none, a group's count) put their right-hand text in `meta` (dim,
+  small, as in two-line rows); two-line rows keep `RowLine` on line 2. `Button variant="link" tone="quiet"` gets its colour from the tone, so it wins
+  without `!`. `useRowKeys` rebinds when its container appears (checked on every render), and the Memory exchanges list uses it again.
+- **`ListDetail`.** The container query is on an outer element and the row layout on an inner one, so the list and the detail sit side by side from 640 px
+  of the component's width; Memory's `@container/memory` wrapper and `SPLIT` are gone.
+- **Sessions in Memory.** The Sessions view lists main sessions (the harness lists only those) and marks `current` from the session entity
+  (`state.sessions.currentId`, loaded by the project provider through `listSessions` and kept by `session.*` events); `open` of the memory session is the
+  fallback while the entity is not loaded. The working glyph follows the entity's `state`. Test: `lib/memory/sessions.test.ts`.
+- **Remembered subjects.** The harness gives a fact it learnt `about` = the digest's `about` or, without one, its task's title (not for the `Remembered`
+  record), so the Knowledge view groups by the work instead of "General" (harness test in `internal/memory`).
+- **Context.** `ReceiptPopover` and `WindowReport` are in `components/shared`. `WindowReport` is the itemised decision-88 report: per category the
+  rows inside (five, "Show all N"), the compaction buffer, "Not loaded" (what loading would add, with "Open" for memory files), "Largest messages" with
+  "Open"; view-model and tests in `lib/windowReport.ts`. **Follow-up for the chat executor (the file was not mine to edit):** in
+  `components/chat/ContextPopover.tsx` replace `requestMemoryView(ws.memory, "context")` ("Open context details", ~line 150) by a state flag that mounts
+  `<WindowReport onClose onOpenMessage={(id) => nav.requestTurn({ projectId, messageId: id })} onOpenFile={...} onOpenMemoryFile={() => ws.openTool("memory")} />`
+  from `../shared/WindowReport`; then `requestMemoryView`, `onMemoryViewRequest` and the `"context"` branch of `MemoryTab`'s `startOf` can be deleted.
+  Until then `MemoryTab` keeps the compatibility entry point: the `MEMORY_START` slot read on mount and, while mounted, through `onMemoryViewRequest`.
+- **Settings → Models** opens its project tab on the open project (`AppShell` keeps the project while the Settings route has none).
+- **Demo.** Both demo bridges implement the session methods (`listSessions`, `getSession`, `createSession`, `resumeSession`, `patchSession`): the base demo has
+  one current main session and an agent session per sub-agent; the desktop demo's main sessions are its memory sessions (same ids), the open one current.
+  The window report in the demo has items, not-loaded rows, largest messages and a buffer.
+- The workarounds listed under decision 93's "Primitive gaps" (1) to (6) are fixed at their source by this merge.
 
 ## Decision 94 — UI review round 2
 

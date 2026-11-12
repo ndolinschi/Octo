@@ -2,8 +2,11 @@ import { useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { defaultProviderId, providerGroups, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "../primitives/Button";
-import { SkeletonRow } from "./parts";
+import { ListFrame } from "../primitives/Card";
+import { Notice } from "../primitives/Notice";
+import { SkeletonList } from "../primitives/Skeleton";
 import { ProviderDetail } from "./ProviderDetail";
 import { ProviderList } from "./ProviderList";
 import { RouterSettings } from "./RouterSettings";
@@ -28,22 +31,23 @@ export function ProvidersSection() {
     <>
       <div className="@container flex flex-col gap-2">
         {providers.status === "loading" && (
-          <div className="overflow-hidden rounded-lg border border-panel-edge bg-panel">
-            {[0, 1, 2].map((i) => (
-              <SkeletonRow key={i} />
-            ))}
-          </div>
+          <ListFrame>
+            <SkeletonList count={3} size="lg" twoLine />
+          </ListFrame>
         )}
         {providers.status === "error" && (
-          <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-panel-edge bg-panel p-4 text-sm text-fg-2">
-            <span className="min-w-0 flex-1">
-              <span className="text-err">Couldn&apos;t load providers.</span> {providers.message.replace(/\.$/, "")}. Check that the harness is running, then
-              retry.
-            </span>
-            <Button size="sm" onClick={() => void providers.refresh()}>
-              Retry
-            </Button>
-          </div>
+          <Notice
+            form="block"
+            tone="error"
+            title="Couldn't load providers"
+            actions={
+              <Button size="sm" onClick={() => void providers.refresh()}>
+                Retry
+              </Button>
+            }
+          >
+            {providers.message.replace(/\.$/, "")}. Check that the harness is running, then retry.
+          </Notice>
         )}
         {list && (
           <div className="flex items-start gap-4">
@@ -59,15 +63,15 @@ export function ProvidersSection() {
             />
             {selected && (
               <div className={cn("flex min-w-0 flex-1 flex-col gap-3", !detailOpen && "max-@3xl:hidden")}>
-                <button type="button" onClick={() => setDetailOpen(false)} className="h-7 w-fit rounded-sm px-1 text-sm text-fg-3 hover:text-fg @3xl:hidden">
-                  ← Providers
-                </button>
+                <Button variant="quiet" size="sm" icon={ArrowLeft} onClick={() => setDetailOpen(false)} className="self-start @3xl:hidden">
+                  Providers
+                </Button>
                 <ProviderDetail key={selected.id} provider={selected} />
               </div>
             )}
           </div>
         )}
-        {list && <p className="px-1 text-xs text-fg-3">{footer(list.connected)}</p>}
+        {list && <p className="px-2 text-xs text-fg-3">{footer(list.connected)}</p>}
       </div>
       <RouterSettings />
     </>

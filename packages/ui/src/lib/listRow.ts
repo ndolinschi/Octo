@@ -8,7 +8,7 @@ export type RowSize = Exclude<ControlSize, "xs">;
  * title); under the `touch:` variant every row is at least 40px (it has 16px text and finger targets there).
  */
 export function rowHeight(size: RowSize, twoLine: boolean): string {
-  if (twoLine) return "min-h-ctl-lg py-1";
+  if (twoLine) return "min-h-ctl-lg";
   const fixed: Record<RowSize, string> = { sm: "h-ctl-sm touch:h-ctl-lg", md: "h-ctl-md touch:h-ctl-lg", lg: "h-ctl-lg" };
   return fixed[size];
 }

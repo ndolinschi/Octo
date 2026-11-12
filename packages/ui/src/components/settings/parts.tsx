@@ -1,24 +1,35 @@
 import { CircleHelp } from "lucide-react";
-import { useId, type ReactNode, type SelectHTMLAttributes } from "react";
+import { useId, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
-import { Glyph } from "../primitives/Glyph";
+import { Button } from "../primitives/Button";
+import { ListFrame } from "../primitives/Card";
+import { IconButton } from "../primitives/IconButton";
+import { Notice } from "../primitives/Notice";
+import { SectionHeader } from "../primitives/SectionHeader";
 import { Spinner } from "../primitives/Status";
 import type { SaveState } from "./useSave";
 
+/** Widths of the control of a settings row (layout only); under the settings breakpoint the control fills the row. */
+export const CONTROL_W = {
+  sm: "w-32 max-settings:w-full",
+  md: "w-48 max-settings:w-full",
+  lg: "w-64 max-settings:w-full",
+} as const;
+
 /**
- * Decision 59 anatomy: a 12px group label above a card (panel surface, radius 10, hairlines between rows); a row is a
- * title and a one-line description on the left and exactly one control on the right, 56px or more tall. Below the
- * settings breakpoint (760px) the control goes under the text.
+ * Decision 59 anatomy on the library (decision 90): a `SectionHeader` over a `ListFrame` of rows; a row is a title and a
+ * one-line description on the left and exactly one control on the right, 56px or more tall. Below the settings breakpoint
+ * (760px) the control goes under the text.
  */
-export function SettingsGroup(props: { label: string; children: ReactNode; id?: string | undefined; footer?: ReactNode }) {
+export function SettingsGroup(props: { label: string; children: ReactNode; id?: string | undefined; footer?: ReactNode; aside?: ReactNode }) {
   const labelId = useId();
   return (
     <section aria-labelledby={labelId} id={props.id} className="flex flex-col gap-2">
-      <h2 id={labelId} className="px-1 text-xs text-fg-3">
+      <SectionHeader id={labelId} inset aside={props.aside}>
         {props.label}
-      </h2>
-      <div className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel">{props.children}</div>
-      {props.footer && <div className="px-1 text-xs text-fg-3">{props.footer}</div>}
+      </SectionHeader>
+      <ListFrame>{props.children}</ListFrame>
+      {props.footer && <div className="px-2 text-xs text-fg-3">{props.footer}</div>}
     </section>
   );
 }
@@ -38,15 +49,12 @@ export function SettingsRow(props: {
   rowId?: string;
   leading?: ReactNode;
   className?: string;
-  /** A row whose title picks something to show beside the list (decision 72 b). */
-  selected?: boolean;
 }) {
   return (
     <div
       id={props.rowId ? `row-${props.rowId}` : undefined}
       data-settings-row
       className={cn(
-        props.selected && "bg-active",
         "flex min-h-14 scroll-mt-6 items-center gap-4 px-4 py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-3",
         props.className,
       )}
@@ -62,16 +70,7 @@ export function SettingsRow(props: {
             ) : (
               <span className="min-w-0 text-base break-words text-fg">{props.title}</span>
             )}
-            {props.help && (
-              <button
-                type="button"
-                aria-label="More about this setting"
-                title={props.help}
-                className="grid size-6 shrink-0 place-items-center rounded-sm text-fg-3 hover:bg-hover hover:text-fg"
-              >
-                <Glyph icon={CircleHelp} size={14} />
-              </button>
-            )}
+            {props.help && <IconButton icon={CircleHelp} label="More about this setting" size="xs" title={props.help} />}
           </div>
           {props.description && <div className="text-sm break-words text-fg-3">{props.description}</div>}
           {props.status}
@@ -79,6 +78,25 @@ export function SettingsRow(props: {
       </div>
       {props.control && <div className="flex shrink-0 items-center justify-end gap-2 max-settings:justify-start">{props.control}</div>}
     </div>
+  );
+}
+
+/** A row that says why a load failed and how to go on: the one shape of "Couldn't load X" in Settings. */
+export function LoadErrorRow(props: { what: string; message: string; hint: string; onRetry(): void }) {
+  return (
+    <SettingsRow
+      title={
+        <Notice tone="error" className="text-base">
+          Couldn&apos;t load {props.what}
+        </Notice>
+      }
+      description={`${props.message}. ${props.hint}`}
+      control={
+        <Button size="sm" onClick={props.onRetry}>
+          Retry
+        </Button>
+      }
+    />
   );
 }
 
@@ -93,88 +111,38 @@ export function SaveStatus(props: { state: SaveState; restart?: boolean; onResta
     );
   if (state.kind === "error")
     return (
-      <p role="alert" className="mt-1 text-xs text-err">
+      <Notice tone="error" className="mt-1">
         {state.message}
-      </p>
+      </Notice>
     );
   if (props.restart)
     return (
-      <p role="status" className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-warn">
+      <Notice
+        tone="warn"
+        className="mt-1"
+        action={
+          props.onRestart ? (
+            <Button variant="link" size="xs" onClick={props.onRestart}>
+              Restart now
+            </Button>
+          ) : (
+            <span className="text-fg-3">Quit and reopen the app.</span>
+          )
+        }
+      >
         Saved. Applies after a restart.
-        {props.onRestart ? (
-          <button type="button" onClick={props.onRestart} className="rounded-xs text-link underline-offset-2 hover:underline">
-            Restart now
-          </button>
-        ) : (
-          <span className="text-fg-3">Quit and reopen the app.</span>
-        )}
-      </p>
+      </Notice>
     );
   if (state.kind === "saved")
     return (
-      <p role="status" className="mt-1 text-xs text-ok">
+      <Notice tone="success" className="mt-1">
         Saved
-      </p>
+      </Notice>
     );
   return null;
 }
 
-/** On/off (`role="switch"`), 40×24 with a 20px knob. */
-export function Switch(props: { checked: boolean; onChange(next: boolean): void; label: string; id?: string; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      id={props.id}
-      aria-checked={props.checked}
-      aria-label={props.id ? undefined : props.label}
-      disabled={props.disabled}
-      onClick={() => props.onChange(!props.checked)}
-      className={cn(
-        "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border border-transparent transition-[background-color] duration-150 disabled:opacity-50",
-        props.checked ? "bg-primary" : "bg-active",
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "absolute top-0.5 left-0.5 size-5 rounded-full shadow-float transition-[translate] duration-150 ease-out-quint",
-          props.checked ? "translate-x-4 bg-primary-fg" : "bg-fg-2",
-        )}
-      />
-    </button>
-  );
-}
-
-/** A native select styled as a 32px control (decision 59 "select"); keeps the platform's own list and keyboard. */
-export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      className={cn(
-        "h-8 max-w-full min-w-0 rounded-md border border-input-border bg-panel pr-8 pl-3 text-sm text-fg transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none max-settings:w-full",
-        className,
-      )}
-      {...rest}
-    >
-      {children}
-    </select>
-  );
-}
-
-/** A row while its data loads: the same height, two muted bars, no spinner jump. */
-export function SkeletonRow() {
-  return (
-    <div aria-hidden className="flex min-h-14 items-center gap-4 px-4 py-3">
-      <div className="flex flex-1 flex-col gap-2">
-        <span className="h-3 w-2/5 rounded-full bg-hover" />
-        <span className="h-2 w-3/5 rounded-full bg-hover" />
-      </div>
-      <span className="h-6 w-16 rounded-sm bg-hover" />
-    </div>
-  );
-}
-
-/** A state dot for a provider or agent (ok / warn / err / muted). */
+/** A state dot for a provider or agent (ok / warn / err / muted): the one dot of the provider list and the connection row. */
 export function StateDot({ tone }: { tone: "ok" | "warn" | "err" | "muted" }) {
   return (
     <span

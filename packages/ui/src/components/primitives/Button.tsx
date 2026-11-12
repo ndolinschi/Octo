@@ -15,7 +15,8 @@ const VARIANT: Record<ButtonVariant, string> = {
   ghost: "text-fg-2 hover:bg-hover hover:text-fg disabled:text-fg-3",
   // Decision 81c: destructive and deny actions are quiet buttons with coloured text, not coloured outlines.
   danger: "text-err hover:bg-hover disabled:text-fg-3",
-  link: "rounded-xs text-link underline-offset-2 hover:underline focus-visible:underline disabled:text-fg-3",
+  // The colour of a link comes from its `tone` (below), so `tone="quiet"` wins without `!`.
+  link: "rounded-xs underline-offset-2 hover:underline focus-visible:underline disabled:text-fg-3",
 };
 
 /** `ghost` keeps the padding it always had (a boxed step), so existing call sites do not change width. */
@@ -95,7 +96,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         pad && BUTTON_PAD[pad][size],
         spec.text,
         VARIANT[variant],
-        link && tone === "quiet" && "text-fg-2 hover:text-fg",
+        link && (tone === "quiet" ? "text-fg-2 hover:text-fg" : "text-link"),
         link && mono && "font-mono",
         pressed && !link && "bg-active text-fg",
         loading && "pointer-events-none",

@@ -1,5 +1,5 @@
 import { Check, ChevronDown, ChevronsUpDown } from "lucide-react";
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { CONTROL, FIELD, type ControlSize } from "../../lib/controls";
 import { listKeyTarget } from "../../lib/focus";
@@ -7,13 +7,18 @@ import { Glyph } from "./Glyph";
 import { Popover } from "./Popover";
 import { Presence } from "./Presence";
 
-export type SelectOption = { value: string; label: string; description?: string; disabled?: boolean };
+/** `group` is a heading shown above the first option that has it (options of one group sit together, like `optgroup`). */
+export type SelectOption = { value: string; label: string; description?: string; disabled?: boolean; group?: string };
+
+/** How long typed letters keep building one prefix (type-ahead), in ms. */
+const TYPE_AHEAD_MS = 700;
 
 /**
  * A choice from a short list, as a menu (decision 90; never the platform `<select>`). The trigger has the field look
  * (`FIELD`: 8px radius, `input-border`, the shared focus rule) with a chevron; the list is a `Popover` of 28px rows with the
- * current one checked. Keys: Enter, Space or an arrow opens; arrows, Home and End move the active row, Enter chooses, Esc
- * closes and returns focus to the trigger.
+ * current one checked. Keys: Enter, Space or an arrow opens; arrows, Home and End move the active row, typing letters jumps
+ * to the next option that starts with them, Enter chooses, Esc or Tab closes; focus returns to the trigger after any close.
+ * A long list scrolls and keeps the active row in view.
  *
  * - `size`: xs 24, sm 28, md 32 (default), lg 40 (40 on touch).
  * - `side="top"` for a control at the bottom of a window: it opens upward with the up-down chevron pair (decision 56).
@@ -47,6 +52,12 @@ export function Select(props: {
   const enabled = options.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0);
   const current = options.find((o) => o.value === value);
   const optionId = (i: number) => `${listId}-${i}`;
+  const typed = useRef({ text: "", at: 0 });
+
+  // Keeps the active row visible while arrows walk a list taller than the popover.
+  useEffect(() => {
+    if (open) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [open, active, listId]);
 
   const show = () => {
     if (props.disabled) return;
@@ -63,6 +74,8 @@ export function Select(props: {
     const o = options[i];
     if (!o || o.disabled) return;
     setOpen(false);
+    // The popover goes inert as it closes; without this focus would fall to the page.
+    trigger.current?.focus({ preventScroll: true });
     props.onChange(o.value);
   };
   const onTriggerKey = (e: KeyboardEvent) => {
@@ -75,6 +88,29 @@ export function Select(props: {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       choose(active);
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      setOpen(false);
+      trigger.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const t = typed.current;
+      const now = performance.now();
+      t.text = (now - t.at > TYPE_AHEAD_MS ? "" : t.text) + e.key.toLowerCase();
+      t.at = now;
+      // A repeated single letter cycles through the options that start with it.
+      const cycle = /^(.)\1*$/u.test(t.text);
+      const prefix = cycle ? t.text.slice(0, 1) : t.text;
+      const from = enabled.indexOf(active);
+      const order = [...enabled.slice(from + (cycle ? 1 : 0)), ...enabled.slice(0, from + (cycle ? 1 : 0))];
+      const hit = order.find((i) => options[i]?.label.toLowerCase().startsWith(prefix));
+      if (hit !== undefined) {
+        e.preventDefault();
+        setActive(hit);
+      }
       return;
     }
     const at = Math.max(0, enabled.indexOf(active));
@@ -128,28 +164,34 @@ export function Select(props: {
             className="flex flex-col overflow-y-auto overscroll-contain p-1 focus:outline-none focus-visible:shadow-none"
           >
             {options.map((o, i) => (
-              <div
-                key={o.value}
-                id={optionId(i)}
-                role="option"
-                aria-selected={o.value === value}
-                aria-disabled={o.disabled || undefined}
-                onPointerMove={() => !o.disabled && setActive(i)}
-                data-option={i}
-                className={cn(
-                  "flex min-w-0 items-center gap-2 rounded-sm px-2 press-row touch:min-h-ctl-lg",
-                  o.description ? "min-h-ctl-lg py-1" : "h-ctl-sm",
-                  o.disabled ? "text-fg-3" : i === active ? "bg-active text-fg" : "text-fg",
+              <Fragment key={o.value}>
+                {o.group !== undefined && o.group !== options[i - 1]?.group && (
+                  <div role="presentation" className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">
+                    {o.group}
+                  </div>
                 )}
-              >
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="min-w-0 truncate">{o.label}</span>
-                  {o.description && <span className="min-w-0 truncate text-xs text-fg-3">{o.description}</span>}
-                </span>
-                <span aria-hidden className="size-4 shrink-0">
-                  {o.value === value && <Glyph icon={Check} size={14} className="text-fg-2" />}
-                </span>
-              </div>
+                <div
+                  id={optionId(i)}
+                  role="option"
+                  aria-selected={o.value === value}
+                  aria-disabled={o.disabled || undefined}
+                  onPointerMove={() => !o.disabled && setActive(i)}
+                  data-option={i}
+                  className={cn(
+                    "flex min-w-0 items-center gap-2 rounded-sm px-2 press-row touch:min-h-ctl-lg",
+                    o.description ? "min-h-ctl-lg py-1" : "h-ctl-sm",
+                    o.disabled ? "text-fg-3" : i === active ? "bg-active text-fg" : "text-fg",
+                  )}
+                >
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="min-w-0 truncate">{o.label}</span>
+                    {o.description && <span className="min-w-0 truncate text-xs text-fg-3">{o.description}</span>}
+                  </span>
+                  <span aria-hidden className="size-4 shrink-0">
+                    {o.value === value && <Glyph icon={Check} size={14} className="text-fg-2" />}
+                  </span>
+                </div>
+              </Fragment>
             ))}
           </div>
         </Popover>

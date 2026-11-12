@@ -1,6 +1,5 @@
-import { EmptyState } from "../primitives/EmptyState";
 import type { Agent } from "@octo/agent-client";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { agentGroups, foldLine, type AgentNode } from "../../lib/agentGroups";
 import { cn } from "../../lib/cn";
@@ -13,17 +12,19 @@ import { toolTab } from "../../state/workspace/layout";
 import { isBooleanRecord, isNumber, slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { Button } from "../primitives/Button";
+import { EmptyState } from "../primitives/EmptyState";
 import { FloatRoom } from "../primitives/floatRoom";
 import { Glyph } from "../primitives/Glyph";
-import { InfoSection } from "../primitives/InfoList";
+import { ListRow } from "../primitives/ListRow";
+import { ScrollArea } from "../primitives/ScrollArea";
+import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
 
 const AGENTS_TAB = toolTab("agents");
 const EXPANDED = slot("expanded", isBooleanRecord);
 const SCROLL = slot("scroll", isNumber);
 const NONE_EXPANDED: Record<string, boolean> = {};
-
-const ROW = "flex h-row-nav w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-sm press-row focus-inset hover:bg-hover max-md:h-bar";
 
 /**
  * The Agents tab (decision 39): Running and Finished, with counts. A row is 32px — state ring, the role, its activity
@@ -58,23 +59,24 @@ export function AgentsPanel() {
       <li key={n.agent.id} className="flex flex-col">
         <AgentRow agent={n.agent} now={now} quiet={!running} onOpen={(alt) => ws.openAgent(n.agent.id, { otherSide: alt })} />
         {fold && (
-          <button
-            type="button"
-            data-row
-            aria-expanded={open}
+          <ListRow
+            size="sm"
+            tone="quiet"
+            leading={<Glyph icon={open ? ChevronDown : ChevronRight} size={14} />}
+            expanded={open}
+            className="ml-6"
+            title={
+              <>
+                {fold.text}
+                {fold.failed && (
+                  <>
+                    , <span className="text-err">{fold.failed}</span>
+                  </>
+                )}
+              </>
+            }
             onClick={() => toggle(n.agent.id, open)}
-            className="flex h-row w-full min-w-0 items-center gap-2 rounded-sm pr-2 pl-8 text-left text-xs text-fg-3 press-row focus-inset hover:bg-hover hover:text-fg-2 max-md:h-bar"
-          >
-            <Glyph icon={ChevronRight} size={14} className={cn("-ml-1 shrink-0 transition-[rotate] duration-150", open && "rotate-90")} />
-            <span>
-              {fold.text}
-              {fold.failed && (
-                <>
-                  , <span className="text-err">{fold.failed}</span>
-                </>
-              )}
-            </span>
-          </button>
+          />
         )}
         {fold && open && (
           <ul className="flex flex-col pl-6" aria-label={`Started by ${n.agent.role}`}>
@@ -97,43 +99,40 @@ export function AgentsPanel() {
 
   const empty = groups.running.length + groups.finished.length === 0;
   return (
-    <div
+    <ScrollArea
       ref={scroller}
       data-agents
       onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}
-      className={cn("h-full min-h-0 overflow-y-auto overscroll-contain px-pane pt-pane pb-4", empty && "flex flex-col")}
+      className={cn("h-full min-h-0 px-pane pt-pane pb-4", empty && "flex flex-col")}
     >
       <div ref={rows} className={cn("mx-auto flex w-full max-w-details flex-col gap-5", empty && "min-h-0 flex-1")}>
         {empty && (
           <EmptyState
             title="No agents yet"
             actions={
-              <button
-                type="button"
-                data-row
-                onClick={ws.focusChat}
-                className="h-row w-fit rounded-sm px-2 text-sm text-fg-2 press-row focus-inset hover:bg-hover hover:text-fg max-md:h-bar"
-              >
+              <Button variant="quiet" data-row onClick={ws.focusChat}>
                 Give the project a task
-              </button>
+              </Button>
             }
           >
             They appear here when a request is split into tasks.
           </EmptyState>
         )}
         {groups.running.length > 0 && (
-          <InfoSection title={`Running ${groups.running.length}`} labelId="agents-running">
+          <section aria-labelledby="agents-running" className="flex flex-col">
+            <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
             <ul className="flex flex-col">{groups.running.map((n) => node(n, true))}</ul>
-          </InfoSection>
+          </section>
         )}
         {groups.finished.length > 0 && (
-          <InfoSection title={`Finished ${groups.finished.length}`} labelId="agents-finished">
+          <section aria-labelledby="agents-finished" className="flex flex-col">
+            <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
             <ul className="flex flex-col">{groups.finished.map((n) => node(n, false))}</ul>
-          </InfoSection>
+          </section>
         )}
       </div>
       <FloatRoom />
-    </div>
+    </ScrollArea>
   );
 }
 
@@ -144,23 +143,20 @@ function AgentRow(props: { agent: Agent; now: number; quiet: boolean; via?: stri
   const duration = agentDuration(a, props.now);
   const line = running ? agentActivity(state, a.id) : a.status === "failed" ? (a.error ?? a.title) : a.title;
   return (
-    <button
-      type="button"
-      data-row
-      data-agent-row={a.status}
+    <ListRow
+      size="md"
+      tone={props.quiet ? "quiet" : "default"}
+      leading={<StateGlyph state={agentGlyph(a.status)} />}
+      title={
+        <>
+          {props.via && <span className="mr-1.5 text-fg-3">↳ {props.via}</span>}
+          {a.role || "Agent"}
+          <span className="ml-2 text-xs text-fg-3">{line}</span>
+        </>
+      }
+      meta={duration !== null ? <span className="tabular-nums">{formatDuration(duration)}</span> : undefined}
+      tip={`${a.role}${a.title ? `: ${a.title}` : ""}${a.status === "failed" && a.error ? ` — failed: ${a.error}` : ""}\nOpens in its own tab`}
       onClick={(e) => props.onOpen(e.altKey)}
-      title={`${a.role}${a.title ? `: ${a.title}` : ""}${a.status === "failed" && a.error ? ` — failed: ${a.error}` : ""}\nOpens in its own tab`}
-      className={ROW}
-    >
-      <span className="grid size-4 shrink-0 place-items-center">
-        <StateGlyph state={agentGlyph(a.status)} />
-      </span>
-      <span className={cn("max-w-[45%] shrink-0 truncate", props.quiet ? "text-fg-2" : "text-fg")}>
-        {props.via && <span className="mr-1.5 text-fg-3">↳ {props.via}</span>}
-        {a.role || "Agent"}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-xs text-fg-3">{line}</span>
-      {duration !== null && <span className="shrink-0 text-xs text-fg-3 tabular-nums">{formatDuration(duration)}</span>}
-    </button>
+    />
   );
 }

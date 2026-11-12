@@ -98,6 +98,7 @@ func (o *Orchestrator) Clear(ctx context.Context, pid string) (ClearResult, erro
 		return ClearResult{}, err
 	}
 	summary, source := o.clearSummary(turnCtx, rt, orch, live)
+	o.memoryOf(db).CloseOnClear(ctx) // a finished task closes; an unfinished one is carried by title
 	tasks, err := db.Tasks(ctx)
 	if err != nil {
 		return ClearResult{}, err
@@ -109,6 +110,13 @@ func (o *Orchestrator) Clear(ctx context.Context, pid string) (ClearResult, erro
 		}
 	}
 	title := sessionTitle(live)
+	// The memory session boundary first: the carry-over belongs to the session it starts. A failure here never undoes the clear.
+	before, _ := db.CurrentSessionID(ctx)
+	var boundary memory.Boundary
+	boundaryErr := error(nil)
+	if boundary, boundaryErr = o.memoryOf(db).StartSession(ctx, "clear", memory.Carry{Summary: summary, Source: source}); boundaryErr != nil {
+		slog.Warn("memory session boundary failed", "err", boundaryErr)
+	}
 	c, err := db.AddClear(ctx, orch.ID, projectstore.NewID("conv"), carryOver(summary, open), source, title)
 	if err != nil {
 		return ClearResult{}, err
@@ -118,6 +126,10 @@ func (o *Orchestrator) Clear(ctx context.Context, pid string) (ClearResult, erro
 	}
 	isACP := plugins.IsACPRef(rt.models.Orchestrator)
 	if isACP {
+		if st, ok, err := db.ACPSession(ctx, orch.ID); err == nil && ok && before != "" {
+			// The agent keeps the session being left: Resume loads it again.
+			_ = db.SetSessionACP(ctx, before, projectstore.SessionACP{Agent: st.PluginAgent, Model: st.Model, SessionID: st.SessionID})
+		}
 		if err := db.DeleteACPSession(ctx, orch.ID); err != nil {
 			return ClearResult{}, err
 		}
@@ -127,11 +139,14 @@ func (o *Orchestrator) Clear(ctx context.Context, pid string) (ClearResult, erro
 		}
 	}
 	res := ClearResult{ConversationID: c.ConversationID, UptoMessageID: c.UptoMessageID, At: c.CreatedAt, Title: title, Summary: summary, SummarySource: source}
-	// A clear ends the memory session (M4) and keeps the summary on its record; a failure here never undoes the clear.
-	if b, err := o.memoryOf(db).StartSession(ctx, "clear", memory.Carry{Summary: summary, Source: source}); err != nil {
-		slog.Warn("memory session boundary failed", "err", err)
-	} else {
-		res.SessionID, res.PreviousSessionID = b.SessionID, b.PreviousID
+	if boundaryErr == nil {
+		res.SessionID, res.PreviousSessionID = boundary.SessionID, boundary.PreviousID
+		if res.SessionID != before {
+			// A new main session exists and is current; the one that ended changed state too.
+			o.publishSession(ctx, db, res.SessionID, true)
+			o.hub.Publish(pid, events.SessionCurrent, map[string]any{"session_id": res.SessionID, "previous_session_id": before})
+			o.publishSession(ctx, db, before, false)
+		}
 	}
 	o.hub.Publish(pid, events.ConversationCleared, map[string]any{
 		"project_id": pid, "conversation_id": res.ConversationID, "upto_message_id": res.UptoMessageID, "at": res.At,

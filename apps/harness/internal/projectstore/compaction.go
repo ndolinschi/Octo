@@ -27,9 +27,11 @@ type Compaction struct {
 	// the session that ended.
 	SummarySource string
 	Title         string
+	// SessionID is the main session the row belongs to (a clear's carry-over: the session it starts).
+	SessionID string
 }
 
-const compactionCols = `id, agent_id, summary, upto_message_id, created_at, COALESCE(usage_id, 0), manual, message_count, cleared, conversation_id, summary_source, title`
+const compactionCols = `id, agent_id, summary, upto_message_id, created_at, COALESCE(usage_id, 0), manual, message_count, cleared, conversation_id, summary_source, title, session_id`
 
 // AddCompaction stores summary as covering every message the agent has so far.
 func (d *DB) AddCompaction(ctx context.Context, agentID, summary string) (Compaction, error) {
@@ -42,9 +44,13 @@ func (d *DB) AddCompaction(ctx context.Context, agentID, summary string) (Compac
 		`SELECT COALESCE(MAX(id), 0) FROM usage WHERE agent_id = ? AND role IS NULL`, agentID).Scan(&c.UsageID); err != nil {
 		return Compaction{}, err
 	}
+	sid, err := d.scopeSession(ctx, agentID)
+	if err != nil {
+		return Compaction{}, err
+	}
 	res, err := d.sql.ExecContext(ctx,
-		`INSERT INTO compactions (agent_id, summary, upto_message_id, created_at, usage_id) VALUES (?, ?, ?, ?, ?)`,
-		agentID, summary, c.UptoMessageID, c.CreatedAt, c.UsageID)
+		`INSERT INTO compactions (agent_id, summary, upto_message_id, created_at, usage_id, session_id) VALUES (?, ?, ?, ?, ?, ?)`,
+		agentID, summary, c.UptoMessageID, c.CreatedAt, c.UsageID, sid)
 	if err != nil {
 		return Compaction{}, err
 	}
@@ -52,11 +58,16 @@ func (d *DB) AddCompaction(ctx context.Context, agentID, summary string) (Compac
 	return c, err
 }
 
-// LatestCompaction returns the agent's newest compaction, or ok=false.
+// LatestCompaction returns the agent's newest compaction, or ok=false. For the orchestrator it is the newest
+// one of the current main session (a clear's carry-over belongs to the session it starts).
 func (d *DB) LatestCompaction(ctx context.Context, agentID string) (c Compaction, ok bool, err error) {
+	sid, err := d.scopeSession(ctx, agentID)
+	if err != nil {
+		return Compaction{}, false, err
+	}
 	err = d.sql.QueryRowContext(ctx,
-		`SELECT `+compactionCols+` FROM compactions WHERE agent_id = ? ORDER BY id DESC LIMIT 1`,
-		agentID).Scan(&c.ID, &c.AgentID, &c.Summary, &c.UptoMessageID, &c.CreatedAt, &c.UsageID, &c.Manual, &c.MessageCount, &c.Cleared, &c.ConversationID, &c.SummarySource, &c.Title)
+		`SELECT `+compactionCols+` FROM compactions WHERE agent_id = ? AND (? = '' OR session_id = ? OR session_id = '') ORDER BY id DESC LIMIT 1`,
+		agentID, sid, sid).Scan(&c.ID, &c.AgentID, &c.Summary, &c.UptoMessageID, &c.CreatedAt, &c.UsageID, &c.Manual, &c.MessageCount, &c.Cleared, &c.ConversationID, &c.SummarySource, &c.Title, &c.SessionID)
 	if err == sql.ErrNoRows {
 		return Compaction{}, false, nil
 	}
@@ -93,8 +104,12 @@ func (d *DB) AddClear(ctx context.Context, agentID, conversationID, carryOver, s
 // the current conversation.
 func (d *DB) LatestClearUpto(ctx context.Context, agentID string) (int64, error) {
 	var upto int64
-	err := d.sql.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(upto_message_id), 0) FROM compactions WHERE agent_id = ? AND cleared = 1`, agentID).Scan(&upto)
+	sid, err := d.scopeSession(ctx, agentID)
+	if err != nil {
+		return 0, err
+	}
+	err = d.sql.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(upto_message_id), 0) FROM compactions WHERE agent_id = ? AND cleared = 1 AND (? = '' OR session_id = ? OR session_id = '')`, agentID, sid, sid).Scan(&upto)
 	return upto, err
 }
 
@@ -108,7 +123,7 @@ func (d *DB) compactionRows(ctx context.Context, agentID string, cleared bool) (
 	out := []Compaction{}
 	for rows.Next() {
 		var c Compaction
-		if err := rows.Scan(&c.ID, &c.AgentID, &c.Summary, &c.UptoMessageID, &c.CreatedAt, &c.UsageID, &c.Manual, &c.MessageCount, &c.Cleared, &c.ConversationID, &c.SummarySource, &c.Title); err != nil {
+		if err := rows.Scan(&c.ID, &c.AgentID, &c.Summary, &c.UptoMessageID, &c.CreatedAt, &c.UsageID, &c.Manual, &c.MessageCount, &c.Cleared, &c.ConversationID, &c.SummarySource, &c.Title, &c.SessionID); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

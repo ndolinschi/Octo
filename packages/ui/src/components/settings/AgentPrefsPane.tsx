@@ -4,8 +4,9 @@ import { cleanModelName, customModelsCodec, preferredModel, roleModel, selectOpt
 import { PREFS, usePersistentState } from "../../lib/storage";
 import { useApp } from "../../state/app";
 import { FieldRow } from "../primitives/FieldRow";
-import { Input } from "../primitives/Field";
-import { SaveStatus, Select } from "./parts";
+import { Select } from "../primitives/Select";
+import { TextField } from "../primitives/TextField";
+import { SaveStatus } from "./parts";
 import { SectionTitle } from "./ProviderParts";
 import { useSave } from "./useSave";
 
@@ -83,7 +84,7 @@ function ModelControl(props: {
   };
   if (other)
     return (
-      <Input
+      <TextField
         ref={field}
         id={props.id}
         aria-label={`Model name for ${props.label}`}
@@ -100,30 +101,26 @@ function ModelControl(props: {
             setOther(false);
           }
         }}
-        className="max-sm:text-input-touch"
       />
     );
   return (
     <Select
       id={props.id}
+      label={props.label}
       value={props.value}
-      onChange={(e) => {
-        if (e.target.value === OTHER) {
+      options={[
+        { value: DEFAULT, label: "Default" },
+        ...options.map((o) => ({ value: o.id, label: o.label })),
+        ...(props.agent.accepts_custom_model !== false ? [{ value: OTHER, label: "Other…" }] : []),
+      ]}
+      onChange={(value) => {
+        if (value === OTHER) {
           setDraft("");
           setOther(true);
           return;
         }
-        props.onSave(e.target.value);
+        props.onSave(value);
       }}
-      className="w-full"
-    >
-      <option value={DEFAULT}>Default</option>
-      {options.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.label}
-        </option>
-      ))}
-      {props.agent.accepts_custom_model !== false && <option value={OTHER}>Other…</option>}
-    </Select>
+    />
   );
 }

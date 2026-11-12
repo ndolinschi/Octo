@@ -340,9 +340,19 @@ test("M1: task and memory events and request shapes", async () => {
     message_ids: [1],
     created_at: "t",
     updated_at: "t",
+    state_summary: "Did: changed 1 file (a.go).",
+    open_questions: [],
+    unfinished: false,
+    exchange_ids: ["exc_1"],
   };
   s = applyEvent(s, { type: "task.updated", seq: 1, task: { ...task } });
   assert.equal(s.tasks.tsk_1?.goal, "g");
+  assert.deepEqual(s.tasks.tsk_1?.exchange_ids, ["exc_1"]);
+  assert.equal(s.tasks.tsk_1?.state_summary, "Did: changed 1 file (a.go).");
+  const closed: Task = { ...task, id: "tsk_2", goal_by: "rule", status: "dropped", closed_reason: "dropped: no activity" };
+  s = applyEvent(s, { type: "task.updated", seq: 9, task: closed });
+  assert.equal(s.tasks.tsk_2?.closed_reason, "dropped: no activity");
+  s = applyEvent(s, { type: "task.updated", seq: 10, task_id: "tsk_2", deleted: true });
   s = applyEvent(s, { type: "task.updated", seq: 2, task_id: "tsk_1", deleted: true });
   assert.equal(Object.keys(s.tasks).length, 0);
   s = applyEvent(s, { type: "memory.updated", seq: 3, path: "a.md" });

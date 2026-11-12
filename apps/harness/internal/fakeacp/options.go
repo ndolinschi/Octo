@@ -47,6 +47,9 @@ const (
 	// EnvLoadSession=1 advertises agentCapabilities.loadSession and serves
 	// session/load (replaying a short history as session/update first).
 	EnvLoadSession = "OCTO_FAKEACP_LOAD_SESSION"
+	// EnvLoadFail=1 makes an agent that advertises loadSession (EnvLoadSession=1) refuse session/load
+	// ("session not found"), as one that lost the stored session does.
+	EnvLoadFail = "OCTO_FAKEACP_LOAD_FAIL"
 	// EnvMCPHTTP=1 advertises agentCapabilities.mcpCapabilities.http, so the
 	// client passes an HTTP MCP server; without it only stdio is accepted.
 	EnvMCPHTTP = "OCTO_FAKEACP_MCP_HTTP"
@@ -68,6 +71,8 @@ const (
 	// EnvSummary="fail" makes the agent refuse the prompt that asks it for the summary of a
 	// session being cleared (any other value: it answers "Agent summary: ...").
 	EnvSummary = "OCTO_FAKEACP_SUMMARY"
+	// EnvDigest="fail" makes the agent refuse the harness's task-digest prompt (memory M6); "garbage" answers with text that is not JSON.
+	EnvDigest = "OCTO_FAKEACP_DIGEST"
 	// EnvPromptImage=1 advertises agentCapabilities.promptCapabilities.image;
 	// the [blocks] marker reports the content blocks of the prompt.
 	EnvPromptImage = "OCTO_FAKEACP_PROMPT_IMAGE"
@@ -93,6 +98,7 @@ type options struct {
 	promptUsage string
 
 	loadSession bool
+	loadFail    bool
 	mcpHTTP     bool
 	mcpReject   bool
 	unique      bool
@@ -105,7 +111,7 @@ func optionsFromEnv(args []string) options {
 	o := options{
 		auth: os.Getenv(EnvAuth), loginFile: os.Getenv(EnvLoginFile),
 		via: os.Getenv(EnvModelsVia), refuseUnk: os.Getenv(EnvRefuseModel) == "1",
-		loadSession: os.Getenv(EnvLoadSession) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
+		loadSession: os.Getenv(EnvLoadSession) == "1", loadFail: os.Getenv(EnvLoadFail) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
 		mcpReject: os.Getenv(EnvMCPReject) == "1", promptUsage: os.Getenv(EnvPromptUsage), unique: os.Getenv(EnvUniqueSessions) == "1",
 		modes: os.Getenv(EnvModes) == "1", commands: parseCommandList(os.Getenv(EnvCommands)), promptImage: os.Getenv(EnvPromptImage) == "1",
 	}

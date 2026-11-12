@@ -5,6 +5,7 @@ import { Button } from "../primitives/Button";
 import { SecretForm } from "../shared/SecretForm";
 import { useHarnessSettings } from "./harnessSettings";
 import { useSettingsActions } from "./pageContext";
+import { Notice } from "../primitives/Notice";
 import { SaveStatus } from "./parts";
 import { SectionTitle } from "./ProviderParts";
 import { useSave } from "./useSave";
@@ -26,12 +27,16 @@ export function ProviderKey({ provider }: { provider: Provider }) {
       {harness.load.status === "loading" && <p className="text-sm text-fg-3">Loading…</p>}
       {harness.load.status === "unavailable" && <p className="text-sm text-fg-2">This connection cannot read or change the harness&apos;s settings.</p>}
       {harness.load.status === "error" && (
-        <p role="alert" className="text-sm text-fg-2">
-          <span className="text-err">Couldn&apos;t load the settings.</span> {harness.load.message}. The harness answers only on this machine.{" "}
-          <button type="button" onClick={harness.reload} className="text-link hover:underline">
-            Retry
-          </button>
-        </p>
+        <Notice
+          tone="error"
+          action={
+            <Button variant="link" size="xs" onClick={harness.reload}>
+              Retry
+            </Button>
+          }
+        >
+          Couldn&apos;t load the settings. {harness.load.message}. The harness answers only on this machine.
+        </Notice>
       )}
       {s && !s.editable && <p className="text-sm text-fg-2">{s.note ?? `The key is set by the ${s.source}; change it there.`}</p>}
       {s?.editable && (

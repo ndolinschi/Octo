@@ -1,12 +1,16 @@
 import type { Plugin } from "@octo/agent-client";
-import { CircleX, Plug, Search, Server, type LucideIcon } from "lucide-react";
+import { Plug, Server, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
+import { FilterTabs } from "../primitives/FilterTabs";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
+import { ListRow } from "../primitives/ListRow";
+import { Notice } from "../primitives/Notice";
+import { SearchField } from "../primitives/SearchField";
 import { Spinner } from "../primitives/Status";
 import { errorMessage } from "../../lib/format";
 
@@ -101,64 +105,37 @@ export function IntegrationsView() {
   }
   if (load.status === "error") {
     return (
-      <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-        <p className="min-w-0 flex-1 text-fg-2">
-          <span className="text-err">Couldn't load integrations.</span> {load.message}. Check that the harness is running, then retry.
-        </p>
-        <Button size="sm" onClick={fetch}>
-          Retry
-        </Button>
-      </div>
+      <Notice
+        form="block"
+        tone="error"
+        title="Couldn't load integrations"
+        actions={
+          <Button size="sm" onClick={fetch}>
+            Retry
+          </Button>
+        }
+      >
+        {load.message}. Check that the harness is running, then retry.
+      </Notice>
     );
   }
 
   return (
     <div data-integrations className="flex flex-col gap-3">
-      <label className="flex h-row-nav items-center gap-2 rounded-md border border-input-border px-3 text-fg-3 transition-[border-color] duration-100 focus-within:border-focus">
-        <Glyph icon={Search} size={14} className="shrink-0" />
-        <span className="sr-only">Search integrations</span>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && query) {
-              e.preventDefault();
-              setQuery("");
-            }
-          }}
-          data-esc-clears
-          placeholder="Search integrations"
-          spellCheck={false}
-          autoComplete="off"
-
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
-        />
-      </label>
+      <SearchField label="Search integrations" value={query} onChange={setQuery} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Show" className="flex flex-wrap items-center gap-1.5">
-          {KINDS.map((k) => {
-            const count = k.kind === "all" ? matching.length : matching.filter((i) => i.kind === k.kind).length;
-            const on = kind === k.kind;
-            return (
-              <button
-                key={k.kind}
-                type="button"
-                aria-pressed={on}
-                onClick={() => setKind(k.kind)}
-                className={cn(
-                  "flex h-chip press items-center gap-1.5 rounded-sm border px-2 text-xs",
-                  on ? "border-transparent bg-active text-fg" : "border-line text-fg-2 hover:bg-hover hover:text-fg",
-                )}
-              >
-                {k.label}
-                {/* On the selected chip's fill, fg-3 fell under 4.5:1 (decision 36): the count takes fg-2 there. */}
-                <span className={cn("tabular-nums", on ? "text-fg-2" : "text-fg-3")}>{count}</span>
-              </button>
-            );
-          })}
-        </div>
+        <FilterTabs<Kind | "all">
+          label="Show"
+          value={kind}
+          onChange={setKind}
+          className="px-0"
+          options={KINDS.map((k) => ({
+            id: k.kind,
+            label: k.label,
+            count: k.kind === "all" ? matching.length : matching.filter((i) => i.kind === k.kind).length,
+          }))}
+        />
         <p className="ml-auto flex shrink-0 items-center gap-3 text-xs tabular-nums">
           <span className="text-fg-2">{available}&nbsp;available</span>
           {missing > 0 && <span className="text-fg-3">{missing}&nbsp;not found</span>}
@@ -172,7 +149,7 @@ export function IntegrationsView() {
       ) : (
         // Rows stay together per plugin (in manifest order); a plugin's manifest problems follow its rows,
         // full width, so each error sits with what it is about.
-        <ul aria-label="Integrations" className="grid grid-cols-2 gap-x-2 max-[560px]:grid-cols-1">
+        <div role="list" aria-label="Integrations" className="grid grid-cols-2 gap-x-2 max-[560px]:grid-cols-1">
           {plugins.flatMap((p) => {
             const rows = shown.filter((i) => i.plugin === p.name);
             const errors = kind === "all" && !q ? p.errors : [];
@@ -180,32 +157,28 @@ export function IntegrationsView() {
               ...rows.map((i) => <IntegrationRow key={i.key} item={i} />),
               ...(errors.length
                 ? [
-                    <li
+                    <div
                       key={`${p.name}/errors`}
+                      role="listitem"
                       aria-label={`Problems in ${p.name} ${p.version}`}
-                      className="col-span-2 flex flex-col gap-1 px-1.5 pt-1 pb-2 max-[560px]:col-span-1"
+                      className="col-span-2 flex flex-col gap-1 px-2 pt-1 pb-2 max-[560px]:col-span-1"
                     >
                       {errors.map((e, n) => (
-                        <p key={n} className="flex items-start gap-2 text-xs text-err">
-                          <span className="grid h-4 shrink-0 place-items-center">
-                            <Glyph icon={CircleX} size={14} />
-                          </span>
-                          <span className="min-w-0 wrap-anywhere">
-                            <span className="font-mono">{p.name}</span> {e}
-                          </span>
-                        </p>
+                        <Notice key={n} tone="error">
+                          <span className="font-mono">{p.name}</span> {e}
+                        </Notice>
                       ))}
-                    </li>,
+                    </div>,
                   ]
                 : []),
             ];
           })}
-        </ul>
+        </div>
       )}
       {problems.length > 0 && (kind !== "all" || q) && (
-        <p className="text-xs text-err">
+        <Notice tone="error">
           {problemCount}&nbsp;{problemCount === 1 ? "manifest problem" : "manifest problems"} (shown under All)
-        </p>
+        </Notice>
       )}
 
       <p className="border-t border-line pt-3 text-xs text-fg-3">
@@ -217,41 +190,30 @@ export function IntegrationsView() {
   );
 }
 
-/** [28 tile] 8 [name / detail] … [state / plugin]: one 40px row (a 26-character name fits beside its state at 640px). */
+/** One 40px two-line row: kind glyph, name and detail, then the state and the plugin at the end. */
 function IntegrationRow({ item: i }: { item: Item }) {
-  const Icon = KIND_ICON[i.kind];
   return (
-    <li
-      data-row
-      className="flex h-bar min-w-0 items-center gap-2 rounded-sm px-1.5"
-      title={i.kind === "tool" ? `${i.plugin}: ${i.name}` : `${i.name} — ${i.detail} (${i.plugin})`}
-    >
-      <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-sm bg-hover text-fg-2">
-        <Glyph icon={Icon} size={14} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex h-5 min-w-0 items-center gap-2">
-          <span className={cn("min-w-0 truncate text-sm text-fg", i.mono && i.kind === "tool" && "font-mono text-xs")}>{i.name}</span>
-          {i.available !== null ? (
-            <State available={i.available} />
-          ) : (
-            // No availability check exists for tool servers: the manifest names them, nothing more.
-            <span className="ml-auto shrink-0 text-xs text-fg-3">Configured</span>
-          )}
+    <ListRow
+      role="listitem"
+      size="lg"
+      tip={i.kind === "tool" ? `${i.plugin}: ${i.name}` : `${i.name} — ${i.detail} (${i.plugin})`}
+      leading={<Glyph icon={KIND_ICON[i.kind]} size={14} />}
+      title={<span className={cn(i.mono && i.kind === "tool" && "font-mono")}>{i.name}</span>}
+      description={<span className={cn(i.mono && i.kind === "agent" && "font-mono")}>{i.detail}</span>}
+      meta={
+        <span className="flex items-center gap-3">
+          {i.available !== null ? <State available={i.available} /> : <span>Configured</span>}
+          <span className="font-mono">{i.plugin}</span>
         </span>
-        <span className="flex h-4 min-w-0 items-center gap-2 text-xs text-fg-3">
-          <span className={cn("min-w-0 truncate", i.mono && i.kind === "agent" && "font-mono")}>{i.detail}</span>
-          <span className="ml-auto shrink-0 font-mono">{i.plugin}</span>
-        </span>
-      </span>
-    </li>
+      }
+    />
   );
 }
 
 function State({ available }: { available: boolean }) {
   return (
     <span
-      className={cn("ml-auto flex shrink-0 items-center gap-1.5 text-xs", available ? "text-fg-3" : "text-fg-2")}
+      className={cn("flex shrink-0 items-center gap-1.5", available ? "text-fg-3" : "text-fg-2")}
       title={available ? "Available" : "Not found on this machine"}
     >
       <span aria-hidden className={cn("size-1.5 rounded-full", available ? "bg-ok" : "border border-fg-3")} />

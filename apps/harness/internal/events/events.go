@@ -58,6 +58,11 @@ const (
 	ConversationRewound = "conversation.rewound"
 	// ConversationCleared says a new conversation started (POST /clear).
 	ConversationCleared = "conversation.cleared"
+	// SessionCreated, SessionUpdated and SessionCurrent are the project sessions' events: a session appeared, its
+	// fields changed (state, title, archive, exchanges), or another main session became current.
+	SessionCreated = "session.created"
+	SessionUpdated = "session.updated"
+	SessionCurrent = "session.current"
 	// SlashCommandsUpdated says the ACP agent's slash commands (or their pending state) changed:
 	// refetch GET /slash-commands.
 	SlashCommandsUpdated = "slash_commands.updated"

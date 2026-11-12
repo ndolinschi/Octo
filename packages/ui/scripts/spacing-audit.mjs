@@ -58,7 +58,7 @@ Usage: node packages/ui/scripts/spacing-audit.mjs [options]
 
   --url <base>      dev server to audit (default http://localhost:1420); demo data is required
   --query <q>       query string for the app (default "demo=1")
-  --only <state>    audit one state (see --list)
+  --only <state>    audit one state, or several separated by commas (see --list)
   --json <path>     also write the full report as JSON
   --strict          exit 1 when a state is skipped (unreachable), not only on violations
   --selftest        run the in-page rules against a synthetic page first
@@ -221,6 +221,17 @@ async function openTool(page, label) {
   await settle(page, 900);
 }
 
+async function openMemoryTab(page, ctx) {
+  await openProject(page, ctx, "Atlas API");
+  await openTool(page, "memory");
+  try {
+    await page.locator("[data-memory]").first().waitFor({ timeout: T });
+  } catch {
+    skip("Memory tab did not render");
+  }
+  await settle(page, 500);
+}
+
 const HOME_VPS = [...WIDE, { width: 390, height: 844 }];
 
 const STATES = [
@@ -328,6 +339,60 @@ const STATES = [
       await openProject(page, ctx, "Atlas API");
       await clickTool(page, "Show agents");
       if (!(await page.getByRole("tabpanel").count())) skip("no tab panel after opening Agents");
+    },
+  },
+  {
+    id: "memory-sessions",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.getByRole("tab", { name: "Sessions" }).first().waitFor({ timeout: T });
+    },
+  },
+  {
+    id: "memory-exchange",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.locator("[data-memory] [data-row]").first().click({ timeout: T });
+      await settle(page, 400);
+      const row = page.locator("[data-memory] [data-exchange] [data-row]").first();
+      if (!(await row.count())) skip("no exchange row in the demo session");
+      await row.click({ timeout: T });
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "memory-knowledge",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.getByRole("tab", { name: "Knowledge" }).first().click({ timeout: T });
+      await settle(page, 400);
+      const task = page.getByRole("list", { name: "Tasks" }).locator("[data-row]").first();
+      if (!(await task.count())) skip("no task rows in Knowledge");
+      await task.click({ timeout: T });
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "memory-files",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.getByRole("tab", { name: "Files" }).first().click({ timeout: T });
+      await settle(page, 400);
+      await page.locator("[data-memory] [data-row]").first().click({ timeout: T });
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "memory-search",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.getByRole("searchbox", { name: "Search memory" }).fill("refresh token");
+      await settle(page, 1000);
     },
   },
   {
@@ -1172,7 +1237,8 @@ async function main() {
   }
   await probe();
 
-  const states = STATES.filter((s) => !ONLY || s.id === ONLY);
+  const only = ONLY ? new Set(ONLY.split(",")) : null;
+  const states = STATES.filter((s) => !only || only.has(s.id));
   if (!states.length) {
     console.error(`No state "${ONLY}". Known: ${STATES.map((s) => s.id).join(", ")}`);
     process.exit(2);

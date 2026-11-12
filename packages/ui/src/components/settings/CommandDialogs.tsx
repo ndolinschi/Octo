@@ -3,9 +3,12 @@ import type { ProjectCommand, ReviewConfig } from "@octo/agent-client";
 import { commandsProblem, parseGlobs } from "../../lib/commands/config";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
-import { Field, Input, Textarea } from "../primitives/Field";
+import { Checkbox } from "../primitives/Checkbox";
+import { Field } from "../primitives/Field";
 import { FieldRow } from "../primitives/FieldRow";
-import { Switch } from "./parts";
+import { Notice } from "../primitives/Notice";
+import { Switch } from "../primitives/Switch";
+import { TextArea, TextField } from "../primitives/TextField";
 
 /** Add or edit one project command (decision 68). `others` are the rest of the list, so a clash or a third pin is named before saving. */
 export function CommandDialog(props: {
@@ -45,7 +48,7 @@ export function CommandDialog(props: {
               Remove
             </Button>
           )}
-          <Button variant="ghost" onClick={props.onClose}>
+          <Button variant="quiet" onClick={props.onClose}>
             Cancel
           </Button>
           <Button variant="primary" disabled={!valid || busy} onClick={() => void run(() => props.onSave(draft))}>
@@ -60,26 +63,24 @@ export function CommandDialog(props: {
             {
               id: ids[0],
               label: "Name",
-              control: <Input id={ids[0]} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tests" className="max-sm:text-input-touch" />,
+              control: <TextField id={ids[0]} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tests" />,
             },
             {
               id: ids[2],
               label: "Folder (optional)",
-              control: (
-                <Input id={ids[2]} value={cwd} spellCheck={false} onChange={(e) => setCwd(e.target.value)} className="font-mono max-sm:text-input-touch" />
-              ),
+              control: <TextField id={ids[2]} value={cwd} spellCheck={false} onChange={(e) => setCwd(e.target.value)} className="font-mono" />,
             },
           ]}
           hint="Folder: the project folder by default; a path inside it, or another folder's name."
         />
         <Field label="Command line" htmlFor={ids[1]}>
-          <Input
+          <TextField
             id={ids[1]}
             value={command}
             spellCheck={false}
             onChange={(e) => setCommand(e.target.value)}
             placeholder="pnpm test"
-            className="font-mono max-sm:text-input-touch"
+            className="font-mono"
           />
         </Field>
         <div className="flex items-center gap-3">
@@ -88,11 +89,7 @@ export function CommandDialog(props: {
             Show as a button in the header (two at most)
           </label>
         </div>
-        {(problem || server) && (
-          <p role="alert" className="text-sm text-err">
-            {server ?? problem}
-          </p>
-        )}
+        {(problem || server) && <Notice tone="error">{server ?? problem}</Notice>}
       </div>
     </Dialog>
   );
@@ -121,7 +118,7 @@ export function OfferedDialog(props: {
       onClose={props.onClose}
       footer={
         <>
-          <Button variant="ghost" onClick={props.onClose}>
+          <Button variant="quiet" onClick={props.onClose}>
             Cancel
           </Button>
           <Button variant="primary" disabled={busy} onClick={() => void save()}>
@@ -133,29 +130,23 @@ export function OfferedDialog(props: {
       <div className="flex flex-col gap-1">
         {props.all.length === 0 && <p className="text-sm text-fg-3">This project has no commands yet. Add some first.</p>}
         {props.all.map((c) => (
-          <label key={c.name} className="flex min-h-9 cursor-pointer items-center gap-3 text-sm text-fg max-md:min-h-10">
-            <input
-              type="checkbox"
-              className="size-3.5 accent-[var(--octo-primary)]"
-              checked={chosen.has(c.name.toLowerCase())}
-              onChange={(e) =>
-                setChosen((s) => {
-                  const next = new Set(s);
-                  if (e.target.checked) next.add(c.name.toLowerCase());
-                  else next.delete(c.name.toLowerCase());
-                  return next;
-                })
-              }
-            />
-            {c.name}
-            <span className="min-w-0 truncate font-mono text-xs text-fg-3">{c.command}</span>
-          </label>
+          <Checkbox
+            key={c.name}
+            label={c.name}
+            description={<span className="font-mono">{c.command}</span>}
+            checked={chosen.has(c.name.toLowerCase())}
+            onChange={(on) =>
+              setChosen((s) => {
+                const next = new Set(s);
+                if (on) next.add(c.name.toLowerCase());
+                else next.delete(c.name.toLowerCase());
+                return next;
+              })
+            }
+            className="py-1"
+          />
         ))}
-        {server && (
-          <p role="alert" className="text-sm text-err">
-            {server}
-          </p>
-        )}
+        {server && <Notice tone="error">{server}</Notice>}
       </div>
     </Dialog>
   );
@@ -180,7 +171,7 @@ export function GlobsDialog(props: { initial: ReviewConfig["mechanical_globs"]; 
       onClose={props.onClose}
       footer={
         <>
-          <Button variant="ghost" onClick={props.onClose}>
+          <Button variant="quiet" onClick={props.onClose}>
             Cancel
           </Button>
           <Button variant="primary" disabled={busy} onClick={() => void save()}>
@@ -190,20 +181,20 @@ export function GlobsDialog(props: { initial: ReviewConfig["mechanical_globs"]; 
       }
     >
       <Field label="Patterns" htmlFor={id}>
-        <Textarea
+        <TextArea
           id={id}
           rows={6}
           value={text}
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
-          className="font-mono max-sm:text-input-touch"
+          className="font-mono"
           placeholder={"**/*.snap\ndocs/generated/"}
         />
       </Field>
       {server && (
-        <p role="alert" className="mt-3 text-sm text-err">
+        <Notice tone="error" className="mt-3">
           {server}
-        </p>
+        </Notice>
       )}
     </Dialog>
   );

@@ -5,12 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
-	"unicode/utf8"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
@@ -161,66 +158,6 @@ func (rt *runtime) memoryDefs() []tools.Def {
 // memoryGuidance is the sentence that tells the orchestrator about its memory.
 const memoryGuidance = "- Before saying you do not know something from earlier, try memory_search (and recall_message for exact words); keep long-lived knowledge in memory files.\n" + rememberGuidance
 
-// openTurnTask opens the task record for the turn's request. A failure only logs.
-func (rt *runtime) openTurnTask(ctx context.Context, text string, messageID int64) {
-	t, err := rt.memory().OpenTask(ctx, text, messageID)
-	if err != nil {
-		rt.logErr("open task record", err)
-		return
-	}
-	rt.setTask(t.ID)
-}
-
-// digestTurn asks the side model to digest the finished turn into its task
-// record: goal, quotes, decisions, facts (a fact that contradicts an earlier
-// one marks it superseded). It runs off the request path and only logs a
-// failure; with no side model the record keeps the harness's fallback goal.
-func (o *Orchestrator) digestTurn(rt *runtime, orchID, taskID string, messageID int64, reply string, trivial bool) {
-	if !o.opts.MemoryDigest || o.builtinOff() != "" || taskID == "" || messageID == 0 || o.baseCtx.Err() != nil {
-		return
-	}
-	o.wg.Add(1)
-	go func() {
-		defer o.wg.Done()
-		ctx, cancel := context.WithTimeout(o.baseCtx, 90*time.Second)
-		defer cancel()
-		if err := rt.digest(ctx, orchID, taskID, messageID, reply, trivial); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("memory digest failed", "project", rt.pid(), "task", taskID, "err", err)
-		}
-	}()
-}
-
-func (rt *runtime) digest(ctx context.Context, orchID, taskID string, messageID int64, reply string, trivial bool) error {
-	m := rt.memory()
-	task, err := rt.db.Task(ctx, taskID)
-	if err != nil {
-		return err
-	}
-	request, _, _, _, err := rt.db.MessageText(ctx, messageID)
-	if err != nil {
-		return err
-	}
-	input := m.Redact(memory.DigestInput(task, m.KnownFacts(ctx, taskID, 20), request, reply, m.Candidates(ctx, taskID)...))
-	loop := agent.Loop{
-		Client: rt.o.opts.Client, Registry: tools.NewRegistry(), Model: rt.models.SideModel(), System: memory.DigestPrompt,
-		MaxTurns: 1, Stream: false, SessionID: "digest:" + orchID,
-		Sink:            &digestSink{rt: rt, agentID: orchID, role: "digest"},
-		NoPromptCaching: rt.o.opts.NoPromptCaching, Limits: rt.o.opts.Limits, Router: rt.o.opts.Router,
-		Hints: rt.sideHints(), Gate: rt.loopGate(),
-	}
-	res, err := loop.Run(ctx, []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))})
-	if err != nil {
-		return err
-	}
-	d, err := memory.ParseDigest(res.Text)
-	if err != nil {
-		return err
-	}
-	// A trivial exchange keeps its record only if the digest found something durable in it.
-	_, err = m.ApplyDigestOpts(ctx, taskID, messageID, d, memory.DigestOpts{DropIfEmpty: trivial})
-	return err
-}
-
 // digestSink records the digest call's usage (role "digest": no agent totals).
 type digestSink struct {
 	rt      *runtime
@@ -247,14 +184,6 @@ func (s *digestSink) Usage(u agent.Usage) {
 	}
 }
 
-// TrivialReply is the longest answer (in characters) of a trivial exchange: one
-// with no tool call and a short answer.
-const TrivialReply = 400
-
-// noteTool counts a tool call of the turn (any agent: a sub-agent exists because
-// the orchestrator called a tool).
-func (rt *runtime) noteTool() { rt.turnTools.Add(1) }
-
 // touchFile remembers a file a tool call of the turn read or changed, as the
 // project shows it (relative to its folder when it lies in one).
 func (rt *runtime) touchFile(path string) {
@@ -279,30 +208,4 @@ func (rt *runtime) touchedFiles() []string {
 	rt.touchMu.Lock()
 	defer rt.touchMu.Unlock()
 	return slices.Clone(rt.touched)
-}
-
-// closeTurnTask settles the turn's task record: files, done with an outcome
-// (completed), dropped (cancelled); a trivial exchange's record goes unless the
-// digest will decide (then the digest drops it if it finds nothing). It returns
-// whether the exchange was trivial and whether the record is gone.
-func (o *Orchestrator) closeTurnTask(rt *runtime, status projectstore.AgentStatus, reply string) (trivial, gone bool) {
-	id := rt.currentTask()
-	if id == "" {
-		return false, false
-	}
-	ctx, cancel := dbCtx(context.Background())
-	defer cancel()
-	trivial = rt.turnTools.Load() == 0 && utf8.RuneCountInString(strings.TrimSpace(reply)) <= TrivialReply
-	digestRuns := o.opts.MemoryDigest && o.builtinOff() == "" && o.baseCtx.Err() == nil
-	_, gone, err := rt.memory().CloseTurn(ctx, id, memory.TurnEnd{
-		Completed: status == projectstore.StatusCompleted, Cancelled: status == projectstore.StatusCancelled,
-		Outcome: reply, Files: rt.touchedFiles(), Trivial: trivial, KeepForDigest: digestRuns,
-	})
-	if err != nil {
-		rt.logErr("close task record", err)
-	}
-	if gone {
-		rt.setTask("")
-	}
-	return trivial, gone
 }

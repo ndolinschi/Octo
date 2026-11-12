@@ -2,15 +2,15 @@ import type { ReactNode } from "react";
 import { stateText, type Tone } from "../../lib/providers";
 import type { Provider } from "@octo/agent-client";
 import { ProviderMark } from "../primitives/ProviderMark";
+import { SectionHeader } from "../primitives/SectionHeader";
 import { StateDot } from "./parts";
 
 /** The heading of one block of a provider's detail (decision 89 d): same style, same gap above everywhere. */
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <div className="flex min-h-8 items-center gap-3">
-      <h3 className="min-w-0 flex-1 text-sm font-medium text-fg">{children}</h3>
-      {aside}
-    </div>
+    <SectionHeader level="title" as="h3" aside={aside}>
+      {children}
+    </SectionHeader>
   );
 }
 

@@ -20,6 +20,7 @@ import { useHost } from "../../state/host";
 import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Dialog } from "../primitives/Dialog";
+import { Notice } from "../primitives/Notice";
 import { Spinner } from "../primitives/Status";
 import { SecretForm } from "../shared/SecretForm";
 
@@ -99,14 +100,16 @@ export function ConnectSheet({ target, onClose, onUseAnyway }: { target: string;
         </p>
       )}
       {providers.status === "error" && !provider && (
-        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-fg-2">
-          <span className="min-w-0 flex-1">
-            <span className="text-err">Couldn't check the providers.</span> {providers.message.replace(/\.$/, "")}. Check that the harness is running.
-          </span>
-          <Button size="sm" onClick={() => void providers.refresh()}>
-            Retry
-          </Button>
-        </div>
+        <Notice
+          tone="error"
+          action={
+            <Button size="sm" onClick={() => void providers.refresh()}>
+              Retry
+            </Button>
+          }
+        >
+          Couldn&apos;t check the providers. {providers.message.replace(/\.$/, "")}. Check that the harness is running.
+        </Notice>
       )}
       {list && !provider && <p className="text-sm text-fg-2">The harness does not list this provider any more. Close this and pick another one.</p>}
       {provider?.kind === "agent" && <AgentSteps provider={provider} />}
@@ -160,14 +163,12 @@ function CheckAgain({ provider, onCheck, onUseAnyway }: { provider: Provider; on
           )}
         </Button>
         {onUseAnyway && (
-          <Button variant="ghost" onClick={onUseAnyway} disabled={running}>
+          <Button variant="quiet" onClick={onUseAnyway} disabled={running}>
             Use anyway
           </Button>
         )}
         {checked && !running && (
-          <span role="status" className={failure ? "text-xs text-err" : "text-xs text-warn"}>
-            {failure ? `Could not check: ${failure}.` : `Still ${stateText(provider.state).toLowerCase()}.`}
-          </span>
+          <Notice tone={failure ? "error" : "warn"}>{failure ? `Could not check: ${failure}.` : `Still ${stateText(provider.state).toLowerCase()}.`}</Notice>
         )}
       </span>
       {onUseAnyway && <span className="text-xs text-fg-3">{USE_ANYWAY_NOTE}</span>}
@@ -222,11 +223,11 @@ function KeySteps({ provider, upstream }: { provider: Provider; upstream: boolea
     );
   if (load.status === "unavailable" || load.status === "error")
     return (
-      <p role={load.status === "error" ? "alert" : undefined} className="text-sm text-fg-2">
+      <Notice tone={load.status === "error" ? "error" : "info"}>
         {load.status === "error" ? `${load.message}. ` : ""}This connection cannot set keys: the harness accepts them only from this machine. Set{" "}
-        <code className="font-mono text-xs">{provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}</code> in the harness's
+        <code className="font-mono text-xs">{provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}</code> in the harness&apos;s
         environment instead.
-      </p>
+      </Notice>
     );
   const view = load.view;
   const get = (id: string) => view.settings.find((s) => s.id === id);
@@ -257,16 +258,20 @@ function KeySteps({ provider, upstream }: { provider: Provider; upstream: boolea
         />
       )}
       {restart && (
-        <p role="status" className="flex flex-wrap items-center gap-x-2 text-xs text-warn">
+        <Notice
+          tone="warn"
+          action={
+            host.restart ? (
+              <Button variant="link" size="xs" onClick={host.restart}>
+                Restart now
+              </Button>
+            ) : (
+              <span className="text-fg-3">Quit and reopen the app.</span>
+            )
+          }
+        >
           Saved. The harness applies keys and the router switch after a restart.
-          {host.restart ? (
-            <button type="button" onClick={host.restart} className="rounded-xs text-link underline-offset-2 hover:underline">
-              Restart now
-            </button>
-          ) : (
-            <span className="text-fg-3">Quit and reopen the app.</span>
-          )}
-        </p>
+        </Notice>
       )}
     </div>
   );

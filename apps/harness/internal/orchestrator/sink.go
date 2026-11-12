@@ -98,6 +98,13 @@ func (s *agentSink) ToolInput(_, name string, input json.RawMessage) {
 		if json.Unmarshal(input, &in) == nil {
 			s.rt.touchFile(in.Path)
 		}
+	case "bash":
+		var in struct {
+			Command string `json:"command"`
+		}
+		if json.Unmarshal(input, &in) == nil {
+			s.rt.noteCommand(in.Command)
+		}
 	}
 }
 
@@ -107,7 +114,6 @@ func (s *agentSink) Activity(kind, label, toolID string) {
 }
 
 func (s *agentSink) ToolStarted(id, name string) {
-	s.rt.noteTool()
 	s.rt.publish(events.ToolStarted, map[string]any{"agent_id": s.agentID, "tool_use_id": id, "name": name})
 }
 

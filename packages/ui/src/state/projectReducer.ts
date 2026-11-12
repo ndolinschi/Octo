@@ -4,6 +4,7 @@ import {
   withCompactions,
   withMessages,
   withNotes,
+  withSessions,
   withSideAsked,
   withSideCleared,
   withSideMessages,
@@ -12,6 +13,7 @@ import {
   type CompactionMarker,
   type Message,
   type Note,
+  type ProjectSession,
   type ProjectState,
   type SideMessage,
   type SideStarted,
@@ -22,6 +24,7 @@ export type Action =
   | { type: "agents"; agents: Agent[] }
   | { type: "messages"; agentId: string; messages: Message[] }
   | { type: "notes"; notes: Note[] }
+  | { type: "sessions"; sessions: ProjectSession[] }
   | { type: "compactions"; agentId: string; markers: CompactionMarker[] }
   | { type: "side"; messages: SideMessage[] }
   | { type: "sideAsked"; started: SideStarted }
@@ -39,6 +42,8 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
       return withMessages(state, action.agentId, action.messages);
     case "notes":
       return withNotes(state, action.notes);
+    case "sessions":
+      return withSessions(state, action.sessions);
     case "compactions":
       return withCompactions(state, action.agentId, action.markers);
     case "side":

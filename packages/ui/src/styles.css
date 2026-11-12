@@ -1274,7 +1274,15 @@
 }
 
 /* Coarse pointer or narrow window: written once here, never in a feature. */
-@custom-variant touch (@media (pointer: coarse), (max-width: 767.98px));
+@custom-variant touch {
+  /* A comma list in the one-line form dropped the narrow-window half (B1 found it at 390px): two blocks instead. */
+  @media (pointer: coarse) {
+    @slot;
+  }
+  @media (max-width: 767.98px) {
+    @slot;
+  }
+}
 
 /* An invisible 40px hit area around a control that keeps its visual size (static elements only; a control that is
    absolute, fixed or sticky positions itself and must wrap itself if it needs the target). */

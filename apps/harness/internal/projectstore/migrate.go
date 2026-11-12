@@ -56,9 +56,11 @@ var columnsAdded = []struct {
 // (PRAGMA user_version). Databases without a stamp (0) are older and are
 // migrated forward; a higher number was written by a newer binary and is refused.
 //
-// Numbering: 9 slash commands and /clear (columns), 10 notes, 11 attachments, 12 sessions and exchanges. The next free
-// version is 13; take it and add `migrate_v13_<name>.go` (parallel work renumbers its migration when it lands).
-const SchemaVersion = 12
+// Numbering: 9 slash commands and /clear (columns), 10 notes, 11 attachments, 12 sessions and exchanges, 13 project
+// sessions (kind, parent, state, current; session ids on messages and compactions), 14 task state and the M6 clean-up of
+// request-only tasks. The next free version is 15; take it and add `migrate_v15_<name>.go` (parallel work renumbers its
+// migration when it lands).
+const SchemaVersion = 14
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.
@@ -160,6 +162,14 @@ func (d *DB) migrate(ctx context.Context) error {
 	}
 	// Schema 12: sessions and exchanges, back-filled (migrate_v12_sessions.go); last: it reads the messages, compactions and notes the steps above leave.
 	if err := d.migrateV12Sessions(ctx); err != nil {
+		return err
+	}
+	// Schema 13: project sessions (migrate_v13_sessions.go); after schema 12, whose sessions it extends.
+	if err := d.migrateV13Sessions(ctx); err != nil {
+		return err
+	}
+	// Schema 14: task state, closing reason, session; clean-up of request-only tasks (migrate_v14_tasks.go); last: it reads exchanges and sessions.
+	if err := d.migrateV14Tasks(ctx); err != nil {
 		return err
 	}
 	return stampVersion(ctx, d.sql)

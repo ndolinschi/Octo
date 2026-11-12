@@ -258,12 +258,25 @@ export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, a
   return update;
 }
 
-/** ↑/↓/Home/End between the `[data-row]` rows inside `ref` (lists of plain buttons: Home, Details). */
+/**
+ * ↑/↓/Home/End between the `[data-row]` rows inside `ref` (lists of plain buttons: Home, Details). The container may mount
+ * after the hook's first render (a list that appears once its data has loaded): every render checks whether `ref` points
+ * at another element and rebinds.
+ */
 export function useRowKeys<T extends HTMLElement>(ref: RefObject<T | null>): void {
+  const bound = useRef<T | null>(null);
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    el.addEventListener("keydown", moveInList);
-    return () => el.removeEventListener("keydown", moveInList);
-  }, [ref]);
+    if (el === bound.current) return;
+    bound.current?.removeEventListener("keydown", moveInList);
+    el?.addEventListener("keydown", moveInList);
+    bound.current = el;
+  });
+  useEffect(
+    () => () => {
+      bound.current?.removeEventListener("keydown", moveInList);
+      bound.current = null;
+    },
+    [],
+  );
 }

@@ -3,13 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import { errorMessage } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
-import { periodRange, periodText, usageRows, USAGE_PERIODS } from "../../lib/usage/model";
+import { periodRange, usageRows, USAGE_PERIODS } from "../../lib/usage/model";
 import { SESSION_STARTED_AT, type UsagePeriod } from "../../lib/usageView";
 import { useApp } from "../../state/app";
 import { useModelNames } from "../../state/models";
-import { MenuButton } from "../primitives/MenuButton";
+import { Notice } from "../primitives/Notice";
+import { Select } from "../primitives/Select";
+import { SkeletonList } from "../primitives/Skeleton";
 import { UsageTable, type UsageTableRow } from "../shared/UsageTable";
-import { SettingsGroup, SkeletonRow } from "./parts";
+import { CONTROL_W, SettingsGroup, SettingsRow } from "./parts";
 
 const DAY_MS = 86_400_000;
 
@@ -82,21 +84,30 @@ export function UsageByProject() {
       id="row-usage"
       footer="Tokens as each model reported them. A project on a subscription shows what it would have cost, not spend."
     >
-      <div className="flex h-row-nav items-center justify-between gap-2 px-4">
-        <span className="text-xs text-fg-3">Period</span>
-        <MenuButton
-          label="Period"
-          text={periodText(period)}
-          alignEnd
-          items={USAGE_PERIODS.map((p) => ({ id: p.id, label: p.label, checked: period === p.id, run: () => pick(p.id) }))}
-        />
-      </div>
+      <SettingsRow
+        title="Period"
+        htmlFor="usage-period"
+        control={
+          <Select
+            id="usage-period"
+            label="Period"
+            size="sm"
+            value={period}
+            options={USAGE_PERIODS.map((p) => ({ value: p.id, label: p.label }))}
+            onChange={(v) => {
+              const next = USAGE_PERIODS.find((p) => p.id === v);
+              if (next) pick(next.id);
+            }}
+            className={CONTROL_W.md}
+          />
+        }
+      />
       <div className="px-2 py-1">
-        {report.status === "loading" && [0, 1, 2].map((i) => <SkeletonRow key={i} />)}
+        {report.status === "loading" && <SkeletonList count={3} size="lg" twoLine />}
         {report.status === "error" && (
-          <p role="alert" className="px-2 py-2 text-sm text-err">
-            Couldn't read usage: {report.message}. Check that the harness is running, then reopen Settings.
-          </p>
+          <Notice tone="error" className="p-2">
+            Couldn&apos;t read usage: {report.message}. Check that the harness is running, then reopen Settings.
+          </Notice>
         )}
         {empty && <p className="px-2 py-2 text-sm text-fg-3">No usage in this period. Tokens appear here after a project gets a model response.</p>}
         {report.status === "ok" && !empty && (

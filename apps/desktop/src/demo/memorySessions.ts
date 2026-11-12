@@ -1,11 +1,11 @@
-import type { MemoryExchange, MemorySession, MemorySessionDetail } from "@octo/agent-client";
+import type { MemoryExchange, MemorySession, MemorySessionDetail, ProjectSession } from "@octo/agent-client";
 
 /**
  * Demo sessions for `?demo=1` (orchestrator memory M4): four sessions of different ages with several exchanges, a
  * failed one, a stopped one, a long Markdown answer (folds), Russian text, and a removed marker. `turn_id`s point at the
  * project's real demo requests where there are any, so "Open in conversation" lands on a real message.
  */
-export type DemoSessions = { sessions: MemorySession[]; exchanges: MemoryExchange[] };
+export type DemoSessions = { sessions: MemorySession[]; exchanges: MemoryExchange[]; archived?: Set<string> };
 
 const H = 3_600_000;
 const DAY = 24 * H;
@@ -36,6 +36,14 @@ export async function rotate(raw: string): Promise<Pair> {
 }
 \`\`\`
 
+## Cost of the change
+
+| Step | Before | After |
+| --- | --- | --- |
+| Refresh | 11 ms | 14 ms |
+| Login | 38 ms | 41 ms |
+| Revoke family | n/a | 6 ms |
+
 ## Not done
 
 - Existing sessions stay valid until they expire; there is no forced logout.
@@ -60,7 +68,7 @@ type Spec = {
   removed?: boolean;
 };
 
-const SESSIONS: { title: string; reason?: string; specs: Spec[] }[] = [
+const SESSIONS: { title: string; reason?: string; summary?: string; specs: Spec[] }[] = [
   {
     title: "Harden the login flow",
     specs: [
@@ -127,6 +135,7 @@ const SESSIONS: { title: string; reason?: string; specs: Spec[] }[] = [
   {
     title: "Plan the 0.4 release",
     reason: "clear",
+    summary: "Release 0.4 is blocked on the schema 8 migration, installer signing and one flaky e2e case. Nothing else is open.",
     specs: [
       {
         ageMs: 3 * DAY + 2 * H,
@@ -192,6 +201,7 @@ export function buildSessions(requestIds: number[], now: number): DemoSessions {
       exchanges: live.length,
       open: si === 0,
       ...(s.reason ? { reason: s.reason } : {}),
+      ...(s.summary ? { summary: s.summary, summary_source: "model" as const } : {}),
     });
     exchanges.push(...rows);
   });
@@ -217,4 +227,44 @@ export function forget(d: DemoSessions, id: string): boolean {
   if (!e) return false;
   Object.assign(e, { removed: true, request: "", answer: "", files: [], agents: [] });
   return true;
+}
+
+/**
+ * The memory sessions as the project sessions of the harness (schema 13): each is a main session, the open one is current
+ * (it can take a message, the others say "Resume this session"). `children` is filled by the caller (agent sessions).
+ */
+export function mainSessions(d: DemoSessions, children: number): ProjectSession[] {
+  return listSessions(d, 200).map((m) => ({
+    id: m.id,
+    kind: "main" as const,
+    title: m.title,
+    state: m.exchanges > 0 && d.exchanges.filter((e) => e.session_id === m.id).at(-1)?.status === "failed" ? ("failed" as const) : ("idle" as const),
+    model: "claude-sonnet-4",
+    started_at: m.started_at,
+    last_activity_at: m.ended_at,
+    exchanges: m.exchanges,
+    children: m.open ? children : 0,
+    current: m.open,
+    archived: d.archived?.has(m.id) ?? false,
+    ...(m.summary ? { summary: m.summary } : {}),
+    can_message: m.open,
+    ...(m.open ? {} : { message_blocked: { code: "not_current", message: "Resume this session to continue it" } }),
+  }));
+}
+
+/** Makes `id` the open session (resuming it, or a new one just added); false when there is no such session. */
+export function makeCurrent(d: DemoSessions, id: string): boolean {
+  if (!d.sessions.some((s) => s.id === id)) return false;
+  for (const s of d.sessions) s.open = s.id === id;
+  d.archived?.delete(id);
+  return true;
+}
+
+/** A new empty main session, made current (what `POST /sessions` and `/clear` do). */
+export function addSession(d: DemoSessions, title: string, now: number): MemorySession {
+  const at = new Date(now).toISOString();
+  const session: MemorySession = { id: `ses_${d.sessions.length + 1}`, title, started_at: at, ended_at: at, exchanges: 0, open: false };
+  d.sessions.push(session);
+  makeCurrent(d, session.id);
+  return session;
 }

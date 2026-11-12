@@ -77,7 +77,7 @@ bash apps/harness/scripts/e2e-v7.sh                  # changes, approvals, queue
 bash apps/harness/scripts/test-subscriptions.sh      # LIVE: real agent CLIs on subscriptions (owner's machine only)
 ```
 
-Docs of the harness's features (exact API): `apps/harness/docs/` — `architecture.md`, `settings.md`, `v7.md`, `memory.md`
+Docs of the harness's features (exact API): `apps/harness/docs/` — `architecture.md`, `settings.md`, `v7.md`, `memory.md`, `sessions.md` (project sessions: new, resume, agent sessions)
 (orchestrator memory), `providers.md` (providers, models, `GET /v1/providers`), `review.md` (PR review), `acp-orchestrator.md` (ACP orchestrator, agents, diagnostics, wire trace). Every variable and setting:
 the table in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md#environment-variables-and-settings).
 

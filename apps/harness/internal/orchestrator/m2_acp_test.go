@@ -83,8 +83,11 @@ func TestACPRecapUsesTheWindowAssemblyAndALiveSessionGetsChangedTasks(t *testing
 	}
 	// A task record changes while the session lives (the user or a digest edited it):
 	// the next request of the same session carries it.
+	if _, err := mem.OpenTask(ctx, "an earlier job", 0); err != nil { // a question-only turn leaves no record: make one
+		t.Fatal(err)
+	}
 	tasks, _ := mem.Tasks(ctx)
-	goal, open := "Ship the changed goal", "open" // a finished turn closes its record; keeping one open is the user's choice
+	goal, open := "Ship the changed goal", "open"
 	if _, err := mem.UpdateTask(ctx, memory.UpdateInput{ID: tasks[0].ID, Goal: &goal, Status: &open}, memory.Turn{}); err != nil {
 		t.Fatal(err)
 	}

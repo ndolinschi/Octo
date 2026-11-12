@@ -10,6 +10,7 @@ import type {
   Message,
   Note,
   PlanEntry,
+  ProjectSession,
   QueuedMessage,
   SideMessage,
   SideStarted,
@@ -73,6 +74,8 @@ export type ProjectState = {
   /** v7: the message queue. */
   queue: { paused: boolean; messages: QueuedMessage[] };
   attention: AttentionState;
+  /** Project sessions: the sessions seen (`withSessions` loads them, `session.*` events keep them), newest first, and the current main one. */
+  sessions: SessionsState;
   /** M1: task records by id (from task.updated events and withTasks). */
   tasks: Record<string, Task>;
   /** M1: bumped when a memory file was written, deleted or renamed (refetch listMemory). */
@@ -89,6 +92,8 @@ export type ProjectState = {
    */
   turnOutcomes: Record<number, TurnOutcome>;
 };
+
+export type SessionsState = { list: ProjectSession[]; currentId: string | null };
 
 export type TurnOutcome = { status: TurnStatus; error: string | null; hint?: string };
 
@@ -115,6 +120,7 @@ export function emptyProjectState(): ProjectState {
     answeredInputs: {},
     queue: { paused: false, messages: [] },
     attention: { needs_you: false, approvals: 0, inputs: 0 },
+    sessions: { list: [], currentId: null },
     tasks: {},
     memoryRevision: 0,
     secretsRevision: 0,
@@ -315,6 +321,21 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "context.updated":
     case "slash_commands.updated":
     case "conversation.cleared":
+      return state; // views refetch (the transcript); the new session arrives as session.created and session.current
+    case "session.created":
+      return { ...state, sessions: upsertSession(state.sessions, event.session) };
+    case "session.updated":
+      if (event.deleted && event.session_id !== undefined) {
+        const list = state.sessions.list.filter((s) => s.id !== event.session_id);
+        return { ...state, sessions: { list, currentId: state.sessions.currentId === event.session_id ? null : state.sessions.currentId } };
+      }
+      return event.session ? { ...state, sessions: upsertSession(state.sessions, event.session) } : state;
+    case "session.current": {
+      const list = state.sessions.list.map((s) =>
+        s.kind === "main" && s.current !== (s.id === event.session_id) ? { ...s, current: s.id === event.session_id } : s,
+      );
+      return { ...state, sessions: { list, currentId: event.session_id } };
+    }
     case "fact.remembered":
     case "fact.forgotten":
       return state; // views refetch (getLatestPlan, the transcript, getContext) or read the event themselves
@@ -478,6 +499,26 @@ export function withQueue(state: ProjectState, queue: { paused: boolean; message
 }
 
 /** Replaces the task records with a loaded list (GET .../tasks). */
+function bySessionStart(a: ProjectSession, b: ProjectSession): number {
+  return a.started_at < b.started_at ? 1 : a.started_at > b.started_at ? -1 : 0;
+}
+
+/** Adds or replaces one session (newest first); a main session that is current makes every other main session not current. */
+function upsertSession(sessions: SessionsState, session: ProjectSession): SessionsState {
+  const demote = session.kind === "main" && session.current;
+  const rest = sessions.list.filter((s) => s.id !== session.id).map((s) => (demote && s.kind === "main" && s.current ? { ...s, current: false } : s));
+  const list = [...rest, session].sort(bySessionStart);
+  const currentId = demote ? session.id : sessions.currentId === session.id && session.kind === "main" && !session.current ? null : sessions.currentId;
+  return { list, currentId };
+}
+
+/** Loads sessions from `listSessions` (the list replaces the one in the state; the current main session is read from it when it is in the list). */
+export function withSessions(state: ProjectState, list: ProjectSession[]): ProjectState {
+  const sorted = [...list].sort(bySessionStart);
+  const current = sorted.find((s) => s.kind === "main" && s.current);
+  return { ...state, sessions: { list: sorted, currentId: current?.id ?? state.sessions.currentId } };
+}
+
 export function withTasks(state: ProjectState, tasks: Task[]): ProjectState {
   return { ...state, tasks: Object.fromEntries(tasks.map((t) => [t.id, t])) };
 }

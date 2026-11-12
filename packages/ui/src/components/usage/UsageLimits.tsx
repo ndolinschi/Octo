@@ -8,7 +8,10 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { isStale, limitKindLabel, observedLabel, remainingShare, remainingText, resetLabel, sortLimits } from "../../lib/usage";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
-import { INFO_ROW, InfoSection, SkeletonRows } from "../primitives/InfoList";
+import { InfoSection } from "../primitives/InfoList";
+import { ListRow } from "../primitives/ListRow";
+import { Notice } from "../primitives/Notice";
+import { SkeletonList } from "../primitives/Skeleton";
 import { modelLabel } from "../primitives/Status";
 import { useLimits } from "./useUsage";
 
@@ -75,11 +78,11 @@ export function UsageLimits() {
   }, [limits]);
   return (
     <>
-      {limits.status === "loading" && <SkeletonRows count={4} />}
+      {limits.status === "loading" && <SkeletonList count={4} size="md" />}
       {limits.status === "error" && (
-        <p role="alert" className="px-2 text-sm text-fg-2">
-          Couldn't read limits: {limits.message}. Check that the harness is running, then reopen this tab.
-        </p>
+        <Notice form="block" tone="error" title="Couldn't read limits">
+          {limits.message}. Check that the harness is running, then reopen this tab.
+        </Notice>
       )}
       {limits.status === "ok" && groups.length === 0 && (
         <div data-limits-empty className="flex flex-col gap-1 px-2 py-6 text-center">
@@ -111,13 +114,7 @@ export function UsageLimits() {
       ))}
       <InfoSection title="Plan limits for external agents" labelId="usage-plan-limits">
         {agents.map((a) => (
-          <div key={a.id} className={INFO_ROW}>
-            <span className="grid size-4 shrink-0 place-items-center">
-              <Glyph icon={GLYPH.agent} size={14} className="text-fg-3" />
-            </span>
-            <span className="min-w-0 truncate text-fg-2">{a.label}</span>
-            <span className="ml-auto shrink-0 text-xs text-fg-3">ACP agent</span>
-          </div>
+          <ListRow key={a.id} leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="ACP agent" tone="quiet" />
         ))}
         <p className="px-2 pt-1 text-xs text-fg-3">
           {agents.length

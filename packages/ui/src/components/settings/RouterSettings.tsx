@@ -1,13 +1,14 @@
 import { SETTING_IDS } from "@octo/agent-client";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
-import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
-import { Input } from "../primitives/Field";
-import { Glyph } from "../primitives/Glyph";
+import { ListFrame } from "../primitives/Card";
+import { SkeletonList } from "../primitives/Skeleton";
+import { Switch } from "../primitives/Switch";
+import { TextField } from "../primitives/TextField";
 import { useHarnessSettings } from "./harnessSettings";
 import { useSettingsActions } from "./pageContext";
-import { SaveStatus, SettingsRow, SkeletonRow, Switch } from "./parts";
+import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 
 /** The router's switch, URL and upstream key, folded (decision 59; the API key moved into its provider's detail, decision 89). Values are write-only. */
@@ -17,39 +18,34 @@ export function RouterSettings() {
   const panelId = useId();
   return (
     <section className="flex flex-col gap-2">
-      <button
-        type="button"
+      <Button
+        variant="quiet"
+        size="xs"
+        icon={open ? ChevronDown : ChevronRight}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-row w-fit items-center gap-1.5 rounded-sm px-1 text-xs text-fg-3 hover:text-fg"
+        className="self-start"
       >
-        <Glyph icon={ChevronRight} size={14} className={cn("transition-[rotate] duration-150", open && "rotate-90")} />
         Router
-      </button>
-      <div id={panelId} hidden={!open} className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel">
-        {harness.load.status === "unavailable" && (
-          <SettingsRow title="Not available here" description="This connection cannot read or change the harness's settings." />
-        )}
-        {harness.load.status === "loading" && <SkeletonRow />}
-        {harness.load.status === "error" && (
-          <SettingsRow
-            title={<span className="text-err">Couldn't load settings</span>}
-            description={`${harness.load.message}. The harness answers only on this machine (loopback).`}
-            control={
-              <Button size="sm" onClick={harness.reload}>
-                Retry
-              </Button>
-            }
-          />
-        )}
-        {harness.load.status === "ready" && (
-          <>
-            <RouterSwitch />
-            <RouterUrl />
-            <SecretRow id={SETTING_IDS.routerUpstreamKey} rowId="upstream-key" target="router-upstream" />
-          </>
-        )}
+      </Button>
+      <div id={panelId} hidden={!open}>
+        <ListFrame>
+          {harness.load.status === "unavailable" && (
+            <SettingsRow title="Not available here" description="This connection cannot read or change the harness's settings." />
+          )}
+          {harness.load.status === "loading" && <SkeletonList count={1} size="lg" twoLine />}
+          {harness.load.status === "error" && (
+            <LoadErrorRow what="settings" message={harness.load.message} hint="The harness answers only on this machine (loopback)." onRetry={harness.reload} />
+          )}
+          {harness.load.status === "ready" && (
+            <>
+              <RouterSwitch />
+              <RouterUrl />
+              <SecretRow id={SETTING_IDS.routerUpstreamKey} rowId="upstream-key" target="router-upstream" />
+            </>
+          )}
+        </ListFrame>
       </div>
     </section>
   );
@@ -127,7 +123,7 @@ function RouterUrl() {
       description="Leave empty to use the router bundled with the app."
       status={<SaveStatus state={saved} restart={harness.needsRestart(s.id)} onRestart={restart} />}
       control={
-        <Input
+        <TextField
           id={id}
           value={value}
           disabled={!s.editable}
@@ -143,7 +139,7 @@ function RouterUrl() {
               setDraft(null);
             }
           }}
-          className="w-64 font-mono text-xs max-settings:w-full max-sm:text-input-touch"
+          className={`${CONTROL_W.lg} font-mono`}
         />
       }
     />

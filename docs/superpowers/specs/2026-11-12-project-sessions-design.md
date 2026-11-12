@@ -70,3 +70,14 @@ continued and stopped the way a chat is used in any coding agent:
 ## Order
 
 After M4 (sessions as records) and B11 (`/clear`) are merged: harness and agent-client first, then the tab.
+
+## As built (harness and agent-client)
+
+Exact JSON, routes, events and errors: `apps/harness/docs/sessions.md`. Decisions 1-4 and 6 are built; decision 5 (the UI) is not.
+
+- **Entity.** Schema 13 extends the memory session (kind, parent, agent, state, model, editable title, archived, current); messages and compactions carry their main session, so context follows the session. The 6 h rule no longer splits a live conversation (a session is the model's context; splitting would drop it); it still applies to exchanges recorded without a session.
+- **Resume.** Built-in: the request is rebuilt from the session's messages after its newest compaction or carry-over (tested over HTTP with the mock model answering `[ctx]` requests with the user texts it was sent). ACP: `session/load` of the agent session kept for that session when advertised, else a new agent session with a recap of that session only (fake agent knobs: `OCTO_FAKEACP_LOAD_SESSION`, new `OCTO_FAKEACP_LOAD_FAIL`).
+- **Agent sessions.** Created at spawn with the spawning turn; stop per agent; steer of a running built-in agent at its next tool boundary; continue of a finished one (built-in from stored messages, ACP by `session/load`); `report_to_parent` as a `session_report` user message at the next turn. 409 codes are listed in `sessions.md`.
+- **agent-client.** Optional methods `listSessions`, `getSession`, `getSessionTranscript`, `createSession`, `resumeSession`, `patchSession`, `deleteSession`, `stopSession`, `messageSession`, `getTranscript(..., {sessionId})`; `ProjectState.sessions {list, currentId}` kept by `session.*` events and `withSessions`.
+- **Verified:** Go tests (`projectstore` incl. migration from 12, `memory`, `orchestrator`, `project`, `bridge` incl. new sessions tests with the mock model and the scripted ACP agent), `e2e-parity.sh` case S1, agent-client `tsc` and tests, `tsc` of `packages/ui`.
+- **Not verified:** `session/load` with real agents; continuing a finished real ACP sub-agent; the demo bridge and the Sessions tab (not built); a continued agent's file changes are filed under the spawning turn (not exercised); the sessions list with more than 200 sessions.

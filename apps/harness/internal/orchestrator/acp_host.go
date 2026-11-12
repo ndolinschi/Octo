@@ -41,6 +41,10 @@ type orchSession struct {
 	h   *acpHost
 	pid string
 
+	// digestMu is held while a digest prompt (memory M6) is open in the live session;
+	// the next turn waits for it before it prompts.
+	digestMu sync.Mutex
+
 	mu sync.Mutex
 	// What the live process was started for.
 	pluginID string

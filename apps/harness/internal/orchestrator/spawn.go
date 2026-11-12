@@ -152,6 +152,7 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		return "", false, fmt.Errorf("create agent: %w", err)
 	}
 	rt.publishAgent(events.AgentCreated, child)
+	rt.registerAgentSession(ctx, child)
 	if budgetErr != nil {
 		// The router's 402: the same failure as a budget stop mid-run.
 		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", budgetErr.Error())
@@ -164,8 +165,24 @@ func (rt *runtime) spawn(ctx context.Context, parent projectstore.Agent, input j
 		rt.settle(ctx, child.ID, projectstore.StatusFailed, "", err.Error())
 		return "sub-agent failed: " + err.Error(), true, nil
 	}
-	text, err := rt.runChild(ctx, child, task, ext)
+	childCtx, stopChild := context.WithCancel(ctx)
+	endRun := rt.o.registerRun(child.ID, stopChild, ext == nil, false)
+	text, err := rt.runChild(childCtx, child, task, ext)
+	late := endRun()
+	stoppedByUser := childCtx.Err() != nil && ctx.Err() == nil
+	stopChild()
+	if len(late) > 0 && !stoppedByUser && err == nil {
+		// Messages sent to the sub-agent after its last tool boundary: it continues with them once settled.
+		defer func() {
+			if cerr := rt.o.continueAgentByID(rt.pid(), child.ID, strings.Join(late, "\n\n"), false); cerr != nil {
+				rt.logErr("continue sub-agent with late messages", cerr)
+			}
+		}()
+	}
 	switch {
+	case stoppedByUser:
+		rt.settle(ctx, child.ID, projectstore.StatusCancelled, "", "")
+		return "sub-agent stopped by the user", true, nil
 	case err == nil:
 		rt.settle(ctx, child.ID, projectstore.StatusCompleted, text, "")
 		if text == "" {
@@ -214,5 +231,6 @@ func (rt *runtime) refuseChild(ctx context.Context, parent projectstore.Agent, i
 		return
 	}
 	rt.publishAgent(events.AgentCreated, child)
+	rt.registerAgentSession(ctx, child)
 	rt.settle(ctx, child.ID, projectstore.StatusFailed, "", reason)
 }

@@ -61,13 +61,12 @@ func TestTurnOpensATaskRecordAndTheSideModelDigestsIt(t *testing.T) {
 	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": ask}, http.StatusAccepted, &posted)
 	collectUntilTurnFinished(t, stream)
 
-	// The record exists at once, closed with the reply as its outcome, with the harness's fallback goal ...
-	first := e.tasks(t, pid)
-	if len(first) != 1 || first[0].MessageIDs[0] != posted.Message.ID || first[0].Status != "done" || first[0].Outcome == "" || first[0].Title == "" {
-		t.Fatalf("tasks = %+v", first)
-	}
-	// ... and the digest (a side-model call after the turn) fills it in.
+	// M6: nothing is opened when the request arrives; the digest (a side-model call after the turn)
+	// finds a goal with a decision, so the turn makes a task, closed with the reply as its outcome.
 	task := e.waitTask(t, pid, func(k projectstore.Task) bool { return len(k.Facts) == 1 })
+	if len(task.MessageIDs) != 1 || task.MessageIDs[0] != posted.Message.ID || task.Status != "done" || task.Outcome == "" || task.Title == "" || len(task.ExchangeIDs) != 1 {
+		t.Fatalf("task = %+v", task)
+	}
 	if task.Goal != "Retry failed requests three times" || task.GoalBy != "digest" || len(task.Quotes) != 1 ||
 		task.Quotes[0].Text != "make the client retry" || task.Quotes[0].MessageID != posted.Message.ID ||
 		len(task.Decisions) != 1 || task.Facts[0].Text != "Retries use exponential backoff" || task.Facts[0].Date == "" {
@@ -256,9 +255,9 @@ func TestACPOrchestratorGetsTheMemoryToolsOverMCP(t *testing.T) {
 			t.Errorf("the MCP tool list lacks %s: %s", name, text)
 		}
 	}
-	// The record of the turn exists (no side model call for an ACP-only run: the fallback goal).
+	// The turn delegated to a sub-agent, so it did work: its record exists (no side model for an ACP-only run: the goal is the rule's rewrite).
 	ts := e.tasks(t, p.ID)
-	if len(ts) != 1 || ts[0].GoalBy != "harness" || !strings.Contains(ts[0].Goal, "look") {
+	if len(ts) != 1 || ts[0].GoalBy != "rule" || !strings.Contains(ts[0].Goal, "look") || ts[0].StateSummary == "" {
 		t.Fatalf("tasks = %+v", ts)
 	}
 }

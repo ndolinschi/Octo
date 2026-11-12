@@ -3,8 +3,11 @@ import { useId, useRef, useState } from "react";
 import { errorMessage } from "../../lib/format";
 import { charCount, autoDescription, parseTags, pinState } from "../../lib/notes";
 import { Button } from "../primitives/Button";
-import { Field, Input, Textarea } from "../primitives/Field";
+import { Checkbox } from "../primitives/Checkbox";
+import { Field } from "../primitives/Field";
+import { Notice } from "../primitives/Notice";
 import { Segmented } from "../primitives/Segmented";
+import { TextArea, TextField } from "../primitives/TextField";
 import { Markdown } from "../shared/Markdown";
 
 type View = "write" | "preview";
@@ -72,7 +75,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
       }}
     >
       <Field label="Title" htmlFor={`${id}-title`} error={titleError} errorId={`${id}-title-error`}>
-        <Input
+        <TextField
           id={`${id}-title`}
           ref={titleRef}
           value={title}
@@ -95,7 +98,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
         errorId={`${id}-desc-error`}
       >
         <div className="relative">
-          <Input
+          <TextField
             id={`${id}-desc`}
             value={description}
             placeholder={derived}
@@ -110,10 +113,10 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
         </div>
       </Field>
       <Field label="Tags" htmlFor={`${id}-tags`} optional>
-        <Input id={`${id}-tags`} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="deploy, rules" />
+        <TextField id={`${id}-tags`} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="deploy, rules" />
       </Field>
       <div className="flex flex-col gap-1.5">
-        <div className="flex h-6 items-center justify-between gap-2">
+        <div className="flex min-h-ctl-xs items-center justify-between gap-2">
           <label htmlFor={`${id}-body`} className="text-sm text-fg-2">
             Note (Markdown)
           </label>
@@ -128,7 +131,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
           />
         </div>
         {view === "write" ? (
-          <Textarea
+          <TextArea
             id={`${id}-body`}
             ref={bodyRef}
             rows={12}
@@ -145,32 +148,27 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
           </div>
         )}
         {bodyError && (
-          <p id={`${id}-body-error`} className="text-xs text-err">
-            {bodyError}
-          </p>
+          <div id={`${id}-body-error`}>
+            <Notice tone="error">{bodyError}</Notice>
+          </div>
         )}
       </div>
       <div className="flex flex-col gap-1.5">
-        <label className="flex items-center gap-2 text-sm text-fg">
-          <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} className="size-4 accent-[var(--color-fg)]" />
-          Pin this note
-        </label>
-        <p className={pinBlocked ? "text-xs text-err" : "text-xs text-fg-3"}>
-          {pinBlocked
-            ? pin.reason
-            : `Agents get a pinned note whole in every request, for rules that must always apply: up to ${NOTE_LIMITS.pinned} notes, ${NOTE_LIMITS.pinnedChars.toLocaleString("en-US")} characters together.`}
-        </p>
+        <Checkbox checked={pinned} onChange={setPinned} label="Pin this note" />
+        {pinBlocked ? (
+          <Notice tone="error">{pin.reason}</Notice>
+        ) : (
+          <p className="text-xs text-fg-3">
+            {`Agents get a pinned note whole in every request, for rules that must always apply: up to ${NOTE_LIMITS.pinned} notes, ${NOTE_LIMITS.pinnedChars.toLocaleString("en-US")} characters together.`}
+          </p>
+        )}
       </div>
-      {error && (
-        <p role="alert" className="text-xs text-err">
-          {error}
-        </p>
-      )}
+      {error && <Notice tone="error">{error}</Notice>}
       <div className="flex items-center justify-end gap-1.5">
-        <Button size="sm" variant="ghost" onClick={props.onCancel}>
+        <Button size="sm" variant="quiet" onClick={props.onCancel}>
           Cancel
         </Button>
-        <Button size="sm" variant="primary" type="submit" disabled={busy}>
+        <Button size="sm" variant="primary" type="submit" loading={busy}>
           {note ? "Save" : "Add note"}
         </Button>
       </div>

@@ -1,10 +1,11 @@
-import { Check, ChevronRight, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { formatTokens } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { costCellText, usageCsv, usageTotals, type RoleRow, type UsageRow, type UsageTotals } from "../../lib/usage/model";
-import { Glyph } from "../primitives/Glyph";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 
 /** A table row: a model, agent, day or project; `nested` rows (roles, a project's models) sit under it, dimmer. */
 export type UsageTableRow = UsageRow & {
@@ -28,8 +29,23 @@ function tokenTitle(n: number, what: string): string {
   return `${n.toLocaleString()} ${what}`;
 }
 
-function detail(r: UsageRow): string {
-  return [`${formatTokens(r.input)} in`, `${formatTokens(r.cached)} cached`, `${formatTokens(r.output)} out`, costCellText(r.cost)].join(" · ");
+/** The cost as text; "no price" is dotted-underlined and says in its tooltip why and what to do (decision 90: a state explains itself). */
+function CostText({ r }: { r: UsageRow }) {
+  const text = costCellText(r.cost);
+  if (r.cost.spent !== null) return <>{text}</>;
+  return (
+    <span title={costTitle(r)} className="cursor-help underline decoration-dotted underline-offset-2">
+      {text}
+    </span>
+  );
+}
+
+function detail(r: UsageRow) {
+  return (
+    <>
+      {[`${formatTokens(r.input)} in`, `${formatTokens(r.cached)} cached`, `${formatTokens(r.output)} out`].join(" · ")} · <CostText r={r} />
+    </>
+  );
 }
 
 function Cells({ r, dim }: { r: UsageRow; dim?: boolean }) {
@@ -52,24 +68,31 @@ function Cells({ r, dim }: { r: UsageRow; dim?: boolean }) {
       <td className={cn(TD, WIDE)} title={tokenTitle(r.requests, r.requests === 1 ? "request" : "requests")}>
         {r.requests.toLocaleString()}
       </td>
-      <td className={cn(TD, WIDE, (r.cost.spent === null || (r.cost.equivalent > 0 && !r.cost.spent)) && "text-fg-3")} title={costTitle(r)}>
-        {costCellText(r.cost)}
+      <td
+        className={cn(TD, WIDE, (r.cost.spent === null || (r.cost.equivalent > 0 && !r.cost.spent)) && "text-fg-3")}
+        title={r.cost.spent === null ? undefined : costTitle(r)}
+      >
+        <CostText r={r} />
       </td>
     </>
   );
 }
 
 function costTitle(r: UsageRow): string {
+  if (r.cost.spent === null) {
+    const none = "No price for this model, so its cost is not counted. Add the model to prices.toml in the harness data directory.";
+    return r.cost.equivalent > 0 ? `${none} The subscription part is not spend.` : none;
+  }
   if (r.cost.equivalent > 0) return `${costCellText(r.cost)}: the subscription part is not spend`;
-  if (r.cost.spent === null) return "No price for this model; add it to prices.toml in the harness data directory";
   return `$${r.cost.spent.toFixed(4)}${r.cost.estimated ? " (estimated from the price table)" : " (reported by the source)"}`;
 }
 
 function Bar({ share }: { share: number }) {
   return (
     <td className={cn("w-16 px-2", WIDE)} title={`${pct(share)} of the tokens`}>
-      <span aria-hidden className="block h-0.5 w-12 rounded-full bg-line">
-        <span className="block h-full rounded-full bg-fg-3" style={{ width: `${Math.max(2, share * 100)}%` }} />
+      {/* 4px tall; the track is the `active` fill and the bar `fg-2`, so both read in dark and light; 2px at least. */}
+      <span aria-hidden className="block h-1 w-12 rounded-full bg-active">
+        <span className="block h-full min-w-0.5 rounded-full bg-fg-2" style={{ width: `${share * 100}%` }} />
       </span>
     </td>
   );
@@ -82,15 +105,14 @@ function Body({ r, nested, onToggle }: { r: UsageTableRow; nested: boolean; onTo
       <td className={cn("w-full max-w-0 px-2 text-left", nested && "pl-6")}>
         <div className="flex min-w-0 items-center gap-1">
           {r.expandable && (
-            <button
-              type="button"
+            <IconButton
+              icon={r.open ? ChevronDown : ChevronRight}
+              label={`${r.open ? "Collapse" : "Expand"} ${r.label}`}
+              size="xs"
               aria-expanded={r.open === true}
-              aria-label={`${r.open ? "Collapse" : "Expand"} ${r.label}`}
+              className="-ml-1"
               onClick={() => onToggle?.(r.key)}
-              className="-ml-1 grid size-5 shrink-0 place-items-center rounded-sm text-fg-3 focus-inset hover:bg-hover hover:text-fg"
-            >
-              <Glyph icon={ChevronRight} size={14} className={cn("transition-transform", r.open && "rotate-90")} />
-            </button>
+            />
           )}
           <span className={cn("min-w-0 truncate", !dim && "text-fg")} title={r.key === r.label ? r.label : `${r.label} (${r.key})`}>
             {r.label}
@@ -188,14 +210,9 @@ export function UsageTable({
       </table>
       <div className="flex h-row items-center gap-2 px-2 text-xs text-fg-3">
         <span className="min-w-0 truncate">{note}</span>
-        <button
-          type="button"
-          onClick={() => copy(csv())}
-          className="-mr-1.5 ml-auto inline-flex h-chip shrink-0 items-center gap-1.5 rounded-sm px-1.5 focus-inset hover:bg-hover hover:text-fg"
-        >
-          <Glyph icon={copied ? Check : Copy} size={14} />
+        <Button variant="quiet" size="xs" icon={copied ? Check : Copy} className="-mr-1.5 ml-auto" onClick={() => copy(csv())}>
           {copied ? "Copied" : "Copy as CSV"}
-        </button>
+        </Button>
       </div>
       {footer}
     </div>

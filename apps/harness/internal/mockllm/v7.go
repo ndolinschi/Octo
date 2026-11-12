@@ -137,6 +137,11 @@ var (
 	// [continues: TEXT] attaches the exchange to the listed earlier task whose line holds TEXT.
 	continuesMarker = regexp.MustCompile(`\[continues:\s*([^\]]+?)\s*\]`)
 	outcomeMarker   = regexp.MustCompile(`\[outcome:\s*([^\]]+?)\s*\]`)
+	// M6: [state: TEXT] [open: QUESTION] [constraint: TEXT] [acceptance: TEXT]; [met] / [unmet] set goal_met.
+	stateMarker      = regexp.MustCompile(`\[state:\s*([^\]]+?)\s*\]`)
+	openMarker       = regexp.MustCompile(`\[open:\s*([^\]]+?)\s*\]`)
+	constraintMarker = regexp.MustCompile(`\[constraint:\s*([^\]]+?)\s*\]`)
+	acceptanceMarker = regexp.MustCompile(`\[acceptance:\s*([^\]]+?)\s*\]`)
 )
 
 // digestReply answers the digest call: a JSON object built from the markers of
@@ -177,9 +182,15 @@ func digestReply(r *request) reply {
 		}
 	}
 	out := map[string]any{
-		"continues": continues,
-		"goal":      first(goalMarker), "outcome": first(outcomeMarker), "quotes": all(quoteMarker), "decisions": all(decisionMarker),
-		"constraints": []string{}, "acceptance": []string{}, "facts": facts,
+		"continues": continues, "state": first(stateMarker), "open_questions": all(openMarker),
+		"goal": first(goalMarker), "outcome": first(outcomeMarker), "quotes": all(quoteMarker), "decisions": all(decisionMarker),
+		"constraints": all(constraintMarker), "acceptance": all(acceptanceMarker), "facts": facts,
+	}
+	switch {
+	case strings.Contains(text, "[met]"):
+		out["goal_met"] = true
+	case strings.Contains(text, "[unmet]"):
+		out["goal_met"] = false
 	}
 	b, _ := json.Marshal(out)
 	return reply{Text: string(b)}

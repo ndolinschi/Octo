@@ -9,7 +9,7 @@ test("one-line rows are 28, 32 or 40 and grow to 40 on touch", () => {
 });
 
 test("a two-line row has a minimum height, whatever the size", () => {
-  assert.equal(rowHeight("sm", true), "min-h-ctl-lg py-1");
+  assert.equal(rowHeight("sm", true), "min-h-ctl-lg");
   assert.equal(rowHeight("lg", true), rowHeight("md", true));
 });
 

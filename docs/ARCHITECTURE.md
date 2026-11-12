@@ -90,7 +90,7 @@ Package map of `apps/harness/internal/` (one line each; deeper: `apps/harness/do
 | Package | Role |
 | --- | --- |
 | `bridge` | HTTP routes (`/v1/...`, `/health`, `/mcp/...`), SSE, CORS and loopback rules; `Version` |
-| `project`, `projectstore` | Project service (create, send, budget, files, notes, memory API); SQLite stores (registry, per project), migrations, `PRAGMA user_version` stamp (`SchemaVersion`, **12**: 9 slash commands and /clear, 10 notes, 11 attachments, 12 sessions and exchanges) |
+| `project`, `projectstore` | Project service (create, send, budget, files, notes, memory API); SQLite stores (registry, per project), migrations, `PRAGMA user_version` stamp (`SchemaVersion`, **14**: 9 slash commands and /clear, 10 notes, 11 attachments, 12 sessions and exchanges, 13 project sessions, 14 memory M6 task fields and the clean-up of request-only tasks; the next free one is 15) |
 | `orchestrator` | One turn at a time per project; orchestrator and sub-agent runs; `spawn_agent` (tiers, `auto`, ACP agents); queue; approvals glue; compaction; memory tools, digest and window assembly; ACP orchestrator session (`acp_*.go`) |
 | `agent` | The Messages-API tool loop (`agent.Loop`), tool-result clearing |
 | `anthropicclient`, `router`, `budget`, `fakerouter` | Messages client (prompt caching, response observer); the router integration (detection, hints, result headers, route call); project spend meter; a stand-in router for tests |
@@ -284,6 +284,7 @@ screen (decision 53).
 | Delegation routing (`tier: auto`) | harness `internal/orchestrator/auto.go`; router `src/auto/delegate/` | same, section I2 | `e2e-router.sh` case 6; `tests/route_api.rs` |
 | Price rule, ladder, autoroute | `apps/router/src/auto/`, `apps/router/config/autoroute.toml`, `prices.toml` | same, sections "price rule", "Decisions after the live run"; `apps/router/docs/autoroute.md` | `tests/price_rule.rs`, `tests/cost_fixes.rs` |
 | Changes, approvals, queue, forms, secrets (v7) | `internal/{changes,diff,approval,inputs,secrets}`, `orchestrator/{approvals,queue,secrets}.go`; `apps/harness/docs/v7.md` | `2026-11-10-v7-changes-queue-approvals.md` | `apps/harness/scripts/e2e-v7.sh` |
+| Project sessions | `projectstore/{project_sessions,migrate_v13_sessions}.go`, `orchestrator/sessions.go`, `project/sessions.go`, `bridge/sessions.go`; `apps/harness/docs/sessions.md` | `2026-11-12-project-sessions-design.md` (harness and agent-client built; the Sessions tab not built) | `go test`; `e2e-parity.sh` (S1) |
 | Memory (M1, M2, M3) | `internal/memory`, `projectstore/{tasks,search,receipts}.go`, `orchestrator/{memory_tools,window}.go`; `apps/harness/docs/memory.md` | `2026-11-11-orchestrator-memory-design.md` | `go test`; `e2e-v7.sh` |
 | Settings and `harness.env` | `internal/{settings,config}`; `apps/harness/docs/settings.md` | `2026-11-11-packaging-design.md` (P1, P7) | `go test ./cmd/harness`, `internal/settings` |
 | Diagnostics, wire trace, schema versions | `internal/{diag,acptrace}`, `cmd/harness/doctor.go`, `projectstore/migrate.go` | `2026-11-11-packaging-design.md` (R1) | `go test ./cmd/harness ./internal/diag ./internal/projectstore` |
@@ -481,7 +482,7 @@ Items fixed since 2026-11-11 were removed (the v7 header, the missing live check
 1. `specs/2026-11-11-orchestrator-memory-design.md`, "As built — M1", says "M2 and M3 are not built". The sections "As
    built — M2" and "As built — M3" below it say they are, and the code has both. The M1 sentence is stale.
 2. `specs/2026-11-11-packaging-design.md`, "As built — R1", says `projectstore.SchemaVersion` is **3** "now". The code has
-   `SchemaVersion = 12` in `apps/harness/internal/projectstore/migrate.go`.
+   `SchemaVersion = 14` in `apps/harness/internal/projectstore/migrate.go`.
 3. `specs/2026-11-11-router-harness-integration.md`, section I2, says the route call times out after 300 ms. The code
    (`DefaultRouteTimeout` in `apps/harness/internal/config/config.go`) and the spec's own "As built" note say 2500 ms.
 4. `apps/harness/README.md` says nobody has run Copilot or Grok, nor Codex. `apps/harness/scripts/test-subscriptions.sh`

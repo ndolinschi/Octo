@@ -2,17 +2,20 @@ import {
   BridgeError,
   type Bridge,
   type ContextReceipt,
+  type ProjectSession,
+  type SessionsParams,
   type MemoryFile,
   type MemoryHit,
   type MemorySearchKind,
   type MemorySearchParams,
   type MemorySearchResult,
   type Message,
+  type RememberKind,
   type ReceiptBlock,
   type Task,
   type TaskFact,
 } from "@octo/agent-client";
-import { buildSessions, forget, listSessions, sessionDetail, type DemoSessions } from "./memorySessions";
+import { addSession, buildSessions, forget, listSessions, mainSessions, makeCurrent, sessionDetail, type DemoSessions } from "./memorySessions";
 import { CROSS_SUPERSEDES, EXTRA_FACTS, FILES, TASKS } from "./memoryData";
 
 /**
@@ -29,6 +32,16 @@ export function memoryMode(search: string): DemoMemoryMode {
 }
 
 const DAY = 86_400_000;
+/** The subject an item kept on purpose is about, from its task's title (the harness's `about`). */
+function subjectOf(title: string): string {
+  if (/token|login|cookie|session|auth|threat|password|oauth/i.test(title)) return "Auth";
+  if (/billing|stripe|invoice|plan|webhook|pricing/i.test(title)) return "Billing";
+  if (/postgres|pool|migration|database|sql|index/i.test(title)) return "Database";
+  if (/ci\b|rust|build|docker|deploy|helm|terraform|toolchain|release/i.test(title)) return "Infrastructure";
+  return "Product";
+}
+
+const KINDS: RememberKind[] = ["fact", "decision", "preference", "todo", "decision"];
 const LATENCY_MS = 120;
 
 const delay = (ms = LATENCY_MS) => new Promise<void>((r) => setTimeout(r, ms));
@@ -64,7 +77,17 @@ export function buildTasks(requests: Request[], now: number): Task[] {
     const texts = [...spec.facts, ...(EXTRA_FACTS[i] ?? [])];
     const facts: TaskFact[] = texts.map((raw, j) => {
       const date = created + ((updated - created) * (j + 1)) / (texts.length + 1);
-      const fact: TaskFact = { id: `f${j + 1}`, text: raw.replace(/^~/, ""), date: iso(date), message_id: messageId };
+      const base: TaskFact = { id: `f${j + 1}`, text: raw.replace(/^~/, ""), date: iso(date), message_id: messageId };
+      // Every third item was kept on purpose (`remember`): it carries a kind and who kept it; the rest the harness learnt itself.
+      const kept = j % 3 === 1;
+      const fact: TaskFact = kept
+        ? {
+            ...base,
+            kind: KINDS[(i + j) % KINDS.length] ?? "fact",
+            remembered_by: i % 4 === 0 ? "user" : "orchestrator",
+            about: subjectOf(spec.title),
+          }
+        : base;
       return raw.startsWith("~") ? { ...fact, superseded_by: `f${j + 2}` } : fact;
     });
     const quote = req ? quoteOf(req.text) : null;
@@ -108,7 +131,10 @@ export function buildFiles(now: number): MemoryFile[] {
 }
 
 function snippet(text: string, word: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+  const flat = text
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
   const at = Math.max(0, flat.toLowerCase().indexOf(word.toLowerCase()));
   const from = Math.max(0, at - 80);
   const cut = flat.slice(from, from + 280);
@@ -319,9 +345,102 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
         if (!d) throw new BridgeError(404, "not_found", `no session ${sid}`);
         return d;
       }),
+    // Project sessions (schema 13) on top of the memory sessions: each memory session is a main session, the open one is
+    // current; the agent sessions come from the base demo bridge, re-parented to the current main session.
+    listSessions: async (pid, params?: SessionsParams) => {
+      const agents = bridge.listSessions ? await bridge.listSessions(pid, { kind: "agent", archived: "all" }) : [];
+      return read(pid, (s) => {
+        const d = s.sessions;
+        if (!d) return [];
+        const current = d.sessions.find((x) => x.open)?.id;
+        const archived = params?.archived ?? false;
+        const all: ProjectSession[] = [...mainSessions(d, agents.length), ...agents.map((a) => (current ? { ...a, parent_session_id: current } : a))];
+        return all
+          .filter((x) => (params?.kind ? x.kind === params.kind : true) && (params?.state ? x.state === params.state : true))
+          .filter((x) => archived === "all" || x.archived === archived)
+          .filter((x) => (params?.before ? x.started_at < params.before : true))
+          .sort((a, b) => b.started_at.localeCompare(a.started_at))
+          .slice(0, params?.limit ?? 50);
+      });
+    },
+    getSession: async (pid, sid) => {
+      const agentSessions = bridge.listSessions ? await bridge.listSessions(pid, { kind: "agent", archived: "all" }) : [];
+      return read(pid, (s) => {
+        const d = s.sessions;
+        const detail = d ? sessionDetail(d, sid) : null;
+        const main = d ? mainSessions(d, agentSessions.length).find((x) => x.id === sid) : undefined;
+        if (d && detail && main) return { session: main, exchanges: detail.exchanges, children: main.current ? agentSessions : [] };
+        const agent = agentSessions.find((x) => x.id === sid);
+        if (!agent) throw new BridgeError(404, "not_found", `no session ${sid}`);
+        return { session: agent, exchanges: [], children: [] };
+      });
+    },
+    createSession: (pid, title) =>
+      read(pid, (s) => {
+        if (!s.sessions) throw new BridgeError(404, "not_found", "no sessions");
+        const made = addSession(s.sessions, title ?? "New session", Date.now());
+        const main = mainSessions(s.sessions, 0).find((x) => x.id === made.id);
+        if (!main) throw new BridgeError(404, "not_found", `no session ${made.id}`);
+        return main;
+      }),
+    resumeSession: (pid, sid) =>
+      read(pid, (s) => {
+        if (!s.sessions || !makeCurrent(s.sessions, sid)) throw new BridgeError(409, "not_main_session", "only a main session can be resumed");
+        const main = mainSessions(s.sessions, 0).find((x) => x.id === sid);
+        if (!main) throw new BridgeError(404, "not_found", `no session ${sid}`);
+        return main;
+      }),
+    patchSession: async (pid, sid, patch) => {
+      const isMain = await read(pid, (s) => s.sessions?.sessions.some((x) => x.id === sid) ?? false);
+      if (!isMain) {
+        if (!bridge.patchSession) throw new BridgeError(404, "not_found", `no session ${sid}`);
+        return bridge.patchSession(pid, sid, patch);
+      }
+      return read(pid, (s) => {
+        const d = s.sessions;
+        const m = d?.sessions.find((x) => x.id === sid);
+        if (!d || !m) throw new BridgeError(404, "not_found", `no session ${sid}`);
+        if (patch.archived === true && m.open) throw new BridgeError(409, "current_session", "the current session cannot be archived");
+        if (patch.title !== undefined) {
+          if (patch.title.trim() === "") throw new BridgeError(400, "invalid_request", "a title cannot be empty");
+          m.title = patch.title.trim();
+        }
+        if (patch.archived !== undefined) {
+          d.archived ??= new Set();
+          if (patch.archived) d.archived.add(sid);
+          else d.archived.delete(sid);
+        }
+        const main = mainSessions(d, 0).find((x) => x.id === sid);
+        if (!main) throw new BridgeError(404, "not_found", `no session ${sid}`);
+        return main;
+      });
+    },
     forgetExchange: (pid, eid) =>
       read(pid, (s) => {
         if (!s.sessions || !forget(s.sessions, eid)) throw new BridgeError(404, "not_found", `no exchange ${eid}`);
+      }),
+    rememberFact: (pid, input) =>
+      read(pid, (s) => {
+        const task = s.tasks.find((t) => t.status === "open") ?? s.tasks[0];
+        if (!task) throw new BridgeError(409, "no_task", "there is no task to attach this to yet");
+        const fact: TaskFact = {
+          id: `f${task.facts.length + 1}`,
+          text: input.text,
+          date: iso(Date.now()),
+          message_id: task.message_ids[0] ?? 0,
+          kind: input.kind ?? "fact",
+          remembered_by: "user",
+          ...(input.about ? { about: input.about } : {}),
+        };
+        task.facts = [...task.facts, fact];
+        task.updated_at = fact.date;
+        return { task_id: task.id, fact };
+      }),
+    forgetFact: (pid, taskId, factId) =>
+      read(pid, (s) => {
+        const task = s.tasks.find((t) => t.id === taskId);
+        if (!task?.facts.some((f) => f.id === factId)) throw new BridgeError(404, "not_found", `no fact ${taskId}/${factId}`);
+        task.facts = task.facts.filter((f) => f.id !== factId);
       }),
     getTurnContext: async (pid, turnId) => {
       const s = await read(pid, (x) => x);

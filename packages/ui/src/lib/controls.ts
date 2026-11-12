@@ -53,7 +53,7 @@ export const CONTROL: Record<ControlSize, ControlSpec> = {
  * the border becomes `fg` and the global shadow ring is switched off. Validation error: `aria-invalid` colours the border.
  */
 export const FIELD =
-  "rounded-md border border-input-border bg-panel text-sm text-fg placeholder:text-fg-3/60 placeholder:italic transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err touch:text-input-touch";
+  "rounded-md border border-input-border bg-panel text-sm text-fg placeholder:text-fg-3/60 placeholder:italic transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err disabled:opacity-50 touch:text-input-touch";
 
 /** The same focus rule for a frame that holds an input (`SearchField`): the frame reacts to `focus-within`. */
 export const FIELD_FRAME =

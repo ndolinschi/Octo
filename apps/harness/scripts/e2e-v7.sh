@@ -160,7 +160,7 @@ curl -fsS -X DELETE "$BASE/v1/projects/$P5/secrets/api_key" -o /dev/null
 
 echo "== memory (M1): task record, digest, search, files"
 P6=$(newproject memory full)
-post POST "/v1/projects/$P6/messages" '{"text":"quick: Нужно уложиться в бюджет проекта [goal: Уложиться в бюджет] [fact: The dev server port is 8790] [quote: Нужно уложиться в бюджет]"}' >/dev/null
+post POST "/v1/projects/$P6/messages" '{"text":"quick: Нужно уложиться в бюджет проекта [goal: Уложиться в бюджет] [decision: Не превышать бюджет] [fact: The dev server port is 8790] [quote: Нужно уложиться в бюджет]"}' >/dev/null
 idle "$P6"
 nfacts() { [ "$(curl -fsS "$BASE/v1/projects/$P6/tasks" | jget 'sum(len(t["facts"]) for t in d["tasks"])')" -ge "$1" ]; }
 waitfor "the digest" nfacts 1
@@ -210,7 +210,7 @@ idle "$P6"
 sleep 1
 [ "$(ntasks)" = "$before" ] || fail "a trivial exchange left a task record"
 facts_before=$(curl -fsS "$BASE/v1/projects/$P6/tasks" | jget 'sum(len(t["facts"]) for t in d["tasks"])')
-post POST "/v1/projects/$P6/messages" '{"text":"quick: Заказчик в Кишинёве, нужен калькулятор со скобками [fact: Заказчик находится в Кишинёве]"}' >/dev/null
+post POST "/v1/projects/$P6/messages" '{"text":"quick: Заказчик в Кишинёве, нужен калькулятор со скобками [goal: Калькулятор для заказчика] [decision: Скобки поддерживаются] [fact: Заказчик находится в Кишинёве]"}' >/dev/null
 idle "$P6"
 waitfor "the Russian digest" nfacts $(( facts_before + 1 ))
 sleep 1
@@ -248,6 +248,45 @@ after = call("GET", "/v1/projects/%s/memory/sessions/%s" % (pid, sessions[0]["id
 marker = [e for e in after if e["id"] == ru["id"]][0]
 assert marker.get("removed") and marker["request"] == "" and marker["answer"] == "", marker
 assert call("GET", "/v1/projects/%s/memory/search?q=%s&in=exchanges" % (pid, urllib.parse.quote("калькулятор")))[0]["hits"] == []
+PY
+
+echo "== memory (M6): a question is not a task, work is, a follow-up joins, the list shape"
+P8=$(newproject m6 full)
+for i in 1 2 3; do
+  post POST "/v1/projects/$P8/messages" "{\"text\":\"quick: what is about this repo $i [goal: Know the repo] [fact: Repo note $i]\"}" >/dev/null
+  idle "$P8"
+done
+sleep 1
+python3 - "$BASE" "$P8" <<'PY' || fail "questions left a task, or lost their exchanges"
+import json, os, sys, urllib.request
+base, pid = sys.argv[1], sys.argv[2]
+def get(path):
+    req = urllib.request.Request(base + path, headers={"Authorization": "Bearer " + os.environ["HARNESS_API_TOKEN"]})
+    return json.load(urllib.request.urlopen(req))
+tasks = [t for t in get("/v1/projects/%s/tasks" % pid)["tasks"] if t["title"] != "Remembered"]
+assert tasks == [], tasks
+ex = [e for s in get("/v1/projects/%s/memory/sessions" % pid)["sessions"] for e in get("/v1/projects/%s/memory/sessions/%s" % (pid, s["id"]))["exchanges"]]
+assert len(ex) == 3, ex
+PY
+post POST "/v1/projects/$P8/messages" '{"text":"Please build it [write:{role}.md] [goal: Build the thing] [state: Built, nothing left] [met]"}' >/dev/null
+idle "$P8"
+m6tasks() { curl -fsS "$BASE/v1/projects/$P8/tasks" | jget 'len([t for t in d["tasks"] if t["title"] != "Remembered"])'; }
+waitfor "the work task" test "$(m6tasks)" = 1
+sleep 1
+post POST "/v1/projects/$P8/messages" '{"text":"also once more [write:{role}.md] [continues: Build the thing] [state: Rebuilt] [met]"}' >/dev/null
+idle "$P8"
+sleep 1
+python3 - "$BASE" "$P8" <<'PY' || fail "the work task is wrong, or the follow-up did not join it"
+import json, os, sys, urllib.request
+base, pid = sys.argv[1], sys.argv[2]
+req = urllib.request.Request(base + "/v1/projects/%s/tasks" % pid, headers={"Authorization": "Bearer " + os.environ["HARNESS_API_TOKEN"]})
+tasks = [t for t in json.load(urllib.request.urlopen(req))["tasks"] if t["title"] != "Remembered"]
+assert len(tasks) == 1, tasks
+t = tasks[0]
+for k in ("state_summary", "files", "exchange_ids", "closed_reason", "open_questions", "session_id"):
+    assert k in t, (k, t)
+assert t["goal"] == "Build the thing" and t["goal_by"] == "digest" and t["state_summary"] == "Rebuilt", t
+assert t["status"] == "done" and t["closed_reason"] == "goal met" and len(t["message_ids"]) == 2 and len(t["exchange_ids"]) == 2 and t["files"], t
 PY
 
 echo "== inline completion: off until a model is chosen, a suggestion, never-sent files, usage role"

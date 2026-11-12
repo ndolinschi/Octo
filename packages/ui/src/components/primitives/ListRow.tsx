@@ -19,7 +19,8 @@ import { MiddleText } from "./MiddleText";
  * - `selected` is the standard selection (`active` fill; `aria-current`, or `aria-selected` for an option). `active` is the
  *   active-descendant highlight of a combobox list (same fill, no ARIA state: the listbox owns it).
  * - Truncation: the title has priority and gives way last; `truncate="middle"` keeps the end of a path or id; the meta and
- *   description give way first.
+ *   description give way first. The meta never shrinks (a short time or count always shows whole) but stops at 40% of the
+ *   row, where it clips with an ellipsis.
  * - `tone`: `default` (`fg`) or `quiet` (`fg-2`, secondary lists).
  *
  * Not for: a table (`DataTable`), a menu item (`Menu`), a tab (`ViewTabs`), a settings row with a control on the right
@@ -36,6 +37,8 @@ export function ListRow(props: {
   selected?: boolean;
   active?: boolean;
   disabled?: boolean;
+  /** A row that folds or unfolds something ("6 more", "Show fewer"): `aria-expanded`. */
+  expanded?: boolean;
   truncate?: "end" | "middle";
   tone?: "default" | "quiet";
   onClick?: MouseEventHandler<HTMLElement>;
@@ -49,9 +52,13 @@ export function ListRow(props: {
   const { selected = false, active = false, disabled = false } = props;
   const twoLine = props.description !== undefined;
   const interactive = props.onClick !== undefined || props.href !== undefined;
-  const aria = { ...selectionAria(props.role, selected), ...(disabled ? { "aria-disabled": true } : {}) };
+  const aria = {
+    ...selectionAria(props.role, selected),
+    ...(disabled ? { "aria-disabled": true } : {}),
+    ...(props.expanded === undefined ? {} : { "aria-expanded": props.expanded }),
+  };
   const main = cn(
-    "flex h-full min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-left text-sm",
+    "flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm px-2 text-left text-sm",
     interactive && "press-row focus-inset",
     disabled && "pointer-events-none",
   );
@@ -71,7 +78,7 @@ export function ListRow(props: {
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           {title}
-          {props.meta !== undefined && <span className="ml-auto min-w-0 shrink-[10] truncate pl-1 text-xs text-fg-3">{props.meta}</span>}
+          {props.meta !== undefined && <span className="ml-auto max-w-[40%] shrink-0 truncate pl-1 text-xs text-fg-3">{props.meta}</span>}
         </span>
         {twoLine && <span className="min-w-0 truncate text-xs text-fg-3">{props.description}</span>}
       </span>

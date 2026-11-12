@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +15,9 @@ import (
 type DigestFact struct {
 	Text       string `json:"text"`
 	Supersedes string `json:"supersedes"`
+	// About is the fact's subject in a few words, when the digest gives one. Without it the fact is about its task
+	// (the task's title), so the Knowledge view groups what the harness learnt instead of piling it under "General".
+	About string `json:"about"`
 }
 
 // Digest is what the side model returns for one finished turn.
@@ -30,15 +32,12 @@ type Digest struct {
 	// Continues is the id of an earlier task this exchange continues (a
 	// follow-up); empty when it is a new piece of work.
 	Continues string `json:"continues"`
-}
-
-// DigestOpts tunes ApplyDigest.
-type DigestOpts struct {
-	// DropIfEmpty deletes the turn's record, when the harness opened it and
-	// nobody edited it, if the digest found nothing worth keeping (no fact,
-	// decision, quote, constraint or acceptance criterion): a trivial exchange
-	// leaves no task record.
-	DropIfEmpty bool
+	// State is what is done and what is left (M6 rule 4).
+	State string `json:"state"`
+	// OpenQuestions are unanswered questions or decisions still needed from the user.
+	OpenQuestions []string `json:"open_questions"`
+	// GoalMet is the digest's verdict: nil when it did not say, true closes the task, false keeps it open.
+	GoalMet *bool `json:"goal_met"`
 }
 
 // ParseDigest reads the model's answer: the JSON object in it, however it is wrapped.
@@ -79,51 +78,31 @@ func similar(a, b string) float64 {
 	return float64(n) / float64(len(x)+len(y)-n)
 }
 
-// ApplyDigest merges a digest into the turn's task. It only fills and adds:
-// the goal is replaced only while it is the harness's fallback (or an earlier
-// digest's), the outcome only while empty, lists only grow, quotes must be in
-// the user's request, and nothing the orchestrator or the user wrote is
-// changed or deleted. A fact that contradicts an earlier one marks that one
-// superseded (the text and date stay).
+// ApplyDigest merges a digest into one task. It only fills and adds: the goal
+// is replaced only while it is a rule's rewrite (or an earlier digest's), the
+// outcome only while empty, lists only grow, quotes must be in the user's
+// request, and nothing the orchestrator or the user wrote is changed or
+// deleted. A fact that contradicts an earlier one marks that one superseded
+// (the text and date stay). Which task a turn's digest belongs to, and whether
+// the turn makes one at all, is SettleTurn's decision.
 func (s *Service) ApplyDigest(ctx context.Context, taskID string, messageID int64, d Digest) (projectstore.Task, error) {
-	return s.ApplyDigestOpts(ctx, taskID, messageID, d, DigestOpts{})
-}
-
-// ApplyDigestOpts is ApplyDigest with options. When the digest says the turn
-// continues another task, the turn's message joins that task, the turn's own
-// record (if untouched) is deleted and the digest is merged into the other
-// task, which is closed again (the turn is over) with the new outcome; the
-// returned task is the one the digest went to. A task deleted for being empty
-// is returned with its ID so the caller can tell.
-func (s *Service) ApplyDigestOpts(ctx context.Context, taskID string, messageID int64, d Digest, opts DigestOpts) (projectstore.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t, err := s.DB.Task(ctx, taskID)
 	if err != nil {
 		return t, err
 	}
-	if c := strings.TrimSpace(d.Continues); c != "" && c != taskID {
-		if target, terr := s.DB.Task(ctx, c); terr == nil && target.Status != projectstore.TaskDropped {
-			own := t
-			if !slices.Contains(target.MessageIDs, messageID) {
-				target.MessageIDs = append(target.MessageIDs, messageID)
-			}
-			target.Files, _ = addUnique(target.Files, own.Files, MaxItems)
-			if own.Auto {
-				if err := s.DB.DeleteTask(ctx, own.ID); err == nil {
-					s.publish("task.updated", map[string]any{"task_id": own.ID, "deleted": true})
-				}
-			}
-			t = target
-			t.Status = projectstore.TaskDone // the follow-up's turn is over
-			if o := strings.TrimSpace(s.redact(d.Outcome)); o != "" {
-				t.Outcome = clip(o, MaxOutcome)
-			}
-			d.Outcome = ""
-			opts.DropIfEmpty = false
-		}
+	s.applyDigest(ctx, &t, messageID, d)
+	t, err = s.DB.SaveTask(ctx, t)
+	if err == nil {
+		s.publish("task.updated", map[string]any{"task": t})
 	}
-	if g := strings.TrimSpace(s.redact(d.Goal)); g != "" && (t.GoalBy == "harness" || t.GoalBy == "digest") {
+	return t, err
+}
+
+// applyDigest fills t from d in memory (the caller saves). s.mu is held.
+func (s *Service) applyDigest(ctx context.Context, t *projectstore.Task, messageID int64, d Digest) {
+	if g := strings.TrimSpace(s.redact(d.Goal)); g != "" && (t.GoalBy == "" || t.GoalBy == "harness" || t.GoalBy == "rule" || t.GoalBy == "digest") {
 		t.Goal, t.GoalBy = clip(g, MaxGoal), "digest"
 	}
 	if o := strings.TrimSpace(s.redact(d.Outcome)); o != "" && t.Outcome == "" {
@@ -154,8 +133,15 @@ func (s *Service) ApplyDigestOpts(ctx context.Context, taskID string, messageID 
 			}
 		}
 	}
+	s.applyFacts(ctx, t, messageID, d.Facts)
+}
+
+// applyFacts adds the digest's facts to t (a duplicate of a current one is
+// skipped; "supersedes" marks the best matching current fact, in t or in any
+// other task). s.mu is held.
+func (s *Service) applyFacts(ctx context.Context, t *projectstore.Task, messageID int64, facts []DigestFact) {
 	now := projectstore.Now()
-	for _, f := range d.Facts {
+	for _, f := range facts {
 		text := clip(strings.TrimSpace(s.redact(f.Text)), MaxItem)
 		if text == "" || len(t.Facts) >= MaxFacts {
 			continue
@@ -167,7 +153,7 @@ func (s *Service) ApplyDigestOpts(ctx context.Context, taskID string, messageID 
 		if dup {
 			continue
 		}
-		nf := projectstore.Fact{ID: fmt.Sprintf("f%d", len(t.Facts)+1), Text: text, Date: now, MessageID: messageID}
+		nf := projectstore.Fact{ID: nextFactID(t.Facts), Text: text, Date: now, MessageID: messageID, About: factAbout(s.redact(f.About), t)}
 		if old := strings.TrimSpace(f.Supersedes); old != "" {
 			if i := matchFact(t.Facts, s.redact(old)); i >= 0 {
 				t.Facts[i].SupersededBy = nf.ID
@@ -177,17 +163,16 @@ func (s *Service) ApplyDigestOpts(ctx context.Context, taskID string, messageID 
 		}
 		t.Facts = append(t.Facts, nf)
 	}
-	if opts.DropIfEmpty && t.Auto && len(t.Facts)+len(t.Decisions)+len(t.Quotes)+len(t.Constraints)+len(t.Acceptance) == 0 {
-		if err := s.DB.DeleteTask(ctx, t.ID); err == nil {
-			s.publish("task.updated", map[string]any{"task_id": t.ID, "deleted": true})
-		}
-		return t, nil
+}
+
+// factAbout is the subject of a fact the harness learnt: the digest's own, else the title of its task. The Remembered
+// record has no subject (its facts are not about any piece of work).
+func factAbout(digestAbout string, t *projectstore.Task) string {
+	about := strings.TrimSpace(digestAbout)
+	if about == "" && t.Title != RememberedTaskTitle {
+		about = strings.TrimSpace(t.Title)
 	}
-	t, err = s.DB.SaveTask(ctx, t)
-	if err == nil {
-		s.publish("task.updated", map[string]any{"task": t})
-	}
-	return t, err
+	return clip(about, 120)
 }
 
 // supersedeElsewhere marks the current fact of another task that the new fact
@@ -250,36 +235,36 @@ func matchFact(facts []projectstore.Fact, old string) int {
 	return bi
 }
 
-// DigestPrompt is the system prompt of the side model's digest call.
-const DigestPrompt = `You maintain the memory of a software project. You read one finished exchange (the user's request, the orchestrator's final reply) and the task record so far, and you return ONLY a JSON object:
-{"goal": "<one or two sentences: what the user wants, empty if the record's goal is right>",
+// DigestPrompt is the system prompt of the side model's digest call (and, for
+// an ACP orchestrator, the head of the one prompt asked in its live session).
+const DigestPrompt = `You maintain the memory of a software project. You read one finished exchange (the user's request, the orchestrator's final reply, and what the harness observed the turn do) and you return ONLY a JSON object:
+{"goal": "<the user's goal rewritten as a goal in one or two sentences, NOT the request's first words; empty only if the exchange states no goal>",
+ "state": "<what is done and what is left, one to three sentences>",
+ "goal_met": <true if the goal of this exchange is fully met, false if work remains or the user must answer something>,
  "constraints": ["..."], "acceptance": ["..."],
+ "open_questions": ["<a question still unanswered or a decision still needed from the user>"],
  "quotes": ["<exact words of the user's request that must not be paraphrased: names, numbers, paths, commands, acceptance criteria>"],
  "decisions": ["..."], "outcome": "<what was done, empty if nothing yet>",
  "continues": "<the id of an earlier task listed above that this exchange continues (a follow-up, a correction, the next step of it), else empty>",
- "facts": [{"text": "<a short standalone statement, e.g. 'CI runs on Rust 1.88'>", "supersedes": "<text of an earlier fact it contradicts, else empty>"}]}
-Quotes must be copied character for character from the request. Facts must stand alone, without "it" or "this". Leave out what is already in the record. Never invent. Empty lists are fine.`
+ "facts": [{"text": "<a short standalone statement, e.g. 'CI runs on Rust 1.88'>", "about": "<its subject in a few words, e.g. 'CI', else empty>", "supersedes": "<text of an earlier fact it contradicts, else empty>"}]}
+A question that was only answered is not a goal: leave constraints, acceptance, decisions and open_questions empty for it. Quotes must be copied character for character from the request. Facts must stand alone, without "it" or "this". Leave out what is already in the record. Never invent. Empty lists are fine.`
 
-// DigestInput builds the capped user message of the digest call. candidates are
-// earlier tasks this exchange might continue.
-func DigestInput(t projectstore.Task, known []string, request, reply string, candidates ...projectstore.Task) string {
+// DigestInput builds the capped user message of the digest call: the exchange,
+// what the harness saw the turn do, the facts already known, and the earlier
+// tasks of the session this exchange might continue.
+func DigestInput(w TurnWork, known []string, candidates ...projectstore.Task) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Task record so far:\ntitle: %s\ngoal: %s\n", t.Title, t.Goal)
 	if len(candidates) > 0 {
 		b.WriteString("Earlier tasks this exchange may continue:\n")
 		for _, c := range candidates {
 			fmt.Fprintf(&b, "- [%s] (%s) %s: %s\n", c.ID, c.Status, clip(c.Title, 80), clip(c.Goal, 160))
 		}
 	}
-	for _, f := range t.Facts {
-		if f.SupersededBy == "" {
-			fmt.Fprintf(&b, "fact (%s): %s\n", f.Date[:10], f.Text)
-		}
-	}
 	for _, k := range known {
 		fmt.Fprintf(&b, "fact (other task): %s\n", k)
 	}
-	fmt.Fprintf(&b, "\nUser request:\n%s\n\nOrchestrator's final reply:\n%s\n", clip(request, 6000), clip(reply, 4000))
+	fmt.Fprintf(&b, "Observed by the harness: %s\n", w.Observed())
+	fmt.Fprintf(&b, "\nUser request:\n%s\n\nOrchestrator's final reply:\n%s\n", clip(w.Request, 6000), clip(w.Reply, 4000))
 	return clip(b.String(), 14000)
 }
 

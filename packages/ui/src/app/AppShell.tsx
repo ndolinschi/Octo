@@ -72,6 +72,9 @@ function Shell() {
   // Decision 59: Settings is a page at `#/settings/<section>`; "Back" returns to the hash it was opened from.
   const settings = useSettingsSection();
   const beforeSettings = useRef("#/");
+  // The project open in the app, kept while Settings is on screen (its route has no project): Models opens its project tab on it.
+  const [openProject, setOpenProject] = useState<string | null>(route.projectId);
+  if (settings === null && openProject !== route.projectId) setOpenProject(route.projectId);
   useEffect(() => {
     if (settings === null) beforeSettings.current = window.location.hash || "#/";
   }, [settings, route]);
@@ -252,6 +255,7 @@ function Shell() {
                   onBack={() => (window.location.hash = beforeSettings.current)}
                   connect={setConnectTarget}
                   restart={host.restart}
+                  projectId={openProject}
                 />
               </Suspense>
             </div>

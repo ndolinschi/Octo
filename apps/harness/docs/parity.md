@@ -318,6 +318,9 @@ Spec: `docs/superpowers/specs/2026-11-12-parity-backlog.md` (B11 and its revisio
 `session_id` / `previous_session_id` (memory M4, absent when the memory service could not record the boundary): the memory session the next request joins (empty,
 not listed until its first request) and the one that ended, which keeps `summary` / `summary_source` on its record (`GET …/memory/sessions/{sid}`, `session.summary`).
 
+Those ids are the main sessions of [sessions.md](./sessions.md) (schema 13); `/clear` is `POST /sessions` with a summary. The store's
+schema is **14** (13 project sessions, 14 the task fields of memory M6, see [memory.md](./memory.md)).
+
 - The model's history starts over from a **carry-over of at most 600 tokens** (characters / 4), in order: the summary written at clearing time (Asked, Done,
   Decisions, Unfinished, Files), the titles of the open tasks (at most 5), and the pointer to `memory_search` / `recall_message`. It is stored with the boundary.
   Instructions, notes, facts and memory files are untouched; open task records stay open.

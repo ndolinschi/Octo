@@ -4,6 +4,7 @@ const ok = (value: unknown, message?: string) => assert.equal(Boolean(value), tr
 const match = (text: string, re: RegExp) => assert.equal(re.test(text), true, `${JSON.stringify(text)} does not match ${String(re)}`);
 import test from "node:test";
 import { completionMode, demoLatency, demoSuggest } from "./completion";
+import { addSession, buildSessions, mainSessions, makeCurrent } from "./memorySessions";
 import { buildFiles, buildTasks, memoryMode, receipt, search, type Store } from "./memory";
 
 test("demo completion: modes from the query string", () => {
@@ -90,4 +91,20 @@ test("demo memory: receipts — none for the oldest turn, one full-mode turn, wi
   );
   for (const b of r.blocks) ok(b.cap === 0 || b.tokens <= b.cap, b.name);
   assert.equal(r.blocks.find((b) => b.name === "recent_window")?.count, 5);
+});
+
+test("demo sessions: memory sessions are main sessions, one current; new and resume move it", () => {
+  const d = buildSessions([10, 12], now);
+  const list = mainSessions(d, 2);
+  assert.equal(list.filter((x) => x.current).length, 1);
+  ok(list.every((x) => x.kind === "main"));
+  const current = list.find((x) => x.current);
+  assert.equal(current?.children, 2);
+  assert.equal(current?.can_message, true);
+  assert.equal(list.find((x) => !x.current)?.message_blocked?.code, "not_current");
+  const made = addSession(d, "Fresh", now);
+  assert.equal(mainSessions(d, 0).find((x) => x.current)?.id, made.id);
+  assert.equal(makeCurrent(d, "ses_2"), true);
+  assert.equal(mainSessions(d, 0).find((x) => x.current)?.id, "ses_2");
+  assert.equal(makeCurrent(d, "nope"), false);
 });

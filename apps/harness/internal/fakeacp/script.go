@@ -99,6 +99,9 @@ func textContent(text string) map[string]any {
 
 // runScript plays the scripted turn and returns the stop reason.
 func (a *agent) runScript(ctx context.Context, prompt string) string {
+	if strings.Contains(prompt, digestMarker) {
+		return a.digest(prompt)
+	}
 	// Markers count only in the user's request: the harness may put a recap of
 	// earlier requests (which hold other markers) before "User request:".
 	request := prompt

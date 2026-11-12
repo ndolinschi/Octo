@@ -86,11 +86,18 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
 
   const syncAll = useCallback(async () => {
     try {
-      const [p, agents, notes] = await Promise.all([bridge.getProject(projectId), bridge.listAgents(projectId), bridge.listNotes(projectId)]);
+      const [p, agents, notes, sessions] = await Promise.all([
+        bridge.getProject(projectId),
+        bridge.listAgents(projectId),
+        bridge.listNotes(projectId),
+        // Project sessions: an older harness has none; a failed read leaves the list as it is (`session.*` events keep it current).
+        bridge.listSessions ? bridge.listSessions(projectId, { limit: 200 }).catch(() => null) : null,
+      ]);
       setProject(p);
       setLoadError(null);
       dispatch({ type: "agents", agents });
       dispatch({ type: "notes", notes });
+      if (sessions) dispatch({ type: "sessions", sessions });
       const ids = new Set([p.orchestrator_agent_id, ...loaded.current]);
       await Promise.all([...ids].map(fetchMessages));
     } catch (e) {
