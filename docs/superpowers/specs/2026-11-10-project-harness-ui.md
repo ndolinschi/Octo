@@ -648,6 +648,21 @@ monochrome dithered illustration):
     "Claude Code · Opus". An agent with one or no known model has no "›". Search matches "copilot gpt" across
     both levels. Harness: `/v1/providers` lists per agent `models` (manifest ∪ advertised, cached per agent with
     the time seen) and `default_model`; a model the agent no longer advertises is flagged, not silently dropped.
+    **Revised after the owner's run of 2026-11-12** ("I still cannot choose models for Claude Code, Codex, Grok,
+    GitHub Copilot" — the picker showed each agent as a group with one row and no second level, because the
+    manifest lists no models and nothing had been advertised yet). A model can **always** be chosen for an agent:
+    (1) every ready agent row opens a second level, even with no known model: "Default (the agent decides)", the
+    known models, and **"Other model…"** — a field where a model name is typed and remembered for that agent;
+    (2) the harness finds an agent's models without waiting for a user request: when an agent becomes ready (and
+    on "Refresh models" in the picker) it starts the agent, opens a throw-away session in an empty temporary
+    directory, reads the models it advertises and closes it — no prompt is sent, nothing is billed; a manifest may
+    instead name a `modelsCommand` (for a CLI that prints its models, such as `grok models`) with a pattern;
+    (3) the built-in manifest carries the model **aliases the vendor documents** for its CLI (Claude Code:
+    `opus`, `sonnet`, `haiku`) — aliases, not dated ids, so they do not go stale; nothing is invented for a CLI
+    whose names we cannot source;
+    (4) the picker is a flat list: one row per agent (no group heading that repeats the row), the chosen one
+    checked, its model shown dim on the right; agents that are not ready are below a "Not connected" divider and
+    open the connect sheet instead of being selectable.
 59. **Settings is a page, not a dialog** (owner: "the settings page looks very bad and should be Cursor-like";
     reference: a full-window settings view). Route `#/settings/<section>`; the sidebar is replaced by the
     settings navigation ("← Back", a search field that filters rows across all sections, then sections with a
