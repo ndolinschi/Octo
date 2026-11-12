@@ -751,6 +751,23 @@ monochrome dithered illustration):
     block sits in the space above it; once there is content the block is gone and content starts at the top.
     The spacing audit gains checks for (a) item count per bar, (b) more than one filled button in a surface, and
     (c) nested bordered containers; a pass is not accepted while they report anything.
+65. **The context indicator is a button that explains itself** (owner: "the context button is not clickable and
+    not informative, unlike in Claude Code"). The bare token count ("61k") is replaced by a small ring showing how
+    full the context window is, with the percentage beside it once it passes 50% (warn colour from 80%). Click,
+    `Enter` or `Ctrl/Cmd+Shift+U` opens a popover:
+    - a headline "41% of 200k used · 118k free", and when it applies "history was compacted 2 turns ago";
+    - one stacked bar and a list by category, largest first, each with tokens and share: instructions and
+      briefing, tool definitions, project instruction files, memory (index, tasks, facts), conversation, tool
+      results, the current request; plus "Free" and, when the model reserves it, "Reserved for the answer";
+    - what drives cost: cached vs. uncached input of the last request;
+    - actions: **Compact now**, **Open context details** (the Memory tab's Context view for the latest turn), and
+      for an agent that manages its own context a plain line saying so with what it reports (used / window size)
+      instead of an invented breakdown.
+    Numbers are estimates and are labelled "≈" unless the provider reported them. Harness:
+    `GET /v1/projects/{id}/context` → `{window, used, free, reserved?, compacted_at?, source: "harness" | "agent",
+    categories: [{id, label, tokens}], last_request: {input, cached, output}}`, computed from the same assembly
+    that builds the next request (so it matches what will be sent), refreshed after every turn and on
+    `context.updated`.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
