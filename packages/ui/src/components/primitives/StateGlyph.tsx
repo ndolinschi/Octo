@@ -12,7 +12,7 @@ const TONE: Record<(typeof GLYPH_TONE)[GlyphState], string> = {
 /**
  * Decision 29: the one state glyph (ring family) — sidebar rows, tabs, team chips, Home, delegation rows, the palette.
  * 12px (14 in 36/40px rows), drawn in `currentColor` so forced colours keep it. The working arc turns (1 s) and the
- * needs-you dot pulses (2 s) only without reduced motion (`.octo-ring-*` in styles.css). `label` adds screen-reader
+ * needs-you dot is static (decision 76); the arc turns only without reduced motion (`.octo-ring-*` in styles.css). `label` adds screen-reader
  * text; without it the glyph is decorative (the row says the state in words).
  */
 export function StateGlyph(props: { state: GlyphState; size?: GlyphSize; box?: number; label?: boolean; className?: string }) {

@@ -1965,3 +1965,12 @@ delegations, tools, notes, table/code answer), Orbit mobile (live scripted turn)
 "Show all"), two long-named projects whose short turns finish ~3–5s after load (unseen dots), and an empty one. Each folder has a small in-memory file tree (TS, Go, JSON, Markdown, CSS, one binary and
 one >2 MiB file; sample content is imported lazily); saves emit `file.changed`, and the live Orbit run's
 `write_file` calls change `android/build.gradle` and `metro.config.js` (agent `file.changed`). `?demo=empty` starts with no projects. Sending a message in demo runs a short scripted turn.
+
+## As built — Home clean-up (decisions 75, 76)
+
+Home keeps the heading, the four state tiles (each filters the list), the project list and "Agents at work" (shown
+only while an agent runs). Removed: the recap sentence, the activity heat map, the tokens card, `lib/recap`. The
+needs-you dot no longer pulses anywhere (the `octo-ring-pulse` animation is deleted); state tiles are static; only a
+working project's or agent's ring turns. Checked in Chromium on demo data: with no working project Home has no running
+animation (the one finished `octo-fade-in` of the backdrop streak remains — a test should count running animations).
+Not verified: WebKit, CPU use on the owner's machine.

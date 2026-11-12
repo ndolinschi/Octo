@@ -186,15 +186,7 @@ function Shell() {
   else if (route.projectId === null && projects)
     main = (
       <Suspense fallback={null}>
-        <Home
-          unseen={unseen}
-          onNewProject={newProject}
-          onSearch={openPalette}
-          onUsage={(projectId) => {
-            nav.requestTool({ projectId, tool: "usage", scope: "all" });
-            navigate(projectId);
-          }}
-        />
+        <Home unseen={unseen} onNewProject={newProject} onSearch={openPalette} />
       </Suspense>
     );
 

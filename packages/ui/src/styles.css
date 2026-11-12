@@ -430,25 +430,17 @@
   display: none;
 }
 
-/* Decision 29: the working ring's arc turns, the needs-you dot pulses — never under reduced motion (static arc / dot). */
+/* Decisions 29 and 76: only the working ring's arc turns; the needs-you dot is static. Never under reduced motion. */
 @media (prefers-reduced-motion: no-preference) {
   .octo-ring-turn {
     transform-origin: center;
     transform-box: view-box;
     animation: octo-ring-turn 1s linear infinite;
   }
-  .octo-ring-pulse {
-    animation: octo-ring-pulse 2s ease-in-out infinite;
-  }
 }
 @keyframes octo-ring-turn {
   to {
     rotate: 360deg;
-  }
-}
-@keyframes octo-ring-pulse {
-  50% {
-    opacity: 0.35;
   }
 }
 

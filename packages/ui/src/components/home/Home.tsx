@@ -4,7 +4,6 @@ import { useMemo, useRef, useState } from "react";
 import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, triageOf, type Triage } from "../../lib/triage";
 import type { GlyphState } from "../../lib/stateGlyph";
 import { StateGlyph } from "../primitives/StateGlyph";
-import { useRecap } from "./useRecap";
 import { cn } from "../../lib/cn";
 import { focusSoon, visibleComposer } from "../../lib/focus";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
@@ -19,33 +18,27 @@ import { SkeletonRows } from "../primitives/InfoList";
 import { OrchestratorGlyph } from "../primitives/Status";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { STREAK_HOME } from "../../lib/streakPresets";
-import { ActivityCard, TeamCard, TokensCard } from "./HomeCards";
+import { TeamCard } from "./HomeCards";
 import { useOverview } from "./useOverview";
 
-/** Rows in the grouped list before "N more projects" (Home fits 1440×900 with the triage row and the recap). */
+/** Rows in the grouped list before "N more projects" (Home fits 1440×900 with the triage row). */
 const PROJECT_ROWS = 4;
 
 /**
- * Home (`#/`, decisions 22 and 23): projects and their orchestrators, not requests — the streak, a title, every
- * project's orchestrator (state, and what it is doing or last said), then Orchestrators at work (agents running
- * across projects), Activity and Tokens ("This month" folded into the recap's "Full recap", decision 26). Cards are top-aligned and the block is anchored at the top, so
- * nothing moves when a card's content changes.
+ * Decision 76: a glyph that is not working right now stays still. The ring's arc and dot are animated by the shared
+ * state glyph, so a count tile or an idle row switches its animations off here.
  */
-export function Home({
-  onNewProject,
-  onSearch,
-  onUsage,
-  unseen,
-}: {
-  onNewProject(): void;
-  onSearch(): void;
-  onUsage(projectId: string): void;
-  unseen: Set<string>;
-}) {
+const STILL = "[&_.octo-ring-turn]:!animate-none";
+
+/**
+ * Home (`#/`, decisions 22, 23, 75): projects and their orchestrators, not requests — the streak, a title, the state
+ * tiles that filter the list, the project list (needs you, working, then recent), and "Agents at work" while an agent
+ * runs. Nothing on Home only reports a number (decision 75); numbers live in Usage.
+ */
+export function Home({ onNewProject, onSearch, unseen }: { onNewProject(): void; onSearch(): void; unseen: Set<string> }) {
   const { theme, backdrop } = useApp();
   const data = useOverview();
   const now = useNow(true, CLOCK_MINUTE_MS);
-  const latest = useMemo(() => [...(data.projects ?? [])].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0], [data.projects]);
   const [filter, setFilter] = useState<Triage | null>(null);
   const triaged = useMemo(
     () =>
@@ -55,7 +48,6 @@ export function Home({
       }),
     [data.projects, data.orchestrators, unseen],
   );
-  const recap = useRecap(data, now);
   const count = data.projects?.length ?? 0;
   return (
     // Decision 50: the streak is fixed to the panel (outside the scroller); only the content scrolls, never rubber-bands.
@@ -72,21 +64,9 @@ export function Home({
               What should we work on?
             </h1>
             <TriageRow items={triaged} loading={data.projects === null} value={filter} onChange={setFilter} />
-            <Recap recap={recap} onUsage={latest ? () => onUsage(latest.id) : null} />
           </div>
           <Projects items={triaged} data={data} now={now} filter={filter} onNewProject={onNewProject} onSearch={onSearch} />
-          {/* Two columns that stack independently (a masonry of two), paired so their heights come out close: who is
-            working and this month on the left, tokens and activity on the right; no card stretches, none leaves a
-            hole. One column under 900px, in reading order. */}
-          <div className="grid grid-cols-1 items-start gap-3 @min-[900px]/home:grid-cols-2">
-            <div className="flex min-w-0 flex-col gap-3">
-              <TeamCard projects={data.projects} agents={data.agents} />
-              <ActivityCard agents={data.agents} requests={data.requests.complete ? data.requests.all : null} now={now} />
-            </div>
-            <div className="flex min-w-0 flex-col gap-3">
-              <TokensCard usage={data.usage} daily={data.daily} now={now} onOpen={latest ? () => onUsage(latest.id) : null} />
-            </div>
-          </div>
+          <TeamCard projects={data.projects} agents={data.agents} />
         </div>
       </div>
     </section>
@@ -102,7 +82,8 @@ function secondLine(state: OrchestratorState, reply: Reply | null | undefined, l
 
 /**
  * Decision 26's triage row: four 64px tiles (two rows of two under 640px) — Needs you, Working, Ready to review, Idle —
- * each a toggle that filters the project list (one at a time; again to clear). A zero tile stays, quiet.
+ * each a toggle that filters the project list (one at a time; again to clear). A zero tile stays, quiet. The glyphs are
+ * still (decision 76): a tile counts projects, it is not itself working.
  */
 function TriageRow(props: { items: { triage: Triage }[]; loading: boolean; value: Triage | null; onChange(t: Triage | null): void }) {
   return (
@@ -123,7 +104,7 @@ function TriageRow(props: { items: { triage: Triage }[]; loading: boolean; value
             )}
           >
             <span className="flex items-center gap-2">
-              <StateGlyph state={TRIAGE_GLYPH[t]} size={14} box={16} />
+              <StateGlyph state={TRIAGE_GLYPH[t]} size={14} box={16} className={STILL} />
               <span
                 className={cn(
                   "text-figure leading-6 tabular-nums",
@@ -142,48 +123,6 @@ function TriageRow(props: { items: { triage: Triage }[]; loading: boolean; value
 }
 
 const TRIAGE_GLYPH: Record<Triage, GlyphState> = { needs: "needs", working: "working", review: "unseen", idle: "idle" };
-
-/** 8 + 2 × 22 + 8: two lines of recap (Home keeps its layout whether the recap has one line, two, or is loading). */
-const RECAP_BOX = "octo-card block min-h-[60px] rounded-lg px-4 py-2";
-
-/** The recap sentence (decision 26): figures in `fg`, projects and models link to their source; "Full recap" opens Usage. */
-function Recap({ recap, onUsage }: { recap: ReturnType<typeof useRecap>; onUsage: (() => void) | null }) {
-  // The card holds two lines from the first paint (loading, one line or two), so nothing below moves when it fills in.
-  if (recap === undefined) return <div aria-hidden className={RECAP_BOX} />;
-  if (!recap.parts) return null;
-  return (
-    <p data-recap className={cn(RECAP_BOX, "text-center text-base leading-[22px] text-pretty text-fg-2")}>
-      {recap.parts.map((p, i) => {
-        if (!("figure" in p)) return <span key={i}>{p.text}</span>;
-        const link = p.link;
-        if (!link)
-          return (
-            <span key={i} className="text-fg">
-              {p.text}
-            </span>
-          );
-        const go = "project" in link ? () => navigate(link.project) : onUsage;
-        return go ? (
-          <button key={i} type="button" onClick={go} className="rounded-2xs text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg">
-            {p.text}
-          </button>
-        ) : (
-          <span key={i} className="text-fg">
-            {p.text}
-          </span>
-        );
-      })}
-      {onUsage && (
-        <>
-          {" "}
-          <button type="button" onClick={onUsage} className="rounded-2xs whitespace-nowrap text-fg-3 hover:text-fg">
-            Full recap ›
-          </button>
-        </>
-      )}
-    </p>
-  );
-}
 
 function Projects({
   items,
@@ -232,7 +171,7 @@ function Projects({
         <div key={g.triage} role="group" aria-label={TRIAGE_LABEL[g.triage]} className="flex flex-col">
           <div className="flex h-row items-center px-2 text-xs text-fg-3">{TRIAGE_LABEL[g.triage]}</div>
           {g.rows.map(({ p, s }) => (
-            <ProjectRow key={p.id} project={p} state={s} reply={data.requests.replies.get(p.id)} loaded={data.requests.replies.has(p.id)} now={now} />
+            <ProjectRow key={p.id} project={p} state={s} reply={data.replies.get(p.id)} loaded={data.replies.has(p.id)} now={now} />
           ))}
         </div>
       ))}
@@ -289,7 +228,10 @@ function ProjectRow({
       title={`${project.name} — ${line}${second ? `\n${second}` : ""}`}
       className="flex h-bar w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left press-row focus-inset hover:bg-hover"
     >
-      <OrchestratorGlyph state={state.kind} />
+      {/* Decision 76: only a project that is working right now turns its arc; a needs-you row does not pulse. */}
+      <span className={cn("flex shrink-0", state.kind !== "working" && STILL)}>
+        <OrchestratorGlyph state={state.kind} />
+      </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-baseline gap-2">
           <span className="min-w-0 truncate text-sm text-fg">{project.name}</span>
