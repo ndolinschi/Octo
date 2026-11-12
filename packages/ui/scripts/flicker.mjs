@@ -195,9 +195,15 @@ if (ONLY === null || ONLY === "typing") {
   await page.evaluate(RECORD);
   await page.waitForTimeout(200);
   const line = "The quick brown fox jumps over the lazy dog, again and again and again until it is a hundred.".slice(0, 97);
+  let typed = 0;
   for (let i = 0; i < 20; i++) {
-    await page.keyboard.type(`${line}${String(i).padStart(2, "0")}`);
-    if (i < 19) await page.keyboard.press("Shift+Enter");
+    const part = `${line}${String(i).padStart(2, "0")}`;
+    await page.keyboard.type(part);
+    typed += part.length;
+    if (i < 19) {
+      await page.keyboard.press("Shift+Enter");
+      typed += 1;
+    }
   }
   await page.waitForTimeout(400);
   const frames = await page.evaluate(() => {
@@ -205,7 +211,8 @@ if (ONLY === null || ONLY === "typing") {
     return window.__flicker.frames;
   });
   const text = await composer.inputValue();
-  if (text.length < 1900) fail(`only ${text.length} characters typed`);
+  // Every character arrives (a lost one means two composers overwrote each other or the field re-rendered mid-key).
+  if (text.length !== typed) problems.push(`typing: ${text.length} of ${typed} characters arrived`);
   const found = analyse(frames);
   for (const p of found) problems.push(`typing: ${p}`);
   console.log(`typing: ${frames.length} frames, ${text.length} characters, ${found.length} problems`);
@@ -223,8 +230,15 @@ if (ONLY === null || ONLY === "idle") {
   };
   await page.evaluate(() => (window.location.hash = "#/"));
   await idle("Home, no project at work");
-  const first = await projects.first().getAttribute("title");
-  await openProject(page, projects, (first ?? "").trim() || "");
+  // The sidebar is a drawer on a narrow window and may be closed here: open it to read the name of the first project.
+  if (!(await projects.first().waitFor({ state: "attached", timeout: 1000 }).then(() => true, () => false)))
+    await page.getByRole("button", { name: /sidebar/i }).first().click();
+  await projects.first().waitFor({ state: "attached", timeout: 10000 });
+  const first = await page.evaluate(() => {
+    const a = document.querySelector('nav[aria-label="Projects"] a[href^="#/p/"]');
+    return a ? (a.getAttribute("title") || a.textContent || "").trim() : "";
+  });
+  await openProject(page, projects, first);
   await idle("an idle project");
   await page.evaluate(() => (window.location.hash = "#/settings/general"));
   await idle("Settings");

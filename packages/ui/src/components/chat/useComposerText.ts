@@ -1,24 +1,36 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { DraftBus } from "./draftBus";
 
 /** Decision 62: the text area grows from 1 to 10 lines, then scrolls. Mirrors `.octo-composer-input`'s line height. */
 export const COMPOSER_LINE = 22;
 export const COMPOSER_MAX_LINES = 10;
 
-export type ComposerDraft = { initial: string; save(text: string): void; subscribe?(cb: (text: string) => void): () => void };
+export type ComposerDraft = DraftBus;
 
 /**
  * The composer's text: kept in the shared draft (both composers on one key hear each other), and the text area's
  * height fitted to it (refitted when the width changes the wrapping).
  */
 export function useComposerText(draft: ComposerDraft | undefined) {
-  const [text, setText] = useState(() => draft?.initial ?? "");
+  const [text, setTextState] = useState(() => draft?.value ?? "");
   const area = useRef<HTMLTextAreaElement>(null);
-  const save = draft?.save;
+  const member = useRef<ReturnType<DraftBus["join"]> | null>(null);
   useEffect(() => {
-    save?.(text);
-  }, [text, save]);
-  const subscribe = draft?.subscribe;
-  useEffect(() => subscribe?.((t) => setText((cur) => (cur === t ? cur : t))), [subscribe]);
+    if (!draft) return;
+    const joined = draft.join((heard) => setTextState(heard));
+    member.current = joined;
+    // The other composer may have been typed in between the first render and this effect.
+    setTextState((cur) => (cur === draft.value ? cur : draft.value));
+    return () => {
+      joined.leave();
+      member.current = null;
+    };
+  }, [draft]);
+  // Saved from the event that changes the text, not from an effect: nothing is set in a commit after a keystroke.
+  const setText = useCallback((value: string) => {
+    setTextState(value);
+    member.current?.save(value);
+  }, []);
 
   const fit = useCallback(() => {
     const el = area.current;
