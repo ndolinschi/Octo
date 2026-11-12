@@ -181,3 +181,28 @@ Contract: decision 58 "Revised after the owner's run of 2026-11-12" (and the "Co
 - **Preferences and roles.** `preferred_model` and `roles` per agent (`PUT /v1/providers/{id}/prefs`), resolution in the orchestrator as described in `providers.md`.
 
 Verified: `go test -race ./...` (discovery of each shape, failures, timeout, hourly gate and force, in-use skip, models command, custom and typed models on each path, refusal message, probe outcomes, prefs and roles resolution, the HTTP endpoints). Not verified: any real CLI. Only the owner's machine can say which of the four advertise models and in which shape, what `grok models` prints, whether the Claude aliases are accepted, whether each CLI accepts a typed model, and how long the real cold start of a throw-away session takes against the 20 s limit (`npx` may need longer on first use; the error says "timed out after 20s" and a later refresh retries).
+
+## Decision (2026-11-12) — the login probe is advisory, never a lock
+
+Owner's live run: "Couldn't switch the model. models.orchestrator "acp:grok" cannot run: Grok is not logged in" while
+Grok was logged in. A probe is a guess made earlier, by another process; the agent's own session is the truth. Rules:
+1. **Fresh before refusing.** Before any request is refused for `not_logged_in` (project create/patch, model switch,
+   spawn), the harness re-runs that agent's probe synchronously (at most once per 5 s per agent). A probe that now
+   passes lets the request through.
+2. **Negative results expire fast.** A "not logged in" result is re-probed after 15 s in the background while anything
+   shows it (providers were requested in the last minute); a positive one keeps the normal interval.
+3. **`POST /v1/providers/{id}/recheck`** runs the probe now and answers the provider entry ("I've logged in — check
+   again" in the UI); `providers.updated` follows.
+4. **Use anyway.** A refusal for `not_logged_in` carries `can_force: true`; the same request with
+   `"force_unverified": true` is accepted and stored. The agent is then started normally; if it really is logged out,
+   the turn fails with the agent's own error and the login hint (already built). `not_installed` can never be forced.
+5. **Why, without leaking.** `harness doctor` and `GET /v1/diagnostics` say which rule decided (pattern matched /
+   listed exit status / exit 0 / timeout), the exit status, the probe's duration, and the names (not values) of the
+   environment variables the probe was given; with `--show-probe-output` doctor prints the first 20 lines of the
+   probe's output (the owner runs it locally; never sent to a model, never in `/v1/diagnostics`).
+6. **Same environment as a terminal.** The probe and the agent get the login-shell environment the desktop app
+   resolves (HOME, USER, LOGNAME, XDG_*, PATH, SHELL, LANG, TMPDIR, SSH_AUTH_SOCK and on macOS `__CF_USER_TEXT_ENCODING`),
+   so a credential store the CLI reads in a terminal is readable here; a test asserts each is passed when set.
+Acceptance: unit tests for 1–4 with the scripted probe (logged out → log in → request passes without waiting; force
+path; `not_installed` not forceable); doctor output test for 5; env test for 6; UI: the connect sheet and the model
+picker's "Not connected" row offer "Check again" and "Use anyway" with one line saying what each does.
