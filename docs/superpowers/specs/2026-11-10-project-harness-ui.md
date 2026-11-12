@@ -907,6 +907,36 @@ monochrome dithered illustration):
     that ask for the user first; "Compare branches…" is one row that opens an inline form with Base and Head on
     one aligned line (labels above both); checks state as a small neutral glyph with a word on hover, not a red
     cross on its own.
+78. **Review is a first-class workspace** (owner, after reviewing a real pull request on a GitHub Enterprise
+    host: "at the code-review stage these limits matter too — convenient buttons, nothing gaudy … I must be able
+    to put the review on the whole screen, as with the code … it is very important that I see the comments … I
+    must see all open pull requests of this project, not only mine, review them easily, check one out, run
+    things — some configurations must exist"). Adds to the review design
+    ([`2026-11-11-pr-review-design.md`](./2026-11-11-pr-review-design.md)):
+    - **All open pull requests of the repository**, newest activity first, with one quiet filter (All · Needs my
+      review · Mine · Drafts) and the search field; paged, cached (decision 77). Each row: title, number, author,
+      size, age, checks glyph, "N comments", and "reviewed by you" / "new commits since your review".
+    - **Whole-screen mode for any tab.** `Ctrl/Cmd+Shift+Enter` or a double-click on a tab maximises it: sidebar
+      and other groups step aside, the top row stays; the same key or `Esc` (when nothing else is open) restores.
+      Review and files open maximised when the window is narrower than 1100px.
+    - **Existing comments are in the diff.** Review threads from the code host appear inline at their lines
+      (author, time, body rendered as Markdown and marked as external text, replies folded after two, resolved
+      threads collapsed to one line), outdated threads in a list; general conversation and reviews in the
+      Details panel; a reply is a pending comment like any other; a count per file in the file list.
+    - **Calm header** (decision 64): one title row — back, title, and the single primary "Submit review" with the
+      pending count inside it; one meta line — number, author, branches, checks; everything else under
+      "Details". The diff toolbar keeps "Viewed" and "⋯" (whitespace, wrap, expand all, file comment, open file).
+    - **The diff never opens scrolled sideways** (the owner's screenshot shows lines cut on the left): it opens at
+      column 0; long lines wrap by default in review; split view only when each side gets ≥ 480px, else unified.
+    - **Check out and run.** "Open in workspace" points the file tree, editor, search and language server at the
+      review's worktree (a banner says which pull request is open; one click returns to the project's folder);
+      "Check out in my folder" switches the project's own working copy to the pull request's branch after
+      showing what is uncommitted there; **project commands** (decision 68) can be run in the review's worktree
+      from the review header ("Run ▾": install, tests…), with output in a tab and the result shown as a row in
+      the review's Details.
+    - **Review configuration, per project** (decision 74's project scope): commands to offer on a pull request,
+      paths to fold as mechanical, whether split or unified is preferred, whether the AI pass runs on open and at
+      which depth.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
