@@ -2110,3 +2110,13 @@ e. Every screen with both levels uses the two primitives: Memory, Review (picker
    sub-sections where they exist.
 Acceptance: screenshots of each at 1440×900 and 390×700; the spacing audit checks that a `ViewTabs` row has a bottom
 border and that no `FilterTabs` is a direct sibling above another tab row.
+
+## Decision 83 — a tab is as wide as its title
+
+Owner (macOS screenshot): "tabs should be at most the width of their content; the project tab is too big, with empty
+space". Rules: a tab's width is its icon + title + close button + the standard inset — no fixed or minimum width
+beyond what keeps the close button reachable; a maximum (the existing tab max token) with the title middle- or
+end-truncated and the full title in the tooltip; when the strip overflows, tabs shrink evenly down to the icon +
+close button before the strip scrolls; a tab's width does not change on hover or when its state glyph changes (the
+close button's place is always reserved). Acceptance: unit test for the width model if any logic exists; screenshots
+of one short tab, several tabs, and an overflowing strip; `width-stability.mjs` covers hover and state change of a tab.
