@@ -2165,3 +2165,34 @@ for a failed turn (decision 81). A running turn is shown by the Stop button, the
 state glyph. Decision 45 (b) (the thin streaming line in the transcript) is unchanged. As built: the three CSS rules
 that revealed the aurora frame are removed; the now-unused frame elements and `useAuroraState` are to be deleted
 with the next change to `Composer.tsx`.
+
+## Decision 88 — `/context`: the whole context window, itemised
+
+Owner (screenshot of a coding agent's context report: a bar, categories with tokens and percent, expandable groups
+that list every tool and every memory file): "it would be good to see this information too". Extends decision 65.
+a. **Where.** `/context` (B11) and "Open context details" in the context popover show the same report: as a card in
+   the conversation for the command (not sent to the model, not stored as a message; dismissible), and as the
+   Context view of the Memory tab.
+b. **Header.** "Context window  347.9k / 1M (35%)" with the stacked bar; "≈" before estimated numbers; the model or
+   agent the numbers are for.
+c. **Categories**, one row each with colour key, tokens and percent of the window, in a fixed order: Messages ·
+   Tool results · Tool definitions · MCP tools · Skills · System prompt (briefing) · Instruction files · Notes index
+   and pinned notes · Memory (facts, tasks, carried summary) · Sub-agent definitions · Reserved for the answer ·
+   Compaction buffer · Free space. A category with nothing is not shown. Rows that are not in the window but
+   could be (deferred tools, notes bodies, memory files not loaded) are listed below a hairline as "Not loaded" with
+   "—" for percent.
+d. **Groups open** to their items, largest first, each with tokens: every tool by server (`server · tool`), every
+   instruction file by path, every pinned note and the index, every memory file, each skill, each sub-agent
+   definition; messages open to "user requests / assistant text / thinking" totals and the five largest messages
+   with "Open". Long groups show ten and "Show all N".
+e. **Actions** in the report, each next to what it affects: Compact now (Messages), "Turn off" for an MCP server or
+   a skill where the project can do that (link to the setting otherwise), Unpin (notes), Open (files).
+f. **For an ACP orchestrator** the agent owns its window: the report shows what the agent reports (used / window)
+   and, itemised, only what the harness itself sends it (recap, instruction pointers, MCP tools the harness
+   exposes, notes index); the rest is one row "Inside the agent — not itemised by <Agent>".
+g. Harness: `GET …/context` gains `items` on each category (`[{id,label,tokens,group?,path?,server?,loaded:boolean,
+   actions?:[…]}]`), `not_loaded:[…]`, `buffer_tokens`; token estimates use the existing estimator and are marked
+   `estimated`. Sums: items of a category add up to the category; categories add up to `used_tokens`.
+Acceptance: harness tests for the sums and for each item kind (tools incl. MCP by server, instruction files, notes,
+memory, skills when present), the ACP variant; UI view-model tests (order, percent rounding to one decimal that
+sums to 100 with Free space, "Show all"), screenshots dark and light at 1440×900 and 390×700.
