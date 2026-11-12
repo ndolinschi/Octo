@@ -2120,3 +2120,19 @@ end-truncated and the full title in the tooltip; when the strip overflows, tabs 
 close button before the strip scrolls; a tab's width does not change on hover or when its state glyph changes (the
 close button's place is always reserved). Acceptance: unit test for the width model if any logic exists; screenshots
 of one short tab, several tabs, and an overflowing strip; `width-stability.mjs` covers hover and state change of a tab.
+
+## Decision 84 — fields in a row share one baseline; local review is a list, not a form
+
+Owner (screenshot of "Review a local branch"): "not aligned at all, and as a separate element it is not pretty".
+a. **Rows of fields.** Built once as `primitives/FieldRow`: labels on one line, controls on one line (same height,
+   tops aligned), hints on a third line under the whole row — a hint under one field never pushes that field or its
+   neighbours; a button in the row is aligned to the controls, not to the labels. No field row is laid out by hand.
+   The spacing audit checks that the controls of a `FieldRow` have equal `top`.
+b. **Local branches are a view of the picker**, not a block under it: the review picker's view tabs (decision 82)
+   are "Pull requests · Local branches". The Local branches view lists the folder's branches, the current one first:
+   name, ahead/behind the base, last commit time and subject, "current" mark; a row opens the review of that branch
+   against the base. The base is one quiet menu in the list header ("against main ▾", default: the repository's
+   default branch); no free-text inputs. A branch with nothing ahead is dim and says "no changes".
+c. Needs from the harness: `GET …/review/branches?folder=&base=` → `{base, default_base, branches:[{name,current,
+   ahead,behind,commit:{sha,subject,date}}]}` read with git only (no network). If it is absent the view shows the
+   current branch only.
