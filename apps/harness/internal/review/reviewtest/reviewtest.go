@@ -189,6 +189,73 @@ type PR struct {
 	ReviewedCommit string
 	// UpdatedAt overrides the update time ("2026-11-0N..." by default).
 	UpdatedAt string
+	// Repo is "owner/name" the pull request belongs to (default "acme/widgets", the repository
+	// the fake answers for when a call names none). Head overrides the head commit (default
+	// the repository's PR head).
+	Repo string
+	Head string
+}
+
+const defaultRepo = "acme/widgets"
+
+func repoKey(repo string) string {
+	if repo == "" || repo == defaultRepo {
+		return ""
+	}
+	return "@" + strings.ReplaceAll(repo, "/", "__")
+}
+
+// AddParent creates a second bare repository (the fork's parent) holding main and,
+// as refs/pull/<n>/head, a commit only it has. It returns the repository's path
+// and that commit.
+func (r *Repo) AddParent(t testing.TB, numbers ...int) (bare, head string) {
+	t.Helper()
+	bare = filepath.Join(filepath.Dir(r.Dir), "parent repo.git")
+	Git(t, filepath.Dir(r.Dir), "init", "-q", "--bare", "-b", "main", bare)
+	Git(t, r.Dir, "push", "-q", bare, "main")
+	Git(t, r.Dir, "checkout", "-q", "-b", "parent-feature", "main")
+	write(t, r.Dir, "parent-only.txt", "only the parent has this\n")
+	Git(t, r.Dir, "add", "parent-only.txt")
+	Git(t, r.Dir, "commit", "-q", "-m", "parent-only change")
+	head = Git(t, r.Dir, "rev-parse", "HEAD")
+	Git(t, r.Dir, "checkout", "-q", "main")
+	for _, n := range numbers {
+		Git(t, r.Dir, "push", "-q", bare, "parent-feature:refs/pull/"+itoa(n)+"/head")
+	}
+	return bare, head
+}
+
+// ForkRemotes makes the folder a clone of a fork: origin is https://<host>/<fork>.git and
+// upstream https://<host>/<parent>.git (empty parent: no upstream remote). The addresses
+// are rewritten with url.insteadOf to the local bare repositories, so fetches work
+// while the configured URLs stay host addresses. Nothing is contacted.
+func (r *Repo) ForkRemotes(t testing.TB, host, fork, forkBare, parent, parentBare string) {
+	t.Helper()
+	set := func(name, repo, bare string) {
+		u := "https://" + host + "/" + repo + ".git"
+		Git(t, r.Dir, "config", "remote."+name+".url", u)
+		Git(t, r.Dir, "config", "url."+bare+".insteadOf", u)
+	}
+	Git(t, r.Dir, "remote", "set-url", "origin", r.Origin)
+	set("origin", fork, forkBare)
+	if parent != "" {
+		Git(t, r.Dir, "remote", "add", "upstream", r.Origin)
+		set("upstream", parent, parentBare)
+	}
+}
+
+// SetRepo sets what the fake answers to `gh repo view <repo>`: fork of parent ("" = not a fork).
+func (f *Fake) SetRepo(t testing.TB, repo, parent string) {
+	t.Helper()
+	o, n, _ := strings.Cut(repo, "/")
+	v := map[string]any{"name": n, "owner": map[string]any{"login": o}, "url": "https://github.com/" + repo, "isFork": parent != "", "parent": nil}
+	if parent != "" {
+		po, pn, _ := strings.Cut(parent, "/")
+		v["parent"] = map[string]any{"name": pn, "owner": map[string]any{"login": po}}
+	}
+	if err := os.WriteFile(filepath.Join(f.Dir, "repo"+repoKey(repo)+".json"), []byte(mustJSON(t, v)), 0o755); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Viewer is the login the fake gh is signed in as.
@@ -221,6 +288,22 @@ d="${0%/*}"
 echo "$*" >> "$d/calls.log"
 export -p > "$d/env.txt"
 out() { printf '%s\n' "$(<"$1")"; }
+repo=""; prev=""
+for a in "$@"; do
+  if [ "$prev" = "--repo" ] || [ "$prev" = "-R" ]; then repo="$a"; fi
+  prev="$a"
+done
+if [ "$1 $2" = "repo view" ] && [ -n "$3" ] && [[ "$3" != -* ]]; then repo="$3"; fi
+key=""
+if [ -n "$repo" ]; then o="${repo%/*}"; o="${o##*/}"; n="${repo##*/}"; key="@${o}__${n}"; fi
+# pick NAME: the fixture of the named repository, else the default one (a repository
+# that has a list@key.json of its own never falls back).
+pick() {
+  if [ -n "$key" ] && [ -f "$d/$1$key.json" ]; then out "$d/$1$key.json"; return; fi
+  if [ -n "$key" ] && [ -f "$d/list$key.json" ]; then echo "GraphQL: Could not resolve to a PullRequest with the requested number" >&2; exit 1; fi
+  if [ -f "$d/$1.json" ]; then out "$d/$1.json"; return; fi
+  echo "GraphQL: Could not resolve to a PullRequest with the requested number" >&2; exit 1
+}
 if [ -f "$d/logged_out" ]; then
   echo "To get started with GitHub CLI, please run:  gh auth login" >&2
   exit 4
@@ -239,14 +322,17 @@ if [ -f "$d/enterprise_host" ]; then
   fi
 fi
 case "$1 $2" in
-  "repo view") printf '{"name":"widgets","owner":{"login":"acme"},"url":"https://%s/acme/widgets"}\n' "$host" ;;
+  "repo view")
+    if [ -z "$repo" ]; then printf '{"name":"widgets","owner":{"login":"acme"},"url":"https://%s/acme/widgets"}\n' "$host"
+    elif [ -f "$d/repo$key.json" ]; then out "$d/repo$key.json"
+    else printf '{"name":"%s","owner":{"login":"%s"},"url":"https://%s/%s/%s","isFork":false,"parent":null}\n' "$n" "$o" "$host" "$o" "$n"; fi ;;
   "api user") echo '{"login":"me"}' ;;
   "api graphql")
     if [ -f "$d/graphql_fails" ]; then echo "HTTP 502: bad gateway" >&2; exit 1; fi
     if [[ "$*" == *"after="* && -f "$d/threads2.json" ]]; then out "$d/threads2.json"; else out "$d/threads.json"; fi ;;
   "pr list")
-    if [[ "$*" == *review-requested* ]]; then out "$d/requested.json"; else out "$d/list.json"; fi ;;
-  "pr view") out "$d/view-$3.json" ;;
+    if [[ "$*" == *review-requested* ]]; then pick requested; else pick list; fi ;;
+  "pr view") pick "view-$3" ;;
   "pr checks") out "$d/checks.json"; exit 8 ;;
   "api --method")
     body=$(</dev/stdin)
@@ -266,20 +352,28 @@ esac
 		}
 	}
 	put("gh", script)
-	var list, req []map[string]any
+	lists, reqs := map[string][]map[string]any{"": {}}, map[string][]map[string]any{"": {}}
 	for _, p := range prs {
+		rk := repoKey(p.Repo)
+		repoName := p.Repo
+		if repoName == "" {
+			repoName = defaultRepo
+		}
 		state := p.State
 		if state == "" {
 			state = "OPEN"
 		}
 		head := r.Head
+		if p.Head != "" {
+			head = p.Head
+		}
 		updated := "2026-11-0" + itoa(p.Number) + "T10:00:00Z"
 		if p.UpdatedAt != "" {
 			updated = p.UpdatedAt
 		}
 		entry := map[string]any{
 			"number": p.Number, "title": p.Title, "author": map[string]any{"login": p.Author}, "isDraft": p.Draft,
-			"url": "https://github.com/acme/widgets/pull/" + itoa(p.Number), "headRefName": "feature", "baseRefName": "main",
+			"url": "https://github.com/" + repoName + "/pull/" + itoa(p.Number), "headRefName": "feature", "baseRefName": "main",
 			"headRefOid": head, "additions": 10, "deletions": 2, "changedFiles": 3,
 			"createdAt": "2026-11-01T10:00:00Z", "updatedAt": updated,
 			"reviewDecision": "", "labels": []any{},
@@ -300,9 +394,12 @@ esac
 				"commit": map[string]any{"oid": commit}}}
 		}
 		entry["latestReviews"] = latest
-		list = append(list, entry)
+		lists[rk] = append(lists[rk], entry)
+		if _, ok := reqs[rk]; !ok {
+			reqs[rk] = []map[string]any{}
+		}
 		if p.Requested {
-			req = append(req, map[string]any{"number": p.Number})
+			reqs[rk] = append(reqs[rk], map[string]any{"number": p.Number})
 		}
 		view := map[string]any{}
 		for k, v := range entry {
@@ -312,13 +409,16 @@ esac
 		view["commits"] = []any{map[string]any{"oid": head, "messageHeadline": "Add token validation", "committedDate": "2026-11-01T09:00:00Z",
 			"authors": []any{map[string]any{"login": p.Author}}}}
 		view["reviews"] = []any{}
-		put("view-"+itoa(p.Number)+".json", mustJSON(t, view))
+		put("view-"+itoa(p.Number)+rk+".json", mustJSON(t, view))
 	}
-	put("list.json", mustJSON(t, list))
-	if req == nil {
-		req = []map[string]any{}
+	for rk, list := range lists {
+		put("list"+rk+".json", mustJSON(t, list))
+		req := reqs[rk]
+		if req == nil {
+			req = []map[string]any{}
+		}
+		put("requested"+rk+".json", mustJSON(t, req))
 	}
-	put("requested.json", mustJSON(t, req))
 	put("threads.json", `{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}}}}`)
 	put("checks.json", `[{"name":"build","state":"SUCCESS","bucket":"pass","link":"https://ci/1","workflow":"CI"}]`)
 

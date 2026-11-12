@@ -1,6 +1,9 @@
 import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
 import type {
   ListPullRequestsParams,
+  ListReviewBranchesParams,
+  ReviewBranchList,
+  RepoRef,
   PullRequestList,
   ReviewState,
   ReviewSummary,
@@ -97,8 +100,15 @@ export class BridgeError extends Error {
   readonly command?: string;
   /** `dirty_working_copy` (409) of a working-copy checkout: the uncommitted changes. */
   readonly files?: ReviewDirtyFile[];
+  /** `repo_mismatch`, `invalid_repo`, `ambiguous_pr` (review): the repositories of the folder to choose from. */
+  readonly repos?: RepoRef[];
 
-  constructor(status: number, code: string, message: string, detail?: { provider?: string; reason?: string; command?: string; files?: ReviewDirtyFile[] }) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    detail?: { provider?: string; reason?: string; command?: string; files?: ReviewDirtyFile[]; repos?: RepoRef[] },
+  ) {
     super(message);
     this.name = "BridgeError";
     this.status = status;
@@ -107,6 +117,7 @@ export class BridgeError extends Error {
     if (detail?.reason !== undefined) this.reason = detail.reason;
     if (detail?.command !== undefined) this.command = detail.command;
     if (detail?.files !== undefined) this.files = detail.files;
+    if (detail?.repos !== undefined) this.repos = detail.repos;
   }
 }
 
@@ -200,6 +211,12 @@ export interface Bridge {
    * stores them; answers the provider (read `models_error` for a failure that is not an HTTP error). Optional.
    */
   refreshProviderModels?(id: string): Promise<Provider | null>;
+  /**
+   * Looks at one provider again (installed? logged in?) without waiting for the next poll: the detail pane's
+   * "Check again" (decision 89 d). Optional; a host without it re-reads `listProviders`. Added by the harness work; the
+   * UI only calls it when present.
+   */
+  recheckProvider?(id: string): Promise<Provider | null>;
   /** `PUT /v1/providers/{id}/custom-models`: replaces the model names the user added for an agent. Optional. */
   setProviderCustomModels?(id: string, models: string[]): Promise<Provider | null>;
   /**
@@ -306,6 +323,11 @@ export interface Bridge {
    * listed. Answered from a 60 s per-folder cache (`stale: true` while refreshing; `review.list_updated` when it is in).
    */
   listPullRequests?(projectId: string, params?: ListPullRequestsParams): Promise<PullRequestList>;
+  /**
+   * The folder's local branches for a local-branch review (`GET /review/branches`): git only, no network. The current
+   * branch first, then newest last commit first, each with ahead/behind against `base` (default: the default remote's default branch).
+   */
+  listReviewBranches?(projectId: string, params?: ListReviewBranchesParams): Promise<ReviewBranchList>;
   listReviews?(projectId: string, state?: ReviewState): Promise<ReviewSummary[]>;
   /** Starts a review of a pull request or a local branch; the same source opened again returns the open review. */
   openReview?(projectId: string, input: OpenReviewInput): Promise<Review>;
@@ -445,6 +467,7 @@ function toBridgeError(status: number, text: string): BridgeError {
       ...(typeof err.reason === "string" ? { reason: err.reason } : {}),
       ...(typeof err.command === "string" && err.command.trim() ? { command: err.command.trim() } : {}),
       ...(Array.isArray(err.files) ? { files: err.files as ReviewDirtyFile[] } : {}),
+      ...(Array.isArray(err.repos) ? { repos: err.repos as RepoRef[] } : {}),
     };
     return new BridgeError(status, code, err.message, detail);
   }
@@ -643,7 +666,14 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       if (params?.page) q.push(`page=${params.page}`);
       if (params?.per_page) q.push(`per_page=${params.per_page}`);
       if (params?.refresh) q.push("refresh=1");
+      if (params?.repo) q.push(`repo=${encodeURIComponent(params.repo)}`);
       return request("GET", `${p(id)}/prs${q.length ? `?${q.join("&")}` : ""}`) as Promise<PullRequestList>;
+    },
+    listReviewBranches: (id, params) => {
+      const q: string[] = [];
+      if (params?.folder) q.push(`folder=${encodeURIComponent(params.folder)}`);
+      if (params?.base) q.push(`base=${encodeURIComponent(params.base)}`);
+      return request("GET", `${p(id)}/review/branches${q.length ? `?${q.join("&")}` : ""}`) as Promise<ReviewBranchList>;
     },
     listReviews: (id, state) => unwrap<ReviewSummary[]>(request("GET", `${p(id)}/reviews${state ? `?state=${state}` : ""}`), "reviews"),
     openReview: (id, input) => request("POST", `${p(id)}/reviews`, input) as Promise<Review>,

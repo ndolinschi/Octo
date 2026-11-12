@@ -59,6 +59,14 @@ type Error struct {
 	Command string
 	// Files lists the uncommitted changes behind a dirty_working_copy conflict.
 	Files []DirtyFile
+	// Repos lists the repositories of the folder behind a repo_mismatch, invalid_repo or
+	// ambiguous_pr refusal (the UI offers them as choices).
+	Repos []RepoRef
+}
+
+func withRepos(e *Error, es []repoEntry) *Error {
+	e.Repos = refsOf(es)
+	return e
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -107,6 +115,8 @@ type Service struct {
 	locks map[string]*sync.Mutex
 	cache map[string]cachedFiles
 	lists map[string]*listEntry
+	// repoCache holds the repositories of a folder for a minute.
+	repoCache map[string]cachedRepos
 }
 
 type cachedFiles struct {
@@ -124,7 +134,7 @@ type Options struct {
 
 // New returns the service.
 func New(store *projectstore.Store, hub *events.Hub, o Options) *Service {
-	s := &Service{store: store, hub: hub, host: o.Host, now: o.Now, locks: map[string]*sync.Mutex{}, cache: map[string]cachedFiles{}, lists: map[string]*listEntry{}}
+	s := &Service{store: store, hub: hub, host: o.Host, now: o.Now, locks: map[string]*sync.Mutex{}, cache: map[string]cachedFiles{}, lists: map[string]*listEntry{}, repoCache: map[string]cachedRepos{}}
 	if s.now == nil {
 		s.now = time.Now
 	}

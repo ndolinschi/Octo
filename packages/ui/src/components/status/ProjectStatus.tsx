@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { budgetState } from "../../lib/models";
 import { changedFileCount, changedText } from "../../lib/statusBar";
+import { runningRuns, runningText } from "../../lib/projectRuns";
+import { useRunsSelector } from "../../state/projectRuns";
+import { StateGlyph } from "../primitives/StateGlyph";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { useStatusSlots } from "../../state/statusSlots";
@@ -83,7 +86,31 @@ function End() {
   const { project } = useProject();
   const ws = useOptionalWorkspace();
   const budget = project ? budgetState(project.spent_usd, project.budget_usd) : null;
-  if (!budget) return null;
+  const running = useRunsSelector((s) => runningRuns(s).length);
+  // The newest running command, so the item opens its tab; the count tells how many there are.
+  const newest = useRunsSelector((s) => runningRuns(s)[0]?.name ?? null);
+  const text = runningText(running);
+  return (
+    <>
+      {text && (
+        <button
+          type="button"
+          data-running-commands
+          className={STATUS_ITEM}
+          title="Project commands are running. Show the latest."
+          onClick={() => (newest ? ws?.openRun(newest) : undefined)}
+        >
+          <StateGlyph state="working" />
+          {text}
+        </button>
+      )}
+      {budget && <Budget budget={budget} />}
+    </>
+  );
+}
+
+function Budget({ budget }: { budget: NonNullable<ReturnType<typeof budgetState>> }) {
+  const ws = useOptionalWorkspace();
   return (
     <button
       type="button"

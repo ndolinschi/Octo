@@ -26,6 +26,10 @@ const MemoryTab = lazy(() => import("../memory/MemoryTab").then((m) => ({ defaul
 /** Review (RV2): pick a pull request, read it, comment, submit. Monaco comes from the files feature, as for Changes. */
 const ReviewTab = lazy(() => import("../review/ReviewTab").then((m) => ({ default: m.ReviewTab })));
 const loadReviewMonaco = () => import("../files/monaco");
+/** Run buttons and the run panel of a review (decision 68): its own chunk, handed to the review as a kit. */
+const loadReviewCommands = () => import("../commands/kit").then((m) => m.reviewCommandsKit);
+/** The output of a project command (decision 68): the commands feature's run panel in a tab, its own chunk. */
+const RunTab = lazy(() => import("../commands/RunTab"));
 /** The side question (decision 40). */
 const SidePanel = lazy(() => import("../side/SidePanel").then((m) => ({ default: m.SidePanel })));
 /** The Usage tab too (v6.2). */
@@ -45,6 +49,12 @@ export function TabView({ tab }: { tab: TabId }) {
       return (
         <Suspense fallback={<FileViewSkeleton />}>
           <FileView tab={tab} fileKey={ref.key} floatingComposer={renderFloatingComposer} />
+        </Suspense>
+      );
+    case "run":
+      return (
+        <Suspense fallback={null}>
+          <RunTab name={ref.name} />
         </Suspense>
       );
     case "tool":
@@ -73,7 +83,7 @@ export function TabView({ tab }: { tab: TabId }) {
       if (ref.tool === "review")
         return (
           <Suspense fallback={null}>
-            <ReviewTab loadMonaco={loadReviewMonaco} />
+            <ReviewTab loadMonaco={loadReviewMonaco} loadCommands={loadReviewCommands} />
           </Suspense>
         );
       if (ref.tool === "memory")

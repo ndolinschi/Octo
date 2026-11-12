@@ -15,7 +15,12 @@ export type PullRequestList = {
   host: string;
   /** The host name it talked to: `github.com`, or a GitHub Enterprise host such as `ghe.example.com`. */
   hostname?: string;
+  /** The repository listed (`owner/name`), or `all` when every repository of the folder is merged. */
   repo?: string;
+  /** Every repository of the folder (remotes, plus the parent of a fork). Always sent by a harness with fork support. */
+  repos?: RepoRef[];
+  /** With `repo=all`: repositories that could not be read while the others answered. */
+  repo_errors?: { repo: string; message: string }[];
   /** Label of the project folder whose repository was used. */
   folder?: string;
   available: boolean;
@@ -42,6 +47,20 @@ export type PullRequestList = {
   prs: PullRequestRow[];
 };
 
+/** A repository a folder works with: a git remote, or the parent of a remote that is a fork. */
+export type RepoRef = {
+  /** The adapter (`github`). */
+  host: string;
+  hostname?: string;
+  /** `owner/name`. */
+  repo: string;
+  /** The git remote that points at it; absent for a parent that is not a remote. */
+  remote?: string;
+  role: "origin" | "upstream" | "parent" | "other";
+  /** The remote the current branch tracks, else origin, else the first. */
+  default: boolean;
+};
+
 export type PullRequestFilter = "all" | "review_requested" | "mine" | "drafts";
 
 export type ListPullRequestsParams = {
@@ -57,9 +76,13 @@ export type ListPullRequestsParams = {
   per_page?: number;
   /** Ask the code host now instead of answering from the 60 s cache. */
   refresh?: boolean;
+  /** `owner/name` of one repository of the folder, or `all`. Default: the last choice for the folder, else the default repository. */
+  repo?: string;
 };
 
 export type PullRequestRow = {
+  /** The repository the pull request belongs to (`owner/name`). */
+  repo?: string;
   number: number;
   title: string;
   author: string;
@@ -174,6 +197,8 @@ export type OpenReviewInput = {
   /** github: a pull-request number or address. */
   pr?: number;
   url?: string;
+  /** github, with `pr`: which repository of the folder the number lives in (else it is looked up in all; 409 `ambiguous_pr` when several have it). */
+  repo?: string;
   /** local: refs of the folder's repository; head defaults to HEAD. */
   base?: string;
   head?: string;
@@ -442,3 +467,81 @@ export type ReviewWorkspaceEvent = { type: "review.workspace"; seq: number; revi
 
 /** `review.list_updated`: the cached pull-request list of `folder` was refreshed in the background; ask for it again. */
 export type ReviewListUpdatedEvent = { type: "review.list_updated"; seq: number; folder: string };
+
+/** One local branch of a folder, with its distance from the base (`GET /review/branches`). */
+export type ReviewBranch = {
+  name: string;
+  current: boolean;
+  /** Commits the branch has that the base lacks. */
+  ahead: number;
+  /** Commits the base has that the branch lacks. */
+  behind: number;
+  commit: { sha: string; subject: string; author?: string; date: string };
+};
+
+export type ReviewBranchList = {
+  folder: string;
+  base: string;
+  /** The default branch of the default remote ("" when none can be told). */
+  default_base: string;
+  /** The current branch first, then newest last commit first; at most 200. */
+  branches: ReviewBranch[];
+  truncated?: boolean;
+};
+
+export type ListReviewBranchesParams = {
+  /** Label of the project folder (default: the first git folder). */
+  folder?: string;
+  /** The branch the counts are against; default: `default_base`. Unknown: 400 `unknown_ref`. */
+  base?: string;
+};
+
+/** One entry of the repository picker. `key` is what to pass as `repo` (`owner/name`, or `all`). */
+export type RepoMenuItem = {
+  key: string;
+  label: string;
+  /** The dim text after the label: `origin`, `upstream`, `parent` or the remote's name; none for "All repositories". */
+  detail?: string;
+  selected: boolean;
+};
+
+export type RepoMenu = {
+  /** False with a single repository: show the repository as plain text, not a menu. */
+  show: boolean;
+  /** What the trigger shows: the selected repository's `owner/name`, or "All repositories". */
+  current: string;
+  /** The repositories in the harness's order, "All repositories" last. */
+  items: RepoMenuItem[];
+  /** Rows show their repository only when "All repositories" is selected. */
+  rowsShowRepo: boolean;
+};
+
+export const ALL_REPOSITORIES = "All repositories";
+
+/**
+ * The model of the picker's repository menu (pure): a menu when the folder has more than one repository, the
+ * "All repositories" choice last (only then), the selected one from `list.repo`.
+ */
+export function repoMenu(list: Pick<PullRequestList, "repo" | "repos">): RepoMenu {
+  const repos = list.repos ?? [];
+  const all = list.repo === "all";
+  const selectedRepo = all ? undefined : (list.repo ?? repos.find((r) => r.default)?.repo);
+  const items: RepoMenuItem[] = repos.map((r) => ({
+    key: r.repo,
+    label: r.repo,
+    detail: r.role === "other" ? (r.remote ?? "other") : r.role,
+    selected: r.repo.toLowerCase() === selectedRepo?.toLowerCase(),
+  }));
+  const show = repos.length > 1;
+  if (show) items.push({ key: "all", label: ALL_REPOSITORIES, selected: all });
+  return { show, current: all ? ALL_REPOSITORIES : (selectedRepo ?? repos[0]?.repo ?? ""), items, rowsShowRepo: show && all };
+}
+
+/**
+ * The choices a refusal offers (`repo_mismatch`, `invalid_repo`, `ambiguous_pr` carry `BridgeError.repos`): one button per
+ * repository, each retrying with `repo` = `key`. Empty when the error names none.
+ */
+export function refusalRepoChoices(err: { code?: string; repos?: RepoRef[] }): { key: string; label: string; detail: string }[] {
+  if (err.code !== "repo_mismatch" && err.code !== "invalid_repo" && err.code !== "ambiguous_pr") return [];
+  return (err.repos ?? []).map((r) => ({ key: r.repo, label: r.repo, detail: r.role === "other" ? (r.remote ?? "other") : r.role }));
+}

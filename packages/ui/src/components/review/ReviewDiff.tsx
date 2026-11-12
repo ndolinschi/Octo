@@ -1,5 +1,6 @@
 import type * as Monaco from "monaco-editor";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
 import { useDelayedLoading, useLatest } from "../../lib/hooks";
@@ -13,6 +14,8 @@ export type ReviewMonaco = { monaco: MonacoApi; themeName(mode: "dark" | "light"
 
 export type Marked = { side: Side; start: number; end: number };
 export type RevealRequest = { block: ChangeBlock; n: number };
+/** A block of the review drawn inside the diff after a line (an existing thread): `render(key)` is its content. */
+export type DiffZone = { key: string; side: Side; line: number };
 
 let uriSeq = 0;
 
@@ -35,6 +38,8 @@ export function ReviewDiff(props: {
   commented: readonly Marked[];
   flagged: readonly Marked[];
   reveal: RevealRequest | null;
+  zones: readonly DiffZone[];
+  renderZone(key: string): ReactNode;
   onAnchor(anchor: Anchor): void;
   onSelection(anchor: Anchor | null): void;
   /** Called once the diff is computed and shown. */
@@ -79,7 +84,9 @@ export function ReviewDiff(props: {
       renderLineHighlight: "none",
       stickyScroll: { enabled: false },
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false, alwaysConsumeMouseWheel: false },
-      diffWordWrap: "off",
+      // Decision 79: long lines wrap in a review, so the diff never needs sideways scrolling and cannot open scrolled to the right.
+      wordWrap: "on",
+      diffWordWrap: "inherit",
       renderMarginRevertIcon: false,
       enableSplitViewResizing: false,
       useInlineViewWhenSpaceIsLimited: false,
@@ -116,6 +123,8 @@ export function ReviewDiff(props: {
     const modified = mod.monaco.editor.createModel(props.after, undefined, uri("after"));
     const old = editor.getModel();
     editor.setModel({ original, modified });
+    editor.getModifiedEditor().setScrollLeft(0);
+    editor.getOriginalEditor().setScrollLeft(0);
     old?.original.dispose();
     old?.modified.dispose();
   }, [mod, editor, props.path, props.before, props.after]);
@@ -201,8 +210,11 @@ export function ReviewDiff(props: {
       const model = side.getModel();
       if (!model) return;
       const last = Math.min(end, model.getLineCount());
-      side.setSelection({ startLineNumber: line, startColumn: 1, endLineNumber: last, endColumn: model.getLineMaxColumn(last) });
+      // Ending at column 1 of the next line (not the end of a long line) keeps the cursor from pulling the view sideways.
+      const more = last < model.getLineCount();
+      side.setSelection({ startLineNumber: line, startColumn: 1, endLineNumber: more ? last + 1 : last, endColumn: more ? 1 : model.getLineMaxColumn(last) });
       side.revealLineInCenterIfOutsideViewport(line);
+      side.setScrollLeft(0);
       if (block.side === "old" && !props.split) latest.current.onSelection({ side: "old", start: block.line, end: block.end });
       const flash = side.createDecorationsCollection([
         {
@@ -214,6 +226,50 @@ export function ReviewDiff(props: {
     };
     go();
   }, [mod, editor, reveal, props.split, latest]);
+
+  // Thread zones: a DOM node per zone inside Monaco's view-zone layer; React renders into it through a portal, and the
+  // zone is as tall as its content (a ResizeObserver keeps it in step when a thread folds, unfolds or gets a reply box).
+  const zoneNodes = useMemo(
+    () =>
+      props.zones.map((z) => {
+        const dom = document.createElement("div");
+        dom.className = "octo-thread-zone";
+        const inner = document.createElement("div");
+        dom.appendChild(inner);
+        return { z, dom, inner };
+      }),
+    [props.zones],
+  );
+  useEffect(() => {
+    if (!editor) return;
+    const made: { ed: Monaco.editor.ICodeEditor; id: string; ro: ResizeObserver }[] = [];
+    for (const { z, dom, inner } of zoneNodes) {
+      const ed = z.side === "old" && latest.current.split ? editor.getOriginalEditor() : editor.getModifiedEditor();
+      const model = ed.getModel();
+      if (!model || z.line < 1 || z.line > model.getLineCount()) continue;
+      let id = "";
+      const zone: Monaco.editor.IViewZone = { afterLineNumber: z.line, heightInPx: 96, domNode: dom };
+      ed.changeViewZones((a) => {
+        id = a.addZone(zone);
+      });
+      const ro = new ResizeObserver(() => {
+        const h = Math.ceil(inner.getBoundingClientRect().height);
+        if (h > 0 && h !== zone.heightInPx)
+          ed.changeViewZones((a) => {
+            zone.heightInPx = h;
+            a.layoutZone(id);
+          });
+      });
+      ro.observe(inner);
+      made.push({ ed, id, ro });
+    }
+    return () => {
+      for (const m of made) {
+        m.ro.disconnect();
+        m.ed.changeViewZones((a) => a.removeZone(m.id));
+      }
+    };
+  }, [editor, zoneNodes, props.split, props.before, props.after, latest]);
 
   const { onReady } = props;
   useEffect(() => {
@@ -230,6 +286,7 @@ export function ReviewDiff(props: {
           The diff viewer did not load: {failed}. Reload the window to try again.
         </p>
       )}
+      {zoneNodes.map(({ z, inner }) => createPortal(props.renderZone(z.key), inner, z.key))}
       {loading && (
         <div className="absolute inset-0 grid place-items-center">
           <Spinner />

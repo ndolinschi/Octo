@@ -5,17 +5,17 @@ import { useOptionalComments } from "../../state/comments";
 import { useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
-import { CHAT, closable, type TabId } from "../../state/workspace/layout";
+import { CHAT, toolTab, type TabId } from "../../state/workspace/layout";
 import { SIDE_PAD, useChrome } from "../../state/chrome";
 import { ProjectActions, ProjectTeamLine } from "../shell/ProjectBar";
-import { slotShift, tabSizing } from "../../state/workspace/tabStrip";
+import { slotShift, tabsOverflow } from "../../state/workspace/tabStrip";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { Menu, type MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { dragStep, pressTab, takeSettle, useDrag } from "./drag";
 import { tabButton } from "../../state/workspace/ids";
 import { tabInfo } from "./tabInfo";
 import { Tab } from "./Tab";
+import { useStripFit } from "./useStripFit";
 import { type FileKey } from "../../lib/files";
 import { ChevronDown, Plus } from "lucide-react";
 import { IconButton } from "../primitives/Button";
@@ -23,6 +23,10 @@ import { Glyph } from "../primitives/Glyph";
 import { StateGlyph } from "../primitives/StateGlyph";
 /** The "+" picker and the all-tabs list load when first opened (their own chunks). */
 const TabPicker = lazy(() => import("./TabPicker").then((m) => ({ default: m.TabPicker })));
+/** The project's commands (decision 68): the pinned buttons and "Run" menu next to the project actions; loads after first paint. */
+const ProjectCommands = lazy(() => import("../commands/ProjectCommands"));
+/** The tab context menu builds on first use (its own chunk). */
+const TabMenu = lazy(() => import("./TabMenu"));
 const AllTabsPicker = lazy(() => import("./AllTabsPicker").then((m) => ({ default: m.AllTabsPicker })));
 
 /** Room the "+" takes after the tabs (28 + the 4px gap), and the "all tabs" button when the strip scrolls (24 + 4). */
@@ -43,7 +47,16 @@ const SCROLL_MARGIN = 24;
  * sidebar" while the sidebar is hidden; the last ends with the project's global actions. Roving focus: ←/→/Home/End
  * move and select, Delete closes, Shift+F10 or the context-menu key opens the tab menu.
  */
-export function TabStrip(props: { label: string; groupId: string; tabs: TabId[]; active: TabId; focused: boolean; last: boolean; startInset: number }) {
+export function TabStrip(props: {
+  label: string;
+  groupId: string;
+  tabs: TabId[];
+  active: TabId;
+  focused: boolean;
+  last: boolean;
+  startInset: number;
+  /** This group has the whole dock (decision 78): the strip offers "Restore". */ maximised: boolean;
+}) {
   const ws = useWorkspace();
   const { insetEnd } = useChrome();
   const code = useCode();
@@ -72,15 +85,22 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
     orchestratorId: project?.orchestrator_agent_id,
     file: code.file,
     comments: (key: FileKey) => counts?.get(key) ?? 0,
+    runStatus: (name: string) => ws.runStatuses[name.toLowerCase()] ?? null,
   };
 
-  const activeIndex = props.tabs.indexOf(props.active);
   // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer. The tabs get the
   // strip minus the "+" (decision 25: it follows the last tab) and, once they scroll, the "all tabs" button.
   const reserved = PLUS_ROOM + (props.tabs.includes(CHAT) ? TEAM_GAP : 0);
-  const fits = tabSizing(room - reserved, props.tabs.length, activeIndex);
-  const overflow = room > 0 && fits.overflow;
-  const size = overflow ? tabSizing(room - reserved - ALL_TABS_ROOM, props.tabs.length, activeIndex) : fits;
+  const overflow = tabsOverflow(room - reserved, props.tabs.length);
+  const signature = props.tabs
+    .map((t) => {
+      const i = tabInfo(t, ctx);
+      return `${t}|${i.label}|${i.detail ?? ""}|${i.comments}`;
+    })
+    .join("\n");
+  const fit = useStripFit(list, room - reserved, signature);
+  // Decision 90: the review's own header carries the commands (run in its worktree), so the top row does not repeat them.
+  const reviewActive = ws.layout.groups.some((g) => g.active === toolTab("review"));
   const listWidth = room > 0 ? room - reserved - (overflow ? ALL_TABS_ROOM : 0) : 0;
   const pickerHere = ws.picker !== null && ws.picker.group === props.groupId;
   const button = (tab: TabId) => (list.current ? tabButton(list.current, tab) : null);
@@ -105,7 +125,7 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
       if (Math.abs(dx) > 0.5)
         wrapper.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: settle.ms, easing: "cubic-bezier(0.2,0,0,1)" });
     }
-  }, [props.active, props.tabs, updateFade, size.widths]);
+  }, [props.active, props.tabs, updateFade, listWidth]);
   // Ctrl/Cmd+T opens the picker on the focused group's "+": it must exist before the popover anchors to it.
   useLayoutEffect(() => {
     if (pickerHere) plus.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -149,26 +169,6 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
     }
   };
 
-  const menuItems = (tab: TabId): MenuItem[] => {
-    const items: MenuItem[] = [];
-    const at = props.tabs.indexOf(tab);
-    if (!ws.narrow) {
-      items.push(
-        { id: "move", label: "Move to the other side", shortcut: `${MOD}\\`, disabled: !ws.canMoveToOtherSide(tab), run: () => ws.moveToOtherSide(tab) },
-        { id: "split", label: "Split right", disabled: !ws.canSplitRight(tab), run: () => ws.splitRight(tab) },
-        { id: "sep", separator: true },
-      );
-    }
-    items.push(
-      { id: "close", label: "Close", shortcut: `${MOD}W`, disabled: !closable(tab), run: () => ws.requestClose([tab]) },
-      { id: "others", label: "Close others", disabled: props.tabs.filter((t) => t !== tab && closable(t)).length === 0, run: () => ws.closeOthers(tab) },
-      { id: "right", label: "Close tabs to the right", disabled: !props.tabs.slice(at + 1).some(closable), run: () => ws.closeRight(tab) },
-      { id: "sep2", separator: true },
-      { id: "reopen", label: "Reopen closed tab", shortcut: `${MOD}Shift+T`, disabled: !ws.canReopen, run: () => ws.reopenClosed() },
-    );
-    return items;
-  };
-
   const shiftOf = (tab: TabId, i: number): number => {
     if (!drag) return 0;
     if (drag.tab === tab) return drag.attached ? drag.dx : 0;
@@ -200,7 +200,6 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
         >
           {props.tabs.map((tab, i) => {
             const info = tabInfo(tab, ctx);
-            const iconOnly = (size.iconOnly[i] ?? false) && tab !== props.active;
             return (
               <Tab
                 key={tab}
@@ -208,9 +207,8 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
                 info={info}
                 selected={tab === props.active}
                 focusedGroup={props.focused}
-                width={room > 0 ? (size.widths[i] ?? null) : null}
-                iconOnly={iconOnly}
                 shift={shiftOf(tab, i)}
+                overlayClose={fit.overlay}
                 dragging={!drag ? null : drag.tab === tab ? (drag.attached ? "self-attached" : "self-detached") : "other"}
                 onPress={(e) => {
                   if (e.button !== 0) return;
@@ -219,6 +217,7 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
                   pressTab(e, ws, tab, info.label);
                 }}
                 onClose={() => ws.requestClose([tab])}
+                onMaximise={() => ws.toggleMaximise(tab)}
                 onMenu={(x, y) => openMenuAt(tab, x, y)}
                 onKeyDown={(e) => onKeyDown(e, i)}
               />
@@ -256,6 +255,17 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
           </button>
         )}
       </div>
+      {props.last && (
+        <Suspense fallback={null}>
+          {/* The "Restore" control of a maximised group lives in this chunk too (decision 78): the initial bundle has no room for it. */}
+          <ProjectCommands
+            onRestore={props.maximised ? () => ws.toggleMaximise(props.active, false) : null}
+            hideCommands={reviewActive}
+            collapsePinned={fit.collapse}
+            onPinnedWidth={fit.setPinned}
+          />
+        </Suspense>
+      )}
       {props.last && <ProjectActions />}
       <Presence show={pickerHere} exitMs={0}>
         {pickerHere && (
@@ -289,7 +299,18 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
         )}
       </Presence>
       <Presence show={menu !== null} exitMs={0}>
-        {menu && <Menu label="Tab actions" x={menu.x} y={menu.y} items={menuItems(menu.tab)} onClose={() => setMenu(null)} />}
+        {menu && (
+          <Suspense fallback={null}>
+            <TabMenu
+              tab={menu.tab}
+              x={menu.x}
+              y={menu.y}
+              tabs={props.tabs}
+              maximised={props.maximised && menu.tab === props.active}
+              onClose={() => setMenu(null)}
+            />
+          </Suspense>
+        )}
       </Presence>
     </div>
   );

@@ -4,8 +4,9 @@ import {
   walkPress,
   walkRelease,
   CLOSED_MAX,
-  TAB_ICON,
+  TAB_GAP,
   TAB_MAX,
+  stripPlan,
   TAB_MIN,
   clampLeft,
   insertionIndex,
@@ -14,23 +15,18 @@ import {
   mruTouch,
   pushClosed,
   slotShift,
-  tabSizing,
+  tabsOverflow,
   takeClosed,
   toMoveIndex,
 } from "./tabStrip";
 
-test("sizing: up to 200 each, shrinking evenly to 96, then icon-only beside a 96px active tab, then overflow", () => {
-  assert.deepEqual(tabSizing(1000, 2, 0).widths, [TAB_MAX, TAB_MAX]);
-  const even = tabSizing(500, 4, 1);
-  assert.deepEqual(even.widths, [122, 122, 122, 122]);
-  assert.equal(even.overflow, false);
-  const icons = tabSizing(400, 6, 2);
-  assert.deepEqual(icons.widths, [TAB_ICON, TAB_ICON, 180, TAB_ICON, TAB_ICON, TAB_ICON], "the active tab takes the rest");
-  assert.equal(tabSizing(260, 6, 0).widths[0], TAB_MIN, "never below 96");
-  assert.deepEqual(icons.iconOnly, [true, true, false, true, true, true]);
-  assert.equal(icons.overflow, false);
-  assert.equal(tabSizing(200, 12, 0).overflow, true);
-  assert.deepEqual(tabSizing(0, 3, 0).widths, [TAB_MAX, TAB_MAX, TAB_MAX], "unmeasured: full width");
+test("overflow (decision 83): tabs shrink to TAB_MIN each before the strip scrolls", () => {
+  assert.equal(tabsOverflow(0, 5), false, "unmeasured");
+  assert.equal(tabsOverflow(1000, 1), false);
+  assert.equal(tabsOverflow(5 * TAB_MIN + 4 * TAB_GAP, 5), false, "exactly fits");
+  assert.equal(tabsOverflow(5 * TAB_MIN + 4 * TAB_GAP - 1, 5), true);
+  assert.equal(tabsOverflow(10, 0), false);
+  assert.ok(TAB_MIN < TAB_MAX);
 });
 
 const slots = [0, 1, 2, 3].map((i) => ({ left: i * 104, width: 100 }));
@@ -108,4 +104,15 @@ test("Ctrl+Tab twice across a split stays in the first group and commits on rele
   assert.equal(walkRelease(second.walk), "Notes");
   assert.equal(walkPress(second.walk, { group: "side", order: [] }, true).target, "Usage", "Shift steps back");
   assert.equal(walkRelease(null), undefined);
+});
+
+test("strip plan (decision 90): pinned buttons fold first, then inactive tabs give up the close place", () => {
+  assert.deepEqual(stripPlan({ room: 0, wanted: 500, pinned: 200, collapsed: false }), { collapse: false, overlay: false }, "unmeasured");
+  assert.deepEqual(stripPlan({ room: 600, wanted: 500, pinned: 200, collapsed: false }), { collapse: false, overlay: false });
+  assert.deepEqual(stripPlan({ room: 400, wanted: 500, pinned: 200, collapsed: false }), { collapse: true, overlay: false }, "600 once folded");
+  // Folded: the room already contains the freed width; the decision does not flip back.
+  assert.deepEqual(stripPlan({ room: 600, wanted: 500, pinned: 200, collapsed: true }), { collapse: true, overlay: false });
+  assert.deepEqual(stripPlan({ room: 600, wanted: 400, pinned: 200, collapsed: true }), { collapse: false, overlay: false }, "fits beside the buttons again");
+  assert.deepEqual(stripPlan({ room: 400, wanted: 700, pinned: 200, collapsed: false }), { collapse: true, overlay: true });
+  assert.deepEqual(stripPlan({ room: 400, wanted: 700, pinned: 0, collapsed: false }), { collapse: false, overlay: true }, "no pinned buttons");
 });

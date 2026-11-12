@@ -54,6 +54,8 @@ export function Notice(props: { title: string; children?: ReactNode; actions?: R
 }
 
 /** A small "kbd" hint. */
+export const ROW = "flex w-full items-start gap-3 rounded-md px-3 py-2 text-left press-row focus-inset hover:bg-hover disabled:opacity-60";
+
 export function Key({ children }: { children: ReactNode }) {
   return (
     <kbd aria-hidden className="octo-v7-kbd max-sm:hidden">

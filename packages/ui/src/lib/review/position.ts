@@ -77,8 +77,9 @@ export const fileCommentInput = (path: string, body: string): ReviewCommentInput
 export const generalCommentInput = (body: string): ReviewCommentInput => ({ body });
 
 /** "src/a.ts:12", "src/a.ts:12–14", "src/a.ts", or "General". */
-export function commentWhere(c: { path?: string; line?: number; start_line?: number }): string {
+export function commentWhere(c: { path?: string; line?: number; start_line?: number; kind?: string }): string {
   if (!c.path) return "General";
+  if (c.kind === "reply") return `Reply in ${c.path}`;
   if (c.line === undefined) return c.path;
   return c.start_line !== undefined && c.start_line < c.line ? `${c.path}:${c.start_line}–${c.line}` : `${c.path}:${c.line}`;
 }

@@ -17,11 +17,14 @@ import (
 type Host interface {
 	// Name is the adapter id ("github").
 	Name() string
-	// Repo identifies the repository checked out in dir.
+	// Repo is the host's own default repository for dir. Only used when the
+	// folder has no remote that names a code host; it never picks among remotes.
 	Repo(ctx context.Context, dir string) (Repo, error)
-	// ListPRs lists open pull requests of the repository in dir; those that ask
-	// for the current user's review are flagged.
-	ListPRs(ctx context.Context, dir string) ([]PR, error)
+	// RepoInfo says whether repo is a fork and of which repository.
+	RepoInfo(ctx context.Context, dir string, repo Repo) (RepoInfo, error)
+	// ListPRs lists open pull requests of repo; those that ask for the current
+	// user's review are flagged.
+	ListPRs(ctx context.Context, dir string, repo Repo) ([]PR, error)
 	// View is the metadata of one pull request.
 	View(ctx context.Context, dir string, repo Repo, number int) (PRDetail, error)
 	// Checks are the CI checks of a pull request (empty when it has none).
@@ -48,6 +51,14 @@ type Repo struct {
 }
 
 func (r Repo) String() string { return r.Owner + "/" + r.Name }
+
+// RepoInfo is what the host says about a repository: whether it is a fork,
+// and its parent when it is.
+type RepoInfo struct {
+	Repo   Repo
+	IsFork bool
+	Parent *Repo
+}
 
 // Reason codes of an Unavailable error.
 const (

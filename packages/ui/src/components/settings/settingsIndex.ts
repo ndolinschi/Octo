@@ -7,18 +7,24 @@ export const SECTIONS = [
   { id: "appearance", label: "Appearance" },
   { id: "providers", label: "Providers" },
   { id: "models", label: "Models" },
-  { id: "agents", label: "Agents" },
   { id: "editor", label: "Editor" },
   { id: "usage", label: "Usage and budget" },
   { id: "memory", label: "Memory" },
+  { id: "commands", label: "Commands and review" },
   { id: "privacy", label: "Privacy and data" },
   { id: "about", label: "About" },
 ] as const;
 
 export type SectionId = (typeof SECTIONS)[number]["id"];
 
+/** Sections whose page uses the whole width (a list beside a detail) instead of the 780px column. */
+export const isWideSection = (id: SectionId): boolean => id === "providers";
+
+/** Decision 89 f: the Agents page is gone; its address opens Providers. */
+const RENAMED: Record<string, SectionId> = { agents: "providers" };
+
 export function sectionOf(raw: string | null): SectionId {
-  return SECTIONS.find((s) => s.id === raw)?.id ?? "general";
+  return SECTIONS.find((s) => s.id === raw)?.id ?? (raw ? RENAMED[raw] : undefined) ?? "general";
 }
 
 export function sectionLabel(id: SectionId): string {
@@ -44,9 +50,15 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     id: "providers",
     title: "Providers",
     description: "What can run a model: an API key, the router, agents",
-    keywords: "connect reconnect remove login install claude copilot grok",
+    keywords: "connect reconnect remove login install claude copilot grok codex agents subscription acp models roles preferred model",
   },
-  { section: "providers", id: "api-key", title: "Anthropic API key", description: "Bill per token through your own key", keywords: "secret key anthropic" },
+  {
+    section: "providers",
+    id: "api-key",
+    title: "Anthropic API key",
+    description: "Bill per token through your own key (in the API provider)",
+    keywords: "secret key anthropic",
+  },
   {
     section: "providers",
     id: "router",
@@ -66,13 +78,6 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
   { section: "models", id: "tiers", title: "Tiers", description: "Fast, balanced and deep models for delegated work", keywords: "fast balanced deep tier" },
   { section: "models", id: "visible", title: "Models in pickers", description: "Which models appear when you choose one", keywords: "hide show list picker" },
   {
-    section: "agents",
-    id: "agents",
-    title: "Subscription agents",
-    description: "State, install and login commands",
-    keywords: "claude code copilot grok acp login install",
-  },
-  {
     section: "editor",
     id: "completion",
     title: "Inline completion",
@@ -85,6 +90,34 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     title: "Plugins and language servers",
     description: "What the harness loaded from plugin manifests",
     keywords: "integrations lsp language server tool server mcp",
+  },
+  {
+    section: "commands",
+    id: "project-commands",
+    title: "Project commands",
+    description: "Named shell commands you run from a review or by name",
+    keywords: "run tests dev server build scripts pinned",
+  },
+  {
+    section: "commands",
+    id: "review-commands",
+    title: "Commands offered in a review",
+    description: "Which commands a pull request's Run menu lists",
+    keywords: "pull request run worktree",
+  },
+  {
+    section: "commands",
+    id: "review-mechanical",
+    title: "Folded as mechanical",
+    description: "Paths a review folds away in its reading order",
+    keywords: "glob generated lock snapshot fold",
+  },
+  {
+    section: "commands",
+    id: "review-prefer",
+    title: "Diff layout",
+    description: "One column, side by side, or by width",
+    keywords: "split unified side by side review diff",
   },
   { section: "usage", id: "limits", title: "Plan limits", description: "Rate limits the provider reported", keywords: "rate limit quota" },
   { section: "usage", id: "budget", title: "Budget", description: "A spending cap per project", keywords: "spend cost usd cap" },

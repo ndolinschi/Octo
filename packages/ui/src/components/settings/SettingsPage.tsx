@@ -1,9 +1,10 @@
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { cn } from "../../lib/cn";
 import { useEscape } from "../../lib/hooks";
 import { settingsHref } from "../../lib/route";
 import { Button } from "../primitives/Button";
-import { AgentsSection } from "./AgentsSection";
+import { CommandsSection } from "./CommandsSection";
 import { AppearanceSection, GeneralSection } from "./GeneralSection";
 import { HarnessSettingsProvider } from "./harnessSettings";
 import { ModelsSection } from "./ModelsSection";
@@ -13,17 +14,17 @@ import { AboutSection, PrivacySection } from "./PrivacySection";
 import { EditorSection, MemorySection, UsageSection } from "./ProjectSections";
 import { ProvidersSection } from "./ProvidersSection";
 import { SearchField, SettingsNav } from "./SettingsNav";
-import { searchSettings, SECTIONS, sectionLabel, sectionOf, type IndexedRow, type SectionId } from "./settingsIndex";
+import { isWideSection, searchSettings, SECTIONS, sectionLabel, sectionOf, type IndexedRow, type SectionId } from "./settingsIndex";
 
 const CONTENT: Record<SectionId, () => ReactNode> = {
   general: () => <GeneralSection />,
   appearance: () => <AppearanceSection />,
   providers: () => <ProvidersSection />,
   models: () => <ModelsSection />,
-  agents: () => <AgentsSection />,
   editor: () => <EditorSection />,
   usage: () => <UsageSection />,
   memory: () => <MemorySection />,
+  commands: () => <CommandsSection />,
   privacy: () => <PrivacySection />,
   about: () => <AboutSection />,
 };
@@ -85,7 +86,12 @@ export function SettingsPage(props: { section: string; onBack(): void; connect(t
         <div data-settings className="flex h-full overflow-hidden bg-window text-fg">
           <SettingsNav section={section} searching={searching} query={query} onQuery={setQuery} onBack={onBack} searchId={searchId} />
           <main ref={scroller} aria-labelledby="settings-title" className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
-            <div className="mx-auto flex w-full max-w-settings flex-col gap-6 px-6 pt-8 pb-10 max-sm:px-4 max-sm:pt-4">
+            <div
+              className={cn(
+                "mx-auto flex w-full flex-col gap-6 px-6 pt-8 pb-10 max-sm:px-4 max-sm:pt-4",
+                isWideSection(section) && !searching ? "max-w-none" : "max-w-settings",
+              )}
+            >
               <div className="flex flex-col gap-3 settings:hidden">
                 <div className="flex items-center gap-2">
                   <Button variant="ghost" size="md" icon={ArrowLeft} onClick={onBack} className="-ml-2">

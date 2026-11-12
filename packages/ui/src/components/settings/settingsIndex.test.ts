@@ -7,6 +7,7 @@ test("sectionOf: a known id, else General", () => {
   assert.equal(sectionOf(""), "general");
   assert.equal(sectionOf(null), "general");
   assert.equal(sectionOf("nope"), "general");
+  assert.equal(sectionOf("agents"), "providers");
 });
 
 test("searchSettings: every word must match, across sections and keywords", () => {
@@ -16,7 +17,7 @@ test("searchSettings: every word must match, across sections and keywords", () =
   );
   assert.deepEqual(
     searchSettings("COPILOT").map((r) => r.section),
-    ["providers", "agents", "editor"],
+    ["providers", "editor"],
   );
   assert.ok(searchSettings("dark").some((r) => r.id === "theme"));
   assert.deepEqual(searchSettings("   "), []);

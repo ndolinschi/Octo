@@ -2,37 +2,65 @@ import {
   BridgeError,
   type Bridge,
   type DiffHunk,
+  type ListPullRequestsParams,
   type OpenReviewInput,
   type PullRequestList,
   type PullRequestRow,
+  type RepoRef,
   type Review,
+  type ReviewCheckoutResult,
   type ReviewComment,
+  type ReviewDirtyFile,
   type ReviewFile,
   type ReviewFileDiff,
   type ReviewFiles,
   type ReviewFinding,
   type ReviewSubmitInput,
+  type ReviewThread,
   type ReviewSubmitPreview,
   type ReviewVerdict,
 } from "@octo/agent-client";
 import { commentableRuns } from "../lib/review/position";
-import { BRANCH_COMMITS, DEMO_HOST, DEMO_REPO, iso, PULLS, type PullSpec } from "./reviewData";
+import { visibleRows } from "../lib/review/pullList";
+import { BRANCH_COMMITS, DEMO_FORK, DEMO_FORK_PRS, DEMO_HOST, DEMO_REPO, iso, type PullSpec } from "./reviewData";
+import { ALL_PULLS as PULLS } from "./reviewMore";
+import { seedThreads, threadsAnswer } from "./reviewThreads";
 import { SMALL_FILES, type DemoReviewFile } from "./reviewFiles";
 import { countLines, lineDiff, lineOf } from "./reviewDiff";
-import { newId, type ProjectRecord } from "./store";
+import { emit, newId, type ProjectRecord } from "./store";
 
 const LATENCY_MS = 70;
 const TOO_LARGE_LINES = 2000;
 const delay = () => new Promise((r) => setTimeout(r, LATENCY_MS));
-const err = (status: number, code: string, message: string) => new BridgeError(status, code, message);
+const err = (status: number, code: string, message: string, repos?: RepoRef[]) => new BridgeError(status, code, message, repos ? { repos } : undefined);
 
-type Knobs = { nogh: boolean; notloggedin: boolean; empty: boolean; fail: boolean; submitlogin: boolean };
+type Knobs = {
+  nogh: boolean;
+  notloggedin: boolean;
+  empty: boolean;
+  fail: boolean;
+  submitlogin: boolean;
+  replyfail: boolean;
+  clean: boolean;
+  slow: boolean;
+  single: boolean;
+};
 
-/** `?review=nogh|notloggedin|empty|fail` (comma separated; `submitlogin` makes the first submit say not logged in). */
+/** `?review=nogh|notloggedin|empty|fail|single` (comma separated; `single`: one repository instead of the fork and its parent; `submitlogin` makes the first submit say not logged in). */
 function knobs(): Knobs {
   const raw = typeof location === "undefined" ? "" : (new URLSearchParams(location.search).get("review") ?? "");
   const set = new Set(raw.split(",").map((s) => s.trim()));
-  return { nogh: set.has("nogh"), notloggedin: set.has("notloggedin"), empty: set.has("empty"), fail: set.has("fail"), submitlogin: set.has("submitlogin") };
+  return {
+    nogh: set.has("nogh"),
+    notloggedin: set.has("notloggedin"),
+    empty: set.has("empty"),
+    fail: set.has("fail"),
+    submitlogin: set.has("submitlogin"),
+    replyfail: set.has("replyfail"),
+    clean: set.has("clean"),
+    slow: set.has("slow"),
+    single: set.has("single"),
+  };
 }
 
 type Rec = {
@@ -44,7 +72,9 @@ type Rec = {
   changedSinceSubmitted: Set<string>;
   comments: ReviewComment[];
   findings: ReviewFinding[];
+  threads: ReviewThread[];
   failedOnce: boolean;
+  replyFailedOnce: boolean;
 };
 
 const bytes = (t: string | null) => (t === null ? -1 : new TextEncoder().encode(t).length);
@@ -87,6 +117,8 @@ function fileOut(r: Rec, f: DemoReviewFile, order: number): ReviewFile {
     changed_since_submitted: r.changedSinceSubmitted.has(f.path),
     pending_comments: r.comments.filter((c) => c.path === f.path && c.state === "pending").length,
     findings: r.findings.filter((x) => x.path === f.path && x.status === "new").length,
+    threads: r.threads.filter((t) => t.path === f.path).length,
+    unresolved_threads: r.threads.filter((t) => t.path === f.path && !t.resolved).length,
   };
 }
 
@@ -123,7 +155,9 @@ function pending(r: Rec): ReviewComment[] {
 }
 
 function previewOf(r: Rec, input: ReviewSubmitInput): ReviewSubmitPreview {
-  const comments = pending(r);
+  const all = pending(r);
+  const comments = all.filter((c) => c.kind !== "reply");
+  const replies = all.filter((c) => c.kind === "reply" && c.in_reply_to);
   const general = comments.filter((c) => !c.path).map((c) => c.body);
   const body = [input.body?.trim() ?? "", ...general].filter(Boolean).join("\n\n");
   const github = r.review.kind === "github";
@@ -132,6 +166,9 @@ function previewOf(r: Rec, input: ReviewSubmitInput): ReviewSubmitPreview {
     verdict: input.verdict,
     body,
     comments,
+    ...(replies.length
+      ? { replies: replies.map((c) => ({ comment_id: c.id, thread_id: c.in_reply_to ?? "", in_reply_to_comment: "9001", body: c.body })) }
+      : {}),
     ...(github
       ? {
           payload: {
@@ -202,6 +239,7 @@ function seedFindings(r: Rec): ReviewFinding[] {
 }
 
 const MIN_AGO = 5 * 60_000;
+const repoOfSource = (source: string) => (source.startsWith("github:") ? source.slice(7, source.indexOf("#")) : DEMO_REPO);
 const headOf = (n: number) => `${n.toString(16).padStart(6, "0")}${"ab12cd34".repeat(4)}ef`.slice(0, 40);
 
 /** Adds the review members (RV1's optional methods) to a demo bridge: six pull requests, local branches, every write. */
@@ -231,16 +269,18 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
       changedSinceSubmitted: new Set(),
       comments: [],
       findings: [],
+      threads: spec?.row.number === 482 ? seedThreads(files) : [],
       failedOnce: false,
+      replyFailedOnce: false,
       review: {
         id: newId("rv"),
         source,
         kind: spec ? "github" : "local",
         folder: input.folder ?? folderLabel(rec),
-        ...(spec ? { repo: DEMO_REPO, number: spec.row.number } : {}),
+        ...(spec ? { repo: repoOfSource(source), number: spec.row.number } : {}),
         title: spec ? spec.row.title : `Local branch ${input.head ?? "HEAD"}`,
         body: spec ? spec.body : "",
-        ...(spec ? { author: spec.row.author, url: `https://${DEMO_HOST}/${DEMO_REPO}/pull/${spec.row.number}` } : {}),
+        ...(spec ? { author: spec.row.author, url: `https://${DEMO_HOST}/${repoOfSource(source)}/pull/${spec.row.number}` } : {}),
         base_ref: spec ? "main" : (input.base ?? "main"),
         head_ref: spec ? spec.row.head_ref : (input.head ?? "HEAD"),
         base_commit: "0b1c2d3e4f5a69788796a5b4c3d2e1f001122334",
@@ -355,10 +395,41 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
     });
   };
 
-  const list = async (pid: string): Promise<PullRequestList> => {
+  /** The folder works with a fork (origin) and its parent (upstream, tracked: the default); `?review=single` has the parent only. */
+  const repos: RepoRef[] = k.single
+    ? [{ host: "github", hostname: DEMO_HOST, repo: DEMO_REPO, remote: "origin", role: "origin", default: true }]
+    : [
+        { host: "github", hostname: DEMO_HOST, repo: DEMO_FORK, remote: "origin", role: "origin", default: false },
+        { host: "github", hostname: DEMO_HOST, repo: DEMO_REPO, remote: "upstream", role: "upstream", default: true },
+      ];
+  const sameRepo = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  /** `repo` of a request: undefined is the default repository, "all" every one; anything else must be one of the folder's. */
+  const resolveRepo = (raw: string | undefined): string => {
+    if (!raw) return repos.find((r) => r.default)?.repo ?? DEMO_REPO;
+    if (raw === "all") return "all";
+    const hit = repos.find((r) => sameRepo(r.repo, raw));
+    if (!hit) throw err(400, "invalid_repo", `${raw} is not a repository of this folder`, repos);
+    return hit.repo;
+  };
+  const rowsOf = (pid: string, repo: string): PullRequestRow[] => {
+    const parent = rows(pid).map((r) => ({ ...r, repo: DEMO_REPO }));
+    const fork = parent
+      .slice(0, DEMO_FORK_PRS)
+      .map((r) => ({ ...r, repo: DEMO_FORK, url: r.url.replace(DEMO_REPO, DEMO_FORK), review: null, title: `${r.title} (fork)` }));
+    if (k.single) return parent;
+    return repo === "all" ? [...parent, ...fork] : sameRepo(repo, DEMO_FORK) ? fork : parent;
+  };
+
+  const fetchedAt = new Map<string, number>();
+  const STALE_AFTER_MS = 15_000;
+  const first_ms = () => (k.slow ? 2500 : 600);
+
+  /** Cache semantics of the harness (RV1.5): first call fetches, later ones answer at once and say `stale` while refreshing. */
+  const list = async (pid: string, params?: ListPullRequestsParams): Promise<PullRequestList> => {
     await delay();
     const { rec } = project(pid);
-    const common = { host: DEMO_HOST, folder: folderLabel(rec) };
+    const repoKey = resolveRepo(params?.repo);
+    const common = { host: DEMO_HOST, folder: folderLabel(rec), repos };
     if (k.fail) throw err(500, "git_error", "git fetch failed: could not resolve host");
     if (k.nogh)
       return {
@@ -372,19 +443,59 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
     if (k.notloggedin)
       return {
         ...common,
-        repo: DEMO_REPO,
+        repo: repoKey,
         available: false,
         reason: "not_logged_in",
         message: "gh is installed but you are not logged in to github.com.",
         command: "gh auth login",
         prs: [],
       };
-    return { ...common, repo: DEMO_REPO, available: true, prs: k.empty ? [] : rows(pid) };
+    const key = `${pid}:${params?.folder ?? ""}:${repoKey}`;
+    const known = fetchedAt.get(key);
+    if (known === undefined || params?.refresh) {
+      await new Promise((r) => setTimeout(r, first_ms()));
+      fetchedAt.set(key, Date.now());
+    }
+    const at = fetchedAt.get(key) ?? Date.now();
+    const stale = Date.now() - at > STALE_AFTER_MS;
+    if (stale) {
+      setTimeout(() => {
+        fetchedAt.set(key, Date.now());
+        emit(rec, { type: "review.list_updated", folder: folderLabel(rec) });
+      }, 900);
+    }
+    const all = k.empty ? [] : rowsOf(pid, repoKey);
+    const matching = visibleRows(all, params?.filter ?? "all", params?.q ?? "");
+    const perPage = Math.min(100, params?.per_page ?? 30);
+    const page = Math.max(1, params?.page ?? 1);
+    const slice = matching.slice((page - 1) * perPage, page * perPage);
+    return {
+      ...common,
+      repo: repoKey,
+      available: true,
+      filter: params?.filter ?? "all",
+      page,
+      per_page: perPage,
+      total: matching.length,
+      next_page: page * perPage < matching.length ? page + 1 : null,
+      stale,
+      fetched_at: new Date(at).toISOString(),
+      prs: slice,
+    };
   };
+
+  const DIRTY: ReviewDirtyFile[] = [
+    { path: "src/usage/limiter.ts", status: "modified", code: " M" },
+    { path: "src/billing/client.ts", status: "modified", code: "M " },
+    { path: "notes/scratch.md", status: "untracked", code: "??" },
+    { path: "src/old/legacy.ts", status: "deleted", code: " D" },
+  ];
+  /** Per project: the branch the folder is on and whether the dirty files were accepted. */
+  const folderState = new Map<string, { branch: string }>();
 
   return {
     ...base,
-    listPullRequests: (pid) => list(pid),
+    listPullRequests: (pid, params) => list(pid, params),
     listReviews: async (pid) => {
       await delay();
       seeded(pid);
@@ -417,15 +528,64 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
       }
       if (k.nogh || k.notloggedin) throw err(409, k.nogh ? "gh_not_installed" : "not_logged_in", "pull requests cannot be opened without the GitHub CLI");
       const number = input.pr ?? Number(/\/pull\/(\d+)/.exec(input.url ?? "")?.[1]);
-      if (input.url && !input.url.includes(DEMO_REPO)) throw err(400, "repo_mismatch", `that address is not a pull request of ${DEMO_REPO}`);
+      let repo = input.repo ? resolveRepo(input.repo) : null;
+      if (input.url) {
+        const named = /^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\//.exec(input.url)?.[1];
+        const hit = named ? repos.find((r) => sameRepo(r.repo, named)) : undefined;
+        if (!hit) throw err(400, "repo_mismatch", `that address is not a pull request of ${repos.map((r) => r.repo).join(" or ")}`, repos);
+        repo = hit.repo;
+      }
+      // A bare number that exists in the fork and in its parent: the harness asks which.
+      if (!repo && !k.single && PULLS.slice(0, DEMO_FORK_PRS).some((p) => p.row.number === number))
+        throw err(409, "ambiguous_pr", `pull request #${number} exists in ${repos.map((r) => r.repo).join(" and ")}`, repos);
+      repo ??= resolveRepo(undefined);
       const spec = PULLS.find((p) => p.row.number === number);
-      if (!spec) throw err(404, "not_found", `pull request #${number} was not found on ${DEMO_REPO}`);
-      const source = `github:${DEMO_REPO}#${number}`;
+      const inFork = PULLS.slice(0, DEMO_FORK_PRS).some((p) => p.row.number === number);
+      if (!spec || (sameRepo(repo, DEMO_FORK) && !inFork)) throw err(404, "not_found", `pull request #${number} was not found on ${repo}`);
+      const source = `github:${repo}#${number}`;
       const existing = [...reviews.values()].find((r) => r.review.source === source);
       if (existing) return reviewOut(existing);
       const r = build(rec, source, spec, input);
       reviews.set(r.review.id, r);
       return reviewOut(r);
+    },
+    listReviewBranches: async (_pid, params) => {
+      await delay();
+      const def = "main";
+      const base = params?.base?.trim() || def;
+      const at = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString();
+      const rows = [
+        {
+          name: "mira/billing-retry",
+          current: true,
+          ahead: 4,
+          behind: 1,
+          commit: { sha: "9f3c2ab", subject: "Retry transient 5xx from the billing client", date: at(42) },
+        },
+        {
+          name: "feature/export-csv",
+          current: false,
+          ahead: 7,
+          behind: 12,
+          commit: { sha: "41de88c", subject: "Export invoices as CSV with a streaming writer", date: at(60 * 26) },
+        },
+        {
+          name: "fix/rounding",
+          current: false,
+          ahead: 1,
+          behind: 3,
+          commit: { sha: "a0b7731", subject: "Round half to even in money.ts", date: at(60 * 24 * 4) },
+        },
+        { name: "docs/billing", current: false, ahead: 0, behind: 20, commit: { sha: "c2e19d4", subject: "Describe the retry policy", date: at(60 * 24 * 9) } },
+        {
+          name: "main",
+          current: false,
+          ahead: 0,
+          behind: 0,
+          commit: { sha: "7be4a10", subject: "Merge pull request #481 from atlas-labs/lint", date: at(60 * 5) },
+        },
+      ];
+      return { folder: params?.folder ?? "atlas-api", base, default_base: def, branches: rows.filter((r) => r.name !== base || r.current) };
     },
     getReview: async (pid, id) => (await delay(), reviewOut(find(pid, id))),
     patchReview: async (pid, id, patch) => {
@@ -484,6 +644,13 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
       const r = find(pid, id);
       if (r.review.state === "closed") throw err(409, "review_closed", "this review is closed");
       if (!input.body.trim()) throw err(400, "empty_comment", "a comment needs text");
+      if (input.in_reply_to) {
+        const t = r.threads.find((x) => x.id === input.in_reply_to);
+        if (!t) throw err(400, "unknown_thread", "that thread is not on this pull request; refresh the threads and try again");
+        const reply = { ...mkComment(r, { path: t.path, body: input.body }), kind: "reply" as const, in_reply_to: t.id };
+        r.comments.push(reply);
+        return structuredClone(reply);
+      }
       if (input.path) {
         const f = r.files.find((x) => x.path === input.path);
         if (!f) throw err(400, "path_not_in_diff", `${input.path} is not part of this review`);
@@ -553,7 +720,18 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
         throw err(502, "code_host_error", "GitHub answered 422: Unprocessable Entity (pull_request_review_thread.line must be part of the diff)");
       }
       const preview = previewOf(r, input);
+      const replyErrors: { comment_id: string; message: string }[] = [];
       for (const c of now) {
+        if (c.kind === "reply") {
+          if (k.replyfail && replyErrors.length === 0 && !r.replyFailedOnce) {
+            r.replyFailedOnce = true;
+            replyErrors.push({ comment_id: c.id, message: "GitHub answered 404: the thread was deleted on the pull request" });
+            continue;
+          }
+          r.threads
+            .find((t) => t.id === c.in_reply_to)
+            ?.comments.push({ id: String(9500 + r.comments.length), author: "you", body: c.body, created_at: iso() });
+        }
         c.state = "submitted";
         c.submission_id = "sub_1";
         c.submitted_at = iso();
@@ -567,7 +745,38 @@ export function withDemoReview(base: Bridge, records: Map<string, ProjectRecord>
         submission_id: newId("sub"),
         ...(github ? { url: `https://${DEMO_HOST}/${DEMO_REPO}/pull/${r.review.number}#pullrequestreview-9001` } : {}),
         review: reviewOut(r),
+        ...(replyErrors.length ? { reply_errors: replyErrors } : {}),
       };
+    },
+    listReviewThreads: async (pid, id) => (await delay(), threadsAnswer(find(pid, id).threads, iso())),
+    checkoutReview: async (pid, id, input): Promise<ReviewCheckoutResult> => {
+      await delay();
+      const r = find(pid, id);
+      const { rec } = project(pid);
+      if (r.review.state === "closed") throw err(409, "review_closed", "this review is closed");
+      if (input.mode === "workspace") {
+        const ws = { review_id: r.review.id, path: r.review.worktree_path, title: r.review.title };
+        rec.project.review_workspace = ws;
+        emit(rec, { type: "review.workspace", review_workspace: ws });
+        return { mode: "workspace", workspace: ws };
+      }
+      const st = folderState.get(pid) ?? { branch: "main" };
+      const branch = `review/${r.review.number ?? "local"}-${r.review.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .slice(0, 24)
+        .replace(/-$/, "")}`;
+      if (st.branch === branch)
+        return { mode: "working_copy", folder: r.review.folder, branch, previous_branch: branch, commit: r.review.head_commit, already_on_branch: true };
+      if (!input.confirm && !k.clean) throw new BridgeError(409, "dirty_working_copy", "the working copy has uncommitted changes", { files: DIRTY });
+      folderState.set(pid, { branch });
+      return { mode: "working_copy", folder: r.review.folder, branch, previous_branch: st.branch, commit: r.review.head_commit, created: true };
+    },
+    clearReviewWorkspace: async (pid) => {
+      await delay();
+      const { rec } = project(pid);
+      rec.project.review_workspace = null;
+      emit(rec, { type: "review.workspace", review_workspace: null });
     },
   };
 }

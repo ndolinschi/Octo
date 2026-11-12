@@ -29,6 +29,7 @@ type GH struct {
 
 	mu      sync.Mutex
 	viewers map[string]viewerEntry
+	infos   map[string]infoEntry
 }
 
 // NewGH returns the GitHub adapter.
@@ -43,10 +44,18 @@ const (
 )
 
 // hostFor is the host name gh must talk to for dir: the host of the remote the
-// call is about (see WithRepoHint), "" when no remote names a code host (gh then
+// call is about (see WithRepo), "" when no remote names a code host (gh then
 // decides by itself, from GH_HOST or its default).
 func (g *GH) hostFor(ctx context.Context, dir string) string {
-	if r, ok := PickRemote(Remotes(ctx, dir), repoHint(ctx)); ok {
+	c := ctxRepo(ctx)
+	if c.Host != "" {
+		return c.Host
+	}
+	hint := ""
+	if c.Owner != "" {
+		hint = c.String()
+	}
+	if r, ok := PickRemote(Remotes(ctx, dir), hint); ok {
 		return r.Host
 	}
 	return ""
@@ -331,8 +340,64 @@ type viewerEntry struct {
 	at    time.Time
 }
 
-func (g *GH) ListPRs(ctx context.Context, dir string) ([]PR, error) {
-	out, err := g.ok(ctx, dir, nil, "pr", "list", "--state", "open", "--limit", fmt.Sprint(MaxListed), "--json", listFields+",comments,latestReviews")
+// RepoInfo asks the host about repo itself (never about gh's default repository):
+// whether it is a fork and of what. The answer is cached for 30 minutes.
+func (g *GH) RepoInfo(ctx context.Context, dir string, repo Repo) (RepoInfo, error) {
+	ctx = WithRepo(ctx, repo)
+	key := strings.ToLower(RepoArg(repo))
+	g.mu.Lock()
+	if e, ok := g.infos[key]; ok && time.Since(e.at) < 30*time.Minute {
+		g.mu.Unlock()
+		return e.info, nil
+	}
+	g.mu.Unlock()
+	out, err := g.ok(ctx, dir, nil, "repo", "view", RepoArg(repo), "--json", "name,owner,url,isFork,parent")
+	if err != nil {
+		return RepoInfo{}, err
+	}
+	var v struct {
+		Name  string `json:"name"`
+		Owner struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+		URL    string `json:"url"`
+		IsFork bool   `json:"isFork"`
+		Parent *struct {
+			Name  string `json:"name"`
+			Owner struct {
+				Login string `json:"login"`
+			} `json:"owner"`
+		} `json:"parent"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil || v.Name == "" || v.Owner.Login == "" {
+		return RepoInfo{}, &Error{Op: "gh repo view", Message: "unexpected output"}
+	}
+	info := RepoInfo{Repo: Repo{Owner: v.Owner.Login, Name: v.Name, URL: v.URL, Host: repo.Host}, IsFork: v.IsFork}
+	if h, _, _, ok := ParseRemoteURL(v.URL); ok && info.Repo.Host == "" {
+		info.Repo.Host = h
+	}
+	if v.Parent != nil && v.Parent.Name != "" && v.Parent.Owner.Login != "" {
+		info.IsFork = true
+		info.Parent = &Repo{Owner: v.Parent.Owner.Login, Name: v.Parent.Name, Host: info.Repo.Host}
+	}
+	g.mu.Lock()
+	if g.infos == nil {
+		g.infos = map[string]infoEntry{}
+	}
+	g.infos[key] = infoEntry{info: info, at: time.Now()}
+	g.mu.Unlock()
+	return info, nil
+}
+
+type infoEntry struct {
+	info RepoInfo
+	at   time.Time
+}
+
+func (g *GH) ListPRs(ctx context.Context, dir string, repo Repo) ([]PR, error) {
+	ctx = WithRepo(ctx, repo)
+	rarg := RepoArg(repo)
+	out, err := g.ok(ctx, dir, nil, "pr", "list", "--repo", rarg, "--state", "open", "--limit", fmt.Sprint(MaxListed), "--json", listFields+",comments,latestReviews")
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +408,7 @@ func (g *GH) ListPRs(ctx context.Context, dir string) ([]PR, error) {
 	// The ones that ask for this user's review (a second, narrow query: the
 	// reviewRequests field names teams as well and would need the user's login).
 	mine := map[int]bool{}
-	if out, err := g.ok(ctx, dir, nil, "pr", "list", "--state", "open", "--limit", fmt.Sprint(MaxListed),
+	if out, err := g.ok(ctx, dir, nil, "pr", "list", "--repo", rarg, "--state", "open", "--limit", fmt.Sprint(MaxListed),
 		"--search", "review-requested:@me", "--json", "number"); err == nil {
 		var nums []struct {
 			Number int `json:"number"`
@@ -380,8 +445,8 @@ func (g *GH) ListPRs(ctx context.Context, dir string) ([]PR, error) {
 }
 
 func (g *GH) View(ctx context.Context, dir string, repo Repo, number int) (PRDetail, error) {
-	ctx = WithRepoHint(ctx, repo.String())
-	out, err := g.ok(ctx, dir, nil, "pr", "view", fmt.Sprint(number), "--json",
+	ctx = WithRepo(ctx, repo)
+	out, err := g.ok(ctx, dir, nil, "pr", "view", fmt.Sprint(number), "--repo", RepoArg(repo), "--json",
 		listFields+",body,state,baseRefOid,mergeable,commits,comments,reviews")
 	if err != nil {
 		return PRDetail{}, err
@@ -446,10 +511,10 @@ func capText(s string) string {
 }
 
 func (g *GH) Checks(ctx context.Context, dir string, repo Repo, number int) ([]Check, error) {
-	ctx = WithRepoHint(ctx, repo.String())
+	ctx = WithRepo(ctx, repo)
 	// `gh pr checks` exits 8 while checks are pending and 1 with "no checks
 	// reported"; its JSON on stdout is what matters.
-	out, errb, exit, err := g.run(ctx, dir, nil, "pr", "checks", fmt.Sprint(number), "--json", "name,state,bucket,link,workflow")
+	out, errb, exit, err := g.run(ctx, dir, nil, "pr", "checks", fmt.Sprint(number), "--repo", RepoArg(repo), "--json", "name,state,bucket,link,workflow")
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +622,7 @@ func (g *GH) apiArgs(ctx context.Context, dir string, args ...string) []string {
 }
 
 func (g *GH) PostReview(ctx context.Context, dir string, repo Repo, number int, r Review) (Posted, error) {
-	ctx = WithRepoHint(ctx, repo.String())
+	ctx = WithRepo(ctx, repo)
 	payload, err := Payload(r)
 	if err != nil {
 		return Posted{}, err
@@ -580,7 +645,7 @@ var reDigits = regexp.MustCompile(`^[0-9]{1,20}$`)
 // PostReply posts a reply to the review thread whose first comment is
 // rootCommentID.
 func (g *GH) PostReply(ctx context.Context, dir string, repo Repo, number int, rootCommentID, body string) (Posted, error) {
-	ctx = WithRepoHint(ctx, repo.String())
+	ctx = WithRepo(ctx, repo)
 	if !reDigits.MatchString(rootCommentID) {
 		return Posted{}, &Error{Op: "gh api", Message: "invalid comment id"}
 	}
@@ -660,7 +725,7 @@ func (n ghThreadNode) thread() Thread {
 }
 
 func (g *GH) Threads(ctx context.Context, dir string, repo Repo, number int) ([]Thread, error) {
-	ctx = WithRepoHint(ctx, repo.String())
+	ctx = WithRepo(ctx, repo)
 	res := []Thread{}
 	after := ""
 	for page := 0; page < maxThreadPages; page++ {

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, MessageSquarePlus, Pilcrow, UnfoldVertical } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import type { ReviewFile, ReviewFileDiff } from "@octo/agent-client";
 import { useDelayedLoading } from "../../lib/hooks";
@@ -6,10 +6,11 @@ import { hunksToTexts } from "../../lib/review/changes";
 import { plural, sizeChange, splitPath } from "../../lib/review/files";
 import type { Anchor } from "../../lib/review/position";
 import { Button, IconButton } from "../primitives/Button";
+import { MenuButton } from "../primitives/MenuButton";
 import { Spinner } from "../primitives/Status";
 import { ImageDiff } from "./ImageDiff";
 import { Counts, Key, Notice } from "./parts";
-import { ReviewDiff, runsOf, type Marked, type ReviewMonaco, type RevealRequest } from "./ReviewDiff";
+import { ReviewDiff, runsOf, type DiffZone, type Marked, type ReviewMonaco, type RevealRequest } from "./ReviewDiff";
 import type { DiffLoad } from "./useReview";
 
 const STATUS_WORD = { added: "Added", modified: "Modified", deleted: "Deleted", renamed: "Renamed", copied: "Copied", typechange: "Type changed" } as const;
@@ -30,6 +31,10 @@ export function DiffPane(props: {
   commented: readonly Marked[];
   flagged: readonly Marked[];
   reveal: RevealRequest | null;
+  zones: readonly DiffZone[];
+  renderZone(key: string): ReactNode;
+  /** Threads that have no line in this diff (outdated), listed under the toolbar. */
+  apart?: ReactNode;
   onToggleWhitespace(): void;
   onToggleExpanded(): void;
   onViewed(viewed: boolean): void;
@@ -65,13 +70,19 @@ export function DiffPane(props: {
           </label>
           <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} className="max-md:size-10" />
           <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} className="max-md:size-10" />
-          <IconButton icon={Pilcrow} label="Ignore whitespace" pressed={props.ignoreWhitespace} onClick={props.onToggleWhitespace} className="max-md:size-10" />
-          <IconButton icon={UnfoldVertical} label="Expand context" pressed={props.expanded} onClick={props.onToggleExpanded} className="max-md:size-10" />
-          <Button variant="ghost" size="sm" icon={MessageSquarePlus} title="Comment on this file" onClick={props.onFileComment} className="max-md:h-10">
-            <span className="@max-lg/diff:sr-only">File comment</span>
-          </Button>
+          <MenuButton
+            label="More for this file"
+            text="More"
+            alignEnd
+            items={[
+              { id: "ws", label: "Ignore whitespace", checked: props.ignoreWhitespace, run: props.onToggleWhitespace },
+              { id: "expand", label: "Show all lines", checked: props.expanded, run: props.onToggleExpanded },
+              { id: "comment", label: "Comment on this file", run: props.onFileComment },
+            ]}
+          />
         </span>
       </div>
+      {props.apart}
       <div className="flex min-h-0 flex-1 flex-col">
         {props.diff.status === "error" ? (
           <Notice
@@ -144,6 +155,8 @@ function Body(props: Omit<Parameters<typeof DiffPane>[0], "diff"> & { diff: Revi
       commented={props.commented}
       flagged={props.flagged}
       reveal={props.reveal}
+      zones={props.zones}
+      renderZone={props.renderZone}
       onAnchor={props.onAnchor}
       onSelection={props.onSelection}
     />

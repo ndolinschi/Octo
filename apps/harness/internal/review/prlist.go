@@ -47,6 +47,9 @@ type ListOptions struct {
 	PerPage int
 	// Refresh forces a fetch from the code host now.
 	Refresh bool
+	// Repo is "owner/name" of one repository of the folder, or "all". Empty: the
+	// person's last choice for the folder, else the default repository.
+	Repo string
 }
 
 // PRList is the response of the pull-request list.
@@ -54,8 +57,11 @@ type PRList struct {
 	// Host is the adapter ("github"); Hostname the host it talked to ("github.com", "ghe.example.com").
 	Host     string `json:"host"`
 	Hostname string `json:"hostname,omitempty"`
-	Repo     string `json:"repo,omitempty"`
-	Folder   string `json:"folder,omitempty"`
+	// Repo is the repository listed ("owner/name", or "all"); Repos every repository of the folder.
+	Repo       string      `json:"repo,omitempty"`
+	Repos      []RepoRef   `json:"repos"`
+	RepoErrors []RepoError `json:"repo_errors,omitempty"`
+	Folder     string      `json:"folder,omitempty"`
 	// Available is false when the code host cannot be used; Reason (gh_not_installed,
 	// not_logged_in, no_github_repo, no_host, not_a_git_repo), Message and
 	// Command say why and what to run. "Review a local branch" still works.
@@ -84,7 +90,15 @@ type PRList struct {
 // PRRow is a pull request of the list, with the open review of it if any.
 type PRRow struct {
 	codehost.PR
+	// Repo is the repository the pull request belongs to ("owner/name").
+	Repo   string    `json:"repo"`
 	Review *PRReview `json:"review"`
+}
+
+// RepoError says one repository of an "all" list could not be read.
+type RepoError struct {
+	Repo    string `json:"repo"`
+	Message string `json:"message"`
 }
 
 // PRReview ties a list row to its review.
@@ -99,7 +113,7 @@ type PRReview struct {
 	PendingComments   int  `json:"pending_comments"`
 }
 
-// listEntry is the cached list of one folder.
+// listEntry is the cached list of one repository of a folder.
 type listEntry struct {
 	repo       codehost.Repo
 	prs        []codehost.PR
@@ -107,7 +121,9 @@ type listEntry struct {
 	refreshing bool
 }
 
-func listKey(pid, label string) string { return pid + "\x00" + label }
+func listKey(pid, label string, repo codehost.Repo) string {
+	return pid + "\x00" + label + "\x00" + strings.ToLower(repo.Host+"/"+repo.String())
+}
 
 func validFilter(f string) (string, error) {
 	switch f {
@@ -119,10 +135,11 @@ func validFilter(f string) (string, error) {
 	return "", invalid("invalid_filter", "filter must be all, review_requested, mine or drafts")
 }
 
-// ListPRs lists the open pull requests of the project's repository, newest
-// activity first, tied to the reviews already open. The list of a folder is
-// cached for ListTTL: an older one is answered at once, marked stale, while a
-// background refresh runs (and announces itself with review.list_updated).
+// ListPRs lists the open pull requests of one repository of the folder (or of
+// all of them with Repo "all"), newest activity first, tied to the reviews
+// already open. The list of a repository is cached for ListTTL: an older one
+// is answered at once, marked stale, while a background refresh runs (and
+// announces itself with review.list_updated).
 func (s *Service) ListPRs(ctx context.Context, pid string, o ListOptions) (PRList, error) {
 	filter, err := validFilter(o.Filter)
 	if err != nil {
@@ -142,7 +159,7 @@ func (s *Service) ListPRs(ctx context.Context, pid string, o ListOptions) (PRLis
 	if err != nil {
 		return PRList{}, err
 	}
-	out := PRList{Host: "github", Filter: filter, Page: o.Page, PerPage: o.PerPage, PRs: []PRRow{}}
+	out := PRList{Host: "github", Filter: filter, Page: o.Page, PerPage: o.PerPage, PRs: []PRRow{}, Repos: []RepoRef{}}
 	label, dir, err := s.folder(ctx, db, o.Folder)
 	if err != nil {
 		var e *Error
@@ -159,41 +176,79 @@ func (s *Service) ListPRs(ctx context.Context, pid string, o ListOptions) (PRLis
 	}
 	out.Host = s.host.Name()
 
-	key := listKey(pid, label)
-	s.mu.Lock()
-	ent := s.lists[key]
-	s.mu.Unlock()
-	var cur listEntry
-	switch {
-	case ent != nil && !o.Refresh:
-		s.mu.Lock()
-		cur = *ent
-		age := s.now().Sub(ent.fetchedAt)
-		if age >= ListTTL && !ent.refreshing {
-			ent.refreshing = true
-			go s.refreshList(pid, label, dir)
+	ents, err := s.folderRepos(ctx, dir, o.Refresh)
+	if err != nil {
+		if u, ok := codehost.IsUnavailable(err); ok {
+			out.Reason, out.Message, out.Command = u.Reason, u.Message, u.Command
+			return out, nil
 		}
-		out.Stale = age >= ListTTL
-		s.mu.Unlock()
-	default:
-		got, err := s.fetchList(ctx, db, pid, dir)
-		if err != nil {
-			if u, ok := codehost.IsUnavailable(err); ok {
-				out.Reason, out.Message, out.Command = u.Reason, u.Message, u.Command
-				return out, nil
-			}
-			return out, hostErr(err)
-		}
-		s.mu.Lock()
-		s.lists[key] = &got
-		s.mu.Unlock()
-		cur = got
+		return out, hostErr(err)
 	}
-	out.Available, out.Repo, out.Hostname = true, cur.repo.String(), cur.repo.Host
-	out.FetchedAt = projectstore.Stamp(cur.fetchedAt)
-	out.Truncated = len(cur.prs) >= codehost.MaxListed
+	out.Repos = refsOf(ents)
 
-	rows, err := s.rows(ctx, db, cur)
+	// Which repository: the one asked for, else the person's last choice for this
+	// folder, else the default (the remote the current branch tracks, else origin).
+	choice := strings.TrimSpace(o.Repo)
+	explicit := choice != ""
+	if !explicit {
+		choice = remembered(ctx, db, label)
+	}
+	var selected []repoEntry
+	switch {
+	case strings.EqualFold(choice, RepoAll):
+		selected, choice = ents, RepoAll
+	case choice != "":
+		if i, ok := findRepo(ents, choice); ok {
+			selected, choice = ents[i:i+1], ents[i].ref.Repo
+		} else if explicit {
+			return out, invalid("invalid_repo", "the folder's repositories are %s; %q is none of them", repoNames(ents), choice)
+		}
+	}
+	if selected == nil {
+		i := defaultOf(ents)
+		selected, choice = ents[i:i+1], ents[i].ref.Repo
+	}
+	if explicit {
+		remember(ctx, db, label, choice)
+	}
+	out.Repo = choice
+	if len(selected) == 1 {
+		out.Hostname = selected[0].ref.Hostname
+	}
+
+	var got []listEntry
+	var firstErr error
+	var oldest time.Time
+	for _, e := range selected {
+		cur, stale, err := s.cachedList(ctx, db, pid, label, dir, e.repo, o.Refresh)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			out.RepoErrors = append(out.RepoErrors, RepoError{Repo: e.ref.Repo, Message: err.Error()})
+			continue
+		}
+		got = append(got, cur)
+		out.Stale = out.Stale || stale
+		if oldest.IsZero() || cur.fetchedAt.Before(oldest) {
+			oldest = cur.fetchedAt
+		}
+		if len(cur.prs) >= codehost.MaxListed {
+			out.Truncated = true
+		}
+	}
+	if len(got) == 0 {
+		out.RepoErrors = nil
+		if u, ok := codehost.IsUnavailable(firstErr); ok {
+			out.Reason, out.Message, out.Command = u.Reason, u.Message, u.Command
+			return out, nil
+		}
+		return out, hostErr(firstErr)
+	}
+	out.Available = true
+	out.FetchedAt = projectstore.Stamp(oldest)
+
+	rows, err := s.rows(ctx, db, got)
 	if err != nil {
 		return out, err
 	}
@@ -217,6 +272,33 @@ func (s *Service) ListPRs(ctx context.Context, pid string, o ListOptions) (PRLis
 		}
 	}
 	return out, nil
+}
+
+// cachedList is the list of one repository through the cache.
+func (s *Service) cachedList(ctx context.Context, db *projectstore.DB, pid, label, dir string, repo codehost.Repo, refresh bool) (listEntry, bool, error) {
+	key := listKey(pid, label, repo)
+	s.mu.Lock()
+	ent := s.lists[key]
+	s.mu.Unlock()
+	if ent != nil && !refresh {
+		s.mu.Lock()
+		cur := *ent
+		age := s.now().Sub(ent.fetchedAt)
+		if age >= ListTTL && !ent.refreshing {
+			ent.refreshing = true
+			go s.refreshList(pid, label, dir, repo)
+		}
+		s.mu.Unlock()
+		return cur, age >= ListTTL, nil
+	}
+	got, err := s.fetchList(ctx, db, pid, dir, repo)
+	if err != nil {
+		return listEntry{}, false, err
+	}
+	s.mu.Lock()
+	s.lists[key] = &got
+	s.mu.Unlock()
+	return got, false, nil
 }
 
 func passes(p codehost.PR, filter string) bool {
@@ -258,40 +340,38 @@ func itoa(n int) string {
 
 // rows ties the cached pull requests to the open reviews (fresh from the store:
 // a review opened a second ago shows at once).
-func (s *Service) rows(ctx context.Context, db *projectstore.DB, e listEntry) ([]PRRow, error) {
+func (s *Service) rows(ctx context.Context, db *projectstore.DB, es []listEntry) ([]PRRow, error) {
 	open, err := db.Reviews(ctx, projectstore.ReviewOpen)
 	if err != nil {
 		return nil, err
 	}
-	byNumber := map[int]projectstore.Review{}
+	byKey := map[string]projectstore.Review{}
 	for _, r := range open {
-		if r.Kind == "github" && strings.EqualFold(r.Repo, e.repo.String()) {
-			byNumber[r.Number] = r
+		if r.Kind == "github" {
+			byKey[strings.ToLower(r.Repo)+"#"+itoa(r.Number)] = r
 		}
 	}
-	rows := make([]PRRow, 0, len(e.prs))
-	for _, p := range e.prs {
-		row := PRRow{PR: p}
-		if r, ok := byNumber[p.Number]; ok {
-			n, _ := db.PendingComments(ctx, r.ID)
-			row.Review = &PRReview{ID: r.ID, HeadCommit: r.HeadCommit, LastSubmittedHead: r.LastSubmittedHead,
-				NewCommits:        p.HeadSHA != "" && p.HeadSHA != r.HeadCommit,
-				NewSinceSubmitted: r.LastSubmittedHead != "" && p.HeadSHA != "" && p.HeadSHA != r.LastSubmittedHead,
-				PendingComments:   n}
+	rows := []PRRow{}
+	for _, e := range es {
+		for _, p := range e.prs {
+			row := PRRow{PR: p, Repo: e.repo.String()}
+			if r, ok := byKey[strings.ToLower(e.repo.String())+"#"+itoa(p.Number)]; ok {
+				n, _ := db.PendingComments(ctx, r.ID)
+				row.Review = &PRReview{ID: r.ID, HeadCommit: r.HeadCommit, LastSubmittedHead: r.LastSubmittedHead,
+					NewCommits:        p.HeadSHA != "" && p.HeadSHA != r.HeadCommit,
+					NewSinceSubmitted: r.LastSubmittedHead != "" && p.HeadSHA != "" && p.HeadSHA != r.LastSubmittedHead,
+					PendingComments:   n}
+			}
+			rows = append(rows, row)
 		}
-		rows = append(rows, row)
 	}
 	return rows, nil
 }
 
-// fetchList asks the code host for the repository and its open pull requests,
-// and closes the reviews of pull requests that are no longer open.
-func (s *Service) fetchList(ctx context.Context, db *projectstore.DB, pid, dir string) (listEntry, error) {
-	repo, err := s.host.Repo(ctx, dir)
-	if err != nil {
-		return listEntry{}, err
-	}
-	prs, err := s.host.ListPRs(codehost.WithRepoHint(ctx, repo.String()), dir)
+// fetchList asks the code host for the open pull requests of repo, and closes
+// the reviews of that repository whose pull request is no longer open.
+func (s *Service) fetchList(ctx context.Context, db *projectstore.DB, pid, dir string, repo codehost.Repo) (listEntry, error) {
+	prs, err := s.host.ListPRs(ctx, dir, repo)
 	if err != nil {
 		return listEntry{}, err
 	}
@@ -326,10 +406,10 @@ func (s *Service) fetchList(ctx context.Context, db *projectstore.DB, pid, dir s
 
 // refreshList is the background refresh of a stale list. It never touches the
 // caller's context: the request that started it has long returned.
-func (s *Service) refreshList(pid, label, dir string) {
+func (s *Service) refreshList(pid, label, dir string, repo codehost.Repo) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	key := listKey(pid, label)
+	key := listKey(pid, label, repo)
 	done := func(ent *listEntry) {
 		s.mu.Lock()
 		if cur := s.lists[key]; cur != nil {
@@ -347,7 +427,7 @@ func (s *Service) refreshList(pid, label, dir string) {
 		done(nil)
 		return
 	}
-	got, err := s.fetchList(ctx, db, pid, dir)
+	got, err := s.fetchList(ctx, db, pid, dir, repo)
 	if err != nil {
 		done(nil)
 		return

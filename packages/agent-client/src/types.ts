@@ -540,6 +540,8 @@ export type Provider = {
   login?: "ok" | "not_logged_in" | "unchecked";
   /** Agents: the model used when `acp:<id>` names none ("" or absent: the agent's own default). */
   preferred_model?: string;
+  /** Agents: the launch command is not verified (the plugin says so); the UI shows a dim "Experimental" after the name. */
+  experimental?: boolean;
   /** Agents: the model per delegation tier ("" = the agent's default); prefilled from the manifest's hints. */
   roles?: ProviderRoles;
 };

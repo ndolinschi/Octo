@@ -38,6 +38,7 @@ export type HttpOnlyMethod =
   | "putSecret"
   | "deleteSecret"
   | "listPullRequests"
+  | "listReviewBranches"
   | "listReviews"
   | "openReview"
   | "getReview"

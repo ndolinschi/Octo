@@ -10,6 +10,7 @@ import {
   MessageCircleQuestionMark,
   Notebook,
   Settings,
+  Terminal,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -41,6 +42,8 @@ export const GLYPH = {
   memory: Brain,
   /** A side question about the project that does not enter the orchestrator's history (decision 40). */
   side: MessageCircleQuestionMark,
+  /** A project command and its run tab (decision 68). */
+  run: Terminal,
   /** Settings, app-wide and per project: one gear (the tooltip says which). */
   settings: Settings,
 } satisfies Record<string, LucideIcon>;

@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import type { Review, ReviewSubmitPreview, ReviewSubmitResult, ReviewVerdict } from "@octo/agent-client";
+import type { Review, ReviewReplyPost, ReviewSubmitPreview, ReviewSubmitResult, ReviewVerdict } from "@octo/agent-client";
 import { errorMessage } from "../../lib/format";
 import type { ReviewApi } from "../../lib/review/api";
 import { commentWhere } from "../../lib/review/position";
@@ -25,7 +25,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
   const [preview, setPreview] = useState<Preview>({ status: "loading" });
   const [problem, setProblem] = useState<SubmitProblem | null>(null);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ result: ReviewSubmitResult; verdict: ReviewVerdict } | null>(null);
+  const [result, setResult] = useState<{ result: ReviewSubmitResult; verdict: ReviewVerdict; replies: ReviewReplyPost[] } | null>(null);
   const [tick, setTick] = useState(0);
   const bodyId = useId();
 
@@ -48,7 +48,9 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
   }, [api, review.id, verdict, body, tick]);
 
   const ready = preview.status === "ready" ? preview.preview : null;
-  const count = ready?.comments.length ?? review.pending_comments;
+  const replies = ready?.replies ?? [];
+  // Comments and replies both leave with the review; a replies-only submit with no text posts no review at all.
+  const count = ready ? ready.comments.length + replies.length : review.pending_comments;
   const hasBody = body.trim().length > 0;
   const ok = ready !== null && canSubmit(verdict, count, hasBody || (ready.body.trim().length > 0 && ready.comments.some((c) => !c.path)));
 
@@ -57,8 +59,12 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
     setBusy(true);
     setProblem(null);
     try {
-      const r = await api.submit(review.id, { verdict, ...(body.trim() ? { body: body.trim() } : {}), comment_ids: ready.comments.map((c) => c.id) });
-      setResult({ result: r, verdict });
+      const r = await api.submit(review.id, {
+        verdict,
+        ...(body.trim() ? { body: body.trim() } : {}),
+        comment_ids: [...new Set([...ready.comments.map((c) => c.id), ...replies.map((x) => x.comment_id)])],
+      });
+      setResult({ result: r, verdict, replies });
       props.onSubmitted();
     } catch (e) {
       const p = submitProblem(e);
@@ -87,8 +93,16 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
       >
         <div className="flex flex-col gap-3 text-sm">
           <p role="status" className="text-fg">
-            {submittedText(review, result.verdict, r.comments.length, r.posted)}
+            {submittedText(review, result.verdict, r.comments.length + result.replies.length - (r.reply_errors?.length ?? 0), r.posted)}
           </p>
+          {r.reply_errors?.map((x) => (
+            <p key={x.comment_id} role="alert" className="flex flex-col gap-0.5 text-err">
+              <span>A reply was not posted: {x.message}.</span>
+              <span className="text-fg-2">
+                It stays pending: “{replyText(result.replies, x.comment_id)}”. Submit again once the thread is back, or delete the reply.
+              </span>
+            </p>
+          ))}
           {link && (
             <a href={link} target="_blank" rel="noreferrer noopener" className="w-fit text-link underline-offset-2 hover:underline">
               Open the review on {new URL(link).host}
@@ -174,7 +188,7 @@ function PreviewBody({ preview }: { preview: ReviewSubmitPreview }) {
           <pre className="rounded-md border border-line bg-code-bg p-3 font-sans text-sm break-words whitespace-pre-wrap text-fg">{preview.body}</pre>
         </figure>
       )}
-      {preview.comments.length === 0 ? (
+      {preview.comments.length === 0 && !(preview.replies?.length ?? 0) ? (
         <p className="text-fg-3">No comments.</p>
       ) : (
         <ol className="flex flex-col gap-2">
@@ -192,6 +206,27 @@ function PreviewBody({ preview }: { preview: ReviewSubmitPreview }) {
           ))}
         </ol>
       )}
+      {(preview.replies?.length ?? 0) > 0 && (
+        <section aria-label="Replies" className="flex flex-col gap-2">
+          <h4 className="text-xs font-medium text-fg-3">
+            {preview.replies?.length === 1
+              ? "1 reply, posted into its thread after the review"
+              : `${preview.replies?.length} replies, each posted into its thread after the review`}
+          </h4>
+          <ol className="flex flex-col gap-2">
+            {preview.replies?.map((x) => (
+              <li key={x.comment_id} className="rounded-md border border-line p-3">
+                <p className="break-words whitespace-pre-wrap text-fg">{x.body}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </div>
   );
+}
+
+function replyText(replies: readonly ReviewReplyPost[], id: string): string {
+  const t = replies.find((x) => x.comment_id === id)?.body ?? "";
+  return t.length > 80 ? `${t.slice(0, 79)}…` : t;
 }

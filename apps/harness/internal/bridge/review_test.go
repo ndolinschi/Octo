@@ -128,7 +128,24 @@ func TestReviewAPIEndToEnd(t *testing.T) {
 
 	// GET /prs
 	prs := e.get(t, "/prs")
-	mustHave(t, "prs", prs, "host", "repo", "folder", "available", "prs")
+	mustHave(t, "prs", prs, "host", "repo", "folder", "available", "prs", "repos")
+	repos := prs["repos"].([]any)
+	if len(repos) != 1 {
+		t.Fatalf("repos = %v", repos)
+	}
+	mustHave(t, "repos[0]", repos[0].(map[string]any), "host", "repo", "role", "default")
+	mustHave(t, "pr row repo", rows0(prs), "repo")
+	e.wantError(t, "GET", e.path("/prs?repo=nobody/else"), nil, 400, "invalid_repo")
+	e.wantError(t, "POST", e.path("/reviews"), map[string]any{"url": "https://github.com/other/repo/pull/1"}, 400, "repo_mismatch")
+
+	// GET /review/branches: local only
+	br := e.get(t, "/review/branches")
+	mustHave(t, "branches", br, "base", "default_base", "branches", "folder")
+	if br["base"] != "main" || len(br["branches"].([]any)) < 2 {
+		t.Fatalf("branches = %v", br)
+	}
+	mustHave(t, "branch", br["branches"].([]any)[0].(map[string]any), "name", "current", "ahead", "behind", "commit")
+	e.wantError(t, "GET", e.path("/review/branches?base=nope"), nil, 400, "unknown_ref")
 	rows := prs["prs"].([]any)
 	if len(rows) != 2 || rows[0].(map[string]any)["number"].(float64) != 2 {
 		t.Fatalf("prs = %v", prs)
@@ -551,4 +568,8 @@ func TestReviewAPIThreadsAndReplies(t *testing.T) {
 	if len(e.gh.Replies()) != 1 || len(e.gh.Posts()) != 0 {
 		t.Fatalf("replies=%d posts=%d", len(e.gh.Replies()), len(e.gh.Posts()))
 	}
+}
+
+func rows0(prs map[string]any) map[string]any {
+	return prs["prs"].([]any)[0].(map[string]any)
 }

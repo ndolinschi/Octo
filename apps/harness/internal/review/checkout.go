@@ -240,7 +240,7 @@ func (s *Service) checkoutWorkingCopy(ctx context.Context, db *projectstore.DB, 
 
 	// The pull request's head, fetched into a private ref (the review's own refs stay as they are).
 	ref := refPrefix(r.ID) + "checkout"
-	if err := gitx.Fetch(ctx, dir, pickRemote(ctx, dir, r.Repo), fmt.Sprintf("+refs/pull/%d/head:%s", r.Number, ref)); err != nil {
+	if err := gitx.Fetch(ctx, dir, fetchTarget(ctx, dir, r.Repo), fmt.Sprintf("+refs/pull/%d/head:%s", r.Number, ref)); err != nil {
 		return CheckoutResult{}, &Error{Kind: KindUpstream, Code: "fetch_failed", Message: gitErr(err).Error()}
 	}
 	commit, err := gitx.Resolve(ctx, dir, ref)

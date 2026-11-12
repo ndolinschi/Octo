@@ -28,3 +28,17 @@ export { refreshProviders, useProviders, type ProvidersLoad } from "./useProvide
 export { useHiddenModels, useModelPicker } from "./useModelPicker";
 export { useAgentPrefs } from "./useAgentPrefs";
 export { commandsIn } from "./hints";
+export {
+  MODELS_FOLDED,
+  billingLine,
+  defaultProviderId,
+  foldModels,
+  modelsSummary,
+  primaryAction,
+  providerGroups,
+  reasonLine,
+  stateTone,
+  type ProviderGroupView,
+  type ProviderRowView,
+  type Tone,
+} from "./view";

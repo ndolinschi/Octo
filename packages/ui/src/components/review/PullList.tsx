@@ -1,200 +1,328 @@
-import { GitBranch, RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState, type SyntheticEvent } from "react";
-import type { OpenReviewInput, PullRequestList, PullRequestRow, ReviewSummary } from "@octo/agent-client";
+import { GitBranch, RefreshCw, Search } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFilter, type PullRequestRow, type ReviewSummary } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooks";
 import type { ReviewApi } from "../../lib/review/api";
 import { plural } from "../../lib/review/files";
-import { orderRows, parsePullInput, rowStatus, unavailableTitle } from "../../lib/review/pull";
+import { parsePullInput, unavailableTitle } from "../../lib/review/pull";
+import { filterCounts, freshness, newSinceMyReview, PULL_FILTERS, visibleRows } from "../../lib/review/pullList";
 import { Button, IconButton } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
-import { Field, Input } from "../primitives/Field";
+import { Input } from "../primitives/Field";
 import { Glyph } from "../primitives/Glyph";
 import { SkeletonRows } from "../primitives/InfoList";
+import { MenuButton } from "../primitives/MenuButton";
+import { Segmented } from "../primitives/Segmented";
 import { Spinner } from "../primitives/Status";
-import { ChecksMark, Counts, Notice } from "./parts";
+import { BranchList } from "./BranchList";
+import { ChecksMark, Counts, Notice, ROW } from "./parts";
+import { usePullList } from "./usePullList";
 
-type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; list: PullRequestList; open: ReviewSummary[] };
+type View = "pulls" | "branches";
+const VIEWS: readonly { id: View; label: string }[] = [
+  { id: "pulls", label: "Pull requests" },
+  { id: "branches", label: "Local branches" },
+];
+
+type Folders = readonly { id: string; label: string; path: string }[];
 
 /**
- * Pick (RV2 §1): the pull requests of the project's repository, those asking for your review first, with three other ways
- * in: a pasted address or a number, and a local branch (which needs no code host). One click or Enter opens.
+ * Pick (decisions 77 and 78): every open pull request of the project's repository, newest activity first, with the filter
+ * tabs and one search field that also takes a pasted address or a number. The last list paints at once; the refresh
+ * happens behind it. One click, or Enter on the first result, opens the review.
  */
-export function PullList(props: { api: ReviewApi; folders: readonly { id: string; label: string; path: string }[]; onOpen(reviewId: string): void }) {
-  const { api } = props;
+export function PullList(props: { api: ReviewApi; folders: Folders; onOpen(reviewId: string): void }) {
   const [folder, setFolder] = useState(props.folders[0]?.label ?? "");
-  const [done, setDone] = useState<{ req: string; load: Load } | null>(null);
-  const [key, setKey] = useState(0);
-  const req = `${folder}:${key}`;
-  const load: Load = done?.req === req ? done.load : { status: "loading" };
+  // The repository choice belongs to a folder: undefined is the harness's default for it.
+  const [repo, setRepo] = useState<string | undefined>(undefined);
+  return (
+    <Picker
+      key={`${folder}|${repo ?? ""}`}
+      {...props}
+      folder={folder}
+      repo={repo}
+      onFolder={(f) => {
+        setRepo(undefined);
+        setFolder(f);
+      }}
+      onRepo={setRepo}
+    />
+  );
+}
+
+/** A refusal that names the folder's repositories: the message and one button per repository (rule 7 of the forks decision). */
+type Refusal = { text: string; code: string; choices: { key: string; label: string; detail: string }[]; id: string; input: OpenReviewInput };
+
+function Picker(props: {
+  api: ReviewApi;
+  folders: Folders;
+  folder: string;
+  repo: string | undefined;
+  onFolder(label: string): void;
+  onRepo(repo: string): void;
+  onOpen(reviewId: string): void;
+}) {
+  const { api, folder } = props;
+  const { state, updating, reload } = usePullList(api, folder, props.repo);
+  const [filter, setFilter] = useState<PullRequestFilter>("all");
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<View>("pulls");
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const [now] = useState(() => Date.now());
   const list = useRef<HTMLDivElement>(null);
   useRowKeys(list);
 
-  useEffect(() => {
-    let alive = true;
-    // The open reviews are an extra: when they fail the pull requests still list, so only the main call reports an error.
-    const open = api.listOpen().catch((): ReviewSummary[] => []);
-    api.listPullRequests(folder || undefined).then(
-      async (l) => {
-        const o = await open;
-        if (alive) setDone({ req, load: { status: "ready", list: l, open: o } });
-      },
-      (e: unknown) => alive && setDone({ req, load: { status: "error", message: errorMessage(e) } }),
-    );
-    return () => {
-      alive = false;
-    };
-  }, [api, folder, req]);
-
+  const ready = state.list;
   const run = async (id: string, input: OpenReviewInput) => {
     setOpening(id);
     setError(null);
+    setRefusal(null);
     try {
       const r = await api.open({ ...(folder ? { folder } : {}), ...input });
       props.onOpen(r.id);
     } catch (e) {
-      setError(`Could not open it: ${errorMessage(e)}.`);
+      const choices = refusalRepoChoices(e as { code?: string; repos?: never });
+      const text = errorMessage(e).replace(/\.$/, "");
+      if (choices.length > 0) setRefusal({ text, code: (e as { code: string }).code, choices, id, input });
+      else setError(`Could not open it: ${text}. Check the address, or try again.`);
       setOpening(null);
     }
   };
+  const openRow = (r: PullRequestRow) => void run(`pr${r.number}`, { source: "github", pr: r.number, ...(r.repo ? { repo: r.repo } : {}) });
+  const choose = (key: string) => {
+    if (!refusal) return;
+    // ambiguous_pr: the number is in several repositories, open it in the chosen one. Otherwise list that repository.
+    if (refusal.code === "ambiguous_pr") void run(refusal.id, { ...refusal.input, repo: key });
+    else {
+      setRefusal(null);
+      props.onRepo(key);
+    }
+  };
+  const menu = ready ? repoMenu(ready) : null;
 
-  const ready = load.status === "ready" ? load : null;
-  const available = ready?.list.available === true;
-  const rows = ready ? orderRows(ready.list.prs) : [];
-  const requested = rows.filter((r) => r.review_requested);
-  const others = rows.filter((r) => !r.review_requested);
+  const available = ready?.available === true;
+  const rows = useMemo(() => (ready?.available ? ready.prs : []), [ready]);
+  const counts = useMemo(() => filterCounts(rows), [rows]);
+  const shown = useMemo(() => visibleRows(rows, filter, query), [rows, filter, query]);
+  const typed = parsePullInput(query);
+  const inRows = new Set(rows.map((r) => r.review?.id).filter((x): x is string => x !== undefined));
+  const resume = state.open.filter((r) => !inRows.has(r.id));
+
+  const submitSearch = () => {
+    if (typed) void run("address", { source: "github", ...(typed.kind === "number" ? { pr: typed.pr } : { url: typed.url }) });
+    else if (shown[0]) openRow(shown[0]);
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-home flex-col gap-5 px-4 py-6 max-sm:py-4">
-        <header className="flex min-h-8 items-center gap-3">
-          <h1 className="min-w-0 shrink truncate text-title text-fg">Review a pull request</h1>
-          {ready?.list.repo && <span className="min-w-0 truncate font-mono text-xs text-fg-3 max-sm:hidden">{ready.list.repo}</span>}
-          <span className="ml-auto flex items-center gap-2">
-            {props.folders.length > 1 && (
-              <select
-                aria-label="Repository folder"
-                value={folder}
-                onChange={(e) => setFolder(e.target.value)}
-                className="h-8 rounded-md border border-input-border bg-panel px-2 text-sm text-fg focus:border-fg focus:outline-none max-sm:text-input-touch"
-              >
-                {props.folders.map((f) => (
-                  <option key={f.id} value={f.label}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            )}
-            <IconButton
-              icon={RefreshCw}
-              label="Reload the list"
-              onClick={() => setKey((k) => k + 1)}
-              disabled={load.status === "loading"}
-              className="max-md:size-10"
+      <div className="@container mx-auto flex w-full max-w-home flex-col gap-4 px-4 py-6 max-sm:py-4">
+        <header className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="shrink-0 text-title whitespace-nowrap text-fg">Pull requests</h1>
+          {menu?.show ? (
+            <MenuButton
+              label="Repository"
+              text={menu.current}
+              className="min-w-0 font-mono text-xs"
+              items={menu.items.map((i) => ({
+                id: i.key,
+                label: i.label,
+                ...(i.detail ? { detail: i.detail } : {}),
+                checked: i.selected,
+                run: () => props.onRepo(i.key),
+              }))}
             />
+          ) : (
+            ready?.repo && <span className="min-w-0 truncate font-mono text-xs text-fg-3 @max-md:hidden">{ready.repo}</span>
+          )}
+          <span className="ml-auto flex shrink-0 items-center gap-2">
+            {props.folders.length > 1 && (
+              <MenuButton
+                label="Repository folder"
+                text={folder}
+                alignEnd
+                items={props.folders.map((f) => ({ id: f.id, label: f.label, checked: f.label === folder, run: () => props.onFolder(f.label) }))}
+              />
+            )}
+            <span role="status" className="flex items-center gap-1.5 text-xs whitespace-nowrap text-fg-3 @max-md:[&_span:last-child]:hidden">
+              {updating ? (
+                <>
+                  <Spinner /> Updating
+                </>
+              ) : ready ? (
+                freshness(ready, now)
+              ) : null}
+            </span>
+            <IconButton icon={RefreshCw} label="Ask the code host now" onClick={reload} disabled={updating} className="max-md:size-10" />
           </span>
         </header>
 
-        {ready && available && <ByAddress busy={opening === "address"} onOpen={(input) => run("address", input)} />}
+        <ViewTabs value={view} onChange={setView} />
+
+        {view === "branches" && <BranchList api={api} folder={folder} opening={opening} onOpen={(id, input) => void run(id, input)} />}
+
+        {view === "pulls" && (available || state.loading) && (
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <Glyph icon={Search} size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg-3" />
+              <Input
+                aria-label="Search pull requests, or paste an address or a number"
+                placeholder="Search, or paste a pull request address or number"
+                value={query}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submitSearch()}
+                className="pl-9 max-sm:h-10 max-sm:text-input-touch"
+              />
+            </div>
+            <div className="overflow-x-auto">
+              <Segmented<PullRequestFilter>
+                label="Show"
+                value={filter}
+                onChange={setFilter}
+                options={PULL_FILTERS.map((f) => ({ id: f.id, label: ready ? `${f.label} ${counts[f.id]}` : f.label }))}
+              />
+            </div>
+          </div>
+        )}
         {error && (
           <p role="alert" className="text-sm text-err">
             {error}
           </p>
         )}
+        {refusal && (
+          <div role="alert" className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3">
+            <p className="text-sm text-err">{refusal.text}.</p>
+            <p className="text-xs text-fg-3">
+              {refusal.code === "ambiguous_pr" ? "Which repository is it in?" : "Pick the repository to list or open it from:"}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {refusal.choices.map((c) => (
+                <Button key={c.key} size="sm" variant="secondary" onClick={() => choose(c.key)}>
+                  <span className="font-mono">{c.label}</span>
+                  <span className="text-fg-3">{c.detail}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
 
-        {load.status === "loading" && <SkeletonRows count={5} widths={[70, 52, 64, 44, 58]} />}
-        {load.status === "error" && (
+        {view === "pulls" && state.loading && <SkeletonRows count={7} widths={[70, 52, 64, 44, 58, 66, 48]} />}
+        {view === "pulls" && state.error && !ready && (
           <Notice
             tone="err"
             title="The pull requests did not load"
             actions={
-              <Button size="sm" variant="secondary" onClick={() => setKey((k) => k + 1)}>
+              <Button size="sm" variant="secondary" onClick={reload}>
                 Try again
               </Button>
             }
           >
-            {load.message}. You can still review a local branch below.
+            {state.error}. You can still review a local branch: pick Local branches above.
           </Notice>
         )}
-        {ready && !available && (
+        {view === "pulls" && ready && !available && (
           <section aria-label="Pull requests are not available" className="flex flex-col gap-3 rounded-md border border-line bg-raised p-4">
-            <h2 className="text-heading text-fg">{unavailableTitle(ready.list.reason)}</h2>
-            <p className="text-sm text-fg-2">{ready.list.message ?? "Pull requests cannot be listed for this project."}</p>
-            {ready.list.command && <CommandLine command={ready.list.command} />}
-            <p className="text-xs text-fg-3">Reviewing a local branch below needs no code host.</p>
+            <h2 className="text-heading text-fg">{unavailableTitle(ready.reason)}</h2>
+            <p className="text-sm text-fg-2">{ready.message ?? "Pull requests cannot be listed for this project."}</p>
+            {ready.command && (
+              <>
+                <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
+                <CommandLine command={ready.command} />
+              </>
+            )}
+            <div>
+              <Button size="sm" variant="secondary" onClick={reload}>
+                I ran it: reload
+              </Button>
+            </div>
           </section>
         )}
 
-        {ready && ready.open.length > 0 && (
-          <Section title="Reviews in progress">
-            {ready.open.map((r) => (
-              <OpenRow key={r.id} r={r} busy={opening === r.id} onOpen={() => props.onOpen(r.id)} />
-            ))}
-          </Section>
+        {view === "pulls" && (
+          <div ref={list} className="flex flex-col gap-4">
+            {typed && available && (
+              <button type="button" data-row disabled={opening === "address"} onClick={submitSearch} className={cn(ROW, "items-center")}>
+                {opening === "address" ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}
+                <span className="text-sm text-fg">{typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"}</span>
+                <span className="ml-auto text-xs text-fg-3">Enter</span>
+              </button>
+            )}
+            {resume.length > 0 && (
+              <section className="flex flex-col gap-1">
+                <h2 className="px-3 text-xs font-medium text-fg-3">Reviews in progress</h2>
+                {resume.map((r) => (
+                  <OpenRow key={r.id} r={r} now={now} onOpen={() => props.onOpen(r.id)} />
+                ))}
+              </section>
+            )}
+            {available && shown.length > 0 && (
+              <div className="flex flex-col">
+                {shown.map((r) => (
+                  <PullRow
+                    key={`${r.repo ?? ""}#${r.number}`}
+                    r={r}
+                    showRepo={menu?.rowsShowRepo === true}
+                    now={now}
+                    busy={opening === `pr${r.number}`}
+                    onOpen={() => openRow(r)}
+                  />
+                ))}
+              </div>
+            )}
+            {available && shown.length === 0 && !typed && (
+              <Notice title={rows.length === 0 ? "No open pull requests" : "Nothing matches"}>
+                {rows.length === 0
+                  ? `There is nothing open on ${ready.repo ?? "this repository"} right now. Paste an address or type a number above to review a closed one.`
+                  : query.trim()
+                    ? "Try fewer words, or pick All."
+                    : "No pull request is in this tab. Pick All to see every open one."}
+              </Notice>
+            )}
+            {ready?.truncated && (
+              <p className="px-3 text-xs text-fg-3">This repository has more open pull requests than are listed. Search by number to find the rest.</p>
+            )}
+          </div>
         )}
-        <div ref={list} className="flex flex-col gap-5">
-          {requested.length > 0 && (
-            <Section title="Asking for your review">
-              {requested.map((r) => (
-                <PullRow key={r.number} r={r} busy={opening === `pr${r.number}`} onOpen={() => void run(`pr${r.number}`, { source: "github", pr: r.number })} />
-              ))}
-            </Section>
-          )}
-          {others.length > 0 && (
-            <Section title={requested.length > 0 ? "Other open pull requests" : "Open pull requests"}>
-              {others.map((r) => (
-                <PullRow key={r.number} r={r} busy={opening === `pr${r.number}`} onOpen={() => void run(`pr${r.number}`, { source: "github", pr: r.number })} />
-              ))}
-            </Section>
-          )}
-          {ready && available && rows.length === 0 && (
-            <Notice title="No open pull requests">
-              There is nothing open on {ready.list.repo ?? "this repository"} right now. Paste an address or type a number above to review a closed one.
-            </Notice>
-          )}
-        </div>
-
-        <LocalBranch api={api} folders={props.folders} folder={folder} busy={opening === "local"} onOpen={(input) => run("local", input)} />
       </div>
     </div>
   );
 }
 
-function Section(props: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col gap-1">
-      <h2 className="px-3 text-xs font-medium text-fg-3">{props.title}</h2>
-      <div className="flex flex-col">{props.children}</div>
-    </section>
-  );
+/** The few words that matter on a row, most important first; "new since your review" is the only one that is not dim. */
+function badges(r: PullRequestRow): { text: string; tone: "warn" | "link" | "dim" }[] {
+  const out: { text: string; tone: "warn" | "link" | "dim" }[] = [];
+  if (newSinceMyReview(r)) out.push({ text: "New since your review", tone: "warn" });
+  else if (r.review_requested) out.push({ text: "Review requested", tone: "link" });
+  else if (r.reviewed_by_me) out.push({ text: "Reviewed by you", tone: "dim" });
+  if (r.draft) out.push({ text: "Draft", tone: "dim" });
+  if (r.review && r.review.pending_comments > 0) out.push({ text: `${r.review.pending_comments} pending`, tone: "dim" });
+  return out;
 }
 
-const ROW = "flex w-full items-start gap-3 rounded-md px-3 py-2 text-left press-row focus-inset hover:bg-hover disabled:opacity-60";
-
-function PullRow({ r, busy, onOpen }: { r: PullRequestRow; busy: boolean; onOpen(): void }) {
-  const status = rowStatus(r);
-  const [now] = useState(() => Date.now());
+function PullRow({ r, now, busy, showRepo, onOpen }: { r: PullRequestRow; now: number; busy: boolean; showRepo: boolean; onOpen(): void }) {
   return (
     <button type="button" data-row className={ROW} disabled={busy} aria-busy={busy} onClick={onOpen}>
       <span className="mt-0.5">{busy ? <Spinner /> : <ChecksMark state={r.checks} />}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex flex-wrap items-baseline gap-x-2">
-          <span className="min-w-0 truncate text-sm text-fg">{r.title}</span>
-          {status.map((s) => (
-            <span key={s} className={cn("shrink-0 text-xs", s.startsWith("New commits") ? "text-warn" : s === "Review requested" ? "text-link" : "text-fg-3")}>
-              {s}
+        <span className="truncate text-sm text-fg">{r.title}</span>
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-fg-3">
+          {badges(r).map((b) => (
+            <span key={b.text} className={cn(b.tone === "warn" ? "text-warn" : b.tone === "link" ? "text-link" : "text-fg-3")}>
+              {b.text}
             </span>
           ))}
-        </span>
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-fg-3">
+          {showRepo && r.repo && <span className="font-mono">{r.repo}</span>}
           <span>
-            #{r.number} by {r.author}
+            #{r.number} by {r.mine ? "you" : r.author}
           </span>
           <span>{plural(r.changed_files, "file")}</span>
           <Counts added={r.additions} removed={r.deletions} />
+          {(r.comments ?? 0) > 0 && <span>{plural(r.comments ?? 0, "comment")}</span>}
           <span>{timeAgo(r.updated_at, now)}</span>
         </span>
       </span>
@@ -202,10 +330,9 @@ function PullRow({ r, busy, onOpen }: { r: PullRequestRow; busy: boolean; onOpen
   );
 }
 
-function OpenRow({ r, busy, onOpen }: { r: ReviewSummary; busy: boolean; onOpen(): void }) {
-  const [now] = useState(() => Date.now());
+function OpenRow({ r, now, onOpen }: { r: ReviewSummary; now: number; onOpen(): void }) {
   return (
-    <button type="button" className={ROW} disabled={busy} onClick={onOpen}>
+    <button type="button" className={ROW} onClick={onOpen}>
       <span className="mt-0.5 text-fg-3">
         <Glyph icon={GitBranch} size={14} />
       </span>
@@ -221,106 +348,27 @@ function OpenRow({ r, busy, onOpen }: { r: ReviewSummary; busy: boolean; onOpen(
   );
 }
 
-function ByAddress(props: { busy: boolean; onOpen(input: OpenReviewInput): void }) {
-  const [text, setText] = useState("");
-  const parsed = parsePullInput(text);
-  const submit = (e: SyntheticEvent) => {
-    e.preventDefault();
-    if (!parsed) return;
-    props.onOpen({ source: "github", ...(parsed.kind === "number" ? { pr: parsed.pr } : { url: parsed.url }) });
-  };
+/**
+ * The picker's views (decision 84), as a tab row with one hairline under the whole row. Built here because the shared
+ * `ViewTabs` primitive does not exist in this base; the coordinator unifies them.
+ */
+function ViewTabs({ value, onChange }: { value: View; onChange(v: View): void }) {
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-      <Field label="Open by address or number" htmlFor="review-address" className="min-w-60 flex-1">
-        <Input
-          id="review-address"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Paste a pull request URL, or type 123"
-          spellCheck={false}
-          autoComplete="off"
-          className="max-sm:h-10 max-sm:text-input-touch"
-        />
-      </Field>
-      <Button type="submit" variant="primary" disabled={!parsed || props.busy} className="max-sm:h-10">
-        {props.busy && <Spinner />}
-        Open
-      </Button>
-    </form>
-  );
-}
-
-function LocalBranch(props: {
-  api: ReviewApi;
-  folders: readonly { label: string; path: string }[];
-  folder: string;
-  busy: boolean;
-  onOpen(input: OpenReviewInput): void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [base, setBase] = useState("main");
-  const [head, setHead] = useState("HEAD");
-  const path = props.folders.find((f) => f.label === props.folder)?.path;
-  const { api } = props;
-
-  // The current branch is the default head; recent folders carry it. Without it the head stays HEAD, which means the same.
-  useEffect(() => {
-    if (!open || !path) return;
-    let alive = true;
-    api.recentFolders().then(
-      (list) => {
-        const b = list.find((f) => f.path === path)?.git?.branch;
-        if (alive && b) setHead(b);
-      },
-      () => undefined,
-    );
-    return () => {
-      alive = false;
-    };
-  }, [api, open, path]);
-
-  const ok = base.trim() !== "" && head.trim() !== "";
-  const submit = (e: SyntheticEvent) => {
-    e.preventDefault();
-    if (ok) props.onOpen({ source: "local", base: base.trim(), head: head.trim() });
-  };
-  return (
-    <section aria-label="Review a local branch" className="flex flex-col gap-2 border-t border-line pt-4">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-7 w-fit press items-center gap-2 rounded-sm px-2 text-sm text-fg hover:bg-hover max-md:h-10"
-      >
-        <Glyph icon={GitBranch} size={14} />
-        Review a local branch
-      </button>
-      {open && (
-        <form onSubmit={submit} className="flex flex-wrap items-end gap-2 px-2">
-          <Field label="Base" htmlFor="review-base" className="min-w-36 flex-1">
-            <Input
-              id="review-base"
-              value={base}
-              onChange={(e) => setBase(e.target.value)}
-              spellCheck={false}
-              className="font-mono max-sm:h-10 max-sm:text-input-touch"
-            />
-          </Field>
-          <Field label="Head" htmlFor="review-head" hint="The current branch by default" className="min-w-36 flex-1">
-            <Input
-              id="review-head"
-              value={head}
-              onChange={(e) => setHead(e.target.value)}
-              spellCheck={false}
-              className="font-mono max-sm:h-10 max-sm:text-input-touch"
-            />
-          </Field>
-          <Button type="submit" variant="primary" disabled={!ok || props.busy} className="mb-5 max-sm:h-10">
-            {props.busy && <Spinner />}
-            Review
-          </Button>
-        </form>
-      )}
-    </section>
+    <div role="tablist" aria-label="What to review" className="relative flex items-end gap-1">
+      <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-line" />
+      {VIEWS.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          role="tab"
+          aria-selected={value === v.id}
+          onClick={() => onChange(v.id)}
+          className={cn("relative h-8 press px-3 text-sm focus-inset max-md:h-10", value === v.id ? "text-fg" : "text-fg-3 hover:text-fg-2")}
+        >
+          {v.label}
+          {value === v.id && <span aria-hidden className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-fg" />}
+        </button>
+      ))}
+    </div>
   );
 }

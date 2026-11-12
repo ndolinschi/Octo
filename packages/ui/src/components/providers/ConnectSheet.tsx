@@ -9,7 +9,7 @@ import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Dialog } from "../primitives/Dialog";
 import { Spinner } from "../primitives/Status";
-import { SecretForm } from "./SecretForm";
+import { SecretForm } from "../shared/SecretForm";
 
 /** The router's upstream key has its own target (Settings → Providers → API keys). */
 export const ROUTER_UPSTREAM = "router-upstream";

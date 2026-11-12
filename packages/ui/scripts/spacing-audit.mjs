@@ -8,7 +8,7 @@
  *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--only <state>] [--json <path>]
  *                                              [--strict] [--selftest] [--query "demo=1"] [--list] [--help]
  *
- * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds (see RULES below).
+ * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds, field-row (see RULES below).
  * States that cannot be reached are reported as `skipped` with a reason, never as a crash.
  */
 import { createRequire } from "node:module";
@@ -35,7 +35,7 @@ const SCALE = [2, 4, 6, 8, 12, 16, 20, 24, 32, 40];
 const ROW_HEIGHTS = [24, 28, 32, 36, 40];
 const TOL = 0.5;
 const ICON_GAP_MIN = 6;
-const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds"];
+const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds", "field-row"];
 
 // ---------------------------------------------------------------------------------------------------------------
 // CLI
@@ -394,16 +394,70 @@ const STATES = [
       await settle(page, 400);
     },
   },
+  // Decision 89: Providers is a list and a detail. The owner's live set; three checks beyond the general rules.
   {
-    id: "connect-sheet",
-    viewports: WIDE,
+    id: "providers",
+    viewports: [...WIDE, { width: 390, height: 800 }],
     async run(page) {
-      await page.evaluate(() => (window.location.hash = "#/settings/providers"));
+      await page.goto(`${BASE}/?demo=1&providers=owner#/settings/providers`, { waitUntil: "domcontentloaded" });
       try {
-        await page.locator("#row-provider-copilot").getByRole("button").click({ timeout: T });
-        await page.getByRole("dialog").first().waitFor({ timeout: T });
+        await page.locator("#row-provider-claude-code").waitFor({ timeout: T });
       } catch {
-        skip("connect sheet did not open");
+        skip("providers page did not open");
+      }
+      await settle(page, 600);
+    },
+    async extra(page) {
+      return page.evaluate(() => {
+        const out = [];
+        const rows = [...document.querySelectorAll('[aria-label="Providers"] [data-row]')].filter((r) => r.getBoundingClientRect().height > 0);
+        const heights = new Set(rows.map((r) => Math.round(r.getBoundingClientRect().height * 2) / 2));
+        if (rows.length && heights.size > 1)
+          out.push({
+            rule: "row-height",
+            selector: "[aria-label=Providers] [data-row]",
+            text: "",
+            prop: "equal heights",
+            measured: [...heights].join(" "),
+            expected: "one height",
+          });
+        for (const r of rows)
+          if (r.querySelector("button, a[href]"))
+            out.push({
+              rule: "row-height",
+              selector: `#${r.id || "row"}`,
+              text: r.textContent.slice(0, 30),
+              prop: "button inside a row",
+              measured: "yes",
+              expected: "none",
+            });
+        const list = document.querySelector('[aria-label="Providers"]');
+        const detail = document.querySelector("[data-provider-detail]");
+        if (list && detail && list.getBoundingClientRect().height > 0 && detail.getBoundingClientRect().height > 0 && window.innerWidth >= 1000) {
+          const dt = detail.getBoundingClientRect().top;
+          const lt = list.getBoundingClientRect().top;
+          if (Math.abs(dt - lt) > 0.5)
+            out.push({ rule: "edges", selector: "[data-provider-detail]", text: "", prop: "top", measured: `${dt}px`, expected: `${lt}px (the list's top)` });
+        }
+        for (const f of document.querySelectorAll("[data-field-row]")) {
+          const tops = [...f.querySelectorAll("[data-field-control]")].map((c) => Math.round(c.getBoundingClientRect().top));
+          if (f.getBoundingClientRect().width > 560 && new Set(tops).size > 1)
+            out.push({ rule: "edges", selector: "[data-field-row]", text: "", prop: "control tops", measured: tops.join(" "), expected: "equal" });
+        }
+        return out;
+      });
+    },
+  },
+  {
+    id: "providers-open",
+    viewports: [WIDE[0]],
+    async run(page) {
+      await page.goto(`${BASE}/?demo=1&providers=owner#/settings/providers`, { waitUntil: "domcontentloaded" });
+      try {
+        await page.getByRole("button", { name: /more (agents|providers) can be added/ }).click({ timeout: T });
+        await page.locator("#row-provider-api").click({ timeout: T });
+      } catch {
+        skip("the folded row did not open");
       }
       await settle(page, 400);
     },
@@ -544,6 +598,61 @@ const STATES = [
         skip("right click did not open a tab menu");
       }
       await settle(page, 300);
+    },
+  },
+  {
+    // Decisions 64, 78: an open pull request on the whole dock (header, meta line, file list, diff).
+    id: "review-open",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.locator("[data-tab-plus]:visible").last().click({ timeout: T });
+      try {
+        await page.locator('[role=option][data-picker-row="tool:review"]').first().click({ timeout: T });
+        await page.locator("[data-review-tab] [data-row]").first().click({ timeout: T });
+        await page
+          .getByRole("button", { name: /Submit review/ })
+          .first()
+          .waitFor({ timeout: T });
+      } catch {
+        skip("the review did not open");
+      }
+      await settle(page, 900);
+    },
+  },
+  {
+    // Decision 84: the picker's "Local branches" view.
+    id: "review-branches",
+    viewports: [...WIDE, { width: 390, height: 844 }],
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.locator("[data-tab-plus]:visible").last().click({ timeout: T });
+      try {
+        await page.locator('[role=option][data-picker-row="tool:review"]').first().click({ timeout: T });
+        await page.getByRole("tab", { name: "Local branches" }).first().click({ timeout: T });
+        await page.locator("[data-review-tab] [data-row]").first().waitFor({ timeout: T });
+      } catch {
+        skip("the local branches view did not open");
+      }
+      await settle(page, 500);
+    },
+  },
+  {
+    // Decision 84: a dialog with fields side by side (the command form's Name and Folder).
+    id: "command-dialog",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.getByRole("button", { name: "Settings", exact: true }).first().click({ timeout: T });
+      try {
+        await page.locator("[data-settings]").waitFor({ timeout: T });
+        await page.getByRole("link", { name: "Commands" }).first().click({ timeout: T });
+        await page.getByRole("button", { name: "Add", exact: true }).first().click({ timeout: T });
+        await page.locator("[data-field-row]").first().waitFor({ timeout: T });
+      } catch {
+        skip("the command form did not open");
+      }
+      await settle(page, 400);
     },
   },
   {
@@ -951,6 +1060,26 @@ function auditInPage(cfg) {
     }
   }
 
+  // ---- 9. field-row (decision 84): the controls of one FieldRow share a top (and a height), whatever labels and hints are around them.
+  if (rules.includes("field-row")) {
+    for (const row of document.querySelectorAll("[data-field-row]")) {
+      if (!visible(row)) continue;
+      const controls = [...row.querySelectorAll("[data-field-control]")].filter(visible);
+      const first = controls[0];
+      if (!first) continue;
+      const top = first.getBoundingClientRect().top;
+      const height = first.getBoundingClientRect().height;
+      // Stacked below `sm` the controls are on different lines on purpose: only a row that is still a row is compared.
+      const sameLine = controls.every((c) => Math.abs(c.getBoundingClientRect().top - top) < height);
+      if (!sameLine) continue;
+      for (const c of controls.slice(1)) {
+        const r = c.getBoundingClientRect();
+        if (Math.abs(r.top - top) > TOL) report("field-row", c, "top of a control in a field row", `${r1(r.top)}px`, `${r1(top)}px`);
+        if (Math.abs(r.height - height) > TOL) report("field-row", c, "height of a control in a field row", `${r1(r.height)}px`, `${r1(height)}px`);
+      }
+    }
+  }
+
   return { violations: out, suppressed, measures, scanned: all.length };
 }
 
@@ -1110,6 +1239,7 @@ async function main() {
           Object.assign(merged.measures, res.measures);
           merged.scanned = Math.max(merged.scanned, res.scanned);
         }
+        if (state.extra) merged.violations.push(...(await state.extra(page)));
 
         // dedupe: same rule + selector + prop + measured value
         const byKey = new Map();

@@ -13,7 +13,8 @@ export type Group = { id: string; tabs: TabId[]; active: TabId; size: number };
 export type Layout = { groups: Group[]; focused: string };
 
 export type ToolTab = "agents" | "notes" | "files" | "details" | "usage" | "changes" | "memory" | "review" | "side";
-export type TabRef = { kind: "chat" } | { kind: "tool"; tool: ToolTab } | { kind: "agent"; agentId: string } | { kind: "file"; key: FileKey };
+export type TabRef =
+  { kind: "chat" } | { kind: "tool"; tool: ToolTab } | { kind: "agent"; agentId: string } | { kind: "file"; key: FileKey } | { kind: "run"; name: string };
 
 // The brand is applied here and nowhere else: every call site below has just validated or built the string.
 const brand = (id: string) => id as TabId;
@@ -25,6 +26,8 @@ const TOOLS: readonly ToolTab[] = ["agents", "notes", "files", "details", "usage
 export const toolTab = (tool: ToolTab): TabId => brand(tool);
 export const agentTab = (agentId: string): TabId => brand(`agent:${agentId}`);
 export const fileTab = (key: FileKey): TabId => brand(`file:${key}`);
+/** The "Run: name" tab of a project command (decision 68). */
+export const runTab = (name: string): TabId => brand(`run:${name}`);
 
 /** What a tab id refers to; null for any string that is not a tab id (stored layouts, DOM attributes). */
 export function parseTab(id: string): TabRef | null {
@@ -32,6 +35,7 @@ export function parseTab(id: string): TabRef | null {
   const tool = TOOLS.find((t) => t === id);
   if (tool) return { kind: "tool", tool };
   if (id.startsWith("agent:") && id.length > 6) return { kind: "agent", agentId: id.slice(6) };
+  if (id.startsWith("run:") && id.length > 4) return { kind: "run", name: id.slice(4) };
   const key = id.startsWith("file:") ? parseFileKey(id.slice(5)) : null;
   return key ? { kind: "file", key } : null;
 }

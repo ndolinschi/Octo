@@ -14,11 +14,11 @@ Code: `internal/review` (service), `internal/codehost` (interface and the `gh` a
 
 ## Code host: `gh`
 
-The adapter runs the `gh` found on `PATH` when a call is made, as the user the CLI is logged in as; the harness stores no token. Commands: `gh repo view`, `gh pr list` (twice: all open, and `--search review-requested:@me`), `gh pr view`, `gh pr checks`, `gh api --method POST repos/O/R/pulls/N/reviews --input -` (submit; one atomic call with the verdict, body and every inline comment). No `gh`, not logged in or no GitHub remote: `GET …/prs` answers 200 with `available: false`, a `reason` (`gh_not_installed`, `not_logged_in`, `no_github_repo`, `no_host`, `not_a_git_repo`, `no_folder`), `message` and the `command` to run; other calls answer 409 with that code. Local-branch reviews never call `gh`.
+The adapter runs the `gh` found on `PATH` when a call is made, as the user the CLI is logged in as; the harness stores no token. Every call names its repository (`--repo [HOST/]OWNER/REPO`); gh's own default-repository resolution is never used to choose one (see "Repositories of a folder"). Commands: `gh repo view <repo>` (fork and parent), `gh pr list` (twice: all open, and `--search review-requested:@me`), `gh pr view`, `gh pr checks`, `gh api --method POST repos/O/R/pulls/N/reviews --input -` (submit; one atomic call with the verdict, body and every inline comment). No `gh`, not logged in or no GitHub remote: `GET …/prs` answers 200 with `available: false`, a `reason` (`gh_not_installed`, `not_logged_in`, `no_github_repo`, `no_host`, `not_a_git_repo`, `no_folder`), `message` and the `command` to run; other calls answer 409 with that code. Local-branch reviews never call `gh`.
 
 ## Worktrees and refs
 
-A review's checkout is `{data-dir}/projects/{pid}/review/{rid}` (`git worktree add --detach`); the user's working tree, index and branch are never touched (tested: same `git status`, same branch, dirty file intact). The repository gets private refs `refs/octo/review/{rid}/head|base` (GitHub) and worktree admin files under `.git/worktrees`. The PR head is fetched as `refs/pull/N/head` from the remote whose URL names the repository (else `origin`). The diff is `merge-base(base, head)..head` (what GitHub shows). Refresh (`PATCH {refresh:true}`, or opening the same source again) re-fetches, moves the worktree and keeps viewed marks.
+A review's checkout is `{data-dir}/projects/{pid}/review/{rid}` (`git worktree add --detach`); the user's working tree, index and branch are never touched (tested: same `git status`, same branch, dirty file intact). The repository gets private refs `refs/octo/review/{rid}/head|base` (GitHub) and worktree admin files under `.git/worktrees`. The PR head is fetched as `refs/pull/N/head` **by URL** from the repository the pull request belongs to (`git fetch <url> +refs/pull/N/head:...`): the URL of the remote that names it, else the URL of a remote on the same host with owner and name replaced (so a parent that is not a remote still works); no remote is assumed and none is added. A folder whose remotes name no code host keeps the old rule (the matching remote, else `origin`). The diff is `merge-base(base, head)..head` (what GitHub shows). Refresh (`PATCH {refresh:true}`, or opening the same source again) re-fetches, moves the worktree and keeps viewed marks.
 
 **Cleanup.** The worktree and refs of a review are removed when it is closed (the PR left the open list and `gh pr view` says closed or merged, or `PATCH {state:"closed"}`) and when it was unused for 14 days (`last_used_at`, touched by reads and writes of the review), **never while it has pending comments**. Sweeps run at start, every 6 hours, on closing, and after listing PRs. A closed review reopened with `PATCH {state:"open"}` gets its worktree back.
 
@@ -32,7 +32,8 @@ All under `/v1/projects/{pid}`. Errors: `{ "error": { "code", "message", "comman
 
 | Method | Path | Body / query → response |
 | --- | --- | --- |
-| GET | `/prs?folder=&filter=all\|review_requested\|mine\|drafts&q=&page=&per_page=&refresh=1` | `PullRequestList` (see "All open pull requests") |
+| GET | `/prs?folder=&repo=&filter=all\|review_requested\|mine\|drafts&q=&page=&per_page=&refresh=1` | `PullRequestList` (see "All open pull requests", "Repositories of a folder") |
+| GET | `/review/branches?folder=&base=` | `BranchList` (see "Local branches") |
 | GET | `/reviews?state=open\|closed` | `{ reviews: ReviewSummary[] }`, most recently used first |
 | POST | `/reviews` | `OpenReviewInput` → `Review`; 201 new, 200 when the same source is already open (refreshed) |
 | GET | `/reviews/{rid}` | `Review` |
@@ -65,6 +66,18 @@ Each row gains `comments` (conversation comments plus reviews with a text; threa
 
 **Cache.** The list of a folder is cached in memory for 60 s. A call inside that time answers from the cache (`stale: false`, `fetched_at` = the earlier fetch) without calling `gh`. An older cache is still answered at once, with `stale: true`, and one background refresh starts; when it is in the harness emits `review.list_updated {folder}` and the next call answers fresh. `?refresh=1` fetches synchronously. The first call (no cache) fetches synchronously. Filtering, search and paging run on the cached list; the `review` link of each row is always read from the store (a review opened a second ago shows). Reviews of pull requests that left the open list are closed by each fetch, as before.
 
+### Repositories of a folder (forks)
+
+A working copy has remotes, not "the" repository. The **repositories of a folder** are every git remote that points at a code host (`origin`, `upstream`, any other; read as configured, de-duplicated by host + owner/name), plus, for a remote the host says is a fork (`gh repo view <repo> --json parent,isFork`, one call per remote, cached 30 min, a failure is ignored), its parent (`role: "parent"`, no remote). A folder whose remotes name no code host (an ssh alias) has one repository: gh's own answer for the folder, `role: "origin"`.
+
+`GET /prs` returns `repos: RepoRef[]` and `repo`, the repository listed (`owner/name`, or `all`). Query `repo=owner/name` (or `host/owner/name`) lists that repository, `repo=all` merges every repository's list (each row has its `repo`, sorted by `updated_at`; a repository that cannot be read lands in `repo_errors: [{repo, message}]` while the others still answer). No `repo`: the person's last explicit choice for the folder (stored in the project settings under `review.repo`, `{folder: "owner/name"|"all"}`, no migration), else the **default**: the remote the current branch tracks (`branch.<b>.remote`), else `origin`, else the first. An unknown `repo` is `400 invalid_repo`. Every list row carries `repo`; the cache is per folder and repository.
+
+**Opening.** `POST /reviews` with `url`: accepted when its repository is one of the folder's repositories, or a fork of one (the host says its parent is one of them; same host), else `400 repo_mismatch` whose message and `error.repos` name the folder's repositories (a URL on another host: "...is on H, the folder's repositories are on ..."). With `pr` (a number): optional `repo` says where it lives (400 `invalid_repo` if it is none of the folder's); without it the number is looked up in every repository (the selected one first): one match opens, none is the host's error, several are `409 ambiguous_pr` with `error.repos` listing the matching repositories (retry with `repo`). **Submit** posts to the pull request's own repository (`repos/<owner>/<name>/pulls/N/reviews` with `--hostname`).
+
+### Local branches
+
+`GET /review/branches?folder=&base=` reads the folder with git only (no network, no `gh`) and answers `{ folder, base, default_base, branches: [{ name, current, ahead, behind, commit: { sha, subject, author: "", date } }], truncated? }`. `default_base` is the default branch of the default remote (`refs/remotes/<remote>/HEAD`, the remote chosen as above), else `main`, else `master`, else `""`. `base` defaults to it (`400 invalid_request` when neither exists); an unknown base is `400 unknown_ref`, a malformed one `400 invalid_ref`. `ahead`/`behind` count commits of the branch not in `base` / of `base` not in the branch, against the remote-tracking ref of `base` when it exists (`refs/remotes/<remote>/<base>`), else the local one. Order: the current branch first, then newest last commit first; at most 200 branches (`truncated: true` beyond that). `commit.date` is ISO 8601.
+
 ### Existing review threads (RV1.5)
 
 `GET …/reviews/{rid}/threads` returns the review threads the code host already has on the pull request: `{ threads: [{ id, path, side: "new"|"old", line?, start_line?, original_line?, resolved, outdated, comments: [{ id, author, body, created_at, url?, commit?, in_reply_to?, line?, original_line? }] }], counts_by_path: { path: comments }, unresolved_by_path: { path: unresolved threads }, fetched_at?, error? }`. A thread's `id` is the host's thread id; its comments are in order, the first is the root and a later one has `in_reply_to` = the root's numeric `id`. `line` is the last line (`start_line` the first of a range, `side: "old"` the removed side); an **outdated** thread (`outdated: true`, the code moved) has no current line on the host, so `line` is its `original_line`: list it apart, not in the diff. The data comes from one read-only GraphQL query (`gh api graphql`, `reviewThreads(first:50)` paged up to 10 pages, 100 comments per thread; the test asserts it contains no mutation), which gives the grouping, the resolved state and the positions in one call; REST review comments carry no resolved state.
@@ -94,9 +107,10 @@ Answer: `{ mode: "working_copy", folder, branch, previous_branch?, commit, creat
 ### Shapes
 
 ```text
-PullRequestList  { host, hostname?, repo?, folder?, available, reason?, message?, command?, filter, page, per_page, total,
+RepoRef          { host: "github", hostname?, repo: "owner/name", remote?, role: "origin"|"upstream"|"parent"|"other", default }
+PullRequestList  { host, hostname?, repo? ("owner/name"|"all"), repos: RepoRef[], repo_errors?: [{repo,message}], folder?, available, reason?, message?, command?, filter, page, per_page, total,
                    next_page: number|null, stale, fetched_at?, truncated?, prs: PullRequestRow[] }
-PullRequestRow   { number, title, author, draft, url, head_ref, base_ref, head_sha, additions, deletions, changed_files,
+PullRequestRow   { repo, number, title, author, draft, url, head_ref, base_ref, head_sha, additions, deletions, changed_files,
                    created_at, updated_at, checks: "success"|"failure"|"pending"|"none", review_requested, review_decision?, labels?,
                    comments, mine, reviewed_by_me, new_since_my_review,
                    review: null | { id, head_commit, last_submitted_head?, new_commits, new_since_submitted, pending_comments } }
@@ -108,7 +122,7 @@ Review           { id, source ("github:o/r#n" | "local:base..head"), kind: "gith
                            commits: [{sha,subject,author,date}], conversation?: [{kind:"comment"|"review",author,body,state?,created_at?}],
                            body_truncated?, refreshed_at? },
                    totals: { files, added, removed, mechanical }, findings, viewed_count, large_pr }
-OpenReviewInput  { folder?, source?: "github"|"local", pr?, url?, base?, head? }   // local: head defaults to HEAD
+OpenReviewInput  { folder?, source?: "github"|"local", pr?, repo?, url?, base?, head? }   // local: head defaults to HEAD
 ReviewFiles      { base_commit, head_commit, files: ReviewFile[], totals, viewed_count, large_pr, last_submitted_head? }
 ReviewFile       { path, old_path?, status: added|modified|deleted|renamed|copied|typechange, added, removed, binary, image?, old_size, new_size
                    (-1 = absent), blob?, old_blob?, similarity?, group: core|callers|tests|other|mechanical, reason, order, folded, large?,
@@ -130,7 +144,7 @@ Comment rules: the path must be a changed file; a line comment's line (and `star
 
 Submit: needs a valid verdict; refuses 400 `empty_review` when there is nothing to post and the verdict is not `approve`; with `comment_ids`, 409 `comments_changed` unless they equal the pending set. A failed post (409 `not_logged_in`, 502 `code_host_error`) leaves every comment pending. Success marks the comments submitted and records `last_submitted_head`; later `changed_since_submitted` flags files that differ from that head, and `?since=<last_submitted_head>` diffs only what changed. A **local** review has no host: submit posts nothing (`posted: false`) and marks the comments submitted, returning them so the UI can hand them to the orchestrator.
 
-Errors beyond the common ones: `repo_mismatch`, `invalid_url`, `unknown_ref`, `pr_not_open`, `fetch_failed`, `worktree_failed`, `git_error`, `unknown_thread`, `thread_missing`, `path_not_in_diff`, `invalid_side`, `empty_comment`, `comment_too_large`, `review_closed`, `invalid_verdict`.
+Errors beyond the common ones: `repo_mismatch` / `invalid_repo` / `ambiguous_pr` (these carry `error.repos: RepoRef[]`), `invalid_url`, `unknown_ref`, `pr_not_open`, `fetch_failed`, `worktree_failed`, `git_error`, `unknown_thread`, `thread_missing`, `path_not_in_diff`, `invalid_side`, `empty_comment`, `comment_too_large`, `review_closed`, `invalid_verdict`.
 
 ## Storage
 
@@ -138,4 +152,4 @@ Schema version 8 (`migrate_v8_review_workflow.go`) adds `review_threads` (the st
 
 ## Not verified here
 
-`gh` against real GitHub (the adapter is tested against a fake `gh` script only; the JSON field names follow `gh`'s documented `--json` fields), fork pull requests, very large pull requests, finding quality (no AI pass yet), Windows.
+`gh` against real GitHub (the adapter is tested against a fake `gh` script only; the JSON field names follow `gh`'s documented `--json` fields), forks on the real GitHub Enterprise host (the fake `gh` models `repo view` with `isFork`/`parent` per the documented fields), very large pull requests, finding quality (no AI pass yet), Windows.

@@ -25,6 +25,9 @@ type OpenRequest struct {
 	// PR is a pull-request number, URL a pull-request address (github).
 	PR  int    `json:"pr,omitempty"`
 	URL string `json:"url,omitempty"`
+	// Repo ("owner/name", one of the folder's repositories) says where a bare PR number lives;
+	// without it the number is looked up in every repository of the folder.
+	Repo string `json:"repo,omitempty"`
 	// Base and Head are refs of the folder's repository (local).
 	Base string `json:"base,omitempty"`
 	Head string `json:"head,omitempty"`
@@ -192,23 +195,36 @@ func (s *Service) openGitHub(ctx context.Context, db *projectstore.DB, pid, labe
 	if number <= 0 {
 		return View{}, false, invalid("invalid_request", "pr (a number) or url is required")
 	}
-	repo, err := s.host.Repo(ctx, dir)
+	ents, err := s.folderRepos(ctx, dir, false)
 	if err != nil {
 		return View{}, false, hostErr(err)
 	}
-	if urlOwner != "" && (!strings.EqualFold(urlOwner, repo.Owner) || !strings.EqualFold(urlName, repo.Name)) {
-		return View{}, false, invalid("repo_mismatch", "that pull request belongs to %s/%s, the folder's repository is %s", urlOwner, urlName, repo)
+	var repo codehost.Repo
+	var found *codehost.PRDetail
+	switch {
+	case urlOwner != "":
+		repo, err = s.repoForURL(ctx, dir, ents, urlHost, urlOwner, urlName)
+	case req.Repo != "":
+		i, ok := findRepo(ents, req.Repo)
+		if !ok {
+			return View{}, false, withRepos(invalid("invalid_repo", "the folder's repositories are %s; %q is none of them", repoNames(ents), req.Repo), ents)
+		}
+		repo = ents[i].repo
+	default:
+		repo, found, err = s.repoForNumber(ctx, db, dir, label, ents, number)
 	}
-	if urlHost != "" && repo.Host != "" && !strings.EqualFold(urlHost, repo.Host) {
-		return View{}, false, invalid("repo_mismatch", "that pull request is on %s, the folder's repository is on %s", urlHost, repo.Host)
+	if err != nil {
+		return View{}, false, err
 	}
 	source := projectstore.GitHubSource(repo.String(), number)
 	if ex, err := db.OpenReviewBySource(ctx, source); err == nil {
 		v, err := s.refresh(ctx, db, pid, ex)
 		return v, false, err
 	}
-	detail, err := s.host.View(ctx, dir, repo, number)
-	if err != nil {
+	var detail codehost.PRDetail
+	if found != nil {
+		detail = *found
+	} else if detail, err = s.host.View(ctx, dir, repo, number); err != nil {
 		return View{}, false, hostErr(err)
 	}
 	if detail.State != "" && detail.State != "open" {
@@ -238,10 +254,117 @@ func (s *Service) openGitHub(ctx context.Context, db *projectstore.DB, pid, labe
 	return v, true, err
 }
 
+// repoForURL accepts a pull request address (rule 4) when its repository is one
+// of the folder's, or a fork or parent of one on the same host; anything else
+// is a repo_mismatch that names the folder's repositories.
+func (s *Service) repoForURL(ctx context.Context, dir string, ents []repoEntry, host, owner, name string) (codehost.Repo, error) {
+	want := codehost.Repo{Owner: owner, Name: name, Host: host}
+	sameHost := false
+	for _, e := range ents {
+		if e.repo.Host == "" || host == "" || strings.EqualFold(e.repo.Host, host) {
+			sameHost = true
+			if codehost.SameRepo(e.repo, want) {
+				want.URL = e.repo.URL
+				return want, nil
+			}
+		}
+	}
+	if !sameHost {
+		hosts := map[string]bool{}
+		for _, e := range ents {
+			hosts[e.repo.Host] = true
+		}
+		var hs []string
+		for h := range hosts {
+			hs = append(hs, h)
+		}
+		sort.Strings(hs)
+		return want, withRepos(invalid("repo_mismatch", "that pull request is on %s, the folder's repositories are on %s", host, strings.Join(hs, ", ")), ents)
+	}
+	// A fork of one of the folder's repositories (or a sibling fork of the same parent).
+	if info, err := s.host.RepoInfo(ctx, dir, want); err == nil && info.Parent != nil {
+		for _, e := range ents {
+			if codehost.SameRepo(e.repo, *info.Parent) {
+				return want, nil
+			}
+		}
+	}
+	return want, withRepos(invalid("repo_mismatch", "that pull request belongs to %s/%s, which is not one of the folder's repositories (%s)", owner, name, repoNames(ents)), ents)
+}
+
+// repoForNumber finds the repository a bare pull request number belongs to: the
+// selected repository first, then the others. One match opens; several ask which.
+func (s *Service) repoForNumber(ctx context.Context, db *projectstore.DB, dir, label string, ents []repoEntry, number int) (codehost.Repo, *codehost.PRDetail, error) {
+	order := make([]repoEntry, 0, len(ents))
+	first := defaultOf(ents)
+	if c := remembered(ctx, db, label); c != "" {
+		if i, ok := findRepo(ents, c); ok {
+			first = i
+		}
+	}
+	order = append(order, ents[first])
+	for i, e := range ents {
+		if i != first {
+			order = append(order, e)
+		}
+	}
+	type hit struct {
+		e repoEntry
+		d codehost.PRDetail
+	}
+	var hits []hit
+	var firstErr error
+	for _, e := range order {
+		d, err := s.host.View(ctx, dir, e.repo, number)
+		if err != nil {
+			if _, ok := codehost.IsUnavailable(err); ok {
+				return codehost.Repo{}, nil, hostErr(err)
+			}
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		hits = append(hits, hit{e, d})
+	}
+	switch len(hits) {
+	case 0:
+		if firstErr != nil {
+			return codehost.Repo{}, nil, hostErr(firstErr)
+		}
+		return codehost.Repo{}, nil, notFound("pull request")
+	case 1:
+		return hits[0].e.repo, &hits[0].d, nil
+	}
+	var matches []repoEntry
+	for _, h := range hits {
+		matches = append(matches, h.e)
+	}
+	return codehost.Repo{}, nil, withRepos(conflict("ambiguous_pr", "pull request #%d exists in %s; say which repository", number, repoNames(matches)), matches)
+}
+
+// fetchTarget is what a fetch of the pull request refs of repo ("owner/name")
+// names: the repository's address (the remote that names it, or the address of a
+// sibling remote on the same host with owner and name replaced), so no remote is
+// assumed to exist for it and none is added. A folder whose remotes name no code
+// host keeps using the remote that matches, else origin.
+func fetchTarget(ctx context.Context, dir, repo string) string {
+	rs := codehost.Remotes(ctx, dir)
+	o, n, _ := strings.Cut(repo, "/")
+	r := codehost.Repo{Owner: o, Name: n}
+	if rm, ok := codehost.PickRemote(rs, repo); ok {
+		r.Host = rm.Host
+	}
+	if u, ok := codehost.FetchURL(rs, r); ok && !strings.HasPrefix(u, "-") {
+		return u
+	}
+	return pickRemote(ctx, dir, repo)
+}
+
 // fetchPR fetches the pull request's head and its base branch into private
 // refs and sets r's commits (the diff base is the merge base).
 func (s *Service) fetchPR(ctx context.Context, dir string, r *projectstore.Review, d codehost.PRDetail) error {
-	remote := pickRemote(ctx, dir, r.Repo)
+	remote := fetchTarget(ctx, dir, r.Repo)
 	pre := refPrefix(r.ID)
 	specs := []string{fmt.Sprintf("+refs/pull/%d/head:%shead", r.Number, pre)}
 	if d.BaseRef != "" && gitx.ValidRefName(d.BaseRef) {

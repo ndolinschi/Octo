@@ -10,11 +10,13 @@ import {
   type SettingsUpdate,
   type SettingsView,
 } from "@octo/agent-client";
+import { ownerProviders } from "./providersOwner";
 
 /**
  * Demo providers, settings and diagnostics (decisions 53, 59; R1.5). Default: Claude Code ready, GitHub Copilot not
  * logged in, Grok not installed, no API key, no router. `?providers=none` (or `none: true`): Claude Code is not
- * logged in either, so Home shows the connect screen; entering any API key connects the API.
+ * logged in either, so Home shows the connect screen; entering any API key connects the API. `?providers=owner` is the
+ * owner's live set of twelve (`providersOwner.ts`).
  */
 export type DemoProvidersOptions = { none?: boolean };
 
@@ -133,6 +135,7 @@ export function demoProviders(
   /** Per agent: preferred model and role models saved through `setProviderPrefs`. */
   const prefs = new Map<string, ProviderPrefs>();
   const claudeEmpty = knob("claude") === "empty";
+  const owner = knob("providers") === "owner";
   const trace = (event: string, detail: unknown) => console.debug(`[octo demo] ${event}`, JSON.stringify(detail));
 
   const view = (): SettingsView => ({
@@ -152,76 +155,78 @@ export function demoProviders(
   const providers = (): ProvidersResponse => {
     const apiReady = file.has("ANTHROPIC_API_KEY");
     // The router is listed only while one is detected; the demo never has one.
-    const list: Provider[] = [
-      {
-        id: "api",
-        kind: "api",
-        label: "Anthropic API",
-        state: apiReady ? "ready" : "not_connected",
-        reason: apiReady ? "" : "No API key",
-        install_hint: "",
-        login_hint: "Add an API key in Settings (ANTHROPIC_API_KEY).",
-        models: API_MODELS,
-        default_model: "claude-sonnet-5-5",
-        flat_rate: false,
-      },
-      {
-        id: "claude-code",
-        kind: "agent",
-        label: "Claude Code",
-        state: none ? "not_logged_in" : "ready",
-        reason: none ? "not logged in" : "",
-        install_hint: CLAUDE_INSTALL,
-        login_hint: CLAUDE_LOGIN,
-        models: claudeEmpty
-          ? []
-          : [
-              manifest("claude-sonnet-5-5"),
-              manifest("claude-opus-5-5"),
-              manifest("claude-haiku-5-5"),
-              { id: "claude-opus-4-1", label: "claude-opus-4-1", source: "advertised", seen_at: SEEN_AT, stale: true },
-            ],
-        default_model: claudeEmpty ? "" : "claude-sonnet-5-5",
-        flat_rate: true,
-      },
-      {
-        // Ready, but it lists no model (the harness found none): the picker's second level is Default + "Other model…".
-        id: "codex",
-        kind: "agent",
-        label: "Codex",
-        state: none ? "not_logged_in" : "ready",
-        reason: none ? "not logged in" : "",
-        install_hint: "Install the Codex CLI: `npm install -g @openai/codex`",
-        login_hint: "Log in once: run `codex login`.",
-        models: [],
-        default_model: "",
-        flat_rate: true,
-      },
-      {
-        id: "copilot",
-        kind: "agent",
-        label: "GitHub Copilot",
-        state: "not_logged_in",
-        reason: "not logged in",
-        install_hint: COPILOT_INSTALL,
-        login_hint: COPILOT_LOGIN,
-        models: [manifest("gpt-5"), manifest("claude-sonnet-5-5")],
-        default_model: "gpt-5",
-        flat_rate: true,
-      },
-      {
-        id: "grok",
-        kind: "agent",
-        label: "Grok",
-        state: "not_installed",
-        reason: "grok: command not found on PATH",
-        install_hint: GROK_INSTALL,
-        login_hint: GROK_LOGIN,
-        models: [],
-        default_model: "",
-        flat_rate: true,
-      },
-    ];
+    const list: Provider[] = owner
+      ? ownerProviders(apiReady)
+      : [
+          {
+            id: "api",
+            kind: "api",
+            label: "Anthropic API",
+            state: apiReady ? "ready" : "not_connected",
+            reason: apiReady ? "" : "No API key",
+            install_hint: "",
+            login_hint: "Add an API key in Settings (ANTHROPIC_API_KEY).",
+            models: API_MODELS,
+            default_model: "claude-sonnet-5-5",
+            flat_rate: false,
+          },
+          {
+            id: "claude-code",
+            kind: "agent",
+            label: "Claude Code",
+            state: none ? "not_logged_in" : "ready",
+            reason: none ? "not logged in" : "",
+            install_hint: CLAUDE_INSTALL,
+            login_hint: CLAUDE_LOGIN,
+            models: claudeEmpty
+              ? []
+              : [
+                  manifest("claude-sonnet-5-5"),
+                  manifest("claude-opus-5-5"),
+                  manifest("claude-haiku-5-5"),
+                  { id: "claude-opus-4-1", label: "claude-opus-4-1", source: "advertised", seen_at: SEEN_AT, stale: true },
+                ],
+            default_model: claudeEmpty ? "" : "claude-sonnet-5-5",
+            flat_rate: true,
+          },
+          {
+            // Ready, but it lists no model (the harness found none): the picker's second level is Default + "Other model…".
+            id: "codex",
+            kind: "agent",
+            label: "Codex",
+            state: none ? "not_logged_in" : "ready",
+            reason: none ? "not logged in" : "",
+            install_hint: "Install the Codex CLI: `npm install -g @openai/codex`",
+            login_hint: "Log in once: run `codex login`.",
+            models: [],
+            default_model: "",
+            flat_rate: true,
+          },
+          {
+            id: "copilot",
+            kind: "agent",
+            label: "GitHub Copilot",
+            state: "not_logged_in",
+            reason: "not logged in",
+            install_hint: COPILOT_INSTALL,
+            login_hint: COPILOT_LOGIN,
+            models: [manifest("gpt-5"), manifest("claude-sonnet-5-5")],
+            default_model: "gpt-5",
+            flat_rate: true,
+          },
+          {
+            id: "grok",
+            kind: "agent",
+            label: "Grok",
+            state: "not_installed",
+            reason: "grok: command not found on PATH",
+            install_hint: GROK_INSTALL,
+            login_hint: GROK_LOGIN,
+            models: [],
+            default_model: "",
+            flat_rate: true,
+          },
+        ];
     const withCustom = (p: Provider): Provider => {
       const found =
         !refreshed.has(p.id) || refreshFindsNothing() ? [] : p.id === "codex" ? CODEX_FOUND : p.id === "claude-code" && claudeEmpty ? CLAUDE_ALIASES : [];
@@ -238,7 +243,7 @@ export function demoProviders(
               preferred_model: saved?.preferred_model ?? "",
               roles: { fast: "", balanced: "", deep: "", ...saved?.roles },
               ...(p.id === "claude-code" ? { models_note: CLAUDE_NOTE } : {}),
-              ...(refreshed.has(p.id) || (p.id === "claude-code" && !claudeEmpty) ? { models_refreshed_at: SEEN_AT } : {}),
+              ...(refreshed.has(p.id) || (p.id === "claude-code" && !claudeEmpty) || (owner && p.models.length > 0) ? { models_refreshed_at: SEEN_AT } : {}),
             }
           : {}),
         ...(error ? { models_error: error } : {}),

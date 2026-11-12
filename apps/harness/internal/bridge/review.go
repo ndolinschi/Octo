@@ -20,6 +20,7 @@ func (s *Server) reviewRoutes(mux *http.ServeMux) {
 		return
 	}
 	mux.HandleFunc("GET /v1/projects/{pid}/prs", s.listPRs)
+	mux.HandleFunc("GET /v1/projects/{pid}/review/branches", s.reviewBranches)
 	mux.HandleFunc("GET /v1/projects/{pid}/reviews", s.listReviews)
 	mux.HandleFunc("POST /v1/projects/{pid}/reviews", s.openReview)
 	mux.HandleFunc("GET /v1/projects/{pid}/reviews/{rid}", s.getReview)
@@ -55,6 +56,9 @@ func writeReviewErr(w http.ResponseWriter, err error) {
 		if re.Command != "" {
 			body["command"] = re.Command
 		}
+		if len(re.Repos) > 0 {
+			body["repos"] = re.Repos
+		}
 		if len(re.Files) > 0 {
 			body["files"] = re.Files
 		}
@@ -66,7 +70,7 @@ func writeReviewErr(w http.ResponseWriter, err error) {
 
 func (s *Server) listPRs(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	o := review.ListOptions{Folder: q.Get("folder"), Filter: q.Get("filter"), Q: q.Get("q"),
+	o := review.ListOptions{Folder: q.Get("folder"), Filter: q.Get("filter"), Q: q.Get("q"), Repo: q.Get("repo"),
 		Refresh: q.Get("refresh") == "1" || q.Get("refresh") == "true"}
 	for name, dst := range map[string]*int{"page": &o.Page, "per_page": &o.PerPage} {
 		if v := q.Get(name); v != "" {
@@ -79,6 +83,16 @@ func (s *Server) listPRs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out, err := s.reviews.ListPRs(r.Context(), r.PathValue("pid"), o)
+	if err != nil {
+		writeReviewErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) reviewBranches(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	out, err := s.reviews.Branches(r.Context(), r.PathValue("pid"), q.Get("folder"), q.Get("base"))
 	if err != nil {
 		writeReviewErr(w, err)
 		return

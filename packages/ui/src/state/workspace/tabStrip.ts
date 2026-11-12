@@ -1,31 +1,25 @@
 /**
- * Decision 25 — browser-grade tabs, the pure part: sizing, live displacement while dragging, MRU order, the
+ * Decision 25 — browser-grade tabs, the pure part: overflow, live displacement while dragging, MRU order, the
  * closed-tab stack and Ctrl/Cmd+1…9. React-free; `dock/drag.ts` and the workspace provider use it.
  */
 
 export const TAB_MAX = 200;
+/**
+ * The narrowest a tab gets while the strip does not scroll (decisions 83 and 90): inset, icon, gap, at least four characters of
+ * the title with the ellipsis, and the active tab's close place — never the one-letter "F" a pinned button could squeeze out.
+ */
 export const TAB_MIN = 96;
-export const TAB_ICON = 40;
+/** The close button's place after the title (16 + the 8px inset). */
+export const TAB_CLOSE_ROOM = 24;
 export const TAB_GAP = 4;
 
-export type TabSizing = { widths: number[]; iconOnly: boolean[]; overflow: boolean };
-
 /**
- * Tabs share the strip: each up to 200px, shrinking evenly to 96; below that the inactive tabs become icon-only
- * (40px) while the active one keeps the rest of the room (96–200); only then does the strip scroll (`overflow`).
+ * Decision 83: a tab is as wide as its icon, title and close button need (up to `TAB_MAX`, the title truncating); CSS shrinks
+ * them evenly when the strip is short, down to `TAB_MIN`. Only when even that does not fit does the strip scroll: this says when
+ * (`avail` is the room for the tabs; 0 = not measured yet).
  */
-export function tabSizing(avail: number, n: number, active: number): TabSizing {
-  if (n <= 0) return { widths: [], iconOnly: [], overflow: false };
-  const gaps = TAB_GAP * (n - 1);
-  const share = Math.floor((avail - gaps) / n);
-  if (share >= TAB_MIN || avail <= 0) {
-    const w = avail <= 0 ? TAB_MAX : Math.min(TAB_MAX, share);
-    return { widths: Array<number>(n).fill(w), iconOnly: Array<boolean>(n).fill(false), overflow: false };
-  }
-  const activeWidth = Math.max(TAB_MIN, Math.min(TAB_MAX, avail - gaps - (n - 1) * TAB_ICON));
-  const widths = Array.from({ length: n }, (_, i) => (i === active ? activeWidth : TAB_ICON));
-  const total = widths.reduce((a, b) => a + b, 0) + gaps;
-  return { widths, iconOnly: widths.map((_, i) => i !== active), overflow: total > avail };
+export function tabsOverflow(avail: number, n: number): boolean {
+  return avail > 0 && n > 0 && n * TAB_MIN + TAB_GAP * (n - 1) > avail;
 }
 
 export type Slot = { left: number; width: number };
@@ -125,4 +119,18 @@ export function walkRelease<T>(walk: TabWalk<T> | null): T | undefined {
   if (!walk) return undefined;
   const n = walk.order.length;
   return n ? walk.order[((walk.step % n) + n) % n] : undefined;
+}
+
+/**
+ * Decision 90: what gives way first when the top row is short. Tabs have priority: (1) the pinned command buttons fold into the
+ * "Run" menu, (2) an inactive tab gives up its reserved close place (the button shows over the end of the title on hover), (3) the
+ * tabs shrink towards `TAB_MIN`, (4) the strip scrolls. `wanted` is the width every tab would take unconstrained (gaps included),
+ * `room` the width the tabs have now, `pinned` the width the pinned buttons take (0: none), `collapsed` whether they are folded now.
+ * The pinned buttons' width is added back before deciding, so folding them does not make them come straight back.
+ */
+export function stripPlan(i: { room: number; wanted: number; pinned: number; collapsed: boolean }): { collapse: boolean; overlay: boolean } {
+  if (i.room <= 0 || i.wanted <= 0) return { collapse: false, overlay: false };
+  const ifShown = i.room - (i.collapsed ? i.pinned : 0);
+  const collapse = i.pinned > 0 && i.wanted > ifShown;
+  return { collapse, overlay: i.wanted > ifShown + (collapse ? i.pinned : 0) };
 }

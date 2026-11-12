@@ -24,7 +24,7 @@ node packages/ui/scripts/flicker.mjs --url http://localhost:1420   # decisions 6
 node packages/ui/scripts/width-stability.mjs --url http://localhost:1420   # decision 79: must print "width-stability: ok" (also at --width 900 --height 600)
 ```
 
-Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty`, `?refresh=fail|none`. Without `?demo` the app uses the
+Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty`, `?refresh=fail|none`, `?providers=none|owner` (the owner's live set of twelve). Without `?demo` the app uses the
 harness at `VITE_HARNESS_BRIDGE_URL` (default `http://127.0.0.1:8790`).
 
 ## Rules that are easy to break

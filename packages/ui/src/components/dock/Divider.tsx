@@ -5,7 +5,7 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
  * The 8px gap between two groups, as a resize handle: drag, or arrows (±16px, Shift ±64);
  * double-click makes all groups equal.
  */
-export function Divider({ index, value }: { index: number; value: number }) {
+export default function Divider({ index, value }: { index: number; value: number }) {
   const ws = useWorkspace();
   const [dragging, setDragging] = useState(false);
 

@@ -24,7 +24,7 @@ const opt = (n, d) => {
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : d;
 };
 if (argv.includes("--help") || argv.includes("-h")) {
-  console.log("node packages/ui/scripts/width-stability.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--project \"Atlas API\"]");
+  console.log('node packages/ui/scripts/width-stability.mjs [--url http://localhost:1420] [--width 1440] [--height 900] [--project "Atlas API"]');
   process.exit(0);
 }
 const BASE = opt("--url", "http://localhost:1420").replace(/\/$/, "");
@@ -59,7 +59,10 @@ const MEASURE = () => {
   // Anything between a pane and its content that is, or can be made, a scroll container: it must not have moved.
   for (const el of document.querySelectorAll("[data-dock-group], [data-dock-group] *, body, html, #root")) {
     if (el.closest(".monaco-editor") || el.closest(".octo-table-scroll") || el.closest("pre")) continue;
-    if (el.scrollLeft > 0) scrollers.push(`${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? `.${el.className.split(" ")[0]}` : ""} scrollLeft=${el.scrollLeft}`);
+    if (el.scrollLeft > 0)
+      scrollers.push(
+        `${el.tagName.toLowerCase()}${el.className && typeof el.className === "string" ? `.${el.className.split(" ")[0]}` : ""} scrollLeft=${el.scrollLeft}`,
+      );
   }
   const conv = document.querySelector("[data-column]")?.closest(".overflow-y-auto");
   const root = document.documentElement;
@@ -96,8 +99,19 @@ const fail = (why) => {
 await page.goto(`${BASE}/?demo=1`, { waitUntil: "domcontentloaded" });
 const projects = page.locator('nav[aria-label="Projects"] a');
 // Below the sidebar's breakpoint the project list is a drawer that is not mounted until it is opened.
-if (!(await projects.first().waitFor({ state: "attached", timeout: 3000 }).then(() => true, () => false)))
-  await page.getByRole("button", { name: /sidebar/i }).first().click();
+if (
+  !(await projects
+    .first()
+    .waitFor({ state: "attached", timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    ))
+)
+  await page
+    .getByRole("button", { name: /sidebar/i })
+    .first()
+    .click();
 await projects.first().waitFor({ state: "attached", timeout: 10000 });
 const href = await page.evaluate((name) => {
   for (const a of document.querySelectorAll('nav[aria-label="Projects"] a[href^="#/p/"]'))
@@ -138,7 +152,12 @@ async function openFile(name) {
   const dir = tree.locator('[role="treeitem"][data-path="atlas-api/width"]').first();
   if ((await dir.getAttribute("aria-expanded")) === "false") await dir.click();
   await tree.locator(`[role="treeitem"][data-path="atlas-api/width/${name}"]`).first().click();
-  try { await page.locator('[data-testid="code-editor"] .monaco-editor:visible').first().waitFor({ timeout: 8000 }); } catch (e) { await page.screenshot({ path: "/tmp/claude-0/-home-user-Octo/7c5bf6ed-bfbb-5e95-9ca2-f0157268907d/scratchpad/ws-fail.png" }); throw e; }
+  try {
+    await page.locator('[data-testid="code-editor"] .monaco-editor:visible').first().waitFor({ timeout: 8000 });
+  } catch (e) {
+    await page.screenshot({ path: "/tmp/claude-0/-home-user-Octo/7c5bf6ed-bfbb-5e95-9ca2-f0157268907d/scratchpad/ws-fail.png" });
+    throw e;
+  }
   await page.waitForTimeout(900);
   // The tree is a column of the editor pane: measure with it hidden, so only the editor's own width is compared.
   const hide = page.locator('[data-dock-group] button[aria-label="Hide file tree"]:visible').first();
@@ -170,9 +189,58 @@ await page.getByRole("tab", { name: "Changes" }).first().click();
 const row = page.locator('[role="tabpanel"]:visible span', { hasText: /^wide\.txt$/ }).first();
 await row.waitFor({ timeout: 8000 }).catch(() => fail("the Changes tab does not list width/wide.txt"));
 await row.click();
-await page.locator(".monaco-diff-editor:visible").first().waitFor({ timeout: 8000 }).catch(async () => { await page.screenshot({ path: "/tmp/claude-0/-home-user-Octo/7c5bf6ed-bfbb-5e95-9ca2-f0157268907d/scratchpad/ws-fail.png" }); fail("the diff of width/wide.txt did not open"); });
+await page
+  .locator(".monaco-diff-editor:visible")
+  .first()
+  .waitFor({ timeout: 8000 })
+  .catch(async () => {
+    await page.screenshot({ path: "/tmp/claude-0/-home-user-Octo/7c5bf6ed-bfbb-5e95-9ca2-f0157268907d/scratchpad/ws-fail.png" });
+    fail("the diff of width/wide.txt did not open");
+  });
 await page.waitForTimeout(900);
 await measure("split", "changes, diff with a wide line");
+
+// 4. Tabs (decision 83): a tab's width does not change on hover, nor while its state glyph changes (a command running, then done).
+const tabWidths = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll("[data-tab-wrapper]")]
+      .filter((e) => e instanceof HTMLElement && e.offsetParent !== null)
+      .map((e) => [e.querySelector("[role=tab]")?.getAttribute("data-tab-id") ?? "?", e.getBoundingClientRect().width]),
+  );
+const tabProblems = [];
+const before = await tabWidths();
+const wrappers = page.locator("[data-tab-wrapper]:visible");
+for (let i = 0; i < (await wrappers.count()); i++) {
+  await wrappers.nth(i).hover();
+  await page.waitForTimeout(160);
+  for (const [id, w] of await tabWidths()) {
+    const was = before.find(([b]) => b === id)?.[1];
+    if (was !== undefined && Math.abs(w - was) > TOL) tabProblems.push(`a tab is ${w}px while tab ${i + 1} is hovered (${was}px at rest)`);
+  }
+}
+await page.mouse.move(2, 2);
+const pinned = page.getByRole("button", { name: "Tests", exact: true });
+if (await pinned.count()) await pinned.first().click();
+else {
+  await page
+    .getByRole("button", { name: /Run a project command/ })
+    .first()
+    .click();
+  await page.getByRole("menuitem", { name: "Tests" }).first().click();
+}
+const runTab = page.locator('[role="tab"][data-tab-id="run:Tests"]:visible');
+await runTab
+  .first()
+  .waitFor({ timeout: 8000 })
+  .catch(() => fail("the Run: Tests tab did not open"));
+const widths = [];
+for (let i = 0; i < 8; i++) {
+  await page.waitForTimeout(500);
+  widths.push(await runTab.first().evaluate((e) => (e.parentElement ? e.parentElement.getBoundingClientRect().width : -1)));
+}
+if (Math.max(...widths) - Math.min(...widths) > TOL)
+  tabProblems.push(`the Run: Tests tab changed width while the command ran and ended: ${JSON.stringify(widths)}`);
+errors.push(...tabProblems);
 await browser.close();
 
 const problems = [];

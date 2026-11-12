@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Review, ReviewComment, ReviewFinding, ReviewGroup } from "@octo/agent-client";
+import type { Review, ReviewComment, ReviewFinding, ReviewGroup, ReviewThread } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
-import { useMediaQuery } from "../../lib/hooks";
+import type { ReviewCommandsKit } from "../../lib/commands/kit";
 import type { ReviewApi } from "../../lib/review/api";
 import { blockAt, changeBlocks, hunksToTexts, stepChange, type ChangeBlock } from "../../lib/review/changes";
 import { groupFiles, navigableFiles, readingOrder, sinceReview, stepFile } from "../../lib/review/files";
 import type { ReviewKeyAction } from "../../lib/review/keys";
 import { anchorProblem, commentWhere, fileCommentInput, generalCommentInput, lineCommentInput, linesOf, type Anchor } from "../../lib/review/position";
-import { DIFF_SPLIT_MIN, diffLayout } from "../../lib/v7/changes";
+import { reviewDiffLayout } from "../../lib/review/diffLayout";
+import { repliesByThread, threadsOfFile, unresolvedTotal } from "../../lib/review/threads";
 import { Button } from "../primitives/Button";
 import { SkeletonRows } from "../primitives/InfoList";
 import { Presence } from "../primitives/Presence";
+import { ApartThreads } from "./ApartThreads";
+import { CheckoutBanner, CheckoutMenu, DirtyDialog } from "./Checkout";
 import { Composer, type ComposerValue } from "./Composer";
 import { DiffPane } from "./DiffPane";
 import { FileList, FilePicker } from "./FileList";
@@ -19,11 +22,14 @@ import { Overview } from "./Overview";
 import { Notice } from "./parts";
 import { PendingPanel } from "./PendingPanel";
 import { ReviewHeader } from "./ReviewHeader";
-import type { Marked, RevealRequest, ReviewMonaco } from "./ReviewDiff";
+import type { DiffZone, Marked, RevealRequest, ReviewMonaco } from "./ReviewDiff";
 import { SubmitSheet } from "./SubmitSheet";
+import { ThreadCard, type ThreadActions } from "./ThreadCard";
+import { useCheckout } from "./useCheckout";
 import { useFileDiff, useReview, type ReviewData } from "./useReview";
 import { useReviewActions } from "./useReviewActions";
 import { useReviewKeys } from "./useReviewKeys";
+import { useThreads } from "./useThreads";
 import { useWidth } from "./useWidth";
 
 /** Below this width the file list becomes a picker above the diff. */
@@ -34,9 +40,16 @@ const HINT_MS = 5000;
 type ComposerState = { kind: "line"; anchor: Anchor; suggest: boolean } | { kind: "file" } | { kind: "general" } | { kind: "edit"; comment: ReviewComment };
 
 /** A review that is open: loads it, then shows it. */
-export function ReviewView(props: { api: ReviewApi; reviewId: string; theme: "dark" | "light"; loadMonaco(): Promise<ReviewMonaco>; onBack(): void }) {
+export function ReviewView(props: {
+  api: ReviewApi;
+  reviewId: string;
+  theme: "dark" | "light";
+  commands: ReviewCommandsKit | null;
+  loadMonaco(): Promise<ReviewMonaco>;
+  onBack(): void;
+}) {
   const { load, patch, retry, reload } = useReview(props.api, props.reviewId);
-  if (load.status === "loading") return <SkeletonRows count={8} />;
+  if (load.status === "loading") return <ReviewSkeleton />;
   if (load.status === "error")
     return (
       <Notice
@@ -63,6 +76,7 @@ function Ready(props: {
   api: ReviewApi;
   reviewId: string;
   theme: "dark" | "light";
+  commands: ReviewCommandsKit | null;
   loadMonaco(): Promise<ReviewMonaco>;
   onBack(): void;
   data: ReviewData;
@@ -73,9 +87,14 @@ function Ready(props: {
   const { review, comments, findings } = data;
   const root = useRef<HTMLDivElement>(null);
   const width = useWidth(root);
-  const wideWindow = useMediaQuery(`(min-width: ${DIFF_SPLIT_MIN}px)`);
   const narrow = width !== null && width < NARROW_BELOW;
   const actions = useReviewActions(api, reviewId, props.patch, props.reload);
+  const threads = useThreads(api, reviewId);
+  const checkout = useCheckout(api, review);
+  const [now] = useState(() => Date.now());
+  const threadList = useMemo<ReviewThread[]>(() => (threads.load.status === "ready" ? threads.load.data.threads : []), [threads.load]);
+  const unresolved = threads.load.status === "ready" ? unresolvedTotal(threads.load.data.unresolved_by_path) : 0;
+  const pendingReplies = useMemo(() => repliesByThread(comments), [comments]);
 
   const files = useMemo(() => readingOrder(data.files.files), [data.files.files]);
   const sections = useMemo(() => groupFiles(data.files.files), [data.files.files]);
@@ -103,7 +122,7 @@ function Ready(props: {
   useEffect(() => {
     if (review.kind !== "github") return;
     let alive = true;
-    api.listPullRequests(review.folder).then(
+    api.listPullRequests({ folder: review.folder, per_page: 100 }).then(
       (l) => alive && setBehind(l.prs.some((p) => p.review?.id === review.id && p.review.new_commits)),
       () => undefined,
     );
@@ -247,17 +266,45 @@ function Ready(props: {
   const here = comments.filter((c) => c.path === path && c.line !== undefined);
   const commented: Marked[] = here.map((c) => ({ side: c.side ?? "new", start: c.start_line ?? c.line ?? 1, end: c.line ?? 1 }));
   const flagged: Marked[] = findings.filter((f) => f.path === path && f.status === "new").map((f) => ({ side: "new", start: f.start_line, end: f.end_line }));
+  const diffCol = useRef<HTMLDivElement>(null);
+  const diffWidth = useWidth(diffCol);
+  const split = reviewDiffLayout(review.config?.prefer ?? "auto", diffWidth) === "split";
+  const fileThreads = useMemo(() => (path === null ? { inline: [], apart: [] } : threadsOfFile(threadList, path)), [threadList, path]);
+  // One column has no editor for the removed side: those threads wait in the list under the toolbar instead of at a wrong line.
+  const drawn = useMemo(() => (split ? fileThreads.inline : fileThreads.inline.filter((t) => t.side === "new")), [split, fileThreads]);
+  const apart = useMemo(
+    () => (split ? fileThreads.apart : [...fileThreads.apart, ...fileThreads.inline.filter((t) => t.side === "old")]),
+    [split, fileThreads],
+  );
+  const zones = useMemo<DiffZone[]>(() => drawn.map((t) => ({ key: t.id, side: t.side, line: t.line ?? 1 })), [drawn]);
+  const threadActions: ThreadActions = {
+    reply: (t, body) => actions.addComment({ in_reply_to: t.id, body }),
+    deleteReply: (c) => void actions.deleteComment(c),
+    readOnly: review.state === "closed",
+  };
+  const renderZone = (key: string) => {
+    const t = threadList.find((x) => x.id === key);
+    return t ? (
+      <div className="px-3 py-2 font-sans">
+        <ThreadCard thread={t} pending={pendingReplies.get(t.id) ?? []} actions={threadActions} now={now} />
+      </div>
+    ) : null;
+  };
+  const kit = props.commands;
   const pickerEl = narrow && <FilePicker sections={shownSections} selected={path} onSelect={select} onStep={stepFileBy} />;
 
-  return (
+  const body = (
     <div ref={root} tabIndex={-1} className="relative flex h-full min-h-0 min-w-0 flex-col bg-panel outline-none" data-review>
       <ReviewHeader
         review={review}
         viewed={data.files.viewed_count}
         pending={comments.length}
+        unresolved={unresolved}
         behind={behind}
         overviewOpen={overview}
         refreshing={refreshing}
+        runs={kit ? <kit.Bar /> : null}
+        checkout={<CheckoutMenu checkout={checkout} review={review} />}
         onOverview={() => setOverview((o) => !o)}
         onPending={() => setPendingOpen((o) => !o)}
         onSubmit={() => setSheet(true)}
@@ -265,6 +312,15 @@ function Ready(props: {
         onBack={props.onBack}
       />
       {overview && <Overview review={review} />}
+      <CheckoutBanner checkout={checkout} />
+      {threads.load.status === "error" && (
+        <div role="status" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-3 py-1.5 text-sm">
+          <span className="text-fg-2">The existing comments did not load: {threads.load.message}.</span>
+          <Button size="sm" variant="secondary" onClick={threads.refresh} className="max-md:h-10">
+            Try again
+          </Button>
+        </div>
+      )}
       <Banners
         review={review}
         newCommits={newCommits}
@@ -288,14 +344,14 @@ function Ready(props: {
           </div>
         )}
         {file ? (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div ref={diffCol} className="flex min-h-0 min-w-0 flex-1 flex-col">
             <DiffPane
               file={file}
               diff={path === null ? { status: "idle" } : diffState.state}
               onRetry={diffState.retry}
               theme={props.theme}
               loadMonaco={props.loadMonaco}
-              split={diffLayout(wideWindow ? DIFF_SPLIT_MIN : 0, width === null ? 0 : width - (narrow ? 0 : FILES_WIDTH)) === "split"}
+              split={split}
               ignoreWhitespace={ignoreWhitespace}
               expanded={expanded}
               sinceReview={filterSince}
@@ -303,6 +359,9 @@ function Ready(props: {
               commented={commented}
               flagged={flagged}
               reveal={reveal}
+              zones={zones}
+              renderZone={renderZone}
+              apart={<ApartThreads threads={apart} pending={pendingReplies} actions={threadActions} now={now} />}
               onToggleWhitespace={() => setIgnoreWhitespace((x) => !x)}
               onToggleExpanded={() => setExpanded((x) => !x)}
               onViewed={(v) => void actions.setViewed(file.path, v)}
@@ -329,6 +388,8 @@ function Ready(props: {
           </Notice>
         )}
       </div>
+      {kit && <kit.Panel />}
+      <DirtyDialog checkout={checkout} />
       {pendingOpen && (
         <PendingPanel
           comments={comments}
@@ -359,6 +420,13 @@ function Ready(props: {
         />
       </Presence>
     </div>
+  );
+  return kit ? (
+    <kit.Provider reviewId={reviewId} worktreePresent={review.worktree_present}>
+      {body}
+    </kit.Provider>
+  ) : (
+    body
   );
 }
 
@@ -468,5 +536,27 @@ function Banners(props: {
         </div>
       )}
     </>
+  );
+}
+
+/** The shape of the finished screen (decision 77): title row, meta line, a list on the left and the diff's lines on the right. */
+function ReviewSkeleton() {
+  return (
+    <div className="flex h-full min-h-0 flex-col" aria-busy aria-label="Loading the review">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-line px-3 py-3">
+        <div className="h-5 w-2/5 rounded-sm bg-hover" />
+        <div className="h-3 w-3/5 rounded-sm bg-hover" />
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <div className="shrink-0 border-r border-line max-md:hidden" style={{ width: FILES_WIDTH }}>
+          <SkeletonRows count={9} widths={[70, 52, 64, 44, 58, 66, 40, 60, 48]} />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
+          {[88, 72, 80, 46, 92, 60, 76, 34, 84, 68].map((w, i) => (
+            <div key={i} className="h-3 rounded-sm bg-hover" style={{ width: `${w}%` }} />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

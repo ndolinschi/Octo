@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, Brain, Cpu, Gauge, Info, Palette, Plug, Search, Settings, Shield, SquareCode, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Brain, Cpu, Gauge, Info, Palette, Plug, Search, Settings, Shield, SquareCode, Terminal, type LucideIcon } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { settingsHref } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
@@ -9,10 +9,10 @@ const GLYPHS: Record<SectionId, LucideIcon> = {
   appearance: Palette,
   providers: Plug,
   models: Cpu,
-  agents: Bot,
   editor: SquareCode,
   usage: Gauge,
   memory: Brain,
+  commands: Terminal,
   privacy: Shield,
   about: Info,
 };

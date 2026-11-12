@@ -26,8 +26,13 @@ import { gzipSync } from "node:zlib";
  *
  * Merge of the harness and UI branches (2026-11-11): 152.89 kB (the entry chunk shrank as more moved to lazy chunks).
  * Budget lowered from 193.1 to measured + 3 = 155.9.
+ *
+ * Batch 1 (2026-11-12): the top row now carries the tab strips, the status bar, the tab-fit plan, pinned project
+ * commands and maximise; with the review and providers code lazy the entry measures 156.23 kB. The rule stays
+ * "measured + 3" (the 3 kB had been used up to the last 0.04 kB): budget 159.2. The component-library migration
+ * (decision 90) is expected to shrink the entry; lower the budget again when it does.
  */
-const BUDGET_KB = 155.9;
+const BUDGET_KB = 159.2;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

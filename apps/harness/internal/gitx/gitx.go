@@ -276,9 +276,10 @@ func Remotes(ctx context.Context, dir string) (map[string]string, error) {
 	}
 	res := map[string]string{}
 	for _, line := range strings.Split(string(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) >= 3 && f[2] == "(fetch)" {
-			res[f[0]] = f[1]
+		// "name<TAB>url (fetch)": the url may contain spaces.
+		name, rest, ok := strings.Cut(line, "\t")
+		if ok && strings.HasSuffix(rest, " (fetch)") {
+			res[name] = strings.TrimSuffix(rest, " (fetch)")
 		}
 	}
 	return res, nil

@@ -1,14 +1,12 @@
 import type { Provider, ProviderRoles } from "@octo/agent-client";
-import { RefreshCw } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { cleanModelName, customModelsCodec, preferredModel, refreshProviders, roleModel, selectOptions, useAgentPrefs } from "../../lib/providers";
+import { cleanModelName, customModelsCodec, preferredModel, roleModel, selectOptions, useAgentPrefs } from "../../lib/providers";
 import { PREFS, usePersistentState } from "../../lib/storage";
 import { useApp } from "../../state/app";
+import { FieldRow } from "../primitives/FieldRow";
 import { Input } from "../primitives/Field";
-import { Glyph } from "../primitives/Glyph";
-import { ProviderMark } from "../primitives/ProviderMark";
-import { Spinner } from "../primitives/Status";
 import { SaveStatus, Select } from "./parts";
+import { SectionTitle } from "./ProviderParts";
 import { useSave } from "./useSave";
 
 const ROLES: { id: keyof ProviderRoles; label: string }[] = [
@@ -20,78 +18,57 @@ const DEFAULT = "";
 const OTHER = "__other__";
 
 /**
- * Decision 72 b-c: what Settings → Providers shows on the right of a selected agent: its preferred model and the model
- * for each delegation role (fast / balanced / deep). Each is a select over the agent's models plus "Default" and "Other…".
+ * Decisions 72 b-c and 89 d: an agent's preferred model, and the model for each delegation role as one FieldRow
+ * (Fast · Balanced · Deep side by side, stacked when the pane is narrow) with the explanation under the whole row.
  */
-export function AgentPrefsPane({ agent }: { agent: Provider }) {
+export function AgentPrefs({ agent }: { agent: Provider }) {
   const { bridge } = useApp();
   const { local, save } = useAgentPrefs(bridge);
   const [typed] = usePersistentState(PREFS.customModels, customModelsCodec, { persistInitial: false });
-  const [refreshing, setRefreshing] = useState(false);
-  const refresh = async () => {
-    if (!bridge.refreshProviderModels || refreshing) return;
-    setRefreshing(true);
-    try {
-      await bridge.refreshProviderModels(agent.id);
-      await refreshProviders(bridge);
-    } catch {
-      // The list keeps what it had; the picker's refresh shows the reason.
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  const [state, run] = useSave();
+  const base = useId();
+  const control = (key: string, value: string, label: string, onSave: (m: string) => Promise<void>) => (
+    <ModelControl id={`${base}-${key}`} label={label} agent={agent} value={value} typed={typed} onSave={(m) => void run(() => onSave(m))} />
+  );
   return (
-    <aside aria-label={`${agent.label} models`} className="flex flex-col gap-4 rounded-lg border border-panel-edge bg-panel p-4 shadow-panel">
-      <div className="flex items-center gap-2">
-        <ProviderMark id={agent.id} label={agent.label} className="text-fg-3" />
-        <h3 className="min-w-0 flex-1 truncate text-base text-fg">{agent.label}</h3>
-        {bridge.refreshProviderModels && (
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            aria-busy={refreshing}
-            className="flex h-row shrink-0 press items-center gap-1.5 rounded-sm px-2 text-xs text-fg-3 hover:bg-hover hover:text-fg"
-          >
-            {refreshing ? <Spinner /> : <Glyph icon={RefreshCw} size={14} />}
-            Refresh models
-          </button>
-        )}
-      </div>
-      <ModelSelect
-        key={`preferred-${agent.id}`}
-        label="Preferred model"
-        agent={agent}
-        value={preferredModel(agent, local)}
-        typed={typed}
-        onSave={(m) => save(agent.id, { preferred_model: m })}
-      />
-      <div className="flex flex-col gap-3">
-        <h4 className="text-xs text-fg-3">Roles</h4>
-        {ROLES.map((r) => (
-          <ModelSelect
-            key={`${r.id}-${agent.id}`}
-            label={r.label}
-            agent={agent}
-            value={roleModel(agent, r.id, local)}
-            typed={typed}
-            onSave={(m) => save(agent.id, { roles: { [r.id]: m } })}
-          />
-        ))}
-      </div>
-      <p className="text-xs text-fg-3">The router decides how hard a task is; roles say which of this provider&apos;s models does it.</p>
-    </aside>
+    <>
+      <section className="flex flex-col gap-3">
+        <SectionTitle>Preferred model</SectionTitle>
+        <FieldRow
+          fields={[
+            {
+              id: `${base}-preferred`,
+              label: "Used when this provider is chosen",
+              control: control("preferred", preferredModel(agent, local), "Preferred model", (m) => save(agent.id, { preferred_model: m })),
+            },
+          ]}
+        />
+      </section>
+      <section className="flex flex-col gap-3">
+        <SectionTitle>Roles</SectionTitle>
+        <FieldRow
+          fields={ROLES.map((r) => ({
+            id: `${base}-${r.id}`,
+            label: r.label,
+            control: control(r.id, roleModel(agent, r.id, local), r.label, (m) => save(agent.id, { roles: { [r.id]: m } })),
+          }))}
+          hint="The router decides how hard a task is; roles say which of this provider's models does it."
+          status={<SaveStatus state={state} />}
+        />
+      </section>
+    </>
   );
 }
 
-function ModelSelect(props: {
+/** A select over the agent's models plus "Default" and "Other…"; "Other…" swaps the select for a field of the same height. */
+function ModelControl(props: {
+  id: string;
   label: string;
   agent: Provider;
   value: string;
   typed: Readonly<Record<string, readonly string[]>>;
-  onSave(model: string): Promise<void>;
+  onSave(model: string): void;
 }) {
-  const id = useId();
-  const [state, run] = useSave();
   const [other, setOther] = useState(false);
   const [draft, setDraft] = useState("");
   const field = useRef<HTMLInputElement>(null);
@@ -99,62 +76,54 @@ function ModelSelect(props: {
     if (other) field.current?.focus();
   }, [other]);
   const options = selectOptions(props.agent, props.value, props.typed);
-  const accepts = props.agent.accepts_custom_model !== false;
   const commit = () => {
     const name = cleanModelName(draft);
     setOther(false);
-    if (name && name !== props.value) void run(() => props.onSave(name));
+    if (name && name !== props.value) props.onSave(name);
   };
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm text-fg-2">
-        {props.label}
-      </label>
-      <div className="flex">
-        <Select
-          id={id}
-          value={other ? OTHER : props.value}
-          onChange={(e) => {
-            if (e.target.value === OTHER) {
-              setDraft("");
-              setOther(true);
-              return;
-            }
+  if (other)
+    return (
+      <Input
+        ref={field}
+        id={props.id}
+        aria-label={`Model name for ${props.label}`}
+        placeholder={`e.g. ${options[0]?.id ?? "opus"}`}
+        value={draft}
+        spellCheck={false}
+        autoComplete="off"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            e.preventDefault();
             setOther(false);
-            void run(() => props.onSave(e.target.value));
-          }}
-          className="w-full"
-        >
-          <option value={DEFAULT}>Default</option>
-          {options.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-          {accepts && <option value={OTHER}>Other…</option>}
-        </Select>
-      </div>
-      {other && (
-        <Input
-          ref={field}
-          aria-label={`Model name for ${props.label}`}
-          placeholder={`e.g. ${options[0]?.id ?? "opus"}`}
-          value={draft}
-          spellCheck={false}
-          autoComplete="off"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") {
-              e.preventDefault();
-              setOther(false);
-            }
-          }}
-          className="max-sm:text-input-touch"
-        />
-      )}
-      <SaveStatus state={state} />
-    </div>
+          }
+        }}
+        className="max-sm:text-input-touch"
+      />
+    );
+  return (
+    <Select
+      id={props.id}
+      value={props.value}
+      onChange={(e) => {
+        if (e.target.value === OTHER) {
+          setDraft("");
+          setOther(true);
+          return;
+        }
+        props.onSave(e.target.value);
+      }}
+      className="w-full"
+    >
+      <option value={DEFAULT}>Default</option>
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.label}
+        </option>
+      ))}
+      {props.agent.accepts_custom_model !== false && <option value={OTHER}>Other…</option>}
+    </Select>
   );
 }

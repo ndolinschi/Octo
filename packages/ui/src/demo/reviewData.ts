@@ -3,6 +3,9 @@ import type { DemoReviewFile } from "./reviewFiles";
 import { BILLING_FILES, SMALL_FILES } from "./reviewFiles";
 
 export const DEMO_REPO = "atlas-labs/atlas-api";
+/** The fork of `DEMO_REPO` the demo folder's `origin` points at; its first `DEMO_FORK_PRS` pull requests share their numbers with the parent's. */
+export const DEMO_FORK = "mira-dev/atlas-api";
+export const DEMO_FORK_PRS = 3;
 export const DEMO_HOST = "github.com";
 const MIN = 60_000;
 const HOUR = 60 * MIN;

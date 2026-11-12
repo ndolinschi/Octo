@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronRight, ChevronUp, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, MessageCircle, MessageSquare } from "lucide-react";
 import type { ReviewFile, ReviewGroup } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { reasonLabel, splitPath, type FileSection } from "../../lib/review/files";
+import { threadCountText } from "../../lib/review/threads";
 import { IconButton } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { LineStat } from "./parts";
@@ -70,6 +71,7 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
     f.old_path ? `renamed from ${f.old_path}` : "",
     f.changed_since_viewed ? "changed since you viewed it" : "",
     f.pending_comments ? `${f.pending_comments} pending` : "",
+    threadCountText(f.threads ?? 0, f.unresolved_threads ?? 0),
   ]
     .filter(Boolean)
     .join(", ");
@@ -108,6 +110,15 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
             changed
           </span>
         )}
+        {(f.threads ?? 0) > 0 && (
+          <span
+            className={cn("flex shrink-0 items-center gap-0.5 text-xs", (f.unresolved_threads ?? 0) > 0 ? "text-fg" : "text-fg-3")}
+            title={threadCountText(f.threads ?? 0, f.unresolved_threads ?? 0)}
+          >
+            <Glyph icon={MessageCircle} size={14} />
+            {(f.unresolved_threads ?? 0) > 0 ? f.unresolved_threads : f.threads}
+          </span>
+        )}
         {f.pending_comments > 0 && (
           <span className="flex shrink-0 items-center gap-0.5 text-xs text-fg-2" title={`${f.pending_comments} pending comments`}>
             <Glyph icon={MessageSquare} size={14} />
@@ -142,6 +153,7 @@ export function FilePicker(props: { sections: readonly FileSection[]; selected: 
                 {f.path}
                 {f.changed_since_viewed ? " (changed)" : ""}
                 {f.pending_comments ? ` · ${f.pending_comments} pending` : ""}
+                {f.unresolved_threads ? ` · ${f.unresolved_threads} unresolved` : ""}
               </option>
             ))}
           </optgroup>

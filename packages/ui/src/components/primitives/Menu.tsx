@@ -10,6 +10,7 @@ export type MenuItem =
       id: string;
       label: string;
       shortcut?: string;
+      /** Dim text after the label (a role, a remote). */ detail?: string;
       disabled?: boolean;
       /** A choice in a set (menuitemradio). */ checked?: boolean;
       title?: string;
@@ -178,6 +179,7 @@ export function Menu(props: {
             )}
           >
             <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            {item.detail && <span className="shrink-0 text-xs text-fg-3">{item.detail}</span>}
             {item.shortcut && <kbd className="shrink-0 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
             {item.checked !== undefined && (
               <span aria-hidden className="grid size-4 shrink-0 place-items-center">

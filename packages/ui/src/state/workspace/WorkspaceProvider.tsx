@@ -24,6 +24,7 @@ import { SIDE_PINNED, TabMemory, USAGE_VIEW } from "./tabMemory";
 import { jumpIndex, mruOrder, mruTouch, pushClosed, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
 import { useTabKeys } from "./useTabKeys";
 import { dockFits, dockNeeds, groupFloor } from "./floors";
+import { maximisedGroup, toggleMaximise } from "./maximise";
 import { domId, tabButton } from "./ids";
 import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
 import { type FileKey, keyFolder } from "../../lib/files";
@@ -56,6 +57,13 @@ export type WorkspaceValue = {
   watched: TabId | null;
   /** Agent of the conversation last focused (for the agents tree selection). */
   currentAgentId: string | null;
+  /** Decision 68: the state of each project command's run tab, by lowercase name (only running and failed are listed). Set by the commands feature. */
+  runStatuses: Readonly<Record<string, "running" | "failed">>;
+  setRunStatuses(statuses: Readonly<Record<string, "running" | "failed">>): void;
+  /** Decision 78: the group that has the whole dock (the others are hidden, not changed), or null. */
+  maximised: string | null;
+  /** Maximises the group of `tab` (default: the focused tab), or restores when it already is; `on` forces one way. */
+  toggleMaximise(tab?: TabId, on?: boolean): void;
   /** A tab whose button should take focus (after a keyboard move or close). */
   focusRequest: { tab: TabId; n: number } | null;
   /** Per-tab view memory (scroll positions, composer draft) that survives remounts. */
@@ -76,6 +84,8 @@ export type WorkspaceValue = {
   closePicker(): void;
   /** Opens a file's tab: in `where.group` (in place of `where.replace`) when given, else in the side group. */
   openFileTab(key: FileKey, where?: { group: string; replace?: TabId }): void;
+  /** Opens (or focuses) the "Run: name" tab of a project command beside the conversation (decision 68). */
+  openRun(name: string): void;
   /** Opens (or focuses) a tab in a given group. */
   openIn(tab: TabId, groupId: string): void;
   /** Removes a tab without asking (a restored file that no longer exists). */
@@ -170,10 +180,14 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const cycling = useRef(false);
   const [closedTabs, setClosedTabs] = useState<Closed<TabId>[]>([]);
   const selfNav = useRef<string | null>(null);
+  const [maxGroup, setMaxGroup] = useState<string | null>(null);
+  const maxRef = useRef<string | null>(null);
+  const [runStatuses, setRunStatuses] = useState<WorkspaceValue["runStatuses"]>({});
 
   const narrow = !docked || !dockFits(layout.groups, dockWidth);
   const narrowRef = useLatest(narrow);
   const widthRef = useLatest(dockWidth);
+  const maximised = maximisedGroup(layout, maxGroup, narrow);
 
   /** Applies a layout; when the focused tab is a conversation its route goes into the URL. */
   const commit = useCallback(
@@ -181,6 +195,11 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       if (next === layoutRef.current && !options.focusTab) return;
       layoutRef.current = next;
       setLayout(next);
+      // Focus leaving the maximised group (a tool opened elsewhere) or the group going away ends it, for good.
+      if (maxRef.current !== null && maximisedGroup(next, maxRef.current, false) === null) {
+        maxRef.current = null;
+        setMaxGroup(null);
+      }
       const { focusTab } = options;
       if (focusTab) setFocusRequest((r) => ({ tab: focusTab, n: (r?.n ?? 0) + 1 }));
       const active = L.focusedGroup(next).active;
@@ -281,7 +300,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const value = useMemo<WorkspaceValue>(() => {
     const isVisible = (tab: TabId) => {
       const g = L.groupOf(layout, tab);
-      return !!g && g.active === tab && (!narrow || g.id === layout.focused);
+      return !!g && g.active === tab && (maximised !== null ? g.id === maximised : !narrow || g.id === layout.focused);
     };
     const agentOf = conversationOf(lastConversation);
     return {
@@ -291,6 +310,17 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       watched: isVisible(lastConversation) ? lastConversation : null,
       currentAgentId: agentOf === undefined ? null : (agentOf ?? project?.orchestrator_agent_id ?? null),
       focusRequest,
+      maximised,
+      runStatuses,
+      setRunStatuses,
+      toggleMaximise: (tab, on) => {
+        const current = layoutRef.current;
+        if (narrowRef.current) return;
+        const next = toggleMaximise(current, maxRef.current, tab ?? L.focusedGroup(current).active, on);
+        maxRef.current = next.maximised;
+        setMaxGroup(next.maximised);
+        commit(next.layout, { route: false });
+      },
       memory,
       closing,
       picker,
@@ -348,6 +378,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
           commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
       },
+      openRun: (name) => openSide(L.runTab(name), fileFraction()),
       openIn: (tab, groupId) => commit(L.open(layoutRef.current, tab, { group: groupId })),
       dropTab: (tab) => commit(L.close(layoutRef.current, [tab])),
       requestClose,
@@ -472,6 +503,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     dockWidth,
     lastConversation,
     focusRequest,
+    maximised,
+    runStatuses,
     memory,
     closing,
     picker,
@@ -529,10 +562,13 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   useEffect(() => {
     if (!agentsLoaded || !project) return;
     const folders = new Set(project.folders.map((f) => f.label));
+    const commands = new Set((project.commands ?? []).map((c) => c.name.toLowerCase()));
     const next = L.prune(layoutRef.current, (tab) => {
       const ref = L.parseTab(tab);
       if (ref?.kind === "agent") return Boolean(state.agents[ref.agentId]);
       if (ref?.kind === "file") return folders.has(keyFolder(ref.key));
+      // A run tab of a command that was removed or renamed has nothing to show (its runs keep the old name).
+      if (ref?.kind === "run") return commands.has(ref.name.toLowerCase());
       return true;
     });
     if (next !== layoutRef.current) commit(next, { route: false });

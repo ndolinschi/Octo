@@ -2,8 +2,13 @@ import type {
   Bridge,
   FolderEntry,
   OpenReviewInput,
+  ListPullRequestsParams,
   PullRequestList,
   Review,
+  ReviewBranchList,
+  ReviewCheckoutInput,
+  ReviewCheckoutResult,
+  ReviewThreads,
   ReviewComment,
   ReviewCommentInput,
   ReviewCommentUpdate,
@@ -23,7 +28,7 @@ import type {
 
 /** The review methods of a bridge bound to one project, all present (the bridge's are optional: HTTP bridge and demo only). */
 export type ReviewApi = {
-  listPullRequests(folder?: string): Promise<PullRequestList>;
+  listPullRequests(params?: ListPullRequestsParams): Promise<PullRequestList>;
   listOpen(): Promise<ReviewSummary[]>;
   open(input: OpenReviewInput): Promise<Review>;
   get(id: string): Promise<Review>;
@@ -40,7 +45,13 @@ export type ReviewApi = {
   decideFinding(id: string, fid: string, decision: ReviewFindingDecision): Promise<ReviewFindingResult>;
   previewSubmit(id: string, input: ReviewSubmitInput): Promise<ReviewSubmitPreview>;
   submit(id: string, input: ReviewSubmitInput): Promise<ReviewSubmitResult>;
+  /** Existing threads of the code host; absent on a harness that predates RV1.5. */
+  threads: ((id: string, refresh?: boolean) => Promise<ReviewThreads>) | null;
+  checkout: ((id: string, input: ReviewCheckoutInput) => Promise<ReviewCheckoutResult>) | null;
+  clearWorkspace: (() => Promise<void>) | null;
   recentFolders(): Promise<FolderEntry[]>;
+  /** The folder's local branches against a base (decision 84); null on a harness that cannot list them. */
+  branches: ((params: { folder?: string; base?: string }) => Promise<ReviewBranchList>) | null;
 };
 
 /** Binds the bridge to a project; null when the bridge lacks any review method (an older harness). */
@@ -82,8 +93,12 @@ export function reviewApi(b: Bridge, p: string): ReviewApi | null {
   const decideReviewFinding = b.decideReviewFinding.bind(b);
   const previewReviewSubmit = b.previewReviewSubmit.bind(b);
   const submitReview = b.submitReview.bind(b);
+  const listThreads = b.listReviewThreads?.bind(b);
+  const checkoutReview = b.checkoutReview?.bind(b);
+  const clearWorkspace = b.clearReviewWorkspace?.bind(b);
+  const listBranches = b.listReviewBranches?.bind(b);
   return {
-    listPullRequests: (folder) => listPullRequests(p, folder ? { folder } : undefined),
+    listPullRequests: (params) => listPullRequests(p, params),
     listOpen: () => listReviews(p, "open"),
     open: (input) => openReview(p, input),
     get: (id) => getReview(p, id),
@@ -100,6 +115,10 @@ export function reviewApi(b: Bridge, p: string): ReviewApi | null {
     decideFinding: (id, fid, d) => decideReviewFinding(p, id, fid, d),
     previewSubmit: (id, input) => previewReviewSubmit(p, id, input),
     submit: (id, input) => submitReview(p, id, input),
+    threads: listThreads ? (id, refresh) => listThreads(p, id, refresh ? { refresh } : undefined) : null,
+    checkout: checkoutReview ? (id, input) => checkoutReview(p, id, input) : null,
+    clearWorkspace: clearWorkspace ? () => clearWorkspace(p) : null,
     recentFolders: () => b.recentFolders?.() ?? Promise.resolve([]),
+    branches: listBranches ? (params) => listBranches(p, params) : null,
   };
 }

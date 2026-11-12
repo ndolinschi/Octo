@@ -2224,3 +2224,89 @@ Acceptance: view-model tests (grouping, the collapsed row, primary action per st
 1440×900, 1100×700, 390×700 with the owner's set (Claude Code 16 models, Copilot 7, Grok 4, Codex ready without
 models, OpenCode 12, Antigravity experimental, five not installed, API not connected); spacing audit state: all rows
 equal height, no button inside a row, detail's top equals the list's top.
+
+## As built — whole-screen review and project commands in the top row (decisions 78, 68, 83, 84)
+
+- **Maximise (78).** `state/workspace/maximise.ts` (tested) keeps the maximised group as a plain group id next to the layout; the
+  layout (sizes, tabs, active tabs) is never touched, so the other groups are only `hidden` (not unmounted: scroll, drafts and widths
+  come back as they were). `maximisedGroup` says when it still means something: the group exists, holds the focus, the dock is not
+  narrow. `Ctrl/Cmd+Shift+Enter` (`useTabKeys`), a double-click on a tab, "Maximise" in the tab menu and the palette's "Maximise tab"
+  toggle it; focus leaving the group (a tool opened elsewhere) ends it in `commit`. While it is on, `dock/MaximiseEffects` (lazy)
+  closes the sidebar (and gives it back when it ends, only if it was open) and handles Esc in the bubble phase: only when nothing
+  consumed the key, no menu or dialog is open and the caret is not in a text field. The strip of the maximised group offers a quiet
+  "Restore the layout" button (it lives in the lazy `commands/ProjectCommands` chunk: the initial bundle has no room for it). Opening a
+  pull request from the picker maximises the Review tab, "back to the list" restores (`ReviewTab`). Narrow mode: maximise is a no-op
+  (one strip already). Width floors are untouched (the maximised group's `minWidth` is 0 only while it is alone).
+- **Project commands in the top row (68).** Pinned commands (at most two, hidden below 1024px) and a "Run" menu (all commands, then
+  "Edit commands in Settings") sit before the project actions of the last strip (`commands/ProjectCommands`, mounted lazily by
+  `dock/TabStrip`; the spinner has its own fixed place so a run starting never moves the strip). A run opens a "Run: name" tab (tab
+  kind `run:<name>`, `layout.runTab`; pruned when the command is removed or renamed) that is the review's `RunPanel` filling a tab
+  (`RunPanel tab=name`, `commands/RunTab`, lazy). The tab shows the state glyph only while running ("working") or after a failure.
+  Shared state: `lib/projectRunsStore` (one external store per project, the commands feature's `RunsState`), fed by the lazy
+  `commands/ProjectRunsFeed` (list once, then `command.*` events); the initial bundle only learns `runStatuses` (via
+  `WorkspaceValue.setRunStatuses`). The status bar shows "N running" (running project runs, opens the newest run tab). Runs of a
+  review are not counted. Start errors open a small dialog with the sentence and a next step.
+- **Review leftovers.** The review header renders run/check-out once (a row of its own below `sm`, by order and basis). Renaming a
+  command in settings renames it in the review's offered list (`renameOffered`, tested; `settings/CommandsSection`). `spacing-audit`:
+  scenes `review-open`, `review-branches`, `command-dialog`, and a new rule `field-row`; `width-stability` also checks tab hover and a
+  run tab changing state.
+- **Tabs (83).** A tab is as wide as its icon, title and (reserved) close place need, up to `TAB_MAX` 200 with the title truncated by
+  CSS and the full title in the tooltip; the strip shrinks tabs evenly (flex) down to `TAB_MIN` 56, and only then scrolls
+  (`tabsOverflow`, tested). `tabSizing` and the icon-only mode are gone. Applies to every strip.
+- **Field rows and local branches (84).** `primitives/FieldRow` (labels, controls, hints on three grid lines; `data-field-row`,
+  `data-field-control`); used by the command form (Name, Folder). The picker has two views, "Pull requests" and "Local branches"
+  (tab row built in `PullList.tsx` because `ViewTabs` does not exist in this base; the coordinator unifies). `review/BranchList`
+  lists the folder's branches (current first, one 40px line each: name, "current", ahead/behind, subject, time; dim "no changes"),
+  one base menu "against main"; a row opens `source: local, base, head`. `LocalBranch.tsx` (the form) is gone. Without
+  `listReviewBranches` only the current branch shows. `agent-client` declares `ReviewBranch`, `ReviewBranches` and the optional
+  `Bridge.listReviewBranches?(projectId, {folder, base})`; the HTTP implementation is the harness executor's (not here); the demo
+  bridge implements it with five branches.
+- **Bundle.** Initial JS 155.63 kB gzip (budget 155.90, not raised): the tab menu, the project actions menu, the resize divider, the
+  maximise effects, the commands and the run tab are lazy chunks.
+- **Verified:** Chromium via Playwright against `?demo=1`, dark: maximise at 1440x900 and 1100x700 (the other group `hidden`, the
+  sidebar closed, Esc / the shortcut / the restore button put everything back, no console error), the top row, the Run menu, a run
+  tab running and failed, "1 running" in the status bar, tabs (one, several, 900px), the branches view at 1440x900 and 390x700;
+  `width-stability` ok at 1440x900 and 900x600 (including tab hover and a command running then ending); `spacing-audit` scenes
+  `review-open`, `review-branches`, `command-dialog` at total=0. **Not verified:** WebKit, light theme, a real harness (the HTTP
+  bridge's `listReviewBranches` does not exist yet), the full `spacing-audit` of every scene on this tree if the gates note says so,
+  Esc inside Monaco (it keeps its own Esc), sidebar behaviour on a window narrower than the drawer breakpoint.
+
+### As built — decision 89 (Providers is a list and a detail; 2026-11-12)
+
+- **Layout (a, e).** `settings/ProvidersSection` is a list column (`ProviderList`, 288px) and `ProviderDetail` filling the rest
+  at the full width of the settings page (`isWideSection("providers")` drops the 780px column), top-aligned, same hairline
+  frame. The floor is a container query (`@3xl`, 768px of the section, not the window): below it the page is the list alone, a
+  row opens the detail, "← Providers" goes back.
+- **Rows (b).** One height (40px, `data-row`): state dot at a fixed x, 16px mark, name (+ dim "Experimental"), one dim status line
+  ("Ready · 16 models", "Not logged in", "Not installed", "Not connected"). No reason text, no button; the whole row selects.
+- **Groups (c).** Connected · Needs attention · Not set up (`lib/providers/view.ts`, `providerGroups`). With something connected
+  "Not set up" is one row "6 more providers can be added" ("agents" when all are agents); opened by the row, or when it holds the
+  selection; "Show fewer" folds it again.
+- **Detail (d).** Title row (mark, name, state, "Experimental", the state's one action), then in order: reason in plain words with
+  the install / login commands in copy lines (a hint with no command shows as prose), the API key field (API only), Models (count,
+  "updated 2h ago", Refresh, folded after six with "Show all N", `models_error` / `models_note`), Preferred model, Roles as one
+  `FieldRow` (three in a row at wide, stacked at narrow, explanation and "Saved" under the whole row), Billing (one line).
+  Actions: not-connected API / router: "Connect" (focuses the key field); agent not installed / not logged in / error:
+  "Check again" (the steps are in the pane, so "How to connect" became the pane itself). "Check again" calls
+  `bridge.recheckProvider?.(id)` when the bridge has it, then re-reads the providers.
+- **API key.** A write-only field in the API provider's detail (`ProviderKey`, `SecretForm` moved to `components/shared`), through
+  the existing settings API; "Remove key" with a confirm. The router's switch, URL and upstream key stay folded below the page
+  (`RouterSettings`).
+- **`FieldRow`** (`primitives/FieldRow.tsx`, decision 84 a): a grid of two-row subgrid cells (labels on one line, controls on one
+  line with equal tops, hint and status on a third line under the whole row); the stacking is a container query.
+- **agent-client.** `Provider.experimental?` and `Bridge.recheckProvider?(id)` declared additively (the harness work adds the
+  implementation). "Use anyway" is not built: its call (`force_unverified`) is not in this base.
+- **89 f — do Providers and Agents overlap? Yes, completely.** Agents showed, per agent: state, the reason, install and login
+  commands, the model list with the default, "Check again". Providers showed state, a button, and the preferred model and roles.
+  The new detail has every one of those fields, so **Settings → Agents is removed** (nav entry, section, search rows); `#/settings/agents`
+  opens Providers; its search keywords moved to the Providers row.
+- **Demo.** `?providers=owner` is the owner's live set (twelve providers); the default demo set is unchanged.
+- **Verified.** View-model tests (`lib/providers/view.test.ts`: grouping, the folded row, primary action per state, row status,
+  model folding); `settingsIndex` tests; tsc for ui and agent-client; eslint on the touched files (no new warnings); prettier;
+  spacing audit states `providers` (1440, 1100, 390) and `providers-open` and `settings-page`: total=0, including the three
+  checks of the acceptance (rows equal height, no button in a row, detail top equals list top, FieldRow control tops equal);
+  `width-stability.mjs` ok; screenshots dark and light at 1440×900, 1100×700, 390×700; console clean.
+- **Not verified / not run.** Production build, bundle check and whole-repo test runs (the coordinator runs them at merge; one
+  timing test in `streak.test.ts` fails under load, unrelated). "Check again" and "Refresh" against a real harness; the
+  `recheckProvider` path (the demo bridge has no such method, so the demo re-reads the list). Keyboard roving in the list uses
+  the shared `useRowKeys`; not exercised beyond that.

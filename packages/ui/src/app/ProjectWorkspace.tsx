@@ -18,6 +18,9 @@ import { Panel } from "../components/shell/Panel";
 /** The status bar's project items load after first paint (its own chunk; the row itself is always there, so nothing shifts). */
 const ProjectStatus = lazy(() => import("../components/status/ProjectStatus").then((m) => ({ default: m.ProjectStatus })));
 
+/** Keeps the project's command runs current for the top row, the run tabs and the status bar (decision 68). */
+const ProjectRunsFeed = lazy(() => import("../components/commands/ProjectRunsFeed"));
+
 /** The project dialog loads on first use (its own chunk). */
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
 
@@ -56,6 +59,7 @@ export function ProjectWorkspace(props: { agentId: string | null }) {
           <ChatSlotsProvider value={CHAT_SLOTS}>
             <Suspense fallback={null}>
               <ProjectStatus />
+              <ProjectRunsFeed />
             </Suspense>
             <Body />
           </ChatSlotsProvider>

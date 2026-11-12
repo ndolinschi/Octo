@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../state/app";
 import { BackdropProvider, type Backdrop } from "../primitives/backdrop";
 import { StreakLayer } from "../primitives/StreakLayer";
@@ -7,7 +7,6 @@ import { cn } from "../../lib/cn";
 import { allTabs, focusedGroup, type Group } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { panelClass } from "../shell/Panel";
-import { Divider } from "./Divider";
 import { DragLayer } from "./DragLayer";
 import { GroupProvider } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
@@ -16,6 +15,12 @@ import { TabView } from "./TabView";
 import { groupFloor } from "../../state/workspace/floors";
 import { useShell } from "../../state/shell";
 import { controlsWidth, useChrome } from "../../state/chrome";
+
+/** The resize handle between groups loads when a second group exists; until then its 8px gap is an empty box, so nothing moves. */
+const Divider = lazy(() => import("./Divider"));
+
+/** Sidebar steps aside and Esc restores, only while a group is maximised (decision 78). */
+const MaximiseEffects = lazy(() => import("./MaximiseEffects"));
 
 const SIDES: readonly [string, string, string] = ["Left", "Middle", "Right"];
 
@@ -46,13 +51,30 @@ export function Dock() {
     <div ref={ref} className="flex min-h-0 min-w-0 flex-1">
       {groups.map((g, i) => {
         const before = groups[i - 1];
+        const alone = ws.narrow || ws.maximised !== null;
         return (
           <Fragment key={g.id}>
-            {before && !ws.narrow && <Divider index={i - 1} value={before.size} />}
-            <GroupView group={g} name={groupName(i, groups.length)} first={i === 0 || ws.narrow} last={i === groups.length - 1 || ws.narrow} />
+            {before && !alone && (
+              <Suspense fallback={<div className="w-gutter shrink-0" />}>
+                <Divider index={i - 1} value={before.size} />
+              </Suspense>
+            )}
+            <GroupView
+              group={g}
+              name={groupName(i, groups.length)}
+              first={i === 0 || alone}
+              last={i === groups.length - 1 || alone}
+              maximised={ws.maximised === g.id}
+              stepAside={ws.maximised !== null && ws.maximised !== g.id}
+            />
           </Fragment>
         );
       })}
+      {ws.maximised !== null && (
+        <Suspense fallback={null}>
+          <MaximiseEffects />
+        </Suspense>
+      )}
       <DragLayer />
     </div>
   );
@@ -70,14 +92,16 @@ function useVisited(group: Group): Set<string> {
   return visited;
 }
 
-function GroupView({ group, name, first, last }: { group: Group; name: string; first: boolean; last: boolean }) {
+/** `maximised`: this group has the whole dock; `stepAside`: another one has (hidden, not unmounted: scroll, drafts and widths stay). */
+function GroupView(props: { group: Group; name: string; first: boolean; last: boolean; maximised: boolean; stepAside: boolean }) {
+  const { group, name, first, last, maximised, stepAside } = props;
   const ws = useWorkspace();
   const { sidebarOpen } = useShell();
   const { insetStart } = useChrome();
   const visited = useVisited(group);
   const focused = group.id === ws.layout.focused;
   const narrow = ws.narrow;
-  const hidden = narrow && !focused;
+  const hidden = (narrow && !focused) || stepAside;
   const strip = narrow ? { tabs: allTabs(ws.layout), active: focusedGroup(ws.layout).active } : { tabs: group.tabs, active: group.active };
   const { theme, backdrop: appBackdrop } = useApp();
   const [backdrops, setBackdrops] = useState<ReadonlySet<string>>(() => new Set());
@@ -102,7 +126,7 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
       data-dock-group={group.id}
       aria-label={narrow ? "Workspace" : name === "Workspace" ? name : `${name} group`}
       hidden={hidden}
-      style={narrow ? undefined : { flex: `${group.size} 1 0px`, minWidth: groupFloor(group.tabs) }}
+      style={narrow ? undefined : maximised ? { flex: "1 1 0px", minWidth: 0 } : { flex: `${group.size} 1 0px`, minWidth: groupFloor(group.tabs) }}
       onPointerDownCapture={() => ws.focusGroup(group.id)}
       onFocusCapture={() => ws.focusGroup(group.id)}
       className={cn("flex min-h-0 min-w-0 flex-col overflow-clip contain-inline-size", narrow && "flex-1")}
@@ -115,6 +139,7 @@ function GroupView({ group, name, first, last }: { group: Group; name: string; f
           active={strip.active}
           focused={focused}
           last={last}
+          maximised={maximised}
           startInset={first && !sidebarOpen ? controlsWidth(insetStart) : 0}
         />
         <div className={cn(panelClass, "relative flex-1")}>

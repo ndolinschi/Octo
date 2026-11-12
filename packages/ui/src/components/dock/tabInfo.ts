@@ -55,6 +55,8 @@ export function tabInfo(
     orchestratorId: string | undefined;
     file(key: FileKey): OpenFile | undefined;
     comments(key: FileKey): number;
+    /** The state of a project command's latest run (decision 68). */
+    runStatus(name: string): "running" | "failed" | null;
   },
 ): TabInfo {
   const ref = parseTab(tab);
@@ -93,6 +95,18 @@ export function tabInfo(
       icon: GLYPH.agent,
       status: agent?.status === "running" ? "running" : null,
       glyph: agent?.status === "running" ? "working" : agent?.status === "failed" ? "failed" : null,
+      comments: 0,
+    };
+  }
+  if (ref.kind === "run") {
+    const status = ctx.runStatus(ref.name);
+    const label = `Run: ${ref.name}`;
+    return {
+      label,
+      title: label,
+      icon: GLYPH.run,
+      status: status === "running" ? "running" : null,
+      glyph: status === "running" ? "working" : status,
       comments: 0,
     };
   }
