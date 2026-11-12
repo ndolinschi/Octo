@@ -991,6 +991,9 @@
   font-size: 15px;
   line-height: 22px;
   min-height: 22px;
+  /* Decision 69: the scrollbar that appears at 10 lines must not change the text width (it re-wrapped the text, flipped the
+     scrollbar off again and the composer's height oscillated until React gave up: "Maximum update depth exceeded"). */
+  scrollbar-gutter: stable;
 }
 /* Touch screens: 16px so iOS does not zoom into the field. */
 @media (pointer: coarse) {

@@ -6,7 +6,7 @@ import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { StateGlyph } from "../primitives/StateGlyph";
 
-/** Decision 64 a: the most chips the title bar shows before they fold into one. */
+/** Decision 64 a: the most chips the top row shows before they fold into one. */
 const MAX_CHIPS = 3;
 
 const CHIP = "flex h-chip shrink-0 items-center gap-1.5 rounded-sm px-1.5 text-xs whitespace-nowrap press-row focus-inset hover:bg-hover";
@@ -17,7 +17,7 @@ const CHIP = "flex h-chip shrink-0 items-center gap-1.5 rounded-sm px-1.5 text-x
  * (finished ones dimmed). A chip opens that agent's tab. Chips are never cut: when they do not all fit the row (measured)
  * they fold into one "N agents" chip that opens the Agents panel. Nothing shows before the first request.
  */
-export function TitleBarTeam({ orchestrator }: { orchestrator: OrchestratorState }) {
+export function ProjectTeam({ orchestrator }: { orchestrator: OrchestratorState }) {
   const { state } = useProject();
   const ws = useOptionalWorkspace();
   const agents = state.agentOrder.flatMap((id) => (state.agents[id] ? [state.agents[id]] : []));

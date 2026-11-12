@@ -1,0 +1,45 @@
+import { useMemo } from "react";
+import { connectionText, workingText } from "../../lib/statusBar";
+import { useApp } from "../../state/app";
+import { navigate } from "../../lib/route";
+import { Spinner } from "../primitives/Status";
+import { StateGlyph } from "../primitives/StateGlyph";
+import { STATUS_ITEM } from "./StatusItem";
+
+/**
+ * Decision 73: one quiet 24px row at the bottom of the window, at most five items, each a button. The open project fills the
+ * left end (its folder, its changed files) and the budget (`ProjectStatus`); this row itself shows the projects whose agents
+ * are working (opens Home, which lists them) and the connection, only when it is not fine. Nothing moves unless something is
+ * in progress (decision 76): the one glyph that turns is the working item's. Hidden below 600px of window height.
+ */
+export function StatusBar(props: { home: boolean; startRef(el: HTMLElement | null): void; endRef(el: HTMLElement | null): void }) {
+  const { projects, health, retry } = useApp();
+  const running = useMemo(() => projects?.filter((p) => p.status === "running").length ?? 0, [projects]);
+  // Home lists the projects at work itself (its tiles): the item would only repeat it.
+  const working = props.home ? null : workingText(running);
+  const connection = connectionText(health);
+  return (
+    <footer
+      aria-label="Status"
+      data-status-bar
+      className="flex h-chip shrink-0 items-center gap-4 px-gutter text-xs text-fg-3 [@media(max-height:599px)]:hidden"
+    >
+      <div ref={props.startRef} className="flex min-w-0 items-center gap-1" />
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {working && (
+          <button type="button" className={STATUS_ITEM} title="Agents are working. Show the projects." onClick={() => navigate(null)}>
+            <StateGlyph state="working" />
+            {working}
+          </button>
+        )}
+        <div ref={props.endRef} className="flex items-center gap-1" />
+        {connection && (
+          <button type="button" className={STATUS_ITEM} title={connection.hint} onClick={retry} disabled={health === "checking"}>
+            {health === "checking" ? <Spinner size={12} /> : <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-err" />}
+            {connection.text}
+          </button>
+        )}
+      </div>
+    </footer>
+  );
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { controlsPadding, ROW_HEIGHT } from "./chrome";
+import { controlsPadding, controlsWidth, ROW_HEIGHT } from "./chrome";
 
 test("no centre line, or the row's own, adds no padding", () => {
   assert.deepEqual(controlsPadding(undefined), { top: 0, bottom: 0 });
@@ -16,4 +16,9 @@ test("a centre below the row's middle pads the top by twice the shift, above it 
 test("the shift stays inside the row", () => {
   assert.deepEqual(controlsPadding(500), { top: 20, bottom: 0 });
   assert.deepEqual(controlsPadding(-500), { top: 0, bottom: 20 });
+});
+
+test("the first strip starts after the inset (at least the panel inset) and the three window buttons", () => {
+  assert.equal(controlsWidth(0), 8 + 92 + 8);
+  assert.equal(controlsWidth(78), 78 + 92 + 8);
 });

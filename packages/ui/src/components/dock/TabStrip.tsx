@@ -5,7 +5,9 @@ import { useOptionalComments } from "../../state/comments";
 import { useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
-import { closable, type TabId } from "../../state/workspace/layout";
+import { CHAT, closable, type TabId } from "../../state/workspace/layout";
+import { SIDE_PAD, useChrome } from "../../state/chrome";
+import { ProjectActions, ProjectTeamLine } from "../shell/ProjectBar";
 import { slotShift, tabSizing } from "../../state/workspace/tabStrip";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Menu, type MenuItem } from "../primitives/Menu";
@@ -25,20 +27,25 @@ const AllTabsPicker = lazy(() => import("./AllTabsPicker").then((m) => ({ defaul
 
 /** Room the "+" takes after the tabs (28 + the 4px gap), and the "all tabs" button when the strip scrolls (24 + 4). */
 const PLUS_ROOM = 32;
+/** The gap before the sub-agent chips' box in the strip that holds the conversation (it exists while the project has a team). */
+const TEAM_GAP = 4;
 const ALL_TABS_ROOM = 28;
 /** Clear of the 20px edge fade, so the selected tab's label and close button are never under it. */
 const SCROLL_MARGIN = 24;
 
 /**
- * One group's tab strip (or, when narrow, every tab in one strip): 36px, the tabs 8px from the panel's top and sides,
- * 4 apart. Decision 25: tabs share the strip (up to 200px, evenly down to 96, then icon-only beside a 96px active
+ * One group's tab strip (or, when narrow, every tab in one strip): the group's slice of the window's top row (decision 67),
+ * 40px on the window's background above the content card, the tabs 8px from the sides, 4 apart. `startInset`: room the first
+ * group leaves for the window buttons while the sidebar is closed. The strip holding the conversation shows its sub-agents
+ * after the "+"; the last strip ends with the project's actions. Decision 25: tabs share the strip (up to 200px, evenly down to 96, then icon-only beside a 96px active
  * tab, then the strip scrolls with the wheel and faded edges, the active tab kept in view); drag to reorder with live
  * displacement, to another strip or a group body (`drag.ts`); middle-click closes. The first strip starts with "Show
  * sidebar" while the sidebar is hidden; the last ends with the project's global actions. Roving focus: ←/→/Home/End
  * move and select, Delete closes, Shift+F10 or the context-menu key opens the tab menu.
  */
-export function TabStrip(props: { label: string; groupId: string; tabs: TabId[]; active: TabId; focused: boolean; last: boolean }) {
+export function TabStrip(props: { label: string; groupId: string; tabs: TabId[]; active: TabId; focused: boolean; last: boolean; startInset: number }) {
   const ws = useWorkspace();
+  const { insetEnd } = useChrome();
   const code = useCode();
   const { state, project } = useProject();
   const list = useRef<HTMLDivElement>(null);
@@ -70,10 +77,11 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
   const activeIndex = props.tabs.indexOf(props.active);
   // Tab count and the active tab do not change during a drag, so sizes hold still under the pointer. The tabs get the
   // strip minus the "+" (decision 25: it follows the last tab) and, once they scroll, the "all tabs" button.
-  const fits = tabSizing(room - PLUS_ROOM, props.tabs.length, activeIndex);
+  const reserved = PLUS_ROOM + (props.tabs.includes(CHAT) ? TEAM_GAP : 0);
+  const fits = tabSizing(room - reserved, props.tabs.length, activeIndex);
   const overflow = room > 0 && fits.overflow;
-  const size = overflow ? tabSizing(room - PLUS_ROOM - ALL_TABS_ROOM, props.tabs.length, activeIndex) : fits;
-  const listWidth = room > 0 ? room - PLUS_ROOM - (overflow ? ALL_TABS_ROOM : 0) : 0;
+  const size = overflow ? tabSizing(room - reserved - ALL_TABS_ROOM, props.tabs.length, activeIndex) : fits;
+  const listWidth = room > 0 ? room - reserved - (overflow ? ALL_TABS_ROOM : 0) : 0;
   const pickerHere = ws.picker !== null && ws.picker.group === props.groupId;
   const button = (tab: TabId) => (list.current ? tabButton(list.current, tab) : null);
 
@@ -169,7 +177,15 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
   };
 
   return (
-    <div data-strip className="relative flex shrink-0 items-center gap-1 px-pane pt-pane">
+    <div
+      data-strip
+      data-drag-region
+      className="relative flex h-bar shrink-0 items-center gap-1 px-pane"
+      style={{
+        ...(props.startInset > 0 ? { paddingInlineStart: props.startInset } : {}),
+        ...(props.last && insetEnd > SIDE_PAD ? { paddingInlineEnd: insetEnd } : {}),
+      }}
+    >
       <div ref={wrap} className="flex min-w-0 flex-1 items-center gap-1">
         <div
           ref={list}
@@ -220,6 +236,7 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
           className={cn("shrink-0", pickerHere && "bg-active text-fg")}
           onClick={() => (pickerHere ? ws.closePicker() : ws.openPicker(props.groupId))}
         />
+        {props.tabs.includes(CHAT) && <ProjectTeamLine />}
         {overflow && (
           <button
             ref={allButton}
@@ -239,6 +256,7 @@ export function TabStrip(props: { label: string; groupId: string; tabs: TabId[];
           </button>
         )}
       </div>
+      {props.last && <ProjectActions />}
       <Presence show={pickerHere} exitMs={0}>
         {pickerHere && (
           <Suspense fallback={null}>

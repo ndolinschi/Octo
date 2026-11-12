@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { cn } from "../lib/cn";
 import { useEscape, useMediaQuery } from "../lib/hooks";
 import { focusSoon, visibleComposer } from "../lib/focus";
 import { navigate, settingsHref, useGuardedRoute, useSettingsSection } from "../lib/route";
@@ -20,7 +21,8 @@ import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
 import { Sidebar } from "../components/shell/Sidebar";
 import { TitleBar } from "../components/shell/TitleBar";
-import { TitleBarSlotsContext } from "../state/titleBar";
+import { StatusBar } from "../components/status/StatusBar";
+import { StatusSlotsContext } from "../state/statusSlots";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { ActivityProvider } from "../state/activity";
 import { DRAWER_QUERY } from "../lib/constants";
@@ -79,9 +81,9 @@ function Shell() {
   useStoredMotion();
   const [palette, setPalette] = useState(false);
   const drawerOpener = useRef<HTMLElement | null>(null);
-  // The two ends of the title bar row that the open project fills (see `TitleBarProject`).
-  const [titleStart, setTitleStart] = useState<HTMLElement | null>(null);
-  const [titleEnd, setTitleEnd] = useState<HTMLElement | null>(null);
+  // The two ends of the status bar that the open project fills (see `ProjectStatus`).
+  const [statusStart, setStatusStart] = useState<HTMLElement | null>(null);
+  const [statusEnd, setStatusEnd] = useState<HTMLElement | null>(null);
   const sidebarOpen = drawerMode ? drawerOpen : inlineOpen;
 
   const known = projects?.some((p) => p.id === route.projectId) ?? false;
@@ -217,18 +219,13 @@ function Shell() {
 
   return (
     <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect: setConnectTarget }}>
-      {/* The project's name and model show in the title bar only while the project is on screen; the settings page sets its own title. */}
-      <TitleBarSlotsContext.Provider value={{ start: settings === null ? titleStart : null, end: settings === null ? titleEnd : null }}>
-        <div className="flex h-full flex-col overflow-clip bg-window text-fg">
-          {/* Decision 54: the title bar is the header. One row across the window, whether the sidebar is open or closed. */}
-          <TitleBar
-            alignStart={settings !== null || (!drawerMode && inlineOpen)}
-            startRef={setTitleStart}
-            endRef={setTitleEnd}
-            {...(settings !== null ? { title: "Settings" } : {})}
-          />
+      <StatusSlotsContext.Provider value={{ start: statusStart, end: statusEnd }}>
+        <div className="relative flex h-full flex-col overflow-clip bg-window text-fg">
+          {/* Decision 67: the top row is the window's, 40px across it: the controls float over its left corner and, with a project
+            open, the tab strips of the dock groups are the row. Home and Settings have the bare row (and Settings its title). */}
+          <TitleBar {...(settings !== null ? { title: "Settings" } : {})} />
           {settings !== null && (
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 pt-bar">
               <Suspense fallback={null}>
                 <SettingsPage
                   section={settings}
@@ -240,9 +237,16 @@ function Shell() {
             </div>
           )}
           <div className="flex min-h-0 flex-1" hidden={settings !== null}>
-            {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} />}
+            {!drawerMode && inlineOpen && (
+              <div className="flex h-full shrink-0 pt-bar">
+                <Sidebar {...sidebarProps} />
+              </div>
+            )}
             {/* Equal gutters on the other sides of every panel (the sidebar card included); the row above is the top one. Full-bleed on phones. */}
-            <div className="relative flex min-w-0 flex-1 flex-col p-gutter pt-0 max-sm:p-0" inert={drawerShown}>
+            <div
+              className={cn("relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0", !(workspace && route.projectId) && "pt-bar")}
+              inert={drawerShown}
+            >
               {workspace && route.projectId ? (
                 <ProjectProvider key={route.projectId} projectId={route.projectId}>
                   {demo && window.location.hash.endsWith("/memory") ? (
@@ -260,6 +264,7 @@ function Shell() {
               )}
             </div>
           </div>
+          <StatusBar home={route.projectId === null && settings === null} startRef={setStatusStart} endRef={setStatusEnd} />
           <Presence show={drawerShown}>
             <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
               <Sidebar {...sidebarProps} />
@@ -301,7 +306,7 @@ function Shell() {
             />
           </Presence>
         </div>
-      </TitleBarSlotsContext.Provider>
+      </StatusSlotsContext.Provider>
     </ShellContext.Provider>
   );
 }
@@ -344,7 +349,7 @@ function SidebarDrawer(props: { onClose(): void; opener: React.RefObject<HTMLEle
   }, [state, opener]);
   return (
     // Starts under the title bar row, so its toggle stays reachable (it closes the drawer).
-    <div className="fixed inset-x-0 top-bar bottom-0 z-40" inert={state === "closed"}>
+    <div className="fixed inset-x-0 top-bar bottom-chip z-40" inert={state === "closed"}>
       <div className="octo-scrim absolute inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
       <div ref={panel} data-state={state} className="octo-drawer absolute inset-y-0 left-0 max-w-[calc(100%-48px)] overscroll-contain shadow-pop">
         {children}

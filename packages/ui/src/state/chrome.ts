@@ -24,6 +24,21 @@ export function controlsPadding(centerY: number | undefined): { top: number; bot
   return shift >= 0 ? { top: 2 * shift, bottom: 0 } : { top: 0, bottom: -2 * shift };
 }
 
+/** The row's side padding when the host reserves nothing (the panels' 8px inset). */
+export const SIDE_PAD = 8;
+/** Sidebar toggle, back and forward: three 28px buttons, 4px apart. */
+const CLUSTER_WIDTH = 3 * 28 + 2 * 4;
+/** The 8px between that cluster and the first tab. */
+const CLUSTER_GAP = 8;
+
+/**
+ * Where the first tab strip starts when the sidebar is closed (decision 67): after the window controls' inset and the
+ * cluster of sidebar toggle and back / forward that float over the window's top-left corner.
+ */
+export function controlsWidth(insetStart: number): number {
+  return Math.max(SIDE_PAD, insetStart) + CLUSTER_WIDTH + CLUSTER_GAP;
+}
+
 export const NO_CHROME: WindowChrome = { overlay: false, insetStart: 0, insetEnd: 0 };
 
 const ChromeContext = createContext<WindowChrome>(NO_CHROME);

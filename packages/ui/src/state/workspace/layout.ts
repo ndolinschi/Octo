@@ -305,15 +305,16 @@ export function sideGroup(layout: Layout): Group | null {
   return layout.groups[i + 1] ?? layout.groups[i - 1] ?? null;
 }
 
-/** Moves the divider after group `index` by `delta` (fraction of the row), keeping both sides ≥ `min`. */
-export function resize(layout: Layout, index: number, delta: number, min: number): Layout {
+/** Moves the divider after group `index` by `delta` (fraction of the row), keeping the left side ≥ `min` and the right side ≥ `minRight` (default `min`). */
+export function resize(layout: Layout, index: number, delta: number, min: number, minRight: number = min): Layout {
   const a = layout.groups[index];
   const b = layout.groups[index + 1];
   if (!a || !b) return layout;
   const pair = a.size + b.size;
   // A pair narrower than two minimums splits evenly instead of driving one side negative.
-  const floor = Math.min(min, pair / 2);
-  const left = Math.max(floor, Math.min(pair - floor, a.size + delta));
+  const floorLeft = pair < min + minRight ? pair * (min / (min + minRight)) : min;
+  const floorRight = pair < min + minRight ? pair - floorLeft : minRight;
+  const left = Math.max(floorLeft, Math.min(pair - floorRight, a.size + delta));
   const groups = [...layout.groups];
   groups[index] = { ...a, size: left };
   groups[index + 1] = { ...b, size: pair - left };

@@ -59,8 +59,10 @@ floating composer to the file view as a render prop) or the app shell, which fil
 `state/chatSlots` (approvals and forms at the end of the transcript, the queue above the composer; the v7 components).
 A hook or context several layers need (`useGroup`, `useFloatingHere`) is app state and lives in `state/`.
 
-Window frame: `shell/TitleBar` is the one header row (sidebar toggle, back/forward, then slots the open project fills with
-`TitleBarProject`: name, state, model, budget, tokens, actions; the settings page puts "Settings" there). There is no header
+Window frame (decisions 67, 73): the top row is the dock groups' tab strips (`dock/TabStrip`: tabs, "+", the conversation's sub-agent
+chips and, in the last group, the project's "⋯" from `shell/ProjectBar`); `shell/TitleBar` is only the window controls floating over
+the corner (sidebar toggle, back/forward) and a drag strip for Home and Settings. The bottom row is `components/status/StatusBar`; the
+open project fills its ends through `state/statusSlots` (`ProjectStatus`). Group width floors: `state/workspace/floors`. There is no header
 row in the sidebar or the conversation (`ChatHeader` and `SettingsDialog` are gone); Settings is the page
 `components/settings` at `#/settings/<section>`. New features: `v7/` (approvals, forms, queue, Changes tab), `memory/`
 (Memory tab), `providers/` and `lib/providers` (connect screen and sheet, provider list, model-picker data),

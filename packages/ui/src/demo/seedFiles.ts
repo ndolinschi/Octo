@@ -6,7 +6,9 @@ type Seed = Record<string, string | { binary: true } | { size: number }>;
 /** Width-stability fixtures (decision 79): a 20-column file, a 400-column file and a one-line minified bundle. */
 const narrowLines = Array.from({ length: 12 }, (_, i) => `line ${i + 1}: short`).join("\n");
 const wideLines = Array.from({ length: 40 }, (_, i) => `${String(i + 1).padStart(3, "0")} ` + "0123456789 ".repeat(36)).join("\n");
-const minified = "!function(e){var t={};function n(r){if(t[r])return t[r].exports;var o=t[r]={i:r,l:!1,exports:{}};return e[r].call(o.exports,o,o.exports,n),o.l=!0,o.exports}" + "n.d=function(e,t,r){n.o(e,t)||Object.defineProperty(e,t,{enumerable:!0,get:r})};".repeat(40);
+const minified =
+  "!function(e){var t={};function n(r){if(t[r])return t[r].exports;var o=t[r]={i:r,l:!1,exports:{}};return e[r].call(o.exports,o,o.exports,n),o.l=!0,o.exports}" +
+  "n.d=function(e,t,r){n.o(e,t)||Object.defineProperty(e,t,{enumerable:!0,get:r})};".repeat(40);
 
 const ATLAS_API: Seed = {
   "width/narrow.txt": `${narrowLines}\n`,

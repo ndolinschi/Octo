@@ -39,6 +39,7 @@ export function Tab(props: {
   return (
     <div
       data-tab-wrapper
+      data-no-drag
       data-pinned={canClose ? undefined : ""}
       onPointerDown={props.onPress}
       onMouseDown={(e) => {
@@ -85,6 +86,7 @@ export function Tab(props: {
         </span>
         <span className={cn("min-w-0 truncate", props.iconOnly && "sr-only")} aria-hidden={info.name && !props.iconOnly ? true : undefined}>
           {info.label}
+          {info.detail && <span className="text-fg-3"> / {info.detail}</span>}
         </span>
         {info.name && !props.iconOnly && <span className="sr-only">{info.name}</span>}
         {info.comments > 0 && !props.iconOnly && <CommentCount count={info.comments} />}

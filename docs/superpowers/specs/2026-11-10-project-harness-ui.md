@@ -2044,3 +2044,50 @@ c. Destructive and deny actions are quiet buttons with coloured text, not colour
 d. Acceptance: a script check that no element in the demo states of the spacing audit has a computed border colour
    from the warn/danger/accent tokens unless it is focused or `aria-invalid`; screenshots of an approval, a form, a
    plan and a failed turn.
+
+## As built — frame (decisions 67, 73, 69, 76)
+
+- **Frame (67).** The tab strips are the window's top row. `app/AppShell` has no title-bar row any more: `shell/TitleBar` is the window
+  controls (inset, sidebar toggle, back, forward) floating over the top-left corner, a drag strip behind everything for the screens
+  with no strip (Home, Settings; Settings names itself after the controls), and nothing else. With a project open, the main column
+  starts at y = 0 and every dock group is `strip (40px, window background, data-drag-region) + card (panelClass)`; the first group's
+  strip starts after `controlsWidth(chrome.insetStart)` while the sidebar is closed (`state/chrome.ts`, tested), the last group's strip
+  ends with `shell/ProjectBar.ProjectActions` ("⋯": agents, details, usage, side question, tokens, editor, project settings) and
+  keeps `chrome.insetEnd` free for Windows/Linux controls. The strip with the conversation shows `ProjectTeamLine` (decision 34's
+  chips) after the "+". The conversation tab reads "Project / the orchestrator's title" (dim; `tabInfo.detail`) with its state glyph.
+  The model chip, the state words and the budget are gone from the top row (the budget moved to the status bar). Three levels, one
+  separator: sidebar and strip share the window background, the card's edge separates them from content; a content header ends in
+  a hairline (unchanged). The tab wrapper is `data-no-drag`, so dragging a tab never drags the window. Removed: `TitleBarProject`'s
+  portal, `TitleBarTeam` (now `ProjectTeam`), `state/titleBar`.
+- **Width floors (67).** `lib/constants` `CHAT_MIN_WIDTH 420`, `MIN_GROUP 280` (lists), `EDITOR_MIN_GROUP 360`; `state/workspace/floors`
+  (tested) takes a group's floor from its tabs (conversation 420, file or Files 360, else 280; the largest wins). A group's CSS
+  `min-width` is its floor, a divider drag stops at both neighbours' floors (`layout.resize` gained `minRight`), a new file group
+  leaves the conversation its remembered width. The conversation's default width beside a side group is 520 (was 420; owner:
+  "chat too narrow"). When the groups' floors plus gaps do not fit, the dock shows one strip (`narrow`) — all groups merge into the
+  first, not only the right-most one as the decision words it (not changed: with two groups it is the same thing).
+- **Status bar (73).** `components/status/`: one 24px row (`[data-status-bar]`) under the window; left (the open project, portalled
+  from `ProjectStatus` through `state/statusSlots`): its first folder "+N" (opens Files), "N changed files" from `listChanges`,
+  reloaded on `change.recorded` (opens Changes, only when N > 0); right: "N working" projects (opens Home; not shown on Home, which
+  lists them; the one glyph that turns), the project's "$spent / $budget" (opens Usage; amber from 80%, red at 100%), and the
+  connection, only when not online ("Bridge offline" retries). The sidebar's own connection text moved here. Hidden below 600px
+  window height. Pure parts in `lib/statusBar` (tested). **Not built:** the branch (the project data has no branch; only the
+  folder picker reads `.git/HEAD`), running commands (decision 68 is another pass), context use and spend *today* (no project-level
+  figure for either; the composer's ring and Usage have them).
+- **Flicker (69, 76).** `packages/ui/scripts/flicker.mjs`: types 2 000 characters over 20 lines into the composer of Atlas API
+  while a recorder samples every painted frame (rAF, then a message task after paint) and asserts: every strip and the tab list
+  move 0 px; the conversation scroller's top/left/width and the column's left/width move 0 px; the scroller gives exactly the
+  height the composer takes and a column pinned to the end moves by that same amount; the composer's bottom edge is fixed and its
+  height never shrinks. Idle: Home with no project at work, an idle project and Settings (`?demo=one`) have no running entry in
+  `document.getAnimations()`. Found and fixed: with a wrapping prompt the composer reached 10 lines, the scrollbar that then
+  appeared changed the text width, the height oscillated and React stopped with "Maximum update depth exceeded" (typing stopped
+  mid-prompt) — `scrollbar-gutter: stable` on `.octo-composer-input`. Not met: decision 69's literal "the last line stays exactly where
+  it was": the composer is a sibling under the scroller (not an overlay with a bottom inset), so a pinned last line moves up with
+  the composer's growth (lock-step, no lag in a painted frame). Changing that is the composer pass's business (`components/chat`).
+  Transcript re-renders per keystroke were not counted (the text lives in `Composer`, `Transcript` is `memo`).
+- **Spacing audit.** The `model-picker` step now looks for the dialog "Choose …" and `project-settings-models` for "Project actions";
+  the gutter rule measures the card, not the section: top and bottom are 0 by design (strip above, status bar below), right and
+  gaps are one gutter; one allow-list entry (the first strip's computed inset). The two skips: see the hand-back.
+- **Verified:** Chromium via Playwright against `?demo=1`, dark, screenshots at 1440×900, 1100×700, 830×560, 390×700 (project with a
+  file open, Home, Review, Settings). **Not verified:** WebKit (the owner's webview), the macOS overlay title bar and traffic-light
+  inset with the new strip (only `controlsWidth` is unit-tested), Windows/Linux `insetEnd`, light theme, drag regions in the shell
+  (`isDragTarget` logic unchanged, `[data-strip]` and `[data-title-bar]` carry the attribute).

@@ -22,7 +22,14 @@ import { writeFileSync } from "node:fs";
 //   reason    why this is not a defect (Monaco internals and text optical offsets are NOT valid reasons)
 // ---------------------------------------------------------------------------------------------------------------
 /** @type {{ rule: string; selector: string; reason: string }[]} */
-const ALLOW = [];
+const ALLOW = [
+  {
+    rule: "scale",
+    selector: "[data-strip]",
+    reason:
+      "the first tab strip of a window whose sidebar is closed starts after the window controls' inset and the three window buttons (decision 67); the width is computed from the host's inset, not authored spacing",
+  },
+];
 
 const SCALE = [2, 4, 6, 8, 12, 16, 20, 24, 32, 40];
 const ROW_HEIGHTS = [24, 28, 32, 36, 40];
@@ -424,7 +431,7 @@ const STATES = [
       await waitChat(page);
       await page.locator("[data-composer] [data-model-picker]").first().click({ timeout: T });
       try {
-        await page.getByRole("dialog", { name: "Orchestrator model" }).waitFor({ timeout: T });
+        await page.getByRole("dialog", { name: /^Choose /i }).waitFor({ timeout: T });
       } catch {
         skip("the model picker did not open");
       }
@@ -513,7 +520,7 @@ const STATES = [
     async run(page, ctx) {
       await openProject(page, ctx, "Docs site");
       await waitChat(page);
-      await page.getByRole("button", { name: "Orchestrator actions" }).first().click({ timeout: T });
+      await page.getByRole("button", { name: "Project actions" }).first().click({ timeout: T });
       await page.getByRole("menuitem", { name: "Project settings" }).click({ timeout: T });
       try {
         await page.getByRole("button", { name: "Models and delegation" }).click({ timeout: T });
@@ -696,12 +703,17 @@ function auditInPage(cfg) {
       const sidebar = document.querySelector('nav[aria-label="Projects"]');
       const sbr = sidebar && visible(sidebar) ? sidebar.getBoundingClientRect() : null;
       const named = [];
-      // Decision 54: the title bar row is the top gutter; the panel's top edge sits directly under it.
       const bar = [...document.querySelectorAll("[data-title-bar]")].find(visible);
+      // Decisions 67 and 73: a group's card starts directly under the top row (its tab strip) and ends directly above the status
+      // bar, so top and bottom are 0 by design; the right side and the gaps between panels carry the 8px gutter.
+      const card = (g) => g.el.querySelector("[data-dock-body]")?.parentElement ?? g.el;
+      const cards = groups.map((g) => ({ el: g.el, r: card(g).getBoundingClientRect() }));
+      const status = [...document.querySelectorAll("[data-status-bar]")].find(visible);
       const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
-      named.push(["top", Math.min(...groups.map((g) => g.r.top)) - barBottom, groups.reduce((a, b) => (b.r.top < a.r.top ? b : a)).el]);
+      const floor = status ? status.getBoundingClientRect().top : vh;
+      named.push(["top", Math.min(...cards.map((g) => g.r.top)) - barBottom, cards.reduce((a, b) => (b.r.top < a.r.top ? b : a)).el]);
+      named.push(["bottom", floor - Math.max(...cards.map((g) => g.r.bottom)), cards.reduce((a, b) => (b.r.bottom > a.r.bottom ? b : a)).el]);
       named.push(["right", vw - Math.max(...groups.map((g) => g.r.right)), groups.reduce((a, b) => (b.r.right > a.r.right ? b : a)).el]);
-      named.push(["bottom", vh - Math.max(...groups.map((g) => g.r.bottom)), groups.reduce((a, b) => (b.r.bottom > a.r.bottom ? b : a)).el]);
       const sorted = [...groups].sort((a, b) => a.r.left - b.r.left);
       if (sbr && sbr.right <= sorted[0].r.left + 1) named.push(["sidebar-to-panel", sorted[0].r.left - sbr.right, sorted[0].el]);
       for (let i = 1; i < sorted.length; i++) {
@@ -709,10 +721,12 @@ function auditInPage(cfg) {
         if (gap > -1) named.push([`between-groups-${i}`, gap, sorted[i].el]);
       }
       measures.gutter = Object.fromEntries(named.map(([k, v]) => [k, r1(v)]));
-      // With a title bar the top gutter is 0 by design; the other sides agree with each other.
-      const ref = bar ? named[1][1] : named[0][1];
-      for (const [name, v, el] of named.slice(bar ? 1 : 0)) {
-        if (Math.abs(v - ref) > TOL) report("gutter", el, name, `${r1(v)}px`, `${r1(ref)}px (top gutter)`);
+      // Top and bottom are 0 by design (the strip and the status bar are the neighbours); every other gap is one gutter value.
+      // Full-bleed below 640px (max-sm): no gutter on phones.
+      const ref = vw < 640 ? 0 : Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--spacing-gutter")) || 8;
+      for (const [name, v, el] of named) {
+        const want = name === "top" || name === "bottom" ? 0 : ref;
+        if (Math.abs(v - want) > TOL) report("gutter", el, name, `${r1(v)}px`, `${r1(want)}px`);
       }
     }
   }

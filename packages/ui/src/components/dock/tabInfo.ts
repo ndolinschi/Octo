@@ -12,6 +12,8 @@ import type { GlyphState } from "../../lib/stateGlyph";
 export type TabInfo = {
   /** Shown on the tab (long file names are shortened in the middle). */
   label: string;
+  /** Dim second part after the label ("Project / what this conversation is about", decision 67). */
+  detail?: string;
   /** Full name: the tab's accessible name. */
   name?: string;
   /** Tooltip: the full name (path for files, role and title for agents). */
@@ -62,10 +64,14 @@ export function tabInfo(
     const running = status === "running";
     // Decision 63: named after what is in it — the project's conversation.
     const name = ctx.projectName || "Conversation";
+    // Decision 67: the tab is the project's breadcrumb — "Project / the latest task" (dim); the title is the orchestrator's own.
+    const topic = ctx.orchestratorId ? ctx.state.agents[ctx.orchestratorId]?.title?.trim() : "";
+    const detail = topic && topic !== name ? middleTruncate(topic, 40) : undefined;
     return {
       label: middleTruncate(name, 28),
-      name,
-      title: `${name}: the project's conversation`,
+      ...(detail ? { detail } : {}),
+      name: detail ? `${name} / ${topic}` : name,
+      title: `${name}: the project's conversation${topic ? ` — ${topic}` : ""}`,
       icon: GLYPH.chat,
       status: running ? "running" : null,
       glyph: running ? "working" : status === "failed" ? "needs" : null,

@@ -13,7 +13,9 @@ import { GroupProvider } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
 import { TabStrip } from "./TabStrip";
 import { TabView } from "./TabView";
-import { MIN_GROUP } from "../../lib/constants";
+import { groupFloor } from "../../state/workspace/floors";
+import { useShell } from "../../state/shell";
+import { controlsWidth, useChrome } from "../../state/chrome";
 
 const SIDES: readonly [string, string, string] = ["Left", "Middle", "Right"];
 
@@ -47,7 +49,7 @@ export function Dock() {
         return (
           <Fragment key={g.id}>
             {before && !ws.narrow && <Divider index={i - 1} value={before.size} />}
-            <GroupView group={g} name={groupName(i, groups.length)} last={i === groups.length - 1 || ws.narrow} />
+            <GroupView group={g} name={groupName(i, groups.length)} first={i === 0 || ws.narrow} last={i === groups.length - 1 || ws.narrow} />
           </Fragment>
         );
       })}
@@ -68,8 +70,10 @@ function useVisited(group: Group): Set<string> {
   return visited;
 }
 
-function GroupView({ group, name, last }: { group: Group; name: string; last: boolean }) {
+function GroupView({ group, name, first, last }: { group: Group; name: string; first: boolean; last: boolean }) {
   const ws = useWorkspace();
+  const { sidebarOpen } = useShell();
+  const { insetStart } = useChrome();
   const visited = useVisited(group);
   const focused = group.id === ws.layout.focused;
   const narrow = ws.narrow;
@@ -92,23 +96,17 @@ function GroupView({ group, name, last }: { group: Group; name: string; last: bo
   );
 
   return (
+    // Decision 67: the group is its tab strip (a slice of the window's top row, on the window's own background) and, under it,
+    // the card with the content. The strip of the first group starts after the window buttons while the sidebar is closed.
     <section
       data-dock-group={group.id}
       aria-label={narrow ? "Workspace" : name === "Workspace" ? name : `${name} group`}
       hidden={hidden}
-      style={narrow ? undefined : { flex: `${group.size} 1 0px`, minWidth: MIN_GROUP }}
+      style={narrow ? undefined : { flex: `${group.size} 1 0px`, minWidth: groupFloor(group.tabs) }}
       onPointerDownCapture={() => ws.focusGroup(group.id)}
       onFocusCapture={() => ws.focusGroup(group.id)}
-      className={cn(panelClass, "relative", narrow && "flex-1")}
+      className={cn("flex min-h-0 min-w-0 flex-col overflow-clip contain-inline-size", narrow && "flex-1")}
     >
-      {backdrops.has(strip.active) && (
-        <>
-          {appBackdrop !== "off" && <StreakLayer preset={STREAK_EMPTY} theme={theme} mono={appBackdrop === "mono"} />}
-          {/* Under the tab strip and the header the band fades behind a soft panel wash (no edge), so their text keeps
-              ≥ 4.5:1 while the light still runs up to the panel's top edge. */}
-          <div aria-hidden className="octo-streak-topfade pointer-events-none absolute inset-x-0 top-0" />
-        </>
-      )}
       <GroupProvider group={group}>
         <TabStrip
           label={narrow || name === "Workspace" ? "Tabs" : `${name} group tabs`}
@@ -117,26 +115,37 @@ function GroupView({ group, name, last }: { group: Group; name: string; last: bo
           active={strip.active}
           focused={focused}
           last={last}
+          startInset={first && !sidebarOpen ? controlsWidth(insetStart) : 0}
         />
-        <BackdropProvider value={backdrop}>
-          <div data-dock-body className="relative min-h-0 flex-1">
-            {group.tabs
-              .filter((t) => visited.has(t))
-              .map((t) => (
-                <div
-                  key={t}
-                  id={`${domId(t)}-panel`}
-                  role="tabpanel"
-                  tabIndex={-1}
-                  aria-labelledby={`${domId(t)}-tab`}
-                  hidden={t !== group.active}
-                  className="absolute inset-0 flex flex-col focus:outline-none focus-visible:shadow-none"
-                >
-                  <TabView tab={t} />
-                </div>
-              ))}
-          </div>
-        </BackdropProvider>
+        <div className={cn(panelClass, "relative flex-1")}>
+          {backdrops.has(strip.active) && (
+            <>
+              {appBackdrop !== "off" && <StreakLayer preset={STREAK_EMPTY} theme={theme} mono={appBackdrop === "mono"} />}
+              {/* Under the card's first row the band fades behind a soft panel wash (no edge), so its text keeps
+                  ≥ 4.5:1 while the light still runs up to the card's top edge. */}
+              <div aria-hidden className="octo-streak-topfade pointer-events-none absolute inset-x-0 top-0" />
+            </>
+          )}
+          <BackdropProvider value={backdrop}>
+            <div data-dock-body className="relative min-h-0 flex-1">
+              {group.tabs
+                .filter((t) => visited.has(t))
+                .map((t) => (
+                  <div
+                    key={t}
+                    id={`${domId(t)}-panel`}
+                    role="tabpanel"
+                    tabIndex={-1}
+                    aria-labelledby={`${domId(t)}-tab`}
+                    hidden={t !== group.active}
+                    className="absolute inset-0 flex flex-col focus:outline-none focus-visible:shadow-none"
+                  >
+                    <TabView tab={t} />
+                  </div>
+                ))}
+            </div>
+          </BackdropProvider>
+        </div>
       </GroupProvider>
     </section>
   );

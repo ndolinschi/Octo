@@ -14,7 +14,9 @@ import { Dialog } from "../components/primitives/Dialog";
 import { Presence } from "../components/primitives/Presence";
 import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
-import { TitleBarProject } from "../components/shell/TitleBarProject";
+
+/** The status bar's project items load after first paint (its own chunk; the row itself is always there, so nothing shifts). */
+const ProjectStatus = lazy(() => import("../components/status/ProjectStatus").then((m) => ({ default: m.ProjectStatus })));
 
 /** The project dialog loads on first use (its own chunk). */
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
@@ -52,7 +54,9 @@ export function ProjectWorkspace(props: { agentId: string | null }) {
       <FileViewProvider projectId={projectId}>
         <Files>
           <ChatSlotsProvider value={CHAT_SLOTS}>
-            <TitleBarProject />
+            <Suspense fallback={null}>
+              <ProjectStatus />
+            </Suspense>
             <Body />
           </ChatSlotsProvider>
           <SettingsDialog show={settings} onClose={() => setSettings(false)} />
@@ -116,7 +120,7 @@ function Body() {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       {loadError && !project ? (
-        <Panel className="flex-1">
+        <Panel className="mt-bar flex-1">
           <LoadError message={loadError} onRetry={reload} />
         </Panel>
       ) : (

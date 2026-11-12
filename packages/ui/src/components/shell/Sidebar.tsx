@@ -8,7 +8,6 @@ import { useApp } from "../../state/app";
 import { useOrchestrators } from "../../state/orchestrators";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { IconButton } from "../primitives/Button";
-import { Spinner } from "../primitives/Status";
 import { ProjectItem } from "./ProjectItem";
 import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 
@@ -80,7 +79,7 @@ export function Sidebar(props: {
   const orchestrators = useOrchestrators(projects);
 
   return (
-    <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window pb-gutter pl-gutter max-sm:pb-0">
+    <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter">
       <div className="flex min-h-0 flex-1 flex-col p-pane">
         <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
@@ -119,21 +118,8 @@ export function Sidebar(props: {
 
         <div className="relative mt-2 shrink-0">
           <NavRow icon={Settings} label="Settings" onClick={props.onSettings} />
-          <ConnectionStatus />
         </div>
       </div>
     </nav>
-  );
-}
-
-/** Silent while the bridge is healthy; speaks up only when it is not (trailing slot of the Settings row). */
-function ConnectionStatus() {
-  const { health } = useApp();
-  return (
-    <span role="status" className="pointer-events-none absolute inset-y-0 right-2 flex max-w-[60%] min-w-0 items-center gap-2 text-xs text-fg-3">
-      {health === "offline" && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-err" />}
-      {health === "checking" && <Spinner size={12} />}
-      {health !== "online" && <span className="truncate">{health === "offline" ? "Bridge offline" : "Connecting…"}</span>}
-    </span>
   );
 }

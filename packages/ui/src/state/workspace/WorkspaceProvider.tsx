@@ -9,7 +9,8 @@ import * as L from "./layout";
 import type { Layout, TabId, ToolTab } from "./layout";
 import {
   DOCKED_QUERY,
-  MIN_GROUP,
+  CHAT_MIN_WIDTH,
+  EDITOR_MIN_GROUP,
   GROUP_GAP,
   TOOL_WIDTH,
   TOOL_GROUP_MAX_FRACTION,
@@ -22,6 +23,7 @@ import { createRequiredContext } from "../../lib/context";
 import { SIDE_PINNED, TabMemory, USAGE_VIEW } from "./tabMemory";
 import { jumpIndex, mruOrder, mruTouch, pushClosed, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
 import { useTabKeys } from "./useTabKeys";
+import { dockFits, dockNeeds, groupFloor } from "./floors";
 import { domId, tabButton } from "./ids";
 import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
 import { type FileKey, keyFolder } from "../../lib/files";
@@ -110,7 +112,7 @@ export type WorkspaceValue = {
 };
 
 /** The remembered conversation width beside a side group (px). */
-const CHAT_SPLIT_CODEC = numberCodec(MIN_GROUP, 4000, CHAT_SPLIT_DEFAULT);
+const CHAT_SPLIT_CODEC = numberCodec(CHAT_MIN_WIDTH, 4000, CHAT_SPLIT_DEFAULT);
 
 export const {
   Provider: WorkspaceContextProvider,
@@ -169,8 +171,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const [closedTabs, setClosedTabs] = useState<Closed<TabId>[]>([]);
   const selfNav = useRef<string | null>(null);
 
-  const n = layout.groups.length;
-  const narrow = !docked || (n > 1 && dockWidth > 0 && dockWidth < n * MIN_GROUP + (n - 1) * GROUP_GAP);
+  const narrow = !docked || !dockFits(layout.groups, dockWidth);
   const narrowRef = useLatest(narrow);
   const widthRef = useLatest(dockWidth);
 
@@ -222,7 +223,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     const inner = widthRef.current - GROUP_GAP;
     if (inner <= 0) return undefined;
     const chat = loadPref(PREFS.chatSplit, CHAT_SPLIT_CODEC);
-    return Math.min(1 - MIN_GROUP / inner, Math.max(FILE_GROUP_MIN_FRACTION, 1 - chat / inner));
+    return Math.min(1 - EDITOR_MIN_GROUP / inner, Math.max(FILE_GROUP_MIN_FRACTION, 1 - chat / inner));
   }, [widthRef]);
 
   const doClose = useCallback(
@@ -371,7 +372,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
       canSplitRight: (tab) => {
         const g = L.groupOf(layout, tab);
-        return !narrow && !!g && L.canSplit(layout, tab, g.id) && dockWidth >= (n + 1) * MIN_GROUP + n * GROUP_GAP;
+        return !narrow && !!g && L.canSplit(layout, tab, g.id) && dockWidth >= dockNeeds([...layout.groups, { tabs: [] }]);
       },
       splitRight: (tab) => {
         const g = L.groupOf(layoutRef.current, tab);
@@ -386,7 +387,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         if (target.kind === "strip") return true;
         return (
           L.canSplit(layout, tab, target.group) &&
-          (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= (n + 1) * MIN_GROUP + n * GROUP_GAP)
+          (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= dockNeeds([...layoutRef.current.groups, { tabs: [] }]))
         );
       },
       // A dropped tab keeps focus on its own button (the drag moved it: its old button is gone).
@@ -401,7 +402,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       resize: (index, px) => {
         const inner = widthRef.current - (layoutRef.current.groups.length - 1) * GROUP_GAP;
         if (inner <= 0) return;
-        const next = L.resize(layoutRef.current, index, px / inner, MIN_GROUP / inner);
+        const [a, b] = [layoutRef.current.groups[index], layoutRef.current.groups[index + 1]];
+        const next = L.resize(layoutRef.current, index, px / inner, groupFloor(a?.tabs ?? []) / inner, groupFloor(b?.tabs ?? []) / inner);
         commit(next);
         // Decision 60: where the user puts the divider between the conversation and its one neighbour is where the next first split opens.
         const [first] = next.groups;
@@ -468,7 +470,6 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     layout,
     narrow,
     dockWidth,
-    n,
     lastConversation,
     focusRequest,
     memory,

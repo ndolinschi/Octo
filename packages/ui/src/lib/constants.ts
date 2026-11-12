@@ -14,14 +14,20 @@ export const DRAWER_QUERY = `(max-width: ${DRAWER_BELOW - 1}px)`;
 
 /* ---------- layout sizes (px unless noted) ---------- */
 
-/** Narrowest a dock group may get; below the sum of these the dock shows one strip. */
+/**
+ * Width floors of a dock group (decision 67). The conversation is never narrower than `CHAT_MIN_WIDTH`, lists (Agents,
+ * Changes, Details, Review...) than `MIN_GROUP`, editors (a file) than `EDITOR_MIN_GROUP`. `state/workspace/floors.ts` picks
+ * the floor of a group from its tabs; below the sum of the floors the dock shows one strip.
+ */
 export const MIN_GROUP = 280;
+export const EDITOR_MIN_GROUP = 360;
+export const CHAT_MIN_WIDTH = 420;
 /** Gap between groups = the window gutter (also the divider's hit area). */
 export const GROUP_GAP = 8;
 /** Width a newly opened side group takes for a tool (Agents, Notes, Details). */
 export const TOOL_WIDTH = 360;
-/** The conversation's width when the first side group opens, until the user drags the divider (decision 60). */
-export const CHAT_SPLIT_DEFAULT = 420;
+/** The conversation's width when the first side group opens, until the user drags the divider (decision 60; owner: "chat too narrow"). */
+export const CHAT_SPLIT_DEFAULT = 520;
 /** A group holding a file or the Files tool is widened to at least this fraction of the row. */
 export const FILE_GROUP_MIN_FRACTION = 0.45;
 /** Largest fraction of the row a new tool group takes, and the fraction used before the row has been measured. */
