@@ -2322,8 +2322,12 @@ Harness and agent-client side of (g), with what (a)-(f) need from the data. Exac
   `notesItems()`), a compaction buffer (always 0), thinking tokens (always 0). Not verified: any real model or agent (mock model and scripted ACP agent only); the UI.
 ## As built — decision 86
 
-Built in `packages/ui` only (no harness change). Usage tab, Settings and the pure helper are done; the turn line (d) is a helper
-that the chat and the status bar still have to call.
+Built in `packages/ui` only (no harness change). Usage tab, Settings and the pure helper are done. **Wired in batch 3 (2026-11-12):**
+the newest finished orchestrator turn's footer ends with `turnLine` ("model · 12k in / 3.1k out"; `chat/useTurnLine.ts` reads
+`last_request` of the context report once when a turn ends and once on mount, because the harness keeps usage per request, not per
+turn: older turns say nothing, and a harness without the report leaves the line out); the status bar's budget tooltip adds the top
+three models by tokens (`topModelLines`, now in `lib/usage/modelLines.ts` so the entry bundle does not import `lib/usage.ts`), read on
+the first hover or focus. Not verified with a live harness.
 
 - **View model** `lib/usage/model.ts` (tests beside it): `usageRows` (sorted by total, ties by label; `key-desc` for days; each
   row's share of the table), `usageTotals` (the sum of the rows shown, so it always equals them), `rowCost` / `costCellText`
@@ -2352,7 +2356,7 @@ on the rerun); `tsc --noEmit`; eslint and prettier on the touched files; the spa
 negative margin); `width-stability.mjs` (1440×900 ok); Playwright screenshots (dark and light, 1440×900 and 390×700) of By model with a
 flat-rate agent row and an API row, roles shown, By agent, By day and the Settings table expanded, console clean. Not verified: a live
 harness (demo data only); the production build, the bundle check and whole-repo gates (left to the merge); the chat turn line and the
-status bar tooltip (not wired, other areas); decision 82's primitive (the local `ViewTabs` is a stand-in).
+status bar tooltip against a live harness (wired in batch 3, demo only); decision 82's primitive (the local `ViewTabs` is a stand-in).
 ## Decision 85 — opening a file changes nothing but the editor's content
 
 Owner (macOS, WebKit, third report): "opening files jerks the sidebar with files and the window itself". Causes found in
@@ -2441,3 +2445,23 @@ composer row holds at most four controls, routing policy moves into the model me
 (g) sub-agents are one quiet button at the end of the strip; (h) the queue has a header count and icon actions;
 (i) the review picker header is one line and a refusal is a `Notice` of its view; (j) one vertical rhythm in the
 transcript; (k) tone is carried once.
+
+## As built — batch 3 integration (2026-11-12)
+
+- **Scroll on send** (owner: "the chat does not scroll down when a message is sent"). Rule: sending always scrolls to the sent message and
+  re-pins to the bottom, even for a reader who had scrolled up. `ConversationView` scrolls to the end when the orchestrator's request count
+  grows after the first load (a rewind, which lowers it, and the first load do not count). Checked by `scripts/scroll-on-send.mjs` (fails
+  without the fix: 2330 px short of the end).
+- **Composer glow removed for good** (decision 87): the aurora frame elements, `useAuroraState`, the `failed` prop and the aurora CSS are
+  gone; the shimmer pause rule (`[data-paused]`) stays for the activity line.
+- **Bundle**: the entry measures 155.78 kB (budget 156.8). Tool lines and delegation cards are lazy chunks warmed with the Markdown chunk;
+  `openLanguageServer` imports its session code on first use. Not every lazy move helps: a lazy `FloatingComposer` made the entry larger
+  (extra hoisted shared chunks), so it stays eager. Measure each move.
+
+## Decision 92 — a keyboard shortcut is never a boxed letter inside a control
+
+Owner (review toolbar: "Viewed [v]"): "what is this strange icon". A key hint drawn as a boxed letter inside a button
+or a label reads as an icon. Rules: shortcuts are shown in the control's tooltip ("Mark as viewed (v)"), in menu items
+(right-aligned, dim), in the command palette and in the keyboard help — never inside a button, checkbox label, chip
+or tab. Applies to the review toolbar (done), approval cards ("Allow once [A]", "Deny [D]"), and any other inline
+`KeyHint`. The spacing audit fails on a `KeyHint` that is a descendant of a button or label.
