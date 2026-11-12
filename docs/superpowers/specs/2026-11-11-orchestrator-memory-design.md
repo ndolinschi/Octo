@@ -273,3 +273,30 @@ Harness, agent-client and the Memory tab are built; exact JSON and the write pat
 - Rule 6: stored in `project.sqlite` only; forget removes texts and index entries and leaves a marker; the raw index tables are scanned for a secret in the tests.
 
 **Verified:** Go unit and API tests (`memory`, `projectstore`, `project`, `bridge`, `orchestrator` with `-race`), a real turn through the mock model over HTTP, `e2e-v7.sh` (new "memory (M4)" case: sessions, exchange with a Russian request, stemmed search, forget, marker), agent-client request tests, UI view-model tests, Playwright against `?demo=1` (dark and light, 1440x900 and 390x700, console clean), `spacing-audit` (33 states, all total=0; the script then aborted on closing its browser context, so it did not finish), `width-stability` ok. **Not verified:** answer extraction for a real ACP agent's message shapes (the scripted agent only), a real provider's token and cost figures, the dock's "Open in conversation" in a running app (the demo route passes no `onOpenMessage`, so the button is not shown there), the sessions list against a project with more than 50 sessions (the view asks for the latest 50 and does not page), `/clear` (hook only).
+
+## M6 — a task is work, not every request (owner's live screenshot, 2026-11-12)
+
+Live: the Tasks list held one "task" per request — "What is about this repo" three times, "какие у тебя есть
+заметки?", each with nothing but "Goal = the request's first words", four of them open forever. Since M4 the plain
+record of what was asked and answered is the **exchange**; a task that only restates a request is noise. Rules:
+1. **When a task record exists.** A task is created or joined only when the turn did work or set a goal: it changed
+   files, ran commands that changed state, delegated to a sub-agent, produced or approved a plan, or the model's
+   digest states a goal with at least one of constraints / acceptance / decision / open question. A question that
+   was only answered creates no task: its exchange is the record (it stays searchable).
+2. **Joining.** A follow-up joins the open task of the same session when the digest says it continues it; a new
+   goal starts a new task. Never two tasks with the same title in one session: a repeat joins.
+3. **Closing.** A task closes when its turn's digest says the goal is met, when the person says so, on `/clear`
+   (open tasks are carried by title, B11) only if nothing is unfinished, and automatically after 7 days without
+   activity as "dropped: no activity" (shown as such).
+4. **A task is never only its goal.** The digest must fill at least: goal (rewritten as a goal, not the request's
+   first words), state (what is done / what is left), and the files it touched; `remember` items of the turn attach
+   to it. The label "First words of the request" and the raw-request goal are removed.
+5. **Clean-up migration.** Existing tasks that have no constraints, acceptance, decisions, facts or file changes are
+   removed (their exchanges remain); duplicates by title within a day are merged. Counted and logged; reversible
+   only by restoring the database backup the migration writes next to it (`<db>.pre-m6`).
+6. API: task gains `state_summary`, `files:[…]`, `exchange_ids:[…]`, `closed_reason?`; `GET …/tasks` unchanged
+   otherwise.
+Acceptance: tests with the mock model — ten question-only turns create zero tasks and ten exchanges; a turn that
+edits a file creates one task with files and state; a follow-up joins; a repeat does not duplicate; the 7-day drop
+with an injected clock; the clean-up migration on a fixture shaped like the owner's list (ten request-only tasks →
+zero) with the backup written; e2e case in `e2e-v7.sh`.
