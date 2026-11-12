@@ -205,3 +205,33 @@ Verified: unit and API tests with the fake `gh` and temporary local repositories
 Not verified: real `gh` against GitHub or an enterprise host (field names of `latestReviews`/`comments`, the GraphQL schema of an old GHES version), thread
 positions on a real pull request (`line` null for outdated threads is handled from the documented schema), forks, very large lists (300 read),
 Windows (bash, process groups), real dev servers as commands.
+
+## Decision (2026-11-12) — forks: a folder has several repositories
+
+Owner's live run: the folder is a clone of a fork; the picker showed only the parent
+(`eCommerce-Bedrock/…`) and opening a pull request of the fork (`eCommerce-Ebro/…`) was refused with
+`repo_mismatch`. A working copy does not have "the" repository; it has remotes. Rules:
+1. **Repositories of a folder** = every git remote that points at a code host (`origin`, `upstream`, any other),
+   each read from `git remote -v` (fetch URL), de-duplicated by host + owner/name, plus, when the host says a remote
+   is a fork, its parent (one `gh repo view --json parent,isFork` per remote, cached 30 min; failure is not an
+   error). `gh`'s own default repository is never used to pick one.
+2. **Default** = the remote the current branch tracks, else `origin`, else the first. The person's last choice per
+   folder is remembered by the project (`review.repo` per folder).
+3. **API.** `GET …/prs` gains `repo=owner/name` and returns `repos:[{host,hostname?,repo,remote?:string,
+   role:"origin"|"upstream"|"parent"|"other",default:boolean}]` and the `repo` used. `repo=all` merges the lists
+   (each row carries `repo`), sorted as before.
+4. **Opening by address or number.** A URL is accepted when its repository is any of the folder's repositories or
+   the parent/child of one in the fork network (same host); a bare number is looked up in the selected repository
+   and, if absent, in the others — one match opens, several ask which. `repo_mismatch` remains only for an unrelated
+   repository and names the folder's repositories in its message.
+5. **Worktree and check out.** The pull request's head is fetched from the repository it belongs to by URL
+   (`git fetch <url> pull/N/head`), never assuming a configured remote; cross-fork heads work the same way; nothing
+   is added to the folder's remotes.
+6. **Posting** a review goes to the pull request's own repository (`--repo host/owner/name` on every `gh` call).
+7. **UI.** The picker header shows the repository as a menu when there is more than one (owner/name, role dim,
+   "All repositories" last); rows show the repository when "All" is chosen; the refusal text of rule 4 offers the
+   repositories as buttons.
+Acceptance: tests with temporary repos having `origin` (fork) + `upstream` (parent) and the fake `gh`: both listed,
+default by tracking branch, `repo=all`, open by fork URL and by parent URL, number present in both asks, unrelated
+URL refused, fetch by URL with no remote added, submit targets the PR's repository; UI test for the menu model.
+Not verified until the owner's run: the real fork on the GitHub Enterprise host.
