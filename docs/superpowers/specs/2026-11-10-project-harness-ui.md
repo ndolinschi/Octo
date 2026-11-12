@@ -2310,3 +2310,124 @@ equal height, no button inside a row, detail's top equals the list's top.
   timing test in `streak.test.ts` fails under load, unrelated). "Check again" and "Refresh" against a real harness; the
   `recheckProvider` path (the demo bridge has no such method, so the demo re-reads the list). Keyboard roving in the list uses
   the shared `useRowKeys`; not exercised beyond that.
+### As built — decision 88 (harness)
+
+Harness and agent-client side of (g), with what (a)-(f) need from the data. Exact JSON: `apps/harness/docs/parity.md`, "Itemised report".
+- `GET …/context` gains `items` on every category, `not_loaded`, `buffer_tokens` and `largest_messages`; old fields are unchanged. Two categories are new
+  (`mcp_tools`, `agents`); `system` no longer counts the delegation note. Code: `internal/orchestrator/context_items.go`; the route serialises the report.
+  `tools.Def` gained `Server` (set by `tools/remote`) to name tool servers. agent-client types: `ContextItem`, `ContextLargeMessage`, `items?`/`actions?` on `ContextCategory`.
+- Sums are tested (`context_items_test.go`, bridge test): items add up to their category, categories to `used_tokens`, in full and window mode, for a sub-agent
+  with tool-server tools, and for an ACP orchestrator (reported and unreported).
+- Not built: skills (the harness has none), a per-tool "Turn off" (no setting exists, so no action is offered), notes index/pinned notes (extension point
+  `notesItems()`), a compaction buffer (always 0), thinking tokens (always 0). Not verified: any real model or agent (mock model and scripted ACP agent only); the UI.
+## As built — decision 86
+
+Built in `packages/ui` only (no harness change). Usage tab, Settings and the pure helper are done; the turn line (d) is a helper
+that the chat and the status bar still have to call.
+
+- **View model** `lib/usage/model.ts` (tests beside it): `usageRows` (sorted by total, ties by label; `key-desc` for days; each
+  row's share of the table), `usageTotals` (the sum of the rows shown, so it always equals them), `rowCost` / `costCellText`
+  (spend, "≈ $X on your subscription", "$X + ≈ $Y subscription", "no price"; an older harness that put a subscription's
+  equivalent into `cost_usd` is read as no spend), `placeRoles`, `periodRange`, `chartDays`, `usageCsv`. **Cached = cache read +
+  cache write**, so Input + Cached + Output = Total. `lib/usage/turnLine.ts`: `turnLine({model, inputTokens, outputTokens})`
+  → "opus · 12k in / 3.1k out" (a figure not reported is left out, never 0) and `topModelLines(buckets, name, 3)` for the status bar.
+- **Usage tab** (`components/usage/`): view tabs By model · By agent (By project for all projects) · By day · Limits on one full-width row
+  with a hairline under it (a pseudo-element, so the active underline sits on it); a local `ViewTabs` (`items`, `value`,
+  `onChange`, plus `label` and an `aside` for the period menu) stands in for decision 82's primitive. The period and scope menu is
+  This session · Today · 7 days · 30 days · All (default All) / This project · All projects, and "Show roles" (By model, one
+  project). The tab's remembered view is `{segment, period, scope, roles}`; an older stored shape fails validation and falls back
+  to the default. The old Tokens and Cost segments are gone: cost is a column.
+- **Table** `components/shared/UsageTable.tsx` (shared by the tab and Settings): Input · Cached · Output · Total · Requests · Cost ·
+  share bar, totals row, tabular right-aligned numbers, full values in `title`, "Copy as CSV". Below 36rem of its own container only
+  Total stays a column and the three token numbers and the cost go under the name. A `~` before Total marks estimated token counts.
+- **Roles**: the harness has no model × role report, so with "Show roles" the agent report is joined to the model report through the
+  project's agent records (`served_model ?? model`); roles of the same name under one model merge; agents that no longer exist are
+  named in a line under the table ("Roles without a known model").
+- **Settings → Usage and budget** (`settings/UsageByProject.tsx`): "Usage by project" table (`group=project`) with a period menu; a row
+  opens to its models (`group=model&project=`, read when opened).
+- **"This session"** is usage since the window opened (`SESSION_STARTED_AT`); the harness has no per-session report.
+
+Verified: `lib/usage/*.test.ts`, `usageView.test.ts`, `pnpm --filter @octo/ui test` (429 pass; one run failed once under load and passed
+on the rerun); `tsc --noEmit`; eslint and prettier on the touched files; the spacing audit (total=0 after moving the tab underline off a
+negative margin); `width-stability.mjs` (1440×900 ok); Playwright screenshots (dark and light, 1440×900 and 390×700) of By model with a
+flat-rate agent row and an API row, roles shown, By agent, By day and the Settings table expanded, console clean. Not verified: a live
+harness (demo data only); the production build, the bundle check and whole-repo gates (left to the merge); the chat turn line and the
+status bar tooltip (not wired, other areas); decision 82's primitive (the local `ViewTabs` is a stand-in).
+## Decision 85 — opening a file changes nothing but the editor's content
+
+Owner (macOS, WebKit, third report): "opening files jerks the sidebar with files and the window itself". Causes found in
+the code, not in a browser quirk: every File tab was its own `FileView` (own tree column, own overlay state, own Monaco),
+so a file opened from the tree mounted a second tree (scroll back at the top, the narrow-view tree closed itself on a
+pick: "the tree hiding after a file opens"), a second Monaco, and the skeleton drew a tree column the real view then
+moved to an overlay after a `ResizeObserver` tick (a second layout step).
+Rule: clicking a file changes exactly two things, the editor area's content and the selected row.
+a. **One file view per group.** All of a group's file tabs (the Files tab and every File tab) render through one mounted
+   `FileView` (`dock/Dock.tsx`, `useFileShellTab`); only its `tab`/`fileKey` props change. Tree column, overlay state, tree
+   scroll and the Monaco instance survive every open. Monaco swaps models (layout effect, so the old text is never painted
+   for the new file); the empty view, the loading skeleton, a message and the Markdown preview are covers over the same box.
+b. **The tree never hides because a file opened.** The overlay tree (narrow views) is closed only by the user (toggle, Esc, a
+   click outside). The tree list scrolls to the selected row only when that row is outside the viewport (`block: "nearest"`).
+c. **The shape comes from the layout state before paint.** `lib/treeLayout.ts` decides column vs overlay from the view's
+   width; the view and `FileViewSkeleton` both measure in a layout effect (no unmeasured first frame) and call it, and the
+   skeleton carries `data-file-bar` / `data-editor-area`, so the first file of a project (the group is created) is ONE layout
+   change, and the real view replaces the skeleton without any.
+d. No layout transition runs on a pane because a file opened; the breadcrumb row is `h-bar` always.
+Acceptance: `packages/ui/scripts/file-open-stability.mjs` samples every frame from before the click until 600 ms after, for
+opens from the tree (narrow, 400-column, one-line, source, too-large file; tree scrolled), a chat link, the palette and the
+Changes tab, at 1440×900, 1100×700 and 900×600: every pane box and the tree's scrollTop equal the pre-click frame (the first
+open and the Changes tab's re-show: one step), no running geometry animation on a pane, no horizontal scroll.
+
+### As built — decision 85 (2026-11-12)
+
+Built as described. Before the fix the script failed in Chromium at 1440×900: the tree column (`1151,81,280,794`) vanished
+from the frame +1096 ms after the first click and its scrollTop (373) was lost, and the first file link took three layout
+steps. After: `file-open-stability: ok` at 1440×900, 1100×700 and 900×600 (Chromium). Per-frame JSON of both runs is kept by
+the executor, not committed. Not verified: macOS WebKit (the owner's live run); Playwright's WebKit is not installed here.
+A tab-strip width transition of the dock's tab (`Tab.tsx`, decision 83) still runs when a new file tab appears; it is the strip's
+own, not a pane's, and the script reports it as a note. Monaco's own horizontal scroll is Monaco's.
+## Decision 90 — one component library
+
+Owner: "check that all components are unique, extended rather than repeated, not duplicates of each other; if the UI's
+consistency is at the level of a UI component library the whole UI will be tidier" and, after reading the ten worst groups
+of `docs/superpowers/research/2026-11-12-ui-component-audit.md`: "fix this". Problem: 130 native controls outside
+`primitives`, 27 feature-local components with a primitive's job, 132 repeated class runs, 62 hand-written touch sizes, and
+one pixel size spelled two ways.
+
+a. **The rule.** A feature composes primitives; it never styles a native control. `<button>`, `<input>`, `<select>`,
+   `<textarea>`, `<dialog>` appear only inside `components/primitives` (lint `octo/no-native-controls`). A feature file holds
+   layout classes (flex, grid, gap, its own container's padding, width) and no control look: no colour, border, radius,
+   hover, focus, height or text size of a control. Where a look is missing the primitive gets a variant; the feature never
+   copies. `className` on a primitive is for layout (margin, width, flex, position), not for colour, height or radius.
+b. **Adding a variant.** Look for the nearest primitive; add the variant or size next to the others (a `Record<Variant, string>`
+   entry with the decision number); add the case to the gallery (`primitives/Gallery`, `?demo=1&gallery=1`) in the same
+   commit; migrate the callers you know. A superseded export stays as an alias marked `@deprecated` until the sweep.
+c. **One size scale.** Controls are xs 24, sm 28, md 32, lg 40 (`lib/controls.ts`; tokens `--spacing-ctl-*`). `h-6`/`h-chip`,
+   `h-7`/`h-row`, `h-8`/`h-row-nav`, `h-10`/`h-bar` are the same pixels (the older names are aliases of the new tokens);
+   new code writes `ctl` names only, inside a primitive. Radius: 6px for xs-md controls and rows, 8px at lg, 8px fields and
+   cards, 10px overlays and grouped frames, `full` only for switch, round buttons, bars and dots. Fields share one focus
+   treatment (the border turns `fg`, no ring) and one look (`FIELD`); rows use `focus-inset`; the rest use the global ring.
+   Borders are neutral (`line`, `line-strong`, `input-border`, `panel-edge`); never `warn`/`err`/`accent` except
+   `aria-invalid` and the focus ring (decision 81). Icons: `Glyph` 14 or 16; label gap 6px in buttons, 8px in rows.
+d. **Touch.** Under a coarse pointer or a window below 768px (`touch:` variant) every control has a 40px target, written once
+   inside the primitive: buttons, icon buttons, chips, checkboxes and switches keep their look and gain an invisible 40px hit
+   area (`touch-hit`); fields, selects, search fields and list rows really become 40px tall (their text is 16px there). A
+   feature never writes `max-md:h-10`.
+e. **The set** (each documented in its header comment: purpose, props, variants, sizes, when not to use it): `Button`,
+   `IconButton`, `Chip`, `TextField`, `TextArea`, `Select`, `SearchField`, `Checkbox`, `Switch`, `Field`, `ListRow`,
+   `ListFrame`, `SectionHeader`, `ScrollArea`, `Notice`, `Card`, `Skeleton`, `KeyHint`, `Spinner`, `EmptyState`. Reserved for
+   other batches: `ViewTabs`, `FilterTabs`, `FieldRow`. Not yet built: `RadioGroup`, `SelectButton`, `Badge`, `Loading`,
+   `Toolbar`, `ListDetail`, `Meter`, `Dialog variant="palette"`.
+f. **Acceptance.** (1) The `octo/no-native-controls` count goes from 130 to 0 across migration batches B1-B9 and the rule
+   becomes an `error` in B10. (2) An audit script counts, outside `primitives`, and prints zero for: raw `h-6|h-7|h-8` on a
+   `button|input|select`, `max-(md|sm):h-10`, `text-[Npx]`, `border-(warn|err|accent)` outside `aria-invalid`, runs of five
+   or more utilities repeated in two files, `<kbd`, `role="alert"` elements not rendered by `Notice`. (3) The gallery shows every
+   primitive in every variant; screenshots dark and light. (4) No behaviour change: the spacing audit prints `total=0`,
+   `width-stability.mjs` passes, and each batch's before/after screenshots match except for the stated differences (touch
+   heights, focus treatment, unified radius, quiet `danger` buttons).
+
+As built (B0, primitives only): the primitives in (e) exist with header comments and the gallery; `lib/controls.ts`,
+`lib/listRow.ts` and `lib/truncate.ts` carry the pure logic with tests; `Input`, `Textarea`, `ghost`, the old `IconButton`
+(sizes sm 24 / md 28), `INFO_ROW*`/`SkeletonRows`, and `Kbd`/`Key` (in `primitives/KeyHint`) are aliases or deprecated. Verified: type check, eslint and
+prettier on the touched files, unit tests, the gallery script in dark and light (control heights equal their size, no console
+errors), two spacing-audit scenes. Not verified: touch behaviour on a real device (only the CSS rule), keyboard use of `Select` and
+`ListRow` in a real screen reader, any feature migration (none done).

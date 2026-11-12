@@ -36,6 +36,8 @@ type Client struct {
 	authMethods []AuthMethod
 	caps        Capabilities
 
+	onCommands func([]Command)
+
 	mu         sync.Mutex
 	active     *run
 	cancelling atomic.Bool
@@ -47,6 +49,17 @@ type run struct {
 	ctx       context.Context
 }
 
+// ExitError is ErrClosed for an agent process that ended: its message names how
+// the process exited and its stderr tail, StderrFirst is the first line it
+// wrote there (already redacted), which is what an argument error looks like.
+type ExitError struct {
+	err         error
+	StderrFirst string
+}
+
+func (e *ExitError) Error() string { return e.err.Error() }
+func (e *ExitError) Unwrap() error { return e.err }
+
 // Start launches the agent and performs the initialize handshake. On error
 // the process is already gone. ctx bounds the handshake only.
 func Start(ctx context.Context, spec Spec) (*Client, error) {
@@ -57,15 +70,15 @@ func Start(ctx context.Context, spec Spec) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{proc: p, name: spec.Name}
+	c := &Client{proc: p, name: spec.Name, onCommands: spec.OnCommands}
 	c.conn = newConn(p.stdout, p.stdin, c)
 	c.conn.tr = p.trace
 	go c.conn.serve(context.Background(), func(readErr error) error {
 		msg := p.describeExit()
 		if readErr != nil {
-			return fmt.Errorf("%w: %v; %s", ErrClosed, readErr, msg)
+			return &ExitError{err: fmt.Errorf("%w: %v; %s", ErrClosed, readErr, msg), StderrFirst: p.stderr.first()}
 		}
-		return fmt.Errorf("%w: %s", ErrClosed, msg)
+		return &ExitError{err: fmt.Errorf("%w: %s", ErrClosed, msg), StderrFirst: p.stderr.first()}
 	})
 	if err := c.initialize(ctx); err != nil {
 		c.Close()
@@ -89,6 +102,7 @@ func (c *Client) initialize(ctx context.Context) error {
 	c.authMethods = res.AuthMethods
 	c.caps = Capabilities{
 		LoadSession: res.AgentCapabilities.LoadSession,
+		PromptImage: res.AgentCapabilities.PromptCapabilities.Image,
 		MCPHTTP:     res.AgentCapabilities.MCPCapabilities.HTTP,
 		MCPSSE:      res.AgentCapabilities.MCPCapabilities.SSE,
 	}
@@ -230,6 +244,23 @@ func (c *Client) LoadSession(ctx context.Context, sessionID, cwd string, servers
 // the agent to answer (the session stays usable); otherwise it kills the
 // process and returns ctx.Err(). A Client runs one prompt at a time.
 func (c *Client) Prompt(ctx context.Context, sessionID, prompt string, h Handler) (StopReason, error) {
+	return c.PromptWith(ctx, sessionID, prompt, nil, h)
+}
+
+// Image is an image content block of a prompt: base64 data and its media type.
+type Image struct {
+	MimeType string
+	Data     string
+}
+
+// PromptWith is Prompt with images: image content blocks come first, in order,
+// then the text. Only send images to an agent whose Capabilities().PromptImage is true.
+func (c *Client) PromptWith(ctx context.Context, sessionID, prompt string, images []Image, h Handler) (StopReason, error) {
+	blocks := make([]contentBlock, 0, len(images)+1)
+	for _, im := range images {
+		blocks = append(blocks, contentBlock{Type: "image", Data: im.Data, MimeType: im.MimeType})
+	}
+	blocks = append(blocks, contentBlock{Type: "text", Text: prompt})
 	sess := newSessionResult{SessionID: sessionID}
 	runCtx, endRun := context.WithCancel(context.WithoutCancel(ctx))
 	defer endRun()
@@ -254,7 +285,7 @@ func (c *Client) Prompt(ctx context.Context, sessionID, prompt string, h Handler
 	go func() {
 		var res promptResult
 		err := c.conn.call(runCtx, methodPrompt, promptParams{
-			SessionID: sess.SessionID, Prompt: []contentBlock{{Type: "text", Text: prompt}},
+			SessionID: sess.SessionID, Prompt: blocks,
 		}, &res)
 		done <- outcome{res, err}
 	}()

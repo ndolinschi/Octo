@@ -192,7 +192,9 @@ func digestReply(r *request) reply {
 //	[recall: ID]               recall_message {id}
 //	[mem-create: PATH | SUMMARY | TEXT]   memory create
 //	[task-update: TITLE]       task_update {title}
+//	[remember: KIND | ABOUT | TEXT]   remember {kind, about, text}; every marker is one call of the same reply
 var (
+	rememberMarker    = regexp.MustCompile(`\[remember:\s*(\w+)\s*\|\s*([^|\]]*?)\s*\|\s*([^\]]+?)\s*\]`)
 	searchMarker      = regexp.MustCompile(`\[search:\s*([^\]]+?)\s*\]`)
 	searchAfterMarker = regexp.MustCompile(`\[search-after:\s*(\S+)\s+([^\]]+?)\s*\]`)
 	recallMarker      = regexp.MustCompile(`\[recall:\s*(\d+)\s*\]`)
@@ -221,6 +223,24 @@ func memoryToolCall(ask string) (call, bool) {
 
 // memoryReply is the orchestrator's one-tool-call flow for those markers.
 func memoryReply(r *request, anchor int, ask string) (reply, bool) {
+	if ms := rememberMarker.FindAllStringSubmatch(ask, -1); len(ms) > 0 && r.hasTool("remember") {
+		if r.assistantCountFrom(anchor) == 0 {
+			var calls []call
+			for _, m := range ms {
+				calls = append(calls, call{Name: "remember", Input: map[string]any{"kind": m[1], "about": m[2], "text": m[3]}})
+			}
+			return reply{Text: "Let me keep that.", Calls: calls}, true
+		}
+		var results []string
+		for _, m := range r.Messages[anchor+1:] {
+			for _, b := range m.blocks() {
+				if b.Type == "tool_result" {
+					results = append(results, strings.TrimSpace(b.resultText()))
+				}
+			}
+		}
+		return reply{Text: "Remember results: " + strings.Join(results, " || ")}, true
+	}
 	c, ok := memoryToolCall(ask)
 	if !ok || !r.hasTool(c.Name) {
 		return reply{}, false

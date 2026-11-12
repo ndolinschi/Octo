@@ -70,6 +70,9 @@ func (s *Service) PostMessage(ctx context.Context, pid, text string, mode *strin
 	if strings.TrimSpace(text) == "" {
 		return msg, nil, invalid("text is required")
 	}
+	if err := refuseOctoCommand(text); err != nil {
+		return msg, nil, err
+	}
 	if err := validMode(mode); err != nil {
 		return msg, nil, err
 	}

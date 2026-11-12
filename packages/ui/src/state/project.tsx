@@ -1,4 +1,14 @@
-import { emptyProjectState, type BridgeEvent, type Project, type ProjectInput, type ProjectState } from "@octo/agent-client";
+import {
+  emptyProjectState,
+  type BridgeEvent,
+  type Note,
+  type NoteDocument,
+  type NoteInput,
+  type NotePatch,
+  type Project,
+  type ProjectInput,
+  type ProjectState,
+} from "@octo/agent-client";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./app";
 import { useActivity } from "./activity";
@@ -20,8 +30,8 @@ type ProjectValue = {
   send(text: string): Promise<void>;
   cancel(): Promise<void>;
   update(patch: Partial<ProjectInput>): Promise<Project>;
-  createNote(input: { title: string; content: string }): Promise<void>;
-  updateNote(id: string, patch: { title?: string; content?: string }): Promise<void>;
+  createNote(input: NoteInput): Promise<NoteDocument>;
+  updateNote(id: string, patch: NotePatch): Promise<NoteDocument>;
   deleteNote(id: string): Promise<void>;
   /** Side questions (decision 40): ask (the answer arrives as side.* events), load the stored ones, clear them. */
   askSide(text: string): Promise<void>;
@@ -32,6 +42,12 @@ type ProjectValue = {
 };
 
 export const { Provider: ProjectContextProvider, useRequired: useProject } = createRequiredContext<ProjectValue>("useProject");
+
+/** A note as the list holds it: no body (M5). */
+function listed(doc: NoteDocument): Note {
+  const { content: _body, markdown: _source, ...note } = doc;
+  return note;
+}
 
 export function ProjectProvider({ projectId, children }: { projectId: string; children: ReactNode }) {
   const { bridge, refreshProjects } = useApp();
@@ -143,12 +159,14 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         return next;
       },
       createNote: async (input) => {
-        const note = await bridge.createNote(projectId, input);
-        dispatch({ type: "notes", notes: [...state.notes.filter((n) => n.id !== note.id), note] });
+        const doc = await bridge.createNote(projectId, input);
+        dispatch({ type: "notes", notes: [...state.notes.filter((n) => n.id !== doc.id), listed(doc)] });
+        return doc;
       },
       updateNote: async (id, patch) => {
-        const note = await bridge.updateNote(projectId, id, patch);
-        dispatch({ type: "notes", notes: state.notes.map((n) => (n.id === id ? note : n)) });
+        const doc = await bridge.updateNote(projectId, id, patch);
+        dispatch({ type: "notes", notes: state.notes.map((n) => (n.id === id ? listed(doc) : n)) });
+        return doc;
       },
       deleteNote: async (id) => {
         await bridge.deleteNote(projectId, id);

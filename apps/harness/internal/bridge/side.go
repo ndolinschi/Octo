@@ -17,6 +17,14 @@ func (s *Server) askSide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"side_id": start.SideID, "message": start.Message})
 }
 
+func (s *Server) stopSide(w http.ResponseWriter, r *http.Request) {
+	if err := s.svc.StopSide(r.Context(), r.PathValue("pid")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) listSide(w http.ResponseWriter, r *http.Request) {
 	msgs, err := s.svc.SideMessages(r.Context(), r.PathValue("pid"))
 	if err != nil {

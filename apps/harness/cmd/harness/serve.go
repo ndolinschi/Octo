@@ -228,7 +228,7 @@ func serve(ctx context.Context, cfg config.Config, addr string) error {
 	var orchRef atomic.Pointer[orchestrator.Orchestrator]
 	provSvc := providers.New(providers.Options{
 		Discovery: modelDiscovery(&orchRef),
-		DataDir:   cfg.DataDir, Builtin: builtin, Router: octo, Agents: pluginReg.Agents,
+		DataDir:   cfg.DataDir, Builtin: builtin, Router: octo, Agents: pluginReg.Agents, Recheck: pluginReg.Recheck, Fresh: pluginReg.Fresh,
 		Defaults: func() config.Models {
 			if s := svcRef.Load(); s != nil {
 				return s.Defaults().Models

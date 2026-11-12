@@ -16,7 +16,14 @@ const interruptedResult = "interrupted: the tool call did not complete"
 // loadHistory rebuilds the agent's conversation from storage: the latest
 // compaction summary, if any, then the messages stored after it.
 func (rt *runtime) loadHistory(ctx context.Context, agentID string) ([]anthropic.MessageParam, error) {
-	stored, err := rt.db.Messages(ctx, agentID)
+	return rt.loadHistoryWith(ctx, agentID, rt.imageLoader(ctx))
+}
+
+// loadHistoryWith is loadHistory with the images of the messages loaded by
+// load; a nil loader turns every image into its text placeholder (what a
+// summary is made from).
+func (rt *runtime) loadHistoryWith(ctx context.Context, agentID string, load imageLoader) ([]anthropic.MessageParam, error) {
+	stored, err := rt.db.LiveMessages(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -25,14 +32,17 @@ func (rt *runtime) loadHistory(ctx context.Context, agentID string) ([]anthropic
 		return nil, err
 	}
 	history := make([]anthropic.MessageParam, 0, len(stored)+1)
-	if compacted {
+	switch {
+	case compacted && comp.Cleared:
+		history = append(history, anthropic.NewUserMessage(anthropic.NewTextBlock(comp.Summary))) // the carry-over of a clear
+	case compacted:
 		history = append(history, agent.SummaryMessage(comp.Summary))
 	}
 	for _, m := range stored {
 		if compacted && m.ID <= comp.UptoMessageID {
 			continue
 		}
-		p, ok, err := messageParam(m)
+		p, ok, err := messageParamWith(m, load)
 		if err != nil {
 			return nil, err
 		}
@@ -45,8 +55,12 @@ func (rt *runtime) loadHistory(ctx context.Context, agentID string) ([]anthropic
 
 // messageParam converts a stored message to the SDK's form; false for an empty one.
 func messageParam(m projectstore.Message) (anthropic.MessageParam, bool, error) {
+	return messageParamWith(m, nil)
+}
+
+func messageParamWith(m projectstore.Message, load imageLoader) (anthropic.MessageParam, bool, error) {
 	var blocks []anthropic.ContentBlockParamUnion
-	if err := json.Unmarshal(m.Raw, &blocks); err != nil {
+	if err := json.Unmarshal(resolveImages(m.Raw, load), &blocks); err != nil {
 		return anthropic.MessageParam{}, false, fmt.Errorf("message %d: %w", m.ID, err)
 	}
 	if len(blocks) == 0 {

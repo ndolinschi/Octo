@@ -197,7 +197,8 @@ func TestContextEndpointKeepsItsShapeAndAddsTheNewFields(t *testing.T) {
 		t.Fatal(status)
 	}
 	for _, key := range []string{`"agent_id"`, `"model"`, `"window_tokens"`, `"used_tokens"`, `"estimated"`, `"parts"`, // as before
-		`"source":"harness"`, `"window"`, `"window_source":"default"`, `"free_tokens"`, `"reserved_tokens"`, `"categories"`, `"last_request"`} {
+		`"source":"harness"`, `"window"`, `"window_source":"default"`, `"free_tokens"`, `"reserved_tokens"`, `"categories"`, `"last_request"`,
+		`"items":[`, `"not_loaded":[]`, `"buffer_tokens":0`, `"largest_messages":[`} { // decision 88, additive
 		if !strings.Contains(string(body), key) {
 			t.Errorf("context lacks %s: %s", key, body)
 		}
@@ -207,6 +208,13 @@ func TestContextEndpointKeepsItsShapeAndAddsTheNewFields(t *testing.T) {
 	if sum := func() (n int64) {
 		for _, c := range rep.Categories {
 			n += c.Tokens
+			var items int64
+			for _, it := range c.Items {
+				items += it.Tokens
+			}
+			if items != c.Tokens {
+				t.Fatalf("category %s: items sum %d != %d", c.ID, items, c.Tokens)
+			}
 		}
 		return
 	}(); sum != rep.UsedTokens {

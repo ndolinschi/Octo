@@ -191,6 +191,10 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			ID: a.ID, Label: labelOr(a.Label, a.ID), Available: ok, UnavailableReason: reason, Launch: l,
 			Models: append([]string{}, a.Models...), DefaultModel: a.DefaultModel, ModelArg: slices.Clone(a.ModelArg),
 			InstallHint: strings.TrimSpace(a.Install), Requires: slices.Clone(a.Requires), FlatRate: a.FlatRate != nil && *a.FlatRate, Strengths: slices.Clone(a.Strengths), BillingEnv: slices.Clone(a.BillingEnv),
+			Verified: a.Verified != nil && *a.Verified, VerifiedNote: strings.TrimSpace(a.VerifiedNote), StartHint: strings.TrimSpace(a.StartHint),
+		}
+		if reason := strings.TrimSpace(a.Unsupported); reason != "" {
+			ag.Unsupported, ag.Available, ag.UnavailableReason = reason, false, reason
 		}
 		ag.Roles = maps.Clone(a.Roles)
 		ag.ModelLabels, ag.ModelsNote = maps.Clone(a.ModelLabels), strings.TrimSpace(a.ModelsNote)
@@ -199,7 +203,7 @@ func (b *builder) populate(p *Plugin, m manifest) {
 			re, _ := regexp.Compile(mc.Pattern) // validated with the manifest
 			ag.ModelsCommand = &ModelsCommand{Command: path, Args: slices.Clone(mc.Command[1:]), Pattern: re, LabelGroup: mc.LabelGroup, Dir: p.Dir}
 		}
-		if a.Auth != nil {
+		if a.Auth != nil && ag.Unsupported == "" {
 			ag.Hint = strings.TrimSpace(a.Auth.Hint)
 			ag.AuthMethods, ag.AuthSkip = slices.Clone(a.Auth.Methods), slices.Clone(a.Auth.Skip)
 			if len(a.Auth.Probe) > 0 {

@@ -15,11 +15,18 @@ type Message struct {
 	Content   []ContentBlock `json:"content"`
 	CreatedAt string         `json:"created_at"`
 	// Stopped marks an assistant message cut short because the turn was cancelled.
-	Stopped bool            `json:"stopped,omitempty"`
+	Stopped bool `json:"stopped,omitempty"`
+	// Command is the name of the agent slash command a user message ran ("" for plain text).
+	Command string          `json:"command,omitempty"`
 	Raw     json.RawMessage `json:"-"`
 }
 
 func (d *DB) AppendMessage(ctx context.Context, agentID, role string, contentJSON []byte) (Message, error) {
+	return d.AppendMessageCommand(ctx, agentID, role, contentJSON, "")
+}
+
+// AppendMessageCommand is AppendMessage for a user message that runs the agent's slash command.
+func (d *DB) AppendMessageCommand(ctx context.Context, agentID, role string, contentJSON []byte, command string) (Message, error) {
 	now := Now()
 	tx, err := d.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -27,8 +34,8 @@ func (d *DB) AppendMessage(ctx context.Context, agentID, role string, contentJSO
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO messages (agent_id, role, content_json, created_at) VALUES (?, ?, ?, ?)`,
-		agentID, role, string(contentJSON), now)
+		`INSERT INTO messages (agent_id, role, content_json, created_at, command) VALUES (?, ?, ?, ?, ?)`,
+		agentID, role, string(contentJSON), now, command)
 	if err != nil {
 		return Message{}, err
 	}
@@ -51,12 +58,32 @@ func (d *DB) AppendMessage(ctx context.Context, agentID, role string, contentJSO
 	if err := d.Touch(ctx); err != nil {
 		return Message{}, err
 	}
-	return newMessage(id, agentID, role, contentJSON, now), nil
+	m := newMessage(id, agentID, role, contentJSON, now)
+	m.Command = command
+	return m, nil
+}
+
+// LiveMessages is Messages without what a clear left behind: the messages of
+// the agent's current conversation, the ones requests are built from.
+func (d *DB) LiveMessages(ctx context.Context, agentID string) ([]Message, error) {
+	all, err := d.Messages(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	upto, err := d.LatestClearUpto(ctx, agentID)
+	if err != nil || upto == 0 {
+		return all, err
+	}
+	i := 0
+	for i < len(all) && all[i].ID <= upto {
+		i++
+	}
+	return all[i:], nil
 }
 
 func (d *DB) Messages(ctx context.Context, agentID string) ([]Message, error) {
 	rows, err := d.sql.QueryContext(ctx,
-		`SELECT id, role, content_json, created_at, stopped FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id`, agentID)
+		`SELECT id, role, content_json, created_at, stopped, command FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id`, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -64,13 +91,13 @@ func (d *DB) Messages(ctx context.Context, agentID string) ([]Message, error) {
 	out := []Message{}
 	for rows.Next() {
 		var id int64
-		var role, content, created string
+		var role, content, created, command string
 		var stopped bool
-		if err := rows.Scan(&id, &role, &content, &created, &stopped); err != nil {
+		if err := rows.Scan(&id, &role, &content, &created, &stopped, &command); err != nil {
 			return nil, err
 		}
 		m := newMessage(id, agentID, role, []byte(content), created)
-		m.Stopped = stopped
+		m.Stopped, m.Command = stopped, command
 		out = append(out, m)
 	}
 	return out, rows.Err()
@@ -113,15 +140,17 @@ func (d *DB) UpdateMessageContent(ctx context.Context, id int64, contentJSON []b
 // LastMessage is the newest message of the agent; ErrNotFound when it has none.
 func (d *DB) LastMessage(ctx context.Context, agentID string) (Message, error) {
 	var id int64
-	var role, content, created string
+	var role, content, created, command string
 	err := d.sql.QueryRowContext(ctx,
-		`SELECT id, role, content_json, created_at FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id DESC LIMIT 1`, agentID).
-		Scan(&id, &role, &content, &created)
+		`SELECT id, role, content_json, created_at, command FROM messages WHERE agent_id = ? AND rewound_at IS NULL ORDER BY id DESC LIMIT 1`, agentID).
+		Scan(&id, &role, &content, &created, &command)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Message{}, ErrNotFound
 	}
 	if err != nil {
 		return Message{}, err
 	}
-	return newMessage(id, agentID, role, []byte(content), created), nil
+	m := newMessage(id, agentID, role, []byte(content), created)
+	m.Command = command
+	return m, nil
 }

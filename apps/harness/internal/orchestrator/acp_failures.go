@@ -89,6 +89,9 @@ func acpFailure(ag plugins.Agent, what string, err error) error {
 	if isAuthFailure(err) {
 		return &userError{msg: ag.Label + " is not logged in", hint: loginHint(ag), cause: err}
 	}
+	if u := launchRejection(ag, err); u != nil {
+		return u
+	}
 	var me *acp.ModelError
 	if errors.As(err, &me) {
 		return &userError{msg: fmt.Sprintf("%s does not accept model %s", ag.Label, me.Model), hint: modelHint(ag, me.Offers), cause: err}
@@ -112,6 +115,9 @@ func modelHint(ag plugins.Agent, offers []string) string {
 // was passed as a start-up argument, a refusal of it shows as an early exit.
 func startFailure(t acpTarget, err error) error {
 	ag := t.agent
+	if u := launchRejection(ag, err); u != nil {
+		return u
+	}
 	if t.requested && len(ag.ModelArg) > 0 && !isAuthFailure(err) {
 		return &userError{msg: fmt.Sprintf("%s does not accept model %s (it did not start with it)", ag.Label, t.model),
 			hint: modelHint(ag, nil), cause: err}

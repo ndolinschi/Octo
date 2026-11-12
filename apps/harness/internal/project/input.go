@@ -27,7 +27,10 @@ type Input struct {
 	Instructions *string        `json:"instructions"`
 	Folders      *[]FolderInput `json:"folders"`
 	Models       *config.Models `json:"models"`
-	MaxDepth     *int           `json:"max_depth"`
+	// ForceUnverified accepts a model of an agent the login probe says is logged
+	// out (the probe is advisory); a model that is not installed is still refused.
+	ForceUnverified bool `json:"force_unverified"`
+	MaxDepth        *int `json:"max_depth"`
 	// BudgetUSD is the project's spend cap; JSON null removes it.
 	BudgetUSD OptionalFloat `json:"budget_usd"`
 	// Access is "supervised" or "full" (v7 approvals).

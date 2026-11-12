@@ -191,6 +191,8 @@ type assembly struct {
 	// currentFrom is the index in the stored messages where the current turn starts.
 	currentFrom int
 	stored      []projectstore.Message
+	// load fetches the images of the current turn.
+	load imageLoader
 }
 
 type exchangeText struct {
@@ -200,7 +202,7 @@ type exchangeText struct {
 
 // assembleWindow builds the blocks of the window mode for the orchestrator.
 func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st memory.Settings) (*assembly, error) {
-	stored, err := rt.db.Messages(ctx, a.ID)
+	stored, err := rt.db.LiveMessages(ctx, a.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +216,7 @@ func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st 
 	if from < 0 {
 		from = 0
 	}
-	as := &assembly{currentFrom: from, stored: stored,
+	as := &assembly{currentFrom: from, stored: stored, load: rt.imageLoader(ctx),
 		receipt: Receipt{TurnID: rt.turnID, Mode: memory.ContextWindow, RecentExchanges: st.RecentExchanges, CreatedAt: projectstore.Now()}}
 	m := rt.memory()
 
@@ -229,7 +231,7 @@ func (rt *runtime) assembleWindow(ctx context.Context, a projectstore.Agent, st 
 		fileLines = append(fileLines, fmt.Sprintf("- %s: %s", f.Path, f.Summary))
 		fileIDs = append(fileIDs, f.Path)
 	}
-	head := "## Memory\nOnly the recent exchanges are shown below; earlier conversation is in memory: use memory_search to find a detail and recall_message for a message's exact words, memory with view /memories to read a file.\nMemory files:\n"
+	head := "## Memory\nOnly the recent exchanges are shown below; earlier conversation is in memory: use memory_search to find a detail and recall_message for a message's exact words, memory with view /memories to read a file.\n" + m.PreviousSessionPointer(ctx) + "Memory files:\n"
 	if len(fileLines) == 0 {
 		fileLines = []string{"(none yet)"}
 	}
@@ -396,7 +398,7 @@ func (a *assembly) history() ([]anthropic.MessageParam, error) {
 		}
 	}
 	for i, m := range a.stored[a.currentFrom:] {
-		p, ok, err := messageParam(m)
+		p, ok, err := messageParamWith(m, a.load)
 		if err != nil {
 			return nil, err
 		}
@@ -497,6 +499,9 @@ func (rt *runtime) orchestratorHistory(ctx context.Context, orch projectstore.Ag
 		h, err := as.finish()
 		if err != nil {
 			return nil, err
+		}
+		if co := rt.clearCarryOver(ctx, orch.ID); co != "" {
+			h = append([]anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(co))}, h...)
 		}
 		if save {
 			rt.setReceipt(as.receipt)

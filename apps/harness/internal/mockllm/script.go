@@ -60,6 +60,9 @@ func orchestratorReply(r *request) reply {
 	if agents := r.spawnAgentChoices(); len(agents) > 0 && strings.Contains(ask, acpMarker) {
 		return acpReply(r, anchor, ask, agents[0])
 	}
+	if rep, ok := notesReply(r, anchor, ask); ok {
+		return rep
+	}
 	if rep, ok := memoryReply(r, anchor, ask); ok {
 		return rep
 	}

@@ -21,7 +21,7 @@ func fakeProbe(t *testing.T, text string, code int) Agent {
 	return Agent{ID: "x", Available: true, ProbeCommand: path}
 }
 
-func TestProbeOutputPatternTurnsExitZeroIntoLoggedOut(t *testing.T) {
+func TestProbeOutputPatternAppliesToNonZeroExitsOnly(t *testing.T) {
 	pat := regexp.MustCompile(`(?i)not authenticated`)
 	for _, tc := range []struct {
 		name    string
@@ -31,7 +31,7 @@ func TestProbeOutputPatternTurnsExitZeroIntoLoggedOut(t *testing.T) {
 		want    bool
 	}{
 		{"logged in, pattern does not match", "grok 1.0.77: model list", 0, pat, true},
-		{"exit 0 but says not authenticated", "You are not authenticated.", 0, pat, false},
+		{"exit 0 always wins, whatever the output says", "You are not authenticated.", 0, pat, true},
 		{"without a pattern exit 0 is logged in", "You are not authenticated.", 0, nil, true},
 		{"non-zero exit that prints the signal is logged out", "You are not authenticated.", 1, pat, false},
 	} {

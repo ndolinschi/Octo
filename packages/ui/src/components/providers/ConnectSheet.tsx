@@ -2,7 +2,19 @@ import type { Provider, SettingsUpdate, SettingsView } from "@octo/agent-client"
 import { SETTING_IDS } from "@octo/agent-client";
 import { useEffect, useState } from "react";
 import { errorMessage } from "../../lib/format";
-import { API_PROVIDER, ROUTER_PROVIDER, commandsIn, extraReason, isReady, refreshProviders, stateText, useProviders } from "../../lib/providers";
+import {
+  API_PROVIDER,
+  ROUTER_PROVIDER,
+  USE_ANYWAY_NOTE,
+  canUseAnyway,
+  commandsIn,
+  extraReason,
+  isReady,
+  recheckAgent,
+  refreshProviders,
+  stateText,
+  useProviders,
+} from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { Button } from "../primitives/Button";
@@ -43,7 +55,7 @@ function useSettingsView() {
  * Decision 53: the connect sheet of one provider. An agent: its state and the exact install and login commands (each
  * with a copy button) and "Check again". The API: a write-only key form. The router: its switch and upstream key.
  */
-export function ConnectSheet({ target, onClose }: { target: string; onClose(): void }) {
+export function ConnectSheet({ target, onClose, onUseAnyway }: { target: string; onClose(): void; onUseAnyway?: (() => void) | null }) {
   const { bridge } = useApp();
   const providers = useProviders(bridge);
   const list = providers.status === "loading" ? null : providers.list;
@@ -57,8 +69,19 @@ export function ConnectSheet({ target, onClose }: { target: string; onClose(): v
       onClose={onClose}
       footer={
         <>
-          {provider?.kind === "agent" && (
-            <CheckAgain provider={provider} refreshing={providers.status === "ready" && providers.refreshing} onCheck={() => void providers.refresh()} />
+          {provider?.kind === "agent" && provider.state !== "not_supported" && (
+            <CheckAgain
+              provider={provider}
+              onCheck={() => recheckAgent(bridge, provider.id)}
+              {...(onUseAnyway && canUseAnyway(provider)
+                ? {
+                    onUseAnyway: () => {
+                      onUseAnyway();
+                      onClose();
+                    },
+                  }
+                : {})}
+            />
           )}
           <Button
             variant={provider && isReady(provider) ? "primary" : "secondary"}
@@ -93,6 +116,7 @@ export function ConnectSheet({ target, onClose }: { target: string; onClose(): v
 }
 
 function describe(p: Provider): string {
+  if (p.state === "not_supported") return p.reason;
   if (isReady(p)) return p.kind === "agent" ? "Logged in and ready. Pick it, or one of its models, in any model picker." : "Connected.";
   if (p.kind === "agent")
     return p.state === "not_installed"
@@ -102,26 +126,51 @@ function describe(p: Provider): string {
   return "Route requests through the Octo router: one key upstream (for example OpenRouter), many models.";
 }
 
-function CheckAgain({ provider, refreshing, onCheck }: { provider: Provider; refreshing: boolean; onCheck(): void }) {
+/** "Check again" runs the agent's login probe now (a spinner while it does); "Use anyway" only for a login the probe says is missing. */
+function CheckAgain({ provider, onCheck, onUseAnyway }: { provider: Provider; onCheck(): Promise<boolean>; onUseAnyway?: () => void }) {
   const [checked, setChecked] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [failure, setFailure] = useState("");
   if (isReady(provider)) return null;
   return (
-    <span className="mr-auto flex items-center gap-3 max-[420px]:mr-0 max-[420px]:flex-col max-[420px]:items-stretch">
-      <Button
-        onClick={() => {
-          setChecked(true);
-          onCheck();
-        }}
-        disabled={refreshing}
-        aria-busy={refreshing}
-      >
-        {refreshing ? "Checking…" : "Check again"}
-      </Button>
-      {checked && !refreshing && (
-        <span role="status" className="text-xs text-warn">
-          Still {stateText(provider.state).toLowerCase()}.
-        </span>
-      )}
+    <span className="mr-auto flex flex-col gap-1 max-[420px]:mr-0">
+      <span className="flex items-center gap-3 max-[420px]:flex-col max-[420px]:items-stretch">
+        <Button
+          onClick={() => {
+            setChecked(true);
+            setRunning(true);
+            setFailure("");
+            onCheck().then(
+              () => setRunning(false),
+              (e: unknown) => {
+                setRunning(false);
+                setFailure(errorMessage(e).replace(/\.$/, ""));
+              },
+            );
+          }}
+          disabled={running}
+          aria-busy={running}
+        >
+          {running ? (
+            <>
+              <Spinner size={10} /> Checking…
+            </>
+          ) : (
+            "Check again"
+          )}
+        </Button>
+        {onUseAnyway && (
+          <Button variant="ghost" onClick={onUseAnyway} disabled={running}>
+            Use anyway
+          </Button>
+        )}
+        {checked && !running && (
+          <span role="status" className={failure ? "text-xs text-err" : "text-xs text-warn"}>
+            {failure ? `Could not check: ${failure}.` : `Still ${stateText(provider.state).toLowerCase()}.`}
+          </span>
+        )}
+      </span>
+      {onUseAnyway && <span className="text-xs text-fg-3">{USE_ANYWAY_NOTE}</span>}
     </span>
   );
 }

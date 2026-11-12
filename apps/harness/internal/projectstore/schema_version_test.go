@@ -189,7 +189,7 @@ func TestMigrateFromSchema1BuildsTheSearchIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema 1 does not open: %v", err)
 	}
-	hits, err := db.Search(ctx, SearchQuery{Text: "бюджета"})
+	hits, err := db.Search(ctx, SearchQuery{Text: "бюджета", Kinds: []string{DocMessage}})
 	if err != nil || len(hits) != 1 || hits[0].Kind != DocMessage || hits[0].Date != "2026-10-01T00:00:00.000Z" {
 		t.Fatalf("existing messages were not indexed: %+v %v", hits, err)
 	}

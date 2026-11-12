@@ -7,6 +7,7 @@ import { Input } from "../primitives/Field";
 import { SaveStatus, Select, SettingsGroup, SettingsRow, SkeletonRow } from "./parts";
 import { useProjectDetails, type ProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
+import { UsageByProject } from "./UsageByProject";
 
 const IntegrationsView = lazy(() => import("./IntegrationsView").then((m) => ({ default: m.IntegrationsView })));
 
@@ -156,6 +157,7 @@ export function UsageSection() {
   const { details, update, retry } = useProjectDetails();
   return (
     <>
+      <UsageByProject />
       <Limits />
       <PerProject
         label="Budget"

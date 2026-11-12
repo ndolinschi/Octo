@@ -29,11 +29,15 @@ const (
 	MarkerMCPSpawnBuiltin = "[mcp-spawn-builtin]"
 	// MarkerEcho makes the agent answer with pid, session and the prompt it got.
 	MarkerEcho = "[echo]"
+	// MarkerBlocks answers with the content blocks of the prompt: "blocks=image:image/png:1234,text".
+	MarkerBlocks = "[blocks]"
 	// MarkerMCPInfo reports the MCP server entry the client gave (url and
 	// bearer token), so a test can speak to the endpoint as the agent would.
 	MarkerMCPInfo = "[mcp-info]"
 	// MarkerNonUSD makes the usage_update costs use EUR instead of USD.
 	MarkerNonUSD = "[eur]"
+	// MarkerSetCommands ("[set-commands:name|desc|hint;...]") replaces the advertised slash commands mid-session.
+	MarkerSetCommands = "[set-commands:"
 )
 
 // Cumulative session costs the default script reports in its usage_updates.
@@ -101,11 +105,36 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 	if i := strings.LastIndex(prompt, "User request:\n"); i >= 0 {
 		request = prompt[i+len("User request:\n"):]
 	}
+	// A side question's first prompt carries a recap of the orchestrator's conversation.
+	if i := strings.LastIndex(request, "Side question: "); i >= 0 {
+		request = request[i+len("Side question: "):]
+	}
 	a.mu.Lock()
 	cwd := a.cwd
 	a.deafMode = strings.Contains(request, MarkerDeaf)
 	a.mu.Unlock()
 	has := func(m string) bool { return strings.Contains(request, m) }
+	if strings.Contains(request, "This session is being cleared") {
+		if os.Getenv(EnvSummary) == "fail" {
+			return "refusal"
+		}
+		a.say("Agent summary: the user asked about the project and nothing is unfinished.")
+		return "end_turn"
+	}
+	if rest, ok := strings.CutPrefix(strings.TrimSpace(request), "/"); ok && rest != "" {
+		a.say("command<<" + strings.TrimSpace(request) + ">>") // a slash command is run, not discussed
+		return "end_turn"
+	}
+	if i := strings.Index(request, MarkerSetCommands); i >= 0 {
+		list := request[i+len(MarkerSetCommands):]
+		list, _, _ = strings.Cut(list, "]")
+		a.mu.Lock()
+		a.commands = parseCommandList(list)
+		a.mu.Unlock()
+		a.advertiseCommands(false)
+		a.say("commands updated")
+		return "end_turn"
+	}
 
 	switch {
 	case has(MarkerSilent):
@@ -158,6 +187,12 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		return "end_turn"
 	case has(MarkerAskForm):
 		return a.askForm(ctx)
+	case has(MarkerBlocks):
+		a.mu.Lock()
+		b := a.blocks
+		a.mu.Unlock()
+		a.say("blocks=" + b)
+		return "end_turn"
 	case has(MarkerLeakEnv):
 		return a.leakEnv()
 	case has(MarkerEcho):

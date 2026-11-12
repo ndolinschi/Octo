@@ -40,6 +40,11 @@ func (rt *runtime) sideHints() router.Hints {
 // its answer. A cancelled or failed question leaves no trace but the event.
 func (rt *runtime) runSide(ctx context.Context, run *side, history []anthropic.MessageParam) {
 	text, err := rt.answerSide(ctx, run, history)
+	rt.finishSide(ctx, run, text, err)
+}
+
+// finishSide stores and announces a side answer, or its failure.
+func (rt *runtime) finishSide(ctx context.Context, run *side, text string, err error) {
 	if err != nil {
 		rt.failSide(run, err)
 		return
@@ -112,9 +117,17 @@ func (rt *runtime) failSide(run *side, err error) {
 	if derr := rt.db.DeleteSide(c, run.id); derr != nil {
 		rt.logErr("drop failed side question", derr)
 	}
-	msg := err.Error()
-	if errors.Is(err, context.Canceled) {
-		msg = "cancelled"
+	fields := map[string]any{"side_id": run.id, "error": err.Error()}
+	switch {
+	case errors.Is(err, context.Canceled):
+		fields["error"] = "cancelled"
+	case errors.Is(err, ErrNoProvider):
+		fields["code"] = "no_provider"
+	case IsNoBuiltinLoop(err):
+		fields["code"] = "no_provider"
 	}
-	rt.publish(events.SideError, map[string]any{"side_id": run.id, "error": msg})
+	if h := hintOf(err); h != "" {
+		fields["hint"] = h
+	}
+	rt.publish(events.SideError, fields)
 }

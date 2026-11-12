@@ -28,7 +28,7 @@ import { fileIcon, isMarkdown } from "../primitives/fileIcons";
 /** The Markdown preview loads with the first Markdown file (its own chunk). */
 const MarkdownPreview = lazy(() => import("./MarkdownPreview").then((m) => ({ default: m.MarkdownPreview })));
 import { TreeColumn } from "./TreeColumn";
-import { EDITOR_MIN_WIDTH, FILE_VIEW_OVERLAY_BELOW } from "../../lib/constants";
+import { treeLayout } from "../../lib/treeLayout";
 import { slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 
@@ -71,21 +71,29 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
+    // Measured before the first paint (a layout effect's state update is flushed synchronously), so the tree is never
+    // painted as a column for one frame and then moved to the overlay (decision 85).
+    setWidth(Math.round(el.getBoundingClientRect().width));
     const ro = new ResizeObserver(([e]) => {
-      if (e) setWidth(Math.round(e.contentRect.width));
+      // A hidden view (its tab is not the active one) reports 0: keep the last real width, so showing it again does not
+      // paint the tree at the unmeasured shape for a frame.
+      if (e && e.contentRect.width > 0) setWidth(Math.round(e.contentRect.width));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
   // A column that would leave the editor under `EDITOR_MIN_WIDTH` (a narrow file group beside the orchestrator) floats
   // over it instead, closed by default.
-  const column = Math.max(TREE_MIN, Math.min(fv.treeWidth, Math.round(width * 0.4)));
-  const overlay = width > 0 && (width < FILE_VIEW_OVERLAY_BELOW || width - column < EDITOR_MIN_WIDTH);
-  // A narrow view keeps the editor visible: there the tree floats over it, starts closed (open in the
-  // empty Files view), and closes
-  // once a file is picked (the shared column preference is left alone).
-  // The empty Files view exists to pick a file: its tree starts open.
+  const { overlay, maxWidth: treeMax } = treeLayout(width, fv.treeWidth, TREE_MIN);
+  // A narrow view floats the tree over the editor; it starts closed (open in the empty Files view) and is closed only by the
+  // user (toggle, Esc, a click outside): picking a file never hides it (decision 85). The shared column preference is left alone.
   const [overlayOpen, setOverlayOpen] = useState(fileKey === null);
+  // The shared view turning into the empty Files view again (the Files tool opened): its tree is open, to pick a file.
+  const [wasEmpty, setWasEmpty] = useState(fileKey === null);
+  if (wasEmpty !== (fileKey === null)) {
+    setWasEmpty(fileKey === null);
+    if (fileKey === null) setOverlayOpen(true);
+  }
   const treeShown = overlay ? overlayOpen : fv.treeOpen;
   const setTreeShown = (open: boolean) => (overlay ? setOverlayOpen(open) : fv.setTreeOpen(open));
   const focusTick = useRef(fv.focusTreeTick);
@@ -102,13 +110,13 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   // empty Files view turned into the file in place), the file's editor or preview takes it.
   const openHere = useCallback(
     (f: string, p: string) => {
-      setOverlayOpen(false);
       code.openFile(f, p, undefined, groupId ? (fileKey ? { group: groupId } : { group: groupId, replace: tab }) : undefined);
       const panel = `${domId(fileTab(fileKeyOf(f, p)))}-panel`;
       focusSoon(
         () => {
           const el = document.getElementById(panel);
-          return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
+          const input = [...(el?.querySelectorAll<HTMLElement>(".monaco-editor textarea") ?? [])].find((t) => t.closest("[inert]") === null);
+          return input ?? el?.querySelector<HTMLElement>("[data-file-focus]");
         },
         { onlyIfLost: true, timeout: 1500 },
       );
@@ -154,28 +162,41 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
     }
   };
 
-  let body: ReactNode;
+  // Decision 85: the editor is one Monaco instance for every file this view shows (it swaps models), mounted with the first file;
+  // whatever stands in for it (the empty view, the loading skeleton, a message, the Markdown preview) is a cover over the same
+  // box. `shown` is the last file that was ready: the model the editor keeps until the next one is.
+  const [shown, setShown] = useState<OpenFile | null>(null);
+  if (file?.status === "ready" && file !== shown) setShown(file);
+  const ready = file?.status === "ready" && !opening;
+  let cover: ReactNode = null;
   if (!fileKey) {
-    body = <div className="grid h-full place-items-center text-sm text-fg-3">{code.folders.length ? "Select a file" : <NoFolders />}</div>;
-  } else if (file?.status === "ready" && !opening) {
-    body =
-      markdown && mode === "preview" ? (
-        <Suspense fallback={null}>
-          <MarkdownPreview file={file} bottomRoom={bottomRoom} onOpen={openHere} />
-        </Suspense>
-      ) : (
-        <CodeEditor
-          file={file}
-          buffers={code.buffers}
-          theme={theme}
-          bottomPadding={Math.max(8, bottomRoom)}
-          onSave={() => void code.save(file.key)}
-          onMonaco={(mod) => code.startIntel((o) => new mod.LspManager({ ...o, monaco: mod.monaco }))}
-        />
-      );
-  } else {
-    body = <Message file={file} name={path.slice(path.lastIndexOf("/") + 1)} showLoading={opening} />;
+    cover = <div className="grid h-full place-items-center text-sm text-fg-3">{code.folders.length ? "Select a file" : <NoFolders />}</div>;
+  } else if (!ready) {
+    cover = <Message file={file} name={path.slice(path.lastIndexOf("/") + 1)} showLoading={opening} />;
+  } else if (markdown && mode === "preview") {
+    cover = (
+      <Suspense fallback={null}>
+        <MarkdownPreview file={file} bottomRoom={bottomRoom} onOpen={openHere} />
+      </Suspense>
+    );
   }
+  const body = (
+    <div className="relative h-full min-h-0">
+      {fileKey !== null && (
+        <div className="absolute inset-0" inert={cover !== null}>
+          <CodeEditor
+            file={shown}
+            buffers={code.buffers}
+            theme={theme}
+            bottomPadding={Math.max(8, bottomRoom)}
+            onSave={() => void (shown && code.save(shown.key))}
+            onMonaco={(mod) => code.startIntel((o) => new mod.LspManager({ ...o, monaco: mod.monaco }))}
+          />
+        </div>
+      )}
+      {cover && <div className="absolute inset-0 z-10 bg-panel">{cover}</div>}
+    </div>
+  );
 
   return (
     <div ref={root} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
@@ -183,11 +204,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
       <div data-file-bar className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]">
         <IconButton icon={ArrowLeft} label="Back" title="Back (previous file in this group)" disabled={!group?.canBack} onClick={group?.back} />
         <IconButton icon={ArrowRight} label="Forward" title="Forward (next file in this group)" disabled={!group?.canForward} onClick={group?.forward} />
-        {fileKey ? (
-          <Crumbs key={`${folder}/${path}`} folder={folder} path={path} />
-        ) : (
-          <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>
-        )}
+        {fileKey ? <Crumbs folder={folder} path={path} /> : <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>}
         <span className="flex shrink-0 items-center gap-2 pl-2">
           <span className="flex shrink-0 items-center gap-2 empty:hidden" role="status">
             {saving && (
@@ -225,15 +242,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
           <div className="min-h-0 flex-1">{body}</div>
           {floating && floatingComposer(setFloatHeight)}
         </div>
-        {treeShown && (
-          <TreeColumn
-            id={treeId}
-            tab={tab}
-            overlay={overlay}
-            maxWidth={overlay ? width - 48 : Math.max(TREE_MIN, Math.min(width - 320, Math.round(width * 0.4)))}
-            onOpenFile={openHere}
-          />
-        )}
+        {treeShown && <TreeColumn id={treeId} tab={tab} overlay={overlay} maxWidth={treeMax} onOpenFile={openHere} />}
       </div>
     </div>
   );

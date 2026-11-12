@@ -68,7 +68,7 @@ const searchSchema = `{"type":"object","properties":{"query":{"type":"string"},`
 	`"in":{"type":"array","items":{"type":"string","enum":["tasks","facts","files","messages"]}},` +
 	`"after":{"type":"string"},"before":{"type":"string"},"limit":{"type":"integer"}},"required":["query"]}`
 
-const recallSchema = `{"type":"object","properties":{"id":{"type":"integer"}},"required":["id"]}`
+const recallSchema = `{"type":"object","properties":{"id":{"type":"integer"},"exchange_id":{"type":"string"},"session_id":{"type":"string"}}}`
 
 // memoryDefs are the memory tools of the orchestrator.
 func (rt *runtime) memoryDefs() []tools.Def {
@@ -123,13 +123,31 @@ func (rt *runtime) memoryDefs() []tools.Def {
 				return asJSON(res), nil
 			})},
 		{Name: ToolRecallMessage, InputSchema: json.RawMessage(recallSchema),
-			Description: "Return an earlier message word for word (id from a memory_search hit).",
+			Description: "Return an earlier message word for word (id from a memory_search hit), or an earlier exchange (exchange_id: the request and the answer) or a whole earlier session (session_id: its exchanges, shortened).",
 			Handle: text(func(ctx context.Context, raw json.RawMessage) (string, error) {
 				var in struct {
-					ID int64 `json:"id"`
+					ID         int64  `json:"id"`
+					ExchangeID string `json:"exchange_id"`
+					SessionID  string `json:"session_id"`
 				}
 				if err := json.Unmarshal(raw, &in); err != nil {
 					return "", fmt.Errorf("%w: %v", memory.ErrInvalid, err)
+				}
+				switch {
+				case in.ExchangeID != "":
+					res, err := rt.memory().RecallExchange(ctx, in.ExchangeID)
+					if err != nil {
+						return "", err
+					}
+					return asJSON(res), nil
+				case in.SessionID != "":
+					res, err := rt.memory().RecallSession(ctx, in.SessionID)
+					if err != nil {
+						return "", err
+					}
+					return asJSON(res), nil
+				case in.ID == 0:
+					return "", fmt.Errorf("%w: give id, exchange_id or session_id", memory.ErrInvalid)
 				}
 				res, err := rt.memory().Recall(ctx, in.ID)
 				if err != nil {
@@ -141,7 +159,7 @@ func (rt *runtime) memoryDefs() []tools.Def {
 }
 
 // memoryGuidance is the sentence that tells the orchestrator about its memory.
-const memoryGuidance = "- Before saying you do not know something from earlier, try memory_search (and recall_message for exact words); keep long-lived knowledge in memory files.\n"
+const memoryGuidance = "- Before saying you do not know something from earlier, try memory_search (and recall_message for exact words); keep long-lived knowledge in memory files.\n" + rememberGuidance
 
 // openTurnTask opens the task record for the turn's request. A failure only logs.
 func (rt *runtime) openTurnTask(ctx context.Context, text string, messageID int64) {

@@ -1,4 +1,4 @@
-# Orchestrator memory (M1, M2)
+# Orchestrator memory (M1, M2, M4)
 
 Design: [`docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md`](../../../docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md). M1 is the store, the tools, the search and the API; M2 (below) is how the orchestrator's context is built from it, off by default (`memory.context: "full"`).
 
@@ -101,3 +101,50 @@ The UI view, embeddings, cross-project memory.
 - **A finished turn closes its task.** Completed: status `done`, `outcome` filled (the digest's, else the first 300 characters of the reply) unless something else set one. Cancelled: `dropped`. Failed: left open. A user or the orchestrator can reopen a task (`status: open`).
 - **`files`** is filled from the turn's tool calls: `read_file`/`write_file` paths of the built-in tools, and for ACP the locations of `read`, `edit`, `delete` and `move` tool calls (relative to the project folder when inside one), at most 50 per record.
 - **Russian search.** A third FTS5 index, `search_s`, holds every document as stems: the Russian Snowball algorithm (pure Go, `projectstore/stem_ru.go`, no module), ё folded to е, and the fleeting о/е before a final consonant dropped (so `скобок` and `скобками` share a stem). Queries are stemmed the same way and the stem index is searched after the exact index and before the trigram one, so `калькуляторами` finds `калькулятор`, `скобками` finds `скобок`, `молдове` finds `Молдовы` and `Кишинев` finds `Кишинёв`. Only words with Cyrillic letters are stemmed. A database from before schema 5 is indexed when it opens.
+
+## Notes as Markdown with descriptions (M5)
+
+A project note is a Markdown document with front matter (`title`, `description` of at most 200 characters, `tags`,
+`pinned`, and the harness's `id`, `created_at`, `updated_at`, `last_read_at`, `read_count`). The orchestrator's prompt holds
+only an index, `id · title — description [tags]`, within 1 500 tokens (pinned first, then the most recently read or
+changed; the rest as "N more notes — use search_notes"), plus pinned notes whole (at most 3, 2 000 characters together).
+Tools: `read_note {id}`, `search_notes {query, limit?}`, `write_note {id?, title, description, body, tags?}` (refused in ask
+and plan modes). API: `GET/POST /v1/projects/{id}/notes`, `GET/PATCH/DELETE .../notes/{nid}`, `GET .../notes/{nid}/export`;
+create and update take fields or `markdown`; a parse error is a 400 with the line. Full contract: the M5 section of
+`docs/superpowers/specs/2026-11-11-orchestrator-memory-design.md`.
+## Sessions: what was asked and what was answered (M4)
+
+Code: `internal/projectstore/{sessions,migrate_v12_sessions}.go` (SQL, schema 12), `internal/memory/sessions.go` (service), `internal/orchestrator/exchanges.go` (the post-turn write), `internal/bridge/memory_sessions.go` (API).
+
+- **An exchange is written for every finished orchestrator turn**, completed, failed or stopped, right after the turn settles and before the digest (not by it, so it needs no side model). It holds the request as typed and the final answer: the last assistant text of the turn read from the stored messages (tool chatter is not part of it; for a failed or stopped turn, what had been said so far; empty when nothing was). Both pass the secret redactor. The answer is cut at 64 KiB on a character boundary, `answer_truncated: true` and the text ends with `[answer cut: it was longer than 64 KiB]`. A turn is recorded once: a retry of a failed turn replaces its record in place (same `id`).
+- **Fields filled from the turn:** `model` (the orchestrator's model or ACP agent as the agent row shows it after the turn), `duration_ms` (from the request message's time), `files` (distinct paths of the changes ledger for the turn, at most 50), `agents` (titles of the sub-agents created during the turn), `tokens` and `cost_usd` (the usage rows since the request, the agents' own and the router's classifier calls, not digest or side calls; flat-rate rows add tokens but no cost; `cost_usd` is `null` when no cost was reported), `task_id` (the turn's task record when it still exists).
+- **Sessions.** The first exchange opens a session titled with the request's first line (80 characters). The next one joins the latest session unless it is closed or ended more than **6 hours** before the request started, then it opens a new one. A session is closed by `/clear` and by a rewind that cut every request (reason `clear` / `rewind`). Exchanges survive both, as the record. Hook for `/clear`: `(*memory.Service).StartSession(ctx, "clear")` (the orchestrator's `Memory(ctx, pid)` returns the service); it closes the latest open session, does nothing when none is open, and publishes `memory.updated {session_boundary}`.
+- **Back-fill.** Opening a database older than schema 12 builds sessions and exchanges from the orchestrator's stored messages (rewound ones left out): each user message with text starts an exchange, the last assistant text before the next one is its answer, `failed` when there is none, `stopped` when that message was cut short; `model` is the orchestrator's current model, `files` come from the ledger, tokens, cost and sub-agents stay empty. Sessions follow the 6 h rule, and a `/clear` found in the stored compactions also ends a session (its summary stays on it).
+- **Search** indexes each exchange (title = the request's first line, body = request and answer) in all three FTS5 indexes, Russian stems included. `in` takes `exchanges`; with `in` empty exchange hits are included and a message hit that an exchange hit already shows (the request or the answer message) is dropped.
+- **Forget** deletes the texts and the search entries and leaves a marker; recording the same turn again does not bring it back.
+- **The orchestrator** reads it with `recall_message` `{exchange_id}` (request and answer, each cut at 8 kB, `truncated`) or `{session_id}` (the first 40 exchanges, request cut at 200 and answer at 300 characters, with the exchange ids). In window mode the memory index block, and in the ACP recap of a new session, carry a three-line pointer to the session before the current one (title, date, count, id, how to recall). Full mode keeps the whole transcript and adds the pointer only to the ACP recap.
+
+| Method | Path | Response |
+| --- | --- | --- |
+| GET | `/v1/projects/{pid}/memory/sessions?limit=&before=` | `{ "sessions": Session[] }`, newest first; `limit` 1 to 200 (default 50); `before` is a `started_at` to page from; `400` for a bad limit |
+| GET | `/v1/projects/{pid}/memory/sessions/{sid}` | `{ "session": Session, "exchanges": Exchange[] }` in order; `404` for an unknown session |
+| DELETE | `/v1/projects/{pid}/memory/exchanges/{eid}` | `204`; `404` for an unknown exchange |
+
+```json
+{ "id": "ses_...", "title": "Harden the login flow", "started_at": "2026-11-12T09:00:00.000Z",
+  "ended_at": "2026-11-12T09:41:12.000Z", "exchanges": 5, "open": true, "reason": "clear" }
+```
+`exchanges` counts exchanges that were not forgotten; `open` is true for the latest session while it is not closed (a session that merely went quiet for 6 h is still `open` until the next request starts another); `reason` is present only on a closed one.
+
+```json
+{ "id": "exc_...", "session_id": "ses_...", "turn_id": 412, "message_id": 418,
+  "request": "Напиши калькулятор", "answer": "Готово ...", "answer_truncated": false,
+  "status": "completed", "started_at": "2026-11-12T09:00:00.000Z", "duration_ms": 18000,
+  "model": "claude-sonnet-4", "files": ["src/calc.ts"], "agents": ["Test writer"],
+  "tokens": { "input": 4210, "output": 880 }, "cost_usd": 0.0522, "task_id": "tsk_..." }
+```
+`turn_id` is the user message that started the turn (what the chat scrolls to), `message_id` the assistant message that answered (0 when none did), `status` is `completed`, `failed` or `stopped`, `task_id` is omitted when there is none. A forgotten exchange keeps its `id`, `session_id`, `turn_id`, `status` and `started_at`, has `"removed": true` and empty `request`, `answer`, `files`, `agents`.
+
+Search hit of an exchange: `{"kind": "exchange", "id": "<exchange id>", "session_id": "ses_...", "title": "<first line of the request>", "snippet": "...", "date": "<started_at>", "message_id": <turn_id>, "task_id"?}`.
+
+Events: `memory.updated {session_id, exchange_id}` when an exchange is recorded, `{session_id, exchange_id, deleted: true}` when one is forgotten, `{session_boundary: "clear"|"rewind", session_id, previous_session_id}` when a session is closed. The schema version is **12** (sessions, exchanges: `migrate_v12_sessions.go`; 10 is notes, 11 attachments; the next free one is 13).

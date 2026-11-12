@@ -2,7 +2,18 @@ import { Check, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-r
 import { Fragment, useId, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { cn } from "../../lib/cn";
 import { parseAcp } from "../../lib/models";
-import { cleanModelName, emptyListNote, pickerKey, pickerRows, pickerView, useModelPicker, type PickerRow } from "../../lib/providers";
+import {
+  EXPERIMENTAL_TIP,
+  USE_ANYWAY_NOTE,
+  cleanModelName,
+  emptyListNote,
+  pickerKey,
+  pickerRows,
+  pickerView,
+  recheckAgent,
+  useModelPicker,
+  type PickerRow,
+} from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { useShell } from "../../state/shell";
 import { Glyph } from "../primitives/Glyph";
@@ -38,6 +49,9 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState("");
   const [refreshNote, setRefreshNote] = useState<string | null>(null);
+  /** The agent whose "Check again" runs, and the one that was checked and still reads as logged out. */
+  const [checking, setChecking] = useState<string | null>(null);
+  const [stillOut, setStillOut] = useState<string | null>(null);
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
   const other = useRef<HTMLInputElement>(null);
@@ -65,11 +79,31 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     props.onChoose(value);
     props.onClose();
   };
+  const pickAnyway = (providerId: string) => {
+    props.onChooseUnverified?.(`acp:${providerId}`);
+    props.onClose();
+  };
+  const checkAgain = async (providerId: string) => {
+    if (checking) return;
+    setChecking(providerId);
+    setStillOut(null);
+    try {
+      if (!(await recheckAgent(bridge, providerId))) setStillOut(providerId);
+    } catch {
+      // The row keeps its state; "Check again" can be pressed once more and the connect sheet shows the harness's own reason.
+      setStillOut(providerId);
+    } finally {
+      setChecking(null);
+    }
+  };
   const act = (r: PickerRow | Custom | undefined) => {
     if (!r) return;
+    if (r.kind === "connect" && r.unsupported) return;
     if (r.kind === "connect") {
       props.onClose();
-      openConnect(r.providerId);
+      const id = r.providerId;
+      const anyway = r.unverified && props.onChooseUnverified ? () => props.onChooseUnverified?.(`acp:${id}`) : undefined;
+      openConnect(id, anyway);
       return;
     }
     if (r.kind === "agent") return open(r.providerId);
@@ -156,7 +190,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     if (!r || view?.level !== "top") return null;
     if (r.kind === "custom") return "Custom";
     const prev = entries[i - 1];
-    if (r.kind === "connect") return prev?.kind === "connect" ? null : "Not connected";
+    if (r.kind === "connect") return prev?.kind === "connect" ? null : "Not set up";
     const group = view.groups.find((g) => g.rows.includes(r));
     const same = prev !== undefined && prev.kind !== "custom" && prev.kind !== "connect" && group?.rows.includes(prev);
     return same ? null : (group?.label ?? null);
@@ -171,6 +205,8 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         ? "Nothing matches"
         : "Nothing can run yet. Connect a provider."
       : null;
+  const activeRow = at >= 0 ? entries[at] : undefined;
+  const unverifiedNote = activeRow?.kind === "connect" && activeRow.unverified && props.onChooseUnverified !== undefined;
   const why = agent ? emptyListNote({ ...agent, error: refreshNote ?? agent.error }, refreshing) : null;
   // An empty list explains itself in the dim line; a short list with a failed look keeps the warning.
   const error = agent && !why ? (refreshNote ?? agent.error) : "";
@@ -236,6 +272,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
           {why.note && <span className="mt-0.5 line-clamp-2 block">{why.note}</span>}
         </p>
       )}
+      {unverifiedNote && <p className="mx-1 shrink-0 px-2 pt-1 text-xs text-fg-3">{USE_ANYWAY_NOTE}</p>}
       {error && (
         <p role="alert" className="mx-1 shrink-0 px-2 pt-1 text-xs text-warn">
           {error}
@@ -294,6 +331,14 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
                   {r.kind === "agent" && <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />}
                 </span>
                 <RowBody row={r} query={query} />
+                {r.kind === "connect" && r.unverified && (
+                  <UnverifiedActions
+                    checking={checking === r.providerId}
+                    still={stillOut === r.providerId}
+                    onCheck={() => void checkAgain(r.providerId)}
+                    {...(props.onChooseUnverified ? { onUse: () => pickAnyway(r.providerId) } : {})}
+                  />
+                )}
                 {r.kind === "agent" && <Glyph icon={ChevronRight} size={14} className="-mr-0.5 shrink-0 text-fg-3" />}
                 {r.kind === "model" && r.removable && (
                   <button
@@ -329,9 +374,40 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   );
 }
 
+/** The dim word after an agent's label whose launch command has not been run with Octo. */
+function Experimental() {
+  return (
+    <span className="shrink-0 text-xs text-fg-3" title={EXPERIMENTAL_TIP}>
+      experimental
+    </span>
+  );
+}
+
+/** "Check again" and "Use anyway" on a not-logged-in agent's row; out of the tab order like the row's remove button (Enter opens the connect sheet with both). */
+function UnverifiedActions({ checking, still, onCheck, onUse }: { checking: boolean; still: boolean; onCheck(): void; onUse?: () => void }) {
+  const stop = (fn: () => void) => (e: { stopPropagation(): void }) => {
+    e.stopPropagation();
+    fn();
+  };
+  const cls = "shrink-0 rounded-xs px-1 text-xs text-fg-2 hover:text-fg";
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {still && !checking && <span className="text-xs text-warn">Still logged out</span>}
+      <button type="button" tabIndex={-1} aria-busy={checking} disabled={checking} onClick={stop(onCheck)} className={cls}>
+        {checking ? <Spinner /> : "Check again"}
+      </button>
+      {onUse && (
+        <button type="button" tabIndex={-1} onClick={stop(onUse)} className={cls}>
+          Use anyway
+        </button>
+      )}
+    </span>
+  );
+}
+
 function rowTitle(r: PickerRow | Custom): string {
   if (r.kind === "custom") return r.agentId ? `Use “${r.label}” as the model name` : `Use “${r.value}” as the model id`;
-  if (r.kind === "connect") return `${r.label}: ${r.state}`;
+  if (r.kind === "connect") return r.unsupported ? `${r.label}: ${r.reason ?? r.state}` : `${r.label}: ${r.state}`;
   if (r.kind === "other") return "Type the name of a model this agent accepts";
   if (r.kind === "agent") return `${r.label}: choose a model`;
   if (r.kind === "default") return "No model named: the agent uses its own default";
@@ -360,8 +436,9 @@ function RowBody({ row, query }: { row: PickerRow | Custom; query: string }) {
     return (
       <>
         <span className="min-w-0 truncate text-fg-2">{row.label}</span>
+        {row.experimental && <Experimental />}
         <span className="min-w-0 flex-1 truncate text-right text-xs text-fg-3">
-          {row.state} · {row.action}
+          {row.unsupported ? (row.reason ?? row.state) : row.unverified ? row.state : `${row.state} · ${row.action}`}
         </span>
       </>
     );
@@ -372,6 +449,7 @@ function RowBody({ row, query }: { row: PickerRow | Custom; query: string }) {
         <span className="min-w-0 truncate text-fg">
           <Highlight text={row.label} query={query} />
         </span>
+        {row.kind === "agent" && row.experimental && <Experimental />}
         {row.detail && <span className="min-w-0 flex-1 truncate text-right text-xs text-fg-3">{row.detail}</span>}
       </>
     );

@@ -9,6 +9,8 @@ import { useInputModality } from "../lib/modality";
 
 // Demo-only review page for the v7 components (`?demo=1#/__v7`); a separate chunk, never loaded otherwise.
 const V7Gallery = lazy(() => import("../components/v7/Gallery").then((m) => ({ default: m.Gallery })));
+// Demo-only component library gallery (`?demo=1&gallery=1`, decision 90); a separate chunk, never loaded otherwise.
+const Gallery = lazy(() => import("../components/primitives/Gallery").then((m) => ({ default: m.Gallery })));
 const loadDiffMonaco = () => import("../components/files/monaco");
 
 export type OctoAppProps = {
@@ -30,6 +32,10 @@ export function OctoApp({ bridge, bridgeUrl, shell, demo = false, host, chrome =
           {demo && window.location.hash === "#/__v7" ? (
             <Suspense fallback={null}>
               <V7Gallery loadMonaco={loadDiffMonaco} />
+            </Suspense>
+          ) : demo && new URLSearchParams(window.location.search).has("gallery") ? (
+            <Suspense fallback={null}>
+              <Gallery />
             </Suspense>
           ) : (
             <AppShell />

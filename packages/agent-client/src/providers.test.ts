@@ -151,3 +151,52 @@ test("a failed model look is data on the provider; the new optional fields type-
   assert.equal(p.models[1]?.source, "command");
   assert.equal(p.roles?.deep, "opus");
 });
+
+test("recheck posts to the provider's recheck path and answers the entry", async () => {
+  const seen: { method: string | undefined; url: string }[] = [];
+  const entry = { ...sample.providers[1], login: "ok", state: "ready" };
+  const fetch: FetchLike = async (url, init) => {
+    seen.push({ method: init?.method, url });
+    return { ok: true, status: 200, text: async () => JSON.stringify(entry) };
+  };
+  const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
+  const p = await bridge.recheckProvider("a b");
+  assert.deepEqual(seen, [{ method: "POST", url: "http://h:1/v1/providers/a%20b/recheck" }]);
+  assert.equal(p?.login, "ok");
+  assert.equal((BRIDGE_METHODS as readonly string[]).includes("recheckProvider"), false, "recheckProvider is HTTP-only");
+});
+
+test("a refusal carries can_force and force_unverified goes out in the body", async () => {
+  const bodies: unknown[] = [];
+  let n = 0;
+  const fetch: FetchLike = async (_url, init) => {
+    bodies.push(init?.body === undefined ? undefined : JSON.parse(init.body));
+    n += 1;
+    if (n === 1) {
+      const error = {
+        code: "model_unavailable",
+        message: 'models.orchestrator "acp:grok" cannot run: Grok is not logged in.',
+        provider: "grok",
+        reason: "Grok is not logged in.",
+        can_force: true,
+      };
+      return { ok: false, status: 422, text: async () => JSON.stringify({ error }) };
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify({ id: "p1", name: "x" }) };
+  };
+  const bridge = createHttpBridge({ baseUrl: "http://h:1", fetch });
+  const input = { name: "x", models: { orchestrator: "acp:grok" } };
+  const err = await bridge.createProject(input).then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  assert.ok(err instanceof BridgeError);
+  assert.equal(err.code, "model_unavailable");
+  assert.equal(err.can_force, true);
+  assert.equal(err.provider, "grok");
+  await bridge.createProject({ ...input, force_unverified: true });
+  assert.deepEqual(bodies[1], { ...input, force_unverified: true });
+  // An older harness sends no can_force: the field stays absent.
+  const old = new BridgeError(422, "model_unavailable", "m", { provider: "grok", reason: "r" });
+  assert.equal(old.can_force, undefined);
+});

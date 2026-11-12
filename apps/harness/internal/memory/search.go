@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -33,6 +34,8 @@ type Hit struct {
 	MessageID int64 `json:"message_id,omitempty"`
 	// TaskID is the task a fact or task hit belongs to.
 	TaskID string `json:"task_id,omitempty"`
+	// SessionID is the session an exchange hit belongs to.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 // SearchResult is the answer: hits, or the explicit statement that none match.
@@ -43,6 +46,7 @@ type SearchResult struct {
 
 var kinds = map[string]string{
 	"tasks": projectstore.DocTask, "facts": projectstore.DocFact, "files": projectstore.DocFile, "messages": projectstore.DocMessage,
+	"exchanges": projectstore.DocExchange,
 }
 
 // Search runs memory_search. The query is redacted like everything else, so a
@@ -55,7 +59,7 @@ func (s *Service) Search(ctx context.Context, p SearchParams) (SearchResult, err
 	for _, k := range p.In {
 		kk, ok := kinds[k]
 		if !ok {
-			return SearchResult{}, bad("in takes tasks, facts, files, messages")
+			return SearchResult{}, bad("in takes tasks, facts, files, messages, exchanges")
 		}
 		q.Kinds = append(q.Kinds, kk)
 	}
@@ -65,11 +69,30 @@ func (s *Service) Search(ctx context.Context, p SearchParams) (SearchResult, err
 	}
 	out := SearchResult{Hits: []Hit{}}
 	terms := projectstore.Terms(q.Text)
+	covered := map[string]bool{} // messages an exchange hit already shows
 	for _, h := range hits {
-		out.Hits = append(out.Hits, Hit{
+		hit := Hit{
 			Kind: h.Kind, ID: h.Ref, Title: clip(h.Title, 120), Snippet: snippet(h.Body, terms), Date: h.Date,
 			Superseded: h.Superseded, MessageID: h.MessageID, TaskID: h.TaskID,
-		})
+		}
+		if h.Kind == projectstore.DocExchange {
+			e, err := s.DB.ExchangeByID(ctx, h.Ref)
+			if err != nil || e.Removed {
+				continue
+			}
+			hit.SessionID = e.SessionID
+			covered[itoa(e.TurnID)], covered[itoa(e.MessageID)] = true, true
+		}
+		out.Hits = append(out.Hits, hit)
+	}
+	if len(covered) > 0 && len(p.In) == 0 {
+		kept := out.Hits[:0]
+		for _, h := range out.Hits {
+			if h.Kind != projectstore.DocMessage || !covered[h.ID] {
+				kept = append(kept, h)
+			}
+		}
+		out.Hits = kept
 	}
 	if len(out.Hits) == 0 {
 		out.Message = NothingMatches
@@ -142,3 +165,5 @@ func (s *Service) Recall(ctx context.Context, id int64) (Recalled, error) {
 	}
 	return r, nil
 }
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }

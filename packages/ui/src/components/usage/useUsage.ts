@@ -1,8 +1,8 @@
 import type { Limit, PluginAgent, UsageReport } from "@octo/agent-client";
 import { useEffect, useState } from "react";
 import { errorMessage } from "../../lib/format";
-import { rangeOf } from "../../lib/usage";
-import type { UsageView } from "../../lib/usageView";
+import { periodRange } from "../../lib/usage/model";
+import { SESSION_STARTED_AT, type UsageView } from "../../lib/usageView";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 
@@ -14,10 +14,10 @@ export type Load<T> = { status: "loading" } | { status: "error"; message: string
 export type UsageData = { days: UsageReport; models: UsageReport; breakdown: UsageReport };
 
 /**
- * The Usage tab's reports (`getUsage` by day, by model, and by agent for one project or by project for all),
- * re-read when the range or scope changes and after each finished turn of the open project.
+ * The Usage tab's reports (`getUsage` by day, by model, and by agent for one project or by project for all) over the
+ * chosen period, re-read when the period or scope changes and after each finished turn of the open project.
  */
-export function useUsageReports(view: UsageView): Load<UsageData> {
+export function useUsageReports(view: Pick<UsageView, "period" | "scope">): Load<UsageData> {
   const { bridge } = useApp();
   const { projectId, onEvent } = useProject();
   const [load, setLoad] = useState<Load<UsageData>>({ status: "loading" });
@@ -25,7 +25,7 @@ export function useUsageReports(view: UsageView): Load<UsageData> {
   useEffect(() => onEvent((e) => e.type === "turn.finished" && setTick((t) => t + 1)), [onEvent]);
   useEffect(() => {
     let cancelled = false;
-    const range = rangeOf(view.days, Date.now());
+    const range = periodRange(view.period, Date.now(), SESSION_STARTED_AT);
     const scope = view.scope === "project" ? { project: projectId } : {};
     Promise.all([
       bridge.getUsage({ ...range, ...scope, group: "day" }),
@@ -38,7 +38,7 @@ export function useUsageReports(view: UsageView): Load<UsageData> {
     return () => {
       cancelled = true;
     };
-  }, [bridge, projectId, view.days, view.scope, tick]);
+  }, [bridge, projectId, view.period, view.scope, tick]);
   return load;
 }
 

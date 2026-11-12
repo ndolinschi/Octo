@@ -1,16 +1,12 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
+import { TextArea, TextField } from "./TextField";
 
-const CONTROL =
-  "w-full rounded-md border border-input-border bg-panel px-3 text-sm text-fg placeholder:text-fg-3/60 placeholder:italic transition-[border-color] duration-100 focus:border-fg focus:outline-none focus-visible:shadow-none aria-invalid:border-err";
+/** @deprecated The old name of `TextField` (`./TextField`). */
+export const Input = TextField;
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
-  return <input ref={ref} className={cn(CONTROL, "h-8", className)} {...rest} />;
-});
-
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, ...rest }, ref) {
-  return <textarea ref={ref} className={cn(CONTROL, "resize-y py-1.5 leading-5", className)} {...rest} />;
-});
+/** @deprecated The old name of `TextArea` (`./TextField`). */
+export const Textarea = TextArea;
 
 export function Field(props: {
   label: string;

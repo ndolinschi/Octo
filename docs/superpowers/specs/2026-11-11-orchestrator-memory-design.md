@@ -209,3 +209,67 @@ Acceptance: unit tests (exchange written once per turn incl. failed and stopped,
 calls and sub-agents, secret redaction, session boundaries incl. the 6 h rule with an injected clock, back-fill
 migration, search hits, forget); e2e case in `e2e-v7.sh` or `e2e-parity.sh`; UI tests for the view model and
 screenshots. Not verified until the owner's run: answer extraction for real ACP agents' message shapes.
+
+## M5 — notes as Markdown with descriptions (owner, 2026-11-12)
+
+Owner: "notes should work on the Markdown principle, have data, and the model should read only the description so its
+memory is not overfilled" and "what happens with 100 notes?". Before M5 every note's whole text was in the orchestrator's
+prompt on every turn. Progressive disclosure: the model sees an index, opens what is relevant.
+
+1. **A note is a Markdown document with front matter:** `title` (required), `description` (one line, at most 200
+   characters), `tags` (list), `pinned` (bool), plus harness-kept `id`, `created_at`, `updated_at`, `last_read_at`,
+   `read_count` (and `description_auto`, true when the description was derived). The body is Markdown. Existing notes are
+   migrated (schema 10): title = the existing title, else the first line; description = the first non-empty line of
+   the body, cut to 200 characters, `description_auto: true`.
+2. **The model sees an index only:** one line per note, `id · title — description [tags]`, no bodies, within a budget of
+   1 500 tokens (the harness's estimator, characters / 4): pinned first, then by `max(last_read_at, updated_at)` newest
+   first; what does not fit is one line "N more notes — use search_notes". The index is part of the context report's
+   `notes` category.
+3. **Pinned notes** (at most 3, 2 000 characters of body together) are included whole, for rules that must always apply.
+   Pinning beyond the limits is refused with a 400 that says which limit.
+4. **Tools** for the orchestrator and built-in sub-agents (and, for an ACP orchestrator, the harness MCP server):
+   `read_note {id}` returns the body and records `last_read_at` / `read_count`; `search_notes {query, limit?}` returns
+   hits `{id, title, description, tags, snippet}` (FTS5 with the memory search's tokenizers and Russian stemming; 5 hits
+   by default, at most 10); `write_note {id?, title, description, body, tags?}` creates (no id) or updates; the description
+   is required; read-only modes (ask, plan) refuse it (and `save_note`, `delete_note`). Results are ordinary tool results,
+   so tool-result clearing applies. `save_note` stays as a quick upsert by title with a derived description.
+5. **API:** `GET .../notes` returns the front-matter fields and `size` without bodies; `GET .../notes/{id}` returns the
+   note with `content` and `markdown`; `POST` / `PATCH` take fields or `markdown` (a parse error is a 400 naming the line);
+   `GET .../notes/{id}/export` serves the `.md` file; import is `POST` with `markdown`. Event: `note.changed` (as before,
+   without the body).
+6. **UI:** list with title, description, tags, pin mark and an "auto description" hint; the editor is a title field, a
+   description field with a character counter and "Agents see this line and open the note only when it is relevant", tags,
+   the Markdown source with a preview toggle, and a pin with its limits explained; import / export of `.md`; a quiet
+   footer "Agents see an index of N notes (≈T tokens); bodies are read on demand". Decisions 64, 66, 75, 76, 79, 81, 82, 84.
+
+Acceptance: migration from schema 8; index budget with 100 notes (order, the "N more" line, token bound); pin limits;
+tools incl. the access-mode refusal and Russian search; front-matter parse/serialise round trip (table tests); context
+report category; an e2e case in `scripts/e2e-parity.sh` (100 notes; the mock model's prompt has descriptions and no
+bodies; `read_note` returns a body); UI view-model tests and screenshots.
+
+## As built — M5 (harness, agent-client, UI)
+
+- Harness: `internal/notemd` (pure: `Parse`, `Serialize`, `Validate`, `AutoDescription`, `BuildIndex`, `CheckPinned`;
+  hand-written front-matter subset, no YAML dependency); `projectstore` schema 10 (`migrate_v10_notes.go`; columns
+  `description`, `description_auto`, `tags_json`, `pinned`, `last_read_at`, `read_count`; notes are documents of kind
+  `note` in `search_docs`, which `Search` leaves out unless asked for); `project.Notes` (limits, `Read`, `Search`, `Write`);
+  `orchestrator/notes_tools.go`; `notesBlock` builds the index; sub-agents get the three tools but no index. Event stays
+  `note.changed` (the brief said `notes.updated`; the UI and agent-client already handle `note.changed`).
+- agent-client (additive): `Note` gained the front-matter fields and `content` became optional; `NoteDocument`, `NoteInput`,
+  `NotePatch`, `NOTE_LIMITS`; optional `Bridge.getNote`.
+- UI: `lib/notes.ts` (index estimate, pin state, filter), `components/notes/{NotesPanel,NoteDetail,NoteEditor,useNoteDoc}`;
+  the demo's Atlas project has 100 notes (the index overflows, "N more" shows in the footer).
+- Verified: see the hand-back list of checks. Not verified: a real model's use of the tools, ACP sub-agents (they have no
+  MCP server, so no note tools), `.md` export download inside the Tauri webview, the live harness driven from the UI.
+### As built — M4
+
+Harness, agent-client and the Memory tab are built; exact JSON and the write path are in `apps/harness/docs/memory.md` ("Sessions").
+
+- Rule 1: written by `orchestrator/exchanges.go` after every finished turn (completed, failed, stopped), before the digest. The answer is the last assistant text of the turn read from the stored messages, so a failed or stopped turn keeps what it said. Tokens and cost are the usage rows since the request (agents and router classifier, not digest or side calls). The 64 KiB cap, redaction and the once-per-turn rule (a retry replaces the record) are tested.
+- Rule 2: the 6 h rule uses the exchange's own start time against the session's end (tested with explicit times; the service has an injectable clock for the pointer). `(*memory.Service).StartSession(ctx, reason, carry...)` is the boundary: `POST …/clear` calls it with `clear` and the carried summary (wired at merge; `ClearResult` and the `conversation.cleared` event gain `session_id` / `previous_session_id`). It closes the latest session, stores the summary and its source on that session's record (`sessions.summary`, `summary_source`; returned by `GET …/memory/sessions/{sid}`) and opens an empty session (not listed until its first request) the next request joins and names, even after more than 6 h; calling it again changes nothing. A rewind that cut every request calls it with `rewind` (tested only through the function, not through the rewind endpoint). Exchanges stay after both. Back-fill is the schema 12 migration (tested from schemas 8, 9, 10 and 11 with a failed, a stopped, a gap and a rewound case; a `/clear` boundary found in the compactions ends a session and gives it the clear's summary). The service's old `Forget(exchange)` is `ForgetExchange` (the facts' undo took the name).
+- Rule 3: the three routes and the `exchange` hit are built as specified; with `in` empty a message hit already shown by an exchange hit is dropped, so the default search shows a request once. Two existing bridge assertions changed for that.
+- Rule 4: `recall_message` takes `exchange_id` and `session_id`. The three-line pointer is in the window-mode memory index and in the ACP recap; in full mode the transcript is the context and the built-in orchestrator gets no pointer (a decision, not an omission).
+- Rule 5: Sessions is the first Memory view (list-detail, newest first, skeleton rows, request then answer, answers as Markdown folded after 12 lines, quiet meta line, "Open in conversation" through the dock's existing `nav.requestTurn`, "Forget this exchange" behind "⋯" with a confirm, search with an Exchanges kind that opens the session and marks the exchange). Below 640px it is one column with Back. The view switcher is the new `primitives/ViewTabs` and the task filters `primitives/FilterTabs` (decision 82).
+- Rule 6: stored in `project.sqlite` only; forget removes texts and index entries and leaves a marker; the raw index tables are scanned for a secret in the tests.
+
+**Verified:** Go unit and API tests (`memory`, `projectstore`, `project`, `bridge`, `orchestrator` with `-race`), a real turn through the mock model over HTTP, `e2e-v7.sh` (new "memory (M4)" case: sessions, exchange with a Russian request, stemmed search, forget, marker), agent-client request tests, UI view-model tests, Playwright against `?demo=1` (dark and light, 1440x900 and 390x700, console clean), `spacing-audit` (33 states, all total=0; the script then aborted on closing its browser context, so it did not finish), `width-stability` ok. **Not verified:** answer extraction for a real ACP agent's message shapes (the scripted agent only), a real provider's token and cost figures, the dock's "Open in conversation" in a running app (the demo route passes no `onOpenMessage`, so the button is not shown there), the sessions list against a project with more than 50 sessions (the view asks for the latest 50 and does not page), `/clear` (hook only).

@@ -34,14 +34,16 @@ type runtime struct {
 	lastAct map[string]string
 	// turnTools counts the turn's tool calls; touched are the files they read or changed.
 	turnTools atomic.Int32
-	touchMu   sync.Mutex
-	touched   []string
-	o         *Orchestrator
-	db        *projectstore.DB
-	info      projectstore.Project
-	models    config.Models
-	folders   []projectstore.Folder
-	notes     []projectstore.Note
+	// remembered counts the items the turn's agents kept with the remember tool.
+	remembered atomic.Int32
+	touchMu    sync.Mutex
+	touched    []string
+	o          *Orchestrator
+	db         *projectstore.DB
+	info       projectstore.Project
+	models     config.Models
+	folders    []projectstore.Folder
+	notes      []projectstore.Note
 	// turnID is the id of the user message that started the turn (0 outside a turn).
 	turnID int64
 	// taskID is the task record of the turn's request ("" when none was opened).
@@ -182,6 +184,9 @@ func (rt *runtime) baseRegistry(a projectstore.Agent) (*tools.Registry, error) {
 			return nil, err
 		}
 	}
+	if err := reg.Register(rt.rememberDef(a)); err != nil {
+		return nil, err
+	}
 	if isOrch {
 		for _, d := range append(rt.noteDefs(), rt.memoryDefs()...) {
 			if err := reg.Register(d); err != nil {
@@ -189,6 +194,12 @@ func (rt *runtime) baseRegistry(a projectstore.Agent) (*tools.Registry, error) {
 			}
 		}
 		return reg, nil
+	}
+	// Sub-agents look notes up and write them like the orchestrator, but see no index.
+	for _, d := range append(rt.noteReadDefs(), rt.noteWriteDefs()...) {
+		if err := reg.Register(d); err != nil {
+			return nil, err
+		}
 	}
 	for _, d := range rt.o.opts.Remote {
 		if _, taken := reg.Get(d.Name); !taken {

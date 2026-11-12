@@ -16,9 +16,7 @@ app/                    OctoApp (props: bridge, bridgeUrl, shell, demo, host), A
 components/<feature>/   chat · files · agents · notes · details · usage · memory · v7 · settings · providers · home · project · shell · side   (screens and their parts)
 components/dock/        tab groups, strip, divider, drag layer, TabView = the composition point (hands one feature to another
                         as a prop: the file view's floating composer)
-components/primitives/  Button, Dialog, Menu, Popover, Field, Tooltips, Glyph, status / file glyphs (OrchestratorGlyph, fileIcons),
-                        Highlight (matched text), InfoList rows, FloatRoom, Segmented, DayBars (day chart), backdrop
-                        (group-level streak request), Streak (lazy canvas) + StreakLayer — import `lib` only
+components/primitives/  the component library (decision 90; see "Primitives" below) — import `lib` only
 components/shared/      pieces several features use that read app state: Markdown (prose, code highlight), FileLink
                         (InlineCode: a path in prose opens the file through `state/code`), ModelPicker (button) + ModelPickerPanel
                         (lazy list, decision 27), DataTable / TableFrame (decision 44, lazy)
@@ -67,6 +65,26 @@ row in the sidebar or the conversation (`ChatHeader` and `SettingsDialog` are go
 `components/settings` at `#/settings/<section>`. New features: `v7/` (approvals, forms, queue, Changes tab), `memory/`
 (Memory tab), `providers/` and `lib/providers` (connect screen and sheet, provider list, model-picker data),
 `files/editor/completion/` (inline completion).
+
+## Primitives (decision 90: one component library)
+
+A feature composes primitives and never styles a native control (`octo/no-native-controls`). Every primitive has a header
+comment with its purpose, props, variants, sizes and when NOT to use it; `?demo=1&gallery=1` renders all of them (a lazy chunk,
+`primitives/Gallery`; `packages/ui/scripts/gallery-shots.mjs` screenshots it in dark and light). Sizes come from one scale
+(`lib/controls.ts`, tokens `--spacing-ctl-xs|sm|md|lg` = 24/28/32/40 in `styles.css`); the touch target (`touch:` variant,
+`touch-hit` utility) lives inside the primitives.
+
+| Group | Primitives | Notes |
+| --- | --- | --- |
+| Actions | `Button` (primary, secondary, quiet, danger, link; xs-lg; icon, iconEnd, pressed, loading, fullWidth), `IconButton` (quiet, primary, round; xs-lg), `Chip`, `MenuButton`, `Segmented` | `ghost` = `quiet`; `Button.tsx`'s `IconButton` is deprecated (old sizes sm 24 / md 28) |
+| Fields | `TextField`, `TextArea` (one focus rule: border turns `fg`), `Select` (menu), `SearchField` (bordered, header, bare), `Checkbox`, `Switch`, `Field` | `Input` / `Textarea` are deprecated aliases |
+| Lists | `ListRow` (28/32/40, two-line, slots, selection), `ListFrame`, `SectionHeader`, `ScrollArea`, `MiddleText`, `Picker`, `Menu`, `InfoList` rows | `INFO_ROW*` and `SkeletonRows` are superseded |
+| Messages | `Notice` (line, block; info, warn, error, success), `EmptyState`, `Skeleton`, `SkeletonText`, `SkeletonList`, `Spinner` | no coloured borders (decision 81); skeletons pulse only with `shimmer` |
+| Surfaces | `Card` (raised, panel, code), `Dialog`, `Popover`, `Tooltips`, `CommandLine`, `KeyHint` (`Kbd`, `Key` aliases) | |
+| Marks | `Glyph`, `StateGlyph`, status glyphs, `ProviderMark`, `Highlight`, `DayBars`, `Presence`, `Streak` + `StreakLayer`, file icons | |
+
+Reserved, being built by other batches: `ViewTabs`, `FilterTabs`, `FieldRow`. Not yet built (audit group list): `RadioGroup`,
+`SelectButton`, `Badge`, `Loading`, `Toolbar`, `ListDetail`, `Meter`, `Dialog variant="palette"`.
 
 ## Providers
 

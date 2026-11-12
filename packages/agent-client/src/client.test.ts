@@ -61,6 +61,22 @@ test("request shapes and envelope unwrapping", async () => {
     { run: (b) => b.cancelTurn("p"), reply: "", status: 202, method: "POST", path: "/v1/projects/p/cancel", result: undefined },
     { run: (b) => b.listNotes("p"), reply: '{"notes":[{"id":"n"}]}', method: "GET", path: "/v1/projects/p/notes", result: [{ id: "n" }] },
     {
+      run: (b) => b.getNote?.("p", "n 1") ?? Promise.reject(new Error("no getNote")),
+      reply: '{"id":"n 1","content":"c","markdown":"---\\n---\\nc"}',
+      method: "GET",
+      path: "/v1/projects/p/notes/n%201",
+      result: { id: "n 1", content: "c", markdown: "---\n---\nc" },
+    },
+    {
+      run: (b) => b.createNote("p", { markdown: "---\ntitle: t\n---\nc", tags: ["a"], pinned: true }),
+      reply: '{"id":"n"}',
+      status: 201,
+      method: "POST",
+      path: "/v1/projects/p/notes",
+      body: { markdown: "---\ntitle: t\n---\nc", tags: ["a"], pinned: true },
+      result: { id: "n" },
+    },
+    {
       run: (b) => b.createNote("p", { title: "t", content: "c" }),
       reply: '{"id":"n"}',
       status: 201,
@@ -142,6 +158,32 @@ test("request shapes and envelope unwrapping", async () => {
       method: "GET",
       path: "/v1/projects/p/context",
       result: { agent_id: "o", model: "m", window_tokens: null, used_tokens: 9, estimated: true, parts: [{ key: "system", tokens: 9 }] },
+    },
+    {
+      run: (b) => b.getContext("p"),
+      reply:
+        '{"agent_id":"o","model":"m","window_tokens":null,"used_tokens":9,"estimated":true,"parts":[],"categories":[{"id":"mcp_tools","label":"MCP tools","tokens":9,"items":[{"id":"tool:s:t","label":"s · t","tokens":9,"server":"s","group":"s","loaded":true,"estimated":true}]}],"not_loaded":[{"id":"memory_file:/memories/a.md","label":"/memories/a.md","tokens":3,"path":"/memories/a.md","loaded":false,"estimated":true}],"buffer_tokens":0,"largest_messages":[{"message_id":4,"role":"user","tokens":7,"preview":"hi"}]}',
+      method: "GET",
+      path: "/v1/projects/p/context",
+      result: {
+        agent_id: "o",
+        model: "m",
+        window_tokens: null,
+        used_tokens: 9,
+        estimated: true,
+        parts: [],
+        categories: [
+          {
+            id: "mcp_tools",
+            label: "MCP tools",
+            tokens: 9,
+            items: [{ id: "tool:s:t", label: "s · t", tokens: 9, server: "s", group: "s", loaded: true, estimated: true }],
+          },
+        ],
+        not_loaded: [{ id: "memory_file:/memories/a.md", label: "/memories/a.md", tokens: 3, path: "/memories/a.md", loaded: false, estimated: true }],
+        buffer_tokens: 0,
+        largest_messages: [{ message_id: 4, role: "user", tokens: 7, preview: "hi" }],
+      },
     },
     {
       run: (b) => b.getContext("p/q", "a b"),

@@ -5,6 +5,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
 	"github.com/ndolinschi/Octo/apps/harness/internal/agent"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
@@ -25,8 +26,13 @@ func (s *sideSink) TextDelta(text string) {
 	s.rt.publish(events.SideDelta, map[string]any{"side_id": s.sideID, "text": text})
 }
 
-func (s *sideSink) ToolStarted(string, string) {}
-func (s *sideSink) ToolFinished(string, bool)  {}
+func (s *sideSink) ToolStarted(id, name string) {
+	s.rt.publish(events.SideActivity, map[string]any{"side_id": s.sideID, "kind": activity.Tool, "label": name, "tool_use_id": id})
+}
+
+func (s *sideSink) ToolFinished(string, bool) {
+	s.rt.publish(events.SideActivity, map[string]any{"side_id": s.sideID, "kind": activity.Thinking, "label": "Thinking"})
+}
 
 func (s *sideSink) Usage(u agent.Usage) {
 	c, cancel := dbCtx(context.Background())

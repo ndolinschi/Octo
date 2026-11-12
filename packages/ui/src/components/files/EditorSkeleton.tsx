@@ -1,5 +1,7 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
-import { useFileView } from "../../state/fileView";
+import { treeLayout } from "../../lib/treeLayout";
+import { TREE_MIN, useFileView } from "../../state/fileView";
 
 /** Line widths (% of the editor), a code-like ragged edge. */
 const LINES = [38, 62, 0, 74, 51, 46, 68, 33, 0, 57, 71, 44, 29, 64, 52, 40];
@@ -25,14 +27,23 @@ export function EditorSkeleton({ className }: { className?: string }) {
  */
 export function FileViewSkeleton() {
   const { treeOpen, treeWidth } = useFileView();
+  const root = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  // Measured before the first paint; the column is drawn only where the real view will draw one (`treeLayout`), so the real
+  // view replaces this one without a size change (decision 85).
+  useLayoutEffect(() => {
+    if (root.current) setWidth(Math.round(root.current.getBoundingClientRect().width));
+  }, []);
+  const { overlay, maxWidth } = treeLayout(width, treeWidth, TREE_MIN);
+  const column = Math.max(TREE_MIN, Math.min(treeWidth, maxWidth));
   return (
-    <div aria-hidden className="flex min-h-0 flex-1 flex-col">
-      <div className="h-bar shrink-0 shadow-[inset_0_-1px_0_var(--octo-line)]" />
+    <div ref={root} aria-hidden className="flex min-h-0 flex-1 flex-col">
+      <div data-file-bar className="h-bar shrink-0 shadow-[inset_0_-1px_0_var(--octo-line)]" />
       <div className="relative flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">
+        <div data-editor-area className="relative min-w-0 flex-1">
           <EditorSkeleton />
         </div>
-        {treeOpen && <aside style={{ width: treeWidth }} className="shrink-0 border-l border-line bg-panel" />}
+        {treeOpen && !overlay && width > 0 && <aside data-tree-skeleton style={{ width: column }} className="shrink-0 border-l border-line bg-panel" />}
       </div>
     </div>
   );

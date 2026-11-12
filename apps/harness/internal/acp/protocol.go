@@ -106,7 +106,10 @@ type initializeResult struct {
 // agentCapabilities is the part of initialize's agentCapabilities this client
 // uses; every field defaults to false when absent (ACP schema).
 type agentCapabilities struct {
-	LoadSession     bool `json:"loadSession"`
+	LoadSession        bool `json:"loadSession"`
+	PromptCapabilities struct {
+		Image bool `json:"image"`
+	} `json:"promptCapabilities"`
 	MCPCapabilities struct {
 		HTTP bool `json:"http"`
 		SSE  bool `json:"sse"`
@@ -117,6 +120,9 @@ type agentCapabilities struct {
 type Capabilities struct {
 	// LoadSession: the agent supports session/load.
 	LoadSession bool
+	// PromptImage: the agent accepts image content blocks in session/prompt
+	// (promptCapabilities.image).
+	PromptImage bool
 	// MCPHTTP: the agent accepts HTTP MCP servers in session/new (stdio is
 	// mandatory for every agent).
 	MCPHTTP bool
@@ -188,6 +194,9 @@ type newSessionResult struct {
 type contentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+	// Data and MimeType carry an image block (base64 data).
+	Data     string `json:"data,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
 }
 
 type promptParams struct {

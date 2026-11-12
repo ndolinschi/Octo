@@ -53,11 +53,11 @@ func TestProbeRunsOffPathAtMostOncePerMinute(t *testing.T) {
 	verdict := true
 	release := make(chan struct{})
 	r.probes.now = func() time.Time { return time.Unix(0, clock.Load()) }
-	r.probes.run = func(_ context.Context, a Agent) *bool {
+	r.probes.run = func(_ context.Context, a Agent) ProbeReport {
 		calls.Add(1)
 		<-release
 		v := verdict
-		return &v
+		return ProbeReport{Ran: true, LoggedIn: &v}
 	}
 
 	r.Plugins() // no StartProbes yet: nothing runs

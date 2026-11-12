@@ -36,6 +36,9 @@ func (s *Service) EditQueued(ctx context.Context, pid, qid, text string) (projec
 	if strings.TrimSpace(text) == "" {
 		return projectstore.QueuedMessage{}, invalid("text is required")
 	}
+	if err := refuseOctoCommand(text); err != nil {
+		return projectstore.QueuedMessage{}, err
+	}
 	if _, err := s.db(ctx, pid); err != nil {
 		return projectstore.QueuedMessage{}, err
 	}

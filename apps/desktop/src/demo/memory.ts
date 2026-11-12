@@ -12,6 +12,7 @@ import {
   type Task,
   type TaskFact,
 } from "@octo/agent-client";
+import { buildSessions, forget, listSessions, sessionDetail, type DemoSessions } from "./memorySessions";
 import { CROSS_SUPERSEDES, EXTRA_FACTS, FILES, TASKS } from "./memoryData";
 
 /**
@@ -33,7 +34,7 @@ const LATENCY_MS = 120;
 const delay = (ms = LATENCY_MS) => new Promise<void>((r) => setTimeout(r, ms));
 
 export type Request = { id: number; text: string; at: string };
-export type Store = { tasks: Task[]; files: MemoryFile[]; requests: Request[]; replies: Request[] };
+export type Store = { tasks: Task[]; files: MemoryFile[]; requests: Request[]; replies: Request[]; sessions?: DemoSessions };
 
 function textOf(m: Message): string {
   return m.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
@@ -130,6 +131,20 @@ function docsOf(store: Store): Doc[] {
     docs.push({ kind: "files", text: `${f.path}\n${f.summary}\n${f.content ?? ""}`, hit: { kind: "file", id: f.path, title: f.path, date: f.updated_at } });
   for (const r of [...store.requests, ...store.replies]) {
     docs.push({ kind: "messages", text: r.text, hit: { kind: "message", id: String(r.id), title: r.text.split("\n", 1)[0]?.slice(0, 80) ?? "", date: r.at } });
+  }
+  for (const e of store.sessions?.exchanges ?? []) {
+    if (e.removed) continue;
+    docs.push({
+      kind: "exchanges",
+      text: `${e.request}\n${e.answer}`,
+      hit: {
+        kind: "exchange",
+        id: e.id,
+        title: e.request.split("\n", 1)[0]?.slice(0, 80) ?? "",
+        date: e.started_at,
+        ...(e.session_id ? { session_id: e.session_id } : {}),
+      },
+    });
   }
   return docs;
 }
@@ -246,8 +261,17 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
       s = (async () => {
         const { requests, replies } = await readThread(projectId);
         const now = Date.now();
-        if (mode === "empty") return { tasks: [], files: [], requests, replies };
-        return { tasks: buildTasks(requests, now), files: buildFiles(now), requests, replies };
+        if (mode === "empty") return { tasks: [], files: [], requests, replies, sessions: { sessions: [], exchanges: [] } };
+        return {
+          tasks: buildTasks(requests, now),
+          files: buildFiles(now),
+          requests,
+          replies,
+          sessions: buildSessions(
+            requests.map((r) => r.id),
+            now,
+          ),
+        };
       })();
       stores.set(projectId, s);
     }
@@ -288,6 +312,17 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
         s.files = s.files.filter((x) => x.path !== path);
       }),
     searchMemory: (pid, params) => read(pid, (s) => search(s, params)),
+    listMemorySessions: (pid, params) => read(pid, (s) => (s.sessions ? listSessions(s.sessions, params?.limit, params?.before) : [])),
+    getMemorySession: (pid, sid) =>
+      read(pid, (s) => {
+        const d = s.sessions ? sessionDetail(s.sessions, sid) : null;
+        if (!d) throw new BridgeError(404, "not_found", `no session ${sid}`);
+        return d;
+      }),
+    forgetExchange: (pid, eid) =>
+      read(pid, (s) => {
+        if (!s.sessions || !forget(s.sessions, eid)) throw new BridgeError(404, "not_found", `no exchange ${eid}`);
+      }),
     getTurnContext: async (pid, turnId) => {
       const s = await read(pid, (x) => x);
       // A request made after the memory first loaded is not in the store yet: read the thread again on a miss.

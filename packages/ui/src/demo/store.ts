@@ -1,4 +1,5 @@
-import type { Agent, BridgeEvent, Message, Note, Project, SubscribeHandlers } from "@octo/agent-client";
+import type { DemoNote } from "./notes";
+import type { Agent, BridgeEvent, Message, Project, SubscribeHandlers } from "@octo/agent-client";
 
 type EventBody = BridgeEvent extends infer E ? (E extends BridgeEvent ? Omit<E, "seq"> : never) : never;
 
@@ -9,7 +10,7 @@ export type ProjectRecord = {
   project: Project;
   agents: Agent[];
   messages: Message[];
-  notes: Note[];
+  notes: DemoNote[];
   streaming: Map<string, string>;
   activeTools: Map<string, { agentId: string; name: string }>;
   listeners: Set<SubscribeHandlers>;

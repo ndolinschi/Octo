@@ -73,6 +73,17 @@ type orchSession struct {
 	// tasksSeen is when a window-mode session last got task records ("" before its first turn).
 	tasksSeen string
 
+	// unbriefed: the session is new and no prompt has carried the briefing yet (the first
+	// prompt was a slash command, which is sent bare).
+	unbriefed bool
+
+	// The agent's advertised slash commands; kept apart from mu (the agent's reader goroutine
+	// writes them while a close holds mu).
+	cmu       sync.Mutex
+	cmds      []acp.Command
+	cmdsAgent string
+	cmdsSet   bool
+
 	busy     bool
 	lastUsed time.Time
 }
@@ -120,6 +131,7 @@ func (s *orchSession) closeLocked() {
 		s.client = nil
 	}
 	s.sessID = ""
+	s.unbriefed = false
 	s.modes, s.baseMode, s.curMode = nil, "", ""
 	s.costSeen, s.usedSeen = 0, 0 // the counters belong to the session that ended
 }
@@ -127,6 +139,7 @@ func (s *orchSession) closeLocked() {
 // CloseProject ends the project's ACP orchestrator process, if any (project
 // delete). It is safe to call at any time.
 func (o *Orchestrator) CloseProject(projectID string) {
+	o.CloseSide(projectID)
 	o.dropTracker(projectID)
 	o.approvals.Forget(projectID)
 	o.inputs.Forget(projectID)

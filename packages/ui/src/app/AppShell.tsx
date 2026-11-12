@@ -75,6 +75,11 @@ function Shell() {
     if (settings === null) beforeSettings.current = window.location.hash || "#/";
   }, [settings, route]);
   const [connectTarget, setConnectTarget] = useState<string | null>(null);
+  const [useAnyway, setUseAnyway] = useState<(() => void) | null>(null);
+  const openConnect = (id: string, anyway?: () => void) => {
+    setUseAnyway(() => anyway ?? null);
+    setConnectTarget(id);
+  };
   // Decision 53 b: nothing connected → the connect screen instead of Home and the project form.
   const providers = useProviders(bridge, health === "online");
   const noProvider = providers.status === "ready" && providers.list.connected === 0;
@@ -218,7 +223,7 @@ function Shell() {
   ];
 
   return (
-    <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect: setConnectTarget }}>
+    <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect }}>
       <StatusSlotsContext.Provider value={{ start: statusStart, end: statusEnd }}>
         <div className="relative flex h-full flex-col overflow-clip bg-window text-fg">
           {/* Decision 67: the top row is the window's, 40px across it: the controls float over its left corner and, with a project
@@ -287,7 +292,7 @@ function Shell() {
           </Presence>
           <Presence show={connectTarget !== null}>
             <Suspense fallback={null}>
-              <ConnectSheet target={connectTarget ?? ""} onClose={() => setConnectTarget(null)} />
+              <ConnectSheet target={connectTarget ?? ""} onUseAnyway={useAnyway} onClose={() => setConnectTarget(null)} />
             </Suspense>
           </Presence>
           <Presence show={palette}>

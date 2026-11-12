@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync"
@@ -34,6 +33,12 @@ var (
 type NoteBook interface {
 	Save(ctx context.Context, projectID, title, content string) (projectstore.Note, error)
 	DeleteByTitle(ctx context.Context, projectID, title string) error
+	// Read returns a note with its body and records the read (read_note).
+	Read(ctx context.Context, projectID, id string) (projectstore.Note, error)
+	// Search finds notes by title, description and body (search_notes).
+	Search(ctx context.Context, projectID, query string, limit int) ([]projectstore.NoteHit, error)
+	// Write creates (no id) or updates (id) a note; the description is required (write_note).
+	Write(ctx context.Context, projectID, id, title, description, body string, tags *[]string) (note projectstore.Note, created bool, err error)
 }
 
 type Options struct {
@@ -70,6 +75,11 @@ type Options struct {
 	// ACPIdle is how long an ACP-run orchestrator's agent process may sit idle
 	// before it is shut down (zero: DefaultACPIdle).
 	ACPIdle time.Duration
+	// SideIdle is how long a side conversation's ACP session may sit unused
+	// before it is closed (zero: DefaultSideIdle).
+	SideIdle time.Duration
+	// Clock is the time source of the side-session idle close (nil: time.Now).
+	Clock func() time.Time
 	// MCPRelay is the command (and leading arguments) of the stdio relay given
 	// to ACP agents without HTTP MCP support; the harness appends --url and
 	// --token-env. Empty: this executable with "mcp-relay".
@@ -100,6 +110,10 @@ type Orchestrator struct {
 	wg      sync.WaitGroup
 
 	acp *acpHost
+	// side holds the ACP sessions of side conversations.
+	side *sideHost
+	// imgCaps remembers which ACP agents take images.
+	imgCaps imageCaps
 	// adv holds what ACP agents advertised (AdvertisedModels).
 	adv advertisedStore
 
@@ -132,7 +146,7 @@ type Orchestrator struct {
 func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Options) *Orchestrator {
 	ctx, stop := context.WithCancel(context.Background())
 	o := &Orchestrator{
-		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle),
+		store: store, hub: hub, notes: notes, opts: opts, acp: newACPHost(opts.ACPIdle), side: newSideHost(),
 		baseCtx: ctx, stop: stop, turns: make(map[string]context.CancelFunc), live: make(map[string]bool), sides: make(map[string]*side),
 		trackers: make(map[string]*changes.Tracker), memories: make(map[string]*memory.Service), sendNow: make(map[string]bool),
 		steer: make(map[string]*steerBox),
@@ -149,6 +163,16 @@ func New(store *projectstore.Store, hub *events.Hub, notes NoteBook, opts Option
 	go func() {
 		defer o.wg.Done()
 		o.acp.reap(ctx)
+	}()
+	o.wg.Add(1)
+	go func() {
+		defer o.wg.Done()
+		o.reapSideLoop(ctx)
+	}()
+	o.wg.Add(1)
+	go func() {
+		defer o.wg.Done()
+		o.pruneAttachmentsLoop(ctx)
 	}()
 	return o
 }
@@ -176,6 +200,7 @@ func (o *Orchestrator) Cancel(projectID string) {
 func (o *Orchestrator) Shutdown(ctx context.Context) error {
 	o.stop()
 	defer o.acp.closeAll()
+	defer o.side.closeAll()
 	done := make(chan struct{})
 	go func() { o.wg.Wait(); close(done) }()
 	select {
@@ -290,11 +315,17 @@ func (o *Orchestrator) begin(ctx context.Context, projectID, text string, opts S
 	// stored user message is run again, not stored a second time.
 	msg, retried := rt.failedRequest(ctx, orch, text)
 	if !retried {
-		content, err := json.Marshal([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(text)})
+		content, err := rt.userContent(ctx, text, opts.Attachments)
 		if err != nil {
 			return projectstore.Message{}, nil, projectstore.Agent{}, err
 		}
-		if msg, err = db.AppendMessage(ctx, orch.ID, "user", content); err != nil {
+		command := opts.Command
+		if name := SlashToken(text); command == "" && rt.isACPOrchestrator() && o.agentCommandNamed(rt, name) {
+			if _, octo := OctoCommandIn(text); !octo {
+				command = name
+			}
+		}
+		if msg, err = db.AppendMessageCommand(ctx, orch.ID, "user", content, command); err != nil {
 			return projectstore.Message{}, nil, projectstore.Agent{}, err
 		}
 	}
@@ -356,6 +387,7 @@ func (o *Orchestrator) runTurn(ctx context.Context, rt *runtime, orch projectsto
 	}
 	finished := rt.finishTurn(orch.ID, status, res.Text, errText, hint)
 	rt.publish(events.ContextUpdated, map[string]any{"project_id": rt.pid()})
+	o.recordExchange(rt, orch.ID, status, res.Text)
 	if status == projectstore.StatusCompleted {
 		o.digestTurn(rt, orch.ID, rt.currentTask(), rt.turnID, res.Text, trivial)
 	}

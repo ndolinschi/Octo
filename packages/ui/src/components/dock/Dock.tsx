@@ -4,7 +4,7 @@ import { BackdropProvider, type Backdrop } from "../primitives/backdrop";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { STREAK_EMPTY } from "../../lib/streakPresets";
 import { cn } from "../../lib/cn";
-import { allTabs, focusedGroup, type Group } from "../../state/workspace/layout";
+import { allTabs, focusedGroup, parseTab, type Group, type TabId } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { panelClass } from "../shell/Panel";
 import { DragLayer } from "./DragLayer";
@@ -92,6 +92,27 @@ function useVisited(group: Group): Set<string> {
   return visited;
 }
 
+const isFileTab = (t: TabId) => {
+  const ref = parseTab(t);
+  return ref?.kind === "file" || (ref?.kind === "tool" && ref.tool === "files");
+};
+
+/**
+ * Decision 85: a group's file tabs (the Files tab and every File tab) share ONE mounted file view (breadcrumb row, editor, tree
+ * column); only its `tab` prop changes. Opening a file therefore re-mounts nothing: the tree keeps its scroll, the overlay its
+ * state, Monaco its instance. Returns the file tab the view shows now (the active one, else the one it showed last).
+ */
+function useFileShellTab(group: Group, visited: Set<string>): TabId | null {
+  const [last, setLast] = useState<TabId | null>(null);
+  const candidate = isFileTab(group.active)
+    ? group.active
+    : last !== null && group.tabs.includes(last)
+      ? last
+      : (group.tabs.find((t) => visited.has(t) && isFileTab(t)) ?? null);
+  if (candidate !== last) setLast(candidate);
+  return candidate;
+}
+
 /** `maximised`: this group has the whole dock; `stepAside`: another one has (hidden, not unmounted: scroll, drafts and widths stay). */
 function GroupView(props: { group: Group; name: string; first: boolean; last: boolean; maximised: boolean; stepAside: boolean }) {
   const { group, name, first, last, maximised, stepAside } = props;
@@ -99,6 +120,7 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
   const { sidebarOpen } = useShell();
   const { insetStart } = useChrome();
   const visited = useVisited(group);
+  const fileShell = useFileShellTab(group, visited);
   const focused = group.id === ws.layout.focused;
   const narrow = ws.narrow;
   const hidden = (narrow && !focused) || stepAside;
@@ -154,10 +176,10 @@ function GroupView(props: { group: Group; name: string; first: boolean; last: bo
           <BackdropProvider value={backdrop}>
             <div data-dock-body className="relative min-h-0 flex-1">
               {group.tabs
-                .filter((t) => visited.has(t))
+                .filter((t) => visited.has(t) && (!isFileTab(t) || t === fileShell))
                 .map((t) => (
                   <div
-                    key={t}
+                    key={isFileTab(t) ? "file-shell" : t}
                     id={`${domId(t)}-panel`}
                     role="tabpanel"
                     tabIndex={-1}

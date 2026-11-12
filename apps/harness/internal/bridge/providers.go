@@ -46,6 +46,7 @@ type ProviderEditor interface {
 	RefreshModels(ctx context.Context, id string) (providers.Provider, error)
 	SetCustomModels(id string, names []string) (providers.Provider, error)
 	SetPrefs(id string, preferred *string, roles map[string]string) (providers.Provider, error)
+	Recheck(ctx context.Context, id string) (providers.Provider, error)
 }
 
 func (s *Server) providerError(w http.ResponseWriter, err error) {
@@ -102,6 +103,17 @@ func (s *Server) putProviderPrefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := s.providers.(ProviderEditor).SetPrefs(r.PathValue("id"), in.PreferredModel, in.Roles)
+	if err != nil {
+		s.providerError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+// POST /v1/providers/{id}/recheck: run the agent's login probe now ("I've
+// logged in: check again") and answer the provider entry.
+func (s *Server) recheckProvider(w http.ResponseWriter, r *http.Request) {
+	p, err := s.providers.(ProviderEditor).Recheck(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.providerError(w, err)
 		return

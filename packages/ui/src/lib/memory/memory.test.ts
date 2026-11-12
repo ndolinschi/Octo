@@ -99,7 +99,11 @@ test("search form: problems and request parameters", () => {
     after: "2026-01-01",
     before: "2026-02-01",
   });
-  assert.deepEqual(searchParams({ q: "x", kinds: ["tasks", "facts", "files", "messages"], after: "", before: "" }), { q: "x" }, "every kind is no filter");
+  assert.deepEqual(
+    searchParams({ q: "x", kinds: ["tasks", "facts", "files", "messages", "exchanges"], after: "", before: "" }),
+    { q: "x" },
+    "every kind is no filter",
+  );
   assert.deepEqual(toggleKind(["tasks"], "files"), ["tasks", "files"]);
   assert.deepEqual(toggleKind(["tasks", "files"], "tasks"), ["files"]);
 });
@@ -154,6 +158,12 @@ test("receiptView: a full-mode receipt has no caps, an empty one has zero shares
   assert.equal(full.clearedText, null);
   const empty = receiptView({ ...receipt, blocks: [{ name: "facts", tokens: 0, cap: 1500, count: 0, ids: [] }] });
   assert.equal(empty.segments[0]?.share, 0);
+});
+
+test("an exchange hit opens its session and marks the exchange", () => {
+  const hit: MemoryHit = { kind: "exchange", id: "exc_1", title: "t", snippet: "s", date: "d", session_id: "ses_1" };
+  assert.deepEqual(hitTarget(hit), { to: "session", sessionId: "ses_1", exchangeId: "exc_1" });
+  assert.equal(hitTarget({ kind: "exchange", id: "exc_1", title: "t", snippet: "s", date: "d" }), null);
 });
 
 test("block labels and id kinds", () => {

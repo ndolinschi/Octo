@@ -91,7 +91,8 @@ func TestTurnOpensATaskRecordAndTheSideModelDigestsIt(t *testing.T) {
 	for _, h := range res.Hits {
 		kinds[h.Kind] = true
 	}
-	if !kinds["fact"] || !kinds["message"] {
+	// M4: a message an exchange hit already shows is not listed twice, so the request is found as an exchange.
+	if !kinds["fact"] || !(kinds["message"] || kinds["exchange"]) {
 		t.Fatalf("hits = %+v", res.Hits)
 	}
 	if res = e.search(t, pid, "retry three times"); !hasKind(res, "task") {
@@ -131,7 +132,7 @@ func TestOrchestratorUsesTheMemoryToolsAndTheAPISeesTheResult(t *testing.T) {
 	}
 	// Search through the orchestrator's tool; the result is in its reply.
 	say("[search: бюджета]")
-	if got := lastAssistantText(t, e, pid); !strings.Contains(got, fmt.Sprintf(`"id":"%d"`, m1.ID)) || !strings.Contains(got, `"kind":"message"`) {
+	if got := lastAssistantText(t, e, pid); !strings.Contains(got, fmt.Sprintf(`"message_id":%d`, m1.ID)) || !strings.Contains(got, `"kind":"exchange"`) {
 		t.Fatalf("search reply = %s", got)
 	}
 	// (A query the orchestrator is asked to run is itself part of the user's message, so the

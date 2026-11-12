@@ -29,6 +29,11 @@ type Fact struct {
 	Date         string `json:"date"`
 	MessageID    int64  `json:"message_id"`
 	SupersededBy string `json:"superseded_by,omitempty"`
+	// Kind ("fact", "decision", "preference", "todo"), About (the subject) and RememberedBy (the
+	// agent, or "user") are set on facts stored by the remember tool.
+	Kind         string `json:"kind,omitempty"`
+	About        string `json:"about,omitempty"`
+	RememberedBy string `json:"remembered_by,omitempty"`
 }
 
 // Task is a task record: the detail map of one piece of work.

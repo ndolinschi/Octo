@@ -17,10 +17,10 @@ func TestOnProbeChangeFiresOnlyWhenTheOutcomeChanges(t *testing.T) {
 	verdict.Store(true)
 	var runs, changes atomic.Int32
 	r.probes.now = func() time.Time { return time.Unix(0, clock.Load()) }
-	r.probes.run = func(context.Context, Agent) *bool {
+	r.probes.run = func(context.Context, Agent) ProbeReport {
 		runs.Add(1)
 		v := verdict.Load()
-		return &v
+		return ProbeReport{Ran: true, LoggedIn: &v}
 	}
 	r.OnProbeChange(func() { changes.Add(1) })
 	ctx, cancel := context.WithCancel(context.Background())

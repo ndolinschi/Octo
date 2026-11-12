@@ -45,12 +45,20 @@ var columnsAdded = []struct {
 	{"queue", []column{{"mode", "TEXT NOT NULL DEFAULT ''"}}},
 	// Schema 5: an assistant message cut short by cancelling the turn.
 	{"messages", []column{{"stopped", "INTEGER NOT NULL DEFAULT 0"}, {"rewound_at", "TEXT"}}},
+	// Schema 9 (B11): the agent slash command a user message ran ("" for plain text).
+	{"messages", []column{{"command", "TEXT NOT NULL DEFAULT ''"}}},
+	// Schema 9 (B11): a clear is a compaction row without a summary that starts a new conversation.
+	{"compactions", []column{{"cleared", "INTEGER NOT NULL DEFAULT 0"}, {"conversation_id", "TEXT NOT NULL DEFAULT ''"},
+		{"summary_source", "TEXT NOT NULL DEFAULT ''"}, {"title", "TEXT NOT NULL DEFAULT ''"}}},
 }
 
 // SchemaVersion is the schema generation this binary writes and understands
 // (PRAGMA user_version). Databases without a stamp (0) are older and are
 // migrated forward; a higher number was written by a newer binary and is refused.
-const SchemaVersion = 8
+//
+// Numbering: 9 slash commands and /clear (columns), 10 notes, 11 attachments, 12 sessions and exchanges. The next free
+// version is 13; take it and add `migrate_v13_<name>.go` (parallel work renumbers its migration when it lands).
+const SchemaVersion = 12
 
 // NewerSchemaError says a database belongs to a newer version of the app. The
 // database is not touched.
@@ -126,6 +134,10 @@ func (d *DB) migrate(ctx context.Context) error {
 	if err := d.migrateV8ReviewWorkflow(ctx); err != nil {
 		return err
 	}
+	// Schema 11: attachments (migrate_v11_attachments.go).
+	if err := d.migrateV11Attachments(ctx); err != nil {
+		return err
+	}
 	if v, err := userVersion(ctx, d.sql); err != nil {
 		return err
 	} else if v < 2 {
@@ -141,6 +153,14 @@ func (d *DB) migrate(ctx context.Context) error {
 		if err := d.reindexStemmed(ctx); err != nil {
 			return fmt.Errorf("index stems: %w", err)
 		}
+	}
+	// Schema 10: notes with descriptions, tags, pins and read counts (migrate_v10_notes.go).
+	if err := d.migrateV10Notes(ctx); err != nil {
+		return err
+	}
+	// Schema 12: sessions and exchanges, back-filled (migrate_v12_sessions.go); last: it reads the messages, compactions and notes the steps above leave.
+	if err := d.migrateV12Sessions(ctx); err != nil {
+		return err
 	}
 	return stampVersion(ctx, d.sql)
 }

@@ -31,11 +31,19 @@ type Error struct {
 	// model and what is missing.
 	Provider string
 	Reason   string
+	// CanForce (model_unavailable): the refusal rests on an advisory login
+	// probe; repeat the request with force_unverified to have it accepted.
+	CanForce bool
 	// Details is extra machine-readable data of the error (rewind_conflict lists the files).
 	Details any
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
+
+// ToolFacing says the message is meant for whoever made the call (a bad
+// argument, something missing), so an agent's tool call reports it as a tool
+// error instead of failing the turn.
+func (e *Error) ToolFacing() bool { return e.Kind == KindInvalid || e.Kind == KindNotFound }
 
 func invalid(format string, args ...any) *Error {
 	return &Error{Kind: KindInvalid, Code: "invalid_request", Message: fmt.Sprintf(format, args...)}
@@ -97,7 +105,7 @@ func storeErr(err error) error {
 // modelUnavailable is 422: the model's provider cannot run it now.
 func modelUnavailable(field, model string, u *providers.Unavailable) *Error {
 	return &Error{
-		Kind: KindUnprocessable, Code: "model_unavailable", Provider: u.Provider, Reason: u.Reason,
+		Kind: KindUnprocessable, Code: "model_unavailable", Provider: u.Provider, Reason: u.Reason, CanForce: u.CanForce,
 		Message: fmt.Sprintf("models.%s %q cannot run: %s", field, model, u.Reason),
 	}
 }

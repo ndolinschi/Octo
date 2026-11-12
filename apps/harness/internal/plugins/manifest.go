@@ -76,6 +76,19 @@ type manifestAgent struct {
 	// Install is a one-line instruction for installing what the agent needs,
 	// shown when it is not available.
 	Install string `json:"install"`
+	// Verified says the owner has run this launch command with Octo; absent
+	// means false, and the agent is listed as experimental. VerifiedNote says
+	// how far (copilot: only the logged-out path).
+	Verified     *bool  `json:"verified"`
+	VerifiedNote string `json:"verifiedNote"`
+	// Unsupported, when set, says why the agent cannot work with Octo (its CLI
+	// has no ACP mode): it is listed with state not_supported and that reason,
+	// is never probed, started, offered or routed to, and `acp:<id>` is refused
+	// (422 model_unavailable). Its install hint is kept.
+	Unsupported string `json:"unsupported"`
+	// StartHint is added to the message of a start-up failure caused by rejected
+	// launch arguments (what version or flag the CLI needs).
+	StartHint string `json:"startHint"`
 }
 
 // manifestModelsCommand runs a command and reads model ids from its output:
@@ -149,10 +162,10 @@ func validateStrengths(in []string) error {
 // string or {"id", "requiresEnv"}); Skip lists ids never to try.
 type manifestAuth struct {
 	Probe []string `json:"probe"`
-	// NotLoggedInPattern is an optional regular expression: when the probe's
-	// output (stdout or stderr) matches it, the agent counts as logged out even
-	// if the probe exited 0 (a CLI that says "You are not authenticated." and
-	// exits 0).
+	// NotLoggedInPattern is an optional regular expression: when the probe exits
+	// non-zero and its output (stdout or stderr) matches it, the agent counts as
+	// logged out. A probe that exits 0 is logged in whatever it prints (the
+	// login probe is advisory, never a lock; exit 0 always wins).
 	NotLoggedInPattern string `json:"notLoggedInPattern"`
 	// NotLoggedInExit lists probe exit statuses that mean "logged out". Without
 	// it only the pattern can say so: a failing probe leaves the login unchecked.

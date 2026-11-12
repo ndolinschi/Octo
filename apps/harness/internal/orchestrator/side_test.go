@@ -447,7 +447,7 @@ func TestSideReadsFilesAndNotes(t *testing.T) {
 		texts = append(texts, fmt.Sprint(res["content"]))
 	}
 	joined := strings.Join(texts, "\n")
-	for _, want := range []string{"the zebra file", "### Goal", "ship it", "facts.txt", "facts.txt:1: the zebra file"} {
+	for _, want := range []string{"the zebra file", " · Goal — ship it", "facts.txt", "facts.txt:1: the zebra file"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("tool results lack %q:\n%s", want, joined)
 		}

@@ -21,7 +21,7 @@ import {
   shareRows,
   sortLimits,
 } from "./usage";
-import { contextText, isUsageView } from "./usageView";
+import { contextText } from "./usageView";
 
 const NOW = Date.parse("2026-11-10T15:00:00Z");
 const bucket = (key: string, n: number, p: Partial<UsageBucket> = {}): UsageBucket => ({
@@ -150,12 +150,6 @@ test("context: shown only when both figures are reported", () => {
   assert.equal(contextText(null, 200_000), null);
   assert.equal(contextText(1800, undefined), null);
   assert.equal(contextText(1800, 0), null);
-});
-
-test("usage view guard", () => {
-  assert.equal(isUsageView({ segment: "cost", days: 90, scope: "all" }), true);
-  assert.equal(isUsageView({ segment: "cost", days: 14, scope: "all" }), false);
-  assert.equal(isUsageView(null), false);
 });
 
 test("range: the last N UTC days, to exclusive", () => {

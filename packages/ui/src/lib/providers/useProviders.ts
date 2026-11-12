@@ -46,6 +46,12 @@ export async function fetchProviders(bridge: Bridge): Promise<ProviderList> {
   return deriveProviders({ config, plugins, settings });
 }
 
+/** The list as last loaded (null before the first answer or after a first failure). */
+export function providersSnapshot(bridge: Bridge): ProviderList | null {
+  const { load } = entry(bridge);
+  return load.status === "loading" ? null : load.list;
+}
+
 /** Loads (or reloads) the provider list of `bridge`; concurrent calls share one request. */
 export function refreshProviders(bridge: Bridge): Promise<void> {
   const e = entry(bridge);

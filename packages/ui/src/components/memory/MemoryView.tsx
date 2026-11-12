@@ -1,17 +1,19 @@
 import { useState } from "react";
 import type { HitTarget } from "../../lib/memory/search";
 import { useApp } from "../../state/app";
-import { Segmented } from "../primitives/Segmented";
+import { ViewTabs } from "../primitives/ViewTabs";
 import { ContextTab } from "./ContextTab";
 import { FilesTab } from "./FilesTab";
 import { Empty } from "./parts";
 import { SearchTab } from "./SearchTab";
+import { SessionsTab } from "./SessionsTab";
 import { TasksTab } from "./TasksTab";
 import { useMemoryFiles, useTasks } from "./useMemory";
 
-export type MemoryTab = "tasks" | "files" | "search" | "context";
+export type MemoryTab = "sessions" | "tasks" | "files" | "search" | "context";
 
 const TABS: readonly { id: MemoryTab; label: string }[] = [
+  { id: "sessions", label: "Sessions" },
   { id: "tasks", label: "Tasks" },
   { id: "files", label: "Files" },
   { id: "search", label: "Search" },
@@ -19,7 +21,7 @@ const TABS: readonly { id: MemoryTab; label: string }[] = [
 ];
 
 /**
- * What the orchestrator remembers about a project (orchestrator memory M3): its task records, memory files, a search
+ * What the orchestrator remembers about a project (orchestrator memory M3, M4): its sessions (what was asked and answered), task records, memory files, a search
  * over all of it, and per request the context receipt (what it had in front of it). It fills the space it is given
  * (a dock tab or a page) and sizes itself by container width: list and detail side by side from 640px, one column below.
  * Hosts pass `onOpenMessage` (open a request in the chat) and `onOpenFile` (open a project file); without them the
@@ -29,21 +31,22 @@ export function MemoryView(props: {
   projectId: string;
   onOpenMessage?: (messageId: number) => void;
   onOpenFile?: (path: string) => void;
-  /** Opens on this tab (default Tasks). */
+  /** Opens on this tab (default Sessions). */
   initialTab?: MemoryTab;
   /** With the Context tab: the request whose receipt is shown first. */
   turnId?: number;
 }) {
   const { bridge } = useApp();
   const { projectId, onOpenMessage, onOpenFile } = props;
-  const [tab, setTab] = useState<MemoryTab>(props.initialTab ?? (props.turnId !== undefined ? "context" : "tasks"));
+  const [tab, setTab] = useState<MemoryTab>(props.initialTab ?? (props.turnId !== undefined ? "context" : "sessions"));
   const [task, setTask] = useState<{ id: string | null; fact: string | null }>({ id: null, fact: null });
+  const [session, setSession] = useState<{ id: string | null; exchange: string | null }>({ id: null, exchange: null });
   const [file, setFile] = useState<string | null>(null);
   const [turn, setTurn] = useState<number | null>(props.turnId ?? null);
   const tasks = useTasks(projectId);
   const files = useMemoryFiles(projectId);
 
-  if (!bridge.listTasks && !bridge.listMemory) {
+  if (!bridge.listTasks && !bridge.listMemory && !bridge.listMemorySessions) {
     return <Empty title="This harness has no memory">Update the harness to see task records, memory files and context receipts here.</Empty>;
   }
 
@@ -54,16 +57,26 @@ export function MemoryView(props: {
     } else if (t.to === "file") {
       setFile(t.path);
       setTab("files");
+    } else if (t.to === "session") {
+      setSession({ id: t.sessionId, exchange: t.exchangeId });
+      setTab("sessions");
     } else onOpenMessage?.(t.messageId);
   };
   const canOpenMessage = onOpenMessage !== undefined;
 
   return (
-    <div className="@container/memory flex h-full min-h-0 flex-col pt-pane" data-memory>
-      <div className="flex h-row shrink-0 items-center overflow-x-auto px-pane">
-        <Segmented<MemoryTab> label="Memory" options={TABS} value={tab} onChange={setTab} />
-      </div>
+    <div className="@container/memory flex h-full min-h-0 flex-col" data-memory>
+      <ViewTabs<MemoryTab> label="Memory" options={TABS} value={tab} onChange={setTab} />
       <div className="min-h-0 flex-1">
+        {tab === "sessions" && (
+          <SessionsTab
+            projectId={projectId}
+            selected={session.id}
+            focusExchange={session.exchange}
+            onSelect={(id, exchange) => setSession({ id, exchange: exchange ?? null })}
+            onOpenMessage={onOpenMessage}
+          />
+        )}
         {tab === "tasks" && (
           <TasksTab
             load={tasks.load}

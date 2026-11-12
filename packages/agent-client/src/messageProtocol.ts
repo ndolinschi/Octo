@@ -20,6 +20,9 @@ export type HttpOnlyMethod =
   | "putMemoryFile"
   | "deleteMemoryFile"
   | "searchMemory"
+  | "listMemorySessions"
+  | "getMemorySession"
+  | "forgetExchange"
   | "sendOrQueueMessage"
   | "getQueue"
   | "editQueued"
@@ -109,6 +112,7 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "listSide",
   "clearSide",
   "listNotes",
+  "getNote",
   "createNote",
   "updateNote",
   "deleteNote",

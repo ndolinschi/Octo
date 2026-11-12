@@ -1,6 +1,16 @@
 import type { Provider } from "@octo/agent-client";
 import { useRef, useState } from "react";
-import { billingLine, commandsIn, extraReason, primaryAction, reasonLine, refreshProviders, stateTone } from "../../lib/providers";
+import {
+  EXPERIMENTAL_TIP,
+  billingLine,
+  commandsIn,
+  extraReason,
+  primaryAction,
+  reasonLine,
+  recheckAgent,
+  refreshProviders,
+  stateTone,
+} from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
@@ -22,11 +32,12 @@ export function ProviderDetail({ provider: p }: { provider: Provider }) {
   const check = async () => {
     setChecking(true);
     try {
-      if (bridge.recheckProvider) await bridge.recheckProvider(p.id);
+      // Runs the agent's login probe now (`POST /v1/providers/{id}/recheck`), then reloads the shared list.
+      await recheckAgent(bridge, p.id);
     } catch {
       // The state shown is the one before; "Still …" below says nothing changed, and the harness log has the cause.
+      await refreshProviders(bridge);
     }
-    await refreshProviders(bridge);
     setChecking(false);
     setChecked(true);
   };
@@ -40,6 +51,11 @@ export function ProviderDetail({ provider: p }: { provider: Provider }) {
     >
       <div className="flex min-h-8 flex-wrap items-center gap-x-4 gap-y-2">
         <ProviderTitle provider={p} tone={stateTone(p)} />
+        {p.experimental && (
+          <span className="text-xs text-fg-3" title={EXPERIMENTAL_TIP}>
+            experimental
+          </span>
+        )}
         {action && (
           <div className="flex items-center gap-2">
             {checked && !checking && p.state !== "ready" && (

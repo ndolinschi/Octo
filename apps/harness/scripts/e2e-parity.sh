@@ -22,7 +22,9 @@ jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 mkdir -p "$TMP/plugins/fake"
 cat >"$TMP/plugins/fake/plugin.json" <<JSON
 {"name":"fake","version":"1","agents":[{"id":"scripted","label":"Scripted","command":"$TMP/fakeacp",
- "env":{"OCTO_FAKEACP_UNIQUE_SESSIONS":"1","OCTO_FAKEACP_MODES":"1"}}]}
+ "env":{"OCTO_FAKEACP_UNIQUE_SESSIONS":"1","OCTO_FAKEACP_MODES":"1","OCTO_FAKEACP_COMMANDS":"web|Search the web|query;init|Set up the project"}},
+ {"id":"imager","label":"Imager","command":"$TMP/fakeacp",
+ "env":{"OCTO_FAKEACP_UNIQUE_SESSIONS":"1","OCTO_FAKEACP_PROMPT_IMAGE":"1"}}]}
 JSON
 BASE=http://127.0.0.1:8841
 HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8841 --data-dir "$TMP/data" \
@@ -355,4 +357,194 @@ PY
 [ "$(http_code GET "/v1/search")" = 400 ] || fail "empty search"
 echo "   ok"
 
-echo "PARITY OK (B1, B2, B3, B4, B5, B6, B7)"
+echo "== B11 slash commands: Octo's and the agent's, /clear with a carried-over summary, /remember"
+PB11=$(newproject b11)
+post POST "/v1/projects/$PB11/messages" '{"text":"quick narwhal question"}' >/dev/null; idle "$PB11"
+sc=$(curl -fsS "$BASE/v1/projects/$PB11/slash-commands")
+python3 - "$sc" <<'PY' || fail "built-in slash commands wrong: $sc"
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["agent"] is None, d
+names={c["name"]:c for c in d["octo"]}
+assert {"compact","clear","mode","model","rewind","export","review","context","memory","settings","remember","help"} <= set(names), names
+assert names["compact"]["available"] and names["clear"]["endpoint"].endswith("/clear"), names
+PY
+for t in '/clear' '/compact now' '/remember x'; do
+  [ "$(curl -s -X POST "$BASE/v1/projects/$PB11/messages" -H 'content-type: application/json' -d "{\"text\":\"$t\"}" | jget 'd["error"]["code"]')" = octo_command ] || fail "$t was not refused as an Octo command"
+done
+cl=$(post POST "/v1/projects/$PB11/clear")
+python3 - "$cl" <<'PY' || fail "clear result wrong: $cl"
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["conversation_id"] and d["summary_source"]=="model" and d["summary"] and "narwhal" in d["title"], d
+PY
+aid11=$(curl -fsS "$BASE/v1/projects/$PB11" | jget 'd["orchestrator_agent_id"]')
+curl -fsS "$BASE/v1/projects/$PB11/agents/$aid11/messages" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+assert len(d["messages"])>=2 and len(d["conversations"])==1 and d["conversations"][0]["label"].startswith("New session"), d["conversations"]' || fail "no new-session marker"
+curl -fsS "$BASE/v1/search?q=narwhal" | grep -q "$PB11" || fail "an old request is not found after /clear"
+curl -fsS "$BASE/v1/projects/$PB11/export?format=md" | grep -q 'New session' || fail "export has no new-session marker"
+fact=$(post POST "/v1/projects/$PB11/facts" '{"text":"narwhals are not unicorns","kind":"fact"}')
+tid=$(jget 'd["task_id"]' <<<"$fact"); fid=$(jget 'd["fact"]["id"]' <<<"$fact")
+[ "$(http_code DELETE "/v1/projects/$PB11/facts/$tid/$fid")" = 204 ] || fail "undo of a remembered fact"
+PB11A=$(newproject b11a full ',"models":{"orchestrator":"acp:scripted"}')
+[ "$(curl -fsS "$BASE/v1/projects/$PB11A/slash-commands" | jget 'd["agent"]["pending"]')" = True ] || fail "agent list not pending before the first session"
+post POST "/v1/projects/$PB11A/messages" '{"text":"[echo] hello"}' >/dev/null; idle "$PB11A"
+curl -fsS "$BASE/v1/projects/$PB11A/slash-commands" | python3 -c '
+import json,sys
+a=json.load(sys.stdin)["agent"]
+assert not a.get("pending") and [c["name"] for c in a["commands"]]==["web","init"] and a["commands"][0]["input_hint"]=="query", a' || fail "agent commands wrong"
+post POST "/v1/projects/$PB11A/messages" '{"text":"/web rust"}' >/dev/null; idle "$PB11A"
+aid11a=$(curl -fsS "$BASE/v1/projects/$PB11A" | jget 'd["orchestrator_agent_id"]')
+curl -fsS "$BASE/v1/projects/$PB11A/agents/$aid11a/messages" | python3 -c '
+import json,sys
+m=json.load(sys.stdin)["messages"]
+assert [x.get("command") for x in m if x["role"]=="user"]==[None,"web"], m
+assert any("command<</web rust>>" in b.get("text","") for x in m for b in x["content"]), m' || fail "agent command not passed through"
+cla=$(post POST "/v1/projects/$PB11A/clear")
+python3 - "$cla" <<'PY' || fail "ACP clear wrong: $cla"
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["summary_source"]=="agent" and "Agent summary" in d["summary"], d
+PY
+[ "$(curl -fsS "$BASE/v1/projects/$PB11A/slash-commands" | jget 'd["agent"]["pending"]')" = True ] || fail "agent list not pending after /clear"
+echo "   ok"
+
+last_text() { # project -> text of the orchestrator's last assistant message
+  local aid; aid=$(curl -fsS "$BASE/v1/projects/$1" | jget 'd["orchestrator_agent_id"]')
+  curl -fsS "$BASE/v1/projects/$1/agents/$aid/messages" | python3 -c '
+import json,sys
+m=[x for x in json.load(sys.stdin)["messages"] if x["role"]=="assistant"]
+print("".join(b.get("text") or "" for b in m[-1]["content"]) if m else "")'
+}
+side_msgs() { curl -fsS "$BASE/v1/projects/$1/side" | jget 'len(d["messages"])'; }
+side_last() { curl -fsS "$BASE/v1/projects/$1/side" | jget 'd["messages"][-1]["text"]'; }
+ask_side() { # project text n: asks and waits until the conversation holds n messages
+  post POST "/v1/projects/$1/side" "{\"text\":\"$2\"}" >/dev/null
+  waitfor "side answer $3" bash -c "[ \"\$(curl -fsS -H 'Authorization: Bearer $HARNESS_API_TOKEN' $BASE/v1/projects/$1/side | python3 -c 'import json,sys; print(len(json.load(sys.stdin)[\"messages\"]))')\" -ge $3 ]"
+}
+pid_of() { sed -n 's/.*pid=\([0-9]*\) .*/\1/p' <<<"$1" | head -1; }
+
+echo "== B13 side question on the project's own ACP agent: own session, kept for follow-ups, closed on clear"
+PB13=$(newproject b13 full ',"models":{"orchestrator":"acp:scripted"}')
+post POST "/v1/projects/$PB13/messages" '{"text":"[echo] main"}' >/dev/null; idle "$PB13"
+orch_pid=$(pid_of "$(last_text "$PB13")")
+ask_side "$PB13" "[echo] one" 2
+t1=$(side_last "$PB13"); p1=$(pid_of "$t1")
+[ -n "$p1" ] && [ "$p1" != "$orch_pid" ] || fail "the side question shares the orchestrator's agent ($p1 / $orch_pid)"
+grep -q 'You answer side questions' <<<"$t1" || fail "no briefing in the first side prompt: $t1"
+ask_side "$PB13" "[echo] two" 4
+t2=$(side_last "$PB13")
+[ "$(pid_of "$t2")" = "$p1" ] || fail "the follow-up opened another agent"
+! grep -q 'You answer side questions' <<<"$t2" || fail "the follow-up repeated the briefing"
+[ "$(http_code POST "/v1/projects/$PB13/side/stop")" = 204 ] || fail "side stop"
+ask_side "$PB13" "[fswrite] write" 6
+[ ! -e "$TMP/b13/fswrite.txt" ] || fail "the side agent wrote a file"
+grep -qi refused <<<"$(side_last "$PB13")" || fail "the write was not refused: $(side_last "$PB13")"
+[ "$(http_code DELETE "/v1/projects/$PB13/side")" = 204 ] || fail "clear side"
+ask_side "$PB13" "[echo] three" 2
+[ "$(pid_of "$(side_last "$PB13")")" != "$p1" ] || fail "a cleared side conversation reused the old agent"
+echo "   ok"
+
+echo "== B12 attach images: upload limits, sniffing, image blocks to the model and to an ACP agent, 422 without the capability"
+python3 - "$TMP/pic.png" <<'PY'
+import struct, sys, zlib
+def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+w = h = 4
+raw = b"".join(b"\x00" + b"\xff\x00\x00" * w for _ in range(h))
+open(sys.argv[1], "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+PY
+printf '<html><script>1</script></html>' >"$TMP/fake.png"
+PB12=$(newproject b12)
+up=$(curl -fsS -X POST "$BASE/v1/projects/$PB12/attachments?name=pic.png" -H 'content-type: image/png' --data-binary @"$TMP/pic.png")
+python3 - "$up" <<'PY' || fail "upload result: $up"
+import json,sys
+a=json.loads(sys.argv[1])
+assert a["media_type"]=="image/png" and a["width"]==4 and a["height"]==4 and a["id"].startswith("att_") and a["name"]=="pic.png", a
+PY
+AID=$(jget 'd["id"]' <<<"$up")
+code=$(command curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $HARNESS_API_TOKEN" -X POST "$BASE/v1/projects/$PB12/attachments" -H 'content-type: image/png' --data-binary @"$TMP/fake.png")
+[ "$code" = 415 ] || fail "html sent as image/png: $code"
+head -c 6000000 /dev/zero >"$TMP/big.bin"; cat "$TMP/pic.png" "$TMP/big.bin" >"$TMP/big.png"
+code=$(command curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $HARNESS_API_TOKEN" -X POST "$BASE/v1/projects/$PB12/attachments" -H 'content-type: image/png' --data-binary @"$TMP/big.png")
+[ "$code" = 413 ] || fail "6 MB image: $code"
+curl -fsS "$BASE/v1/projects/$PB12/attachments/$AID" | cmp -s - "$TMP/pic.png" || fail "attachment bytes differ"
+post POST "/v1/projects/$PB12/messages" "{\"text\":\"quick what is this\",\"attachments\":[\"$AID\"]}" >/dev/null; idle "$PB12"
+c=$(curl -fsS "$BASE/v1/projects/$PB12/context")
+[ "$(jget 'd["images"]' <<<"$c")" = 1 ] || fail "context images: $c"
+aid=$(curl -fsS "$BASE/v1/projects/$PB12" | jget 'd["orchestrator_agent_id"]')
+curl -fsS "$BASE/v1/projects/$PB12/agents/$aid/messages" | python3 -c '
+import json,sys
+m=json.load(sys.stdin)["messages"][0]["content"]
+assert m[0]["type"]=="image" and m[0]["width"]==4 and m[1]["type"]=="text", m' || fail "transcript has no image block"
+PBI=$(newproject b12img full ',"models":{"orchestrator":"acp:imager"}')
+curl -fsS -X POST "$BASE/v1/projects/$PBI/attachments" -H 'content-type: image/png' --data-binary @"$TMP/pic.png" >/dev/null
+post POST "/v1/projects/$PBI/messages" "{\"text\":\"[blocks] look\",\"attachments\":[\"$AID\"]}" >/dev/null; idle "$PBI"
+grep -q 'blocks=image:image/png:.*,text' <<<"$(last_text "$PBI")" || fail "the ACP agent did not get an image block: $(last_text "$PBI")"
+[ "$(curl -fsS "$BASE/v1/projects/$PBI" | jget 'd["accepts_images"]')" = True ] || fail "accepts_images"
+PBN=$(newproject b12noimg full ',"models":{"orchestrator":"acp:scripted"}')
+curl -fsS -X POST "$BASE/v1/projects/$PBN/attachments" -H 'content-type: image/png' --data-binary @"$TMP/pic.png" >/dev/null
+resp=$(command curl -s -w '\n%{http_code}' -H "Authorization: Bearer $HARNESS_API_TOKEN" -X POST "$BASE/v1/projects/$PBN/messages" -H 'content-type: application/json' -d "{\"text\":\"look\",\"attachments\":[\"$AID\"]}")
+[ "$(tail -1 <<<"$resp")" = 422 ] && grep -q images_unsupported <<<"$resp" || fail "no 422 images_unsupported: $resp"
+echo "   ok"
+
+echo "== M5 notes with descriptions: 100 notes, the prompt holds an index (descriptions, no bodies), read_note opens a body"
+PM5=$(newproject m5)
+python3 - "$BASE" "$HARNESS_API_TOKEN" "$PM5" <<'PY' || fail "creating 100 notes failed"
+import json, sys, urllib.error, urllib.request
+base, token, pid = sys.argv[1:4]
+def call(method, path, body=None):
+    req = urllib.request.Request(base + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req) as r:
+        return json.load(r)
+for i in range(100):
+    call("POST", f"/v1/projects/{pid}/notes", {
+        "title": f"Topic {i:03d}", "description": f"How topic {i:03d} works and when it matters for the release plan", "tags": [f"area-{i % 5}"],
+        "content": f"BODYMARK-{i:03d}\n" + "a long body line that stays out of the prompt\n" * 40})
+# Raw Markdown with front matter is accepted too, and a parse error is a 400 naming the line.
+n = call("POST", f"/v1/projects/{pid}/notes", {"markdown": "---\ntitle: From markdown\ndescription: Created from a .md file\ntags: [md]\n---\n\n# From markdown\nbody\n"})
+assert n["description"] == "Created from a .md file" and n["tags"] == ["md"] and n["markdown"].startswith("---\nid: " + n["id"]), n
+try:
+    call("POST", f"/v1/projects/{pid}/notes", {"markdown": "---\ntitle: x\npinned: maybe\n---\n"})
+    raise SystemExit("a bad front matter was accepted")
+except urllib.error.HTTPError as e:
+    assert e.code == 400 and "line 3" in e.read().decode(), e.code
+PY
+lst=$(curl -fsS "$BASE/v1/projects/$PM5/notes")
+python3 - "$lst" <<'PY' || fail "notes list wrong"
+import json, sys
+notes = json.loads(sys.argv[1])["notes"]
+assert len(notes) == 101 and all("content" not in n and n["description"] for n in notes), notes[:2]
+PY
+post POST "/v1/projects/$PM5/messages" '{"text":"[notes: BODYMARK] look at the notes"}' >/dev/null
+idle "$PM5"
+txt=$(agent_texts "$PM5")
+python3 - "$txt" <<'PY' || fail "notes check wrong: $txt"
+import re, sys
+t = sys.argv[1]
+m = re.search(r"index_lines=(\d+) more_line=(\w+) needle_in_prompt=(\w+) read_note=(.*)", t)
+assert m, t
+n, more, needle, read = int(m.group(1)), m.group(2), m.group(3), m.group(4)
+assert 20 <= n < 101, ("index budget", n)
+assert more == "true", "no 'N more notes' line"
+assert needle == "false", "a note body is in the prompt"
+assert read.startswith("# From markdown") and "BODYMARK" not in read, read  # the newest note's body, which only read_note returns
+PY
+ctx=$(curl -fsS "$BASE/v1/projects/$PM5/context")
+python3 - "$ctx" <<'PY' || fail "context report: $ctx"
+import json, sys
+c = json.loads(sys.argv[1])
+notes = [x for x in c["categories"] if x["id"] == "notes"][0]["tokens"]
+assert 0 < notes < 2200, notes
+PY
+# The agent's read was recorded on the note it opened.
+python3 - "$(curl -fsS "$BASE/v1/projects/$PM5/notes")" <<'PY' || fail "read not recorded"
+import json, sys
+notes = json.loads(sys.argv[1])["notes"]
+assert sum(n["read_count"] for n in notes) == 1 and [n for n in notes if n["read_count"]][0]["last_read_at"], [n for n in notes if n["read_count"]]
+PY
+echo "   ok"
+
+echo "PARITY OK (B1, B2, B3, B4, B5, B6, B7, B11, B12, B13, M5)"

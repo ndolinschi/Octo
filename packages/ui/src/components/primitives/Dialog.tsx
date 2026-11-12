@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
-import { IconButton } from "./Button";
+import { IconButton } from "./IconButton";
 import { usePresence } from "./Presence";
 import { useModal } from "./useModal";
 

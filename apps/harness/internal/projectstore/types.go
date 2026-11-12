@@ -184,13 +184,22 @@ type AgentPatch struct {
 	Reset bool
 }
 
+// Note is a Markdown document with front-matter fields (M5). Content is the
+// body; lists leave it out (see the notes service).
 type Note struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Content   string     `json:"content"`
-	Author    NoteAuthor `json:"author"`
-	CreatedAt string     `json:"created_at"`
-	UpdatedAt string     `json:"updated_at"`
+	ID              string     `json:"id"`
+	Title           string     `json:"title"`
+	Description     string     `json:"description"`
+	DescriptionAuto bool       `json:"description_auto"`
+	Tags            []string   `json:"tags"`
+	Pinned          bool       `json:"pinned"`
+	Content         string     `json:"content,omitempty"`
+	Size            int        `json:"size"` // characters of the body
+	Author          NoteAuthor `json:"author"`
+	CreatedAt       string     `json:"created_at"`
+	UpdatedAt       string     `json:"updated_at"`
+	LastReadAt      string     `json:"last_read_at"`
+	ReadCount       int        `json:"read_count"`
 }
 
 type InfoPatch struct {

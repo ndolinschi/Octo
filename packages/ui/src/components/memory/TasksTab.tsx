@@ -8,7 +8,7 @@ import { formatRelative } from "../../lib/format";
 import type { Load } from "../../lib/memory/load";
 import { factRows, filterCounts, filterTasks, formatDay, goalNote, STATUS_LABEL, TASK_FILTERS, type FactRow, type TaskFilter } from "../../lib/memory/tasks";
 import { Glyph } from "../primitives/Glyph";
-import { Segmented } from "../primitives/Segmented";
+import { FilterTabs } from "../primitives/FilterTabs";
 import { Block, DetailTitle, Empty, ErrorState, ListDetail, ListRow, Loading, RowList } from "./parts";
 
 const STATUS_ICON = { open: Circle, done: CircleCheck, dropped: CircleDashed } as const;
@@ -52,14 +52,12 @@ export function TasksTab(props: {
       placeholder="Choose a task to see its goal, decisions and facts."
       onBack={() => props.onSelect(null)}
       listHeader={
-        <div className="flex h-row shrink-0 items-center overflow-x-auto px-pane">
-          <Segmented<TaskFilter>
-            label="Task status"
-            options={TASK_FILTERS.map((f) => ({ id: f.id, label: `${f.label} ${counts?.[f.id] ?? 0}` }))}
-            value={filter}
-            onChange={setFilter}
-          />
-        </div>
+        <FilterTabs<TaskFilter>
+          label="Task status"
+          options={TASK_FILTERS.map((f) => ({ id: f.id, label: f.label, count: counts?.[f.id] ?? 0 }))}
+          value={filter}
+          onChange={setFilter}
+        />
       }
       list={
         shown.length === 0 ? (

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/notemd"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -61,29 +62,51 @@ How you work:
 - ` + rt.tierGuidance() + `
 - Run independent sub-tasks in parallel by issuing several spawn_agent calls in one message. Sequence dependent ones.
 - A sub-agent's final report is all you see of its work. Check it for gaps and delegate follow-ups when needed.
-- Record durable intent, decisions and facts with save_note (upserts by title); delete stale notes with delete_note. Keep notes short.
+- Notes are your durable memory, shown to you as an index of descriptions: open a note with read_note only when its description is relevant, and use search_notes before saying you do not know. Record durable intent, decisions and facts with write_note (a one-line description you write, then the body in Markdown); delete stale notes with delete_note. Keep notes short.
 - Answer the user concisely in markdown from the sub-agent reports: what was found or changed, and what remains.
 ` + memoryGuidance)
 	b.WriteString(rt.acpPrompt())
-	// Notes change whenever save_note runs, so they come last: everything above
+	// Notes change whenever write_note runs, so they come last: everything above
 	// stays byte-identical and the prompt-cache prefix (tools + static system)
 	// survives a note change.
 	static = b.String()
 	return static, notesBlock(rt.notes)
 }
 
-// notesBlock renders the project notes section of the orchestrator prompt.
+// notesBlock renders the project notes section of the orchestrator prompt: the
+// pinned notes whole (rules that always apply), then an index of every note
+// (id, title, description, tags) within a budget of notemd.IndexBudget tokens.
+// Bodies are never in the prompt; read_note opens one, search_notes finds the
+// ones that did not fit.
 func notesBlock(notes []projectstore.Note) string {
 	var b strings.Builder
-	b.WriteString("\nProject notes (durable memory, re-read every turn):\n")
+	b.WriteString(notesHeader)
 	if len(notes) == 0 {
-		b.WriteString("(none yet)\n")
+		b.WriteString("(none yet) Record durable facts, decisions and intent with write_note.\n")
+		return b.String()
 	}
+	var pinned []projectstore.Note
 	for _, n := range notes {
-		fmt.Fprintf(&b, "### %s\n%s\n", n.Title, n.Content)
+		if n.Pinned {
+			pinned = append(pinned, n)
+		}
+	}
+	if len(pinned) > 0 {
+		b.WriteString("Pinned notes (rules that always apply):\n")
+		for _, n := range pinned {
+			fmt.Fprintf(&b, "### %s\n%s\n", n.Title, strings.TrimRight(n.Content, "\n"))
+		}
+	}
+	lines, _ := notemd.BuildIndex(noteEntries(notes), notemd.IndexBudget, projectstore.EstimateTokens)
+	fmt.Fprintf(&b, "Index of %d notes (id · title — description [tags]); open one with read_note when its description is relevant, find others with search_notes:\n", len(notes))
+	for _, l := range lines {
+		b.WriteString(l + "\n")
 	}
 	return b.String()
 }
+
+// notesHeader opens the notes block, with or without notes, so everything before it stays byte-identical.
+const notesHeader = "\nProject notes (durable memory; you see descriptions, not bodies):\n"
 
 func (rt *runtime) subAgentPrompt(a projectstore.Agent) string {
 	var b strings.Builder
@@ -93,6 +116,7 @@ func (rt *runtime) subAgentPrompt(a projectstore.Agent) string {
 	b.WriteString(rt.instructionSection(a))
 	b.WriteString("\nYour final message is the only thing your parent sees. Make it a complete, compact report: " +
 		"findings, relevant file paths, what you changed, and open questions. Do not ask for clarification; state your assumptions.\n")
+	b.WriteString("\nWhen you learn something that will matter in later sessions (a constraint, a decision, where something lives, what failed and why), keep it with remember; never what the instruction files already say.\n")
 	if a.Depth < rt.info.MaxDepth {
 		b.WriteString("You may delegate self-contained sub-tasks with spawn_agent (parallel when issued in one message), " +
 			"but prefer doing small work yourself.\n")

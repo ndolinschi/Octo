@@ -35,8 +35,8 @@ func writeErr(w http.ResponseWriter, err error) {
 			project.KindUnprocessable: http.StatusUnprocessableEntity,
 		}[pe.Kind]
 		if pe.Code == "model_unavailable" {
-			writeJSON(w, status, map[string]any{"error": map[string]string{
-				"code": pe.Code, "message": pe.Message, "provider": pe.Provider, "reason": pe.Reason,
+			writeJSON(w, status, map[string]any{"error": map[string]any{
+				"code": pe.Code, "message": pe.Message, "provider": pe.Provider, "reason": pe.Reason, "can_force": pe.CanForce,
 			}})
 			return
 		}

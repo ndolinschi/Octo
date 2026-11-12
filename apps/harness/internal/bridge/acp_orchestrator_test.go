@@ -282,7 +282,7 @@ func checkMCPRun(t *testing.T, e *acpEnv, wantTransport string) identity {
 	if !strings.Contains(text, "mcp="+wantTransport) {
 		t.Errorf("final text = %q, want MCP transport %s", text, wantTransport)
 	}
-	for _, tool := range []string{"spawn_agent", "save_note", "delete_note", "list_dir"} {
+	for _, tool := range []string{"spawn_agent", "save_note", "delete_note", "list_dir", "read_note", "search_notes", "write_note"} {
 		if !strings.Contains(text, tool) {
 			t.Errorf("tool list in %q lacks %s", text, tool)
 		}
@@ -317,11 +317,17 @@ func checkMCPRun(t *testing.T, e *acpEnv, wantTransport string) identity {
 
 	// The note written through MCP is in the notes API.
 	var notes struct {
-		Notes []struct{ Title, Content, Author string } `json:"notes"`
+		Notes []struct{ ID, Title, Content, Author string } `json:"notes"`
 	}
 	e.into(t, "GET", "/v1/projects/"+p.ID+"/notes", nil, http.StatusOK, &notes)
-	if len(notes.Notes) != 1 || notes.Notes[0].Title != "mcp-note" || notes.Notes[0].Content != "written via MCP" {
-		t.Errorf("notes = %+v", notes.Notes)
+	if len(notes.Notes) != 1 || notes.Notes[0].Title != "mcp-note" || notes.Notes[0].Content != "" {
+		t.Errorf("notes = %+v (a list carries no body)", notes.Notes)
+	} else {
+		var got struct{ Content string }
+		e.into(t, "GET", "/v1/projects/"+p.ID+"/notes/"+notes.Notes[0].ID, nil, http.StatusOK, &got)
+		if got.Content != "written via MCP" {
+			t.Errorf("note body = %q", got.Content)
+		}
 	}
 
 	// The orchestrator agent reads acp:<id>, shows the usage the agent reported.
@@ -753,7 +759,7 @@ func TestACPModelSettingsValidation(t *testing.T) {
 	bad("POST", "/v1/projects", map[string]string{"orchestrator": "acp:nope"}, `unknown ACP agent "nope"`)
 	bad("PATCH", "/v1/projects/"+p.ID, map[string]string{"orchestrator": "acp:nope/x"}, "available: scripted")
 	bad("PATCH", "/v1/projects/"+p.ID, map[string]string{"deep": "acp:"}, "not a valid ACP setting")
-	bad("PATCH", "/v1/projects/"+p.ID, map[string]string{"side": "acp:scripted"}, "side questions")
+	bad("PATCH", "/v1/projects/"+p.ID, map[string]string{"side": "acp:nope"}, `unknown ACP agent "nope"`)
 
 	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"orchestrator": "acp:scripted/some-model", "deep": "acp:scripted"}},
 		http.StatusOK, nil)

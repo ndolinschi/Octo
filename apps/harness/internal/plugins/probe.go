@@ -2,45 +2,44 @@ package plugins
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"log/slog"
-	"os"
-	"os/exec"
-	"slices"
 	"sync"
 	"time"
-
-	"github.com/ndolinschi/Octo/apps/harness/internal/childenv"
 )
 
-// Probe pacing: a probe for one agent runs at most once per ProbeInterval and
-// is killed after ProbeTimeout.
+// Probe pacing: a probe for one agent runs at most once per ProbeInterval (a
+// "not logged in" result is looked at again after NegativeProbeInterval, since
+// the user is probably about to log in) and is killed after ProbeTimeout. A
+// synchronous check before a refusal (Registry.Fresh) reuses a result younger
+// than FreshProbeAge.
 const (
-	ProbeInterval = time.Minute
-	ProbeTimeout  = 5 * time.Second
+	ProbeInterval         = time.Minute
+	NegativeProbeInterval = 15 * time.Second
+	FreshProbeAge         = 5 * time.Second
+	ProbeTimeout          = 5 * time.Second
 )
 
-// prober caches login probe results. It never blocks a caller: refreshes run
-// in their own goroutines and readers see the last result.
+// prober caches login probe results. Background refreshes never block a
+// caller; they run in their own goroutines and readers see the last result.
 type prober struct {
 	now func() time.Time
-	run func(ctx context.Context, a Agent) *bool
+	run func(ctx context.Context, a Agent) ProbeReport
 
 	mu       sync.Mutex
-	ctx      context.Context // nil until StartProbes; probing is off before that
+	ctx      context.Context // nil until StartProbes; background probing is off before that
 	state    map[string]*probeState
 	onChange func() // called, unlocked, when a probe's outcome differs from the last one
 }
 
 type probeState struct {
-	at      time.Time
+	at      time.Time // when the last probe started
 	running bool
+	wait    chan struct{} // closed when the running probe has stored its result
 	result  *bool
+	report  ProbeReport
 }
 
 func newProber() *prober {
-	return &prober{now: time.Now, run: runProbe, state: map[string]*probeState{}}
+	return &prober{now: time.Now, run: probeOnce, state: map[string]*probeState{}}
 }
 
 func (a Agent) probeable() bool { return a.Available && a.ProbeCommand != "" }
@@ -56,6 +55,16 @@ func (p *prober) result(id string) *bool {
 	return nil
 }
 
+// lastReport is the report of the last finished probe of id.
+func (p *prober) lastReport(id string) ProbeReport {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if st := p.state[id]; st != nil {
+		return st.report
+	}
+	return ProbeReport{}
+}
+
 // done reports whether a probe of id has finished at least once and none is
 // running now.
 func (p *prober) done(id string) bool {
@@ -65,8 +74,31 @@ func (p *prober) done(id string) bool {
 	return st != nil && !st.at.IsZero() && !st.running
 }
 
-// refresh starts a background probe for each agent whose last one is older
-// than ProbeInterval and is not already running.
+func (p *prober) stateOf(id string) *probeState {
+	st := p.state[id]
+	if st == nil {
+		st = &probeState{}
+		p.state[id] = st
+	}
+	return st
+}
+
+// stale reports whether the last result is old enough to be asked again.
+func (p *prober) stale(st *probeState) bool {
+	if st.at.IsZero() {
+		return true
+	}
+	every := ProbeInterval
+	if st.result != nil && !*st.result {
+		every = NegativeProbeInterval
+	}
+	return p.now().Sub(st.at) >= every
+}
+
+// refresh starts a background probe for each agent whose last result is stale
+// and is not already running. Callers are the requests that show logins, so a
+// "not logged in" result is re-probed every NegativeProbeInterval while
+// anything is looking.
 func (p *prober) refresh(agents []Agent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -77,24 +109,28 @@ func (p *prober) refresh(agents []Agent) {
 		if !a.probeable() {
 			continue
 		}
-		st := p.state[a.ID]
-		if st == nil {
-			st = &probeState{}
-			p.state[a.ID] = st
-		}
-		if st.running || (!st.at.IsZero() && p.now().Sub(st.at) < ProbeInterval) {
+		st := p.stateOf(a.ID)
+		if st.running || !p.stale(st) {
 			continue
 		}
-		st.running, st.at = true, p.now()
-		go p.probe(p.ctx, a, st)
+		p.begin(st)
+		go p.finish(p.ctx, a, st)
 	}
 }
 
-func (p *prober) probe(ctx context.Context, a Agent, st *probeState) {
-	res := p.run(ctx, a)
+// begin marks st as running. The caller holds p.mu and then calls finish.
+func (p *prober) begin(st *probeState) {
+	st.running, st.at, st.wait = true, p.now(), make(chan struct{})
+}
+
+// finish runs the probe, stores its outcome and wakes the waiters.
+func (p *prober) finish(ctx context.Context, a Agent, st *probeState) {
+	rep := p.run(ctx, a)
+	rep.At = p.now().UTC().Format(time.RFC3339)
 	p.mu.Lock()
-	changed := !sameResult(st.result, res)
-	st.result, st.running = res, false
+	changed := !sameResult(st.result, rep.LoggedIn)
+	st.result, st.report, st.running = rep.LoggedIn, rep, false
+	close(st.wait)
 	notify := p.onChange
 	p.mu.Unlock()
 	if changed && notify != nil {
@@ -102,115 +138,38 @@ func (p *prober) probe(ctx context.Context, a Agent, st *probeState) {
 	}
 }
 
+// sync probes a now unless the last probe started less than minAge ago (0
+// forces one). A probe already running is joined. It returns when a result is
+// stored or ctx ends.
+func (p *prober) sync(ctx context.Context, a Agent, minAge time.Duration) {
+	if !a.probeable() {
+		return
+	}
+	p.mu.Lock()
+	st := p.stateOf(a.ID)
+	if st.running {
+		w := st.wait
+		p.mu.Unlock()
+		select {
+		case <-w:
+		case <-ctx.Done():
+		}
+		return
+	}
+	if minAge > 0 && !st.at.IsZero() && p.now().Sub(st.at) < minAge {
+		p.mu.Unlock()
+		return
+	}
+	p.begin(st)
+	p.mu.Unlock()
+	// The probe has its own timeout; a client that goes away does not leave a
+	// half-run probe behind as the stored result.
+	p.finish(context.WithoutCancel(ctx), a, st)
+}
+
 func sameResult(a, b *bool) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
 	return *a == *b
-}
-
-// runProbe executes the manifest's probe command. Exit 0 is logged in; the
-// agent counts as logged out only when the probe positively says so: its output
-// matches the agent's notLoggedInPattern, or it exits with a status the manifest
-// lists in auth.notLoggedInExit. Any other outcome (another exit status, a
-// timeout, a probe that cannot start) is unknown (nil): the agent stays usable
-// with its login "unchecked". Its output is never kept or shown.
-func runProbe(ctx context.Context, a Agent) *bool {
-	r := probeOnce(ctx, a)
-	if r.LoggedIn == nil {
-		slog.Debug("agent login probe inconclusive", "agent", a.ID, "reason", r.Reason)
-	}
-	return r.LoggedIn
-}
-
-// probeOnce runs the probe and classifies the outcome.
-func probeOnce(ctx context.Context, a Agent) ProbeReport {
-	pctx, cancel := context.WithTimeout(ctx, probeTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(pctx, a.ProbeCommand, a.ProbeArgs...)
-	cmd.Dir = a.Launch.Dir
-	cmd.Env = childenv.Build(os.Environ(), a.ResolvedEnv())
-	cmd.WaitDelay = time.Second
-	var out capped
-	if a.ProbeNotLoggedIn != nil {
-		cmd.Stdout, cmd.Stderr = &out, &out
-	}
-	err := cmd.Run()
-	var exit *exec.ExitError
-	matched := a.ProbeNotLoggedIn != nil && a.ProbeNotLoggedIn.Match(out.b)
-	switch {
-	case matched:
-		return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: "the probe's output says the agent is not logged in"}
-	case err == nil:
-		return ProbeReport{Ran: true, LoggedIn: boolPtr(true), Reason: "the probe exited 0"}
-	case errors.As(err, &exit) && pctx.Err() == nil:
-		code := exit.ExitCode()
-		if slices.Contains(a.ProbeNotLoggedInExit, code) {
-			return ProbeReport{Ran: true, LoggedIn: boolPtr(false), Reason: fmt.Sprintf("the probe exited with status %d, which the manifest lists as logged out", code)}
-		}
-		return ProbeReport{Ran: true, Reason: fmt.Sprintf("the probe exited with status %d, which the manifest does not list as logged out: login not checked", code)}
-	case pctx.Err() != nil:
-		return ProbeReport{Ran: true, Reason: "the probe timed out: login not checked"}
-	}
-	return ProbeReport{Ran: true, Reason: "the probe could not be started: login not checked"}
-}
-
-// capped keeps the first 64 KiB written to it.
-type capped struct{ b []byte }
-
-func (c *capped) Write(p []byte) (int, error) {
-	if room := 64<<10 - len(c.b); room > 0 {
-		c.b = append(c.b, p[:min(len(p), room)]...)
-	}
-	return len(p), nil
-}
-
-func boolPtr(v bool) *bool { return &v }
-
-// probeTimeout is ProbeTimeout; tests shorten it.
-var probeTimeout = ProbeTimeout
-
-// Probe runs the agent's login probe once, synchronously (the registry does
-// this in the background; this is for tools and tests). Nil means there is no
-// probe or it was inconclusive.
-func (a Agent) Probe(ctx context.Context) *bool {
-	if !a.probeable() {
-		return nil
-	}
-	return runProbe(ctx, a)
-}
-
-// ProbeReport is the outcome of one login probe, for diagnostics.
-type ProbeReport struct {
-	// Ran is false when there is no probe or the agent is not available.
-	Ran bool `json:"ran"`
-	// LoggedIn is nil when the probe was inconclusive or did not run.
-	LoggedIn *bool `json:"logged_in"`
-	// Reason says what happened, never including the probe's output.
-	Reason string `json:"reason"`
-}
-
-// ProbeNow runs the login probe once, synchronously, and says why it came out
-// as it did. Used by `harness doctor`; the server never calls it on a request.
-func (a Agent) ProbeNow(ctx context.Context) ProbeReport {
-	switch {
-	case a.ProbeCommand == "":
-		return ProbeReport{Reason: "this agent has no login probe"}
-	case !a.Available:
-		return ProbeReport{Reason: "not run: the agent is not available"}
-	}
-	return probeOnce(ctx, a)
-}
-
-// LastProbe describes the cached background result, without running anything.
-func (a Agent) LastProbe() ProbeReport {
-	switch {
-	case a.ProbeCommand == "":
-		return ProbeReport{Reason: "this agent has no login probe"}
-	case a.LoggedIn == nil:
-		return ProbeReport{Reason: "no result yet or inconclusive"}
-	case *a.LoggedIn:
-		return ProbeReport{Ran: true, LoggedIn: a.LoggedIn, Reason: "the last probe exited 0"}
-	}
-	return ProbeReport{Ran: true, LoggedIn: a.LoggedIn, Reason: "the last probe exited non-zero"}
 }

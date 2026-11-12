@@ -1,7 +1,7 @@
 import type { Provider, ProviderList, ProviderModel, ProviderModelSource, ProviderRoles } from "@octo/agent-client";
 import { agentModelLabel, modelLabel } from "../models";
 import { jsonCodec, type Codec } from "../storage";
-import { connectAction, isReady, stateText } from "./providers";
+import { canUseAnyway, connectAction, isReady, stateText } from "./providers";
 
 /**
  * The model picker as data (decisions 53 a and 58), React-free: what a picker renders and how its keys move. The
@@ -35,6 +35,8 @@ export type PickerRow =
       providerId: string;
       /** The model chosen for this agent now, else its default model, when it names one (dim, right-aligned). */
       detail?: string;
+      /** The agent's launch command has not been run with Octo: a dim "experimental" after the label. */
+      experimental?: boolean;
     }
   | {
       /** Second level, first row: no model named, the agent decides (`acp:<agent>`). */
@@ -62,6 +64,12 @@ export type PickerRow =
       state: string;
       /** The row's action: "Connect", "Reconnect" or "How to connect". */
       action: string;
+      /** An agent the login probe says is logged out: "Check again" and "Use anyway" apply (the probe is advisory). */
+      unverified: boolean;
+      /** The agent's CLI cannot work with Octo: the row only says why (`reason`), it opens nothing. */
+      unsupported?: boolean;
+      reason?: string;
+      experimental?: boolean;
     };
 
 export type PickerGroup = { key: string; label: string; rows: PickerRow[] };
@@ -216,7 +224,17 @@ export function pickerView(list: ProviderList, opts: PickerOptions = {}): Picker
   for (const p of list.providers) {
     if (!isReady(p)) {
       if (matches(words, `${p.label} ${p.id}`))
-        unavailable.push({ kind: "connect", key: `connect:${p.id}`, providerId: p.id, label: p.label, state: stateText(p.state), action: connectAction(p) });
+        unavailable.push({
+          kind: "connect",
+          key: `connect:${p.id}`,
+          providerId: p.id,
+          label: p.label,
+          state: stateText(p.state),
+          action: connectAction(p),
+          unverified: canUseAnyway(p),
+          ...(p.state === "not_supported" ? { unsupported: true, reason: p.reason } : {}),
+          ...(p.experimental ? { experimental: true } : {}),
+        });
       continue;
     }
     if (p.kind === "agent") {
@@ -231,7 +249,15 @@ export function pickerView(list: ProviderList, opts: PickerOptions = {}): Picker
       // Decision 72 c: the row shows the model chosen now, else the agent's preferred model, else its own default (dim).
       const detail = chosen ? (shown ? agentModelLabel(shown) : chosen) : preferred ? agentModelLabel(preferred) : def ? agentModelLabel(def) : undefined;
       if (matches(words, `${p.label} ${p.id}`))
-        agents.push({ kind: "agent", key: `acp:${p.id}`, value: `acp:${p.id}`, label: p.label, providerId: p.id, ...(detail ? { detail } : {}) });
+        agents.push({
+          kind: "agent",
+          key: `acp:${p.id}`,
+          value: `acp:${p.id}`,
+          label: p.label,
+          providerId: p.id,
+          ...(detail ? { detail } : {}),
+          ...(p.experimental ? { experimental: true } : {}),
+        });
       // Decision 58: "copilot gpt" finds the model one level down — shown flat while searching.
       if (words.length > 0) for (const m of models) if (matches(words, `${p.label} ${p.id} ${m.label} ${m.id}`)) agents.push(agentModelRow(p, m, true));
       continue;

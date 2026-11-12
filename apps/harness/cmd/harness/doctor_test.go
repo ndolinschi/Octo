@@ -38,6 +38,7 @@ func fakePlugins(t *testing.T) string {
 	manifest := `{"name":"fake","version":"1","agents":[
 	 {"id":"gone","label":"Gone","command":"definitely-not-installed-xyz","install":"install the gone CLI","auth":{"hint":"log in to gone"}},
 	 {"id":"out","label":"Logged out","command":"sh","auth":{"probe":["sh","-c","exit 1"],"notLoggedInExit":[1],"hint":"run: out login"}},
+	 {"id":"loud","label":"Loud","command":"sh","auth":{"probe":["sh","-c","echo PROBE-OUTPUT-MARKER; exit 1"],"notLoggedInExit":[1],"hint":"x"}},
 	 {"id":"in","label":"Logged in","command":"sh","auth":{"probe":["sh","-c","exit 0"],"hint":"x"}},
 	 {"id":"req","label":"Needs a CLI","command":"sh","requires":["definitely-not-a-command-xyz"],"install":"install the xyz CLI"}]}`
 	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
@@ -168,7 +169,7 @@ func TestDiagnosticsEndpointAndTraceSetting(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &rep); err != nil {
 		t.Fatal(err)
 	}
-	if len(rep.Agents) != 4 || len(rep.LogTail) == 0 || rep.ACPTrace.Enabled || rep.Router.BaseURL != "http://127.0.0.1:1/x" {
+	if len(rep.Agents) != 5 || len(rep.LogTail) == 0 || rep.ACPTrace.Enabled || rep.Router.BaseURL != "http://127.0.0.1:1/x" {
 		t.Fatalf("report = %+v", rep)
 	}
 	// The trace switch is a setting and takes effect at once.

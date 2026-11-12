@@ -1,3 +1,5 @@
+import { autoDescription, charCount } from "../lib/notes";
+import { listed, newDemoNote } from "./notes";
 import type { Agent, ContentBlock, Message, Note, Tier } from "@octo/agent-client";
 import { agentById, clone, emit, newId, orchestratorOf, writeDemoFile, type ProjectRecord } from "./store";
 import { errorMessage } from "../lib/format";
@@ -152,11 +154,15 @@ function acpWrite(ctx: Ctx, spec: ToolSpec) {
 
 export function saveNote(ctx: Ctx, title: string, content: string, author: Note["author"] = "orchestrator"): void {
   const existing = ctx.rec.notes.find((n) => n.title === title);
-  const note: Note = existing
-    ? Object.assign(existing, { content, updated_at: iso(ctx) })
-    : { id: newId("note"), title, content, author, created_at: iso(ctx), updated_at: iso(ctx) };
+  const note = existing
+    ? Object.assign(
+        existing,
+        { content, size: charCount(content), updated_at: iso(ctx) },
+        existing.description_auto ? { description: autoDescription(content) } : {},
+      )
+    : newDemoNote(title, content, Date.parse(iso(ctx)), { author });
   if (!existing) ctx.rec.notes.push(note);
-  emit(ctx.rec, { type: "note.changed", note: clone(note), note_id: note.id });
+  emit(ctx.rec, { type: "note.changed", note: clone(listed(note)), note_id: note.id });
 }
 
 /** Spawn several sub-agents from one assistant message; they run concurrently. */

@@ -102,9 +102,15 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 	s.mu.Lock()
 	client, sessID := s.client, s.sessID
 	s.mu.Unlock()
+	rt.o.imgCaps.set(target.agent.ID, client.Capabilities().PromptImage)
+	images := rt.lastUserImages(ctx, orch.ID)
+	if len(images) > 0 && !client.Capabilities().PromptImage {
+		handler.finish(ctx, true)
+		return agent.Result{}, &ImagesUnsupported{AgentID: target.agent.ID, Label: target.agent.Label}
+	}
 	s.applyMode(ctx, rt, client, sessID)
 	endSpan := rt.trackSpan(ctx, orch.ID, "", changes.SourceACPTurn)
-	stop, err := client.Prompt(ctx, sessID, prompt, handler)
+	stop, err := client.PromptWith(ctx, sessID, prompt, images, handler)
 	if err != nil && ctx.Err() == nil && handler.idle() && connectionEnded(client) {
 		// The agent process died between turns and the harness had not noticed
 		// yet (its exit is seen asynchronously): the prompt never reached an agent
@@ -120,7 +126,7 @@ func (rt *runtime) runACPOrchestrator(ctx context.Context, orch projectstore.Age
 				s.mu.Lock()
 				client, sessID = s.client, s.sessID
 				s.mu.Unlock()
-				stop, err = client.Prompt(ctx, sessID, prompt2, handler)
+				stop, err = client.PromptWith(ctx, sessID, prompt2, images, handler)
 			}
 		}
 	}
@@ -198,6 +204,7 @@ func (s *orchSession) open(ctx context.Context, rt *runtime, orch projectstore.A
 	ag := t.agent
 	client, err := acp.Start(ctx, acp.Spec{
 		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
+		OnCommands: rt.o.commandsCallback(s, ag.ID),
 	})
 	if err != nil {
 		return false, startFailure(t, err)
@@ -331,7 +338,7 @@ func (o *Orchestrator) mcpServers(caps acp.Capabilities, pid, token string) (ser
 // recap of earlier conversation, and on a later turn by the project notes if
 // they changed since the agent last saw them.
 func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch projectstore.Agent, fresh bool) (string, error) {
-	msgs, err := rt.db.Messages(ctx, orch.ID)
+	msgs, err := rt.db.LiveMessages(ctx, orch.ID)
 	if err != nil {
 		return "", err
 	}
@@ -346,6 +353,19 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 		return "", errors.New("no user message to send")
 	}
 	request := messageText(msgs[last])
+	if msgs[last].Command != "" {
+		// An agent slash command is sent as the whole prompt: agents take a command only when
+		// the prompt starts with it. A new session's briefing waits for the next request.
+		s.mu.Lock()
+		s.unbriefed = s.unbriefed || fresh
+		s.mu.Unlock()
+		return request, nil
+	}
+	s.mu.Lock()
+	if s.unbriefed {
+		fresh, s.unbriefed = true, false
+	}
+	s.mu.Unlock()
 	_, notes := rt.orchestratorPromptParts()
 	notesHash := hashText(notes)
 
@@ -373,6 +393,9 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 			}
 			b.WriteString("\nEarlier in this conversation (assembled by the harness; you have no other memory of it):\n")
 			b.WriteString(as.text())
+			if co := rt.clearCarryOver(ctx, orch.ID); co != "" {
+				b.WriteString("\n" + co + "\n")
+			}
 			rt.setReceipt(as.receipt)
 			s.mu.Lock()
 			s.tasksSeen = projectstore.Now()
@@ -387,6 +410,7 @@ func (rt *runtime) acpTurnPrompt(ctx context.Context, s *orchSession, orch proje
 				b.WriteString(recap)
 				b.WriteString("\n")
 			}
+			b.WriteString(rt.memory().PreviousSessionPointer(ctx))
 		}
 		b.WriteString("\nUser request:\n")
 	case seen != notesHash:
@@ -421,7 +445,7 @@ func hashText(s string) string {
 }
 
 // syncNotes records the notes as they are after a turn as seen by the agent:
-// it wrote any changes itself (save_note), so only edits made between turns
+// it wrote any changes itself (write_note), so only edits made between turns
 // are announced with the next request. (A user's edit made while the turn runs
 // is folded in here and not announced.)
 func (rt *runtime) syncNotes(ctx context.Context, s *orchSession) {
@@ -445,10 +469,10 @@ func (rt *runtime) acpBriefing() string {
 		"in this conversation is the same user speaking about the same project.\n\n")
 	b.WriteString(rt.brief())
 	b.WriteString(`
-Harness tools: the harness gives you an MCP server named "octo-harness" with spawn_agent, save_note, delete_note, list_dir and the memory tools (task_update, memory, memory_search, recall_message).
+Harness tools: the harness gives you an MCP server named "octo-harness" with spawn_agent, write_note, read_note, search_notes, save_note, delete_note, list_dir and the memory tools (task_update, memory, memory_search, recall_message).
 - Keep your own context small; delegate self-contained work with spawn_agent. A sub-agent sees none of this conversation, so each task brief must be self-contained and say what report you expect. Its final report is returned as the tool result.
 - ` + rt.tierGuidance() + ` Issue several spawn_agent calls in one message to run independent sub-tasks in parallel.
-- Record durable intent, decisions and facts with save_note (upserts by title); delete stale notes with delete_note. Keep notes short.
+- Notes are your durable memory, shown to you as an index of descriptions: open a note with read_note only when its description is relevant, and use search_notes before saying you do not know. Record durable intent, decisions and facts with write_note (a one-line description you write, then the body in Markdown); delete stale notes with delete_note. Keep notes short.
 - Your own file and shell tools work only inside the project folders.
 - Answer the user concisely in markdown: what was found or changed, and what remains.
 ` + memoryGuidance)
@@ -473,12 +497,12 @@ func messageText(m projectstore.Message) string {
 // recapMaxMessages of them), newest kept first, in order, and all within
 // RecapCap characters. Tool calls and results are left out.
 func (rt *runtime) recap(ctx context.Context, agentID string, before []projectstore.Message) (string, error) {
-	if len(before) == 0 {
-		return "", nil
-	}
 	comp, ok, err := rt.db.LatestCompaction(ctx, agentID)
 	if err != nil {
 		return "", err
+	}
+	if len(before) == 0 && !(ok && comp.Cleared) {
+		return "", nil
 	}
 	if ok {
 		return clip(comp.Summary, RecapCap), nil

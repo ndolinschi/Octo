@@ -23,7 +23,7 @@ packaging, memory), with the exact HTTP shapes in `apps/harness/docs/` (`v7.md`,
 
 Members of `Bridge` added after the first harness version are **optional** (`getSettings?`, `putSettings?`,
 `getDiagnostics?`, the v7 queue, changes, approvals, forms and secrets methods, `getTurnContext?`, the memory methods
-`listTasks?`, `listMemory?`, `getMemoryFile?`, `putMemoryFile?`, `deleteMemoryFile?`, `searchMemory?`): a host or the
+`listTasks?`, `listMemory?`, `getMemoryFile?`, `putMemoryFile?`, `deleteMemoryFile?`, `searchMemory?`, M4: `listMemorySessions?`, `getMemorySession?`, `forgetExchange?`): a host or the
 demo bridge may omit them and callers must check before calling. The reducer folds the matching events
 (`queue.updated`, `approval.*`, `input.*`, `change.recorded`, `project.attention`, `secrets.changed`, `task.updated`,
 `memory.updated`); `settings.changed` only advances `lastSeq` (a host refetches the settings itself).

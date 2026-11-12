@@ -87,7 +87,7 @@ func (o *Orchestrator) Compact(ctx context.Context, pid string) (CompactResult, 
 	}
 	switch {
 	case rt.isACPOrchestrator():
-		return CompactResult{}, CompactUnsupportedReason("the orchestrator is an ACP agent: it compacts its own context")
+		return CompactResult{}, CompactUnsupportedReason("the orchestrator is an ACP agent that does not advertise a compact command (it advertises its commands when its session starts): it compacts its own context")
 	case memory.ParseSettings(rt.info.MemoryJSON).Context == memory.ContextWindow:
 		return CompactResult{}, CompactUnsupportedReason("this project's memory mode is window: only recent exchanges are sent, there is no history to compact")
 	}
@@ -111,27 +111,13 @@ func (o *Orchestrator) Compact(ctx context.Context, pid string) (CompactResult, 
 	if count < 2 {
 		return CompactResult{}, ErrNothingToCompact
 	}
-	history, err := rt.loadHistory(ctx, orch.ID)
+	history, err := rt.loadHistoryWith(ctx, orch.ID, nil) // images become "[image: name, WxH]"
 	if err != nil {
 		return CompactResult{}, err
 	}
-	input := rt.redact(renderHistory(history, compactInputCap))
-	cctx, ccancel := context.WithTimeout(turnCtx, 120*time.Second)
-	defer ccancel()
-	loop := agent.Loop{
-		Client: o.opts.Client, Registry: tools.NewRegistry(), Model: rt.models.SideModel(), System: compactPrompt,
-		MaxTurns: 1, Stream: false, SessionID: "compact:" + orch.ID,
-		Sink:            &digestSink{rt: rt, agentID: orch.ID, role: "compact"},
-		NoPromptCaching: o.opts.NoPromptCaching, Limits: o.opts.Limits, Router: o.opts.Router,
-		Hints: rt.sideHints(), Gate: rt.loopGate(),
-	}
-	res, err := loop.Run(cctx, []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))})
+	summary, err := o.summarize(turnCtx, rt, orch.ID, "compact", compactPrompt, history)
 	if err != nil {
 		return CompactResult{}, err
-	}
-	summary := strings.TrimSpace(rt.redact(res.Text))
-	if summary == "" {
-		return CompactResult{}, errors.New("the model returned an empty summary; the history was left as it is")
 	}
 	c, err := db.AddManualCompaction(ctx, orch.ID, summary, count)
 	if err != nil {
@@ -185,4 +171,28 @@ func renderHistory(history []anthropic.MessageParam, max int) string {
 		s = "[... the oldest part of the conversation is left out ...]\n" + s[len(s)-max:]
 	}
 	return s
+}
+
+// summarize is one call of the side model that turns the history into a summary under the
+// given instructions; the call's usage is recorded under role.
+func (o *Orchestrator) summarize(ctx context.Context, rt *runtime, agentID, role, system string, history []anthropic.MessageParam) (string, error) {
+	input := rt.redact(renderHistory(history, compactInputCap))
+	cctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	loop := agent.Loop{
+		Client: o.opts.Client, Registry: tools.NewRegistry(), Model: rt.models.SideModel(), System: system,
+		MaxTurns: 1, Stream: false, SessionID: role + ":" + agentID,
+		Sink:            &digestSink{rt: rt, agentID: agentID, role: role},
+		NoPromptCaching: o.opts.NoPromptCaching, Limits: o.opts.Limits, Router: o.opts.Router,
+		Hints: rt.sideHints(), Gate: rt.loopGate(),
+	}
+	res, err := loop.Run(cctx, []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))})
+	if err != nil {
+		return "", err
+	}
+	summary := strings.TrimSpace(rt.redact(res.Text))
+	if summary == "" {
+		return "", errors.New("the model returned an empty summary; the history was left as it is")
+	}
+	return summary, nil
 }

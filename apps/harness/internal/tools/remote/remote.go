@@ -59,6 +59,7 @@ func Register(ctx context.Context, reg *tools.Registry, bases []string, cacheDir
 				Description: rt.Description,
 				InputSchema: rt.InputSchema,
 				Handle:      invokeHandler(client, toolBase, toolName),
+				Server:      serverLabel(base),
 			}
 			if err := reg.Register(d); err != nil {
 				return err
@@ -122,4 +123,13 @@ func invokeHandler(client *http.Client, base, name string) tools.Handler {
 		}
 		return text, false, nil
 	}
+}
+
+// serverLabel is how the context report names a tool server: the host of its
+// base URL (the whole string when it does not parse).
+func serverLabel(base string) string {
+	if u, err := url.Parse(base); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return base
 }

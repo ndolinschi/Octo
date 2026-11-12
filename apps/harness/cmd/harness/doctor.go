@@ -37,16 +37,21 @@ func diagnostics(cfg config.Config, reg *plugins.Registry, octo *router.Router, 
 // cmdDoctor prints what is needed to understand a problem: versions, the data
 // directory, the PATH agents get, each agent's resolution, login probe (run now)
 // and hints. `--json` prints the same as GET /v1/diagnostics (which also has the
-// log tail of a running harness). Takes the flags of serve.
+// log tail of a running harness). `--show-probe-output` also prints the first
+// 20 lines of each login probe's output (text only; it never goes in JSON).
+// Takes the flags of serve.
 func cmdDoctor(args []string) error {
-	asJSON := false
+	asJSON, showOutput := false, false
 	rest := args[:0:0]
 	for _, a := range args {
-		if a == "--json" {
+		switch a {
+		case "--json":
 			asJSON = true
-			continue
+		case "--show-probe-output":
+			showOutput = true
+		default:
+			rest = append(rest, a)
 		}
-		rest = append(rest, a)
 	}
 	chosen, dirWhy := doctorDataDir(rest)
 	if chosen != "" {
@@ -69,6 +74,7 @@ func cmdDoctor(args []string) error {
 	rep := diagnostics(cfg, reg, octo, ok, builtinWhy(why), nil, func(a plugins.Agent) plugins.ProbeReport { return a.ProbeNow(ctx) },
 		func(in *diag.Inputs) {
 			in.DataDirWhy = dirWhy
+			in.ShowProbeOutput = showOutput && !asJSON
 			// The desktop app starts the router and gives the harness its address;
 			// doctor starts nothing, so with the router switched on and no address
 			// the built-in loop is simply not checked, not broken.

@@ -12,6 +12,11 @@ type ContentBlock struct {
 	ToolUseID *string         `json:"tool_use_id,omitempty"`
 	Content   *string         `json:"content,omitempty"`
 	IsError   *bool           `json:"is_error,omitempty"`
+	// An image block ("image") names an attachment; Name is its file name.
+	AttachmentID *string `json:"attachment_id,omitempty"`
+	MediaType    *string `json:"media_type,omitempty"`
+	Width        *int    `json:"width,omitempty"`
+	Height       *int    `json:"height,omitempty"`
 }
 
 type rawBlock struct {
@@ -23,6 +28,11 @@ type rawBlock struct {
 	ToolUseID string          `json:"tool_use_id"`
 	Content   json.RawMessage `json:"content"`
 	IsError   bool            `json:"is_error"`
+
+	AttachmentID string `json:"attachment_id"`
+	MediaType    string `json:"media_type"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
 }
 
 // NormalizeContent converts stored SDK content JSON (a block array or a bare
@@ -42,6 +52,17 @@ func NormalizeContent(raw []byte) []ContentBlock {
 		switch b.Type {
 		case "text":
 			out = appendText(out, b.Text)
+		case "image":
+			if b.AttachmentID == "" {
+				continue
+			}
+			id, mt, w, h := b.AttachmentID, b.MediaType, b.Width, b.Height
+			blk := ContentBlock{Type: "image", AttachmentID: &id, MediaType: &mt, Width: &w, Height: &h}
+			if b.Name != "" {
+				name := b.Name
+				blk.Name = &name
+			}
+			out = append(out, blk)
 		case "tool_use":
 			in := b.Input
 			if len(in) == 0 {

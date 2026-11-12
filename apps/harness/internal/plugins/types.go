@@ -61,6 +61,15 @@ type Agent struct {
 	// in its environment (manifest billingEnv). FlatRate is already false in
 	// listings when the harness's own environment sets one.
 	BillingEnv []string `json:"billing_env,omitempty"`
+	// Verified: the launch command was run with Octo by the owner (manifest
+	// verified); false lists the agent as experimental. VerifiedNote says how far.
+	Verified     bool   `json:"verified"`
+	VerifiedNote string `json:"verified_note,omitempty"`
+	// Unsupported is why the agent cannot work with Octo (manifest unsupported);
+	// Available is false for it and nothing ever starts or probes it.
+	Unsupported string `json:"unsupported,omitempty"`
+	// StartHint is the manifest's remark for a launch rejected by the CLI.
+	StartHint string `json:"-"`
 	Launch
 
 	// Requires are the manifest's extra commands (server-side; diagnostics).
@@ -82,7 +91,10 @@ type Agent struct {
 	// service when it serves the agent; empty means the agent's own default.
 	// ProbeDone says the login probe has run at least once and is not running now
 	// (LoggedIn nil then means "unchecked", not "not asked yet").
-	ProbeDone      bool              `json:"-"`
+	ProbeDone bool `json:"-"`
+	// LastReport is how the last background probe came out (filled by the
+	// registry, like LoggedIn).
+	LastReport     ProbeReport       `json:"-"`
 	Roles          map[string]string `json:"-"`
 	PreferredModel string            `json:"-"`
 	// AuthMethods and AuthSkip steer which ACP auth methods are tried.

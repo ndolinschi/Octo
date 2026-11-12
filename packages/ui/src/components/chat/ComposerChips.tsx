@@ -59,12 +59,21 @@ function useChipMenu(onOpenChange: (open: boolean) => void) {
 }
 
 /** The project's model or agent (decision 58): the shared model control, the same one the title bar shows. */
-export function ModelChip(props: ChipProps & { value: string; title?: string | undefined; unavailable?: boolean; onChoose(value: string): void }) {
+export function ModelChip(
+  props: ChipProps & {
+    value: string;
+    title?: string | undefined;
+    unavailable?: boolean;
+    onChoose(value: string): void;
+    onChooseUnverified?: (value: string) => void;
+  },
+) {
   return (
     <ModelPicker
       label="Model"
       value={props.value}
       onChoose={props.onChoose}
+      onChooseUnverified={props.onChooseUnverified}
       bare={props.bare}
       disabled={props.disabled}
       side="top"

@@ -1379,3 +1379,75 @@
   background: var(--octo-warn);
 }
 /* /review */
+
+/* component library tokens (decision 90) */
+@theme {
+  /* One control size scale (lib/controls.ts). The older spellings below are aliases of the same pixels. */
+  --spacing-ctl-xs: 24px;
+  --spacing-ctl-sm: 28px;
+  --spacing-ctl-md: 32px;
+  --spacing-ctl-lg: 40px;
+  --spacing-chip: var(--spacing-ctl-xs);
+  --spacing-row: var(--spacing-ctl-sm);
+  --spacing-row-nav: var(--spacing-ctl-md);
+  --spacing-bar: var(--spacing-ctl-lg);
+  /* Minimum hit area of any control on a touch screen. */
+  --spacing-touch: 40px;
+}
+
+/* Coarse pointer or narrow window: written once here, never in a feature. */
+@custom-variant touch (@media (pointer: coarse), (max-width: 767.98px));
+
+/* An invisible 40px hit area around a control that keeps its visual size (static elements only; a control that is
+   absolute, fixed or sticky positions itself and must wrap itself if it needs the target). */
+@utility touch-hit {
+  @media (pointer: coarse), (max-width: 767.98px) {
+    &:where(:not(.absolute, .fixed, .sticky)) {
+      position: relative;
+    }
+    &::after {
+      content: "";
+      position: absolute;
+      inset-block: min(0px, calc((100% - var(--spacing-touch)) / 2));
+      inset-inline: min(0px, calc((100% - var(--spacing-touch)) / 2));
+    }
+  }
+}
+
+/* ScrollArea gutter="stable": reserve the scrollbar's width on its own edge. */
+@utility scroll-gutter {
+  scrollbar-gutter: stable;
+}
+
+/* Key hint (KeyHint): 16px box, 12px text, hairline in the current colour. */
+.octo-keyhint {
+  display: inline-grid;
+  min-width: 16px;
+  height: 16px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-2xs);
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1;
+  opacity: 0.7;
+}
+
+/* Skeleton (decision 77): a static muted shape; it pulses only while loading is in progress (decision 76). */
+.octo-skeleton {
+  background: var(--octo-hover);
+}
+.octo-skeleton[data-shimmer] {
+  animation: octo-skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes octo-skeleton-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .octo-skeleton[data-shimmer] {
+    animation: none;
+  }
+}

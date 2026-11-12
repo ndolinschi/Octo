@@ -86,7 +86,7 @@ func newProvEnv(t *testing.T, key string, agents ...map[string]any) *provEnv {
 	hub := events.NewHub()
 	var svcRef atomic.Pointer[project.Service]
 	prov := providers.New(providers.Options{
-		DataDir: data, Builtin: builtin, Agents: reg.Agents, Discovery: provDiscovery,
+		DataDir: data, Builtin: builtin, Agents: reg.Agents, Recheck: reg.Recheck, Fresh: reg.Fresh, Discovery: provDiscovery,
 		Defaults: func() config.Models {
 			if s := svcRef.Load(); s != nil {
 				return s.Defaults().Models

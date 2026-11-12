@@ -296,3 +296,9 @@ func (d *DB) AddOutputTokens(ctx context.Context, agentID, source, since string,
 	}
 	return true, tx.Commit()
 }
+
+// ResetContext forgets an agent's own report of its context occupancy (a clear).
+func (d *DB) ResetContext(ctx context.Context, id string) error {
+	_, err := d.sql.ExecContext(ctx, `UPDATE agents SET context_used = NULL, context_size = NULL WHERE id = ?`, id)
+	return err
+}

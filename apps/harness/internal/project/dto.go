@@ -67,6 +67,12 @@ type Project struct {
 	// ModelsUnavailable lists the stored models whose provider cannot run them
 	// now (never an error: the project is still readable and editable).
 	ModelsUnavailable []ModelIssue `json:"models_unavailable"`
+	// AcceptsImages says whether the project's orchestrator takes images:
+	// true for the built-in loop, what the ACP agent advertised
+	// (promptCapabilities.image) once it has been started, null before that
+	// (a message with images then asks the agent, and 422 images_unsupported
+	// refuses it).
+	AcceptsImages *bool `json:"accepts_images"`
 }
 
 func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error) {
@@ -103,6 +109,9 @@ func (s *Service) load(ctx context.Context, db *projectstore.DB) (Project, error
 	}
 	p.PendingApprovals, p.PendingInputs = s.turns.Attention(info.ID)
 	p.NeedsYou = p.PendingApprovals+p.PendingInputs > 0
+	if ok, known, _, err := s.turns.ImagesAccepted(ctx, info.ID, false); err == nil && known {
+		p.AcceptsImages = &ok
+	}
 	p.ModelsUnavailable = []ModelIssue{}
 	if s.provider != nil {
 		p.ModelsUnavailable = unusableModels(s.provider.Snapshot(), models)

@@ -1,0 +1,179 @@
+import { NOTE_LIMITS, type Note, type NoteDocument, type NoteInput } from "@octo/agent-client";
+import { useId, useRef, useState } from "react";
+import { errorMessage } from "../../lib/format";
+import { charCount, autoDescription, parseTags, pinState } from "../../lib/notes";
+import { Button } from "../primitives/Button";
+import { Field, Input, Textarea } from "../primitives/Field";
+import { Segmented } from "../primitives/Segmented";
+import { Markdown } from "../shared/Markdown";
+
+type View = "write" | "preview";
+
+/**
+ * The note form: title, a description agents see in the index, tags, the Markdown body (source, or a rendered preview)
+ * and the pin with its limits explained. Saves the fields; the harness keeps the front matter.
+ */
+export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[]; onCancel(): void; onSave(input: NoteInput): Promise<void> }) {
+  const { note } = props;
+  const [title, setTitle] = useState(note?.title ?? "");
+  const [description, setDescription] = useState(note && !note.description_auto ? note.description : "");
+  const [tags, setTags] = useState(note?.tags.join(", ") ?? "");
+  const [body, setBody] = useState(note?.content ?? "");
+  const [pinned, setPinned] = useState(note?.pinned ?? false);
+  const [view, setView] = useState<View>("write");
+  const [submitted, setSubmitted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const id = useId();
+
+  const derived = autoDescription(body);
+  const length = charCount(description);
+  const tooLong = length > NOTE_LIMITS.description;
+  const pin = pinState(props.notes, note ? { id: note.id, size: charCount(body) } : { size: charCount(body) });
+  const pinBlocked = pinned && !pin.canPin;
+  const titleError = submitted && !title.trim() ? "Give the note a title." : null;
+  const bodyError = submitted && !body.trim() ? "Write what should be remembered." : null;
+
+  const save = async () => {
+    setSubmitted(true);
+    if (!title.trim()) return titleRef.current?.focus();
+    if (!body.trim()) {
+      setView("write");
+      return bodyRef.current?.focus();
+    }
+    if (tooLong || pinBlocked) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await props.onSave({ title: title.trim(), description: description.trim(), tags: parseTags(tags), pinned, content: body });
+    } catch (e) {
+      setError(`Couldn't save the note: ${errorMessage(e)}. Try again.`);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      noValidate
+      aria-label={note ? `Edit ${note.title}` : "New note"}
+      className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-4 py-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          props.onCancel();
+        }
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
+      }}
+    >
+      <Field label="Title" htmlFor={`${id}-title`} error={titleError} errorId={`${id}-title-error`}>
+        <Input
+          id={`${id}-title`}
+          ref={titleRef}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          aria-invalid={titleError ? true : undefined}
+          aria-describedby={titleError ? `${id}-title-error` : undefined}
+          autoFocus
+        />
+      </Field>
+      <Field
+        label="Description"
+        htmlFor={`${id}-desc`}
+        hint={
+          <>
+            Agents see this line and open the note only when it is relevant.
+            {description.trim() === "" && derived !== "" && <> Left empty, it is taken from the first line.</>}
+          </>
+        }
+        error={tooLong ? `Shorten the description by ${length - NOTE_LIMITS.description} characters.` : null}
+        errorId={`${id}-desc-error`}
+      >
+        <div className="relative">
+          <Input
+            id={`${id}-desc`}
+            value={description}
+            placeholder={derived}
+            onChange={(e) => setDescription(e.target.value.replace(/\n/g, " "))}
+            aria-invalid={tooLong ? true : undefined}
+            aria-describedby={tooLong ? `${id}-desc-error` : undefined}
+            className="pr-16"
+          />
+          <span aria-live="off" className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-fg-3 tabular-nums">
+            {length}/{NOTE_LIMITS.description}
+          </span>
+        </div>
+      </Field>
+      <Field label="Tags" htmlFor={`${id}-tags`} optional>
+        <Input id={`${id}-tags`} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="deploy, rules" />
+      </Field>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex h-6 items-center justify-between gap-2">
+          <label htmlFor={`${id}-body`} className="text-sm text-fg-2">
+            Note (Markdown)
+          </label>
+          <Segmented<View>
+            label="Note view"
+            options={[
+              { id: "write", label: "Source" },
+              { id: "preview", label: "Preview" },
+            ]}
+            value={view}
+            onChange={setView}
+          />
+        </div>
+        {view === "write" ? (
+          <Textarea
+            id={`${id}-body`}
+            ref={bodyRef}
+            rows={12}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            spellCheck={false}
+            className="font-mono text-xs"
+            aria-invalid={bodyError ? true : undefined}
+            aria-describedby={bodyError ? `${id}-body-error` : undefined}
+          />
+        ) : (
+          <div className="min-h-[12rem] rounded-md border border-input-border px-3 py-2">
+            {body.trim() ? <Markdown text={body} className="octo-prose octo-prose-sm" /> : <p className="text-sm text-fg-3">Nothing to preview yet.</p>}
+          </div>
+        )}
+        {bodyError && (
+          <p id={`${id}-body-error`} className="text-xs text-err">
+            {bodyError}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="flex items-center gap-2 text-sm text-fg">
+          <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} className="size-4 accent-[var(--color-fg)]" />
+          Pin this note
+        </label>
+        <p className={pinBlocked ? "text-xs text-err" : "text-xs text-fg-3"}>
+          {pinBlocked
+            ? pin.reason
+            : `Agents get a pinned note whole in every request, for rules that must always apply: up to ${NOTE_LIMITS.pinned} notes, ${NOTE_LIMITS.pinnedChars.toLocaleString("en-US")} characters together.`}
+        </p>
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-err">
+          {error}
+        </p>
+      )}
+      <div className="flex items-center justify-end gap-1.5">
+        <Button size="sm" variant="ghost" onClick={props.onCancel}>
+          Cancel
+        </Button>
+        <Button size="sm" variant="primary" type="submit" disabled={busy}>
+          {note ? "Save" : "Add note"}
+        </Button>
+      </div>
+    </form>
+  );
+}

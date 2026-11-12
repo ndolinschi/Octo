@@ -227,6 +227,29 @@ t = [t for t in get("/v1/projects/%s/tasks" % pid)["tasks"] if any("Кишинё
 assert t["status"] == "done" and t["outcome"], t
 PY
 
+echo "== memory (M4): sessions, exchanges, search, forget"
+python3 - "$BASE" "$P6" <<'PY' || fail "sessions / exchanges / forget did not behave"
+import json, os, sys, urllib.parse, urllib.request
+base, pid = sys.argv[1], sys.argv[2]
+def call(method, path):
+    req = urllib.request.Request(base + path, method=method, headers={"Authorization": "Bearer " + os.environ["HARNESS_API_TOKEN"]})
+    r = urllib.request.urlopen(req)
+    return json.loads(r.read() or "null"), r.status
+sessions = call("GET", "/v1/projects/%s/memory/sessions" % pid)[0]["sessions"]
+assert len(sessions) == 1 and sessions[0]["open"] and sessions[0]["exchanges"] >= 2, sessions
+detail = call("GET", "/v1/projects/%s/memory/sessions/%s" % (pid, sessions[0]["id"]))[0]
+ex = detail["exchanges"]
+assert any("калькулятор" in e["request"] and e["status"] == "completed" and e["answer"] and e["model"] for e in ex), ex
+ru = [e for e in ex if "калькулятор" in e["request"]][0]
+hits = call("GET", "/v1/projects/%s/memory/search?q=%s&in=exchanges" % (pid, urllib.parse.quote("калькуляторами")))[0]["hits"]
+assert [h["id"] for h in hits] == [ru["id"]] and hits[0]["session_id"] == sessions[0]["id"], hits
+assert call("DELETE", "/v1/projects/%s/memory/exchanges/%s" % (pid, ru["id"]))[1] == 204
+after = call("GET", "/v1/projects/%s/memory/sessions/%s" % (pid, sessions[0]["id"]))[0]["exchanges"]
+marker = [e for e in after if e["id"] == ru["id"]][0]
+assert marker.get("removed") and marker["request"] == "" and marker["answer"] == "", marker
+assert call("GET", "/v1/projects/%s/memory/search?q=%s&in=exchanges" % (pid, urllib.parse.quote("калькулятор")))[0]["hits"] == []
+PY
+
 echo "== inline completion: off until a model is chosen, a suggestion, never-sent files, usage role"
 P7=$(newproject completion full)
 code=$(curl -s -o "$TMP/c.json" -w '%{http_code}' -X POST "$BASE/v1/projects/$P7/complete" -H 'content-type: application/json' \

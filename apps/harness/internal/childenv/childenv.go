@@ -24,6 +24,9 @@ var allowExact = map[string]bool{
 	"PATH": true, "HOME": true, "USER": true, "LOGNAME": true, "SHELL": true,
 	"LANG": true, "LANGUAGE": true, "TERM": true, "COLORTERM": true, "TZ": true,
 	"TMPDIR": true, "TEMP": true, "TMP": true, "PWD": true, "HOSTNAME": true,
+	// macOS: the text encoding CoreFoundation-based CLIs read; a credential
+	// store (keychain access) and locale handling depend on it.
+	"__CF_USER_TEXT_ENCODING": true,
 	// Display servers (GUI tools, browsers started by tests).
 	"DISPLAY": true, "WAYLAND_DISPLAY": true,
 	// Git over ssh needs the agent socket. This is the one deliberate

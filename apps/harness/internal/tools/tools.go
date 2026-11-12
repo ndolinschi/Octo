@@ -18,6 +18,9 @@ type Def struct {
 	Description string
 	InputSchema json.RawMessage
 	Handle      Handler
+	// Server names the tool server a remote tool comes from (the host of its
+	// base URL); empty for the harness's own tools. Only the context report reads it.
+	Server string
 }
 
 type Registry struct {

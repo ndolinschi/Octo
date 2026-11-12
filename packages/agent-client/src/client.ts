@@ -29,12 +29,16 @@ import type {
   ReviewDirtyFile,
 } from "./review";
 import type {
+  Attachment,
   Agent,
   ContextReceipt,
   MemoryFile,
   MemoryList,
   MemorySearchParams,
   MemorySearchResult,
+  MemorySession,
+  MemorySessionDetail,
+  MemorySessionsParams,
   Task,
   Diagnostics,
   Approval,
@@ -67,6 +71,9 @@ import type {
   Limit,
   Message,
   Note,
+  NoteDocument,
+  NoteInput,
+  NotePatch,
   Plugin,
   Project,
   ProjectInput,
@@ -84,6 +91,12 @@ import type {
   SettingsView,
   SideStarted,
   Transcript,
+  ClearResult,
+  CompactSentToAgent,
+  ConversationMarker,
+  RememberKind,
+  RememberedFact,
+  SlashCommands,
   UsageParams,
   UsageReport,
   WriteFileInput,
@@ -96,6 +109,11 @@ export class BridgeError extends Error {
   /** `model_unavailable` (422): the provider that would run the model, and what is missing. */
   readonly provider?: string;
   readonly reason?: string;
+  /**
+   * `model_unavailable` (422) only: the refusal rests on a login probe, which is advisory. Repeating the request with
+   * `force_unverified: true` is accepted. Never true for a missing command. Additive: absent on older harnesses.
+   */
+  readonly can_force?: boolean;
   /** The command the server says fixes this (`not_logged_in`: "gh auth login"); additive, absent when it sends none. */
   readonly command?: string;
   /** `dirty_working_copy` (409) of a working-copy checkout: the uncommitted changes. */
@@ -107,7 +125,14 @@ export class BridgeError extends Error {
     status: number,
     code: string,
     message: string,
-    detail?: { provider?: string; reason?: string; command?: string; files?: ReviewDirtyFile[]; repos?: RepoRef[] },
+    detail?: {
+      provider?: string;
+      reason?: string;
+      can_force?: boolean;
+      command?: string;
+      files?: ReviewDirtyFile[];
+      repos?: RepoRef[];
+    },
   ) {
     super(message);
     this.name = "BridgeError";
@@ -115,6 +140,7 @@ export class BridgeError extends Error {
     this.code = code;
     if (detail?.provider !== undefined) this.provider = detail.provider;
     if (detail?.reason !== undefined) this.reason = detail.reason;
+    if (detail?.can_force !== undefined) this.can_force = detail.can_force;
     if (detail?.command !== undefined) this.command = detail.command;
     if (detail?.files !== undefined) this.files = detail.files;
     if (detail?.repos !== undefined) this.repos = detail.repos;
@@ -125,6 +151,9 @@ export type FetchResponseLike = {
   ok: boolean;
   status: number;
   text(): Promise<string>;
+  /** Present on a real fetch Response: the binary body (attachments). */
+  arrayBuffer?(): Promise<ArrayBuffer>;
+  headers?: { get(name: string): string | null };
 };
 
 /** The part of AbortSignal the client passes on to fetch (this package builds without the DOM lib). */
@@ -133,6 +162,12 @@ export type AbortSignalLike = { readonly aborted: boolean };
 export type FetchLike = (
   url: string,
   init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignalLike },
+) => Promise<FetchResponseLike>;
+
+/** The same fetch, for binary bodies (attachments); the global `fetch` satisfies both. */
+export type BinaryFetchLike = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: Uint8Array; signal?: AbortSignalLike },
 ) => Promise<FetchResponseLike>;
 
 export type EventSourceLike = {
@@ -180,8 +215,10 @@ export interface Bridge {
   /** Cancels a running side question and deletes the side conversation. */
   clearSide(projectId: string): Promise<void>;
   listNotes(projectId: string): Promise<Note[]>;
-  createNote(projectId: string, input: { title: string; content: string }): Promise<Note>;
-  updateNote(projectId: string, noteId: string, patch: { title?: string; content?: string }): Promise<Note>;
+  /** One note with its body and Markdown source (lists leave bodies out). Optional: older harnesses return bodies in the list. */
+  getNote?(projectId: string, noteId: string): Promise<NoteDocument>;
+  createNote(projectId: string, input: NoteInput): Promise<NoteDocument>;
+  updateNote(projectId: string, noteId: string, patch: NotePatch): Promise<NoteDocument>;
   deleteNote(projectId: string, noteId: string): Promise<void>;
   listFiles(projectId: string, folder: string, path: string): Promise<FileEntry[]>;
   readFile(projectId: string, folder: string, path: string): Promise<FileContent>;
@@ -212,9 +249,9 @@ export interface Bridge {
    */
   refreshProviderModels?(id: string): Promise<Provider | null>;
   /**
-   * Looks at one provider again (installed? logged in?) without waiting for the next poll: the detail pane's
-   * "Check again" (decision 89 d). Optional; a host without it re-reads `listProviders`. Added by the harness work; the
-   * UI only calls it when present.
+   * `POST /v1/providers/{id}/recheck`: runs the agent's login probe now ("I have logged in: check again"; the detail
+   * pane's "Check again", decision 89 d) and answers the provider entry; `providers.updated` follows. 404 for an id that
+   * is not an agent. Optional; a host without it re-reads `listProviders`.
    */
   recheckProvider?(id: string): Promise<Provider | null>;
   /** `PUT /v1/providers/{id}/custom-models`: replaces the model names the user added for an agent. Optional. */
@@ -249,7 +286,16 @@ export interface Bridge {
    * that predates them keeps compiling; hosts check for presence.
    */
   /** Like sendMessage, but a message sent while a turn runs is queued (202) and resolves as `{ queued }`. */
-  sendOrQueueMessage?(projectId: string, text: string, opts?: { mode?: ProjectMode }): Promise<SendResult>;
+  sendOrQueueMessage?(projectId: string, text: string, opts?: { mode?: ProjectMode; attachments?: string[] }): Promise<SendResult>;
+  /**
+   * Parity B12: stores one image (raw bytes; the harness decides the type by sniffing and refuses above 5 MB: 413
+   * `attachment_too_large`, 415 `unsupported_media_type`). Optional like the v7 members.
+   */
+  uploadAttachment?(projectId: string, data: Uint8Array, opts?: { name?: string }): Promise<Attachment>;
+  /** Parity B12: the bytes of an attachment (for thumbnails and the preview). */
+  fetchAttachment?(projectId: string, attachmentId: string): Promise<{ data: ArrayBuffer; type: string }>;
+  /** Parity B13: stops the running side question, keeping the side conversation and its agent session. */
+  stopSide?(projectId: string): Promise<void>;
   getQueue?(projectId: string): Promise<QueueState>;
   editQueued?(projectId: string, queueId: string, text: string): Promise<QueuedMessage>;
   removeQueued?(projectId: string, queueId: string): Promise<void>;
@@ -272,7 +318,19 @@ export interface Bridge {
   /** Parity B5: cut the conversation back to a request and restore the files after it (see {@link RewindReport}). */
   rewind?(projectId: string, input: { message_id: number; dry_run?: boolean }): Promise<RewindReport>;
   /** Parity B7 (`POST /v1/projects/{id}/compact`; "Compact now" is hidden without it): summarise the conversation now; 409 `nothing_to_compact` / `compact_unsupported` / `turn_in_progress`. */
-  compactNow?(projectId: string): Promise<CompactResult>;
+  compactNow?(projectId: string): Promise<CompactResult | CompactSentToAgent>;
+  /** B11 (`GET .../slash-commands`): the Octo commands and the ACP agent's own; the menu is Octo-only without it. */
+  getSlashCommands?(projectId: string): Promise<SlashCommands>;
+  /**
+   * B11 (`POST .../clear`; `/clear`): tidy the project: the on-screen transcript restarts under a marker, the model's history is
+   * dropped and replaced by a short carry-over (a summary written now, the open tasks, a pointer to recall the rest). Nothing is deleted.
+   * 409 `turn_in_progress`.
+   */
+  clearConversation?(projectId: string): Promise<ClearResult>;
+  /** B11 (`POST .../facts`; `/remember <text>`): keep a note as a dated fact; `kind` defaults to `fact`. */
+  rememberFact?(projectId: string, input: { text: string; kind?: RememberKind; about?: string }): Promise<RememberedFact>;
+  /** B11 (`DELETE .../facts/{task}/{fact}`): the undo of a remembered item. */
+  forgetFact?(projectId: string, taskId: string, factId: string): Promise<void>;
   /** Parity B7: where the conversation as Markdown is (`GET`, `text/markdown`); the host downloads it. */
   exportConversationUrl?(projectId: string): string;
   /** Parity B7: past requests of all projects (the palette). */
@@ -306,6 +364,10 @@ export interface Bridge {
   putMemoryFile?(projectId: string, path: string, content: string, summary?: string): Promise<MemoryFile>;
   deleteMemoryFile?(projectId: string, path: string): Promise<void>;
   searchMemory?(projectId: string, params: MemorySearchParams): Promise<MemorySearchResult>;
+  /** M4: sessions, newest first (`before` is a `started_at` to page from), one session with its exchanges, forget one exchange. */
+  listMemorySessions?(projectId: string, params?: MemorySessionsParams): Promise<MemorySession[]>;
+  getMemorySession?(projectId: string, sessionId: string): Promise<MemorySessionDetail>;
+  forgetExchange?(projectId: string, exchangeId: string): Promise<void>;
   /*
    * Inline completion. Optional: HTTP bridge only, and not on the message bridge (an AbortSignal cannot cross a port).
    */
@@ -387,6 +449,8 @@ export type HttpBridgeOptions = {
    */
   token?: string;
   fetch?: FetchLike;
+  /** Used for attachment upload and download; defaults to the global `fetch`. */
+  fetchBinary?: BinaryFetchLike;
   EventSource?: EventSourceCtor;
 };
 
@@ -412,9 +476,16 @@ export const BRIDGE_EVENT_TYPES: readonly BridgeEventType[] = [
   "conversation.rewound",
   "message.steered",
   "context.updated",
+  "slash_commands.updated",
+  "conversation.cleared",
+  "fact.remembered",
+  "fact.forgotten",
   "side.delta",
   "side.done",
   "side.error",
+  "side.thinking",
+  "side.activity",
+  "side.tool",
   "settings.changed",
   "change.recorded",
   "approval.requested",
@@ -465,6 +536,7 @@ function toBridgeError(status: number, text: string): BridgeError {
     const detail = {
       ...(typeof err.provider === "string" ? { provider: err.provider } : {}),
       ...(typeof err.reason === "string" ? { reason: err.reason } : {}),
+      ...(typeof err.can_force === "boolean" ? { can_force: err.can_force } : {}),
       ...(typeof err.command === "string" && err.command.trim() ? { command: err.command.trim() } : {}),
       ...(Array.isArray(err.files) ? { files: err.files as ReviewDirtyFile[] } : {}),
       ...(Array.isArray(err.repos) ? { repos: err.repos as RepoRef[] } : {}),
@@ -473,6 +545,12 @@ function toBridgeError(status: number, text: string): BridgeError {
   }
   const snippet = text.trim().slice(0, 200);
   return new BridgeError(status, "http_error", snippet || `HTTP ${status}`);
+}
+
+function globalBinaryFetch(): BinaryFetchLike {
+  const f = (globalThis as { fetch?: BinaryFetchLike }).fetch;
+  if (!f) throw new BridgeError(0, "no_fetch", "no global fetch: pass `fetchBinary` in the options");
+  return f.bind(globalThis);
 }
 
 function globalFetch(): FetchLike {
@@ -495,7 +573,8 @@ function parseEvent(data: unknown): BridgeEvent | undefined {
 }
 
 /** What {@link createHttpBridge} returns: every method is implemented, the optional ones included. */
-export type HttpBridge = Bridge & Required<Pick<Bridge, "getSettings" | "putSettings" | "listProviders" | "refreshProviderModels" | "setProviderCustomModels">>;
+export type HttpBridge = Bridge &
+  Required<Pick<Bridge, "getSettings" | "putSettings" | "listProviders" | "refreshProviderModels" | "recheckProvider" | "setProviderCustomModels">>;
 
 export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   const base = options.baseUrl.replace(/\/+$/, "");
@@ -568,7 +647,11 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       if (!isRecord(body) || !Array.isArray(body.messages)) {
         throw new BridgeError(0, "invalid_response", 'missing "messages" in response');
       }
-      return { messages: body.messages as Message[], compactions: Array.isArray(body.compactions) ? (body.compactions as Transcript["compactions"]) : [] };
+      return {
+        messages: body.messages as Message[],
+        compactions: Array.isArray(body.compactions) ? (body.compactions as Transcript["compactions"]) : [],
+        ...(Array.isArray(body.conversations) ? { conversations: body.conversations as ConversationMarker[] } : {}),
+      };
     },
     sendMessage: async (id, text) => {
       const body = await request("POST", `${p(id)}/messages`, { text });
@@ -587,14 +670,50 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       const body = await request("POST", `${p(id)}/complete`, input, opts?.signal);
       return isRecord(body) && typeof body.text === "string" ? (body as CompletionResult) : null;
     },
+    stopSide: async (id) => {
+      await request("POST", `${p(id)}/side/stop`);
+    },
+    uploadAttachment: async (id, data, opts) => {
+      const doFetch = options.fetchBinary ?? globalBinaryFetch();
+      const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
+      if (token !== "") headers.Authorization = `Bearer ${token}`;
+      const name = opts?.name ? `?name=${encodeURIComponent(opts.name)}` : "";
+      let res: FetchResponseLike;
+      let text: string;
+      try {
+        res = await doFetch(`${base}${p(id)}/attachments${name}`, { method: "POST", headers, body: data });
+        text = await res.text();
+      } catch (e) {
+        throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
+      }
+      if (!res.ok) throw toBridgeError(res.status, text);
+      const body = parseJson(text);
+      if (!isRecord(body) || typeof body.id !== "string") throw new BridgeError(0, "invalid_response", 'missing "id" in response');
+      return body as unknown as Attachment;
+    },
+    fetchAttachment: async (id, attachmentId) => {
+      const doFetch = options.fetchBinary ?? globalBinaryFetch();
+      const headers: Record<string, string> = {};
+      if (token !== "") headers.Authorization = `Bearer ${token}`;
+      let res: FetchResponseLike;
+      try {
+        res = await doFetch(`${base}${p(id)}/attachments/${encodeURIComponent(attachmentId)}`, { method: "GET", headers });
+      } catch (e) {
+        throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
+      }
+      if (!res.ok) throw toBridgeError(res.status, await res.text());
+      if (!res.arrayBuffer) throw new BridgeError(0, "invalid_response", "this fetch cannot read binary bodies");
+      return { data: await res.arrayBuffer(), type: res.headers?.get("Content-Type") ?? "application/octet-stream" };
+    },
     askSide: (id, text) => request("POST", `${p(id)}/side`, { text }) as Promise<SideStarted>,
     listSide: (id) => unwrap<SideMessage[]>(request("GET", `${p(id)}/side`), "messages"),
     clearSide: async (id) => {
       await request("DELETE", `${p(id)}/side`);
     },
     listNotes: (id) => unwrap<Note[]>(request("GET", `${p(id)}/notes`), "notes"),
-    createNote: (id, input) => request("POST", `${p(id)}/notes`, input) as Promise<Note>,
-    updateNote: (id, noteId, patch) => request("PATCH", `${p(id)}/notes/${encodeURIComponent(noteId)}`, patch) as Promise<Note>,
+    getNote: (id, noteId) => request("GET", `${p(id)}/notes/${encodeURIComponent(noteId)}`) as Promise<NoteDocument>,
+    createNote: (id, input) => request("POST", `${p(id)}/notes`, input) as Promise<NoteDocument>,
+    updateNote: (id, noteId, patch) => request("PATCH", `${p(id)}/notes/${encodeURIComponent(noteId)}`, patch) as Promise<NoteDocument>,
     deleteNote: async (id, noteId) => {
       await request("DELETE", `${p(id)}/notes/${encodeURIComponent(noteId)}`);
     },
@@ -606,7 +725,10 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
     listLanguageServers: (id) => unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
     sendOrQueueMessage: async (id, text, opts) => {
-      const body = await request("POST", `${p(id)}/messages`, opts?.mode ? { text, mode: opts.mode } : { text });
+      const payload: Record<string, unknown> = { text };
+      if (opts?.mode) payload.mode = opts.mode;
+      if (opts?.attachments && opts.attachments.length > 0) payload.attachments = opts.attachments;
+      const body = await request("POST", `${p(id)}/messages`, payload);
       if (isRecord(body) && isRecord(body.queued)) return { queued: body.queued as QueuedMessage };
       if (isRecord(body) && isRecord(body.message)) return { message: body.message as unknown as Message };
       throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
@@ -632,7 +754,13 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     getLatestPlan: (id) => unwrap<Plan>(request("GET", `${p(id)}/plans/latest`), "plan"),
     approvePlan: (id, planId) => request("POST", `${p(id)}/plans/${encodeURIComponent(planId)}/approve`) as Promise<{ plan: Plan; message: Message }>,
     rewind: (id, input) => request("POST", `${p(id)}/rewind`, input) as Promise<RewindReport>,
-    compactNow: (id) => request("POST", `${p(id)}/compact`) as Promise<CompactResult>,
+    compactNow: (id) => request("POST", `${p(id)}/compact`) as Promise<CompactResult | CompactSentToAgent>,
+    getSlashCommands: (id) => request("GET", `${p(id)}/slash-commands`) as Promise<SlashCommands>,
+    clearConversation: (id) => request("POST", `${p(id)}/clear`) as Promise<ClearResult>,
+    rememberFact: (id, input) => request("POST", `${p(id)}/facts`, input) as Promise<RememberedFact>,
+    forgetFact: async (id, taskId, factId) => {
+      await request("DELETE", `${p(id)}/facts/${encodeURIComponent(taskId)}/${encodeURIComponent(factId)}`);
+    },
     exportConversationUrl: (id) => `${base}${p(id)}/export?format=md`,
     searchRequests: (query, limit) =>
       unwrap<RequestHit[]>(request("GET", `/v1/search?q=${encodeURIComponent(query)}${limit === undefined ? "" : `&limit=${limit}`}`), "results"),
@@ -745,6 +873,16 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       if (params.limit !== undefined) q.push(`limit=${params.limit}`);
       return request("GET", `${p(id)}/memory/search?${q.join("&")}`) as Promise<MemorySearchResult>;
     },
+    listMemorySessions: (id, params) => {
+      const q: string[] = [];
+      if (params?.limit !== undefined) q.push(`limit=${params.limit}`);
+      if (params?.before !== undefined) q.push(`before=${encodeURIComponent(params.before)}`);
+      return unwrap<MemorySession[]>(request("GET", `${p(id)}/memory/sessions${q.length ? `?${q.join("&")}` : ""}`), "sessions");
+    },
+    getMemorySession: (id, sid) => request("GET", `${p(id)}/memory/sessions/${encodeURIComponent(sid)}`) as Promise<MemorySessionDetail>,
+    forgetExchange: async (id, eid) => {
+      await request("DELETE", `${p(id)}/memory/exchanges/${encodeURIComponent(eid)}`);
+    },
     listDirs: (path) => request("GET", `/v1/fs/dirs?path=${encodeURIComponent(path)}`) as Promise<DirListing>,
     recentFolders: () => unwrap<FolderEntry[]>(request("GET", "/v1/fs/recent"), "entries"),
     pickFolder: (start) => request("POST", "/v1/fs/pick-folder", start === undefined ? undefined : { start }) as Promise<PickFolderResult>,
@@ -753,6 +891,7 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,
     refreshProviderModels: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/refresh-models`), id),
+    recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
     setProviderPrefs: async (id, prefs) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/prefs`, prefs), id),
     openLanguageServer: (id, serverId) =>

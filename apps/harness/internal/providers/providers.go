@@ -37,6 +37,8 @@ const (
 	StateNotConnected = "not_connected"
 	StateNotLoggedIn  = "not_logged_in"
 	StateNotInstalled = "not_installed"
+	// StateNotSupported: the agent's CLI has no ACP mode (manifest unsupported); reason says so.
+	StateNotSupported = "not_supported"
 	StateError        = "error"
 )
 
@@ -128,6 +130,11 @@ type Provider struct {
 	// delegation decided fast, balanced or deep ("" = the agent's default).
 	PreferredModel string `json:"preferred_model,omitempty"`
 	Roles          *Roles `json:"roles,omitempty"`
+	// Experimental (agents): the launch command comes from the agent's
+	// documentation and has not been run with Octo (manifest verified: false).
+	// ExperimentalNote says what is known.
+	Experimental     bool   `json:"experimental,omitempty"`
+	ExperimentalNote string `json:"experimental_note,omitempty"`
 }
 
 // Roles is the model per tier of one agent ("" = the agent's own default).
@@ -160,6 +167,9 @@ type Response struct {
 type Unavailable struct {
 	Provider string `json:"provider"`
 	Reason   string `json:"reason"`
+	// CanForce: the refusal rests on a login probe, which is advisory; the same
+	// request with force_unverified is accepted. Never set for not_installed.
+	CanForce bool `json:"can_force"`
 }
 
 // RouterState is the Octo router detection (router.Router).
@@ -177,6 +187,11 @@ type Options struct {
 	Router RouterState
 	// Agents lists the ACP agents of the loaded plugins, manifest models only.
 	Agents func() []plugins.Agent
+	// Recheck runs an agent's login probe now (plugins.Registry.Recheck); Fresh
+	// does so unless a probe ran a moment ago (Registry.Fresh), for a request
+	// about to be refused. Nil: the cached login is all there is.
+	Recheck func(ctx context.Context, id string) (plugins.Agent, bool)
+	Fresh   func(ctx context.Context, id string) (plugins.Agent, bool)
 	// Defaults are the current default models (the HARNESS_MODEL_* settings).
 	Defaults func() config.Models
 	// Publish is told the new connected count when the picture changed (see
@@ -318,11 +333,14 @@ func (s *Service) agentProvider(a plugins.Agent) Provider {
 	p := Provider{
 		ID: a.ID, Kind: KindAgent, Label: a.Label, InstallHint: a.InstallHint, LoginHint: a.Hint,
 		DefaultModel: a.DefaultModel, FlatRate: a.FlatRate, ModelsNote: a.ModelsNote, AcceptsCustomModel: true,
+		Experimental: !a.Verified, ExperimentalNote: a.VerifiedNote,
 	}
 	if p.Label == "" {
 		p.Label = a.ID
 	}
 	switch {
+	case a.Unsupported != "":
+		p.State, p.Reason = StateNotSupported, a.Unsupported
 	case !a.Available:
 		p.State = StateNotInstalled
 		p.Reason = a.UnavailableReason
@@ -477,7 +495,7 @@ func CheckIn(snap Response, model string) *Unavailable {
 		case p == nil:
 			return &Unavailable{Provider: agentID, Reason: fmt.Sprintf("unknown agent %q", agentID)}
 		case p.State != StateReady:
-			return &Unavailable{Provider: p.ID, Reason: describe(*p)}
+			return &Unavailable{Provider: p.ID, Reason: describe(*p), CanForce: p.State == StateNotLoggedIn}
 		}
 		return nil
 	}
@@ -496,6 +514,8 @@ func describe(p Provider) string {
 	var b strings.Builder
 	b.WriteString(p.Label)
 	switch p.State {
+	case StateNotSupported:
+		return p.Reason
 	case StateNotInstalled:
 		b.WriteString(" is not installed")
 	case StateNotLoggedIn:

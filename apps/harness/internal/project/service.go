@@ -32,11 +32,20 @@ type Turns interface {
 	Submit(ctx context.Context, projectID, text string) (projectstore.Message, *projectstore.QueuedMessage, error)
 	// SubmitMode is Submit with the mode chosen for this message.
 	SubmitMode(ctx context.Context, projectID, text, mode string) (projectstore.Message, *projectstore.QueuedMessage, error)
+	// SubmitAttach is SubmitMode with the ids of attached images.
+	SubmitAttach(ctx context.Context, projectID, text, mode string, attachments []string) (projectstore.Message, *projectstore.QueuedMessage, error)
+	// ImagesAccepted says whether the orchestrator takes images (known false: not found out yet; probe starts the agent to ask).
+	ImagesAccepted(ctx context.Context, projectID string, probe bool) (accepts, known bool, label string, err error)
 	// LatestPlan is the newest plan of a plan-mode turn; ApprovePlan approves it and starts an agent turn with it pinned.
 	// Rewind cuts the conversation back to a user request and restores the files after it.
 	Rewind(ctx context.Context, projectID string, messageID int64, dryRun bool) (orchestrator.RewindReport, error)
 	// Compact summarises the orchestrator's conversation now (manual compaction).
 	Compact(ctx context.Context, projectID string) (orchestrator.CompactResult, error)
+	// Clear starts a new conversation (B11); SlashCommands lists the Octo and agent slash commands;
+	// CompactViaAgent sends /compact to an ACP orchestrator that advertises it.
+	Clear(ctx context.Context, projectID string) (orchestrator.ClearResult, error)
+	SlashCommands(ctx context.Context, projectID string) (orchestrator.SlashReport, error)
+	CompactViaAgent(ctx context.Context, projectID string) (projectstore.Message, bool, error)
 	// Redact replaces the project's stored secret values in s.
 	Redact(projectID, s string) string
 	LatestPlan(ctx context.Context, projectID string) (projectstore.Plan, error)
@@ -55,6 +64,8 @@ type Turns interface {
 	// Complete answers one inline-completion request (no turn, no transcript).
 	Complete(ctx context.Context, projectID string, req completion.Request) (completion.Result, string, error)
 	CancelSide(projectID string)
+	// CloseSide stops a running side question and ends the side conversation's agent.
+	CloseSide(projectID string)
 	// CloseProject ends the project's ACP orchestrator process, if any.
 	CloseProject(projectID string)
 	// Approvals are the pending approval requests; ResolveApproval answers one.
@@ -83,6 +94,12 @@ type ACPAgents interface {
 // ProviderSource says which providers can run a model now (providers.Service).
 type ProviderSource interface {
 	Snapshot() providers.Response
+}
+
+// FreshChecker is what a ProviderSource can add: a check that re-runs a stale
+// login probe before refusing and honours force_unverified (providers.Service).
+type FreshChecker interface {
+	CheckFresh(ctx context.Context, model string, force bool) *providers.Unavailable
 }
 
 type Defaults struct {
@@ -129,8 +146,7 @@ func WithACPAgents(a ACPAgents) ServiceOption { return func(s *Service) { s.acpA
 func WithProviders(p ProviderSource) ServiceOption { return func(s *Service) { s.provider = p } }
 
 // ValidateModels checks the `acp:` entries of a models overlay (non-empty
-// fields): the agent must be loaded and available, and the model allowed. Side
-// questions use the Messages API, so Side may not name an ACP agent.
+// fields): the agent must be loaded and available, and the model allowed.
 func (s *Service) ValidateModels(m *config.Models) error {
 	if m == nil {
 		return nil
@@ -140,7 +156,7 @@ func (s *Service) ValidateModels(m *config.Models) error {
 		agents = s.acpAgent.Agents()
 	}
 	for field, v := range map[string]string{
-		"orchestrator": m.Orchestrator, "fast": m.Fast, "balanced": m.Balanced, "deep": m.Deep,
+		"orchestrator": m.Orchestrator, "fast": m.Fast, "balanced": m.Balanced, "deep": m.Deep, "side": m.Side,
 	} {
 		if err := plugins.ValidateACPRef(v, agents); err != nil {
 			return invalid("models.%s: %s", field, err)
@@ -151,9 +167,6 @@ func (s *Service) ValidateModels(m *config.Models) error {
 	}
 	if len(m.Completion) > 200 || strings.ContainsAny(m.Completion, " \t\n") {
 		return invalid("models.completion must be a model id, fast, balanced, deep or off")
-	}
-	if plugins.IsACPRef(m.Side) {
-		return invalid("models.side: side questions use the Messages API and cannot run on an ACP agent")
 	}
 	return validateAutoCandidates(m.AutoCandidates, agents)
 }
@@ -294,7 +307,7 @@ func (s *Service) Create(ctx context.Context, in Input) (Project, error) {
 		// A project that names no models gets what can run now.
 		sg := snap.Suggested
 		base.Orchestrator, base.Fast, base.Balanced, base.Deep = sg.Orchestrator, sg.Fast, sg.Balanced, sg.Deep
-		if err := checkModels(snap, in.Models, nil); err != nil {
+		if err := s.checkModels(ctx, snap, in.Models, nil, in.ForceUnverified); err != nil {
 			return Project{}, err
 		}
 	}
@@ -383,7 +396,7 @@ func (s *Service) Update(ctx context.Context, pid string, in Input) (Project, er
 		if s.provider != nil {
 			// Only a model that changes is checked: a client that sends the
 			// whole object back must still be able to edit the rest.
-			if err := checkModels(s.provider.Snapshot(), in.Models, &cur.Models); err != nil {
+			if err := s.checkModels(ctx, s.provider.Snapshot(), in.Models, &cur.Models, in.ForceUnverified); err != nil {
 				return Project{}, err
 			}
 		}
@@ -508,8 +521,10 @@ func modelFields(m config.Models) []struct{ field, model string } {
 }
 
 // checkModels is the first model of over (a create or patch body) that cannot
-// run according to snap, as a 422; fields equal to cur's are skipped.
-func checkModels(snap providers.Response, over, cur *config.Models) error {
+// run according to snap, as a 422; fields equal to cur's are skipped. A refusal
+// for a login is checked again with a fresh probe first, and force lets it
+// through (the login probe is advisory).
+func (s *Service) checkModels(ctx context.Context, snap providers.Response, over, cur *config.Models, force bool) error {
 	if over == nil {
 		return nil
 	}
@@ -523,7 +538,13 @@ func checkModels(snap providers.Response, over, cur *config.Models) error {
 		if f.model == "" || have[f.field+"\x00"+f.model] {
 			continue
 		}
-		if u := providers.CheckIn(snap, f.model); u != nil {
+		u := providers.CheckIn(snap, f.model)
+		if u != nil && u.CanForce {
+			if fc, ok := s.provider.(FreshChecker); ok {
+				u = fc.CheckFresh(ctx, f.model, force)
+			}
+		}
+		if u != nil {
 			return modelUnavailable(f.field, f.model, u)
 		}
 	}

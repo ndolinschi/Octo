@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -55,6 +56,8 @@ type Service struct {
 	Redact func(string) string
 	// Publish announces events (task.updated, memory.updated); may be nil.
 	Publish func(typ string, fields map[string]any)
+	// Now is the clock (the 6 h session rule); nil means time.Now.
+	Now func() time.Time
 
 	mu sync.Mutex
 }

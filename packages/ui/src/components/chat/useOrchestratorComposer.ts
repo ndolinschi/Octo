@@ -161,11 +161,11 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
           value: current,
           title: served?.asked ? `${served.asked} → ${served.name} (chosen → served by the router)` : undefined,
           unavailable: project?.models_unavailable?.some((i) => i.field === "orchestrator") === true,
-          choose: async (model) => {
+          choose: async (model, force) => {
             if (!project || model === project.models.orchestrator) return;
             setPending(model);
             try {
-              await update({ models: { orchestrator: model } });
+              await update({ models: { orchestrator: model }, ...(force ? { force_unverified: true } : {}) });
             } finally {
               setPending(null);
             }

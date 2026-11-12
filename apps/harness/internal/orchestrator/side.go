@@ -49,7 +49,7 @@ func (o *Orchestrator) Side(ctx context.Context, projectID, text string) (SideSt
 		cancel()
 		return SideStart{}, ErrSideInProgress
 	}
-	start, history, rt, err := o.beginSide(ctx, db, run.id, text)
+	start, history, rt, route, err := o.beginSide(ctx, db, run.id, text)
 	if err != nil {
 		cancel()
 		o.releaseSide(projectID, run)
@@ -59,6 +59,10 @@ func (o *Orchestrator) Side(ctx context.Context, projectID, text string) (SideSt
 	go func() {
 		defer o.wg.Done()
 		defer cancel()
+		if route.acp {
+			rt.runSideACP(sctx, run, route.target, text)
+			return
+		}
 		rt.runSide(sctx, run, history)
 	}()
 	return start, nil
@@ -93,31 +97,46 @@ func (o *Orchestrator) releaseSide(projectID string, run *side) {
 	}
 }
 
-// beginSide snapshots the context the question is answered from and stores the
-// question.
-func (o *Orchestrator) beginSide(ctx context.Context, db *projectstore.DB, sideID, text string) (SideStart, []anthropic.MessageParam, *runtime, error) {
+// sideRun is what answers a side question: an ACP agent (target) or the
+// built-in loop.
+type sideRun struct {
+	target acpTarget
+	acp    bool
+}
+
+// beginSide decides what answers the question, snapshots the context a
+// built-in answer is made from and stores the question. ErrNoProvider when
+// nothing can answer; nothing is stored then.
+func (o *Orchestrator) beginSide(ctx context.Context, db *projectstore.DB, sideID, text string) (SideStart, []anthropic.MessageParam, *runtime, sideRun, error) {
 	rt, err := o.newRuntime(ctx, db)
 	if err != nil {
-		return SideStart{}, nil, nil, err
+		return SideStart{}, nil, nil, sideRun{}, err
 	}
-	orch, err := db.Orchestrator(ctx)
+	target, isACP, err := rt.sideRoute()
 	if err != nil {
-		return SideStart{}, nil, nil, err
+		return SideStart{}, nil, nil, sideRun{}, err
 	}
-	history, err := rt.loadHistory(ctx, orch.ID)
-	if err != nil {
-		return SideStart{}, nil, nil, err
+	route := sideRun{target: target, acp: isACP}
+	var history []anthropic.MessageParam
+	if !isACP {
+		orch, err := db.Orchestrator(ctx)
+		if err != nil {
+			return SideStart{}, nil, nil, route, err
+		}
+		if history, err = rt.loadHistory(ctx, orch.ID); err != nil {
+			return SideStart{}, nil, nil, route, err
+		}
+		prior, err := db.SideMessages(ctx)
+		if err != nil {
+			return SideStart{}, nil, nil, route, err
+		}
+		history = sideHistory(history, prior, text)
 	}
-	prior, err := db.SideMessages(ctx)
-	if err != nil {
-		return SideStart{}, nil, nil, err
-	}
-	history = sideHistory(history, prior, text)
 	q, err := db.AppendSide(ctx, sideID, "user", text)
 	if err != nil {
-		return SideStart{}, nil, nil, err
+		return SideStart{}, nil, nil, route, err
 	}
-	return SideStart{SideID: sideID, Message: q}, history, rt, nil
+	return SideStart{SideID: sideID, Message: q}, history, rt, route, nil
 }
 
 // sideHistory is the request thread of a side question: the orchestrator's

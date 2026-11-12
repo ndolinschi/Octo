@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 )
@@ -77,6 +78,8 @@ type agent struct {
 	authed   bool
 	model    string
 	mode     string // current session mode (EnvModes)
+	commands []map[string]any
+	blocks   string // the content blocks of the last prompt (type, or image:mime:len)
 
 	sess    string // current session id ("" until session/new or session/load)
 	nSess   int
@@ -133,6 +136,9 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		caps := map[string]any{}
 		if a.opts.loadSession {
 			caps["loadSession"] = true
+		}
+		if a.opts.promptImage {
+			caps["promptCapabilities"] = map[string]any{"image": true}
 		}
 		if a.opts.mcpHTTP {
 			caps["mcpCapabilities"] = map[string]any{"http": true, "sse": false}
@@ -206,6 +212,7 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		a.mu.Unlock()
 		a.closeMCP()
 		a.respond(m.ID, a.sessionResult())
+		a.advertiseCommands(true)
 	case "session/load":
 		var p struct {
 			SessionID  string
@@ -236,18 +243,33 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		a.update(map[string]any{"sessionUpdate": "user_message_chunk", "content": textBlock("replayed user message")})
 		a.update(map[string]any{"sessionUpdate": "agent_message_chunk", "content": textBlock("replayed agent message")})
 		a.respond(m.ID, map[string]any{})
+		a.advertiseCommands(true)
 	case "session/prompt":
 		var p struct {
-			Prompt []struct{ Text string }
+			Prompt []struct {
+				Type     string
+				Text     string
+				Data     string
+				MimeType string
+			}
 		}
 		if err := json.Unmarshal(m.Params, &p); err != nil || len(p.Prompt) == 0 {
 			a.respondError(m.ID, -32602, "prompt required")
 			return
 		}
 		text := ""
+		var kinds []string
 		for _, b := range p.Prompt {
 			text += b.Text
+			if b.Type == "image" {
+				kinds = append(kinds, fmt.Sprintf("image:%s:%d", b.MimeType, len(b.Data)))
+			} else {
+				kinds = append(kinds, b.Type)
+			}
 		}
+		a.mu.Lock()
+		a.blocks = strings.Join(kinds, ",")
+		a.mu.Unlock()
 		pctx, cancel := context.WithCancel(ctx)
 		a.mu.Lock()
 		a.cancel = cancel

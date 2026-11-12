@@ -58,6 +58,22 @@ func (s *Service) ExportMarkdown(ctx context.Context, pid string) (name, md stri
 	if err != nil {
 		return "", "", err
 	}
+	clears, err := db.Clears(ctx, orch.ID)
+	if err != nil {
+		return "", "", err
+	}
+	type marker struct {
+		upto int64
+		text string
+	}
+	var marks []marker
+	for _, c := range comps {
+		marks = append(marks, marker{c.UptoMessageID, fmt.Sprintf("\n> History compacted%s (%s)\n", manualNote(c), c.CreatedAt)})
+	}
+	for _, c := range clears {
+		marks = append(marks, marker{c.UptoMessageID, fmt.Sprintf("\n---\n\n> %s (%s): what follows starts from a summary, not from what came before\n\n---\n", clearLabel(c.Title), c.CreatedAt)})
+	}
+	slices.SortStableFunc(marks, func(a, b marker) int { return int(a.upto - b.upto) })
 	results := map[string]projectstore.ContentBlock{}
 	for _, m := range msgs {
 		for _, b := range m.Content {
@@ -69,10 +85,10 @@ func (s *Service) ExportMarkdown(ctx context.Context, pid string) (name, md stri
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n_Conversation exported %s. Tool calls are one line each; stored secrets are redacted._\n", info.Name, s.now().UTC().Format("2006-01-02 15:04 UTC"))
 	n, answered := 0, false
-	next := 0 // next compaction marker to place
+	next := 0 // next marker (compaction or new conversation) to place
 	for _, m := range msgs {
-		for next < len(comps) && comps[next].UptoMessageID < m.ID {
-			fmt.Fprintf(&b, "\n> History compacted%s (%s)\n", manualNote(comps[next]), comps[next].CreatedAt)
+		for next < len(marks) && marks[next].upto < m.ID {
+			b.WriteString(marks[next].text)
 			next++
 		}
 		switch m.Role {
@@ -116,8 +132,8 @@ func (s *Service) ExportMarkdown(ctx context.Context, pid string) (name, md stri
 			}
 		}
 	}
-	for ; next < len(comps); next++ {
-		fmt.Fprintf(&b, "\n> History compacted%s (%s)\n", manualNote(comps[next]), comps[next].CreatedAt)
+	for ; next < len(marks); next++ {
+		b.WriteString(marks[next].text)
 	}
 	md = s.turns.Redact(pid, b.String())
 	slug := strings.Map(func(r rune) rune {

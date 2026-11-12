@@ -83,6 +83,20 @@ The built-in manifest lists them first. `GET /v1/plugins` gives each `available`
 
 The wording is in `plugins-examples/subscription-agents/plugin.json` (`install` and `auth.hint` per entry); copy the plugin to change it.
 
+## An agent that does not start in agent mode
+
+When the agent process exits during `initialize` and its stderr is an argument or usage error (`unexpected argument`, `unknown option|command|flag`, `unrecognized`, `Usage:`), the turn fails with `<Label> did not start in agent mode: its command \`<cmd args>\` was rejected ("<first stderr line, at most 200 characters, redacted>").` and the hint says the version may not support the Agent Client Protocol or uses a different flag, with the manifest's optional `startHint` first (antigravity: update `agy`). The raw `acp initialize: acp: connection closed` chain is never shown.
+
+### Changing an agent's launch arguments
+
+Built-in agents come from the embedded `subscription-agents` plugin. To change one, copy `apps/harness/plugins-examples/subscription-agents/` to `{data-dir}/plugins/subscription-agents/` (a plugin directory of the same name replaces the built-in one), edit `plugin.json` and restart the harness. For example, an agent whose CLI wants `serve --stdio` instead of `acp`:
+
+```json
+{ "id": "cursor", "label": "Cursor", "command": "cursor-agent", "args": ["serve", "--stdio"], "verified": true }
+```
+
+`args` replaces the launch arguments as a whole; `{modelArgs}` as an element marks where the model argument goes. Check `harness doctor` afterwards: the agent is listed without `experimental` once the entry says `"verified": true`.
+
 ## A failure is never silent
 
 Every way an ACP agent can fail ends the turn (orchestrator) or the sub-agent (a tool error to the orchestrator) with a message that says what to do:

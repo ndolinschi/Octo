@@ -46,6 +46,9 @@ func ValidateACPRef(ref string, agents []Agent) error {
 			}
 			continue
 		}
+		if a.Unsupported != "" {
+			return nil // refused as 422 model_unavailable with its reason by the provider check
+		}
 		if !a.Available {
 			return fmt.Errorf("ACP agent %q is loaded but not available (its command was not found)", id)
 		}

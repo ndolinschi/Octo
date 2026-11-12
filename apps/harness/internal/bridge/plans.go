@@ -40,6 +40,16 @@ func (s *Server) rewind(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) compact(w http.ResponseWriter, r *http.Request) {
+	// An ACP orchestrator that advertises a compact command gets "/compact" as a turn.
+	msg, sent, err := s.svc.CompactViaAgent(r.Context(), r.PathValue("pid"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if sent {
+		writeJSON(w, http.StatusAccepted, map[string]any{"sent_to_agent": true, "message": msg})
+		return
+	}
 	res, err := s.svc.Compact(r.Context(), r.PathValue("pid"))
 	if err != nil {
 		writeErr(w, err)

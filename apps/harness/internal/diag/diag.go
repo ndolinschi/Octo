@@ -36,6 +36,10 @@ type AgentReport struct {
 	LoginHint         string              `json:"login_hint,omitempty"`
 	InstallHint       string              `json:"install_hint,omitempty"`
 	FlatRate          bool                `json:"flat_rate"`
+	// Experimental: the launch command has not been run with Octo (manifest verified).
+	Experimental bool `json:"experimental"`
+	// Unsupported says why the agent cannot work with Octo (its CLI has no ACP mode); empty when it can.
+	Unsupported string `json:"unsupported,omitempty"`
 }
 
 // Requirement is one command an agent needs on PATH and whether it was found.
@@ -79,6 +83,9 @@ type Report struct {
 	ACPTrace TraceReport `json:"acp_trace"`
 	LogTail  []string    `json:"log_tail"`
 	Problems []string    `json:"problems"`
+	// ShowProbeOutput makes Text print the first lines of each probe's output
+	// (`harness doctor --show-probe-output`). Never in JSON, never served.
+	ShowProbeOutput bool `json:"-"`
 }
 
 // BuiltinReport is whether the Messages-API loop can run.
@@ -111,6 +118,8 @@ type Inputs struct {
 	Env   []string
 	// DataDirWhy says why DataDir was chosen (doctor).
 	DataDirWhy string
+	// ShowProbeOutput: see Report.ShowProbeOutput.
+	ShowProbeOutput bool
 	// RouterPending: OCTO_ROUTER_ENABLED is set but no base URL is known, because the
 	// desktop app starts the router and doctor does not. The built-in loop is then
 	// not reported as broken.
@@ -131,7 +140,7 @@ func Build(in Inputs) Report {
 		OS: runtime.GOOS, Arch: runtime.GOARCH, DataDir: in.DataDir, DataDirWhy: in.DataDirWhy, EnvSet: []string{}, Problems: []string{},
 		BuiltinLoop: BuiltinReport{Available: in.BuiltinOK, Reason: in.BuiltinWhy},
 		Router:      RouterReport{BaseURL: StripURL(in.BaseURL), Detected: in.RouterOn, Capabilities: append([]string{}, in.RouterCaps...)},
-		Agents:      []AgentReport{}, LogTail: []string{},
+		Agents:      []AgentReport{}, LogTail: []string{}, ShowProbeOutput: in.ShowProbeOutput,
 	}
 	for _, kv := range childenv.Build(env, nil) {
 		if v, ok := strings.CutPrefix(kv, "PATH="); ok {
@@ -147,7 +156,7 @@ func Build(in Inputs) Report {
 	for _, a := range in.Agents {
 		ar := AgentReport{
 			ID: a.ID, Label: a.Label, Available: a.Available, UnavailableReason: a.UnavailableReason,
-			LoginHint: a.Hint, InstallHint: a.InstallHint, FlatRate: a.FlatRate, Requires: []Requirement{}, Command: "not found",
+			LoginHint: a.Hint, InstallHint: a.InstallHint, FlatRate: a.FlatRate, Experimental: !a.Verified, Unsupported: a.Unsupported, Requires: []Requirement{}, Command: "not found",
 		}
 		if a.Available {
 			ar.Command = a.Command
@@ -166,6 +175,8 @@ func Build(in Inputs) Report {
 		}
 		r.Agents = append(r.Agents, ar)
 		switch {
+		case a.Unsupported != "":
+			// Not a problem to fix: the agent is listed as not supported.
 		case !a.Available:
 			r.Problems = append(r.Problems, fmt.Sprintf("%s: not available (%s). %s", a.ID, a.UnavailableReason, a.InstallHint))
 		case ar.Probe.LoggedIn != nil && !*ar.Probe.LoggedIn:
@@ -235,6 +246,8 @@ func (r Report) Text() string {
 	for _, a := range r.Agents {
 		state := "ready"
 		switch {
+		case a.Unsupported != "":
+			state = "not supported: " + a.Unsupported
 		case !a.Available:
 			state = "not installed / not available"
 		case a.Probe.LoggedIn != nil && !*a.Probe.LoggedIn:
@@ -243,6 +256,23 @@ func (r Report) Text() string {
 			state = "available, login unknown"
 		}
 		fmt.Fprintf(&b, "- %s (%s): %s\n    command: %s\n    probe: %s\n", a.ID, a.Label, state, a.Command, a.Probe.Reason)
+		if a.Experimental {
+			fmt.Fprintf(&b, "    experimental: the launch command comes from the agent's documentation and has not been run with Octo\n")
+		}
+		if a.Probe.Rule != "" && a.Probe.Rule != plugins.RuleNone {
+			status := "none (no exit)"
+			if a.Probe.ExitStatus != nil {
+				status = fmt.Sprint(*a.Probe.ExitStatus)
+			}
+			fmt.Fprintf(&b, "    probe decided by: %s; exit status: %s; took %d ms; working directory: %s\n    probe environment (names only): %s\n",
+				a.Probe.Rule, status, a.Probe.DurationMS, a.Probe.Dir, strings.Join(a.Probe.EnvNames, ", "))
+		}
+		if r.ShowProbeOutput && a.Probe.Ran {
+			fmt.Fprintf(&b, "    probe output (first %d lines):\n", len(a.Probe.Output))
+			for _, l := range a.Probe.Output {
+				fmt.Fprintf(&b, "      | %s\n", l)
+			}
+		}
 		for _, q := range a.Requires {
 			fmt.Fprintf(&b, "    requires %s: %s\n", q.Command, q.Found)
 		}

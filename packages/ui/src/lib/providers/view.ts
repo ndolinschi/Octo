@@ -20,11 +20,19 @@ export function groupOf(p: Pick<Provider, "state">): ProviderGroupId {
       return "attention";
     case "not_installed":
     case "not_connected":
+    case "not_supported":
       return "not_set_up";
   }
 }
 
-const TONE: Record<ProviderState, Tone> = { ready: "ok", not_logged_in: "warn", error: "err", not_installed: "muted", not_connected: "muted" };
+const TONE: Record<ProviderState, Tone> = {
+  ready: "ok",
+  not_logged_in: "warn",
+  error: "err",
+  not_installed: "muted",
+  not_connected: "muted",
+  not_supported: "muted",
+};
 export const stateTone = (p: Pick<Provider, "state">): Tone => TONE[p.state];
 
 const count = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
@@ -89,6 +97,7 @@ export type PrimaryAction = "Connect" | "Check again";
 export function primaryAction(p: Pick<Provider, "state" | "kind">): PrimaryAction | null {
   switch (p.state) {
     case "ready":
+    case "not_supported":
       return null;
     case "not_connected":
       return "Connect";
@@ -111,6 +120,10 @@ export function reasonLine(p: Pick<Provider, "state" | "kind" | "reason">): stri
   switch (p.state) {
     case "ready":
       return "";
+    case "not_supported": {
+      const r = p.reason.trim();
+      return r || "This agent's command line cannot work with Octo.";
+    }
     case "not_installed":
       return "This agent is not on this machine yet. Install it, log in once, then check again.";
     case "not_logged_in":

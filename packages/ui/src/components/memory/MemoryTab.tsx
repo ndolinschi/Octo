@@ -18,7 +18,7 @@ export function MemoryTab() {
   const [start] = useState<MemoryView | undefined>(() => {
     const asked = ws.memory.get(toolTab("memory"), MEMORY_START);
     if (asked) ws.memory.set(toolTab("memory"), MEMORY_START, "");
-    return asked === "context" || asked === "files" || asked === "search" || asked === "tasks" ? asked : undefined;
+    return asked === "sessions" || asked === "context" || asked === "files" || asked === "search" || asked === "tasks" ? asked : undefined;
   });
   return (
     <MemoryPanel

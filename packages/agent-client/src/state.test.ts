@@ -48,7 +48,20 @@ function msg(id: number, agentId: string, role: Message["role"] = "assistant"): 
 }
 
 function note(id: string, title = id): Note {
-  return { id, title, content: "", author: "user", created_at: "t", updated_at: "t" };
+  return {
+    id,
+    title,
+    description: "",
+    description_auto: true,
+    tags: [],
+    pinned: false,
+    size: 0,
+    author: "user",
+    created_at: "t",
+    updated_at: "t",
+    last_read_at: "",
+    read_count: 0,
+  };
 }
 
 test("agent.created/updated upsert and keep order", () => {

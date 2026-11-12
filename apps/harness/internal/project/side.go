@@ -18,6 +18,14 @@ func (s *Service) AskSide(ctx context.Context, pid, text string) (orchestrator.S
 	switch {
 	case errors.Is(err, orchestrator.ErrSideInProgress):
 		return start, sideInProgress()
+	case errors.Is(err, orchestrator.ErrNoProvider):
+		e := noProvider()
+		e.Message = "Nothing can answer a side question. Connect a provider in Settings, or choose a side model."
+		if errors.Unwrap(err) != nil {
+			_, detail, _ := strings.Cut(err.Error(), ": nothing can answer a side question: ")
+			e.Message = "Nothing can answer a side question: " + detail + ". Connect a provider in Settings, or choose a side model."
+		}
+		return start, e
 	case errors.Is(err, projectstore.ErrNotFound):
 		return start, notFound("project")
 	}
@@ -39,6 +47,16 @@ func (s *Service) ClearSide(ctx context.Context, pid string) error {
 	if err != nil {
 		return err
 	}
-	s.turns.CancelSide(pid)
+	s.turns.CloseSide(pid)
 	return db.ClearSide(ctx)
+}
+
+// StopSide stops the running side question, keeping the side conversation and
+// the agent session behind it.
+func (s *Service) StopSide(ctx context.Context, pid string) error {
+	if _, err := s.db(ctx, pid); err != nil {
+		return err
+	}
+	s.turns.CancelSide(pid)
+	return nil
 }

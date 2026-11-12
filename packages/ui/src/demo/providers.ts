@@ -1,6 +1,7 @@
 import {
   BridgeError,
   type Bridge,
+  type Models,
   type Diagnostics,
   type Provider,
   type ProviderModel,
@@ -16,7 +17,8 @@ import { ownerProviders } from "./providersOwner";
  * Demo providers, settings and diagnostics (decisions 53, 59; R1.5). Default: Claude Code ready, GitHub Copilot not
  * logged in, Grok not installed, no API key, no router. `?providers=none` (or `none: true`): Claude Code is not
  * logged in either, so Home shows the connect screen; entering any API key connects the API. `?providers=owner` is the
- * owner's live set of twelve (`providersOwner.ts`).
+ * owner's live set of twelve (`providersOwner.ts`). "Check again" on a logged-out agent keeps it logged out, unless
+ * `?recheck=ok` (the user has logged in since); "Use anyway" (`force_unverified`) works either way.
  */
 export type DemoProvidersOptions = { none?: boolean };
 
@@ -119,11 +121,22 @@ function noneFromUrl(): boolean {
 
 const delay = () => new Promise((r) => setTimeout(r, 120));
 
-export function demoProviders(
-  options: DemoProvidersOptions = {},
-): Required<
-  Pick<Bridge, "listProviders" | "refreshProviderModels" | "setProviderCustomModels" | "setProviderPrefs" | "getSettings" | "putSettings" | "getDiagnostics">
-> {
+export function demoProviders(options: DemoProvidersOptions = {}): Required<
+  Pick<
+    Bridge,
+    | "listProviders"
+    | "refreshProviderModels"
+    | "recheckProvider"
+    | "setProviderCustomModels"
+    | "setProviderPrefs"
+    | "getSettings"
+    | "putSettings"
+    | "getDiagnostics"
+  >
+> & {
+  /** The 422 `model_unavailable` a create or patch gets for a model whose agent cannot run (`can_force` for a login only). */
+  refuse(models: Partial<Models> | undefined, force: boolean | undefined): void;
+} {
   const none = options.none ?? noneFromUrl();
   // The file: id → value. Secrets are kept only to know they are set; they are never returned.
   const file = new Map<string, string | boolean | string[]>([["HARNESS_ACP_TRACE", false]]);
@@ -131,6 +144,8 @@ export function demoProviders(
   /** Per agent: names typed by the user (`custom-models`), and whether a refresh has found its models. */
   const custom = new Map<string, string[]>();
   const refreshed = new Set<string>();
+  /** Agents that passed a "Check again" (their login probe now says yes). */
+  const loggedIn = new Set<string>();
   const failed = new Map<string, string>();
   /** Per agent: preferred model and role models saved through `setProviderPrefs`. */
   const prefs = new Map<string, ProviderPrefs>();
@@ -206,8 +221,8 @@ export function demoProviders(
             id: "copilot",
             kind: "agent",
             label: "GitHub Copilot",
-            state: "not_logged_in",
-            reason: "not logged in",
+            state: loggedIn.has("copilot") ? "ready" : "not_logged_in",
+            reason: loggedIn.has("copilot") ? "" : "not logged in",
             install_hint: COPILOT_INSTALL,
             login_hint: COPILOT_LOGIN,
             models: [manifest("gpt-5"), manifest("claude-sonnet-5-5")],
@@ -276,6 +291,25 @@ export function demoProviders(
         refreshed.add(id);
       }
       return providers().providers.find((x) => x.id === id) ?? null;
+    },
+    recheckProvider: async (id) => {
+      await new Promise((r) => setTimeout(r, 700));
+      const p = providers().providers.find((x) => x.id === id);
+      if (!p || p.kind !== "agent") throw new BridgeError(404, "not_found", "no such agent");
+      if (p.state === "not_logged_in" && knob("recheck") === "ok") loggedIn.add(id);
+      trace("recheck", { id });
+      return providers().providers.find((x) => x.id === id) ?? null;
+    },
+    refuse: (models, force) => {
+      for (const value of Object.values(models ?? {})) {
+        if (typeof value !== "string" || !value.startsWith("acp:")) continue;
+        const p = providers().providers.find((x) => x.id === value.slice(4).split("/")[0]);
+        if (!p || p.state === "ready") continue;
+        const canForce = p.state === "not_logged_in";
+        if (canForce && force) continue;
+        const reason = `${p.label} is ${canForce ? "not logged in" : "not installed"}. ${canForce ? p.login_hint : p.install_hint}`;
+        throw new BridgeError(422, "model_unavailable", `models cannot run: ${reason}`, { provider: p.id, reason, can_force: canForce });
+      }
     },
     setProviderPrefs: async (id, change) => {
       await delay();

@@ -120,18 +120,24 @@ func (s *Server) agentMessages(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs, "compactions": marks})
+	convs, err := s.svc.Conversations(r.Context(), r.PathValue("pid"), r.PathValue("aid"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs, "compactions": marks, "conversations": convs})
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Text string  `json:"text"`
-		Mode *string `json:"mode"`
+		Text        string   `json:"text"`
+		Mode        *string  `json:"mode"`
+		Attachments []string `json:"attachments"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	msg, queued, err := s.svc.PostMessage(r.Context(), r.PathValue("pid"), in.Text, in.Mode)
+	msg, queued, err := s.svc.PostMessageWith(r.Context(), r.PathValue("pid"), in.Text, in.Mode, in.Attachments)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -158,38 +164,6 @@ func (s *Server) listNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notes": notes})
-}
-
-func (s *Server) createNote(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Title   string `json:"title"`
-		Content string `json:"content"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	n, err := s.notes.Create(r.Context(), r.PathValue("pid"), in.Title, in.Content)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, n)
-}
-
-func (s *Server) updateNote(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Title   *string `json:"title"`
-		Content *string `json:"content"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	n, err := s.notes.Update(r.Context(), r.PathValue("pid"), r.PathValue("nid"), in.Title, in.Content)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, n)
 }
 
 func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) {

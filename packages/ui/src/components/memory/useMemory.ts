@@ -1,4 +1,4 @@
-import type { ContextReceipt, MemoryFile, Task } from "@octo/agent-client";
+import type { ContextReceipt, MemoryFile, MemorySession, MemorySessionDetail, Task } from "@octo/agent-client";
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage } from "../../lib/format";
 import { isNotFound, type Load } from "../../lib/memory/load";
@@ -74,4 +74,27 @@ export function useReceipt(projectId: string, turnId: number): ReceiptLoad {
   const { bridge } = useApp();
   const get = bridge.getTurnContext;
   return useRead(`receipt|${projectId}|${turnId}`, get ? () => get.call(bridge, projectId, turnId) : null, 0, isNotFound);
+}
+
+/** Sessions, newest first (the latest 50), re-read after `memory.updated` (an exchange recorded or forgotten, a session ended). */
+export function useSessions(projectId: string): { load: Load<MemorySession[]>; reload(): void; tick: number } {
+  const { bridge } = useApp();
+  const { onEvent } = useProject();
+  const [tick, setTick] = useState(0);
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+  useEffect(() => onEvent((e) => e.type === "memory.updated" && setTick((t) => t + 1)), [onEvent]);
+  const list = bridge.listMemorySessions;
+  const load = useRead(`sessions|${projectId}`, list ? () => list.call(bridge, projectId, { limit: SESSION_PAGE }) : null, tick);
+  return { load: load.status === "none" ? { status: "loading" } : load, reload, tick };
+}
+
+/** The most sessions the list asks for; older ones are not paged in this view. */
+const SESSION_PAGE = 50;
+
+/** One session with its exchanges; `tick` moves on when the list was re-read, so a new exchange shows up. */
+export function useSession(projectId: string, sessionId: string, tick: number): Load<MemorySessionDetail> {
+  const { bridge } = useApp();
+  const get = bridge.getMemorySession;
+  const load = useRead(`session|${projectId}|${sessionId}`, get ? () => get.call(bridge, projectId, sessionId) : null, tick, isNotFound);
+  return load.status === "none" ? { status: "error", message: "This session is gone." } : load;
 }

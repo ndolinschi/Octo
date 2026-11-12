@@ -6,6 +6,7 @@
     {
       "id": "claude-code",
       "label": "Claude Code",
+      "verified": true,
       "flatRate": true,
       "billingEnv": [
         "ANTHROPIC_API_KEY"
@@ -53,6 +54,7 @@
     {
       "id": "copilot",
       "label": "GitHub Copilot",
+      "verified": true,
       "flatRate": true,
       "strengths": [
         "easy",
@@ -74,6 +76,7 @@
     {
       "id": "grok",
       "label": "Grok",
+      "verified": true,
       "flatRate": true,
       "billingEnv": [
         "XAI_API_KEY"
@@ -193,6 +196,7 @@
     {
       "id": "antigravity",
       "label": "Antigravity",
+      "startHint": "Your agy version may predate ACP support. Update it (`agy update`) and check `agy acp --help`.",
       "flatRate": true,
       "command": "agy",
       "args": [
@@ -245,7 +249,7 @@
       "args": [
         "exec",
         "--output-format",
-        "acp"
+        "acp-daemon"
       ],
       "modelArg": [
         "-m",

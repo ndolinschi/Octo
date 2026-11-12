@@ -39,6 +39,11 @@ const (
 	SideDelta   = "side.delta"
 	SideDone    = "side.done"
 	SideError   = "side.error"
+	// SideThinking, SideActivity and SideTool are the live activity of a side
+	// answer, like thinking.delta, agent.activity and tool.* of a turn.
+	SideThinking = "side.thinking"
+	SideActivity = "side.activity"
+	SideTool     = "side.tool"
 	// SettingsChanged carries the ids of settings a PUT /v1/settings changed
 	// (never values). It is delivered on every project stream.
 	SettingsChanged = "settings.changed"
@@ -51,6 +56,11 @@ const (
 	PlanApproved = "plan.approved"
 	// ConversationRewound says the conversation was cut back to a request.
 	ConversationRewound = "conversation.rewound"
+	// ConversationCleared says a new conversation started (POST /clear).
+	ConversationCleared = "conversation.cleared"
+	// SlashCommandsUpdated says the ACP agent's slash commands (or their pending state) changed:
+	// refetch GET /slash-commands.
+	SlashCommandsUpdated = "slash_commands.updated"
 	// MessageSteered says a queued message was injected into the running turn.
 	MessageSteered = "message.steered"
 	// ContextUpdated says the project's context report changed: refetch GET /context.

@@ -13,6 +13,8 @@ type QueuedMessage struct {
 	CreatedAt string `json:"created_at"`
 	// Mode is the mode chosen for this message ("": the project's).
 	Mode string `json:"mode,omitempty"`
+	// Attachments are the ids of the images that go with the message.
+	Attachments []string `json:"attachments,omitempty"`
 }
 
 // MaxQueue is the most messages a project queues.
@@ -23,7 +25,7 @@ var ErrQueueFull = errors.New("projectstore: queue full")
 
 // Queue returns the queued messages in order and whether the queue is paused.
 func (d *DB) Queue(ctx context.Context) ([]QueuedMessage, bool, error) {
-	rows, err := d.sql.QueryContext(ctx, `SELECT id, text, created_at, mode FROM queue ORDER BY seq`)
+	rows, err := d.sql.QueryContext(ctx, `SELECT id, text, created_at, mode, attachments FROM queue ORDER BY seq`)
 	if err != nil {
 		return nil, false, err
 	}
@@ -31,9 +33,11 @@ func (d *DB) Queue(ctx context.Context) ([]QueuedMessage, bool, error) {
 	out := []QueuedMessage{}
 	for rows.Next() {
 		var m QueuedMessage
-		if err := rows.Scan(&m.ID, &m.Text, &m.CreatedAt, &m.Mode); err != nil {
+		var att string
+		if err := rows.Scan(&m.ID, &m.Text, &m.CreatedAt, &m.Mode, &att); err != nil {
 			return nil, false, err
 		}
+		m.Attachments = decodeIDs(att)
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -53,6 +57,11 @@ func (d *DB) Enqueue(ctx context.Context, text string) (QueuedMessage, error) {
 
 // EnqueueMode is Enqueue with a mode chosen for the message.
 func (d *DB) EnqueueMode(ctx context.Context, text, mode string) (QueuedMessage, error) {
+	return d.EnqueueWith(ctx, text, mode, nil)
+}
+
+// EnqueueWith is EnqueueMode with the ids of attached images.
+func (d *DB) EnqueueWith(ctx context.Context, text, mode string, attachments []string) (QueuedMessage, error) {
 	tx, err := d.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return QueuedMessage{}, err
@@ -65,9 +74,9 @@ func (d *DB) EnqueueMode(ctx context.Context, text, mode string) (QueuedMessage,
 	if n >= MaxQueue {
 		return QueuedMessage{}, ErrQueueFull
 	}
-	m := QueuedMessage{ID: NewID("q"), Text: text, CreatedAt: Now(), Mode: mode}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO queue (id, seq, text, created_at, mode) VALUES (?, ?, ?, ?, ?)`,
-		m.ID, maxSeq+1, m.Text, m.CreatedAt, m.Mode); err != nil {
+	m := QueuedMessage{ID: NewID("q"), Text: text, CreatedAt: Now(), Mode: mode, Attachments: attachments}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO queue (id, seq, text, created_at, mode, attachments) VALUES (?, ?, ?, ?, ?, ?)`,
+		m.ID, maxSeq+1, m.Text, m.CreatedAt, m.Mode, encodeIDs(attachments)); err != nil {
 		return QueuedMessage{}, err
 	}
 	return m, tx.Commit()

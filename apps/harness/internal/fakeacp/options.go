@@ -59,6 +59,18 @@ const (
 	// EnvModes=1 advertises session modes (default, ask, plan) in session/new
 	// and serves session/set_mode; [mode] reports the current one.
 	EnvModes = "OCTO_FAKEACP_MODES"
+	// EnvCommands is a ';'-separated list of slash commands the agent
+	// advertises (available_commands_update) right after session/new and
+	// session/load, each "name|description|input hint" (description and hint
+	// optional). A prompt holding "[set-commands:<same list>]" replaces the list
+	// mid-session and advertises it again.
+	EnvCommands = "OCTO_FAKEACP_COMMANDS"
+	// EnvSummary="fail" makes the agent refuse the prompt that asks it for the summary of a
+	// session being cleared (any other value: it answers "Agent summary: ...").
+	EnvSummary = "OCTO_FAKEACP_SUMMARY"
+	// EnvPromptImage=1 advertises agentCapabilities.promptCapabilities.image;
+	// the [blocks] marker reports the content blocks of the prompt.
+	EnvPromptImage = "OCTO_FAKEACP_PROMPT_IMAGE"
 )
 
 // Auth method ids offered under EnvAuth.
@@ -85,6 +97,8 @@ type options struct {
 	mcpReject   bool
 	unique      bool
 	modes       bool
+	commands    []map[string]any
+	promptImage bool
 }
 
 func optionsFromEnv(args []string) options {
@@ -93,7 +107,7 @@ func optionsFromEnv(args []string) options {
 		via: os.Getenv(EnvModelsVia), refuseUnk: os.Getenv(EnvRefuseModel) == "1",
 		loadSession: os.Getenv(EnvLoadSession) == "1", mcpHTTP: os.Getenv(EnvMCPHTTP) == "1",
 		mcpReject: os.Getenv(EnvMCPReject) == "1", promptUsage: os.Getenv(EnvPromptUsage), unique: os.Getenv(EnvUniqueSessions) == "1",
-		modes: os.Getenv(EnvModes) == "1",
+		modes: os.Getenv(EnvModes) == "1", commands: parseCommandList(os.Getenv(EnvCommands)), promptImage: os.Getenv(EnvPromptImage) == "1",
 	}
 	for _, m := range strings.Split(os.Getenv(EnvModels), ",") {
 		if m = strings.TrimSpace(m); m != "" {
@@ -135,4 +149,25 @@ func (o options) initialModel() string {
 		return o.models[0]
 	}
 	return ""
+}
+
+// parseCommandList reads "name|description|hint;..." into availableCommands entries
+// (the schema's shape: input is {hint} and absent without a hint).
+func parseCommandList(s string) []map[string]any {
+	var out []map[string]any
+	for _, item := range strings.Split(s, ";") {
+		f := strings.Split(strings.TrimSpace(item), "|")
+		if f[0] == "" {
+			continue
+		}
+		c := map[string]any{"name": f[0], "description": ""}
+		if len(f) > 1 {
+			c["description"] = f[1]
+		}
+		if len(f) > 2 && f[2] != "" {
+			c["input"] = map[string]string{"hint": f[2]}
+		}
+		out = append(out, c)
+	}
+	return out
 }

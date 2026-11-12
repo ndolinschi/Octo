@@ -21,9 +21,10 @@ import type {
 export type SideState = {
   messages: SideMessage[];
   /** The answer in flight: its `side_id` and the text streamed so far. */
-  pending: { side_id: string; text: string } | null;
+  /** `thinking` and `activity` (parity B13) are the live state of an ACP side answer; both are dropped when it ends. */
+  pending: { side_id: string; text: string; thinking?: string; activity?: { kind: string; label: string; tool_use_id?: string } } | null;
   /** The last question that failed; cleared by the next question. */
-  error: { side_id: string; message: string } | null;
+  error: { side_id: string; message: string; code?: string; hint?: string } | null;
 };
 
 /** What waits for the user (v7): pending approvals and open forms, from events or a reload. */
@@ -267,8 +268,21 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     }
     case "side.delta": {
       const prior = state.side.pending?.side_id === event.side_id ? state.side.pending.text : "";
-      return { ...state, side: { ...state.side, pending: { side_id: event.side_id, text: prior + event.text } } };
+      const keep = state.side.pending?.side_id === event.side_id ? state.side.pending : null;
+      return { ...state, side: { ...state.side, pending: { ...keep, side_id: event.side_id, text: prior + event.text } } };
     }
+    case "side.thinking": {
+      const cur = state.side.pending?.side_id === event.side_id ? state.side.pending : { side_id: event.side_id, text: "" };
+      return { ...state, side: { ...state.side, pending: { ...cur, thinking: (cur.thinking ?? "") + event.text } } };
+    }
+    case "side.activity": {
+      const cur = state.side.pending?.side_id === event.side_id ? state.side.pending : { side_id: event.side_id, text: "" };
+      const activity: { kind: string; label: string; tool_use_id?: string } = { kind: event.kind, label: event.label };
+      if (event.tool_use_id !== undefined) activity.tool_use_id = event.tool_use_id;
+      return { ...state, side: { ...state.side, pending: { ...cur, activity } } };
+    }
+    case "side.tool":
+      return state;
     case "side.done": {
       const known = state.side.messages.some((m) => m.id === event.message.id);
       const messages = known ? state.side.messages : [...state.side.messages, event.message].sort((a, b) => a.id - b.id);
@@ -282,7 +296,7 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
         side: {
           messages: state.side.messages.filter((m) => m.side_id !== event.side_id),
           pending,
-          error: event.error === "cancelled" ? state.side.error : { side_id: event.side_id, message: event.error },
+          error: event.error === "cancelled" ? state.side.error : sideError(event),
         },
       };
     }
@@ -299,6 +313,10 @@ function reduce(state: ProjectState, event: BridgeEvent): ProjectState {
     case "conversation.rewound":
     case "message.steered":
     case "context.updated":
+    case "slash_commands.updated":
+    case "conversation.cleared":
+    case "fact.remembered":
+    case "fact.forgotten":
       return state; // views refetch (getLatestPlan, the transcript, getContext) or read the event themselves
     case "approval_rule.created":
     case "approval_rule.deleted":
@@ -462,4 +480,16 @@ export function withQueue(state: ProjectState, queue: { paused: boolean; message
 /** Replaces the task records with a loaded list (GET .../tasks). */
 export function withTasks(state: ProjectState, tasks: Task[]): ProjectState {
   return { ...state, tasks: Object.fromEntries(tasks.map((t) => [t.id, t])) };
+}
+
+function sideError(event: { side_id: string; error: string; code?: string; hint?: string }): {
+  side_id: string;
+  message: string;
+  code?: string;
+  hint?: string;
+} {
+  const e: { side_id: string; message: string; code?: string; hint?: string } = { side_id: event.side_id, message: event.error };
+  if (event.code !== undefined) e.code = event.code;
+  if (event.hint !== undefined) e.hint = event.hint;
+  return e;
 }

@@ -44,17 +44,13 @@ func TestNoBuiltinLoopOrchestratorTurnFailsWithoutUpstreamCall(t *testing.T) {
 	}
 }
 
-func TestNoBuiltinLoopSideQuestionFailsWithoutUpstreamCall(t *testing.T) {
+func TestNoBuiltinLoopSideQuestionIsNoProvider(t *testing.T) {
 	up := &upstreamCounter{}
 	r := newRigWith(t, up, orchestrator.Options{BuiltinUnavailable: config.NoBuiltinLoopMessage})
 	pid := r.project(t, 2)
-	a := r.api(t)
-	ch, cancel := r.hub.Subscribe(pid)
-	defer cancel()
-	_, id := a.ask(pid, "what is this?")
-	final, _ := awaitSide(t, ch, id)
-	if final.Error != config.NoBuiltinLoopMessage {
-		t.Fatalf("side error = %q, want the one message", final.Error)
+	status, body := r.api(t).do("POST", "/v1/projects/"+pid+"/side", map[string]string{"text": "what is this?"})
+	if e, _ := body["error"].(map[string]any); status != 409 || e["code"] != "no_provider" {
+		t.Fatalf("status %d body %v, want 409 no_provider", status, body)
 	}
 	if n := up.n.Load(); n != 0 {
 		t.Fatalf("%d upstream requests, want 0", n)

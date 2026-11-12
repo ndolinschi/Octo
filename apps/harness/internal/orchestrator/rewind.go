@@ -224,6 +224,7 @@ func (o *Orchestrator) Rewind(ctx context.Context, pid string, messageID int64, 
 		return rep, err
 	}
 	rep.MessagesCut, rep.AgentsCut = res.MessagesCut, res.AgentsCut
+	o.rewindBoundary(ctx, db, orch.ID)
 	if rep.ACPSessionReset {
 		if err := db.DeleteACPSession(ctx, orch.ID); err != nil {
 			return rep, err

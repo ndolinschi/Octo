@@ -23,6 +23,11 @@ type StartOpts struct {
 	Mode string
 	// PlanText, when set, is an approved plan pinned at the top of the agent's context.
 	PlanText string
+	// Command forces the message to run the ACP agent's slash command of that name (used by
+	// POST /compact, whose "/compact" is an Octo name the agent also advertises).
+	Command string
+	// Attachments are the ids of images stored with the message, in order.
+	Attachments []string
 }
 
 // ErrNotPlan etc: errors of the plan API (mapped by the service).
@@ -95,6 +100,9 @@ func (rt *runtime) guardMode(reg *tools.Registry) {
 	reg.Decorate(local.ToolWriteFile, refuse("writing files"))
 	reg.Decorate(local.ToolEdit, refuse("editing files"))
 	reg.Decorate(ToolSpawnAgent, refuse("delegating to a sub-agent"))
+	for _, name := range []string{ToolWriteNote, ToolSaveNote, ToolDeleteNote} {
+		reg.Decorate(name, refuse("writing notes"))
+	}
 	reg.Decorate(local.ToolBash, func(next tools.Handler) tools.Handler {
 		return func(ctx context.Context, input json.RawMessage) (string, bool, error) {
 			var in struct{ Command string }

@@ -5,6 +5,7 @@ export const SEARCH_KINDS: readonly { id: MemorySearchKind; label: string }[] = 
   { id: "facts", label: "Facts" },
   { id: "files", label: "Files" },
   { id: "messages", label: "Messages" },
+  { id: "exchanges", label: "Exchanges" },
 ];
 
 export type SearchForm = {
@@ -53,10 +54,15 @@ export function emptyText(message: string | undefined): string {
   return message && message.trim() !== "" ? message.charAt(0).toUpperCase() + message.slice(1) : NOTHING_MATCHES;
 }
 
-export const HIT_KIND_LABEL: Record<MemoryHit["kind"], string> = { task: "Task", fact: "Fact", file: "File", message: "Message" };
+export const HIT_KIND_LABEL: Record<MemoryHit["kind"], string> = { task: "Task", fact: "Fact", file: "File", message: "Message", exchange: "Exchange" };
 
-/** Where a hit opens: a task (a fact opens its task and marks the fact), a file, or a message in the chat. */
-export type HitTarget = { to: "task"; taskId: string; factId: string | null } | { to: "file"; path: string } | { to: "message"; messageId: number } | null;
+/** Where a hit opens: a task (a fact opens its task and marks the fact), a file, a message in the chat, or an exchange in its session. */
+export type HitTarget =
+  | { to: "task"; taskId: string; factId: string | null }
+  | { to: "file"; path: string }
+  | { to: "message"; messageId: number }
+  | { to: "session"; sessionId: string; exchangeId: string }
+  | null;
 
 /** A fact id as hits and receipts spell it: `<taskId>/<factId>`. */
 export function splitFactId(id: string): { taskId: string; factId: string } | null {
@@ -75,6 +81,8 @@ export function hitTarget(hit: MemoryHit): HitTarget {
     }
     case "file":
       return { to: "file", path: hit.id };
+    case "exchange":
+      return hit.session_id ? { to: "session", sessionId: hit.session_id, exchangeId: hit.id } : null;
     case "message": {
       const n = Number(hit.id);
       return Number.isInteger(n) ? { to: "message", messageId: n } : null;

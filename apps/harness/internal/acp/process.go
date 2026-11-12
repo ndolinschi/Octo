@@ -33,6 +33,10 @@ type Spec struct {
 	// Redact, when set, removes secrets from the agent's stderr lines before
 	// they are logged or quoted in an error.
 	Redact func(string) string
+	// OnCommands, when set, is called with the agent's slash commands every
+	// time it sends available_commands_update, also outside a prompt (agents
+	// send the first list right after the session is created).
+	OnCommands func([]Command)
 }
 
 type process struct {
@@ -130,6 +134,8 @@ type stderrLog struct {
 	mu     sync.Mutex
 	buf    bytes.Buffer
 	last   []byte
+	// firstLine is the first non-empty (redacted) line the agent wrote.
+	firstLine string
 }
 
 func (s *stderrLog) Write(p []byte) (int, error) {
@@ -157,6 +163,9 @@ func (s *stderrLog) line(l string) {
 	if len(l) > stderrLineCap {
 		l = l[:stderrLineCap] + "...(truncated)"
 	}
+	if s.firstLine == "" {
+		s.firstLine = strings.TrimSpace(strings.ToValidUTF8(l, ""))
+	}
 	s.tr.Stderr(l)
 	slog.Debug("acp agent stderr", "agent", s.name, "line", l)
 	s.last = append(s.last, l...)
@@ -173,6 +182,16 @@ func (s *stderrLog) tail() string {
 		s.line(string(s.buf.Next(s.buf.Len())))
 	}
 	return strings.TrimSpace(strings.ToValidUTF8(string(s.last), ""))
+}
+
+// first is the first non-empty line the agent wrote to stderr (redacted), "" when none.
+func (s *stderrLog) first() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.buf.Len() > 0 {
+		s.line(string(s.buf.Next(s.buf.Len())))
+	}
+	return s.firstLine
 }
 
 func mapValues(m map[string]string) []string {

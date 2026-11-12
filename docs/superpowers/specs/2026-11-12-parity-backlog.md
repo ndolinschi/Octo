@@ -190,3 +190,42 @@ provider than the project. Rules:
    edges, the composer at the bottom at full pane width inset.
 Acceptance: harness tests with the scripted agent (own session, writes denied, follow-up reuses the session, idle
 close, runs while the orchestrator's turn is running); UI tests and screenshots.
+
+### As built — B11 (harness and agent-client)
+
+Contracts and exact JSON: `apps/harness/docs/parity.md` (B11). Built as revised by the owner ("/clear tidies, it does not forget").
+
+- **Slash commands.** `GET /slash-commands`, event `slash_commands.updated`, `octo_command` refusal, agent commands recorded as `command` on the message and sent as the bare
+  prompt (the briefing of a new session waits for the next request). The agent's list is read through a client callback (`acp.Spec.OnCommands`), so the list that agents send right
+  after `session/new` (outside a prompt) is kept. `POST /compact` sends `/compact` to an ACP agent that advertises it (202 `sent_to_agent`). `/remember` is in the Octo list
+  (endpoint `POST /facts`). A command name that is both Octo's and the agent's is Octo's; the agent's version of such a name is reachable only where an endpoint forwards it (`/compact`).
+- **/clear.** A clear is a compaction row (`cleared`) whose summary is the carry-over (600 tokens at most: summary, open task titles, recall pointer), with `summary_source`, `title`,
+  `conversation_id`. Built-in loop: one fast-tier model call (role `summary`); ACP: the live session is asked (30 s, no stored turn); both fall back to a stored summary
+  (`summary_source: "stored"`). Transcript and export markers, `conversation.cleared`, session dropped, context report reset. Schema 9 (migration test from 8).
+- **remember.** Built-in tool for the orchestrator and sub-agents (and over MCP for an ACP orchestrator), stored as a fact in the turn's task record (3 per turn, kind/about/superseding,
+  `remembered_by`), `POST /facts` and `DELETE /facts/{task}/{fact}` for `/remember` and Undo, events `fact.remembered` / `fact.forgotten`.
+- **agent-client.** `getSlashCommands`, `clearConversation`, `rememberFact`, `forgetFact`, `compactNow` may answer `{sent_to_agent, message}`, `command` on messages, `conversations` on the
+  transcript, the four events (reducer no-ops); `packages/ui` untouched (its `tsc` passes).
+- **Verified:** Go unit tests (ACP command parsing in every shape, store migration from 8, carry-over bound and order, stored summary, memory remember/supersede/undo); bridge tests with the scripted
+  agent (list pending/known, update event, pass-through, refusal, `/compact` via the agent, clear with agent summary and with the stored fallback, 409 during a turn, new session without the old
+  messages, search and export after clear, facts endpoints); orchestrator tests with a capturing mock model (the next request holds the carry-over and none of the old messages, model failure falls
+  back to stored, the 3-per-turn cap, ask mode, undo); `e2e-parity.sh` case B11; agent-client tests.
+- **Not verified:** which commands each real agent advertises, and whether a real agent writes a usable summary within 30 s; the window memory mode's carry-over is covered by code, not by a test;
+  the UI (menu, marker, "Remembered" toast) is not built.
+## As built — B12/B13 (harness and agent-client)
+
+Built: B13 (own ACP session per project for the side conversation, writes and commands refused, the agent's ask mode, kept for follow-ups, closed on
+clear / project delete / shutdown / 15 min idle with an injectable clock, `side.thinking|activity|tool` events, `POST /side/stop`, `models.side` may name an
+ACP agent, typed 409 `no_provider`, usage rows role `side`) and B12 (attachments endpoint and store, `attachments` on messages and queue entries, image
+blocks to the built-in loop, ACP `image` blocks behind `promptCapabilities.image`, 422 `images_unsupported`, `accepts_images` on the project, compaction
+placeholder, context counts, 30-day cleanup). Exact JSON in `apps/harness/docs/parity.md`. Cause of the live failure: the side question always ran through
+the built-in loop (`internal/orchestrator/side_run.go`, the loop's `Gate: rt.loopGate()`), which fails with `config.NoBuiltinLoopMessage` when no key is
+configured, whatever the project's orchestrator was; the side route now decides first (`sideRoute` in `side_acp.go`).
+Verified: Go tests with the scripted ACP agent (own pid/session, follow-up reuses it, clear and idle close, writes and commands denied, ask mode, runs
+while the orchestrator hangs, stop keeps the session, `models.side` validation, 409 no_provider, usage role); attachment sniffing/limits/ids, upload
+and read endpoints, image blocks reaching the mock model, ACP image blocks, 422 without the capability, queued images, cleanup, schema 11 migration from
+8; agent-client tests; `scripts/e2e-parity.sh` cases for both.
+Not verified: any real agent (which agents advertise `promptCapabilities.image`; Copilot's side session and ask-mode names), the UI (nothing built), a
+model's actual reading of an image, WebP/GIF through a real model, `accepts_images` on the `/v1/providers` entry (left to the providers work). A
+side model that is an `acp:` agent other than the orchestrator's works the same way but was only tested with the same agent. The idle close is checked
+with a fake clock, not 15 real minutes.

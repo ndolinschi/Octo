@@ -7,6 +7,11 @@ export type ModelPickerProps = {
   /** The setting: a model id or `acp:<agent>[/<model>]`. */
   value: string;
   onChoose(value: string): void;
+  /**
+   * "Use anyway" for an agent the login probe says is logged out: choose `acp:<agent>` without the harness's login check
+   * (it is advisory). Without it the picker offers only "Check again" on such a row.
+   */
+  onChooseUnverified?: ((value: string) => void) | undefined;
   /** Offer the typed text as a model id of its own (project settings: any id the provider accepts). */
   custom?: boolean;
   disabled?: boolean;

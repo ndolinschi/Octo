@@ -15,6 +15,7 @@ import { Glyph } from "../primitives/Glyph";
 import { SkeletonRows } from "../primitives/InfoList";
 import { MenuButton } from "../primitives/MenuButton";
 import { Segmented } from "../primitives/Segmented";
+import { ViewTabs } from "../primitives/ViewTabs";
 import { Spinner } from "../primitives/Status";
 import { BranchList } from "./BranchList";
 import { ChecksMark, Counts, Notice, ROW } from "./parts";
@@ -160,7 +161,7 @@ function Picker(props: {
           </span>
         </header>
 
-        <ViewTabs value={view} onChange={setView} />
+        <ViewTabs<View> label="What to review" options={VIEWS} value={view} onChange={setView} className="px-0!" />
 
         {view === "branches" && <BranchList api={api} folder={folder} opening={opening} onOpen={(id, input) => void run(id, input)} />}
 
@@ -345,30 +346,5 @@ function OpenRow({ r, now, onOpen }: { r: ReviewSummary; now: number; onOpen(): 
         </span>
       </span>
     </button>
-  );
-}
-
-/**
- * The picker's views (decision 84), as a tab row with one hairline under the whole row. Built here because the shared
- * `ViewTabs` primitive does not exist in this base; the coordinator unifies them.
- */
-function ViewTabs({ value, onChange }: { value: View; onChange(v: View): void }) {
-  return (
-    <div role="tablist" aria-label="What to review" className="relative flex items-end gap-1">
-      <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-line" />
-      {VIEWS.map((v) => (
-        <button
-          key={v.id}
-          type="button"
-          role="tab"
-          aria-selected={value === v.id}
-          onClick={() => onChange(v.id)}
-          className={cn("relative h-8 press px-3 text-sm focus-inset max-md:h-10", value === v.id ? "text-fg" : "text-fg-3 hover:text-fg-2")}
-        >
-          {v.label}
-          {value === v.id && <span aria-hidden className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-fg" />}
-        </button>
-      ))}
-    </div>
   );
 }

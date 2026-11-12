@@ -33,7 +33,10 @@ export function MoreRow(props: { label: string; onClick(): void; expanded?: bool
   );
 }
 
-/** Placeholder rows while data loads (no text, no layout jump: same row height as the content). */
+/**
+ * Placeholder rows while data loads (no text, no layout jump: same row height as the content).
+ * @deprecated Use `SkeletonList` from `./Skeleton` (row sizes, two-line rows, optional pulse while loading).
+ */
 export function SkeletonRows({ count, widths = [64, 48, 72, 40] }: { count: number; widths?: number[] }) {
   return (
     <div aria-hidden className="flex flex-col">

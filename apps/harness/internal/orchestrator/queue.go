@@ -27,6 +27,11 @@ func (o *Orchestrator) Submit(ctx context.Context, pid, text string) (started pr
 
 // SubmitMode is Submit with a mode chosen for this message ("": the project's).
 func (o *Orchestrator) SubmitMode(ctx context.Context, pid, text, mode string) (started projectstore.Message, queued *projectstore.QueuedMessage, err error) {
+	return o.SubmitAttach(ctx, pid, text, mode, nil)
+}
+
+// SubmitAttach is SubmitMode with the ids of attached images (validated by the caller).
+func (o *Orchestrator) SubmitAttach(ctx context.Context, pid, text, mode string, attachments []string) (started projectstore.Message, queued *projectstore.QueuedMessage, err error) {
 	o.qmu.Lock()
 	defer o.qmu.Unlock()
 	db, err := o.store.Get(ctx, pid)
@@ -39,20 +44,20 @@ func (o *Orchestrator) SubmitMode(ctx context.Context, pid, text, mode string) (
 			return started, nil, qerr
 		}
 		if len(q) == 0 || paused {
-			msg, err := o.StartWith(ctx, pid, text, StartOpts{Mode: mode})
+			msg, err := o.StartWith(ctx, pid, text, StartOpts{Mode: mode, Attachments: attachments})
 			if !errors.Is(err, ErrTurnInProgress) {
 				return msg, nil, err
 			}
 		}
 	}
-	m, err := o.enqueue(ctx, db, text, mode)
+	m, err := o.enqueue(ctx, db, text, mode, attachments)
 	if err != nil {
 		return started, nil, err
 	}
 	return started, &m, nil
 }
 
-func (o *Orchestrator) enqueue(ctx context.Context, db *projectstore.DB, text, mode string) (projectstore.QueuedMessage, error) {
+func (o *Orchestrator) enqueue(ctx context.Context, db *projectstore.DB, text, mode string, attachments []string) (projectstore.QueuedMessage, error) {
 	q, _, err := db.Queue(ctx)
 	if err != nil {
 		return projectstore.QueuedMessage{}, err
@@ -63,7 +68,7 @@ func (o *Orchestrator) enqueue(ctx context.Context, db *projectstore.DB, text, m
 			return projectstore.QueuedMessage{}, err
 		}
 	}
-	m, err := db.EnqueueMode(ctx, text, mode)
+	m, err := db.EnqueueWith(ctx, text, mode, attachments)
 	if err != nil {
 		return m, err
 	}
@@ -165,8 +170,12 @@ func (o *Orchestrator) SendNow(ctx context.Context, pid, qid string, interrupt b
 		if err != nil {
 			return err
 		}
-		if !slices.ContainsFunc(q, func(m projectstore.QueuedMessage) bool { return m.ID == qid }) {
+		i := slices.IndexFunc(q, func(m projectstore.QueuedMessage) bool { return m.ID == qid })
+		if i < 0 {
 			return projectstore.ErrNotFound
+		}
+		if len(q[i].Attachments) > 0 {
+			return ErrSteerUnsupported // images cannot be injected mid-turn; wait or interrupt
 		}
 		if err := db.MoveQueuedFirst(ctx, qid); err != nil {
 			return err
@@ -233,7 +242,7 @@ func (o *Orchestrator) startNext(db *projectstore.DB) {
 		return
 	}
 	first := q[0]
-	if _, err := o.StartWith(ctx, db.ID(), first.Text, StartOpts{Mode: first.Mode}); err != nil {
+	if _, err := o.StartWith(ctx, db.ID(), first.Text, StartOpts{Mode: first.Mode, Attachments: first.Attachments}); err != nil {
 		if errors.Is(err, ErrTurnInProgress) {
 			return
 		}

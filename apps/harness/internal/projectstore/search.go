@@ -15,6 +15,9 @@ const (
 	DocFact    = "fact"
 	DocFile    = "file"
 	DocMessage = "message"
+	// DocNote is a project note; only SearchNotes asks for it, a search of any
+	// other kinds (or of none) never returns notes.
+	DocNote = "note"
 )
 
 // Doc is one searchable item. Ref identifies it within its kind (task id,
@@ -253,6 +256,9 @@ func (d *DB) matchIDs(ctx context.Context, table, match string, q SearchQuery) (
 	sqlq := `SELECT d.id, d.kind, d.ref, d.title, d.body, d.date, d.superseded, d.message_id, d.task_id
 		FROM ` + table + ` JOIN search_docs d ON d.id = ` + table + `.rowid WHERE ` + table + ` MATCH ?`
 	args := []any{match}
+	if len(q.Kinds) == 0 {
+		sqlq += ` AND d.kind <> '` + DocNote + `'`
+	}
 	if len(q.Kinds) > 0 {
 		sqlq += ` AND d.kind IN (?` + strings.Repeat(`,?`, len(q.Kinds)-1) + `)`
 		for _, k := range q.Kinds {

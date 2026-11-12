@@ -55,6 +55,12 @@ export type ProjectInput = {
   instructions?: string;
   folders?: { path: string; label?: string }[];
   models?: Partial<Models>;
+  /**
+   * Accept a model of an agent the login probe says is logged out (answer to a 422 `model_unavailable` whose
+   * `BridgeError.can_force` is true). The agent then starts normally and, if it really is logged out, the turn fails
+   * with its own message. A missing command is never forced.
+   */
+  force_unverified?: boolean;
   max_depth?: number;
   /** Spend cap in USD (> 0); null removes it (PATCH only). */
   budget_usd?: number | null;
@@ -125,6 +131,8 @@ export type Project = ProjectSummary & {
   review_workspace?: ReviewWorkspace | null;
   /** Stored models whose provider cannot run them now (see {@link ModelIssue}); empty when everything can run. */
   models_unavailable?: ModelIssue[];
+  /** Parity B12: whether the orchestrator takes images: true for the built-in loop, what the ACP agent advertised once it ran, null before that. */
+  accepts_images?: boolean | null;
 };
 
 export type Agent = {
@@ -172,8 +180,20 @@ export type Agent = {
   route_choice?: string | null;
 };
 
+/** Parity B12: an uploaded image (`POST …/attachments`); `id` is content-addressed (`att_` + 24 hex digits). */
+export type Attachment = {
+  id: string;
+  media_type: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  bytes: number;
+  width: number;
+  height: number;
+  name?: string;
+};
+
 export type ContentBlock =
   | { type: "text"; text: string }
+  /** Parity B12: an image the user attached; fetch its bytes with `fetchAttachment(projectId, attachment_id)`. */
+  | { type: "image"; attachment_id: string; media_type: string; width: number; height: number; name?: string }
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; tool_use_id: string; content: string; is_error: boolean };
 
@@ -185,6 +205,8 @@ export type Message = {
   created_at: string;
   /** The turn was stopped while this reply was being written (its text is cut). */
   stopped?: boolean;
+  /** B11: on a user message that ran an ACP agent's slash command, the command's name (without the slash). */
+  command?: string;
 };
 
 /** A transcript marker: the history up to and including message `upto_message_id` was replaced by a summary at `at`. */
@@ -200,8 +222,25 @@ export type CompactionMarker = {
   message_count?: number;
 };
 
-/** What `GET .../agents/{aid}/messages` returns: the raw messages plus the compaction markers. */
-export type Transcript = { messages: Message[]; compactions: CompactionMarker[] };
+/**
+ * B11: a transcript marker for `/clear`: a new session starts after message `upto_message_id` (the messages before it stay
+ * in the transcript, search and export). Show the transcript from the last marker on, under `label`
+ * ("New session · earlier: <title>"). `summary` is what the new session starts from; `summary_source` says who wrote its
+ * summary: the fast-tier `model` (built-in loop), the ACP `agent`, or the harness from what is `stored`.
+ */
+export type ConversationMarker = {
+  conversation_id: string;
+  upto_message_id: number;
+  at: string;
+  label: string;
+  title: string;
+  summary: string;
+  summary_source: SummarySource;
+};
+export type SummarySource = "model" | "agent" | "stored";
+
+/** What `GET .../agents/{aid}/messages` returns: the raw messages plus the compaction and new-session markers. */
+export type Transcript = { messages: Message[]; compactions: CompactionMarker[]; conversations?: ConversationMarker[] };
 
 export type ContextPartKey = "system" | "tools" | "notes" | "messages" | "tool_results" | "summary";
 export type ContextPart = { key: ContextPartKey; tokens: number };
@@ -234,11 +273,59 @@ export type ContextBreakdown = {
   categories?: ContextCategory[];
   /** The newest orchestrator request's usage as the model reported it (null before any). */
   last_request?: ContextLastRequest | null;
+  /** Parity B12: images in the messages of the next request and their estimated tokens (inside the messages part). */
+  images?: number;
+  image_tokens?: number;
+  /** Decision 88 (all absent on a harness that predates it): rows that could be in the window and are not (memory files; `loaded: false`, `tokens` = what loading would add). */
+  not_loaded?: ContextItem[];
+  /** Decision 88: the compaction buffer in tokens; 0 when the harness knows none (the router decides when to compact), then show no row. */
+  buffer_tokens?: number;
+  /** Decision 88: the five largest messages of the conversation (raw estimates of the whole message, overlapping `messages` and `tool_results`; not part of any sum). Largest first. */
+  largest_messages?: ContextLargeMessage[];
 };
 
 /** One slice of the context window (`GET …/context`, decision 65; parity B7 ids listed in {@link ContextCategoryId}, others possible). */
-export type ContextCategoryId = "system" | "instructions" | "tools" | "notes" | "memory" | "messages" | "tool_results" | "summary" | "current_request";
-export type ContextCategory = { id: ContextCategoryId | (string & {}); label: string; tokens: number };
+export type ContextCategoryId =
+  | "system"
+  | "instructions"
+  | "tools"
+  | "mcp_tools"
+  | "notes"
+  | "memory"
+  | "agents"
+  | "messages"
+  | "tool_results"
+  | "summary"
+  | "current_request"
+  /** ACP orchestrators only: what is inside the agent's own window, not itemised. */
+  | "agent";
+export type ContextCategory = {
+  id: ContextCategoryId | (string & {});
+  label: string;
+  tokens: number;
+  /** Decision 88: the rows inside the category, largest first; their tokens add up to `tokens`. Absent on a harness that predates it. */
+  items?: ContextItem[];
+  /** Decision 88: what the whole category may offer ("compact" on `messages`). */
+  actions?: string[];
+};
+/** Decision 88: one row inside a category (a tool, a file, a block of memory, a kind of message). Tokens are always estimates (`estimated` true). */
+export type ContextItem = {
+  id: string;
+  label: string;
+  tokens: number;
+  /** Heading to nest the row under: "Harness tools", a tool server's name, a folder label, "Memory", "Memory files". */
+  group?: string;
+  /** The file the row is (instruction files `<folder label>:<path>`, memory files `/memories/...`). */
+  path?: string;
+  /** The tool server of an MCP tool (an ACP orchestrator sees the harness's tools as server `octo-harness`). */
+  server?: string;
+  loaded: boolean;
+  /** `"open"` for files. */
+  actions?: string[];
+  estimated: boolean;
+};
+/** Decision 88: one of the largest messages; `preview` is at most 80 characters on one line. */
+export type ContextLargeMessage = { message_id: number; role: "user" | "assistant"; tokens: number; preview: string };
 /** `input` is everything the request read (uncached + cache reads + cache writes), `cached` the cache-read part. */
 export type ContextLastRequest = { input: number; cached: number; output: number };
 
@@ -274,14 +361,51 @@ export type SideMessage = {
 /** The 202 body of `POST .../side`: the stored question; the answer arrives as side.* events. */
 export type SideStarted = { side_id: string; message: SideMessage };
 
+/**
+ * A project note (M5): a Markdown document with front matter. A list (`listNotes`, `note.changed`) carries the
+ * front-matter fields and no body; `getNote` returns the body as `content` and the Markdown source as `markdown`.
+ * Agents see an index of `title — description` only and open a note when its description says it is relevant.
+ */
 export type Note = {
   id: string;
   title: string;
-  content: string;
+  /** One line, at most 200 characters: what agents see of the note until they open it. */
+  description: string;
+  /** The description was taken from the first line of the body (nobody wrote one). */
+  description_auto: boolean;
+  tags: string[];
+  /** Included whole in every request (at most 3 notes and 2 000 characters together). */
+  pinned: boolean;
+  /** The body (Markdown). Only in a `getNote` result and in a create/update response; lists leave it out. */
+  content?: string;
+  /** Characters of the body. */
+  size: number;
   author: "user" | "orchestrator";
   created_at: string;
   updated_at: string;
+  /** When an agent last opened the note with read_note ("" if never). */
+  last_read_at: string;
+  read_count: number;
 };
+
+/** A note with its body and its Markdown source (front matter and body): the `getNote`, create and update result. */
+export type NoteDocument = Note & { content: string; markdown: string };
+
+/** Fields of a new note; `markdown` (front matter and body) replaces them, `title` then only names a source without front matter. */
+export type NoteInput = {
+  title?: string;
+  description?: string;
+  tags?: string[];
+  pinned?: boolean;
+  content?: string;
+  markdown?: string;
+};
+
+/** Fields of a note to change; `markdown` replaces all of them. An empty `description` asks for the one derived from the body. */
+export type NotePatch = NoteInput;
+
+/** The limits the harness enforces on notes (docs/memory.md, M5). */
+export const NOTE_LIMITS = { description: 200, pinned: 3, pinnedChars: 2000, indexTokens: 1500 } as const;
 
 /** One line of an ACP agent's plan. */
 export type PlanEntry = {
@@ -362,6 +486,26 @@ export type PlanApprovedEvent = { type: "plan.approved"; seq: number; plan: Plan
 export type ConversationRewoundEvent = { type: "conversation.rewound"; seq: number; message_id: number; request_text: string };
 /** A queued message was injected into the running turn at a tool boundary. */
 export type MessageSteeredEvent = { type: "message.steered"; seq: number; queue_id: string; text: string };
+/** B11: the ACP agent's slash commands (or their pending state) changed: refetch `getSlashCommands`. */
+export type SlashCommandsUpdatedEvent = { type: "slash_commands.updated"; seq: number; project_id: string };
+/** B11: `/clear` started a new session; the fields are those of `ClearResult`. */
+export type ConversationClearedEvent = {
+  type: "conversation.cleared";
+  seq: number;
+  project_id: string;
+  conversation_id: string;
+  upto_message_id: number;
+  at: string;
+  title: string;
+  summary: string;
+  summary_source: SummarySource;
+  /** Memory M4: the memory session the next request joins and the one that ended (absent when none). */
+  session_id?: string;
+  previous_session_id?: string;
+};
+/** An agent (or the user) kept an item: show "Remembered: ..." with an undo (`forgetFact(project, task_id, fact.id)`). */
+export type FactRememberedEvent = { type: "fact.remembered"; seq: number; task_id: string; fact: TaskFact; turn_id: number; agent_id: string };
+export type FactForgottenEvent = { type: "fact.forgotten"; seq: number; task_id: string; fact_id: string };
 /** The context report changed (a turn, a compaction, a rewind, a note or an instruction file): refetch `getContext`. */
 export type ContextUpdatedEvent = { type: "context.updated"; seq: number; project_id: string };
 
@@ -369,7 +513,19 @@ export type ContextUpdatedEvent = { type: "context.updated"; seq: number; projec
 export type SideDeltaEvent = { type: "side.delta"; seq: number; side_id: string; text: string };
 export type SideDoneEvent = { type: "side.done"; seq: number; side_id: string; message: SideMessage };
 /** The question failed or was cancelled (`error` is "cancelled" when the conversation was cleared); its stored question is gone. */
-export type SideErrorEvent = { type: "side.error"; seq: number; side_id: string; error: string };
+export type SideErrorEvent = {
+  type: "side.error";
+  seq: number;
+  side_id: string;
+  error: string;
+  /** Parity B13: `no_provider` when nothing could answer; `hint` is what to do (an agent that is not logged in). */
+  code?: string;
+  hint?: string;
+};
+/** Parity B13: the live activity of a side answer, like thinking.delta, agent.activity and tool.* of a turn. */
+export type SideThinkingEvent = { type: "side.thinking"; seq: number; side_id: string; text: string };
+export type SideActivityEvent = { type: "side.activity"; seq: number; side_id: string; kind: string; label: string; tool_use_id?: string };
+export type SideToolEvent = { type: "side.tool"; seq: number; side_id: string; tool_use_id: string; title?: string; kind?: string; status?: string };
 
 export type FileEntry = { name: string; path: string; type: "file" | "dir"; size: number };
 export type FileStat = { folder: string; path: string; size: number; mtime: string };
@@ -436,7 +592,19 @@ export type SecretsChangedEvent = { type: "secrets.changed"; seq: number; names:
 /** A task record was created or changed (M1); `deleted` says an auto-opened record was merged into another task. */
 export type TaskUpdatedEvent = { type: "task.updated"; seq: number; task?: Task; task_id?: string; deleted?: boolean };
 /** A memory file was written, deleted or renamed. */
-export type MemoryUpdatedEvent = { type: "memory.updated"; seq: number; path: string; deleted?: boolean; renamed_from?: string };
+export type MemoryUpdatedEvent = {
+  type: "memory.updated";
+  seq: number;
+  /** A memory file (files events only). */
+  path?: string;
+  deleted?: boolean;
+  renamed_from?: string;
+  /** M4: an exchange was recorded or forgotten in this session. */
+  session_id?: string;
+  exchange_id?: string;
+  /** M4: the session ended (`clear`, `rewind`). */
+  session_boundary?: string;
+};
 
 export type BridgeEvent =
   | AgentCreatedEvent
@@ -460,9 +628,16 @@ export type BridgeEvent =
   | ConversationRewoundEvent
   | MessageSteeredEvent
   | ContextUpdatedEvent
+  | SlashCommandsUpdatedEvent
+  | ConversationClearedEvent
+  | FactRememberedEvent
+  | FactForgottenEvent
   | SideDeltaEvent
   | SideDoneEvent
   | SideErrorEvent
+  | SideThinkingEvent
+  | SideActivityEvent
+  | SideToolEvent
   | SettingsChangedEvent
   | ChangeRecordedEvent
   | ApprovalRequestedEvent
@@ -489,7 +664,8 @@ export type BridgeEventType = BridgeEvent["type"];
 /** `api`: the built-in Messages loop; `router`: a detected Octo router; `agent`: an ACP agent of a plugin. */
 export type ProviderKind = "api" | "router" | "agent";
 /** `error` is reserved for a provider that is set up but failing; the harness does not report it yet. */
-export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "error";
+/** `not_supported`: the agent's CLI cannot work with Octo (manifest `unsupported`); `reason` says why, there is nothing to connect. */
+export type ProviderState = "ready" | "not_connected" | "not_logged_in" | "not_installed" | "not_supported" | "error";
 /**
  * Where a model came from: `catalogue` (the built-in loop's tiers), `manifest` (the plugin lists it), `advertised`
  * (the agent said so in a session), `command` (the manifest's models command printed it), `custom` (a name the user
@@ -544,6 +720,8 @@ export type Provider = {
   experimental?: boolean;
   /** Agents: the model per delegation tier ("" = the agent's default); prefilled from the manifest's hints. */
   roles?: ProviderRoles;
+  /** Agents: with `experimental`, what is known: the launch command comes from the agent's documentation and has not been run with Octo. */
+  experimental_note?: string;
 };
 
 /** The model an agent uses for a delegation decided fast / balanced / deep; "" means the agent's own default. */
@@ -815,7 +993,15 @@ export type RevertResult = FileStat & { deleted?: boolean };
 
 // --- v7: message queue ----------------------------------------------------------------------------------------
 
-export type QueuedMessage = { id: string; text: string; created_at: string; /** Parity B3: the mode chosen for this message. */ mode?: ProjectMode };
+export type QueuedMessage = {
+  id: string;
+  text: string;
+  created_at: string;
+  /** Parity B3: the mode chosen for this message. */
+  mode?: ProjectMode;
+  /** Parity B12: ids of the attached images. */
+  attachments?: string[];
+};
 
 // --- parity B3, B5, B6, B7 -------------------------------------------------------------------------------------
 
@@ -840,6 +1026,44 @@ export type RewindReport = {
 };
 
 export type CompactResult = { upto_message_id: number; at: string; summary_tokens: number; message_count: number; manual: true };
+/** B11: what `compactNow` answers (202) for an ACP orchestrator whose agent advertises `compact`: `/compact` was sent to it as a turn. */
+export type CompactSentToAgent = { sent_to_agent: true; message: Message };
+
+/** B11: an Octo slash command (run by the host or by calling `endpoint`, never sent as text). */
+export type OctoSlashCommand = {
+  name: string;
+  description: string;
+  /** Argument hint, e.g. `ask|plan|agent`. */
+  args?: string;
+  available: boolean;
+  /** Why it is unavailable (show it on the disabled row). */
+  reason?: string;
+  /** What to call, e.g. `POST /v1/projects/{id}/clear`. */
+  endpoint: string;
+};
+/** B11: a command an ACP agent advertises (`available_commands_update`); choosing one sends `/<name> <args>` as the message. */
+export type AgentSlashCommand = { name: string; description: string; input_hint?: string };
+/** B11: `GET /v1/projects/{id}/slash-commands`. `agent` is null for the built-in loop; `pending` while the agent has not advertised a list yet. */
+export type SlashCommands = {
+  octo: OctoSlashCommand[];
+  agent: { id: string; label: string; commands: AgentSlashCommand[]; pending?: boolean } | null;
+};
+/** B11: `POST /v1/projects/{id}/clear`. */
+export type ClearResult = {
+  conversation_id: string;
+  upto_message_id: number;
+  at: string;
+  /** The session that ended. */
+  title: string;
+  summary: string;
+  summary_source: SummarySource;
+  /** Memory M4: the memory session the next request joins (empty until its first request) and the one that ended; `getMemorySession(previous_session_id).session.summary` is this summary. */
+  session_id?: string;
+  previous_session_id?: string;
+};
+/** B11: `POST /v1/projects/{id}/facts` (the user's `/remember`) and what `fact.remembered` carries. */
+export type RememberedFact = { task_id: string; fact: TaskFact };
+export type RememberKind = "fact" | "decision" | "preference" | "todo";
 
 /** A past request found by `searchRequests`. */
 export type RequestHit = { project_id: string; project_name: string; message_id: number; snippet: string; date: string };
@@ -964,7 +1188,17 @@ export type TaskStatus = "open" | "done" | "dropped";
 /** Wording of the user kept exactly, with the message it came from. */
 export type TaskQuote = { text: string; message_id: number };
 /** A short standalone statement with its date; `superseded_by` names the newer fact (of the same task) that replaced it. */
-export type TaskFact = { id: string; text: string; date: string; message_id: number; superseded_by?: string };
+export type TaskFact = {
+  id: string;
+  text: string;
+  date: string;
+  message_id: number;
+  superseded_by?: string;
+  /** Set on items stored by `remember`: its kind, subject, and who kept it (an agent id, or "user"). */
+  kind?: RememberKind;
+  about?: string;
+  remembered_by?: string;
+};
 /** A task record: the detail map of one piece of work. */
 export type Task = {
   id: string;
@@ -989,9 +1223,9 @@ export type Task = {
 export type MemoryFile = { path: string; summary: string; content?: string; size: number; created_at: string; updated_at: string };
 /** `GET .../memory`: the files without content and the harness-generated INDEX.md text. */
 export type MemoryList = { files: MemoryFile[]; index: string };
-export type MemorySearchKind = "tasks" | "facts" | "files" | "messages";
+export type MemorySearchKind = "tasks" | "facts" | "files" | "messages" | "exchanges";
 export type MemoryHit = {
-  kind: "task" | "fact" | "file" | "message";
+  kind: "task" | "fact" | "file" | "message" | "exchange";
   id: string;
   title: string;
   /** At most 300 characters around the match. */
@@ -1002,10 +1236,55 @@ export type MemoryHit = {
   /** The message a fact came from (the exact words are one recall away). */
   message_id?: number;
   task_id?: string;
+  /** M4: on an `exchange` hit, the session it belongs to (`id` is the exchange id). */
+  session_id?: string;
 };
 /** Up to 10 hits; with none, `message` is "nothing in memory matches". */
 export type MemorySearchResult = { hits: MemoryHit[]; message?: string };
 export type MemorySearchParams = { q: string; in?: MemorySearchKind[]; after?: string; before?: string; limit?: number };
+
+// --- M4: sessions ---------------------------------------------------------------------------------------------
+/** A run of exchanges in one conversation. `reason` says why it ended (`clear`, `rewind`); absent while open or when it just went quiet. */
+export type MemorySession = {
+  id: string;
+  title: string;
+  started_at: string;
+  ended_at: string;
+  /** Exchanges that were not forgotten. */
+  exchanges: number;
+  open: boolean;
+  reason?: string;
+  /** The summary a `/clear` wrote when it ended this session (`summary_source`: who wrote it); absent for a session that ended otherwise. */
+  summary?: string;
+  summary_source?: SummarySource;
+};
+export type ExchangeStatus = "completed" | "failed" | "stopped";
+/** One request and its answer. A forgotten one stays as a marker: `removed: true`, empty texts. */
+export type MemoryExchange = {
+  id: string;
+  session_id?: string;
+  /** The user message that started the turn (what "Open in conversation" goes to). */
+  turn_id: number;
+  /** The assistant message that answered; 0 when none did. */
+  message_id: number;
+  request: string;
+  /** Markdown, the last assistant text of the turn, at most 64 KiB (then `answer_truncated`). */
+  answer: string;
+  answer_truncated: boolean;
+  status: ExchangeStatus;
+  started_at: string;
+  duration_ms: number;
+  model: string;
+  files: string[];
+  agents: string[];
+  tokens: { input: number; output: number };
+  /** null when no cost was reported (subscription agents). */
+  cost_usd: number | null;
+  task_id?: string;
+  removed?: boolean;
+};
+export type MemorySessionDetail = { session: MemorySession; exchanges: MemoryExchange[] };
+export type MemorySessionsParams = { limit?: number; before?: string };
 
 // --- M2: context receipts -------------------------------------------------------------------------------------
 

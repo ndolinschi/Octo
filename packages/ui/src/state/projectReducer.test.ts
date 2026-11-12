@@ -31,7 +31,20 @@ const message = (id: number, role: "user" | "assistant" = "assistant", agent_id 
   content: [{ type: "text", text: `m${id}` }],
   created_at: "2026-11-10T10:00:00Z",
 });
-const note = (id: string): Note => ({ id, title: id, content: "", author: "user", created_at: "", updated_at: "" });
+const note = (id: string): Note => ({
+  id,
+  title: id,
+  description: "",
+  description_auto: true,
+  tags: [],
+  pinned: false,
+  size: 0,
+  author: "user",
+  created_at: "",
+  updated_at: "",
+  last_read_at: "",
+  read_count: 0,
+});
 
 test("the state starts empty", () => {
   const s = emptyProjectState();

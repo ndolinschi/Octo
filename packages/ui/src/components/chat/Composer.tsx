@@ -1,9 +1,10 @@
 import type { Folder, TierPolicy } from "@octo/agent-client";
 import { ArrowUp, Clock, Plus, Square } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { forwardRef, lazy, Suspense, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useChatSlots } from "../../state/chatSlots";
 import { errorMessage } from "../../lib/format";
+import { canForce, refusedProvider } from "../../lib/providers/recheck";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
@@ -16,6 +17,8 @@ import { useAnimationGate, useAuroraState } from "./useAnimationGate";
 import { useAttachments } from "./useAttachments";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
 
+const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
+
 export type ComposerHandle = { focus(): void; fill(text: string): void };
 
 export type ComposerProps = {
@@ -25,7 +28,7 @@ export type ComposerProps = {
   disabledReason: string | null;
   folders: Folder[];
   /** The orchestrator's model or agent (choose rejects to roll back). */
-  model: { value: string; title?: string | undefined; unavailable?: boolean; choose(model: string): Promise<void> } | null;
+  model: { value: string; title?: string | undefined; unavailable?: boolean; choose(model: string, force?: boolean): Promise<void> } | null;
   /** One quiet line above the box (no API key), with the reason in its tooltip. */
   notice?: { text: string; title?: string } | null;
   /** Decision 49: the folder chip's picker adds the chosen folder to the project. */
@@ -71,7 +74,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const attach = useAttachments();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [modelError, setModelError] = useState<{ model: string; message: string } | null>(null);
+  const [modelError, setModelError] = useState<{ model: string; message: string; provider?: string } | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [activeOption, setActiveOption] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -187,10 +190,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
 
   const model = props.model;
-  const chooseModel = (next: string) => {
+  const chooseModel = (next: string, force?: boolean) => {
     if (!model) return;
     setModelError(null);
-    model.choose(next).catch((e: unknown) => setModelError({ model: next, message: errorMessage(e) }));
+    model.choose(next, force).catch((e: unknown) => {
+      const provider = canForce(e) ? refusedProvider(e) : undefined;
+      setModelError({ model: next, message: errorMessage(e), ...(provider ? { provider } : {}) });
+    });
   };
   const inlineOpen = menu?.mode === "inline";
   const action = props.running ? (hasContent ? "queue" : "stop") : "send";
@@ -208,9 +214,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       {modelError && (
         <Notice>
           <span className="text-err">Couldn't switch the model.</span> {modelError.message.replace(/\.$/, "")}. The orchestrator keeps its previous one.
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => chooseModel(modelError.model)}>
-            Retry
-          </Button>
+          {modelError.provider ? (
+            <Suspense fallback={null}>
+              <ModelRefusedActions
+                provider={modelError.provider}
+                onRetry={() => chooseModel(modelError.model)}
+                onForce={() => chooseModel(modelError.model, true)}
+              />
+            </Suspense>
+          ) : (
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => chooseModel(modelError.model)}>
+              Retry
+            </Button>
+          )}
         </Notice>
       )}
       {props.notice && (
@@ -303,6 +319,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 title={model.title}
                 unavailable={model.unavailable === true}
                 onChoose={chooseModel}
+                onChooseUnverified={(value) => chooseModel(value, true)}
                 bare={shed >= 3}
                 disabled={disabled}
                 onOpenChange={onChip}

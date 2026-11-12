@@ -108,7 +108,7 @@ func TestNoteChangeOnlyChangesSystemTail(t *testing.T) {
 	if s1 == s2 {
 		t.Fatal("system prompt did not change after save")
 	}
-	const header = "\nProject notes (durable memory, re-read every turn):\n"
+	const header = "\nProject notes (durable memory; you see descriptions, not bodies):\n"
 	i1, i2 := strings.Index(s1, header), strings.Index(s2, header)
 	if i1 < 0 || i1 != i2 || s1[:i1] != s2[:i2] {
 		t.Fatalf("static part changed: notes header at %d and %d", i1, i2)
@@ -116,7 +116,7 @@ func TestNoteChangeOnlyChangesSystemTail(t *testing.T) {
 	if !strings.Contains(s1[:i1], "How you work:") {
 		t.Error("instructions must precede the notes so a note change cannot invalidate them")
 	}
-	if !strings.Contains(s2[i2:], "### Decision\nuse sqlite, not postgres") || strings.Contains(s1, "Decision") {
+	if !strings.Contains(s2[i2:], " · Decision — use sqlite, not postgres") || strings.Contains(s1, "Decision") {
 		t.Errorf("notes tail wrong:\nfirst: %q\nsecond: %q", s1[i1:], s2[i2:])
 	}
 	if !bytes.Equal(mustJSON(t, first.Tools), mustJSON(t, second.Tools)) {

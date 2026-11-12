@@ -4,7 +4,6 @@ import {
   type Agent,
   type Bridge,
   type Models,
-  type Note,
   type Project,
   type ProjectInput,
   type ProjectSummary,
@@ -19,6 +18,7 @@ import { genericTurn } from "./generic";
 import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
 import { demoProviders } from "./providers";
+import { createDemoNote, docOf, listed, patchDemoNote, seedNotes } from "./notes";
 import { orbitLive } from "./orbit";
 import { withDemoCommands } from "./commands";
 import { withDemoReview } from "./review";
@@ -122,11 +122,6 @@ function dedupeFolders(folders: { path: string; label?: string }[]): Project["fo
   });
 }
 
-function userNote(title: string, content: string, at: number): Note {
-  const iso = new Date(at).toISOString();
-  return { id: newId("note"), title, content, author: "user", created_at: iso, updated_at: iso };
-}
-
 function startScript(rec: ProjectRecord, t: number, script: (ctx: Ctx) => Promise<void>): void {
   void script({ rec, t, signal: { cancelled: false } });
 }
@@ -147,9 +142,7 @@ function seed(): ProjectRecord[] {
     },
     now - 30 * HOUR,
   );
-  atlas.notes.push(
-    userNote("Deploy constraints", "No deploys on Fridays. Staging is `atlas-stg` and needs the VPN. Ask before touching `src/billing/`.", now - 29 * HOUR),
-  );
+  atlas.notes.push(...seedNotes(now));
   startScript(atlas, now - 28 * HOUR, atlasHistory);
 
   const orbit = makeProject(
@@ -423,9 +416,10 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     updated_at: p.updated_at,
   });
 
+  const { refuse: refuseModels, ...providerMethods } = demoProviders();
   const bridge: Bridge = {
     // Providers, settings and diagnostics (decisions 53, 59): `?providers=none` shows the connect screen.
-    ...demoProviders(),
+    ...providerMethods,
     health: async () => (await delay(), { ok: true, version: "demo" }),
     getConfig: async () => {
       await delay();
@@ -459,6 +453,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     createProject: async (input) => {
       await delay();
       if (!input.name.trim()) throw new BridgeError(400, "invalid", "name is required");
+      refuseModels(input.models, input.force_unverified);
       const rec = makeProject(input, Date.now());
       records.set(rec.project.id, rec);
       return clone(rec.project);
@@ -468,6 +463,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       await delay();
       const rec = get(id);
       const p = rec.project;
+      refuseModels(patch.models, patch.force_unverified);
       if (patch.name !== undefined) p.name = patch.name;
       if (patch.description !== undefined) p.description = patch.description;
       if (patch.instructions !== undefined) p.instructions = patch.instructions;
@@ -513,7 +509,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const parts = [
         { key: "system" as const, tokens: 2_400 },
         { key: "tools" as const, tokens: 3_100 },
-        { key: "notes" as const, tokens: rec.notes.length * 180 },
+        { key: "notes" as const, tokens: Math.min(2_000, rec.notes.length * 30) },
         { key: "messages" as const, tokens: Math.round(text * 0.45) },
         { key: "tool_results" as const, tokens: Math.round(text * 0.55) },
         { key: "summary" as const, tokens: summary },
@@ -609,23 +605,29 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const rec = get(id);
       if (rec.turn) rec.turn.cancelled = true;
     },
-    listNotes: async (id) => (await delay(), clone(get(id).notes)),
+    listNotes: async (id) => (await delay(), clone(get(id).notes.map(listed))),
+    getNote: async (id, noteId) => {
+      await delay();
+      const note = get(id).notes.find((n) => n.id === noteId);
+      if (!note) throw new BridgeError(404, "not_found", "note not found");
+      return clone(docOf(note));
+    },
     createNote: async (id, input) => {
       await delay();
       const rec = get(id);
-      const note = userNote(input.title, input.content, Date.now());
+      const note = createDemoNote(rec.notes, input, Date.now());
       rec.notes.push(note);
-      emit(rec, { type: "note.changed", note: clone(note), note_id: note.id });
-      return clone(note);
+      emit(rec, { type: "note.changed", note: clone(listed(note)), note_id: note.id });
+      return clone(docOf(note));
     },
     updateNote: async (id, noteId, patch) => {
       await delay();
       const rec = get(id);
       const note = rec.notes.find((n) => n.id === noteId);
       if (!note) throw new BridgeError(404, "not_found", "note not found");
-      Object.assign(note, patch, { updated_at: new Date().toISOString() });
-      emit(rec, { type: "note.changed", note: clone(note), note_id: note.id });
-      return clone(note);
+      patchDemoNote(rec.notes, note, patch);
+      emit(rec, { type: "note.changed", note: clone(listed(note)), note_id: note.id });
+      return clone(docOf(note));
     },
     deleteNote: async (id, noteId) => {
       await delay();
