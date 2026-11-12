@@ -2465,3 +2465,59 @@ or a label reads as an icon. Rules: shortcuts are shown in the control's tooltip
 (right-aligned, dim), in the command palette and in the keyboard help — never inside a button, checkbox label, chip
 or tab. Applies to the review toolbar (done), approval cards ("Allow once [A]", "Deny [D]"), and any other inline
 `KeyHint`. The spacing audit fails on a `KeyHint` that is a descendant of a button or label.
+
+## Decision 93 — Memory is redesigned: three views, one search, compact reading
+
+Owner: "the Memory tab is fully badly designed and looks very inaccurate". The orchestrator's review of the current
+screens (after M4 and library batch B2) agrees. What is wrong:
+1. **Five views that are not one thing.** Sessions, Tasks, Files, Search, Context: Search is an action, not a
+   place; Context (one turn's context receipt) is not memory; facts live inside Tasks where nobody looks for them.
+2. **Built for a wide page, lives in a narrow pane.** Memory normally sits in a side group about 480 px wide. There
+   it is a list, then "← Back", then a wall: whole answers rendered at conversation size with second-level headings
+   larger than the pane's own title, so the hierarchy is upside down.
+3. **Rows are bare text.** A session row is two lines of text with no state, no current mark, no counts aligned;
+   it does not look like the app's other lists.
+4. **Meta lines wrap raggedly** ("Today 8:28 AM · Sonnet 4 · 41s · 3 files changed" / "· 2 sub-agents · $0.18"
+   starting with a separator), with "Open in conversation" floating at the right edge of a different line.
+5. **Unexplained things:** chips "1" and "19" in Context, "no cap", "Content" as a label over content, an edit and a
+   delete icon with no words next to a file name.
+
+Rules:
+a. **Three views** (`ViewTabs`): **Sessions** (what was asked and answered), **Knowledge** (what the project
+   remembers: remembered facts, decisions, constraints, preferences, open questions; and tasks), **Files** (memory
+   files). The tab opens on Sessions.
+b. **One search field** above the views, always visible (`SearchField`, Ctrl/Cmd+F while the tab has focus). While
+   it has text the views are replaced by results grouped by kind (Exchanges · Knowledge · Files · Notes), each hit a
+   row with the match highlighted; Esc clears and returns to the view. No Search tab.
+c. **Context leaves Memory.** The window report is `/context` and the context ring (decision 88); one turn's receipt
+   opens from that turn's "⋯" in the conversation and from an exchange's "⋯" here, as a popover or the same report
+   card — not a view.
+d. **Sessions.** List rows are `ListRow` two-line: title; second line "Nov 12 · 5 exchanges"; the current session
+   carries a quiet "current" mark; working sessions show the working glyph. Opening a session shows **exchanges as
+   rows, not as a document**: each exchange is a row with the request on one line (two at most) and, dim under it,
+   the first line of the answer and its outcome glyph (done, failed, stopped); time right-aligned. Selecting an
+   exchange expands it in place: the full request, then the answer in **compact prose** (rule g), then one meta
+   line, then the actions. Only one exchange is expanded at a time; the list keeps its place.
+e. **Knowledge.** Sections with counts, folded by default when long: *Remembered* (newest first; each item: text,
+   kind chip — decision, constraint, preference, to do — source "remembered by Orchestrator · Nov 12" as a link to
+   the turn; a superseded item is folded under its successor, never struck through in the main list), *Tasks*
+   (`FilterTabs` Open · Done · Dropped; a task row expands to goal, constraints, acceptance, decisions). "Add" lets
+   the person write a fact themselves (`/remember`). Each item has "Forget" in its "⋯".
+f. **Files.** Rows: name, one-line description, size and date right-aligned. Detail: the rendered file in compact
+   prose with "Edit", "Delete" as labelled quiet buttons in the header (icons with labels, not bare icons).
+g. **Compact prose for panes.** A Markdown block rendered inside a pane (Memory, Notes, Review threads, the side
+   question) uses one compact scale: body 13 px, headings of every level 13 px semibold with one step of space
+   above, tight lists, code 12 px, tables scroll inside; it never exceeds the type size of the pane's own title.
+   Built once (`primitives/Prose` with `size="compact" | "reading"`); the conversation keeps `reading`.
+h. **One meta line.** Under an expanded exchange: `time · model · duration · N files · cost`, one line, truncated
+   from the right with the full text in the tooltip; never wraps; separators never start a line. Actions ("Open in
+   conversation", "Context", "Forget") live in the exchange's "⋯" and, for the first one, as a quiet button at the
+   end of the meta line when there is room.
+i. **Widths.** Below the list–detail floor (the usual side pane) everything is one column and expansion happens in
+   place — no "← Back" page for an exchange; a session opens as a page with one back control. At or above the
+   floor (maximised, or a wide group) it is list–detail: sessions left, exchanges right.
+j. **Nothing unexplained** (decision 75): no bare numbers, no internal ids, no labels that restate the obvious.
+Acceptance: view-model tests (search grouping, one-expanded rule, meta line truncation, superseded folding);
+screenshots dark and light at pane width 480, at 760 and maximised 1440, each view, search with hits, an expanded
+exchange with a long answer and a table, a failed exchange, empty states; spacing audit scenes for each view; the
+`width-stability` script covers expanding an exchange (the pane's width and the list's scroll position do not move).
