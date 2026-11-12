@@ -844,6 +844,32 @@ monochrome dithered illustration):
     with the parent's name when two folders share one); it can be renamed later in project settings, never asked
     for up front. "New project" shows chosen folders as removable chips with one "Add folder" that opens the
     picker with **Browse…** first; the project's name defaults to the first folder's name.
+72. **A provider has a face, a preferred model and roles** (owner: "icons are missing, for example on providers
+    … I must be able to choose a preferred model — I pick Claude Code in the list and on the right there should
+    be either how the roles are distributed or which model is preferred … Grok I cannot choose although it is
+    connected"). 
+    - **Icons.** Every provider row, chip and settings row starts with a 16px mark. Marks are our own neutral
+      glyphs (a distinct simple shape plus the provider's initial, one colour, drawn in the app's icon style) —
+      not the vendors' logos, which are their trademarks; a manifest may point to an icon file the user supplies.
+      Models inherit their provider's mark.
+    - **The picker has two panes** (≥ 560px; below that the second pane is the second level): left — providers
+      (mark, name, the model that will be used, dim); right — for the highlighted provider:
+      **Preferred model** (the model used when this provider is chosen and nothing more specific applies: the
+      agent's own default, its known models, "Other model…"), and **Roles** — Fast, Balanced, Deep, each a small
+      select over the same models ("Fast → Haiku, Balanced → Sonnet, Deep → Opus"), prefilled from the manifest's
+      hints and editable; "Refresh models"; a one-line explanation: "The router decides how hard a task is; roles
+      say which of this provider's models does it." Choosing the provider (Enter / click) uses the preferred
+      model; choosing a model row uses that model for this project only.
+    - **Where it applies.** Preferences are per provider and global (Settings → Providers shows the same pane);
+      a project can override. When a project's orchestrator or tiers point at an agent, a delegation decided as
+      fast / balanced / deep runs on that agent with the role's model.
+    - **Connected means selectable.** A provider whose login cannot be probed is "ready (login not checked)" and
+      can be chosen; only "not installed" and a probe that positively says "not logged in" make it unavailable.
+      A probe that fails to run or prints something unexpected counts as not checked, and the reason is in
+      diagnostics.
+    Harness: `GET /v1/providers` adds `preferred_model`, `roles: {fast, balanced, deep}`, `login: "ok" |
+    "not_logged_in" | "unchecked"`; `PUT /v1/providers/{id}/prefs {preferred_model?, roles?}`; tier resolution
+    for `acp:<agent>` uses the role's model.
 22. **Home** (`#/`, sidebar row "Home" above Search's neighbours; shown when no project is open; the app opens
     the last project as before): the streak, a title ("What should we work on?"), a project picker row
     (recent projects as 32px rows: name, last request, relative time; Enter opens) with "New project", then a
