@@ -2156,3 +2156,12 @@ e. Export: "Copy as CSV" of the visible table.
 Acceptance: view-model tests (sorting, totals equal the sum, flat-rate cost text, compact formatting incl. Russian
 locale off — English only), screenshots at 1440×900 and 390×700 (below the list floor the table becomes rows with
 the three token numbers under the model name), the spacing audit state.
+
+## Decision 87 — the composer does not glow
+
+Owner: "remove the glow around the prompt input, it does not look good now". Revises decision 45 (a): while the
+orchestrator works the composer keeps its normal hairline — no blurred halo, no coloured or animated edge, also not
+for a failed turn (decision 81). A running turn is shown by the Stop button, the live activity line and the tab's
+state glyph. Decision 45 (b) (the thin streaming line in the transcript) is unchanged. As built: the three CSS rules
+that revealed the aurora frame are removed; the now-unused frame elements and `useAuroraState` are to be deleted
+with the next change to `Composer.tsx`.

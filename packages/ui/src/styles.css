@@ -1113,16 +1113,9 @@
   background: var(--octo-aurora);
   transform: translate(-50%, -50%);
 }
-[data-aurora="working"] > .octo-composer {
-  outline-color: transparent;
-}
-[data-aurora="working"] > .octo-aurora,
-[data-aurora="failed"] > .octo-aurora {
-  opacity: 1;
-}
-[data-aurora="working"] > .octo-aurora-glow {
-  opacity: var(--octo-aurora-glow);
-}
+/* Decision 87: the composer has no glow and no coloured edge while the orchestrator works (owner: "remove the glow
+   around the prompt input"). The frame's elements stay at opacity 0; the Stop button and the activity line say that
+   a turn is running. */
 [data-aurora="failed"] > .octo-aurora .octo-aurora-spin {
   background: var(--octo-err);
 }
