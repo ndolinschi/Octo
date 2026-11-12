@@ -3,7 +3,7 @@ import { createContext, useContext } from "react";
 /**
  * The window frame the host draws around the UI (decision 54). `overlay`: the host hides its own title bar and the UI's
  * title bar row sits under the window controls; `insetStart` / `insetEnd`: pixels the row keeps free at its start and end
- * (macOS traffic lights: 78 at the start; Windows or Linux controls drawn by the app: at the end). The default is a browser:
+ * (macOS traffic lights: 86 at the start; Windows or Linux controls drawn by the app: at the end). The default is a browser:
  * no overlay, no insets; the row renders all the same. `controlsCenterY`: where the window controls' centre line is, in pixels
 below the window's top edge; the row centres its controls on it (default: the row's own centre, `ROW_HEIGHT / 2`).
  */

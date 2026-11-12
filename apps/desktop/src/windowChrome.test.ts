@@ -43,7 +43,7 @@ test("the debug line names the configured and the effective values", () => {
   const chrome = chromeFor(true, MAC, false);
   assert.equal(
     describeChrome({ enabled: true, configuredX: 16, configuredY: 23 }, chrome),
-    "octo chrome: trafficLightPosition x=16 y=23; row controls centre 20 pt; insetStart 78",
+    "octo chrome: trafficLightPosition x=16 y=23; row controls centre 20 pt; insetStart 86",
   );
   assert.equal(describeChrome({ enabled: true, configuredX: null, configuredY: null }, chrome).split("system default").length, 2);
 });

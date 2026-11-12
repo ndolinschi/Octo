@@ -1,7 +1,7 @@
 import type { WindowChrome } from "@octo/ui";
 
-/** Width the macOS traffic lights take at the start of the title bar row (decision 54). */
-export const MAC_INSET_START = 78;
+/** Width the macOS traffic lights take at the start of the title bar row, plus a 16 pt gap before the first control (decision 54; owner: the sidebar toggle sat too close to the green light at 78). */
+export const MAC_INSET_START = 86;
 
 /**
  * Where the macOS traffic lights go, in points from the window's top-left corner: the first light's left edge (`x`) and the
