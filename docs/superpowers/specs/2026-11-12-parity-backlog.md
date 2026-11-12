@@ -143,3 +143,50 @@ Acceptance adds: summary carried into the next turn's prompt (mock model sees it
 token bound, both fallbacks, nothing deleted (search still finds an old exchange), `remember` stores a fact with its
 source and is refused in read-only modes only for `kind: todo` writes that touch files (a fact is always allowed),
 the three-per-turn cap, Undo.
+
+## B12 — attach images (owner: "I cannot attach pictures either")
+
+1. **In the composer:** paste from the clipboard, drop onto the composer or the conversation, or "+ → Image…"
+   (system file dialog through the host; the browser's file input otherwise). PNG, JPEG, WebP, GIF (first frame);
+   at most 8 per message, each ≤ 10 MB before and ≤ 5 MB after the client downsizes it (longest side 2 048 px,
+   re-encoded; the original is never uploaded). A chip per image with a thumbnail, its size and ×; click opens a
+   preview. Screenshots pasted while a turn runs join the queued message.
+2. **Harness:** `POST /v1/projects/{id}/attachments` (multipart or raw body with `Content-Type`) →
+   `{id, media_type, bytes, width, height}`; stored under the project's data directory, content-addressed, removed
+   with the project and when no message refers to them after 30 days; `GET …/attachments/{id}` serves it (same token
+   rules as the file API). `POST …/messages` and the queue accept `attachments:[id]`.
+3. **To the model.** Built-in loop: image content blocks before the text, in the order attached. ACP agent: `image`
+   content blocks in `session/prompt` when the agent advertised `promptCapabilities.image`; otherwise the message is
+   refused before it is sent with 422 `images_unsupported` naming the agent, and the composer says so as soon as an
+   image is attached (the project's provider entry carries `accepts_images`). Never silently dropped.
+4. **History and cost.** The transcript shows thumbnails in the request; images stay in context until compaction,
+   which replaces each with "[image: name, WxH]" plus the model's own earlier description if any; the context report
+   counts them (Messages → images). Exchanges in memory keep the attachment ids, not the bytes.
+5. Other files (PDF, text) stay `@file` mentions of project files; dropping a non-image offers "Add to the project
+   folder" — not built in this step.
+Acceptance: harness tests (upload limits and types, message with images reaches the mock model as image blocks and
+the scripted agent as ACP image blocks, refusal without the capability, compaction placeholder, cleanup); UI tests
+for the attachment model (limits, downsizing decision, queue) and a Playwright walk with a pasted image.
+Not verified until the owner's run: which real agents advertise `promptCapabilities.image`.
+
+## B13 — the side question runs on what the project runs on (owner: "side question is broken")
+
+Live: the project ran on GitHub Copilot; the side question answered "No API key is configured for the built-in
+agent loop". The side question is a second, read-only conversation about the project; it must not need a different
+provider than the project. Rules:
+1. Default model = the project's orchestrator choice. An ACP orchestrator → the side question opens its **own**
+   session with the same agent (not the orchestrator's session, so it cannot disturb a running turn), started in
+   the project's folder, with the harness denying every write and command permission request and using the agent's
+   read-only/ask mode when it has one (B3 rules); the session is kept for follow-ups in the same side conversation
+   and closed when it is cleared or after 15 min idle.
+2. The side panel has its own small model control (same picker), so a cheap API model can be chosen when one exists;
+   the choice is remembered per project.
+3. If nothing can answer, the panel says exactly what to do with one button (connect a provider), never an
+   environment-variable instruction.
+4. The side answer streams (live activity rules), can be stopped, and "Send to the orchestrator" quotes it into the
+   main composer.
+5. Layout (decision 64h, 67): the side conversation uses the same column, message and composer components as the
+   main conversation at the side pane's width — question and answer in one column aligned with the composer's
+   edges, the composer at the bottom at full pane width inset.
+Acceptance: harness tests with the scripted agent (own session, writes denied, follow-up reuses the session, idle
+close, runs while the orchestrator's turn is running); UI tests and screenshots.
