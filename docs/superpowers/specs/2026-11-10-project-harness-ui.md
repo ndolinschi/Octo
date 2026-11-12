@@ -2196,3 +2196,31 @@ g. Harness: `GET …/context` gains `items` on each category (`[{id,label,tokens
 Acceptance: harness tests for the sums and for each item kind (tools incl. MCP by server, instruction files, notes,
 memory, skills when present), the ACP variant; UI view-model tests (order, percent rounding to one decimal that
 sums to 100 with Free space, "Show all"), screenshots dark and light at 1440×900 and 390×700.
+
+## Decision 89 — Providers is a list and a detail, not a column of cards
+
+Owner (live screenshot of Settings → Providers): "everything on this page is crooked". What is wrong: rows of
+different heights because reasons wrap inside them; three different buttons at three different x positions
+(Connect / Details / How to connect); a narrow centred list with a small card floating beside it; six agents that are
+not installed taking most of the page; environment-variable text in a row. Rules:
+a. **List–detail (decision 66), full settings width.** Left: the list, fixed column. Right: the detail pane fills
+   the rest, top-aligned with the list, same hairline frame — never a floating card.
+b. **Rows are one height.** Provider mark, name, and one status on a second dim line: "Ready · 16 models" /
+   "Not logged in" / "Not installed" / "Not connected" / "Experimental" (dim word after the name when the launch
+   command is unverified). Nothing else in a row: no reason text, no button. The whole row selects; the selected row
+   uses the standard list selection. A small state dot at a fixed x.
+c. **Groups.** "Connected" (ready), "Needs attention" (not logged in, error), "Not set up" (not installed, not
+   connected) — the last group is collapsed to one row "6 more agents can be added" when something is connected.
+d. **Detail pane**, in this order: title row (mark, name, state, one primary action for the state: Connect /
+   How to connect / Check again; "Use anyway" quiet next to it when offered); the reason in plain words with the
+   command to run in a copy line (never "set ANTHROPIC_API_KEY" as prose — an API key is a field in this pane);
+   "Models" — count, last refreshed, Refresh, the list folded after six; "Preferred model"; "Roles" as one
+   `FieldRow` grid (Fast · Balanced · Deep in one row at wide, stacked at narrow) with the explanation under the
+   whole row; "Billing" (subscription or per token) one line.
+e. Below the list–detail floor the page is the list alone and a row opens the detail with a back control.
+f. Same structure for Settings → Agents if it lists the same things; one of the two pages must go if they overlap
+   (report which fields each has).
+Acceptance: view-model tests (grouping, the collapsed row, primary action per state); screenshots dark and light at
+1440×900, 1100×700, 390×700 with the owner's set (Claude Code 16 models, Copilot 7, Grok 4, Codex ready without
+models, OpenCode 12, Antigravity experimental, five not installed, API not connected); spacing audit state: all rows
+equal height, no button inside a row, detail's top equals the list's top.
