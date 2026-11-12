@@ -9,7 +9,9 @@ import { matchScore, rankGroups } from "../../lib/match";
 import { navigate } from "../../lib/route";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
+import { hitRow } from "../../lib/requestSearch";
 import { useRequests } from "../../state/requests";
+import { useRequestSearch } from "../../state/requestSearch";
 import { usePresence } from "../primitives/Presence";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { agentGlyph, type GlyphState } from "../../lib/stateGlyph";
@@ -40,6 +42,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
   const baseId = useId();
   const openProject = projects?.find((p) => p.id === props.openProjectId);
   const { requests } = useRequests(openProject, true);
+  const past = useRequestSearch(query);
   const { onClose } = props;
   const state = usePresence();
   // The workspace's tabs and tab actions, as they are when the palette opens.
@@ -120,6 +123,17 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
           : [],
       },
       {
+        // Parity B7: requests of every project, found by the harness; picking one opens that project at the message.
+        title: "Past requests",
+        items: past.map((h) => ({
+          ...hitRow(h),
+          run: go(() => {
+            nav.requestTurn({ projectId: h.project_id, messageId: h.message_id });
+            navigate(h.project_id);
+          }),
+        })),
+      },
+      {
         title: "Agents",
         items: pid
           ? rank(
@@ -158,7 +172,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
       all.filter((g) => g.items.length),
       (g) => g.items.map((i) => i.label),
     );
-  }, [query, projects, requests, agents, props.actions, openId, nav, onClose, workspace]);
+  }, [query, projects, requests, agents, props.actions, openId, nav, onClose, workspace, past]);
 
   const flat = groups.flatMap((g) => g.items);
   const current = Math.min(selected, Math.max(0, flat.length - 1));

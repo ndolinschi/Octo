@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { QueueState } from "@octo/agent-client";
+import { steerUnsupportedFor } from "../../lib/v7/steerQueue";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { QueueList } from "./QueueList";
@@ -23,7 +24,7 @@ export function QueueSlot(props: QueueSlotProps) {
 
 function Live({ onCount }: QueueSlotProps) {
   const { bridge } = useApp();
-  const { projectId } = useProject();
+  const { projectId, project } = useProject();
   const [queue, setQueue] = useState<QueueState>({ paused: false, messages: [] });
   useEffect(() => {
     let alive = true;
@@ -47,7 +48,9 @@ function Live({ onCount }: QueueSlotProps) {
       paused={queue.paused}
       messages={queue.messages}
       onRemove={(id) => bridge.removeQueued?.(projectId, id) ?? Promise.resolve()}
-      onSendNow={(id) => bridge.sendQueuedNow?.(projectId, id) ?? Promise.resolve()}
+      onSendNow={async (id) => void (await bridge.steerQueued?.(projectId, id))}
+      onStopAndSend={(id) => bridge.sendQueuedNow?.(projectId, id, { interrupt: true }) ?? Promise.resolve()}
+      steerUnsupported={steerUnsupportedFor(project?.models.orchestrator) || !bridge.steerQueued}
       onResume={() => bridge.resumeQueue?.(projectId) ?? Promise.resolve()}
       onClear={() => bridge.clearQueue?.(projectId) ?? Promise.resolve()}
     />

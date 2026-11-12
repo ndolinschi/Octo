@@ -7,8 +7,10 @@ import {
   type NotePatch,
   type Project,
   type ProjectInput,
+  type ProjectMode,
   type ProjectState,
 } from "@octo/agent-client";
+import { rewoundLabel } from "../lib/compact";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./app";
 import { useActivity } from "./activity";
@@ -27,8 +29,13 @@ type ProjectValue = {
   running: boolean;
   reload(): Promise<void>;
   ensureMessages(agentId: string): void;
-  send(text: string): Promise<void>;
+  /** `mode` (parity B3) overrides the project's default for this message only. */
+  send(text: string, opts?: { mode: ProjectMode }): Promise<void>;
   cancel(): Promise<void>;
+  /** The texts `message.steered` named this session: those user messages landed in a running turn (parity B6). */
+  steered: readonly string[];
+  /** The conversation was cut by a rewind (parity B5): apply it now rather than waiting for the event. */
+  applyRewind(messageId: number, label: string): void;
   update(patch: Partial<ProjectInput>): Promise<Project>;
   createNote(input: NoteInput): Promise<NoteDocument>;
   updateNote(id: string, patch: NotePatch): Promise<NoteDocument>;
@@ -57,6 +64,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
   const [live, setLive] = useState<LiveStatus>("connecting");
   const loaded = useRef(new Set<string>());
   const observers = useRef(new Set<(event: BridgeEvent) => void>());
+  const [steered, setSteered] = useState<readonly string[]>([]);
 
   const fetchMessages = useCallback(
     async (agentId: string) => {
@@ -102,6 +110,16 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       onEvent: (event) => {
         dispatch({ type: "event", event });
         if (event.type === "project.updated") setProject(event.project);
+        if (event.type === "message.steered") setSteered((s) => [...s, event.text]);
+        if (event.type === "conversation.rewound") {
+          dispatch({ type: "rewound", messageId: event.message_id, label: rewoundLabel(false), at: new Date().toISOString(), soft: true });
+          void syncAll();
+        }
+        // The client's reducer keeps only the position of a compaction; a manual one also carries its label and size.
+        if (event.type === "agent.compacted" && event.manual) {
+          const { type: _type, seq: _seq, agent_id: agentId, ...marker } = event;
+          dispatch({ type: "compactions", agentId, markers: [{ ...marker, label: "history compacted" }] });
+        }
         if (event.type === "turn.finished" || event.type === "project.updated") void refreshProjects();
         for (const observe of observers.current) observe(event);
       },
@@ -139,11 +157,14 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       ensureMessages: (agentId) => {
         if (!loaded.current.has(agentId)) void fetchMessages(agentId);
       },
-      send: async (text) => {
+      send: async (text, opts) => {
         // While a turn runs the harness queues the message (`queue.updated` shows it); `sendMessage` would refuse it.
-        if (running && bridge.sendOrQueueMessage) {
-          const sent = await bridge.sendOrQueueMessage(projectId, text);
+        // A message with its own mode goes the same way: only `sendOrQueueMessage` carries one.
+        if ((running || opts) && bridge.sendOrQueueMessage) {
+          if (!running) dispatch({ type: "clearTurn" });
+          const sent = await bridge.sendOrQueueMessage(projectId, text, opts);
           if (sent.message) dispatch({ type: "messages", agentId: sent.message.agent_id, messages: [sent.message] });
+          if (!running) void refreshProjects();
           return;
         }
         dispatch({ type: "clearTurn" });
@@ -152,6 +173,8 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         void refreshProjects();
       },
       cancel: () => bridge.cancelTurn(projectId),
+      steered,
+      applyRewind: (messageId, label) => dispatch({ type: "rewound", messageId, label, at: new Date().toISOString() }),
       update: async (patch) => {
         const next = await bridge.updateProject(projectId, patch);
         setProject(next);
@@ -189,7 +212,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
         };
       },
     }),
-    [projectId, project, loadError, state, live, running, syncAll, fetchMessages, bridge, refreshProjects],
+    [projectId, project, loadError, state, live, running, syncAll, fetchMessages, bridge, refreshProjects, steered],
   );
 
   return <ProjectContextProvider value={value}>{children}</ProjectContextProvider>;

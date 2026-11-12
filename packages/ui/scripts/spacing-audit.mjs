@@ -8,7 +8,7 @@
  *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--only <state>] [--json <path>]
  *                                              [--strict] [--selftest] [--query "demo=1"] [--list] [--help]
  *
- * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds, field-row (see RULES below).
+ * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds, field-row, key-hint (see RULES below).
  * States that cannot be reached are reported as `skipped` with a reason, never as a crash.
  */
 import { createRequire } from "node:module";
@@ -35,7 +35,7 @@ const SCALE = [2, 4, 6, 8, 12, 16, 20, 24, 32, 40];
 const ROW_HEIGHTS = [24, 28, 32, 36, 40];
 const TOL = 0.5;
 const ICON_GAP_MIN = 6;
-const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds", "field-row"];
+const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds", "field-row", "key-hint"];
 
 // ---------------------------------------------------------------------------------------------------------------
 // CLI
@@ -766,8 +766,6 @@ function auditInPage(cfg) {
     };
     const SIDES = ["top", "right", "bottom", "left"];
     for (const el of all) {
-      // The composer's aurora ring: its 1px padding is the ring's thickness (a mask), not spacing.
-      if (el.classList.contains("octo-aurora")) continue;
       const cs = getComputedStyle(el);
       const check = (prop, v) => {
         if (v === null || Number.isNaN(v)) return;
@@ -1077,6 +1075,16 @@ function auditInPage(cfg) {
         if (Math.abs(r.top - top) > TOL) report("field-row", c, "top of a control in a field row", `${r1(r.top)}px`, `${r1(top)}px`);
         if (Math.abs(r.height - height) > TOL) report("field-row", c, "height of a control in a field row", `${r1(r.height)}px`, `${r1(height)}px`);
       }
+    }
+  }
+
+  // ---- 10. key-hint (decision 92): a keyboard shortcut is never a boxed letter inside a control. It goes into the control's tooltip
+  // ("Allow once (A)"); a menu item shows it right-aligned and dim (the `Menu` shortcut column).
+  if (rules.includes("key-hint")) {
+    for (const k of document.querySelectorAll("[data-key-hint], kbd.octo-keyhint, kbd.octo-v7-kbd")) {
+      if (!visible(k)) continue;
+      const host = k.closest("button, label");
+      if (host) report("key-hint", k, "boxed key hint inside a button or label", `inside <${host.tagName.toLowerCase()}>`, "none (use the tooltip)");
     }
   }
 

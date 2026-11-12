@@ -2,7 +2,7 @@ import { useScrollAnchor } from "../../lib/scrollAnchor";
 import type { Agent } from "@octo/agent-client";
 import { ArrowDown } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
@@ -25,15 +25,19 @@ import { requestTitle } from "../../lib/comments";
 import { buildTurns, promptText, requestSummaries } from "../../lib/transcript";
 import { CommentsControl } from "./CommentsControlLazy";
 import { Composer, type ComposerHandle } from "./Composer";
-import { TurnRail } from "./TurnRail";
+const TurnRail = lazy(() => import("./TurnRail").then((m) => ({ default: m.TurnRail })));
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { STREAK_EMPTY } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
 import { ObserverBar } from "./ObserverBar";
 import { useBackdrop } from "../primitives/backdrop";
-import { StickyPrompt } from "./StickyPrompt";
+const StickyPrompt = lazy(() => import("./StickyPrompt").then((m) => ({ default: m.StickyPrompt })));
 import { Transcript } from "./Transcript";
+import { Presence } from "../primitives/Presence";
+
+/** The rewind dialog loads when first asked for (parity B5). */
+const RewindDialog = lazy(() => import("./RewindDialog").then((m) => ({ default: m.RewindDialog })));
 import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
 import { slot } from "../../state/workspace/tabMemory";
 
@@ -64,7 +68,7 @@ const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m
 export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: TabId }) {
   const ws = useOptionalWorkspace();
   const slots = useChatSlots();
-  const { theme, backdrop: appBackdrop } = useApp();
+  const { theme, backdrop: appBackdrop, bridge } = useApp();
   const { project, state, running, ensureMessages, projectId } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
@@ -72,6 +76,8 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   const composer = useRef<ComposerHandle>(null);
   const isOrchestrator = agent?.parent_id === null;
   const composerProps = useOrchestratorComposer(tab);
+  const [rewinding, setRewinding] = useState<number | null>(null);
+  const keepEditing = useCallback(() => composer.current?.refinePlan(), []);
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
   const memory = ws?.memory;
@@ -109,6 +115,16 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
 
   const stuck = useStuckTurn(scroll.ref);
   const promptCount = useMemo(() => messages?.filter((m) => m.role === "user").length ?? 0, [messages]);
+  // Sending always shows the sent message and follows from there: a reader who had scrolled up goes down to it (rule:
+  // `scroll-on-send.mjs`). The first load of the transcript and a rewind (fewer requests) do not count as sending.
+  const seenPrompts = useRef<number | null>(null);
+  const { scrollToBottom } = scroll;
+  useLayoutEffect(() => {
+    if (!isOrchestrator || messages === undefined) return;
+    const before = seenPrompts.current;
+    seenPrompts.current = promptCount;
+    if (before !== null && promptCount > before) scrollToBottom();
+  }, [isOrchestrator, messages, promptCount, scrollToBottom]);
   const lastTurnStatus = isOrchestrator ? (state.lastTurn?.status ?? null) : null;
   const requests = useMemo(
     () => (isOrchestrator && messages ? requestSummaries(buildTurns(messages), agent?.status === "running", lastTurnStatus) : []),
@@ -233,12 +249,14 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col">
           {stuckPrompt && (
-            <StickyPrompt
-              key={stuckPrompt.id}
-              text={requestTitle(promptText(stuckPrompt))}
-              author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
-              onHeight={stuck.setPinnedHeight}
-            />
+            <Suspense fallback={null}>
+              <StickyPrompt
+                key={stuckPrompt.id}
+                text={requestTitle(promptText(stuckPrompt))}
+                author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
+                onHeight={stuck.setPinnedHeight}
+              />
+            </Suspense>
           )}
           {showRail(requests.length) && (
             // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16. The
@@ -247,7 +265,9 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
               {/* Decision 57: centred vertically in the conversation's viewport; it takes no layout width. */}
               <div className="relative mx-auto h-full max-w-measure">
                 <div className="pointer-events-auto absolute top-1/2 right-full mr-3 -translate-y-1/2">
-                  <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
+                  <Suspense fallback={null}>
+                    <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
+                  </Suspense>
                 </div>
               </div>
             </div>
@@ -275,6 +295,8 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
                   speaker={agent?.parent_id === null ? (project?.name ?? "Assistant") : roleName(agent)}
                   promptAuthor={isOrchestrator ? "You" : parent ? (parent.parent_id === null ? (project?.name ?? "Assistant") : roleName(parent)) : "Parent"}
                   hideFirstPrompt={!isOrchestrator}
+                  onKeepEditing={isOrchestrator ? keepEditing : undefined}
+                  onRewind={isOrchestrator && bridge.rewind ? setRewinding : undefined}
                 />
                 {isOrchestrator && slots?.approvals?.({ onOpenAgent: (id) => ws?.openAgent(id) })}
               </div>
@@ -314,6 +336,22 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
           </Suspense>
         </div>
       )}
+
+      <Presence show={rewinding !== null}>
+        {rewinding !== null && (
+          <Suspense fallback={null}>
+            <RewindDialog
+              messageId={rewinding}
+              onClose={() => setRewinding(null)}
+              onDone={(report) => {
+                setRewinding(null);
+                // The request goes back into the box to be edited and sent again.
+                composer.current?.fill(report.request_text);
+              }}
+            />
+          </Suspense>
+        )}
+      </Presence>
 
       <p aria-live="polite" className="sr-only">
         {agent.status === "running" ? `${roleName(agent)} is working` : ""}

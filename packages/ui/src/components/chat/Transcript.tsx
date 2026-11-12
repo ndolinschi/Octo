@@ -1,25 +1,34 @@
 import type { Agent, Message, PlanEntry, TurnOutcome } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
+
+import { markSteered } from "../../lib/v7/steer";
 import { lazy, memo, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { formatDuration, formatSeparator, needsSeparator, timeAgo, errorMessage } from "../../lib/format";
 import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
 import { buildTurns, compactionSlots, promptText, turnWarning, type Turn } from "../../lib/transcript";
-import { formatTokens } from "../../lib/format";
-import type { CompactionMarker } from "@octo/agent-client";
 import { Info } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { useProject } from "../../state/project";
 import { useActivity } from "../../state/activity";
 import { Button, IconButton } from "../primitives/Button";
-import { DelegationGroup } from "./DelegationGroup";
+import { useTurnLine } from "./useTurnLine";
 import { LazyMarkdown as Markdown } from "./LazyMarkdown";
 /** Code comments sent with a prompt render with the first such prompt (their own chunk). */
 const PlanList = lazy(() => import("./LivePanels").then((m) => ({ default: m.PlanList })));
 const ThinkingRow = lazy(() => import("./LivePanels").then((m) => ({ default: m.ThinkingRow })));
 const SentComments = lazy(() => import("./SentComments").then((m) => ({ default: m.SentComments })));
-import { ToolGroup } from "./ToolGroup";
+/** The plan card loads with the first plan (parity B3). */
+const CompactedMarker = lazy(() => import("./CompactedMarker").then((m) => ({ default: m.CompactedMarker })));
+const PlanForTurn = lazy(() => import("./PlanCard").then((m) => ({ default: m.PlanForTurn })));
+
+/** Plan cards are looked for under this many of the newest requests (a plan belongs to the newest plan turn). */
+const PLAN_TURNS = 5;
+
+/** Tool lines and delegation cards: their own chunks, fetched right after the first paint with the Markdown chunk (`AppShell`). */
+const ToolGroup = lazy(() => import("./ToolGroup").then((m) => ({ default: m.ToolGroup })));
+const DelegationGroup = lazy(() => import("./DelegationGroup").then((m) => ({ default: m.DelegationGroup })));
 import { TranscriptContext, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 import { ActivityLine, useBatched } from "./LiveActivity";
 import { runRetry, sentence, splitHint } from "./outcome";
@@ -34,9 +43,13 @@ export const Transcript = memo(function Transcript(props: {
   speaker: string;
   promptAuthor: string;
   hideFirstPrompt?: boolean;
+  /** Parity B3: "Keep editing" on a plan card; absent for a sub-agent (plans belong to the orchestrator's requests). */
+  onKeepEditing?: (() => void) | undefined;
+  /** Parity B5: opens the rewind dialog for a request; absent when the bridge cannot rewind. */
+  onRewind?: ((messageId: number) => void) | undefined;
 }) {
   const { agent, messages, now } = props;
-  const { state } = useProject();
+  const { state, steered } = useProject();
   // Decision 55 e: streamed text shows at most every 50 ms.
   const streaming = useBatched(state.streaming[agent.id] ?? "");
   const thinking = state.thinking[agent.id] ?? "";
@@ -44,6 +57,15 @@ export const Transcript = memo(function Transcript(props: {
   const stoppedIds = useMemo(() => new Set(messages.filter((m) => m.stopped).map((m) => m.id)), [messages]);
   const running = agent.status === "running";
   const turns = useMemo(() => buildTurns(messages), [messages]);
+  // Parity B6: the user messages that landed in a running turn (named by `message.steered`) say so.
+  const steeredAt = useMemo(
+    () =>
+      markSteered(
+        steered,
+        turns.map((t) => (t.prompt ? promptText(t.prompt) : "")),
+      ),
+    [steered, turns],
+  );
 
   const ctx = useMemo<TranscriptCtx>(() => {
     const results = new Map<string, ToolResult>();
@@ -72,6 +94,7 @@ export const Transcript = memo(function Transcript(props: {
       : isOrchestrator && (agent.status === "failed" || (agent.error && !turnWarning(agent.error)))
         ? { status: "failed" as const, error: agent.error }
         : null;
+  const usageLine = useTurnLine(agent, isOrchestrator, running);
   const loginHint = useLoginHint(isOrchestrator && failure ? agent.model : null);
   const warning =
     isOrchestrator && !running ? turnWarning(lastTurn?.status === "completed" ? lastTurn.error : agent.status !== "failed" ? agent.error : null) : null;
@@ -98,10 +121,21 @@ export const Transcript = memo(function Transcript(props: {
           return (
             <section key={turn.key} data-turn-id={turn.prompt?.id} className="flex flex-col gap-4">
               {slots.get(i)?.map((m) => (
-                <CompactedMarker key={`c${m.upto_message_id}`} marker={m} />
+                <Suspense key={`c${m.upto_message_id}`} fallback={null}>
+                  <CompactedMarker marker={m} />
+                </Suspense>
               ))}
               {separator && turn.prompt && <TimeSeparator at={turn.prompt.created_at} now={minute} />}
-              {turn.prompt && !hidePrompt && <UserPrompt text={promptText(turn.prompt)} author={props.promptAuthor} external={!isOrchestrator} />}
+              {turn.prompt && !hidePrompt && (
+                <UserPrompt
+                  messageId={turn.prompt.id}
+                  text={promptText(turn.prompt)}
+                  author={props.promptAuthor}
+                  external={!isOrchestrator}
+                  steered={steeredAt.has(i)}
+                  onRewind={isOrchestrator && !running ? props.onRewind : undefined}
+                />
+              )}
               <AssistantTurn
                 turn={turn}
                 speaker={props.speaker}
@@ -114,7 +148,13 @@ export const Transcript = memo(function Transcript(props: {
                 startedAt={started}
                 now={last ? now : minute}
                 footer={isOrchestrator}
+                usage={last ? usageLine : null}
               />
+              {props.onKeepEditing && turn.prompt && i >= turns.length - PLAN_TURNS && !(last && running) && (
+                <Suspense fallback={null}>
+                  <PlanForTurn turnId={turn.prompt.id} onKeepEditing={props.onKeepEditing} />
+                </Suspense>
+              )}
               {ended && ended.status !== "completed" && <TurnBanner status={ended.status} error={ended.error} retryText={null} hint={ended.hint ?? null} />}
             </section>
           );
@@ -134,7 +174,9 @@ export const Transcript = memo(function Transcript(props: {
           />
         )}
         {slots.get(turns.length)?.map((m) => (
-          <CompactedMarker key={`c${m.upto_message_id}`} marker={m} />
+          <Suspense key={`c${m.upto_message_id}`} fallback={null}>
+            <CompactedMarker marker={m} />
+          </Suspense>
         ))}
         {warning && (
           <p data-turn-warning role="status" className="-mt-4 flex items-center gap-2 text-sm text-fg-2">
@@ -161,29 +203,22 @@ function TimeSeparator({ at, now }: { at: string; now: number }) {
   );
 }
 
-/**
- * Where the orchestrator's history was compacted (decision 37): everything above was replaced by a summary in its
- * context. A centred 12px line between hairlines, like the time separator; the summary's size in the tooltip.
- */
-function CompactedMarker({ marker }: { marker: CompactionMarker }) {
-  const size = marker.summary_tokens ? ` into a summary of about ${formatTokens(marker.summary_tokens)} tokens` : "";
-  return (
-    <div
-      data-compacted
-      role="separator"
-      aria-label="History compacted"
-      title={`Everything above was compacted${size} on ${new Date(marker.at).toLocaleString()}. Everything after it works from that summary; the full text stays here.`}
-      className="flex h-4 items-center gap-3 text-xs text-fg-3"
-    >
-      <span aria-hidden className="h-px flex-1 bg-line" />
-      History compacted
-      <span aria-hidden className="h-px flex-1 bg-line" />
-    </div>
-  );
-}
-
 /** Prompts longer than eight lines collapse, with a toggle to read them in full; code comments show as cards. */
-const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { text: string; author: string; external: boolean }) {
+const UserPrompt = memo(function UserPrompt({
+  messageId,
+  text: raw,
+  author,
+  external,
+  steered,
+  onRewind,
+}: {
+  messageId: number;
+  text: string;
+  author: string;
+  external: boolean;
+  steered: boolean;
+  onRewind: ((messageId: number) => void) | undefined;
+}) {
   const { prose: text, comments } = useMemo(() => splitComments(raw), [raw]);
   const box = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -201,9 +236,14 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
   }, [text, expanded]);
 
   return (
-    <div data-prompt>
+    <div data-prompt className="group/prompt relative">
       <div data-bubble className="rounded-md border border-line bg-raised p-card text-base text-fg transition-[box-shadow] duration-300">
         {external ? <div className="mb-0.5 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
+        {steered && (
+          <div data-steered className="mb-0.5 text-xs text-fg-3">
+            Sent mid-turn
+          </div>
+        )}
         {text && (
           <div ref={box} id={id} className={cn("wrap-anywhere whitespace-pre-wrap", !expanded && "line-clamp-8")}>
             {text}
@@ -228,6 +268,16 @@ const UserPrompt = memo(function UserPrompt({ text: raw, author, external }: { t
           </div>
         )}
       </div>
+      {onRewind && (
+        // On the bubble's lower edge, in the gap to the answer: it takes no room and shows on hover or focus (always on touch).
+        <button
+          type="button"
+          onClick={() => onRewind(messageId)}
+          className="absolute right-3 -bottom-3 z-10 inline-flex h-6 press items-center gap-1.5 rounded-full border border-line-strong bg-overlay px-2 text-xs text-fg-2 opacity-0 shadow-float group-focus-within/prompt:opacity-100 group-hover/prompt:opacity-100 hover:text-fg pointer-coarse:opacity-100"
+        >
+          Rewind to here
+        </button>
+      )}
     </div>
   );
 });
@@ -244,6 +294,8 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   startedAt: string | null;
   now: number;
   footer?: boolean;
+  /** "model · in / out" of the newest finished turn (decision 86 d). */
+  usage?: string | null;
 }) {
   const { turn, live, streaming } = props;
   const empty = turn.items.length === 0 && !streaming && !props.thinking;
@@ -262,18 +314,21 @@ const AssistantTurn = memo(function AssistantTurn(props: {
       </Suspense>
       {turn.items.map((item) => {
         if (item.kind === "text") return <Markdown key={item.key} text={item.text} className="octo-prose" fileLinks />;
-        if (item.kind === "tools") return <ToolGroup key={item.key} uses={item.uses} />;
-        return <DelegationGroup key={item.key} uses={item.uses} />;
+        return (
+          <Suspense key={item.key} fallback={null}>
+            {item.kind === "tools" ? <ToolGroup uses={item.uses} /> : <DelegationGroup uses={item.uses} />}
+          </Suspense>
+        );
       })}
       {streaming && <Markdown text={streaming} className="octo-prose" streaming fileLinks />}
       {live && <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} now={props.now} watched={props.watched} />}
-      {props.footer && !live && reply && turn.lastAt && <TurnFooter reply={reply} at={turn.lastAt} now={props.now} />}
+      {props.footer && !live && reply && turn.lastAt && <TurnFooter reply={reply} at={turn.lastAt} now={props.now} usage={props.usage ?? null} />}
     </article>
   );
 });
 
 /** Muted row under a finished orchestrator reply: copy it, and when it finished. */
-function TurnFooter({ reply, at, now }: { reply: string; at: string; now: number }) {
+function TurnFooter({ reply, at, now, usage }: { reply: string; at: string; now: number; usage: string | null }) {
   const [copied, copy] = useCopy();
   return (
     <div data-turn-footer className="-ml-1 flex h-6 items-center gap-1.5 text-sm text-fg-3">
@@ -281,6 +336,7 @@ function TurnFooter({ reply, at, now }: { reply: string; at: string; now: number
       <time dateTime={at} title={new Date(at).toLocaleString()} className="tabular-nums">
         {timeAgo(at, now)}
       </time>
+      {usage && <span className="min-w-0 truncate tabular-nums">· {usage}</span>}
     </div>
   );
 }

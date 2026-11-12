@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { UsageBucket } from "@octo/agent-client";
-import { topModelLines, turnLine } from "./turnLine";
+import { topModelLines } from "./modelLines";
+import { turnLine } from "./turnLine";
 
 const b = (key: string, input: number, output = 0): UsageBucket => ({
   key,

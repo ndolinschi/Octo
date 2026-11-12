@@ -11,7 +11,7 @@ import { cn } from "../../lib/cn";
  */
 export function KeyHint({ children, always = false, className }: { children: ReactNode; always?: boolean; className?: string }) {
   return (
-    <kbd aria-hidden className={cn("octo-keyhint shrink-0", !always && "max-sm:hidden", className)}>
+    <kbd aria-hidden data-key-hint className={cn("octo-keyhint shrink-0", !always && "max-sm:hidden", className)}>
       {children}
     </kbd>
   );

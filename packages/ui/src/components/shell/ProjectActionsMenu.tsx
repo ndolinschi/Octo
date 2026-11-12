@@ -1,7 +1,9 @@
 import { totalTokens } from "@octo/agent-client";
 import { formatTokens } from "../../lib/format";
+import { startDownload } from "../../lib/download";
 import { MOD_LABEL } from "../../lib/keys";
 import { budgetState } from "../../lib/models";
+import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
@@ -11,6 +13,7 @@ import { Menu } from "../primitives/Menu";
 export default function ProjectActionsMenu(props: { x: number; y: number; onClose(): void }) {
   const { project, state } = useProject();
   const { openProjectInEditor } = useHost();
+  const { bridge } = useApp();
   const ws = useOptionalWorkspace();
   if (!project) return null;
   const tokens = totalTokens(state);
@@ -43,6 +46,9 @@ export default function ProjectActionsMenu(props: { x: number; y: number; onClos
         ...(budget && budget.tone === "fg-3" ? [{ id: "budget", label: `Budget: ${budget.text}`, disabled: true, run: () => undefined }] : []),
         ...(openProjectInEditor
           ? [{ id: "editor", label: "Open in editor", disabled: project.folders.length === 0, run: () => openProjectInEditor(project.id) }]
+          : []),
+        ...(bridge.exportConversationUrl
+          ? [{ id: "export", label: "Export conversation (Markdown)", run: () => startDownload(bridge.exportConversationUrl?.(project.id) ?? "") }]
           : []),
         { id: "settings", label: "Project settings", disabled: !ws, run: () => ws?.openSettings() },
       ]}

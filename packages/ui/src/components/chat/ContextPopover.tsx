@@ -1,12 +1,12 @@
 import type { ContextBreakdown, ContextOverview } from "@octo/agent-client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
+import { compactedLine, compactError } from "../../lib/compactNow";
 import { cacheLine, contextHeadline, contextView, lastTurnView, type ContextView } from "../../lib/contextView";
-import { formatTokens } from "../../lib/format";
+import { errorCode, errorMessage, formatTokens } from "../../lib/format";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
-import { toolTab } from "../../state/workspace/layout";
-import { MEMORY_START } from "../../state/workspace/tabMemory";
+import { requestMemoryView } from "../../state/workspace/tabMemory";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
 import { Popover } from "../primitives/Popover";
@@ -21,17 +21,21 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
   const [loading, setLoading] = useState(Boolean(bridge.getContextOverview));
   const [compacting, setCompacting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const load = () => {
+  const load = useCallback(() => {
     if (!bridge.getContextOverview) return;
     bridge.getContextOverview(projectId).then(
       (raw: ContextOverview | ContextBreakdown) => {
         setView(contextView(raw));
         setLoading(false);
       },
+      // The numbers stay as they were (the last turn's); the popover says nothing more than it knew.
       () => setLoading(false),
     );
-  };
-  useEffect(load, [bridge, projectId]);
+  }, [bridge, projectId]);
+  useEffect(load, [load]);
+  // Parity B7: a turn, a compaction, a rewind, a note or an instruction file changed what the next request holds.
+  const { onEvent } = useProject();
+  useEffect(() => onEvent((e) => e.type === "context.updated" && load()), [onEvent, load]);
   const a = view.approx ? "≈" : "";
   const cache = cacheLine(view);
   const compact = bridge.compactNow;
@@ -119,14 +123,15 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
                 setCompacting(true);
                 setNote(null);
                 compact.call(bridge, projectId).then(
-                  () => {
+                  (result) => {
                     setCompacting(false);
-                    setNote("Compacting. The numbers update after the next turn.");
+                    // The marker in the transcript comes with `agent.compacted`; the numbers with `context.updated`.
+                    setNote(compactedLine(result));
                     load();
                   },
                   (e: unknown) => {
                     setCompacting(false);
-                    setNote(e instanceof Error ? e.message : "Could not compact.");
+                    setNote(compactError(errorCode(e)) ?? `Could not compact: ${errorMessage(e).replace(/\.$/, "")}. Try again.`);
                   },
                 );
               }}
@@ -141,7 +146,8 @@ export function ContextPopover(props: { anchor: React.RefObject<HTMLButtonElemen
             className="ml-auto"
             disabled={!ws}
             onClick={() => {
-              ws?.memory.set(toolTab("memory"), MEMORY_START, "context");
+              // An already-mounted Memory tab is told too (it reads the request once on mount otherwise).
+              if (ws) requestMemoryView(ws.memory, "context");
               ws?.openTool("memory");
               props.onClose();
             }}

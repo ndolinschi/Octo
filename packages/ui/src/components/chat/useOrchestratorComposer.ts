@@ -1,13 +1,14 @@
-import type { TierPolicy } from "@octo/agent-client";
+import type { ProjectMode, TierPolicy } from "@octo/agent-client";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { withComments } from "../../lib/comments";
+import { effectiveMode, modeToSend, nextMode } from "../../lib/modes";
 import { promptText } from "../../lib/transcript";
 import { servedModel } from "../../lib/models";
 import { useApp } from "../../state/app";
 import { useOptionalComments } from "../../state/comments";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import type { ComposerProps } from "./Composer";
+import type { ComposerMode, ComposerProps } from "./Composer";
 import { DraftBus } from "./draftBus";
 import type { QueuedMessage } from "./ComposerPills";
 import { slot, type TabMemory } from "../../state/workspace/tabMemory";
@@ -89,6 +90,9 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const memory = useOptionalWorkspace()?.memory;
   const [pending, setPending] = useState<string | null>(null);
   const [pendingTier, setPendingTier] = useState<TierPolicy | null>(null);
+  // Parity B3: the mode chosen for the next message only; it resets once that message is sent.
+  const [override, setOverride] = useState<ProjectMode | null>(null);
+  const modeValue = effectiveMode(override, project?.mode);
   const orchestratorId = project?.orchestrator_agent_id;
   const orchestrator = orchestratorId ? state.agents[orchestratorId] : undefined;
   const messages = orchestratorId ? state.messages[orchestratorId] : undefined;
@@ -107,11 +111,28 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
     async (text: string) => {
       // Pending code comments ride along as an `octo-comments` block, then clear.
       const prepared = comments ? await comments.prepare() : null;
-      await send(prepared ? withComments(text, prepared.block) : text);
+      const mode = modeToSend(override, project?.mode);
+      await send(prepared ? withComments(text, prepared.block) : text, mode ? { mode } : undefined);
       prepared?.commit();
+      setOverride(null);
     },
-    [comments, send],
+    [comments, send, override, project?.mode],
   );
+  const modeApi = useMemo<ComposerMode | null>(() => {
+    // Without plan approval the harness predates modes: no chip.
+    if (!bridge.approvePlan) return null;
+    const projectDefault = project?.mode ?? "agent";
+    return {
+      value: modeValue,
+      isDefault: modeValue === projectDefault,
+      choose: setOverride,
+      cycle: () => setOverride((cur) => nextMode(effectiveMode(cur, project?.mode))),
+      makeDefault: async () => {
+        await update({ mode: modeValue });
+        setOverride(null);
+      },
+    };
+  }, [bridge.approvePlan, modeValue, project?.mode, update]);
 
   // The next queued message goes out once per completed turn (not after a failure or a stop); a send that fails puts it
   // back, where its pill shows it is still waiting.
@@ -134,7 +155,6 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
   const noKey = loop?.available === false && !acp;
   return {
     running,
-    failed: orchestrator?.status === "failed" || (!running && state.lastTurn?.status === "failed"),
     disabledReason: health === "offline" ? "Bridge offline. Start harness serve to continue." : live === "reconnecting" ? "Reconnecting to the bridge…" : null,
     folders: project?.folders ?? [],
     notice: noKey
@@ -187,6 +207,7 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
             },
           }
         : null,
+    mode: modeApi,
     onSend,
     onCancel: cancel,
     draft,

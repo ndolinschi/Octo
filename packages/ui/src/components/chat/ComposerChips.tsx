@@ -42,9 +42,9 @@ export function useShedLabels(row: RefObject<HTMLElement | null>, max: number, k
   return level;
 }
 
-type ChipProps = { bare: boolean; disabled: boolean; onOpenChange(open: boolean): void };
+export type ChipProps = { bare: boolean; disabled: boolean; onOpenChange(open: boolean): void };
 
-function useChipMenu(onOpenChange: (open: boolean) => void) {
+export function useChipMenu(onOpenChange: (open: boolean) => void) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpenState] = useState(false);
   const setOpen = (next: boolean) => {

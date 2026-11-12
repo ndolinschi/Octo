@@ -1,4 +1,4 @@
-import type { Folder, TierPolicy } from "@octo/agent-client";
+import type { Folder, ProjectMode, TierPolicy } from "@octo/agent-client";
 import { ArrowUp, Clock, Plus, Square } from "lucide-react";
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
@@ -9,22 +9,31 @@ import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { Presence } from "../primitives/Presence";
 import { withAttachments } from "./attachments";
-import { ComposerMenu, type ComposerMenuHandle, type MenuPick } from "./ComposerMenu";
+import type { ComposerMenuHandle, MenuPick } from "./ComposerMenu";
+import { modeNote } from "../../lib/modes";
 import { FolderChip, ModelChip, TierChip, useShedLabels } from "./ComposerChips";
 import { ComposerPills, type QueuedMessage } from "./ComposerPills";
 import { ContextRing } from "./ContextRing";
-import { useAnimationGate, useAuroraState } from "./useAnimationGate";
 import { useAttachments } from "./useAttachments";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
 
 const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
+/** Parts of the composer that only matter once used load on demand (the initial bundle budget). */
+const ComposerMenu = lazy(() => import("./ComposerMenu").then((m) => ({ default: m.ComposerMenu })));
+const ModeChip = lazy(() => import("./ModeChip").then((m) => ({ default: m.ModeChip })));
+const ComposerHighlight = lazy(() => import("./ComposerHighlight").then((m) => ({ default: m.ComposerHighlight })));
 
-export type ComposerHandle = { focus(): void; fill(text: string): void };
+export type ComposerHandle = {
+  focus(): void;
+  fill(text: string): void;
+  /** "Keep editing" on a plan: Plan mode for the next message, and the caret in the text. */ refinePlan(): void;
+};
+
+/** Parity B3: the mode of the next message. `isDefault`: it is the project's own default, not a choice for this message. */
+export type ComposerMode = { value: ProjectMode; isDefault: boolean; choose(mode: ProjectMode): void; cycle(): void; makeDefault(): Promise<void> };
 
 export type ComposerProps = {
   running: boolean;
-  /** The last turn failed (the edge drains to danger once). */
-  failed: boolean;
   disabledReason: string | null;
   folders: Folder[];
   /** The orchestrator's model or agent (choose rejects to roll back). */
@@ -35,6 +44,8 @@ export type ComposerProps = {
   onAddFolder?: ((path: string) => void) | undefined;
   /** The router's tier policy; null without a router. */
   tier: { value: TierPolicy; choose(policy: TierPolicy): Promise<void> } | null;
+  /** Null when the harness has no modes. */
+  mode?: ComposerMode | null;
   /** The orchestrator's context window, for the meter. */
   context: { used: number | null | undefined; size: number | null | undefined };
   /** The newest request, recalled by ↑ in an empty field. */
@@ -60,12 +71,12 @@ const TRIGGER = /(^|\s)([/@])([^\s/@]*)$/;
 
 type MenuState = { mode: "button" } | { mode: "inline"; start: number; query: string };
 
-/** Chips that can shed their label (tier, folder, model). */
-const SHEDDABLE = 3;
+/** Chips that can shed their label (tier, mode, folder, model). */
+const SHEDDABLE = 4;
 
 /**
- * The composer (decision 62): one container (radius 14, raised, hairline that brightens on focus; the aurora edge
- * while the orchestrator works). Inside: the pills (queued messages, line comments, attached files), the text area
+ * The composer (decision 62): one container (radius 14, raised, hairline that brightens on focus;
+ * no glow, decision 87). Inside: the pills (queued messages, line comments, attached files), the text area
  * (1–10 lines), and the control row — "+", the model / folder / tier chips (labels shed tier → folder → model when
  * narrow), the context ring and one round button that is Send, Stop, or Queue.
  */
@@ -86,11 +97,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const listId = useId();
   const slots = useChatSlots();
   const [queuedCount, setQueuedCount] = useState(0);
-  const aurora = useAuroraState(props.running, props.failed);
-  const frame = useRef<HTMLDivElement>(null);
-  const paused = useAnimationGate(frame, aurora !== "off");
 
-  useImperativeHandle(handle, () => ({ focus: () => area.current?.focus(), fill: (value) => place(value) }));
+  const modeChoose = props.mode?.choose;
+  useImperativeHandle(
+    handle,
+    () => ({
+      focus: () => area.current?.focus(),
+      fill: (value) => place(value),
+      refinePlan: () => {
+        modeChoose?.("plan");
+        area.current?.focus();
+      },
+    }),
+    [area, place, modeChoose],
+  );
 
   const overlay = menu !== null || commentsOpen || chipOpen > 0;
   const onOverlay = props.onOverlay;
@@ -102,7 +122,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const pendingComments = props.comments?.count ?? 0;
   const hasContent = text.trim().length > 0 || attach.files.length > 0 || pendingComments > 0;
   const canSend = !disabled && !sending && hasContent;
-  const shed = useShedLabels(row, SHEDDABLE, `${props.model?.value}|${props.folders.length}|${props.tier?.value}`);
+  const shed = useShedLabels(row, SHEDDABLE, `${props.model?.value}|${props.folders.length}|${props.tier?.value}|${props.mode?.value}`);
 
   const outgoing = () => withAttachments(text.trim(), attach.files);
   const queue = () => {
@@ -170,6 +190,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       e.preventDefault();
       return;
     }
+    // Shift+Tab cycles the mode while the text has focus (parity B3); with the inline menu open Tab belongs to the menu.
+    if (e.key === "Tab" && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && props.mode) {
+      e.preventDefault();
+      props.mode.cycle();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) {
@@ -234,6 +260,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {props.notice.text}
         </p>
       )}
+      {props.mode && modeNote(props.mode.value) && <p className="mb-2 px-3 text-sm text-fg-3">{modeNote(props.mode.value)}</p>}
       {attach.note && (
         <Notice>
           <span className="text-fg-2">{attach.note}</span>
@@ -242,8 +269,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </Button>
         </Notice>
       )}
-      <div ref={frame} className="octo-aurora-frame" data-aurora={aurora === "off" ? undefined : aurora} data-paused={paused || undefined}>
-        <span aria-hidden className="octo-aurora-glow" />
+      <div>
         <form
           ref={box}
           data-composer
@@ -274,28 +300,33 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <label htmlFor={props.floating ? "octo-composer-float" : "octo-composer"} className="sr-only">
             Message the orchestrator
           </label>
-          <textarea
-            id={props.floating ? "octo-composer-float" : "octo-composer"}
-            ref={area}
-            rows={1}
-            value={text}
-            disabled={disabled}
-            onChange={(e) => {
-              setText(e.target.value);
-              syncTrigger(e.target.value, e.target.selectionStart);
-            }}
-            onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
-            onKeyDown={onKeyDown}
-            onPaste={attach.onPaste}
-            onBlur={() => inlineOpen && setMenu(null)}
-            placeholder={props.disabledReason ?? "Ask anything, @ to mention a file"}
-            aria-autocomplete="list"
-            aria-expanded={inlineOpen}
-            aria-controls={inlineOpen ? listId : undefined}
-            aria-activedescendant={inlineOpen && activeOption ? activeOption : undefined}
-            aria-keyshortcuts="Enter Shift+Enter Control+Enter Escape"
-            className="octo-composer-input block w-full resize-none overscroll-contain bg-transparent px-3 pt-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
-          />
+          <div className="relative">
+            <Suspense fallback={null}>
+              <ComposerHighlight text={text} area={area} />
+            </Suspense>
+            <textarea
+              id={props.floating ? "octo-composer-float" : "octo-composer"}
+              ref={area}
+              rows={1}
+              value={text}
+              disabled={disabled}
+              onChange={(e) => {
+                setText(e.target.value);
+                syncTrigger(e.target.value, e.target.selectionStart);
+              }}
+              onSelect={(e) => inlineOpen && syncTrigger(e.currentTarget.value, e.currentTarget.selectionStart)}
+              onKeyDown={onKeyDown}
+              onPaste={attach.onPaste}
+              onBlur={() => inlineOpen && setMenu(null)}
+              placeholder={props.disabledReason ?? "Ask anything, @ to mention a file"}
+              aria-autocomplete="list"
+              aria-expanded={inlineOpen}
+              aria-controls={inlineOpen ? listId : undefined}
+              aria-activedescendant={inlineOpen && activeOption ? activeOption : undefined}
+              aria-keyshortcuts="Enter Shift+Enter Control+Enter Escape"
+              className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 pt-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
+            />
+          </div>
           <div ref={row} data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">
             <button
               ref={plus}
@@ -313,6 +344,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             >
               <Glyph icon={Plus} size={16} />
             </button>
+            {props.mode && (
+              <Suspense fallback={<span aria-hidden className="size-7 shrink-0" />}>
+                <ModeChip
+                  value={props.mode.value}
+                  isDefault={props.mode.isDefault}
+                  onChoose={props.mode.choose}
+                  onMakeDefault={() => void props.mode?.makeDefault().catch(() => undefined)}
+                  bare={shed >= 2}
+                  disabled={disabled}
+                  onOpenChange={onChip}
+                />
+              </Suspense>
+            )}
             {model && (
               <ModelChip
                 value={model.value}
@@ -320,12 +364,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 unavailable={model.unavailable === true}
                 onChoose={chooseModel}
                 onChooseUnverified={(value) => chooseModel(value, true)}
-                bare={shed >= 3}
+                bare={shed >= 4}
                 disabled={disabled}
                 onOpenChange={onChip}
               />
             )}
-            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 2} disabled={disabled} onOpenChange={onChip} />
+            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 3} disabled={disabled} onOpenChange={onChip} />
             {props.tier && (
               <TierChip
                 value={props.tier.value}
@@ -345,24 +389,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           </div>
         </form>
-        <span aria-hidden className="octo-aurora">
-          <span className="octo-aurora-spin" />
-        </span>
       </div>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
-          <ComposerMenu
-            ref={menuRef}
-            anchor={menu.mode === "button" ? plus : box}
-            box={box}
-            query={menu.mode === "inline" ? menu.query : null}
-            listId={listId}
-            onActive={setActiveOption}
-            pendingComments={pendingComments}
-            onOpenComments={openComments}
-            onPick={pick}
-            onClose={closeMenu}
-          />
+          <Suspense fallback={null}>
+            <ComposerMenu
+              ref={menuRef}
+              anchor={menu.mode === "button" ? plus : box}
+              box={box}
+              query={menu.mode === "inline" ? menu.query : null}
+              listId={listId}
+              onActive={setActiveOption}
+              pendingComments={pendingComments}
+              onOpenComments={openComments}
+              onPick={pick}
+              onClose={closeMenu}
+            />
+          </Suspense>
         )}
       </Presence>
     </div>

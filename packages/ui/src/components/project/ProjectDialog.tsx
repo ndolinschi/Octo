@@ -17,6 +17,7 @@ import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { Field, Input, Textarea } from "../primitives/Field";
+import { ApprovalRules } from "./ApprovalRules";
 
 type FolderRow = { key: number; path: string };
 
@@ -346,6 +347,7 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
             </div>
           )}
         </div>
+        {props.project && <ApprovalRules projectId={props.project.id} />}
         {error && (
           <p role="alert" className="text-sm text-err">
             {error}

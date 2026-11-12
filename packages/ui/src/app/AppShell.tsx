@@ -15,9 +15,7 @@ import { ShellContext } from "../state/shell";
 import { Button } from "../components/primitives/Button";
 import { Dialog } from "../components/primitives/Dialog";
 import { Presence, usePresence } from "../components/primitives/Presence";
-import { NoProjectsHero } from "../components/project/NoProjectsHero";
 import type { PaletteAction } from "../components/shell/CommandPalette";
-import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
 import { Sidebar } from "../components/shell/Sidebar";
 import { TitleBar } from "../components/shell/TitleBar";
@@ -33,6 +31,9 @@ const loadPalette = () => import("../components/shell/CommandPalette");
 const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
 /** Demo-only `#/p/<id>/memory` (the Memory view on its own); not in a normal start's chunks. */
 const MemoryRoute = lazy(() => import("./MemoryRoute").then((m) => ({ default: m.MemoryRoute })));
+/** States the app is rarely in: their own chunks (bundle budget). */
+const NoProjectsHero = lazy(() => import("../components/project/NoProjectsHero").then((m) => ({ default: m.NoProjectsHero })));
+const OfflineState = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineState })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
 /** The project dialog and the settings page load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
 const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/settings/SettingsPage")]);
@@ -114,7 +115,11 @@ function Shell() {
   // The first assistant message must not flash as plain text before Markdown arrives: fetch that chunk right after first
   // paint (idle callback; WebKit has none, so a short timer), still outside the initial bundle.
   useEffect(() => {
-    const warm = () => void import("../components/shared/Markdown").catch(() => undefined);
+    const warm = () => {
+      void import("../components/shared/Markdown").catch(() => undefined);
+      void import("../components/chat/ToolGroup").catch(() => undefined);
+      void import("../components/chat/DelegationGroup").catch(() => undefined);
+    };
     if (Reflect.has(window, "requestIdleCallback")) {
       const id = window.requestIdleCallback(warm, { timeout: 500 });
       return () => window.cancelIdleCallback(id);
@@ -182,14 +187,24 @@ function Shell() {
 
   const workspace = health !== "offline" && known && route.projectId !== null;
   let main: React.ReactNode = null;
-  if (health === "offline") main = <OfflineState />;
+  if (health === "offline")
+    main = (
+      <Suspense fallback={null}>
+        <OfflineState />
+      </Suspense>
+    );
   else if (noProvider && route.projectId === null)
     main = (
       <Suspense fallback={null}>
         <ConnectScreen onConnect={setConnectTarget} />
       </Suspense>
     );
-  else if (projects && projects.length === 0) main = <NoProjectsHero onCreate={newProject} />;
+  else if (projects && projects.length === 0)
+    main = (
+      <Suspense fallback={null}>
+        <NoProjectsHero onCreate={newProject} />
+      </Suspense>
+    );
   else if (route.projectId === null && projects)
     main = (
       <Suspense fallback={null}>

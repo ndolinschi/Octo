@@ -26,7 +26,7 @@ export function formatCountdown(ms: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
-export type ApprovalAction = "allow" | "allow_for_turn" | "deny";
+export type ApprovalAction = "allow" | "allow_for_turn" | "allow_always" | "deny";
 
 /** Card keys: `A` allows once, `D` denies, `Enter` on the card allows. Modified keys and typing in a field are not ours. */
 export function keyAction(key: string, mods: { ctrl: boolean; meta: boolean; alt: boolean }, inField: boolean): ApprovalAction | null {
@@ -56,13 +56,22 @@ export function isAllowOption(option: ApprovalOption): boolean {
 
 /** Why a card closed: the user here, the harness's timer, a cancelled turn, or someone else (another window). */
 export type ResolvedBy = "you" | "timeout" | "cancelled" | "elsewhere";
-export type Resolution = { decision: ApprovalDecision; by: ResolvedBy; note?: string; option?: string };
+/** `rule`: the code of the rule an "always allow" saved (parity B4), shown in the resolved line. */
+export type Resolution = { decision: ApprovalDecision; by: ResolvedBy; note?: string; option?: string; rule?: string };
 
 /** The resolved card's one line ("Allowed once", "Denied automatically after 30 minutes" …). */
 export function resolutionLabel(r: Resolution): string {
   if (r.by === "timeout") return "Denied automatically";
   if (r.by === "cancelled") return "Denied: the turn was stopped";
-  const verb = r.option ?? (r.decision === "allow" ? "Allowed once" : r.decision === "allow_for_turn" ? "Allowed for this turn" : "Denied");
+  const verb =
+    r.option ??
+    (r.decision === "allow"
+      ? "Allowed once"
+      : r.decision === "allow_for_turn"
+        ? "Allowed for this turn"
+        : r.decision === "allow_always"
+          ? "Always allowed"
+          : "Denied");
   return r.by === "elsewhere" ? `${verb} elsewhere` : verb;
 }
 

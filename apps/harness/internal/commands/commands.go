@@ -304,6 +304,9 @@ func (s *Service) Start(ctx context.Context, pid, name, reviewID string) (projec
 		return projectstore.CommandRun{}, err
 	}
 	s.hub.Publish(pid, EventStarted, map[string]any{"run": r.row})
+	// What Start answers is the run as it started (like the started event), taken before the output readers exist: a
+	// command that ends at once must not make the answer say "finished" (or have a half-built tail).
+	started := r.snapshot(false)
 
 	var readers sync.WaitGroup
 	readers.Add(2)
@@ -317,7 +320,7 @@ func (s *Service) Start(ctx context.Context, pid, name, reviewID string) (projec
 		close(stopFlush)
 		r.finish(db, waitErr)
 	}()
-	return r.snapshot(false), nil
+	return started, nil
 }
 
 // pump copies one stream of the process into pending output.

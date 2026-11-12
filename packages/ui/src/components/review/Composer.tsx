@@ -70,12 +70,9 @@ export function Composer(props: {
       <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1">
         <h3 className="min-w-0 truncate text-sm font-medium text-fg">{props.heading}</h3>
         {props.suggestFor !== undefined && (
-          <label className="ml-auto flex h-6 cursor-pointer items-center gap-2 text-sm text-fg-2 max-sm:h-10">
+          <label title="Suggest a change (S)" className="ml-auto flex h-6 cursor-pointer items-center gap-2 text-sm text-fg-2 max-sm:h-10">
             <input type="checkbox" className="size-4 accent-[var(--octo-primary)]" checked={suggest} onChange={(e) => setSuggest(e.target.checked)} />
             Suggest a change
-            <kbd aria-hidden className="octo-v7-kbd max-sm:hidden">
-              s
-            </kbd>
           </label>
         )}
       </div>

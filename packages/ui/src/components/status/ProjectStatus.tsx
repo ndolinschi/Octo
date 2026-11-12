@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { budgetState } from "../../lib/models";
+import { modelName } from "../../lib/models";
+import { topModelLines } from "../../lib/usage/modelLines";
 import { changedFileCount, changedText } from "../../lib/statusBar";
 import { runningRuns, runningText } from "../../lib/projectRuns";
 import { useRunsSelector } from "../../state/projectRuns";
@@ -104,19 +106,37 @@ function End() {
           {text}
         </button>
       )}
-      {budget && <Budget budget={budget} />}
+      {budget && <Budget budget={budget} spent={project?.spent_usd ?? null} />}
     </>
   );
 }
 
-function Budget({ budget }: { budget: NonNullable<ReturnType<typeof budgetState>> }) {
+function Budget({ budget, spent }: { budget: NonNullable<ReturnType<typeof budgetState>>; spent: number | null }) {
   const ws = useOptionalWorkspace();
+  const { bridge } = useApp();
+  const { projectId } = useProject();
+  // Decision 86 d: the tooltip adds the project's top models by tokens, read on the first hover or focus (and again once the spend changed).
+  const [lines, setLines] = useState<string[]>([]);
+  const readAt = useRef<{ projectId: string; spent: number | null } | null>(null);
+  const read = useCallback(() => {
+    if (readAt.current?.projectId === projectId && readAt.current.spent === spent) return;
+    readAt.current = { projectId, spent };
+    bridge.getUsage({ group: "model", project: projectId }).then(
+      (report) => setLines(topModelLines(report.buckets, (id) => modelName(id))),
+      () => {
+        readAt.current = null;
+      },
+    );
+  }, [bridge, projectId, spent]);
+  const base = `${budget.reached ? "Project budget reached. Raise it in project settings to continue. " : ""}Spent ${budget.text} of the project's budget. Open Usage.`;
   return (
     <button
       type="button"
       data-budget
       className={cn(STATUS_ITEM, "tabular-nums", budget.tone === "err" && "text-err", budget.tone === "warn" && "text-warn")}
-      title={`${budget.reached ? "Project budget reached. Raise it in project settings to continue. " : ""}Spent ${budget.text} of the project's budget. Open Usage.`}
+      title={lines.length ? `${base}\n${lines.join("\n")}` : base}
+      onMouseEnter={read}
+      onFocus={read}
       onClick={() => ws?.openTool("usage")}
     >
       <span className="sr-only">Budget: </span>

@@ -22,6 +22,9 @@ node scripts/check-bundle-size.mjs              # after the build: initial JS gz
 node packages/ui/scripts/spacing-audit.mjs --url http://localhost:1420   # must print total=0
 node packages/ui/scripts/flicker.mjs --url http://localhost:1420   # decisions 69/76: per-frame stability while typing a long prompt; no running animation on idle screens
 node packages/ui/scripts/width-stability.mjs --url http://localhost:1420   # decision 79: must print "width-stability: ok" (also at --width 900 --height 600)
+node packages/ui/scripts/frame-colours.mjs --url http://localhost:1420   # decision 81: no warn/error/accent border, outline or ring (approval, form, plan, failed turn, review screens)
+node packages/ui/scripts/scroll-on-send.mjs --url http://localhost:1420   # rule: sending scrolls to the sent message and re-pins to the bottom
+node packages/ui/scripts/ui-tour.mjs --url http://localhost:1420 --out /tmp/tour   # (then `python3 packages/ui/scripts/tour-sheets.py /tmp/tour` for one contact sheet per group and theme) every screen in dark and light at four sizes (PNG + INDEX.md + MISSING.txt); `--only chat`, `--theme dark`, `--small`
 ```
 
 Demo knobs: `?demo=one|many|empty`, `?lsp=fail-once|slow|exit`, `?plugins=none`, `?claude=empty`, `?refresh=fail|none`, `?providers=none|owner` (the owner's live set of twelve). Without `?demo` the app uses the

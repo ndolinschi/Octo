@@ -36,8 +36,15 @@ import { gzipSync } from "node:zlib";
  * primitives) put the entry at 159.63 kB, 0.43 over. Temporary ceiling 160.0 so the batch can be tested; batch 3
  * carries the task "entry back to 156.5 or less" (lazy primitives that only lazy screens use, agent-client methods
  * out of the entry) and lowers this again. Do not raise it further.
+ *
+ * Batch 3 (2026-11-12): merged tree with the parity screens measured 157.96 kB; tool lines and delegation cards
+ * (`ToolGroup`, `DelegationGroup`: -2.0 kB; warmed with the Markdown chunk right after the first paint) and the
+ * language-server session code in agent-client (`openLanguageServer` imports it on first use: -0.5 kB) moved to
+ * their own chunks; the turn line and the budget tooltip cost +0.3. Entry 155.78 kB. Budget = measured + 1.0 = 156.8.
+ * (Making `FloatingComposer` lazy made it WORSE, +2.7 kB: the bundler hoisted more shared modules into extra preloaded
+ * chunks. Measure every move.)
  */
-const BUDGET_KB = 160.0;
+const BUDGET_KB = 156.8;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

@@ -54,6 +54,8 @@ test("resolution: ours wins, deny at the deadline is the timer, deny while stopp
   assert.equal(resolutionCause("deny", { local: undefined, now: 0, deadline: 100_000, turnStopped: true }).by, "cancelled");
   assert.equal(resolutionCause("allow", { local: undefined, now: 0, deadline: null, turnStopped: true }).by, "elsewhere");
   assert.equal(resolutionLabel({ decision: "allow_for_turn", by: "you" }), "Allowed for this turn");
+  assert.equal(resolutionLabel({ decision: "allow_always", by: "you", rule: "git status" }), "Always allowed");
+  assert.deepEqual(answerFor("allow_always", "ignored"), { decision: "allow_always" });
   assert.equal(resolutionLabel({ decision: "deny", by: "timeout" }), "Denied automatically");
   assert.equal(resolutionLabel({ decision: "allow", by: "elsewhere" }), "Allowed once elsewhere");
 });

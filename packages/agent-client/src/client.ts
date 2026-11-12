@@ -101,7 +101,6 @@ import type {
   UsageReport,
   WriteFileInput,
 } from "./types";
-import { openLspSession } from "./lspSession";
 
 export class BridgeError extends Error {
   readonly status: number;
@@ -894,8 +893,9 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     recheckProvider: async (id) => asProvider(await request("POST", `/v1/providers/${encodeURIComponent(id)}/recheck`), id),
     setProviderCustomModels: async (id, models) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/custom-models`, { models }), id),
     setProviderPrefs: async (id, prefs) => asProvider(await request("PUT", `/v1/providers/${encodeURIComponent(id)}/prefs`, prefs), id),
-    openLanguageServer: (id, serverId) =>
-      openLspSession(
+    // Only the editor opens language servers: the session code is its own chunk (it keeps the entry small).
+    openLanguageServer: async (id, serverId) =>
+      (await import("./lspSession")).openLspSession(
         {
           request,
           openStream: (path) => new (options.EventSource ?? globalEventSource())(streamUrl(path)),

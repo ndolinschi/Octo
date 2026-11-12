@@ -58,7 +58,7 @@ export const ROW = "flex w-full items-start gap-3 rounded-md px-3 py-2 text-left
 
 export function Key({ children }: { children: ReactNode }) {
   return (
-    <kbd aria-hidden className="octo-v7-kbd max-sm:hidden">
+    <kbd aria-hidden data-key-hint className="octo-v7-kbd max-sm:hidden">
       {children}
     </kbd>
   );

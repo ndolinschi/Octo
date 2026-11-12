@@ -1,5 +1,5 @@
 import { Check, Clock, MessageSquarePlus, X } from "lucide-react";
-import { useRef } from "react";
+import { lazy, Suspense, useRef } from "react";
 import type { Approval, ApprovalAnswer, ApprovalOption } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { useNow } from "../../lib/hooks";
@@ -13,14 +13,18 @@ import {
   resolutionLabel,
   type Resolution,
 } from "../../lib/v7/approval";
-import { splitPath } from "../../lib/v7/changes";
+import { alwaysLabel, canAlwaysAllow } from "../../lib/v7/rules";
 import { Button } from "../primitives/Button";
 import { Textarea } from "../primitives/Field";
 import { Glyph } from "../primitives/Glyph";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { Spinner } from "../primitives/Status";
-import { CardFrame, DiffBar, focusOnMount, ErrorLine, Kbd, LineCounts } from "./parts";
+import { ApprovalSubject } from "./ApprovalSubject";
+import { CardFrame, focusOnMount, ErrorLine } from "./parts";
 import { useApprovalCard, type Busy } from "./useApprovalCard";
+
+/** Opens on a click only, so it stays out of the entry chunk (bundle budget). */
+const AlwaysPanel = lazy(() => import("./ApprovalExtras").then((m) => ({ default: m.AlwaysPanel })));
 
 export type ApprovalCardProps = {
   approval: Approval;
@@ -60,12 +64,11 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
   });
   const options = approval.detail.options ?? [];
   const disabled = c.busy !== null;
+  const rule = canAlwaysAllow(approval) ? approval.suggested_rule : undefined;
   const noteId = `v7-note-${approval.id}`;
   return (
     <CardFrame
       ref={card}
-      attention
-      pulse
       tabIndex={0}
       aria-label={`${approval.agent_label} asks: ${approval.title}. A to allow, D to deny.`}
       aria-keyshortcuts="A D Enter"
@@ -97,6 +100,17 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
       </header>
       <div className="flex flex-col gap-2 px-3">
         <ApprovalSubject approval={approval} />
+        {c.alwaysOpen && rule && (
+          <Suspense fallback={<div className="h-24" />}>
+            <AlwaysPanel
+              rule={rule}
+              busy={c.busy === "allow_always"}
+              disabled={disabled}
+              onSave={() => c.act("allow_always")}
+              onCancel={() => c.setAlwaysOpen(false)}
+            />
+          </Suspense>
+        )}
         {c.noteOpen && (
           <Textarea
             id={noteId}
@@ -125,6 +139,18 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
             </ActionButton>
           </>
         )}
+        {rule && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="max-md:h-10"
+            disabled={disabled}
+            aria-expanded={c.alwaysOpen}
+            onClick={() => c.setAlwaysOpen(!c.alwaysOpen)}
+          >
+            {c.alwaysOpen ? "Not always" : alwaysLabel(rule)}
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -142,41 +168,9 @@ function PendingApproval(props: ApprovalCardProps & { left: number | null }) {
   );
 }
 
-/** The thing to approve: a path with its line counts, a command in mono, or the ACP tool's title (and its command / path). */
-function ApprovalSubject({ approval }: { approval: Approval }) {
-  const { detail } = approval;
-  const path = detail.path ? splitPath(detail.path) : null;
-  return (
-    <>
-      {approval.kind === "acp" && <p className="min-w-0 [overflow-wrap:anywhere] text-fg">{approval.title}</p>}
-      {detail.command !== undefined && (
-        <pre className="octo-code max-h-40 overflow-auto rounded-sm bg-code-bg px-3 py-2 font-mono text-xs leading-5 break-all whitespace-pre-wrap">
-          <span className="text-fg-3 select-none">$ </span>
-          {detail.command}
-        </pre>
-      )}
-      {path && (
-        <div className="flex min-h-7 min-w-0 items-center gap-2 rounded-sm bg-code-bg px-3 py-1 font-mono text-xs">
-          <span className="min-w-0 truncate" title={`${detail.folder ? `${detail.folder}/` : ""}${detail.path ?? ""}`}>
-            {path.dir && <span className="text-fg-3">{path.dir}/</span>}
-            <span className="text-fg">{path.name}</span>
-          </span>
-          {detail.diff && (
-            <span className="ml-auto flex shrink-0 items-center gap-2 font-sans">
-              <LineCounts added={detail.diff.added} removed={detail.diff.removed} />
-              <DiffBar added={detail.diff.added} removed={detail.diff.removed} />
-            </span>
-          )}
-        </div>
-      )}
-      {approval.kind === "write" && !path && <p className="[overflow-wrap:anywhere] text-fg">{approval.title}</p>}
-    </>
-  );
-}
-
 function ActionButton(props: {
   variant: "primary" | "secondary" | "danger";
-  action: "allow" | "allow_for_turn" | "deny";
+  action: "allow" | "allow_for_turn" | "allow_always" | "deny";
   busy: Busy;
   disabled: boolean;
   shortcut?: string;
@@ -192,11 +186,11 @@ function ActionButton(props: {
       disabled={props.disabled}
       aria-busy={mine}
       aria-keyshortcuts={props.shortcut}
+      title={props.shortcut ? `${props.children} (${props.shortcut})` : undefined}
       onClick={props.onClick}
     >
       {mine && <Spinner size={12} className="text-current" />}
       {props.children}
-      {props.shortcut && !mine && <Kbd>{props.shortcut}</Kbd>}
     </Button>
   );
 }
@@ -228,7 +222,12 @@ function ResolvedApproval({ approval, resolution }: { approval: Approval; resolu
       <div className="flex h-8 min-w-0 items-center gap-2 px-3" title={resolution.note ? `Note: ${resolution.note}` : undefined}>
         <Glyph icon={icon} size={14} className={cn("shrink-0", allowed ? "text-ok" : resolution.by === "timeout" ? "text-warn" : "text-err")} />
         <span className="shrink-0 text-fg-2">{resolutionLabel(resolution)}</span>
-        <span className="min-w-0 truncate font-mono text-xs text-fg-3">{approval.detail.command ?? approval.detail.path ?? approval.title}</span>
+        <span
+          className="min-w-0 truncate font-mono text-xs text-fg-3"
+          title={resolution.rule ? `Rule saved: ${resolution.rule}. Remove it in the project's settings.` : undefined}
+        >
+          {approval.detail.command ?? approval.detail.path ?? approval.detail.url ?? approval.title}
+        </span>
         <span className="ml-auto shrink-0 text-xs text-fg-3 @max-[360px]/v7:hidden">{approval.agent_label}</span>
       </div>
     </CardFrame>

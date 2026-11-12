@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import type { Approval, ApprovalAnswer, ApprovalOption } from "@octo/agent-client";
 import { answerFor, keyAction, optionAnswer, type ApprovalAction, type Resolution } from "../../lib/v7/approval";
+import { describeRule, ruleError } from "../../lib/v7/rules";
 import { errorMessage } from "../../lib/format";
 
 /** Which control is waiting for the bridge (its button shows the pressed state; the others are disabled). */
@@ -29,6 +30,8 @@ export function useApprovalCard(props: {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
+  // Parity B4: the rule is shown (not yet saved) once "Always allow" is pressed.
+  const [alwaysOpen, setAlwaysOpen] = useState(false);
   const [note, setNote] = useState("");
   const inFlight = useRef(false);
 
@@ -44,7 +47,7 @@ export function useApprovalCard(props: {
       } catch (e) {
         // 404: someone else (another window, the timer, a cancel) answered first; the card closes as resolved elsewhere.
         if (codeOf(e) === "not_found") onResolved({ decision: "deny", by: "elsewhere" });
-        else setError(`Your answer did not reach the harness: ${errorMessage(e)}. Try again.`);
+        else setError(ruleError(codeOf(e)) ?? `Your answer did not reach the harness: ${errorMessage(e)}. Try again.`);
       } finally {
         inFlight.current = false;
         setBusy(null);
@@ -56,10 +59,16 @@ export function useApprovalCard(props: {
   const act = useCallback(
     (action: ApprovalAction) => {
       const answer = answerFor(action, note);
-      const resolution: Resolution = answer.note ? { decision: action, by: "you", note: answer.note } : { decision: action, by: "you" };
+      const rule = action === "allow_always" && approval.suggested_rule ? describeRule(approval.suggested_rule).code : undefined;
+      const resolution: Resolution = {
+        decision: action,
+        by: "you",
+        ...(answer.note ? { note: answer.note } : {}),
+        ...(rule ? { rule } : {}),
+      };
       void send(action, answer, resolution);
     },
-    [note, send],
+    [note, send, approval.suggested_rule],
   );
 
   const choose = useCallback(
@@ -93,5 +102,5 @@ export function useApprovalCard(props: {
     card.current?.focus({ preventScroll: true });
   }, [card]);
 
-  return { busy, error, noteOpen, setNoteOpen, note, setNote, act, choose, onKeyDown };
+  return { busy, error, noteOpen, setNoteOpen, alwaysOpen, setAlwaysOpen, note, setNote, act, choose, onKeyDown };
 }

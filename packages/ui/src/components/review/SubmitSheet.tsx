@@ -149,7 +149,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
           />
         </Field>
         {problem && (
-          <div role="alert" className="flex flex-col gap-2 rounded-md border border-err/50 p-3 text-sm">
+          <div role="alert" className="flex flex-col gap-2 rounded-md border border-line p-3 text-sm">
             <p className="font-medium text-err">{problem.title}</p>
             <p className="text-fg-2">{problem.advice}</p>
             {problem.command && <CommandLine command={problem.command} />}

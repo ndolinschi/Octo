@@ -22,6 +22,7 @@ import { createDemoNote, docOf, listed, patchDemoNote, seedNotes } from "./notes
 import { orbitLive } from "./orbit";
 import { withDemoCommands } from "./commands";
 import { withDemoReview } from "./review";
+import { withDemoParity } from "./parity";
 import { withDemoV7 } from "./v7";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
 import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
@@ -730,5 +731,5 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
-  return withDemoCommands(withDemoReview(withDemoV7(bridge, records), records), records);
+  return withDemoCommands(withDemoReview(withDemoParity(withDemoV7(bridge, records), records), records), records);
 }

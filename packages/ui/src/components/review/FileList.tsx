@@ -106,7 +106,7 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
           <bdi>{dir}</bdi>
         </span>
         {f.changed_since_viewed && (
-          <span className="shrink-0 rounded-xs border border-warn/50 px-1 text-[11px] leading-4 text-warn" title="Changed since you viewed it">
+          <span className="shrink-0 rounded-xs border border-line px-1 text-[11px] leading-4 text-warn" title="Changed since you viewed it">
             changed
           </span>
         )}

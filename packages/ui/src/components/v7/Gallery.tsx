@@ -160,7 +160,7 @@ function Queue() {
     await wait(200);
   };
   const [count, setCount] = useState(2);
-  const props = { onRemove: noop, onSendNow: noop, onResume: noop, onClear: noop };
+  const props = { onRemove: noop, onSendNow: noop, onStopAndSend: noop, onResume: noop, onClear: noop };
   const failing = async () => {
     await wait(200);
     throw new Error("the harness did not answer");

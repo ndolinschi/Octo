@@ -35,7 +35,7 @@ function OpenForm(props: InputFormCardProps) {
   const f = useInputForm(props);
   const hasSecret = request.fields.some((x) => x.kind === "secret");
   return (
-    <CardFrame attention aria-labelledby={`v7-form-${request.id}`} data-v7-form={request.id}>
+    <CardFrame aria-labelledby={`v7-form-${request.id}`} data-v7-form={request.id}>
       <form noValidate onSubmit={f.submit} className="flex flex-col">
         <header className="flex min-h-8 min-w-0 items-center gap-2 px-3 pt-1">
           <StateGlyph state="needs" />

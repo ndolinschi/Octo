@@ -1053,121 +1053,11 @@
   }
 }
 
-/* aurora — decision 45 (a) the composer edge while the orchestrator works, (b) the streaming line and the activity
-   shimmer. Only transform and opacity animate (the gradient layer turns, the glow breathes); the glow is painted once;
-   everything pauses while hidden or off-screen ([data-paused]) and stands still under reduced motion. */
-@property --octo-aurora-angle {
-  syntax: "<angle>";
-  inherits: true;
-  initial-value: 200deg;
-}
-:root,
-:root[data-theme="dark"] {
-  --octo-aurora: conic-gradient(from var(--octo-aurora-angle), #ffc45a, #ff6a1a, #d8144a, #7a2ae0, #2a78ff, #7cc8ff, #ffc45a);
-  --octo-aurora-glow: 0.35;
-}
-:root[data-theme="light"] {
-  --octo-aurora: conic-gradient(from var(--octo-aurora-angle), #ff9a1a, #ff4a10, #f01e4a, #c01a9a, #244af0, #1e9aff, #ff9a1a);
-  --octo-aurora-glow: 0.22;
-}
-.octo-aurora-frame {
-  position: relative;
-  isolation: isolate;
-}
-.octo-aurora-glow {
-  position: absolute;
-  inset: 2px;
-  z-index: -1;
-  border-radius: 14px;
-  background: var(--octo-aurora);
-  filter: blur(12px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 400ms var(--ease-out-quint);
-}
-.octo-aurora {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  overflow: hidden;
-  padding: 1px;
-  border-radius: 14px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 400ms var(--ease-out-quint);
-  /* Only the 1px ring shows. */
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box exclude,
-    linear-gradient(#000 0 0);
-}
-.octo-aurora-spin {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 110%;
-  aspect-ratio: 1;
-  background: var(--octo-aurora);
-  transform: translate(-50%, -50%);
-}
-/* Decision 87: the composer has no glow and no coloured edge while the orchestrator works (owner: "remove the glow
-   around the prompt input"). The frame's elements stay at opacity 0; the Stop button and the activity line say that
-   a turn is running. */
-[data-aurora="failed"] > .octo-aurora .octo-aurora-spin {
-  background: var(--octo-err);
-}
-[data-aurora="failed"] > .octo-aurora {
-  animation: octo-aurora-drain 1200ms var(--ease-out-quint) forwards;
-}
-@media (prefers-reduced-motion: no-preference) {
-  [data-aurora="working"] > .octo-aurora .octo-aurora-spin {
-    animation: octo-aurora-turn 6s linear infinite;
-  }
-  [data-aurora="working"] > .octo-aurora-glow {
-    animation: octo-aurora-breathe 1.5s ease-in-out infinite alternate;
-  }
-  :root[data-theme="light"] [data-aurora="working"] > .octo-aurora-glow {
-    animation-name: octo-aurora-breathe-light;
-  }
-}
-[data-paused] > .octo-aurora .octo-aurora-spin,
-[data-paused] > .octo-aurora-glow,
+/* Decision 45 (b): the streaming line and the activity shimmer pause while hidden or off-screen ([data-paused]) and stand
+   still under reduced motion. Decision 87: the composer has no glow and no coloured edge. */
 [data-paused] .octo-shimmer-sweep,
 [data-paused] .octo-shimmer-text {
   animation-play-state: paused;
-}
-@keyframes octo-aurora-turn {
-  to {
-    transform: translate(-50%, -50%) rotate(1turn);
-  }
-}
-/* ±15% around the theme's glow opacity (0.35 dark, 0.22 light). */
-@keyframes octo-aurora-breathe {
-  from {
-    opacity: 0.3;
-  }
-  to {
-    opacity: 0.4;
-  }
-}
-@keyframes octo-aurora-breathe-light {
-  from {
-    opacity: 0.19;
-  }
-  to {
-    opacity: 0.25;
-  }
-}
-@keyframes octo-aurora-drain {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
 }
 
 /* (b) The line being written fades in over its last 24px (replaces the blinking caret); static, so never animated
@@ -1239,27 +1129,15 @@
   }
 }
 /* v7 */
-/* Approvals, forms, the queue and the changes view (components/v7). Decision 46: an approval card's border pulses
-   twice, then rests; changed lines flash their add/remove tone for 600 ms and fade. Under reduced motion the global
-   rule above cuts the motion; the colours stay. */
-.octo-v7-pulse {
-  animation: octo-v7-pulse 600ms cubic-bezier(0.2, 0.8, 0.2, 1) 2;
-}
-@keyframes octo-v7-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-  40% {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--octo-warn) 40%, transparent);
-  }
-}
+/* Approvals, forms, the queue and the changes view (components/v7). Decision 81: a card that waits for the person has the
+   neutral border of any card (no warn edge, no pulse); a key hint is a faint chip, never a coloured box. Changed lines
+   flash their add/remove tone for 600 ms and fade; under reduced motion the global rule above cuts the motion. */
 .octo-v7-kbd {
   display: inline-grid;
   min-width: 16px;
   height: 16px;
   place-items: center;
-  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
   border-radius: var(--radius-2xs);
   padding: 0 4px;
   font-family: var(--font-mono);
@@ -1451,3 +1329,14 @@
     animation: none;
   }
 }
+/* parity */
+/* Decision 70: the composer's highlight layer tints what it understands; tint only, never a change of metrics. */
+.octo-mention {
+  border-radius: var(--radius-2xs);
+  background: color-mix(in srgb, var(--octo-accent) 20%, transparent);
+}
+.octo-command {
+  border-radius: var(--radius-2xs);
+  background: var(--octo-active);
+}
+/* /parity */

@@ -3,6 +3,11 @@ export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** The bridge's error code (`plan_not_pending`, `steer_unsupported` …) of a caught value; null for anything else. */
+export function errorCode(e: unknown): string | null {
+  return typeof e === "object" && e !== null && "code" in e && typeof e.code === "string" ? e.code : null;
+}
+
 export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   if (s < 60) return `${s}s`;

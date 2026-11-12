@@ -4,28 +4,17 @@ import { diffBlocks } from "../../lib/v7/approval";
 
 /**
  * The one frame of the v7 cards (decision 43: forms and approvals share it): a bordered card in the conversation's
- * column, 12px inside. `attention` gives it the warn edge of something waiting for the user.
+ * column, 12px inside, with the neutral border of any card (decision 81: waiting for the person is said by position, the
+ * state glyph and the primary button, never by a coloured edge).
  */
 /** A stable callback ref: focuses the element when it mounts (no `autoFocus` attribute, which skips the focus ring logic). */
 export function focusOnMount(el: HTMLElement | null): void {
   el?.focus();
 }
 
-export const CardFrame = forwardRef<HTMLElement, HTMLAttributes<HTMLElement> & { attention?: boolean; pulse?: boolean }>(function CardFrame(
-  { attention = false, pulse = false, className, children, ...rest },
-  ref,
-) {
+export const CardFrame = forwardRef<HTMLElement, HTMLAttributes<HTMLElement>>(function CardFrame({ className, children, ...rest }, ref) {
   return (
-    <section
-      ref={ref}
-      className={cn(
-        "@container/v7 min-w-0 rounded-md border bg-panel text-sm",
-        attention ? "border-warn/50" : "border-line",
-        pulse && "octo-v7-pulse",
-        className,
-      )}
-      {...rest}
-    >
+    <section ref={ref} className={cn("@container/v7 min-w-0 rounded-md border border-line bg-panel text-sm", className)} {...rest}>
       {children}
     </section>
   );
@@ -34,7 +23,7 @@ export const CardFrame = forwardRef<HTMLElement, HTMLAttributes<HTMLElement> & {
 /** A key hint inside a button ("A", "D"); hidden from assistive tech (the button has `aria-keyshortcuts`). */
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd aria-hidden className="octo-v7-kbd max-sm:hidden">
+    <kbd aria-hidden data-key-hint className="octo-v7-kbd max-sm:hidden">
       {children}
     </kbd>
   );
