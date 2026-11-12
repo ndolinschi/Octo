@@ -63,3 +63,53 @@ k. **Tone is carried once:** a state shows either a toned glyph or toned text, n
 
 Round 2 covers the complete merged tree (`tour2`): review workspace, settings after B1, memory/notes/usage after B2,
 files, palette, narrow windows (830×560, 390×700), light theme throughout, and the primitives gallery.
+
+---
+
+# Round 2 — the merged tree (`tour2`, batch 3 in progress)
+
+Seen: chat at 390×700, file view, command palette, long prompt, failed first turn, Home at 390×700, plus the
+Settings (B1), Memory (decision 93), side question and Usage (B2) screenshots.
+
+| # | Sev | Screen | What is wrong | Fix |
+| --- | --- | --- | --- | --- |
+| 16 | A | File view in a side group | The file tree is an overlay on the **right** that covers the code; since decision 85 it no longer closes on a pick, so the opened file stays hidden behind it. | Decision 94a |
+| 17 | A | Empty conversation after a failed start | "Failed. ACP agent GitHub Copilot could not start: not logged in (exit status 1). Run `copilot auth login` in a terminal, then reopen this list." — protocol jargon, an exit status, and "reopen this list" refers to nothing on this screen; no action. | Decision 94b |
+| 18 | A | Top row, every project | Pinned commands ("Tests", "Typecheck", "Run ▾") are bare words spaced like tabs; nothing says they run something. | Decision 94c |
+| 19 | B | Command palette | "Requests" and "Past requests" are two groups with the same items. | Decision 94d |
+| 20 | B | Turn meta line | "1h ago · claude-code · Opus 5.5 · 58k in / 2.8k out": the agent's internal id instead of its name. | Decision 94e |
+| 21 | B | Conversation notice | "ACP agent Claude Code refused the harness's MCP server (method not supported); this request ran without harness tools (spawn_agent, notes)." — internal vocabulary. | Decision 94b |
+| 22 | B | Chat at 390 | The jump-to-latest button sits on top of the form card's title; queue rows lose their text to two icon buttons; boxed key letters still in buttons (decision 92 pending in batch 3). | Decision 94f |
+| 23 | B | Settings → Models | The same warning and link repeated in each of four rows. | One `Notice` above the group; rows show only the value. Decision 94g |
+| 24 | B | Settings → General | "Last project / Home" is a third kind of segmented control. | `FilterTabs`-style `SegmentedControl` primitive, used everywhere a two- or three-way choice is inline. Decision 94g |
+| 25 | B | Memory → search, Remembered, expanded exchange | Glued snippets, repeated subject, no visible end of an expanded block. | Returned to the executor (r2) |
+| 26 | C | Side question | Header caption truncated ("Nothing here is added to the proj…"). | Caption moves to the empty state; the header keeps Keep / Clear only |
+| 27 | C | Providers detail | Model list as six bare lines with "default" as a dim word. | `ListRow`s with the default marked by a quiet badge; fold after six stays |
+
+## Decision 94 — what round 2 changes
+
+a. **The file tree is a column, on the left, and it stays.** In a file group the tree is a real column at the
+   group's left edge (like every editor), never an overlay over code. Its width comes from layout state (default
+   220, resizable, remembered); the editor takes the rest. A file group's width floor becomes tree + 360. When the
+   group cannot give that (narrow mode, phone) the tree is a separate page of the group: picking a file shows the
+   editor with a "Files" back control — one deliberate navigation, no overlay, nothing covered. The tree toggle in
+   the editor bar hides or shows the column (remembered per group). Decision 85's guarantees hold: opening a file
+   changes only the editor's content.
+b. **Errors speak the person's language.** No "ACP", "MCP", "exit status", method names or tool ids in any text the
+   person reads; those go to "Details" (a fold) and the diagnostic report. Every failure is a `Notice` with: what
+   happened in one sentence ("GitHub Copilot is not logged in."), the next step as a button or a copy line
+   ("Check again", `copilot auth login`), and "Details". A rule in the harness's error catalogue test: the
+   user-facing `message` of every typed error passes a word list (no ACP/MCP/exit status/stderr/…); the UI test
+   does the same for its own strings.
+c. **A command looks like something that runs.** Pinned commands are quiet buttons with a play glyph and the name,
+   grouped at the end of the top row before "⋯", separated from tabs by the strip's divider; while one runs its
+   glyph becomes the spinner and a click opens its run tab. No pinned command without the glyph.
+d. **The palette has one "Requests" group**: this project's first when a project is open, then other projects',
+   each row showing the project dim on the right; no second group.
+e. **One name for an agent everywhere** (extends decision 46): the label from the provider entry ("Claude Code"),
+   never the id (`claude-code`), in meta lines, usage, memory, sessions, errors.
+f. **Narrow chat.** The jump-to-latest button floats above the composer's top edge with its own clearance and never
+   overlaps a card (cards under it scroll with a bottom inset equal to the button's box); a queued row keeps its
+   text as the priority and puts its actions in one "⋯" below 480 px.
+g. **Settings rows.** A problem shared by several rows is said once, above them. Inline two- or three-way choices
+   use one `SegmentedControl` primitive.

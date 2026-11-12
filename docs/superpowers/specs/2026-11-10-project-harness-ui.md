@@ -2521,3 +2521,12 @@ Acceptance: view-model tests (search grouping, one-expanded rule, meta line trun
 screenshots dark and light at pane width 480, at 760 and maximised 1440, each view, search with hits, an expanded
 exchange with a long answer and a table, a failed exchange, empty states; spacing audit scenes for each view; the
 `width-stability` script covers expanding an exchange (the pane's width and the list's scroll position do not move).
+
+## Decision 94 — UI review round 2
+
+Twelve more findings (16–27) and rules a–g, in full in
+`docs/superpowers/research/2026-11-12-ui-review-round-1.md` ("Round 2") and part of this spec: (a) the file tree is
+a column on the left and stays — never an overlay over code; (b) errors speak the person's language, protocol
+vocabulary goes to Details; (c) a pinned command carries a play glyph and looks like a button; (d) one Requests
+group in the palette; (e) an agent's label, never its id; (f) narrow chat: the jump button never overlaps a card,
+queued rows keep their text; (g) a shared problem is said once above the rows, one `SegmentedControl`.
