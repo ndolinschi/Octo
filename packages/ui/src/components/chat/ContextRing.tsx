@@ -22,6 +22,9 @@ export function ContextRing({ used, size }: { used: number | null | undefined; s
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "u") {
+        // Only a ring that is laid out answers: a composer hidden behind another one still mounts its ring.
+        const r = button.current?.getBoundingClientRect();
+        if (!r || r.width === 0 || r.height === 0) return;
         e.preventDefault();
         setOpen((o) => !o);
       }

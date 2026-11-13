@@ -59,10 +59,10 @@ export function ProvidersSection() {
                 setDetailOpen(true);
               }}
               onExpand={setExpanded}
-              className={cn("w-full shrink-0 @3xl:w-72", detailOpen ? "max-@3xl:hidden" : "")}
+              className={cn("w-full shrink-0 @3xl:w-72", detailOpen ? "@max-3xl:hidden" : "")}
             />
             {selected && (
-              <div className={cn("flex min-w-0 flex-1 flex-col gap-3", !detailOpen && "max-@3xl:hidden")}>
+              <div className={cn("flex min-w-0 flex-1 flex-col gap-3", !detailOpen && "@max-3xl:hidden")}>
                 <Button variant="quiet" size="sm" icon={ArrowLeft} onClick={() => setDetailOpen(false)} className="self-start @3xl:hidden">
                   Providers
                 </Button>

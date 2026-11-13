@@ -13,7 +13,7 @@ export function ToneDot({ tone }: { tone: Tone }) {
   return (
     <span
       aria-hidden
-      className={cn("size-2 shrink-0 rounded-full", tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : tone === "err" ? "bg-err" : "bg-fg-3")}
+      className={cn("inline-block size-2 shrink-0 rounded-full", tone === "ok" ? "bg-ok" : tone === "warn" ? "bg-warn" : tone === "err" ? "bg-err" : "bg-fg-3")}
     />
   );
 }

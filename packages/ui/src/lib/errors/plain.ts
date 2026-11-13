@@ -90,20 +90,20 @@ export function stripJargon(text: string): string {
 
 type Ctx = { agent?: string | undefined; hint?: string | null | undefined };
 
-function loginSentence(c: Ctx): Pick<PlainError, "sentence" | "next"> {
+function loginSentence(c: Ctx): Pick<PlainError, "sentence" | "next" | "action"> {
   const command = commandOf(c.hint);
   return { sentence: `${c.agent ?? THE_AGENT} is not logged in.`, next: command ? { kind: "command", command } : { kind: "check" } };
 }
 
 /** Codes the harness sends, as sentences. */
-const BY_CODE: Record<string, (c: Ctx) => Pick<PlainError, "sentence" | "next">> = {
+const BY_CODE: Record<string, (c: Ctx) => Pick<PlainError, "sentence" | "next" | "action">> = {
   images_unsupported: (c) => ({ sentence: `${c.agent ?? "This model"} can't read images. Your message is still in the box.`, next: null }),
   acp_not_logged_in: loginSentence,
   not_logged_in: loginSentence,
   turn_in_progress: () => ({ sentence: "A turn is still running. Wait for it or stop it first.", next: null }),
   rate_limited: () => ({ sentence: "The model is busy right now. Try again in a moment.", next: { kind: "retry" } }),
-  unauthorized: () => ({ sentence: "The provider did not accept the key. Check it in Settings.", next: null }),
-  no_api_key: () => ({ sentence: "No model is connected yet. Connect one in Settings.", next: null }),
+  unauthorized: () => ({ sentence: "The provider did not accept the key. Check it in Settings.", next: null, action: "open_settings" }),
+  no_api_key: () => ({ sentence: "No model is connected yet. Connect one in Settings.", next: null, action: "open_settings" }),
   context_too_long: () => ({ sentence: "The conversation is too long for this model. Compact it or start a new one.", next: null }),
 };
 
@@ -122,8 +122,8 @@ export function plainError(raw: string | null | undefined, ctx: Ctx & { code?: s
   if (has(text, "could not start", "failed to start", "spawn ", "enoent", "not found in path", "command not found"))
     return known(`${name} could not start. Check that it is installed.`, { kind: "check" });
   if (has(text, "rate limit", "429", "overloaded", "too many requests")) return known("The model is busy right now. Try again in a moment.", { kind: "retry" });
-  if (has(text, "401", "invalid api key", "invalid x-api-key", "unauthorized", "authentication_error"))
-    return known("The provider did not accept the key. Check it in Settings.", null);
+  if (has(text, "invalid api key", "invalid x-api-key", "incorrect api key", "api key was rejected", "provider key", "authentication_error"))
+    return { ...known("The provider did not accept the key. Check it in Settings.", null), action: "open_settings" };
   if (has(text, "timed out", "timeout", "deadline exceeded")) return known(`${name} took too long to answer.`, { kind: "retry" });
   if (has(text, "context length", "context window", "too many tokens", "prompt is too long"))
     return known("The conversation is too long for this model. Compact it or start a new one.", null);

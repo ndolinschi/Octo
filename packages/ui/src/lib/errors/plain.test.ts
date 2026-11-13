@@ -59,3 +59,14 @@ test("agent labels and commands", () => {
   assert.equal(commandOf("Run `copilot auth login` first"), "copilot auth login");
   assert.equal(commandOf(null), null);
 });
+
+test("a bare 401 in free text is not the provider key; a key refusal is, with the settings action", () => {
+  const hook = plainError("Staging rejected the webhook signing secret (401). Rotate STAGING_WEBHOOK_SECRET, then ask again.");
+  assert.doesNotMatch(hook.sentence, /key|Settings/);
+  assert.match(hook.sentence, /Staging rejected the webhook signing secret/);
+  assert.equal(hook.action, undefined);
+  const key = plainError("invalid x-api-key");
+  assert.equal(key.sentence, "The provider did not accept the key. Check it in Settings.");
+  assert.equal(key.action, "open_settings");
+  assert.equal(plainError("whatever", { code: "unauthorized" }).action, "open_settings");
+});

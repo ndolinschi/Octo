@@ -2879,3 +2879,17 @@ columns). Measurements and screenshots: `docs/superpowers/research/2026-11-13-pa
 - Verified: type check, eslint (0 errors), prettier, cycles, ui tests, spacing audit, width stability, frame colours on the
   dev server with `?demo=1`, dark and light at 1440x900, 900x600 and 390x700. Not verified: WebKit (`:has` is supported there
   but untested), the live harness.
+
+## As built — fixes after the UI verification of 2026-11-13
+
+Findings and ids: `docs/superpowers/research/2026-11-13-ui-verification.md`. Each batch was checked by its executor and
+again by the orchestrator with Playwright against `?demo=1` (Chromium); not verified: WebKit, a live harness, touch.
+
+- **Batch 1a.** A14: Settings → Providers under the list–detail floor opens the detail (`@max-3xl:hidden`; `max-@3xl:` was
+  not a class). A3: `Segmented` gives the first option `tabIndex 0` when no option is chosen, so a required choice can be
+  reached and made with the keyboard (checked: the Deploy settings form sent with keys only). B47: `Segmented` segments and
+  `FilterTabs` chips carry `touch-hit`. B64: `FilterTabs` counts are plain `fg-3`. B45: `ToneDot` is `inline-block` (8×8;
+  checked in Settings → Providers, not on the connect screen). A4, B17: `lib/errors/plain.ts` maps a text to "The provider
+  did not accept the key" only when it speaks of an API key; a bare 401 falls to the first plain sentence (Billing webhooks:
+  "Staging rejected the webhook signing secret (401)." with Retry); key refusals carry `action: "open_settings"`. A6: only a
+  `ContextRing` that is laid out answers Ctrl+Shift+U.

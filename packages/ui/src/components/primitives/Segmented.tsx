@@ -22,6 +22,7 @@ export function Segmented<T extends string | number>(props: {
     0,
     props.options.findIndex((o) => o.id === props.value),
   );
+  const tabbable = props.options.some((o) => o.id === props.value) ? props.value : props.options[0]?.id;
   const onKeyDown = (e: KeyboardEvent) => {
     const key = e.key === "ArrowRight" ? "ArrowDown" : e.key === "ArrowLeft" ? "ArrowUp" : e.key;
     const to = listKeyTarget(key, at, props.options.length);
@@ -48,10 +49,13 @@ export function Segmented<T extends string | number>(props: {
             type="button"
             role="radio"
             aria-checked={on}
-            tabIndex={on ? 0 : -1}
+            tabIndex={o.id === tabbable ? 0 : -1}
             title={o.title}
             onClick={() => props.onChange(o.id)}
-            className={cn("shrink-0 rounded-sm px-2 text-sm whitespace-nowrap press-row focus-inset", on ? "bg-hover text-fg" : "text-fg-3 hover:text-fg-2")}
+            className={cn(
+              "touch-hit shrink-0 rounded-sm px-2 text-sm whitespace-nowrap press-row focus-inset",
+              on ? "bg-hover text-fg" : "text-fg-3 hover:text-fg-2",
+            )}
           >
             {o.label}
           </button>

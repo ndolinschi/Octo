@@ -54,12 +54,12 @@ export function FilterTabs<T extends string>(props: {
             title={o.title}
             onClick={() => props.onChange(o.id)}
             className={cn(
-              "flex h-ctl-xs shrink-0 items-center gap-1 rounded-sm px-2 whitespace-nowrap press-row focus-inset",
+              "touch-hit flex h-ctl-xs shrink-0 items-center gap-1 rounded-sm px-2 whitespace-nowrap press-row focus-inset",
               on ? "text-fg" : "text-fg-3 hover:text-fg-2",
             )}
           >
             {o.label}
-            {o.count !== undefined && <span className="text-fg-3 tabular-nums opacity-70">{o.count}</span>}
+            {o.count !== undefined && <span className="text-fg-3 tabular-nums">{o.count}</span>}
           </button>
         );
       })}
