@@ -2893,3 +2893,12 @@ again by the orchestrator with Playwright against `?demo=1` (Chromium); not veri
   did not accept the key" only when it speaks of an API key; a bare 401 falls to the first plain sentence (Billing webhooks:
   "Staging rejected the webhook signing secret (401)." with Retry); key refusals carry `action: "open_settings"`. A6: only a
   `ContextRing` that is laid out answers Ctrl+Shift+U.
+- **Batch 1b.** A13: the note editor and the memory file editor compare every field with what they opened with; when dirty,
+  Esc or Cancel swaps the action row for "Discard changes? · Keep editing · Discard" (an `alertdialog` row, written inline in
+  both editors, no shared primitive); "Keep editing" returns focus to the field that had it; clean forms close as before.
+  B36: an empty Summary shows "A file needs a one-line summary" at the field. B35 (order only): the memory file editor's
+  actions are at the right, Cancel then Save. A12: the Add row in Knowledge wraps, so "Remember" stays inside the panel at 347
+  and 374 px. B31: a group's items are indented to the header's text line. A8: in the diff header the name takes the free
+  space and truncates; below the container's `md` the counts, the folder and Revert's label are hidden (Revert is icon-only
+  with a title). A7 (Changes half): the Changes list and the diff end with `FloatRoom`, so the last diff lines scroll clear of
+  the floating composer. Not done: the composer over Notes, Memory and other tool tabs in one-strip mode (the rest of A7, B2).

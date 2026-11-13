@@ -94,15 +94,16 @@ export function AddFact(props: { onDone(): void; onKept(): void }) {
           }
         }}
       />
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
         <Segmented<RememberKind> label="Kind" options={KINDS} value={kind} onChange={setKind} />
-        <span className="flex-1" />
-        <Button variant="quiet" size="sm" onClick={props.onDone} disabled={busy}>
-          Cancel
-        </Button>
-        <Button type="submit" variant="primary" size="sm" loading={busy} disabled={text.trim() === ""}>
-          Remember
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="quiet" size="sm" onClick={props.onDone} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" size="sm" loading={busy} disabled={text.trim() === ""}>
+            Remember
+          </Button>
+        </div>
       </div>
       {error && <Notice tone="error">{error}</Notice>}
     </form>
@@ -156,7 +157,7 @@ export function RememberedList(props: {
             />
             {!isCollapsed && (
               <>
-                <ul aria-label={g.subject} className="flex flex-col">
+                <ul aria-label={g.subject} className="flex flex-col pl-6">
                   {shown.map((item) => (
                     <RememberedRow
                       key={item.key}

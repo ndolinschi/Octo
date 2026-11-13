@@ -29,7 +29,26 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
   const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const lastField = useRef<HTMLElement | null>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
   const id = useId();
+  const dirty =
+    title !== (note?.title ?? "") ||
+    description !== (note && !note.description_auto ? note.description : "") ||
+    tags !== (note?.tags.join(", ") ?? "") ||
+    body !== (note?.content ?? "") ||
+    pinned !== (note?.pinned ?? false);
+  // Esc and Cancel close at once when nothing changed; otherwise they ask first, in the action row.
+  const cancel = () => {
+    if (!dirty) return props.onCancel();
+    setDiscarding(true);
+    requestAnimationFrame(() => keepRef.current?.focus());
+  };
+  const keepEditing = () => {
+    setDiscarding(false);
+    requestAnimationFrame(() => (lastField.current?.isConnected ? lastField.current : titleRef.current)?.focus());
+  };
 
   const derived = autoDescription(body);
   const length = charCount(description);
@@ -66,10 +85,14 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
         e.preventDefault();
         void save();
       }}
+      onFocus={(e) => {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) lastField.current = e.target;
+      }}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
-          props.onCancel();
+          if (discarding) keepEditing();
+          else cancel();
         }
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
       }}
@@ -164,14 +187,26 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
         )}
       </div>
       {error && <Notice tone="error">{error}</Notice>}
-      <div className="flex items-center justify-end gap-1.5">
-        <Button size="sm" variant="quiet" onClick={props.onCancel}>
-          Cancel
-        </Button>
-        <Button size="sm" variant="primary" type="submit" loading={busy}>
-          {note ? "Save" : "Add note"}
-        </Button>
-      </div>
+      {discarding ? (
+        <div key="discard" role="alertdialog" aria-label="Discard changes" className="flex flex-wrap items-center justify-end gap-2 text-sm">
+          <span className="min-w-0 flex-1 text-fg-2">Discard changes?</span>
+          <Button size="sm" variant="quiet" ref={keepRef} onClick={keepEditing}>
+            Keep editing
+          </Button>
+          <Button size="sm" variant="danger" onClick={props.onCancel}>
+            Discard
+          </Button>
+        </div>
+      ) : (
+        <div key="actions" className="flex items-center justify-end gap-1.5">
+          <Button size="sm" variant="quiet" onClick={cancel}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" type="submit" loading={busy}>
+            {note ? "Save" : "Add note"}
+          </Button>
+        </div>
+      )}
     </form>
   );
 }

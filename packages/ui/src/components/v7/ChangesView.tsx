@@ -6,6 +6,7 @@ import { DIFF_SPLIT_MIN, diffLayout, filesChanged, neighbours, rowKey, splitPath
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { SkeletonRows } from "../primitives/InfoList";
+import { FloatRoom } from "../primitives/floatRoom";
 import { Presence } from "../primitives/Presence";
 import type { DiffMonaco } from "./DiffEditor";
 import { DiffPanel } from "./DiffPanel";
@@ -126,11 +127,15 @@ export function ChangesView(props: ChangesViewProps) {
   return (
     <div ref={box} className="flex h-full min-h-0 min-w-0 bg-panel" data-v7-changes>
       {body ? (
-        <div className="flex-1 overflow-auto px-2 pt-1 pb-2">{body}</div>
+        <div className="flex-1 overflow-auto px-2 pt-1 pb-2">
+          {body}
+          <FloatRoom />
+        </div>
       ) : two ? (
         <>
           <nav aria-label="Changed files" className="@container/list flex w-72 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-2 pt-1 pb-2">
             {list}
+            <FloatRoom />
           </nav>
           {diff}
         </>
@@ -139,6 +144,7 @@ export function ChangesView(props: ChangesViewProps) {
       ) : (
         <nav aria-label="Changed files" className="@container/list flex flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-2">
           {list}
+          <FloatRoom />
         </nav>
       )}
       <Presence show={confirm !== null}>
