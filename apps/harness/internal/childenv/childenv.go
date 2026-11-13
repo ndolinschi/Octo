@@ -46,6 +46,7 @@ var allowExact = map[string]bool{
 	"CC": true, "CXX": true, // C toolchain chosen by the user (cgo, node-gyp)
 	"CARGO_HOME": true, "RUSTUP_HOME": true, "CARGO_TARGET_DIR": true,
 	"NVM_DIR": true, "NODE_PATH": true, "PNPM_HOME": true, "JAVA_HOME": true,
+	"BUN_INSTALL": true, "VOLTA_HOME": true, // tool homes (paths) the desktop shell forwards from the login shell
 	"PYTHONPATH": true, "VIRTUAL_ENV": true, "CONDA_PREFIX": true,
 	// Output behaviour that test runners and CLIs read.
 	"CI": true, "NO_COLOR": true, "FORCE_COLOR": true,

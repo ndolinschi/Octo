@@ -75,7 +75,12 @@ type Report struct {
 	PathForChildren string `json:"path_for_children"`
 	// EnvSet names the provider and router variables that are set in the
 	// harness's environment (names only).
-	EnvSet      []string      `json:"env_set"`
+	EnvSet []string `json:"env_set"`
+	// ShellEnvSet names which of the variables the desktop app forwards from the
+	// login shell (locale, XDG dirs, SSH_AUTH_SOCK, tool homes, proxy and CA
+	// settings, TMPDIR) child processes get (names only, never values). A
+	// missing one explains "works in my terminal" failures.
+	ShellEnvSet []string      `json:"shell_env_set"`
 	BuiltinLoop BuiltinReport `json:"builtin_loop"`
 	Router      RouterReport  `json:"router"`
 	Agents      []AgentReport `json:"agents"`
@@ -129,6 +134,20 @@ type Inputs struct {
 // secretNamed marks environment names whose presence is worth reporting.
 var interesting = regexp.MustCompile(`^(ANTHROPIC_|OPENAI_|XAI_|GROK_|GEMINI_|OPENROUTER_|COPILOT_|OCTO_|HARNESS_)`)
 
+// shellForwardedExact mirrors the desktop shell's allow-list (apps/desktop/src-tauri/sidecar/src/shellenv.rs,
+// FORWARD_EXACT and FORWARD_PREFIXES) minus PATH, which has its own line.
+var shellForwardedExact = map[string]bool{
+	"LANG": true, "XDG_CONFIG_HOME": true, "XDG_DATA_HOME": true, "XDG_STATE_HOME": true, "XDG_CACHE_HOME": true,
+	"SSH_AUTH_SOCK": true, "NVM_DIR": true, "BUN_INSTALL": true, "PNPM_HOME": true, "VOLTA_HOME": true,
+	"HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true, "http_proxy": true, "https_proxy": true, "no_proxy": true,
+	"SSL_CERT_FILE": true, "NODE_EXTRA_CA_CERTS": true, "TMPDIR": true,
+	"SHELL": true, "USER": true, "LOGNAME": true, "TERM": true,
+}
+
+func shellForwarded(name string) bool {
+	return shellForwardedExact[name] || strings.HasPrefix(name, "LC_")
+}
+
 // Build assembles the report.
 func Build(in Inputs) Report {
 	env := in.Env
@@ -142,11 +161,16 @@ func Build(in Inputs) Report {
 		Router:      RouterReport{BaseURL: StripURL(in.BaseURL), Detected: in.RouterOn, Capabilities: append([]string{}, in.RouterCaps...)},
 		Agents:      []AgentReport{}, LogTail: []string{}, ShowProbeOutput: in.ShowProbeOutput,
 	}
+	r.ShellEnvSet = []string{}
 	for _, kv := range childenv.Build(env, nil) {
-		if v, ok := strings.CutPrefix(kv, "PATH="); ok {
+		name, v, _ := strings.Cut(kv, "=")
+		if name == "PATH" {
 			r.PathForChildren = dedupePath(v)
+		} else if v != "" && shellForwarded(name) {
+			r.ShellEnvSet = append(r.ShellEnvSet, name)
 		}
 	}
+	sort.Strings(r.ShellEnvSet)
 	for _, kv := range env {
 		if name, val, ok := strings.Cut(kv, "="); ok && val != "" && interesting.MatchString(strings.ToUpper(name)) {
 			r.EnvSet = append(r.EnvSet, name)
@@ -236,6 +260,7 @@ func (r Report) Text() string {
 		fmt.Fprintf(&b, "  (used because: %s)\n", r.DataDirWhy)
 	}
 	fmt.Fprintf(&b, "PATH for child processes: %s\n", r.PathForChildren)
+	fmt.Fprintf(&b, "login-shell variables child processes get (names only): %s\n", strings.Join(r.ShellEnvSet, ", "))
 	fmt.Fprintf(&b, "provider/router variables set: %s\n", strings.Join(r.EnvSet, ", "))
 	fmt.Fprintf(&b, "built-in loop: available=%v %s\n", r.BuiltinLoop.Available, r.BuiltinLoop.Reason)
 	fmt.Fprintf(&b, "router: base url %q, detected=%v, capabilities=%s\n", r.Router.BaseURL, r.Router.Detected, strings.Join(r.Router.Capabilities, ","))

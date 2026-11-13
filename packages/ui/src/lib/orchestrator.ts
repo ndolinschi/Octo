@@ -62,14 +62,6 @@ export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string
   }
 }
 
-/** "Dependency auditor, Test runner +1": the first `max` distinct roles, then how many more agents. */
-export function agentStack(roles: readonly string[], max = 2): string {
-  const shown: string[] = [];
-  for (const r of roles) if (!shown.includes(r) && shown.length < max) shown.push(r);
-  const rest = roles.length - roles.filter((r) => shown.includes(r)).length;
-  return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
-}
-
 const ACTIVITY: Record<string, string> = {
   bash: "Running a command…",
   read_file: "Reading files…",
@@ -98,12 +90,6 @@ export function lastTeam(agents: readonly Agent[]): Agent[] {
   const since = root?.started_at ? Date.parse(root.started_at) : NaN;
   if (Number.isNaN(since)) return [];
   return agents.filter((a) => a.parent_id !== null && Date.parse(a.started_at ?? a.created_at) >= since).sort(byStart);
-}
-
-/** The idle team line: "Last ran 3 agents, 1h ago", "Worked alone, 2h ago" (no "·" joiners: craft rule). */
-export function teamLine(count: number, at: string | null, now: number): string {
-  const what = count === 0 ? "Worked alone" : `Last ran ${count} ${count === 1 ? "agent" : "agents"}`;
-  return at ? `${what}, ${timeAgo(at, now)}` : what;
 }
 
 export type TeamRole = { role: string; count: number; status: Agent["status"]; agent: Agent };
@@ -138,12 +124,4 @@ export function roleText(role: string | null | undefined): string {
 /** An agent's name as shown: "Orchestrator" for the project's agent, its role otherwise. */
 export function roleName(agent: Pick<Agent, "parent_id" | "role">): string {
   return agent.parent_id === null ? "Orchestrator" : roleText(agent.role);
-}
-
-/**
- * Decision 63: the word "orchestrator" is never a name on screen. A label a harness gives the project's own agent
- * ("orchestrator", as approvals and forms carry it) reads as the project's name; any other agent keeps its label.
- */
-export function agentDisplayName(label: string, projectName: string | null | undefined): string {
-  return label.trim().toLowerCase() === "orchestrator" ? projectName?.trim() || "Assistant" : label;
 }

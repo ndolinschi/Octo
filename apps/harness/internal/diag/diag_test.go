@@ -63,6 +63,31 @@ func TestReportContainsNoSecrets(t *testing.T) {
 	}
 }
 
+func TestReportListsForwardedShellVariablesByNameOnly(t *testing.T) {
+	rep := Build(Inputs{
+		Version: "1", DataDir: "/d",
+		Env: []string{"PATH=/bin", "LANG=en_US.UTF-8", "LC_ALL=C", "BUN_INSTALL=/h/.bun-VALUE", "XDG_DATA_HOME=",
+			"HTTPS_PROXY=http://u:proxy-pass-VALUE@p:1", "EDITOR=vim", "OPENAI_API_KEY=sk-VALUE", "NPM_TOKEN=npm-VALUE"},
+	})
+	if got := strings.Join(rep.ShellEnvSet, ","); got != "BUN_INSTALL,HTTPS_PROXY,LANG,LC_ALL" {
+		t.Errorf("shell_env_set = %q", got)
+	}
+	b, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{string(b), rep.Text()} {
+		for _, v := range []string{"VALUE", "en_US", "sk-"} {
+			if strings.Contains(text, v) {
+				t.Errorf("report leaks %q:\n%s", v, text)
+			}
+		}
+	}
+	if !strings.Contains(rep.Text(), "login-shell variables child processes get (names only): BUN_INSTALL, HTTPS_PROXY, LANG, LC_ALL") {
+		t.Errorf("text:\n%s", rep.Text())
+	}
+}
+
 func TestAgentSectionSaysWhatIsMissing(t *testing.T) {
 	rep := Build(Inputs{Env: []string{"PATH=/bin"}, Agents: []plugins.Agent{
 		{ID: "a", Label: "A", Available: false, UnavailableReason: `"pi" is required and was not found on PATH`, InstallHint: "install pi",

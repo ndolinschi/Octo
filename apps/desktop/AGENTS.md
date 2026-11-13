@@ -22,10 +22,18 @@ screens live in [`packages/ui`](../../packages/ui/AGENTS.md), the bridge client 
   "Starting Octo…" / failure screen (message, last 20 log lines, Retry), and `chooseBridge(search, env, hostUrl, hostToken)` takes the URL and the API token (`bridge_url` / `bridge_restart` return `{ url, token }`; `src/hostConnection.ts` also reads an older shell's bare URL string as "no token"). In a browser dev setup the token is `VITE_HARNESS_API_TOKEN` (set by `scripts/dev.sh`; never set it for a production build, Vite would bake it in).
   In a browser nothing changes (no Tauri API is loaded).
 - `src-tauri/sidecar/` is the `octo-sidecar` crate (no `tauri` dependency, so `cargo test -p octo-sidecar` runs anywhere):
-  `port` (free port), `shellenv` (login-shell PATH, parser, fallback dirs), `process` (own process group, SIGTERM, 3 s, SIGKILL; pid file for crash cleanup),
+  `port` (free port), `shellenv` (login-shell PATH and allow-listed environment, parsers, fallback dirs; see "Login-shell environment" below), `process` (own process group, SIGTERM, 3 s, SIGKILL; pid file for crash cleanup),
   `logfile` (capped `harness.log` / `router.log`, tail), `health` (`GET /health` wait), `settings` (the three `OCTO_ROUTER_*` keys of `{app data}/harness/harness.env`,
   tolerant parser, values never logged), `router` (the router's config fragments, generated client key, pid-file name), `bridge` (the sequence; `OCTO_BRIDGE_URL` starts nothing; a new 256-bit API token per run goes to the harness as `HARNESS_API_TOKEN` in its environment only, never an argument or the log, and to the webview in `Connection { url, token }`; `OCTO_BRIDGE_TOKEN` supplies the token of an overridden harness; the router never sees it).
   `src-tauri/src/lib.rs` is only glue: four commands (`bridge_url` and `bridge_restart` returning `{ url, token }`, `bridge_log_tail`, `bridge_notices`) and the exit hook.
+- Login-shell environment (`shellenv`): one `$SHELL -ilc` run (3 s timeout) prints the PATH between markers and then `env -0` between a second pair of markers
+  (NUL separated; values may hold newlines and `=`; the last complete marker pair wins). The harness gets `PATH` as before plus an allow-list of names, only when the shell has them:
+  `LANG`, `LC_*`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `SSH_AUTH_SOCK`, `NVM_DIR`, `BUN_INSTALL`, `PNPM_HOME`, `VOLTA_HOME`,
+  `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and the lower-case spellings), `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `TMPDIR`, `SHELL`, `USER`, `LOGNAME`, `TERM`. `HOME` is not forwarded.
+  A name containing KEY, TOKEN, SECRET, PASSWORD, PASSWD or CREDENTIAL (any case) is never forwarded, even if someone adds it to the list (tested). Provider keys still come only from `harness.env`.
+  A name set in `harness.env` is not forwarded at all (the harness lets the process environment beat the file, so a forwarded value would shadow the user's); for every other name the login
+  shell's value wins over the app's own, as `PATH` always did. Shell missing, failing or timing out: the old fallback PATH and nothing else. The log gets one line, `login shell environment forwarded: <names>`; values never.
+  The harness's own child-environment filter (`internal/childenv`) still applies after this; `harness doctor` lists which of these names child processes get (names only).
 - The router (design P8): `bridge` reads `harness.env` at every (re)start. `OCTO_ROUTER_ENABLED=1` plus `OCTO_ROUTER_UPSTREAM_KEY` starts the bundled `octo`
   binary first (free loopback port, random client key per launch, config fragments and `history.sqlite` under `{app data}/router`, `OCTO_CONFIG` the only way to
   configure it), waits for its `/health`, then starts the harness with `--base-url http://127.0.0.1:<port>/autoroute`, `HARNESS_OCTO_KEY=<client key>` and

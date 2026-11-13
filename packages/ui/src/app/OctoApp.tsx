@@ -4,13 +4,14 @@ import { HostProvider, type HostCapabilities } from "../state/host";
 import { AppProvider } from "../state/app";
 import { ChromeProvider, NO_CHROME, type WindowChrome } from "../state/chrome";
 import { AppShell } from "./AppShell";
-import { Tooltips } from "../components/primitives/Tooltips";
 import { useInputModality } from "../lib/modality";
 
 // Demo-only review page for the v7 components (`?demo=1#/__v7`); a separate chunk, never loaded otherwise.
 const V7Gallery = lazy(() => import("../components/v7/Gallery").then((m) => ({ default: m.Gallery })));
 // Demo-only component library gallery (`?demo=1&gallery=1`, decision 90); a separate chunk, never loaded otherwise.
 const Gallery = lazy(() => import("../components/primitives/Gallery").then((m) => ({ default: m.Gallery })));
+// The tooltip layer needs a hover first: its own chunk, fetched right after the first paint.
+const Tooltips = lazy(() => import("../components/primitives/Tooltips").then((m) => ({ default: m.Tooltips })));
 const loadDiffMonaco = () => import("../components/files/monaco");
 
 export type OctoAppProps = {
@@ -40,7 +41,9 @@ export function OctoApp({ bridge, bridgeUrl, shell, demo = false, host, chrome =
           ) : (
             <AppShell />
           )}
-          <Tooltips />
+          <Suspense fallback={null}>
+            <Tooltips />
+          </Suspense>
         </AppProvider>
       </ChromeProvider>
     </HostProvider>

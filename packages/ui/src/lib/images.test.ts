@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fitSize, IMAGE_MAX_BYTES, IMAGE_MAX_COUNT, imageSize, planImage, redrawType, room } from "./images";
+import { IMAGE_MAX_BYTES, fitSize, imageSize, planImage, redrawType } from "./imagePlan";
+import { IMAGE_MAX_COUNT, room } from "./images";
 
 test("an image within 2048 px and 5 MB goes as it is", () => {
   assert.equal(planImage({ type: "image/png", bytes: 1_000_000, width: 2048, height: 1000 }), "keep");

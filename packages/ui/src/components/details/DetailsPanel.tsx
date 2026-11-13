@@ -27,7 +27,7 @@ import { languagesIn } from "../../lib/languages";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
 import type { ContextBreakdown } from "@octo/agent-client";
 import { contextMeter, shareText } from "../../lib/contextMeter";
-import { budgetState, policyLabel, routeLine } from "../../lib/models";
+import { budgetState, policyLabel, routeLine } from "../../lib/modelsMore";
 import { useModelNames } from "../../state/models";
 
 /** Rows shown before "Show all" / "Show more" (contract v6 decision 17). */

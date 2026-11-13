@@ -1,7 +1,8 @@
 import type { Provider, ProviderList, ProviderModel, ProviderModelSource, ProviderRoles } from "@octo/agent-client";
 import { agentModelLabel, modelLabel } from "../models";
 import { jsonCodec, type Codec } from "../storage";
-import { canUseAnyway, connectAction, isReady, stateText } from "./providers";
+import { isReady } from "./providers";
+import { canUseAnyway, connectAction, stateText } from "./providersMore";
 import { plainReason } from "./reasons";
 
 /**

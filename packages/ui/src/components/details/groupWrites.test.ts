@@ -1,7 +1,7 @@
 import { must } from "../../lib/must";
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { WrittenFile } from "../../lib/tools";
+import type { WrittenFile } from "../../lib/toolsMore";
 import { groupWrites } from "./useWrittenFiles";
 
 const at = (y: number, mo: number, d: number, h = 12) => new Date(y, mo - 1, d, h).toISOString();

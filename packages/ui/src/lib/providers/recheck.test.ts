@@ -3,7 +3,7 @@ import test from "node:test";
 import type { Bridge, Provider, ProviderList } from "@octo/agent-client";
 import { BridgeError } from "@octo/agent-client";
 import { pickerRows, pickerView } from "./modelList";
-import { canUseAnyway, connectAction, stateText } from "./providers";
+import { canUseAnyway, connectAction, stateText } from "./providersMore";
 import { canForce, recheckAgent, refusedProvider } from "./recheck";
 
 const agent = (over: Partial<Provider>): Provider => ({

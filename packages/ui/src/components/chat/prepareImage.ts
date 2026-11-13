@@ -1,4 +1,4 @@
-import { fitSize, imageSize, IMAGE_MAX_BYTES, JPEG_QUALITIES, planImage, redrawType } from "../../lib/images";
+import { fitSize, imageSize, IMAGE_MAX_BYTES, JPEG_QUALITIES, planImage, redrawType } from "../../lib/imagePlan";
 
 // The canvas work, loaded when the first picture is attached (not part of the entry bundle).
 

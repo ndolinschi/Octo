@@ -52,8 +52,17 @@ import { gzipSync } from "node:zlib";
  * budget because the sidebar rows, the live activity line, the composer's slash and image hooks and the sessions state are real
  * first-paint code now. Budget = measured + 1.0 = 164.6; the target of 158 stays open (next: slash/image hooks behind a first-use
  * import, the agent-client's session methods in a lazy chunk). Do not raise it further.
+ *
+ * Entry diet (2026-11-13): 163.59 -> 157.91 kB. Cuts, each measured on its own build: half of the HTTP client's methods
+ * (notes, review, commands, memory, sessions' writes, secrets, plans, queue edits, uploads, export ...) moved to a lazily
+ * imported `rare.ts` behind thin forwarders, warmed after the first paint (-0.97, and -0.54 for the second batch); the tab
+ * drag tracking (`dragPress.ts`, first press at the latest, warmed too: -1.2); the tooltip layer (-0.92); exports that only
+ * lazy chunks use, split out of modules the entry also imports because the bundler hoists a shared module whole into the
+ * preloaded chunk (`modelsMore`, `toolsMore`: -1.05; `slashRows`, `matchMore`, `imagePlan`: -0.73; `orchestratorMore`,
+ * `providersMore`: -0.25). Check for the same trap before adding a lazy-only export to a module the entry imports.
+ * Budget = measured + 1.0 = 158.9; the 158.0 target is met.
  */
-const BUDGET_KB = 164.6;
+const BUDGET_KB = 158.9;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dist = path.resolve(process.argv[2] ?? path.join(root, "apps/desktop/dist"));

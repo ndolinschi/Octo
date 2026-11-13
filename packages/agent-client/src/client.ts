@@ -1,3 +1,4 @@
+import { RARE_METHODS, type RareMethod } from "./rareNames";
 import type { CommandRun, CommandSuggestion, StartedCommandRun } from "./commands";
 import type {
   ListPullRequestsParams,
@@ -109,6 +110,12 @@ import type {
 
 /** A `Blob` without the DOM lib (this package type-checks without browser globals): what `new Blob(...)` returns where one exists. */
 export type BlobLike = { readonly size: number; readonly type: string; text(): Promise<string> };
+
+/** Loads the lazy half of the HTTP client (see `rare.ts`) ahead of its first use; call it when the app is idle. */
+export function warmBridgeClient(): void {
+  // A failed load here surfaces on the first real call, which retries.
+  import("./rare").catch(() => undefined);
+}
 
 export class BridgeError extends Error {
   readonly status: number;
@@ -675,19 +682,35 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
   /** A memory path with its slashes kept: each segment is encoded. */
   const memoryPath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
-  const usageQuery = (params: UsageParams | undefined) => {
-    const parts: string[] = [];
-    for (const k of ["from", "to", "group", "project"] as const) {
-      const v = params?.[k];
-      if (typeof v === "string" && v !== "") parts.push(`${k}=${encodeURIComponent(v)}`);
-    }
-    return parts.length === 0 ? "" : `?${parts.join("&")}`;
-  };
-
   const p = (id: string) => `/v1/projects/${encodeURIComponent(id)}`;
   const fileQuery = (folder: string, path: string) => `folder=${encodeURIComponent(folder)}&path=${encodeURIComponent(path)}`;
 
+  let rare: Promise<Pick<Bridge, RareMethod>> | undefined;
+  const loadRare = () => {
+    rare ??= import("./rare").then((m) =>
+      m.createRareMethods({
+        request,
+        unwrap,
+        p,
+        memoryPath,
+        base,
+        token,
+        binaryFetch: () => options.fetchBinary ?? globalBinaryFetch(),
+        fail: toBridgeError,
+      }),
+    );
+    // A failed chunk load must not stick: the next call tries again.
+    rare.catch(() => (rare = undefined));
+    return rare;
+  };
+  type Forward = (...args: never[]) => Promise<unknown>;
+  const forwarded = Object.fromEntries(
+    RARE_METHODS.map((name) => [name, (...args: never[]) => loadRare().then((m) => (m[name] as Forward)(...args))] as const),
+  );
+
   return {
+    // The keys come from RARE_METHODS and `createRareMethods` returns exactly that Pick, so each forwarder has its method's type.
+    ...(forwarded as Pick<Bridge, RareMethod>),
     health: () => request("GET", "/health") as Promise<HealthResponse>,
     getConfig: () => request("GET", "/v1/config") as Promise<BridgeConfig>,
     listProjects: () => unwrap<ProjectSummary[]>(request("GET", "/v1/projects"), "projects"),
@@ -725,64 +748,9 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
     },
     getContext: (id, agentId) =>
       request("GET", `${p(id)}/context${agentId === undefined ? "" : `?agent=${encodeURIComponent(agentId)}`}`) as Promise<ContextBreakdown>,
-    complete: async (id, input, opts) => {
-      const body = await request("POST", `${p(id)}/complete`, input, opts?.signal);
-      return isRecord(body) && typeof body.text === "string" ? (body as CompletionResult) : null;
-    },
-    stopSide: async (id) => {
-      await request("POST", `${p(id)}/side/stop`);
-    },
-    uploadAttachment: async (id, data, opts) => {
-      const doFetch = options.fetchBinary ?? globalBinaryFetch();
-      const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
-      if (token !== "") headers.Authorization = `Bearer ${token}`;
-      const name = opts?.name ? `?name=${encodeURIComponent(opts.name)}` : "";
-      let res: FetchResponseLike;
-      let text: string;
-      try {
-        res = await doFetch(`${base}${p(id)}/attachments${name}`, { method: "POST", headers, body: data });
-        text = await res.text();
-      } catch (e) {
-        throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
-      }
-      if (!res.ok) throw toBridgeError(res.status, text);
-      const body = parseJson(text);
-      if (!isRecord(body) || typeof body.id !== "string") throw new BridgeError(0, "invalid_response", 'missing "id" in response');
-      return body as unknown as Attachment;
-    },
-    fetchAttachment: async (id, attachmentId) => {
-      const doFetch = options.fetchBinary ?? globalBinaryFetch();
-      const headers: Record<string, string> = {};
-      if (token !== "") headers.Authorization = `Bearer ${token}`;
-      let res: FetchResponseLike;
-      try {
-        res = await doFetch(`${base}${p(id)}/attachments/${encodeURIComponent(attachmentId)}`, { method: "GET", headers });
-      } catch (e) {
-        throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
-      }
-      if (!res.ok) throw toBridgeError(res.status, await res.text());
-      if (!res.arrayBuffer) throw new BridgeError(0, "invalid_response", "this fetch cannot read binary bodies");
-      return { data: await res.arrayBuffer(), type: res.headers?.get("Content-Type") ?? "application/octet-stream" };
-    },
-    askSide: (id, text) => request("POST", `${p(id)}/side`, { text }) as Promise<SideStarted>,
-    listSide: (id) => unwrap<SideMessage[]>(request("GET", `${p(id)}/side`), "messages"),
-    clearSide: async (id) => {
-      await request("DELETE", `${p(id)}/side`);
-    },
-    listNotes: (id) => unwrap<Note[]>(request("GET", `${p(id)}/notes`), "notes"),
-    getNote: (id, noteId) => request("GET", `${p(id)}/notes/${encodeURIComponent(noteId)}`) as Promise<NoteDocument>,
-    createNote: (id, input) => request("POST", `${p(id)}/notes`, input) as Promise<NoteDocument>,
-    updateNote: (id, noteId, patch) => request("PATCH", `${p(id)}/notes/${encodeURIComponent(noteId)}`, patch) as Promise<NoteDocument>,
-    deleteNote: async (id, noteId) => {
-      await request("DELETE", `${p(id)}/notes/${encodeURIComponent(noteId)}`);
-    },
     listFiles: (id, folder, path) => unwrap<FileEntry[]>(request("GET", `${p(id)}/files?${fileQuery(folder, path)}`), "entries"),
     readFile: (id, folder, path) => request("GET", `${p(id)}/files/content?${fileQuery(folder, path)}`) as Promise<FileContent>,
     writeFile: (id, input) => request("PUT", `${p(id)}/files/content`, input) as Promise<FileStat>,
-    listPlugins: () => unwrap<Plugin[]>(request("GET", "/v1/plugins"), "plugins"),
-    getUsage: (params) => request("GET", `/v1/usage${usageQuery(params)}`) as Promise<UsageReport>,
-    getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
-    listLanguageServers: (id) => unwrap<LanguageServerInfo[]>(request("GET", `${p(id)}/lsp`), "servers"),
     sendOrQueueMessage: async (id, text, opts) => {
       const payload: Record<string, unknown> = { text };
       if (opts?.mode) payload.mode = opts.mode;
@@ -793,171 +761,10 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       throw new BridgeError(0, "invalid_response", 'missing "message" or "queued" in response');
     },
     getQueue: (id) => request("GET", `${p(id)}/queue`) as Promise<QueueState>,
-    editQueued: (id, qid, text) => request("PATCH", `${p(id)}/queue/${encodeURIComponent(qid)}`, { text }) as Promise<QueuedMessage>,
-    removeQueued: async (id, qid) => {
-      await request("DELETE", `${p(id)}/queue/${encodeURIComponent(qid)}`);
-    },
-    clearQueue: async (id) => {
-      await request("DELETE", `${p(id)}/queue`);
-    },
-    resumeQueue: async (id) => {
-      await request("POST", `${p(id)}/queue/resume`);
-    },
-    sendQueuedNow: async (id, qid, opts) => {
-      await request("POST", `${p(id)}/queue/${encodeURIComponent(qid)}/send-now`, opts?.interrupt ? { interrupt: true } : undefined);
-    },
-    steerQueued: async (id, qid) => {
-      const body = await request("POST", `${p(id)}/queue/${encodeURIComponent(qid)}/send-now`);
-      return { steered: isRecord(body) && body.steered === true };
-    },
-    getLatestPlan: (id) => unwrap<Plan>(request("GET", `${p(id)}/plans/latest`), "plan"),
-    approvePlan: (id, planId) => request("POST", `${p(id)}/plans/${encodeURIComponent(planId)}/approve`) as Promise<{ plan: Plan; message: Message }>,
-    rewind: (id, input) => request("POST", `${p(id)}/rewind`, input) as Promise<RewindReport>,
-    compactNow: (id) => request("POST", `${p(id)}/compact`) as Promise<CompactResult | CompactSentToAgent>,
-    getSlashCommands: (id) => request("GET", `${p(id)}/slash-commands`) as Promise<SlashCommands>,
-    clearConversation: (id) => request("POST", `${p(id)}/clear`) as Promise<ClearResult>,
-    rememberFact: (id, input) => request("POST", `${p(id)}/facts`, input) as Promise<RememberedFact>,
-    forgetFact: async (id, taskId, factId) => {
-      await request("DELETE", `${p(id)}/facts/${encodeURIComponent(taskId)}/${encodeURIComponent(factId)}`);
-    },
     exportConversationUrl: (id) => `${base}${p(id)}/export?format=md`,
-    exportConversation: async (id) => {
-      const doFetch = options.fetchBinary ?? globalBinaryFetch();
-      const headers: Record<string, string> = {};
-      if (token !== "") headers.Authorization = `Bearer ${token}`;
-      let res: FetchResponseLike;
-      try {
-        res = await doFetch(`${base}${p(id)}/export?format=md`, { method: "GET", headers });
-      } catch (e) {
-        throw new BridgeError(0, "network_error", e instanceof Error ? e.message : String(e));
-      }
-      if (!res.ok) throw toBridgeError(res.status, await res.text());
-      const type = res.headers?.get("Content-Type") ?? "text/markdown";
-      const Blob = (globalThis as { Blob?: new (parts: unknown[], init?: { type?: string }) => BlobLike }).Blob;
-      if (!Blob) throw new BridgeError(0, "no_blob", "this environment has no Blob");
-      return new Blob([res.arrayBuffer ? await res.arrayBuffer() : await res.text()], { type });
-    },
-    searchRequests: (query, limit) =>
-      unwrap<RequestHit[]>(request("GET", `/v1/search?q=${encodeURIComponent(query)}${limit === undefined ? "" : `&limit=${limit}`}`), "results"),
-    listChanges: (id, turnId) => unwrap<TurnChanges[]>(request("GET", `${p(id)}/changes${turnId === undefined ? "" : `?turn=${turnId}`}`), "turns"),
-    getChange: (id, cid) => request("GET", `${p(id)}/changes/${cid}`) as Promise<ChangeDetail>,
-    revertChange: (id, cid) => request("POST", `${p(id)}/changes/${cid}/revert`) as Promise<RevertResult>,
     listApprovals: (id) => unwrap<Approval[]>(request("GET", `${p(id)}/approvals`), "approvals"),
-    resolveApproval: async (id, aid, answer) => {
-      await request("POST", `${p(id)}/approvals/${encodeURIComponent(aid)}`, answer);
-    },
-    listApprovalRules: (id) => unwrap<ApprovalRule[]>(request("GET", `${p(id)}/approval-rules`), "rules"),
-    deleteApprovalRule: async (id, rid) => {
-      await request("DELETE", `${p(id)}/approval-rules/${encodeURIComponent(rid)}`);
-    },
     listInputs: (id) => unwrap<InputRequest[]>(request("GET", `${p(id)}/inputs`), "inputs"),
-    submitInput: async (id, iid, answer) => {
-      await request("POST", `${p(id)}/inputs/${encodeURIComponent(iid)}`, answer);
-    },
-    listSecrets: (id) => unwrap<SecretInfo[]>(request("GET", `${p(id)}/secrets`), "secrets"),
-    putSecret: async (id, name, value) => {
-      await request("PUT", `${p(id)}/secrets/${encodeURIComponent(name)}`, { value });
-    },
-    deleteSecret: async (id, name) => {
-      await request("DELETE", `${p(id)}/secrets/${encodeURIComponent(name)}`);
-    },
-    listPullRequests: (id, params) => {
-      const q: string[] = [];
-      if (params?.folder) q.push(`folder=${encodeURIComponent(params.folder)}`);
-      if (params?.filter) q.push(`filter=${params.filter}`);
-      if (params?.q) q.push(`q=${encodeURIComponent(params.q)}`);
-      if (params?.page) q.push(`page=${params.page}`);
-      if (params?.per_page) q.push(`per_page=${params.per_page}`);
-      if (params?.refresh) q.push("refresh=1");
-      if (params?.repo) q.push(`repo=${encodeURIComponent(params.repo)}`);
-      return request("GET", `${p(id)}/prs${q.length ? `?${q.join("&")}` : ""}`) as Promise<PullRequestList>;
-    },
-    listReviewBranches: (id, params) => {
-      const q: string[] = [];
-      if (params?.folder) q.push(`folder=${encodeURIComponent(params.folder)}`);
-      if (params?.base) q.push(`base=${encodeURIComponent(params.base)}`);
-      return request("GET", `${p(id)}/review/branches${q.length ? `?${q.join("&")}` : ""}`) as Promise<ReviewBranchList>;
-    },
-    listReviews: (id, state) => unwrap<ReviewSummary[]>(request("GET", `${p(id)}/reviews${state ? `?state=${state}` : ""}`), "reviews"),
-    openReview: (id, input) => request("POST", `${p(id)}/reviews`, input) as Promise<Review>,
-    getReview: (id, rid) => request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}`) as Promise<Review>,
-    patchReview: (id, rid, patch) => request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}`, patch) as Promise<Review>,
-    listReviewFiles: (id, rid) => request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/files`) as Promise<ReviewFiles>,
-    getReviewFileDiff: (id, rid, path, o) => {
-      const q: string[] = [];
-      if (o?.context !== undefined) q.push(`context=${o.context}`);
-      if (o?.ignoreWhitespace) q.push("ignore_whitespace=1");
-      if (o?.since) q.push(`since=${encodeURIComponent(o.since)}`);
-      return request(
-        "GET",
-        `${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}${q.length ? `?${q.join("&")}` : ""}`,
-      ) as Promise<ReviewFileDiff>;
-    },
     reviewFileRawUrl: (id, rid, path, side) => `${base}${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}?raw=${side}`,
-    setReviewFileViewed: (id, rid, path, viewed) =>
-      request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}/files/${memoryPath(path)}`, { viewed }) as Promise<ReviewFile>,
-    listReviewThreads: (id, rid, options) =>
-      request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/threads${options?.refresh ? "?refresh=1" : ""}`) as Promise<ReviewThreads>,
-    checkoutReview: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/checkout`, input) as Promise<ReviewCheckoutResult>,
-    clearReviewWorkspace: async (id) => {
-      await request("DELETE", `${p(id)}/review-workspace`);
-    },
-    listCommandSuggestions: (id) => unwrap<CommandSuggestion[]>(request("GET", `${p(id)}/commands/suggestions`), "suggestions"),
-    runCommand: (id, name, options) =>
-      request(
-        "POST",
-        `${p(id)}/commands/${encodeURIComponent(name)}/run`,
-        options?.reviewId ? { review_id: options.reviewId } : {},
-      ) as Promise<StartedCommandRun>,
-    listCommandRuns: (id, options) => {
-      const q: string[] = [];
-      if (options?.reviewId) q.push(`review_id=${encodeURIComponent(options.reviewId)}`);
-      if (options?.limit) q.push(`limit=${options.limit}`);
-      return unwrap<CommandRun[]>(request("GET", `${p(id)}/runs${q.length ? `?${q.join("&")}` : ""}`), "runs");
-    },
-    getCommandRun: (id, rid) => request("GET", `${p(id)}/runs/${encodeURIComponent(rid)}`) as Promise<CommandRun>,
-    stopCommandRun: (id, rid) => request("POST", `${p(id)}/runs/${encodeURIComponent(rid)}/stop`) as Promise<CommandRun>,
-    listReviewComments: (id, rid) => unwrap<ReviewComment[]>(request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments`), "comments"),
-    createReviewComment: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments`, input) as Promise<ReviewComment>,
-    updateReviewComment: (id, rid, cid, patch) =>
-      request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments/${encodeURIComponent(cid)}`, patch) as Promise<ReviewComment>,
-    deleteReviewComment: async (id, rid, cid) => {
-      await request("DELETE", `${p(id)}/reviews/${encodeURIComponent(rid)}/comments/${encodeURIComponent(cid)}`);
-    },
-    listReviewFindings: (id, rid) => unwrap<ReviewFinding[]>(request("GET", `${p(id)}/reviews/${encodeURIComponent(rid)}/findings`), "findings"),
-    decideReviewFinding: (id, rid, fid, d) =>
-      request("PATCH", `${p(id)}/reviews/${encodeURIComponent(rid)}/findings/${encodeURIComponent(fid)}`, d) as Promise<ReviewFindingResult>,
-    previewReviewSubmit: (id, rid, input) =>
-      request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/submit-preview`, input) as Promise<ReviewSubmitPreview>,
-    submitReview: (id, rid, input) => request("POST", `${p(id)}/reviews/${encodeURIComponent(rid)}/submit`, input) as Promise<ReviewSubmitResult>,
-    getContextOverview: (id) => request("GET", `${p(id)}/context`) as Promise<ContextOverview | ContextBreakdown>,
-    getTurnContext: (id, turnId) => request("GET", `${p(id)}/turns/${turnId}/context`) as Promise<ContextReceipt>,
-    listTasks: (id) => unwrap<Task[]>(request("GET", `${p(id)}/tasks`), "tasks"),
-    listMemory: (id) => request("GET", `${p(id)}/memory`) as Promise<MemoryList>,
-    getMemoryFile: (id, path) => request("GET", `${p(id)}/memory/${memoryPath(path)}`) as Promise<MemoryFile>,
-    putMemoryFile: (id, path, content, summary) =>
-      request("PUT", `${p(id)}/memory/${memoryPath(path)}`, summary === undefined ? { content } : { content, summary }) as Promise<MemoryFile>,
-    deleteMemoryFile: async (id, path) => {
-      await request("DELETE", `${p(id)}/memory/${memoryPath(path)}`);
-    },
-    searchMemory: (id, params) => {
-      const q = [`q=${encodeURIComponent(params.q)}`];
-      if (params.in !== undefined && params.in.length > 0) q.push(`in=${params.in.join(",")}`);
-      if (params.after !== undefined) q.push(`after=${encodeURIComponent(params.after)}`);
-      if (params.before !== undefined) q.push(`before=${encodeURIComponent(params.before)}`);
-      if (params.limit !== undefined) q.push(`limit=${params.limit}`);
-      return request("GET", `${p(id)}/memory/search?${q.join("&")}`) as Promise<MemorySearchResult>;
-    },
-    listMemorySessions: (id, params) => {
-      const q: string[] = [];
-      if (params?.limit !== undefined) q.push(`limit=${params.limit}`);
-      if (params?.before !== undefined) q.push(`before=${encodeURIComponent(params.before)}`);
-      return unwrap<MemorySession[]>(request("GET", `${p(id)}/memory/sessions${q.length ? `?${q.join("&")}` : ""}`), "sessions");
-    },
-    getMemorySession: (id, sid) => request("GET", `${p(id)}/memory/sessions/${encodeURIComponent(sid)}`) as Promise<MemorySessionDetail>,
-    forgetExchange: async (id, eid) => {
-      await request("DELETE", `${p(id)}/memory/exchanges/${encodeURIComponent(eid)}`);
-    },
     listSessions: (id, params) => {
       const q: string[] = [];
       if (params?.kind !== undefined) q.push(`kind=${params.kind}`);
@@ -967,34 +774,6 @@ export function createHttpBridge(options: HttpBridgeOptions): HttpBridge {
       if (params?.before !== undefined) q.push(`before=${encodeURIComponent(params.before)}`);
       return unwrap<ProjectSession[]>(request("GET", `${p(id)}/sessions${q.length ? `?${q.join("&")}` : ""}`), "sessions");
     },
-    getSession: (id, sid) => request("GET", `${p(id)}/sessions/${encodeURIComponent(sid)}`) as Promise<ProjectSessionDetail>,
-    getSessionTranscript: async (id, sid) => {
-      const body = await request("GET", `${p(id)}/sessions/${encodeURIComponent(sid)}/messages`);
-      if (!isRecord(body) || !Array.isArray(body.messages)) {
-        throw new BridgeError(0, "invalid_response", 'missing "messages" in response');
-      }
-      return {
-        messages: body.messages as Message[],
-        compactions: Array.isArray(body.compactions) ? (body.compactions as Transcript["compactions"]) : [],
-        ...(Array.isArray(body.conversations) ? { conversations: body.conversations as ConversationMarker[] } : {}),
-      };
-    },
-    createSession: (id, title) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions`, title === undefined ? undefined : { title }), "session"),
-    resumeSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/resume`), "session"),
-    patchSession: (id, sid, patch) => unwrap<ProjectSession>(request("PATCH", `${p(id)}/sessions/${encodeURIComponent(sid)}`, patch), "session"),
-    deleteSession: async (id, sid) => {
-      await request("DELETE", `${p(id)}/sessions/${encodeURIComponent(sid)}`);
-    },
-    stopSession: (id, sid) => unwrap<ProjectSession>(request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/stop`), "session"),
-    messageSession: async (id, sid, text, opts) => {
-      const body: { text: string; report_to_parent?: boolean } = { text };
-      if (opts?.reportToParent) body.report_to_parent = true;
-      return (await request("POST", `${p(id)}/sessions/${encodeURIComponent(sid)}/messages`, body)) as SessionMessageResult;
-    },
-    listDirs: (path) => request("GET", `/v1/fs/dirs?path=${encodeURIComponent(path)}`) as Promise<DirListing>,
-    recentFolders: () => unwrap<FolderEntry[]>(request("GET", "/v1/fs/recent"), "entries"),
-    pickFolder: (start) => request("POST", "/v1/fs/pick-folder", start === undefined ? undefined : { start }) as Promise<PickFolderResult>,
-    getDiagnostics: () => request("GET", "/v1/diagnostics") as Promise<Diagnostics>,
     getSettings: () => request("GET", "/v1/settings") as Promise<SettingsView>,
     putSettings: (update) => request("PUT", "/v1/settings", update) as Promise<SettingsView>,
     listProviders: () => request("GET", "/v1/providers") as Promise<ProvidersResponse>,

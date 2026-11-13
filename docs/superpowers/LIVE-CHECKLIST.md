@@ -123,6 +123,8 @@ B12 **Errors in the person's words.** Provoke one of: wrong model, an agent that
 sentence, one next step, a "Details" fold with the technical text; never "ACP", "exit status", a stack or a tool id.
 *Send:* the sentence and the Details text.
 
+B13 **Grok (and every agent) sees the terminal's environment.** Quit Octo, start it from Finder/Dock (not from a terminal), with Grok logged in from a terminal. *Expect:* Settings → Agents shows Grok ready (or "Check again" turns it ready) instead of "Grok is not logged in"; `harness.log` has one line `login shell environment forwarded: <names>` (names only, e.g. LANG, XDG_CONFIG_HOME, SSH_AUTH_SOCK); `harness doctor --data-dir <app data>/harness` lists the same names under "login-shell variables child processes get". If Grok is still "not logged in", run `harness doctor --show-probe-output` and send it with the log line; that separates an environment problem from the probe or login-state itself. **(first time live; the forwarding is verified with fake shells only, not on macOS)**
+
 ## C. Review on your fork with a real `gh`
 
 C1 **Repository menu.** Open "Review a pull request" in a folder whose remote is a fork. *Expect:* every open pull request

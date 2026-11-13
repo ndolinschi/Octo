@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { SlashCommands } from "@octo/agent-client";
-import { slashGroups, type SlashRow } from "../../lib/slash";
+import type { SlashRow } from "../../lib/slash";
+import { slashGroups } from "../../lib/slashRows";
 import { listKeyTarget } from "../../lib/focus";
 import { Card } from "../primitives/Card";
 import { ListRow } from "../primitives/ListRow";

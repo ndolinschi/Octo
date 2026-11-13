@@ -1,6 +1,7 @@
 import type { BridgeConfig, Plugin, Provider, ProviderModel, ProvidersResponse, ProviderState, SETTING_IDS, SettingsView } from "@octo/agent-client";
 import { displayId } from "../models";
-import { API_PROVIDER, ROUTER_PROVIDER, isReady } from "./providers";
+import { isReady } from "./providers";
+import { API_PROVIDER, ROUTER_PROVIDER } from "./providersMore";
 
 /** The settings this module reads (lib sees agent-client's types only, so the ids are spelled here and type-checked). */
 const API_KEY: (typeof SETTING_IDS)["anthropicApiKey"] = "ANTHROPIC_API_KEY";

@@ -1,5 +1,6 @@
 // Decisions 53 and 58: providers and the model picker's data. The picker component renders `useModelPicker`'s view.
-export { API_PROVIDER, EXPERIMENTAL_TIP, ROUTER_PROVIDER, canRun, canUseAnyway, chipLabel, connectAction, isReady, providerOf, stateText } from "./providers";
+export { canRun, chipLabel, isReady } from "./providers";
+export { API_PROVIDER, EXPERIMENTAL_TIP, ROUTER_PROVIDER, canUseAnyway, connectAction, providerOf, stateText } from "./providersMore";
 export { extraReason, plainReason } from "./reasons";
 export {
   agentModels,

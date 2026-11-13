@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SPAWN_TOOL, acpCall, locateInProject, looksLikeDiff, spawnInput, toolMeta, toolPath, writtenFiles, commandRuns, harnessTool } from "./tools";
+import { SPAWN_TOOL, acpCall, toolMeta, harnessTool } from "./tools";
+import { locateInProject, looksLikeDiff, spawnInput, toolPath, writtenFiles, commandRuns } from "./toolsMore";
 
 const folders = [
   { label: "infra", path: "/Users/maya/code/infra" },

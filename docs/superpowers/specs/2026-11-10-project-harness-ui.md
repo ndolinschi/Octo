@@ -2814,3 +2814,28 @@ and were not updated.
   into view and that scroll was the driver's); the tour has a `sessions` group, a palette helper that finds the search field by name, and
   selectors for the "Requests" group, the outdated-threads strip, the reply box and "Show roles".
 - **Not verified:** a screen reader on the new list roles; the Models project-tab menu with a real harness; WebKit.
+
+## Decision 95 — owner's hand test of 2026-11-13: menus, sessions, panels
+
+a. **One popup list.** The composer's slash menu and file mention menu, the model/provider picker, the folder menu and
+   every other anchored list are one component (`primitives/PopupList` or the existing `Menu`, whichever is chosen —
+   one, not two): same row height, paddings, group captions, empty line, and the same keyboard contract. The active
+   row is always scrolled into view (`scrollIntoView({block: "nearest"})`) when it changes by keyboard, wraps at both
+   ends, and never moves by itself on hover-less mouse rest.
+b. **A list that opens takes the keys at once.** Opening a picker (by click or shortcut) puts focus where arrow keys
+   work without a second click; Left/Right switch its sections (providers) when it has sections; Escape returns focus
+   to the opener. Test: open, press ArrowDown, the second row is active — for every picker, in a browser script.
+c. **Sessions can be deleted.** A session that is not current and has nothing running has "Delete" (confirm once,
+   says what goes: its transcript and its agents' sessions; memory entries made from it stay and say "session
+   deleted"). The current session cannot be deleted; it can be cleared or replaced by a new one.
+d. **A cleared or new session with no request is not "working".** State comes from a running turn only; an empty
+   session shows "No requests yet".
+e. **"New session" says what it keeps.** The action's confirmation (or the empty session's first screen) states in
+   plain words what carries over (remembered facts, notes, searchable past sessions, project settings and files) and
+   what does not (the conversation itself), with a link "What it remembers" opening Memory. The same text explains
+   `/clear` (carries a summary). The wording is taken from what the harness really does (memory and sessions specs).
+f. **One panel frame.** Sessions, Memory, Notes, Usage, Files list and every other tool tab share one frame
+   (`primitives/Panel`): header line (title · primary action right), one filter row (`FilterTabs`, then search), list
+   with one horizontal inset, one row rhythm, one empty state. Insets and gaps come from the frame, not from each
+   screen; a screen may not set its own outer padding. Test: the spacing audit gains a "panel-frame" check — header
+   height, horizontal inset and the gap between filter row and list are equal across all tool tabs.

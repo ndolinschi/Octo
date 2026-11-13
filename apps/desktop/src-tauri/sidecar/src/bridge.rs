@@ -392,12 +392,23 @@ impl Bridge {
         let inherited = std::env::var("PATH").unwrap_or_default();
         let home = std::env::var("HOME").ok();
         let shell = std::env::var("SHELL").ok();
-        let path = shellenv::resolve_path(
+        // Names the user set in harness.env are theirs: the login shell's value is not forwarded for them.
+        let user_set: Vec<String> = std::fs::read_to_string(&cfg.settings_path)
+            .map(|t| {
+                crate::settings::parse_env(&t)
+                    .into_iter()
+                    .map(|(k, _)| k)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let login = shellenv::resolve(
             shell.as_deref(),
             &inherited,
             home.as_deref(),
             shellenv::DEFAULT_TIMEOUT,
+            &user_set,
         );
+        let path = login.path.clone();
         let args = harness_args(port, &cfg.data_dir, base_url.as_deref());
         if let Ok(mut l) = log.lock() {
             let _ = l.line(&format!(
@@ -406,10 +417,20 @@ impl Bridge {
                 args.join(" ")
             ));
             let _ = l.line(&format!("--- octo: PATH={path}"));
+            // Names only, never values.
+            let _ = l.line(&format!(
+                "--- octo: login shell environment forwarded: {}",
+                if login.vars.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    login.names().join(", ")
+                }
+            ));
             if reaped_stale {
                 let _ = l.line("--- octo: terminated a harness left over from an earlier run");
             }
         }
+        env.extend(login.vars);
         env.push(("PATH".into(), path));
         // A new bridge token for every run, in the environment only (not an argument, not the log).
         let token = router::generate_key();

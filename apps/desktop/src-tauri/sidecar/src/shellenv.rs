@@ -1,9 +1,14 @@
-//! Login-shell `PATH` resolution.
+//! Login-shell `PATH` and environment resolution.
 //!
 //! A GUI app started from Finder does not inherit the user's shell `PATH`, but the agents the harness drives
 //! (`npx`, `claude`, `copilot`, ...) live in directories only the shell profile adds. So we ask the user's own
 //! shell, interactively and as a login shell, to print it between markers (profiles print banners, so the output
 //! cannot be taken as is), with a short timeout (a hanging profile must not block start-up).
+//!
+//! The same shell invocation also prints its whole environment (`env -0`, NUL separated) in a second marked block.
+//! Only an allow-list of names is forwarded to the harness ([`FORWARD_EXACT`], [`FORWARD_PREFIXES`]: locale, XDG
+//! dirs, `SSH_AUTH_SOCK`, tool homes, proxy and CA settings, `TMPDIR`), and a name that looks like a secret
+//! ([`DENY_WORDS`]) is never forwarded, whatever the list says. Values are never logged.
 
 use std::io::Read;
 use std::path::Path;
@@ -12,6 +17,120 @@ use std::time::{Duration, Instant};
 
 pub const START: &str = "__OCTO_PATH_START__";
 pub const END: &str = "__OCTO_PATH_END__";
+pub const ENV_START: &str = "__OCTO_ENV_START__";
+pub const ENV_END: &str = "__OCTO_ENV_END__";
+
+/// Names forwarded from the login shell when it has them (exact, case-sensitive). `PATH` is handled apart (it is
+/// merged with the inherited one and always sent); it is not in this list. `HOME` is deliberately absent.
+pub const FORWARD_EXACT: &[&str] = &[
+    "LANG",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+    "XDG_CACHE_HOME",
+    "SSH_AUTH_SOCK",
+    "NVM_DIR",
+    "BUN_INSTALL",
+    "PNPM_HOME",
+    "VOLTA_HOME",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    "SSL_CERT_FILE",
+    "NODE_EXTRA_CA_CERTS",
+    "TMPDIR",
+    "SHELL",
+    "USER",
+    "LOGNAME",
+    "TERM",
+];
+
+/// Forwarded by prefix: `LC_ALL`, `LC_CTYPE`, ...
+pub const FORWARD_PREFIXES: &[&str] = &["LC_"];
+
+/// A name containing any of these (case-insensitive) is never forwarded, even if an allow-list names it.
+/// (`SSH_AUTH_SOCK` is a socket path and does not match.)
+pub const DENY_WORDS: &[&str] = &["KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL"];
+
+pub fn is_denied(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    DENY_WORDS.iter().any(|w| upper.contains(w))
+}
+
+fn is_listed(name: &str) -> bool {
+    FORWARD_EXACT.contains(&name) || FORWARD_PREFIXES.iter().any(|p| name.starts_with(p))
+}
+
+/// Whether `name` may go to the harness: on the allow-list and not secret-looking. `PATH` is not decided here.
+pub fn forwardable(name: &str) -> bool {
+    !is_denied(name) && is_listed(name)
+}
+
+/// The generic filter behind [`forwardable`], with the allow-list passed in so a test can prove that the deny
+/// words win over any list: keeps entries that `allow` accepts and that are not denied, drops empty values and
+/// names in `user_set` (the user's own `harness.env` decides those); the first occurrence of a name wins.
+pub fn select_forwarded(
+    vars: &[(String, String)],
+    allow: impl Fn(&str) -> bool,
+    user_set: &[String],
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (k, v) in vars {
+        if k == "PATH"
+            || v.is_empty()
+            || v.contains(['\0', '\u{FFFD}'])
+            || is_denied(k)
+            || !allow(k)
+            || user_set.iter().any(|u| u == k)
+            || out.iter().any(|(n, _)| n == k)
+        {
+            continue;
+        }
+        out.push((k.clone(), v.clone()));
+    }
+    out
+}
+
+/// Parses the `env -0` block: the last complete marker pair wins; entries are split at NUL, then at the first `=`
+/// (values may hold `=` and newlines). Entries without `=` or with an invalid name are skipped.
+pub fn parse_env_block(output: &str) -> Vec<(String, String)> {
+    let Some(start) = output.rfind(ENV_START) else {
+        return Vec::new();
+    };
+    let rest = &output[start + ENV_START.len()..];
+    let Some(end) = rest.find(ENV_END) else {
+        return Vec::new();
+    };
+    rest[..end]
+        .split('\0')
+        .filter_map(|entry| {
+            let (name, value) = entry.split_once('=')?;
+            let ok = !name.is_empty()
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !name.starts_with(|c: char| c.is_ascii_digit());
+            ok.then(|| (name.to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+/// What the harness is started with from the login shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Resolved {
+    /// Never empty.
+    pub path: String,
+    /// Allow-listed, non-secret variables, in the shell's order; empty on the fallback.
+    pub vars: Vec<(String, String)>,
+}
+
+impl Resolved {
+    /// The names forwarded (never the values), for the log.
+    pub fn names(&self) -> Vec<&str> {
+        self.vars.iter().map(|(k, _)| k.as_str()).collect()
+    }
+}
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Directories where user-installed CLIs usually are, relative entries use `home`.
@@ -90,30 +209,53 @@ pub fn resolve_path(
     home: Option<&str>,
     timeout: Duration,
 ) -> String {
+    resolve(shell, inherited, home, timeout, &[]).path
+}
+
+/// One login-shell run gives the PATH (as before) and the allow-listed environment. `user_set` lists the names
+/// the user set in `harness.env`: none of those is forwarded (the harness reads that file itself, and a value in
+/// its process environment would shadow the file). For any other name the login shell's value wins over the
+/// app's own. If the shell cannot be asked, fails or times out: exactly the old fallback PATH and no extras.
+pub fn resolve(
+    shell: Option<&str>,
+    inherited: &str,
+    home: Option<&str>,
+    timeout: Duration,
+    user_set: &[String],
+) -> Resolved {
     if let Some(shell) = shell.filter(|s| !s.is_empty()) {
-        if let Some(login) =
-            run_login_shell(shell, timeout).and_then(|out| parse_delimited_path(&out))
-        {
-            return merge_paths(&[&login, inherited]);
+        if let Some(out) = run_login_shell(shell, timeout) {
+            if let Some(login) = parse_delimited_path(&out) {
+                return Resolved {
+                    path: merge_paths(&[&login, inherited]),
+                    vars: select_forwarded(&parse_env_block(&out), is_listed, user_set),
+                };
+            }
         }
     }
     let fb = fallback_path(inherited, home);
-    if fb.is_empty() {
-        "/usr/bin:/bin:/usr/sbin:/sbin".to_string()
-    } else {
-        fb
+    Resolved {
+        path: if fb.is_empty() {
+            "/usr/bin:/bin:/usr/sbin:/sbin".to_string()
+        } else {
+            fb
+        },
+        vars: Vec::new(),
     }
 }
 
-/// Runs `$SHELL -ilc 'printf START"$PATH"END'` and returns stdout, or None on spawn failure, timeout (the shell
-/// is killed) or a non-UTF-8 result. Works for bash, zsh and fish (fish joins path variables with `:` in quotes).
+/// Runs `$SHELL -ilc 'printf START"$PATH"END; printf ENVSTART; env -0; printf ENVEND'` (one process) and returns
+/// stdout, or None on spawn failure or timeout (the shell is killed). Invalid UTF-8 is replaced, and values that
+/// contain a replacement character are not forwarded. If `env -0` is unsupported the second block is just empty. Works for bash, zsh and fish (fish joins path variables with `:` in quotes).
 #[cfg(unix)]
 pub fn run_login_shell(shell: &str, timeout: Duration) -> Option<String> {
     use std::os::unix::process::CommandExt;
     if !Path::new(shell).is_absolute() {
         return None;
     }
-    let script = format!("printf '%s%s%s' '{START}' \"$PATH\" '{END}'");
+    let script = format!(
+        "printf '%s%s%s' '{START}' \"$PATH\" '{END}'; printf '%s' '{ENV_START}'; env -0 2>/dev/null; printf '%s' '{ENV_END}'"
+    );
     let mut child = Command::new(shell)
         .args(["-ilc", &script])
         .stdin(Stdio::null())
@@ -146,7 +288,7 @@ pub fn run_login_shell(shell: &str, timeout: Duration) -> Option<String> {
             }
         }
     }
-    String::from_utf8(reader.join().ok()?).ok()
+    Some(String::from_utf8_lossy(&reader.join().ok()?).into_owned())
 }
 
 #[cfg(not(unix))]
@@ -311,5 +453,271 @@ mod tests {
             fallback_path("/usr/bin", None)
         );
         let _ = std::fs::remove_dir_all(d);
+    }
+
+    // ---- environment forwarding (pure parts compile on every platform) ----
+
+    fn pairs(v: &[(&str, &str)]) -> Vec<(String, String)> {
+        v.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    fn env_block(entries: &[&str]) -> String {
+        let mut s = String::from(ENV_START);
+        for e in entries {
+            s.push_str(e);
+            s.push('\0');
+        }
+        s.push_str(ENV_END);
+        s
+    }
+
+    #[test]
+    fn env_block_keeps_newlines_and_equals_in_values() {
+        let out = format!(
+            "banner\n{}\nbye",
+            env_block(&[
+                "A=x=y=z",
+                "B=line1\nline2\n",
+                "C=",
+                "novalue",
+                "1BAD=x",
+                "BAD NAME=x"
+            ])
+        );
+        assert_eq!(
+            parse_env_block(&out),
+            pairs(&[("A", "x=y=z"), ("B", "line1\nline2\n"), ("C", "")])
+        );
+    }
+
+    #[test]
+    fn env_block_needs_both_markers_and_the_last_pair_wins() {
+        assert!(parse_env_block("").is_empty());
+        assert!(parse_env_block(&format!("{ENV_START}A=1\0")).is_empty());
+        let out = format!("{}{}", env_block(&["A=old"]), env_block(&["A=new"]));
+        assert_eq!(parse_env_block(&out), pairs(&[("A", "new")]));
+    }
+
+    #[test]
+    fn the_allow_list_forwards_what_the_issue_names() {
+        for n in [
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+            "XDG_CACHE_HOME",
+            "SSH_AUTH_SOCK",
+            "NVM_DIR",
+            "BUN_INSTALL",
+            "PNPM_HOME",
+            "VOLTA_HOME",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+            "SSL_CERT_FILE",
+            "NODE_EXTRA_CA_CERTS",
+            "TMPDIR",
+            "SHELL",
+            "USER",
+            "LOGNAME",
+            "TERM",
+        ] {
+            assert!(forwardable(n), "{n} should be forwarded");
+        }
+        for n in [
+            "HOME",
+            "PATH",
+            "EDITOR",
+            "AWS_PROFILE",
+            "lang",
+            "LCX",
+            "ALL_PROXY",
+        ] {
+            assert!(!forwardable(n), "{n} should not be forwarded");
+        }
+    }
+
+    #[test]
+    fn nothing_on_the_allow_list_looks_like_a_secret() {
+        for n in FORWARD_EXACT {
+            assert!(!is_denied(n), "{n} is on the list and matches a deny word");
+        }
+    }
+
+    #[test]
+    fn secret_looking_names_are_never_forwarded_even_if_listed() {
+        let vars = pairs(&[
+            ("OPENAI_API_KEY", "k"),
+            ("GITHUB_TOKEN", "t"),
+            ("my_secret", "s"),
+            ("DB_PASSWORD", "p"),
+            ("DB_PASSWD", "p"),
+            ("AWS_SHARED_CREDENTIALS_FILE", "/x"),
+            ("LC_API_KEY", "k"),
+            ("npm_config_authToken", "t"),
+            ("LANG", "en_US.UTF-8"),
+        ]);
+        // A list that names every one of them, as if someone added them later.
+        let got = select_forwarded(&vars, |_| true, &[]);
+        assert_eq!(got, pairs(&[("LANG", "en_US.UTF-8")]));
+        // And through the real list, including a prefix match.
+        let got = select_forwarded(&vars, is_listed, &[]);
+        assert_eq!(got, pairs(&[("LANG", "en_US.UTF-8")]));
+        for n in ["LC_API_KEY", "XDG_CONFIG_TOKEN", "NO_PROXY_SECRET"] {
+            assert!(!forwardable(n), "{n}");
+        }
+        for n in DENY_WORDS {
+            assert!(is_denied(&format!("X_{}_Y", n.to_lowercase())));
+        }
+    }
+
+    #[test]
+    fn select_drops_path_empty_values_user_set_names_and_duplicates() {
+        let vars = pairs(&[
+            ("PATH", "/x"),
+            ("LANG", ""),
+            ("TMPDIR", "/t1"),
+            ("TMPDIR", "/t2"),
+            ("NVM_DIR", "/nvm"),
+            ("XDG_DATA_HOME", "bad\u{FFFD}value"),
+            ("HTTPS_PROXY", "http://p:3128"),
+        ]);
+        let got = select_forwarded(&vars, is_listed, &["NVM_DIR".to_string()]);
+        assert_eq!(
+            got,
+            pairs(&[("TMPDIR", "/t1"), ("HTTPS_PROXY", "http://p:3128")])
+        );
+    }
+
+    #[test]
+    fn no_shell_means_the_old_fallback_and_no_variables() {
+        let r = resolve(
+            None,
+            "/usr/bin",
+            Some("/h"),
+            Duration::from_millis(100),
+            &[],
+        );
+        assert_eq!(r.path, fallback_path("/usr/bin", Some("/h")));
+        assert!(r.vars.is_empty());
+        assert!(r.names().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_fake_login_shell_yields_path_and_only_allow_listed_variables() {
+        let d = tmp("envfwd");
+        // A banner, the PATH block, then NUL separated entries with a newline and `=` in values.
+        let sh = script(
+            &d,
+            &format!(
+                "echo 'welcome'; printf '%s' '{START}/login/bin{END}'; printf '%s' '{ENV_START}'; \
+                 printf 'LANG=en_GB.UTF-8\\0OPENAI_API_KEY=sk-1\\0GITHUB_TOKEN=gh\\0'; \
+                 printf 'NODE_EXTRA_CA_CERTS=/ca/a=b.pem\\0HTTPS_PROXY=http://h:1/?a=b\\0'; \
+                 printf 'XDG_CONFIG_HOME=/c\\nonfig\\0EDITOR=vim\\0LC_ALL=C\\0PATH=/ignored\\0'; \
+                 printf '%s' '{ENV_END}'; echo done"
+            ),
+        );
+        let r = resolve(
+            Some(&sh),
+            "/inherited/bin",
+            None,
+            Duration::from_secs(3),
+            &[],
+        );
+        assert_eq!(r.path, "/login/bin:/inherited/bin");
+        assert_eq!(
+            r.vars,
+            pairs(&[
+                ("LANG", "en_GB.UTF-8"),
+                ("NODE_EXTRA_CA_CERTS", "/ca/a=b.pem"),
+                ("HTTPS_PROXY", "http://h:1/?a=b"),
+                ("XDG_CONFIG_HOME", "/c\nonfig"),
+                ("LC_ALL", "C"),
+            ])
+        );
+        let names = r.names().join(",");
+        assert!(!names.contains("KEY") && !names.contains("TOKEN") && !names.contains("EDITOR"));
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn names_set_in_harness_env_are_not_overridden_by_the_login_shell() {
+        let d = tmp("envprec");
+        let sh = script(
+            &d,
+            &format!(
+                "printf '%s' '{START}/l{END}{ENV_START}'; printf 'LANG=login\\0TMPDIR=/login/tmp\\0'; printf '%s' '{ENV_END}'"
+            ),
+        );
+        let user_set = vec!["LANG".to_string()];
+        let r = resolve(Some(&sh), "", None, Duration::from_secs(3), &user_set);
+        assert_eq!(r.vars, pairs(&[("TMPDIR", "/login/tmp")]));
+        // Not named in harness.env: the login shell's value is sent (it wins over the app's own).
+        let r = resolve(Some(&sh), "", None, Duration::from_secs(3), &[]);
+        assert_eq!(
+            r.vars,
+            pairs(&[("LANG", "login"), ("TMPDIR", "/login/tmp")])
+        );
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_shell_without_env_support_still_gives_the_path() {
+        let d = tmp("noenv");
+        // Only the PATH block, as an older or odd shell setup would print.
+        let sh = script(&d, &format!("printf '%s' '{START}/login/bin{END}'"));
+        let r = resolve(Some(&sh), "/i", None, Duration::from_secs(3), &[]);
+        assert_eq!(r.path, "/login/bin:/i");
+        assert!(r.vars.is_empty());
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_hanging_shell_gives_the_fallback_and_no_variables() {
+        let d = tmp("hangenv");
+        let sh = script(&d, &format!("printf '%s' '{ENV_START}LANG=x\\0'; sleep 30"));
+        let t0 = Instant::now();
+        let r = resolve(Some(&sh), "/usr/bin", None, Duration::from_millis(300), &[]);
+        assert!(t0.elapsed() < Duration::from_secs(5));
+        assert_eq!(r.path, fallback_path("/usr/bin", None));
+        assert!(r.vars.is_empty());
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_real_sh_prints_a_parseable_environment() {
+        let out = run_login_shell("/bin/sh", Duration::from_secs(3)).expect("sh ran");
+        let all = parse_env_block(&out);
+        // `env -0` is in GNU coreutils and recent BSD/macOS; where it is missing the block is empty and that is
+        // tolerated, so only check the shape when there is one.
+        if !all.is_empty() {
+            assert!(all.iter().any(|(k, _)| k == "PATH"), "got {all:?}");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_env_dash_zero_is_available() {
+        let o = Command::new("/usr/bin/env").arg("-0").output().unwrap();
+        assert!(o.status.success() && o.stdout.contains(&0u8));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_env_dash_zero_is_available() {
+        let o = Command::new("env").arg("-0").output().unwrap();
+        assert!(o.status.success() && o.stdout.contains(&0u8));
     }
 }

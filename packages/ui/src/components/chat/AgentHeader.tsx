@@ -12,7 +12,7 @@ import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Markdown } from "../shared/Markdown";
 import { statusLabel, tierLabel } from "../primitives/Status";
 import { useAcpNames, useModelNames } from "../../state/models";
-import { routeLine } from "../../lib/models";
+import { routeLine } from "../../lib/modelsMore";
 import { contextText } from "../../lib/usageView";
 
 export function Breadcrumb({ agent }: { agent: Agent }) {

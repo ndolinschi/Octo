@@ -1,18 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyProjectState, type Agent } from "@octo/agent-client";
-import {
-  agentDisplayName,
-  roleText,
-  agentActivity,
-  agentStack,
-  lastTeam,
-  orchestratorState,
-  runningAgents,
-  stateLine,
-  teamLine,
-  teamRoles,
-} from "./orchestrator";
+import { roleText, agentActivity, lastTeam, orchestratorState, runningAgents, stateLine, teamRoles } from "./orchestrator";
+import { agentDisplayName, agentStack, teamLine } from "./orchestratorMore";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
 function agent(p: Partial<Agent> & { id: string }): Agent {

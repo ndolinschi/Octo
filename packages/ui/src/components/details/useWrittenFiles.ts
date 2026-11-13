@@ -1,6 +1,6 @@
 import type { Agent } from "@octo/agent-client";
 import { useEffect, useMemo, useState } from "react";
-import { commandRuns, writtenFiles, type WrittenFile } from "../../lib/tools";
+import { commandRuns, writtenFiles, type WrittenFile } from "../../lib/toolsMore";
 import { useActivity, useActivityVersion } from "../../state/activity";
 import { useProject } from "../../state/project";
 

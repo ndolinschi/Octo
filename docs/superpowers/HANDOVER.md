@@ -64,7 +64,7 @@ a fork, posting a review, images with any real agent.
   (599 UI unit tests, Playwright scripts on `?demo=1`). Against a live harness or real agents: **built**.
 - Component library (decision 90): primitives and a gallery at `?gallery=1`; 49 `octo/no-native-controls` warnings left
   (per folder in `research/2026-11-12-ui-component-audit.md`): migration **built**, not finished.
-- Entry bundle 163.6 kB gzip, budget 164.6, target 158 not reached (see the note in `scripts/check-bundle-size.mjs`).
+- Entry bundle 157.9 kB gzip, budget 158.9, target 158 met (2026-11-13; cuts in the note in `scripts/check-bundle-size.mjs`). Still open there: the composer's slash and image hooks behind a first-use import, the `WorkspaceProvider` split.
 
 ### Desktop (`apps/desktop`)
 
@@ -103,8 +103,8 @@ Nothing. The tree holds finished work only; the integration pass left it staged 
    `node packages/ui/scripts/ui-tour.mjs`) and close the rest.
 2. **Library migration batches left.** 49 native-control warnings (folders and counts in the component audit); then lower the
    lint rule to an error.
-3. **Entry bundle.** From 163.6 to 158: first-use imports for the slash and image hooks, the agent-client's session
-   methods in a lazy chunk, `WorkspaceProvider` split (Q5 of `plans/2026-11-10-frontend-code-quality.md`).
+3. **Entry bundle.** Target met (157.9 kB). Further: slash and image hooks behind a first-use import, `WorkspaceProvider` split (Q5 of
+   `plans/2026-11-10-frontend-code-quality.md`); keep lazy-only exports out of modules the entry imports.
 4. **Parity B8 to B10** (`specs/2026-11-12-parity-backlog.md`).
 5. **Review RV3**, the AI pass (`specs/2026-11-11-pr-review-design.md`).
 6. The Tauri system folder dialog and the macOS title bar fix (uncompiled Rust; the owner runs `OCTO_DEBUG_CHROME=1`).

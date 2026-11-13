@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BridgeConfig, Plugin, ProviderList, SettingsView } from "@octo/agent-client";
 import { deriveProviders } from "./derive";
-import { API_PROVIDER, ROUTER_PROVIDER, canRun, chipLabel, connectAction, providerOf, stateText } from "./providers";
+import { canRun, chipLabel } from "./providers";
+import { API_PROVIDER, ROUTER_PROVIDER, connectAction, providerOf, stateText } from "./providersMore";
 import { extraReason } from "./reasons";
 
 const config = (over: Partial<BridgeConfig> = {}): BridgeConfig => ({

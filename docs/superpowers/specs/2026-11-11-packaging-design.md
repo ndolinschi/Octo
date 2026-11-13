@@ -124,6 +124,12 @@ tests for the two-sidecar start order, the router-failure path and shutdown; a s
 every state in the demo (`?demo=1&firstrun=…`), decision 42's bar. The installed macOS app remains for the owner
 to try.
 
+## As built — login-shell environment (2026-11-13)
+
+Cause suspected for "Grok is not logged in" in the app while logged in from a terminal: the sidecar passed only `PATH`, so the agent CLI (and its probe) missed `LANG`/`LC_*`, `XDG_*`, `SSH_AUTH_SOCK`, tool homes, proxy and CA settings, `TMPDIR`. Built in `octo-sidecar` (`shellenv`, `bridge`): the one login-shell run that yields `PATH` also prints `env -0` between markers; an allow-list of names is forwarded (list in `apps/desktop/AGENTS.md`); names with KEY/TOKEN/SECRET/PASSWORD/PASSWD/CREDENTIAL are never forwarded, enforced in code regardless of the list; a name set in `harness.env` is not forwarded (the harness's process environment beats the file); otherwise the login shell's value wins over the app's own; shell failure or timeout gives exactly the earlier fallback. The log has one names-only line. Harness: `BUN_INSTALL` and `VOLTA_HOME` added to the child-environment allow-list (they were dropped there), and `harness doctor` / `GET /v1/diagnostics` gain `shell_env_set` (names only).
+
+**Verified:** `cargo test -p octo-sidecar` with fake login shells (banner, NUL entries with newlines and `=`, deny words with a permissive list, `harness.env` precedence, no `env -0` output, hang gives the fallback), Go tests for `internal/diag` and `internal/childenv`. **Not verified:** on macOS (`env -0` there, a real zsh/fish profile, a Finder launch), and that this fixes the owner's Grok login report (the live step is B13 in `LIVE-CHECKLIST.md`). A proxy URL may carry credentials in its value; it is forwarded as the owner's terminal has it (the harness already allowed those names).
+
 ## As built — P8 (2026-11-11)
 
 Verified: 61 `octo-sidecar` tests (fake harness/router binaries for router off, on and healthy, failing to start, never healthy, missing binary, external

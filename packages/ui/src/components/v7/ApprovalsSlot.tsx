@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnsweredInput, Approval, ApprovalAnswer, Bridge, InputAnswer, InputRequest } from "@octo/agent-client";
 import { useLatest } from "../../lib/hooks";
-import { agentDisplayName } from "../../lib/orchestrator";
+import { agentDisplayName } from "../../lib/orchestratorMore";
 import { approvalDeadline, approvalItems, resolutionCause, type ApprovalItem, type Resolution } from "../../lib/v7/approval";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";

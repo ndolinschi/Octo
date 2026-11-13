@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { budgetState } from "../../lib/models";
+import { budgetState } from "../../lib/modelsMore";
 import { modelName } from "../../lib/models";
 import { topModelLines } from "../../lib/usage/modelLines";
 import { changedFileCount, changedText } from "../../lib/statusBar";

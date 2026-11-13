@@ -1,6 +1,6 @@
 import type { Provider, ProviderModel, ProviderState } from "@octo/agent-client";
 import { timeAgo } from "../format";
-import { stateText } from "./providers";
+import { stateText } from "./providersMore";
 import { plainReason } from "./reasons";
 
 // Decision 89: Settings → Providers is a list and a detail. Everything the page decides is here, React-free.

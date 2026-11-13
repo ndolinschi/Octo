@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Glyph } from "../primitives/Glyph";
 import { sizeLabel, type Attachment } from "./attachments";
-import { imageSize } from "../../lib/images";
+import { imageSize } from "../../lib/imagePlan";
 import { Spinner } from "../primitives/Status";
 import type { ImageChip } from "./useImages";
 

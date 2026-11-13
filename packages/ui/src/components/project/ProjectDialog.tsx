@@ -1,5 +1,5 @@
 import type { Models, Project, ProjectInput, TierPolicy } from "@octo/agent-client";
-import { budgetState, parseBudget, TIER_POLICIES } from "../../lib/models";
+import { budgetState, parseBudget, TIER_POLICIES } from "../../lib/modelsMore";
 import { ModelPicker } from "../shared/ModelPicker";
 import { Segmented } from "../primitives/Segmented";
 import { ChevronDown, ChevronRight, FolderOpen, Plus, X } from "lucide-react";

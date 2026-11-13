@@ -4,7 +4,7 @@ import { agentActivity } from "../../lib/orchestrator";
 import { cn } from "../../lib/cn";
 import { agentDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
-import { spawnInput } from "../../lib/tools";
+import { spawnInput } from "../../lib/toolsMore";
 import type { ToolUse } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";

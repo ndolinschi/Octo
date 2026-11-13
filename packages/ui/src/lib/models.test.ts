@@ -1,20 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  modelLabel,
-  routeLine,
-  modelIds,
-  budgetState,
-  claudeLabel,
-  distinctTails,
-  middleEllipsis,
-  modelName,
-  parseAcp,
-  parseBudget,
-  servedModel,
-  servedText,
-  truncateDistinct,
-} from "./models";
+import { modelLabel, claudeLabel, modelName, parseAcp, servedModel, servedText } from "./models";
+import { routeLine, modelIds, budgetState, distinctTails, middleEllipsis, parseBudget, truncateDistinct } from "./modelsMore";
 
 const ACP = [{ id: "claude-code", label: "Claude Code" }];
 

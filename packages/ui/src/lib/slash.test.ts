@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SlashCommands } from "@octo/agent-client";
-import { octoCommandFor, parseSlash, slashGroups, slashQuery } from "./slash";
+import { octoCommandFor, parseSlash, slashQuery } from "./slash";
+import { slashGroups } from "./slashRows";
 
 const CMDS: SlashCommands = {
   octo: [

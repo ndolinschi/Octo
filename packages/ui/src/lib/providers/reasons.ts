@@ -1,6 +1,6 @@
 import type { Provider } from "@octo/agent-client";
 import { readable } from "../errors/plain";
-import { stateText } from "./providers";
+import { stateText } from "./providersMore";
 
 // Apart from `providers.ts` so the model picker (first paint) does not carry the error mapping.
 

@@ -2,7 +2,7 @@ import { totalTokens } from "@octo/agent-client";
 import { formatTokens, structuredError, errorMessage } from "../../lib/format";
 import { saveConversation } from "../../lib/download";
 import { MOD_LABEL } from "../../lib/keys";
-import { budgetState } from "../../lib/models";
+import { budgetState } from "../../lib/modelsMore";
 import { useApp } from "../../state/app";
 import { useHost } from "../../state/host";
 import { useProject } from "../../state/project";

@@ -1,4 +1,4 @@
-import type { ProjectSummary } from "@octo/agent-client";
+import { warmBridgeClient, type ProjectSummary } from "@octo/agent-client";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { useEscape, useMediaQuery } from "../lib/hooks";
@@ -21,6 +21,7 @@ import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
 import { StatusSlotsContext } from "../state/statusSlots";
 import { ProjectWorkspace } from "./ProjectWorkspace";
+import { warmDrag } from "../components/dock/drag";
 import { ActivityProvider } from "../state/activity";
 import { DRAWER_QUERY } from "../lib/constants";
 
@@ -122,6 +123,8 @@ function Shell() {
   // paint (idle callback; WebKit has none, so a short timer), still outside the initial bundle.
   useEffect(() => {
     const warm = () => {
+      warmBridgeClient();
+      warmDrag();
       void import("../components/shared/Markdown").catch(() => undefined);
       void import("../components/chat/ToolGroup").catch(() => undefined);
       void import("../components/chat/DelegationGroup").catch(() => undefined);

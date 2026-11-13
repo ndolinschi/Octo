@@ -304,6 +304,8 @@ and `HARNESS_ACP_TRACE` are in the code and in the tables below. `OCTO_DEBUG_CHR
 "Settings" = editable through `GET/PUT /v1/settings` (stored in `harness.env`). Process environment beats the file;
 flags beat both. Test-only variables (`OCTO_FAKEACP_*`) are left out.
 
+**Desktop shell (`octo-sidecar`)** forwards, from the user's login shell to the harness, `PATH` and these names when the shell has them: `LANG`, `LC_*`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `SSH_AUTH_SOCK`, `NVM_DIR`, `BUN_INSTALL`, `PNPM_HOME`, `VOLTA_HOME`, `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (both cases), `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `TMPDIR`, `SHELL`, `USER`, `LOGNAME`, `TERM`. Never a name containing KEY, TOKEN, SECRET, PASSWORD, PASSWD or CREDENTIAL; never a name set in `harness.env`. Not verified on macOS. `harness doctor` lists the names child processes get (`shell_env_set`).
+
 **Harness (`apps/harness`, read in `internal/config`, `cmd/harness`)**
 
 | Name | Read by | Default | Notes |
