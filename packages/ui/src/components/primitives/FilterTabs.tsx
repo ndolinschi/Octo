@@ -1,6 +1,7 @@
-import { useRef, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { listKeyTarget } from "../../lib/focus";
+import { useScrollFade } from "../../lib/hooks";
 
 export type Filter<T extends string> = { id: T; label: string; /** Dim number after the label. */ count?: number; title?: string };
 
@@ -10,6 +11,9 @@ export type Filter<T extends string> = { id: T; label: string; /** Dim number af
  * switcher's hairline with the list's inset, never across the detail pane, and never as a second pill row. A radio
  * group: one tab stop, ←/→ / Home / End move and choose. Chips are 24px high with 8px of side padding, so their text starts on
  * the rows' text edge (decision 95f); `bare` drops the row's own height and inset for `PanelFilters`.
+ *
+ * P4 (polish step 5, B30): the row never grows past its column. When the chips do not fit they scroll inside it, the cut
+ * ends fade, and the chosen chip is kept in view; nothing crosses a list column's divider.
  */
 export function FilterTabs<T extends string>(props: {
   label: string;
@@ -20,6 +24,7 @@ export function FilterTabs<T extends string>(props: {
   bare?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  useScrollFade(box, "x");
   const at = Math.max(
     0,
     props.options.findIndex((o) => o.id === props.value),
@@ -33,6 +38,15 @@ export function FilterTabs<T extends string>(props: {
     props.onChange(next.id);
     box.current?.querySelectorAll<HTMLElement>('[role="radio"]')[to ?? 0]?.focus();
   };
+  // Only the row itself scrolls (never a list around it, which `scrollIntoView` would also move).
+  useEffect(() => {
+    const row = box.current;
+    const chip = row?.querySelectorAll<HTMLElement>('[role="radio"]')[at];
+    if (!row || !chip) return;
+    const left = chip.offsetLeft - row.offsetLeft;
+    if (left < row.scrollLeft) row.scrollLeft = left;
+    else if (left + chip.offsetWidth > row.scrollLeft + row.clientWidth) row.scrollLeft = left + chip.offsetWidth - row.clientWidth;
+  }, [at]);
   return (
     <div
       ref={box}
@@ -40,7 +54,7 @@ export function FilterTabs<T extends string>(props: {
       tabIndex={-1}
       aria-label={props.label}
       onKeyDown={onKeyDown}
-      className={cn("flex shrink-0 items-center gap-1 overflow-x-auto text-xs", props.bare ? "min-w-0" : "h-row px-pane", props.className)}
+      className={cn("flex min-w-0 items-center gap-1 overflow-x-auto fade-x text-xs", props.bare ? "shrink" : "h-row shrink-0 px-pane", props.className)}
     >
       {props.options.map((o) => {
         const on = o.id === props.value;

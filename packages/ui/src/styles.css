@@ -50,6 +50,8 @@
   --octo-drop: rgb(92 157 255 / 0.1);
   --octo-drop-edge: rgb(92 157 255 / 0.45);
   --octo-selection: rgb(92 157 255 / 0.32);
+  /* Polish step 5, P7 (B33): a search match, a highlighter tint in the warn hue (it was the 5 % hover, hard to see). */
+  --octo-mark: rgb(216 176 122 / 0.3);
   --octo-comment-line: rgb(92 157 255 / 0.08);
   /* Context meter parts (decision 38): one hue per part, legend swatches and the 3px bar only. */
   --octo-ctx-messages: #5c9dff;
@@ -101,6 +103,7 @@
   --octo-drop: rgb(10 102 224 / 0.08);
   --octo-drop-edge: rgb(10 102 224 / 0.4);
   --octo-selection: rgb(10 102 224 / 0.2);
+  --octo-mark: rgb(255 190 40 / 0.45);
   --octo-comment-line: rgb(10 102 224 / 0.06);
   --octo-ctx-messages: #0a66e0;
   --octo-ctx-tool_results: #6d4fd8;
@@ -128,6 +131,7 @@
   --color-code-bg: var(--octo-code-bg);
   --color-hover: var(--octo-hover);
   --color-active: var(--octo-active);
+  --color-mark: var(--octo-mark);
   --color-line: var(--octo-line);
   --color-line-strong: var(--octo-line-strong);
   --color-input-border: var(--octo-input-border);
@@ -360,6 +364,14 @@
   --octo-code-bg: var(--octo-panel);
   /* Polish step 3, C4: on a raised card the page's hover tint was too faint to say "button"; one step stronger here. */
   --octo-hover: var(--octo-hover-in-card);
+}
+
+/* Polish step 5, P7: a list that pre-opens its first item beside it (wide) marks that row; in one column nothing is open, so
+   no row may read as chosen until the person chooses one (`ListDetail` sets `data-unpicked`). */
+@container ld (width < 640px) {
+  [data-unpicked] .group:has(> [data-row][aria-current="true"]) {
+    background-color: transparent;
+  }
 }
 
 /* T2: an idle project row shows its time where the sessions chevron appears (hover, focus, open, touch): the time gives way. */
@@ -1011,6 +1023,41 @@
 }
 .octo-composer[data-floating]:focus-within {
   outline-color: var(--octo-input-border);
+}
+/* Polish step 5, P9: over a tool tab the floating composer rests as one line, the text and send (FloatingComposer sets
+   `data-collapsed` until focus is inside it): the queue band, pills and chips wait for focus, the text shows one line. */
+[data-floating-composer][data-collapsed] .octo-composer {
+  flex-direction: row;
+  align-items: center;
+  min-height: var(--spacing-ctl-lg);
+  border-radius: 12px;
+}
+[data-floating-composer][data-collapsed] .octo-composer > :not([data-composer-pad], [data-composer-row]),
+[data-floating-composer][data-collapsed] :has(> .octo-composer) > :not(.octo-composer),
+[data-floating-composer][data-collapsed] :has(> * > .octo-composer) > :not(:has(> .octo-composer)) {
+  display: none;
+}
+[data-floating-composer][data-collapsed] [data-composer-pad] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-block: 8px;
+  padding-right: 40px;
+}
+[data-floating-composer][data-collapsed] .octo-composer-input {
+  max-height: 22px;
+  overflow: hidden;
+}
+/* The control row keeps its full width, laid out but unseen, so the chips' measured label shedding is right the moment it
+   opens; only send shows, at the line's end. */
+[data-floating-composer][data-collapsed] [data-composer-row] {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  padding: 0 6px;
+  visibility: hidden;
+}
+[data-floating-composer][data-collapsed] [data-composer-row] > :last-child {
+  visibility: visible;
 }
 .octo-composer[data-drop] {
   outline: 1px dashed var(--octo-drop-edge);

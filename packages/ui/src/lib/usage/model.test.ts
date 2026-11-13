@@ -111,6 +111,9 @@ test("roles go under the model that ran them; unknown ones are returned apart", 
     ["summary"],
   );
   assert.equal(rows.find((r) => r.key === "acp:claude")?.roles.length, 0);
+  // B44: a role's share is of the whole table, as a model's is.
+  const table = models.reduce((n, m) => n + m.total, 0);
+  for (const r of opus?.roles ?? []) assert.ok(Math.abs(r.share - r.total / table) < 1e-9);
 });
 
 test("csv: header, exact numbers, quoting, total", () => {

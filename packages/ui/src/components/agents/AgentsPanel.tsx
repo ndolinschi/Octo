@@ -3,7 +3,6 @@ import type { Agent } from "@octo/agent-client";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { agentGroups, foldLine, type AgentNode } from "../../lib/agentGroups";
-import { cn } from "../../lib/cn";
 import { agentDuration, formatDuration } from "../../lib/format";
 import { useNow, useRowKeys } from "../../lib/hooks";
 import { agentActivity } from "../../lib/orchestrator";
@@ -14,10 +13,9 @@ import { isBooleanRecord, isNumber, slot } from "../../state/workspace/tabMemory
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
-import { EmptyState } from "../primitives/EmptyState";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
-import { Panel, PanelBody } from "../primitives/Panel";
+import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
 
@@ -60,7 +58,7 @@ export function AgentsPanel() {
         <AgentRow agent={n.agent} now={now} quiet={!running} onOpen={(alt) => ws.openAgent(n.agent.id, { otherSide: alt })} />
         {fold && (
           <ListRow
-            size="sm"
+            size="md"
             tone="quiet"
             leading={<Glyph icon={open ? ChevronDown : ChevronRight} size={14} />}
             expanded={open}
@@ -101,34 +99,35 @@ export function AgentsPanel() {
   return (
     <div data-agents className="h-full min-h-0">
       <Panel name="agents" title="Agents" meta={groups.running.length > 0 ? `${groups.running.length} running` : undefined}>
-        <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)} className={cn(empty && "flex flex-col")}>
-          <div ref={rows} className={cn("flex w-full max-w-details flex-col gap-4", empty && "min-h-0 flex-1")}>
-            {empty && (
-              <EmptyState
-                title="No agents yet"
-                actions={
-                  <Button variant="quiet" data-row onClick={ws.focusChat}>
-                    Give the project a task
-                  </Button>
-                }
-              >
-                They appear here when a request is split into tasks.
-              </EmptyState>
-            )}
-            {groups.running.length > 0 && (
-              <section aria-labelledby="agents-running" className="flex flex-col">
-                <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
-                <ul className="flex flex-col">{groups.running.map((n) => node(n, true))}</ul>
-              </section>
-            )}
-            {groups.finished.length > 0 && (
-              <section aria-labelledby="agents-finished" className="flex flex-col">
-                <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
-                <ul className="flex flex-col">{groups.finished.map((n) => node(n, false))}</ul>
-              </section>
-            )}
-          </div>
-        </PanelBody>
+        {empty ? (
+          <PanelEmpty
+            title="No agents yet"
+            actions={
+              <Button variant="secondary" size="sm" onClick={ws.focusChat}>
+                Give the project a task
+              </Button>
+            }
+          >
+            They appear here when a request is split into tasks.
+          </PanelEmpty>
+        ) : (
+          <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}>
+            <div ref={rows} className="flex w-full max-w-details flex-col gap-4">
+              {groups.running.length > 0 && (
+                <section aria-labelledby="agents-running" className="flex flex-col">
+                  <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
+                  <ul className="flex flex-col">{groups.running.map((n) => node(n, true))}</ul>
+                </section>
+              )}
+              {groups.finished.length > 0 && (
+                <section aria-labelledby="agents-finished" className="flex flex-col">
+                  <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
+                  <ul className="flex flex-col">{groups.finished.map((n) => node(n, false))}</ul>
+                </section>
+              )}
+            </div>
+          </PanelBody>
+        )}
       </Panel>
     </div>
   );

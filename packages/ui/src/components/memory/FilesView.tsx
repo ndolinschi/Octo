@@ -16,7 +16,7 @@ import { Glyph } from "../primitives/Glyph";
 import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
-import { DetailHeader } from "../primitives/Panel";
+import { DetailHeader, FormActions } from "../primitives/Panel";
 import { SkeletonText } from "../primitives/Skeleton";
 import { TextArea, TextField } from "../primitives/TextField";
 import { Prose } from "../shared/Prose";
@@ -40,7 +40,7 @@ export function FilesView(props: {
   const current = files?.find((f) => f.path === props.selected) ?? null;
   if (props.load.status === "error") return <MemoryError message={props.load.message} onRetry={props.reload} />;
   if (files && sorted.length === 0)
-    return <PaneEmpty title="No memory files">Files the orchestrator writes to remember things between requests appear here.</PaneEmpty>;
+    return <PaneEmpty title="No memory files yet">Files the orchestrator writes to remember things between requests appear here.</PaneEmpty>;
   return (
     <ListDetail
       label="Files"
@@ -239,24 +239,23 @@ function FileEditor(props: { file: MemoryFile; onCancel(): void; onSave(content:
       </Field>
       {error && <Notice tone="error">Could not save the file: {error}. Your text is still here; save again.</Notice>}
       {discarding ? (
-        <div key="discard" role="alertdialog" aria-label="Discard changes" className="flex flex-wrap items-center justify-end gap-2 text-sm">
-          <span className="min-w-0 flex-1 text-fg-2">Discard changes?</span>
-          <Button variant="quiet" ref={keepRef} onClick={keepEditing}>
+        <FormActions key="discard" note="Discard changes?" label="Discard changes">
+          <Button size="sm" variant="quiet" ref={keepRef} onClick={keepEditing}>
             Keep editing
           </Button>
-          <Button variant="danger" onClick={props.onCancel}>
+          <Button size="sm" variant="danger" onClick={props.onCancel}>
             Discard
           </Button>
-        </div>
+        </FormActions>
       ) : (
-        <div key="actions" className="flex items-center justify-end gap-2">
-          <Button variant="quiet" onClick={cancel} disabled={busy}>
+        <FormActions key="actions">
+          <Button size="sm" variant="quiet" onClick={cancel} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" loading={busy} disabled={!!problem || !dirty}>
+          <Button size="sm" type="submit" variant="primary" loading={busy} disabled={!!problem || !dirty}>
             {busy ? "Saving" : "Save"}
           </Button>
-        </div>
+        </FormActions>
       )}
     </form>
   );

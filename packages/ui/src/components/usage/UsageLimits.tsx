@@ -5,21 +5,24 @@ import { cn } from "../../lib/cn";
 import { useNow, usePageVisible } from "../../lib/hooks";
 import { toolTab } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { isStale, limitKindLabel, observedLabel, remainingShare, remainingText, resetLabel, sortLimits } from "../../lib/usage";
+import { isStale, limitKindLabel, observedLabel, remainingShare, remainingText, resetLabel, sortLimits, spentShare } from "../../lib/usage";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
 import { InfoSection } from "../primitives/InfoList";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
+import { PanelEmpty } from "../primitives/Panel";
 import { SkeletonList } from "../primitives/Skeleton";
 import { modelLabel } from "../primitives/Status";
 import { useLimits } from "./useUsage";
 
-/** Below this share remaining, the bar turns `err` (colour means state). */
+/** Below this share remaining, the bar turns `err` (colour means state): only a limit nearly used up is red. */
 const LOW = 0.1;
 
 function LimitRow({ limit, now }: { limit: Limit; now: number }) {
-  const share = remainingShare(limit);
+  const left = remainingShare(limit);
+  // B43: the bar is what is spent (it grows as the limit is used), the words say what is left.
+  const spent = spentShare(limit);
   const stale = isStale(limit.observed_at, now);
   const reset = resetLabel(limit.resets_at, now);
   const name = `${modelLabel(limit.model)} ${limitKindLabel(limit.kind).toLowerCase()}`;
@@ -44,7 +47,9 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
           : { "aria-hidden": true })}
         className="h-1 overflow-hidden rounded-full bg-line"
       >
-        {share !== null && <span className={cn("block h-full rounded-full", share < LOW ? "bg-err" : "bg-fg-3")} style={{ width: `${share * 100}%` }} />}
+        {spent !== null && left !== null && (
+          <span className={cn("block h-full min-w-0.5 rounded-full", left < LOW ? "bg-err" : "bg-fg-3")} style={{ width: `${spent * 100}%` }} />
+        )}
       </span>
       <div className="flex h-4 items-center gap-3 text-xs text-fg-3 tabular-nums">
         {reset && <span>{reset}</span>}
@@ -85,25 +90,16 @@ export function UsageLimits() {
         </Notice>
       )}
       {limits.status === "ok" && groups.length === 0 && (
-        <div data-limits-empty className="flex flex-col gap-1 px-2 py-6 text-center">
-          {config?.router ? (
-            <>
-              <p className="text-sm text-fg-2">The router reports no rate limits</p>
-              <p className="text-xs text-fg-3">
-                Requests go through an Octo router, and the provider behind it (OpenRouter, for one) sends no rate-limit headers. Limits appear here when a
-                provider that sends them, such as Anthropic's API, answers a request.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-fg-2">No rate limits reported yet</p>
-              <p className="text-xs text-fg-3">
-                Limits appear after the first model response that carries rate-limit headers. Some providers (OpenRouter, for one) send none; the harness keeps
-                what it saw until it restarts.
-              </p>
-            </>
-          )}
-        </div>
+        // P1: a section with nothing to show says so in the frame's one empty line, under its caption like the others.
+        <InfoSection title="Rate limits" labelId="usage-limits-none">
+          <div data-limits-empty>
+            <PanelEmpty>
+              {config?.router
+                ? "The router reports no rate limits: the provider behind it (OpenRouter, for one) sends no rate-limit headers. They appear when a provider that sends them, such as Anthropic's API, answers."
+                : "None reported yet. Limits appear after the first model response that carries rate-limit headers; some providers (OpenRouter, for one) send none."}
+            </PanelEmpty>
+          </div>
+        </InfoSection>
       )}
       {groups.map(([provider, rows]) => (
         <InfoSection key={provider} title={provider} labelId={`usage-limits-${provider}`}>

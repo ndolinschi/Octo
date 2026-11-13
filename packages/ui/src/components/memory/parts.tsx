@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { errorMessage } from "../../lib/format";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
-import { EmptyState } from "../primitives/EmptyState";
+import { PanelEmpty } from "../primitives/Panel";
 import { Notice } from "../primitives/Notice";
 
 /** A read failure with its next step: "Try again" when the view can retry (rule 20; decision 81: a glyph, not a red sentence). */
@@ -50,14 +50,12 @@ export function RowLine({ children, end }: { children: ReactNode; end?: ReactNod
   );
 }
 
-/** An empty view: `EmptyState` centres itself in a flex column that owns the height, which a view's container is not. */
+/** An empty view: the frame's one empty state (`PanelEmpty`, P1), centred in the view under the search and view tabs. */
 export function PaneEmpty(props: { title: string; children?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <EmptyState title={props.title} actions={props.actions}>
-        {props.children}
-      </EmptyState>
-    </div>
+    <PanelEmpty title={props.title} actions={props.actions}>
+      {props.children}
+    </PanelEmpty>
   );
 }
 

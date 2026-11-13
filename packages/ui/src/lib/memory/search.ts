@@ -188,17 +188,27 @@ export function matchWord(text: string, q: string): string {
 
 /**
  * The part of a snippet a one-line row can show: at most `max` characters with the matched word inside, an ellipsis on
- * each cut side. A row truncates its title, so a match far into a 300-character snippet would otherwise be out of sight.
+ * each cut side. A row truncates its text at the end, so the match sits near the start of the window — at most `LEAD`
+ * characters after it — and a short row still shows it (B33: a window that ended at the text's end put a late match past
+ * the row's ellipsis).
  */
 export function windowAround(text: string, word: string, max = 72): string {
   const flat = text.replace(/\s+/g, " ").trim();
   if (flat.length <= max) return flat;
   const at = word ? flat.toLowerCase().indexOf(word.toLowerCase()) : -1;
   if (at < 0) return flat;
-  const from = Math.max(0, Math.min(at - Math.floor((max - word.length) / 3), flat.length - max));
+  // Start at a word boundary within the lead, so the window does not open mid-word.
+  let from = Math.max(0, at - LEAD);
+  if (from > 0) {
+    const space = flat.indexOf(" ", from);
+    if (space >= 0 && space < at) from = space + 1;
+  }
   const cut = flat.slice(from, from + max).trim();
   return `${from > 0 ? "…" : ""}${cut}${from + max < flat.length ? "…" : ""}`;
 }
+
+/** Characters of context kept before a match in a cut snippet. */
+const LEAD = 16;
 
 /** A query is sent from this length on (one letter matches nearly everything). */
 export const MIN_QUERY = 2;

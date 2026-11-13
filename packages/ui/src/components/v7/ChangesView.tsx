@@ -1,4 +1,4 @@
-import { EmptyState } from "../primitives/EmptyState";
+import { PanelEmpty } from "../primitives/Panel";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { TurnChanges } from "@octo/agent-client";
 import { useMediaQuery } from "../../lib/hooks";
@@ -127,7 +127,8 @@ export function ChangesView(props: ChangesViewProps) {
   return (
     <div ref={box} className="flex h-full min-h-0 min-w-0 bg-panel" data-v7-changes>
       {body ? (
-        <div className="flex-1 overflow-auto px-2 pt-1 pb-2">
+        // A flex column, so an empty or failed load is the frame's one centred empty state (P1, B4).
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto px-2 pt-1 pb-2">
           {body}
           <FloatRoom />
         </div>
@@ -191,8 +192,8 @@ function RevertDialog({ confirm, onCancel, onConfirm }: { confirm: NonNullable<C
 
 function Empty({ title, text, children }: { title: string; text: string; children?: ReactNode }) {
   return (
-    <EmptyState title={title} actions={children ? <div className="flex flex-wrap items-center justify-center gap-2">{children}</div> : undefined}>
+    <PanelEmpty title={title} {...(children ? { actions: <div className="flex flex-wrap items-center justify-center gap-2">{children}</div> } : {})}>
       {text}
-    </EmptyState>
+    </PanelEmpty>
   );
 }

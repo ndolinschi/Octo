@@ -66,7 +66,8 @@ export function SessionsView(props: {
               role="listitem"
               size="md"
               selected={s.id === picked}
-              {...(r.working ? { leading: <StateGlyph state="working" /> } : {})}
+              // P3: the glyph column of every session list (the Sessions tab's): working, else the quiet idle dot.
+              leading={<StateGlyph state={r.working ? "working" : "idle"} />}
               title={r.title}
               description={<RowLine {...(r.current ? { end: "current" } : {})}>{r.description}</RowLine>}
               tip={r.title}

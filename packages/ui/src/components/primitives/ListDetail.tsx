@@ -31,6 +31,9 @@ import { SkeletonList, SkeletonText } from "./Skeleton";
  *
  * Not for: a master list that opens a dialog, a settings page of independent sections, a table (`DataTable`).
  */
+/** The container width (px) from which list and detail sit side by side; the `@min-[640px]/ld` classes say the same. */
+const LD_SPLIT = 640;
+
 export function ListDetail(props: {
   label: string;
   listLabel: string;
@@ -58,7 +61,7 @@ export function ListDetail(props: {
   const hasDetail = props.detail !== null;
   const open = pane.open && hasDetail;
   const rows = useRef<HTMLDivElement>(null);
-  const back = useRef<HTMLButtonElement>(null);
+  const outer = useRef<HTMLDivElement>(null);
   useRowKeys(rows);
 
   const focusList = () =>
@@ -78,8 +81,9 @@ export function ListDetail(props: {
   };
   const onDetailKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
-    // The Back control is visible only in one column.
-    const narrow = back.current !== null && back.current.offsetParent !== null;
+    // One column below the container query's 640px (B29: decided by the width, not by whether a Back row is drawn — a
+    // `DetailHeader` carries its own Back control and hides that row).
+    const narrow = (outer.current?.clientWidth ?? Infinity) < LD_SPLIT;
     e.preventDefault();
     e.stopPropagation();
     if (escapeTarget(narrow) === "back") goBack();
@@ -88,9 +92,11 @@ export function ListDetail(props: {
 
   return (
     // The container query lives on the outer element: a container cannot match its own query, so the row layout is on the inner one.
-    <div className={cn("@container/ld h-full min-h-0", props.className)}>
+    <div ref={outer} className={cn("@container/ld h-full min-h-0", props.className)}>
       <div role="group" aria-label={props.label} className="flex h-full min-h-0 flex-col @min-[640px]/ld:flex-row">
         <div
+          // P7: nothing chosen yet. A list that pre-opens its first item beside it (wide) marks that row; one column shows no detail, so no row reads as chosen (styles.css).
+          data-unpicked={props.selected === null || undefined}
           className={cn(
             "min-h-0 flex-col @min-[640px]/ld:flex @min-[640px]/ld:w-70 @min-[640px]/ld:shrink-0 @min-[640px]/ld:border-r @min-[640px]/ld:border-line",
             open ? "hidden" : "flex flex-1 @min-[640px]/ld:flex-none",
@@ -113,7 +119,7 @@ export function ListDetail(props: {
         >
           {/* A `DetailHeader` in the detail carries its own Back control (decision 95f): then this row is not drawn. */}
           <div className="flex h-ctl-md shrink-0 items-center px-pane group-has-[[data-detail-header]]/detail:hidden @min-[640px]/ld:hidden">
-            <Button ref={back} variant="quiet" size="sm" icon={ArrowLeft} onClick={goBack}>
+            <Button variant="quiet" size="sm" icon={ArrowLeft} onClick={goBack}>
               {props.listLabel}
             </Button>
           </div>

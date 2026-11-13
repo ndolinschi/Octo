@@ -122,7 +122,8 @@ function Budget({ budget, spent }: { budget: NonNullable<ReturnType<typeof budge
       data-budget
       className="tabular-nums"
       {...(budget.tone === "err" || budget.tone === "warn" ? { warning: budget.tone } : {})}
-      title={lines.length ? `${base}\n${lines.join("\n")}` : base}
+      // B40: one line each (the tooltip layer breaks on "\n"): the sentence, then the top models under a caption.
+      title={lines.length ? `${base}\nMost tokens:\n${lines.join("\n")}` : base}
       onMouseEnter={read}
       onFocus={read}
       onClick={() => ws?.openTool("usage")}

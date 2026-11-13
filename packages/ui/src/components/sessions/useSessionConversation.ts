@@ -61,7 +61,11 @@ export function useSessionConversation(session: ProjectSession): SessionConversa
 
   if (liveList) {
     // A current main session's messages are the whole conversation once (earlier sessions above a `/clear`); keep this one's.
-    const messages = session.kind === "main" ? liveList.filter((m) => m.session_id === undefined || m.session_id === session.id) : liveList;
+    // B38: a message without a session id (an older harness, the demo) belongs to this session only if it came after the
+    // session started, so a new empty session shows "No requests yet", not the conversation it followed.
+    const since = Date.parse(session.started_at);
+    const ofThis = (m: Message) => m.session_id === session.id || (m.session_id === undefined && !(Date.parse(m.created_at) < since));
+    const messages = session.kind === "main" ? liveList.filter(ofThis) : liveList;
     const boundary = read && "messages" in read && read.key.startsWith(mine) ? read.boundary : undefined;
     return { status: "ok", agent, messages, ...(boundary ? { boundary } : {}) };
   }

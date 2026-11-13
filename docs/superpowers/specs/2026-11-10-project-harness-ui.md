@@ -3113,3 +3113,45 @@ the executor, a sample by the orchestrator.
   Not done: the 24 pull rows are still 24 Tab stops (`ListRow` has no roving tabindex). Looked at only: `Segmented` with its
   new track in Overview, Pending and the submit sheet (fine; the Pending track is faint in light). Not verified: 390×700, a
   single-repository project's skeleton.
+
+## As built — polish step 5: tool panels (2026-11-13; one commit)
+
+Rules P1–P9 of the orchestrator's brief for Sessions, Memory, Notes, Usage, Agents, Details, Changes and the side question;
+228 before/after pairs (dark and light; side group and maximised at 1440×900, 900×600, 390×700) compared by the executor, a
+sample by the orchestrator.
+
+- **P1, one empty state.** `PanelEmpty` with a title is one centred block that fills the body; Agents, Notes, Usage,
+  Changes, Memory, Sessions and the side question use it (title at 37–42 % of the body's height; before 1–7 % for Notes,
+  Usage, Changes). Notes shows no footer with no notes. Limits' "no rate limits" is a section with the inline empty line.
+- **P2, one detail header and action row.** `FormActions` (in `primitives/Panel`): buttons at the right, Cancel then the
+  primary; as a confirmation the question sits at the left (`alertdialog`). The note editor, the memory file editor and the
+  note-delete confirmation use it; the note editor opens under a `DetailHeader`. A note's actions are labelled: "Edit",
+  "Pin" / "Pinned", "⋯".
+- **P3, lists as one family.** Memory → Sessions rows carry a state glyph (text at 40); Notes rows: the pin in the glyph
+  column, the description (heading marks removed) then tags on the second line, the date right-aligned (`lib/notes.ts`
+  `noteLine`, tested); Knowledge group heads 32; "Forgotten exchange" has a glyph slot; the "2 agents" fold and Details'
+  list rows are 32 (Details' label/value rows stay 28 — **revises** 95f's "As built"); a session's second line is
+  "3 exchanges · Sonnet 4" with the date at the right. Not done: Memory search hits have no glyph column; Changes rows.
+- **P4, filters.** `FilterTabs` shrinks to its column and scrolls inside it with a faded edge, the chosen chip kept in view;
+  in Sessions' split view the row no longer crosses the divider (B30).
+- **P5, side question on the frame**: `Panel` with the title, Keep / Clear at the right, left aligned at every width; the
+  caption moved to the empty state (round 2 #26, B41); Clear returns focus to the input.
+- **P6, words and numbers.** Limits say "3,998 of 4,000 left" in compact numbers and the bar shows what is spent, red only
+  under 10 % left (B43; **revises** decision 86's bar); a role's share bar is its share of the table (B44); the agent
+  transcript's crumbs are "Conversation / Security reviewer" (B42); the New session popover lists earlier sessions and
+  remembered facts under what is not carried into the context (B37, 95e). Not done: Changes headings "Turn N".
+- **P7, search.** A hit's snippet keeps the match in view; the highlight is a new `--octo-mark` token (a warm tint; text on
+  it 8.2:1 dark, 13.8:1 light; the mark against its row 1.9:1 dark, 1.3:1 light — it reads by hue; **revises** 93b's hover
+  tint) (B33). A one-column list marks no row while nothing is chosen.
+- **P8, tooltips.** Line breaks are kept; a tooltip on focus shows only after a navigation key, so opening a tool from the
+  palette shows none; an open tooltip follows its title's changes (B40, B57).
+- **P9, narrow.** Over a tool tab the floating composer rests as one 40px line and opens on a press, Tab or typing;
+  `FloatRoom` follows (56 at rest, was about 250–290). The conversation tab and the file view are unchanged. **Revises**
+  batch 2's "covers the lower part at rest".
+- In passing: Esc in a one-column detail returns to the list (`ListDetail` decides one column by the container's width,
+  B29); a new session with no request shows "No requests yet", not the previous conversation (B38, fixed in
+  `useSessionConversation`; the desktop demo's data still has no session ids).
+- Gates: `tsc`, unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (2 skips, the stale `tool-tables` step),
+  `panel-measure` (header 40, inset 16 on every tab), `width-stability` (two sizes), `frame-colours`, `flicker`,
+  `scroll-on-send` ok. Not verified: an empty Sessions list and the budget tooltip (the demo has neither), keyboard reach
+  of the queue inside the collapsed composer, WebKit, touch, a screen reader.

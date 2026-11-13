@@ -45,7 +45,18 @@ export function KnowledgeView(props: {
   const canAdd = bridge.rememberFact !== undefined;
   if (tasks?.length === 0 && items.length === 0 && !adding) {
     return (
-      <PaneEmpty title="Nothing remembered yet" {...(canAdd ? { actions: <Button onClick={() => setAdding(true)}>Remember something</Button> } : {})}>
+      <PaneEmpty
+        title="Nothing remembered yet"
+        {...(canAdd
+          ? {
+              actions: (
+                <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+                  Remember something
+                </Button>
+              ),
+            }
+          : {})}
+      >
         Decisions, preferences and facts the orchestrator keeps appear here, with the tasks they belong to.
       </PaneEmpty>
     );

@@ -188,11 +188,20 @@ export function remainingShare(l: Pick<Limit, "limit" | "remaining">): number | 
   return Math.min(1, Math.max(0, l.remaining / l.limit));
 }
 
-/** "38k of 40k left" style figure for a limit; requests as plain numbers. */
+/**
+ * What is left of a limit, in words (B43): "38k of 40k left", "3,998 of 4,000 left". Requests are counted in plain numbers up
+ * to 9,999 and compact above, tokens always compact.
+ */
 export function remainingText(l: Pick<Limit, "kind" | "limit" | "remaining">): string {
   if (l.remaining === null) return "unknown";
-  const f = (n: number) => (l.kind === "requests" ? n.toLocaleString() : formatTokens(n));
-  return l.limit === null ? `${f(l.remaining)} left` : `${f(l.remaining)} / ${f(l.limit)}`;
+  const f = (n: number) => (l.kind === "requests" && n < 10_000 ? n.toLocaleString("en-US") : formatTokens(n));
+  return l.limit === null ? `${f(l.remaining)} left` : `${f(l.remaining)} of ${f(l.limit)} left`;
+}
+
+/** The share of a limit already spent (0…1), the length of its bar: a nearly untouched limit draws a short bar. */
+export function spentShare(l: Pick<Limit, "limit" | "remaining">): number | null {
+  const left = remainingShare(l);
+  return left === null ? null : 1 - left;
 }
 
 const KIND_ORDER: LimitKind[] = ["requests", "tokens", "input_tokens", "output_tokens"];

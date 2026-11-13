@@ -167,9 +167,11 @@ export function placeRoles(
     if (m === null || !known.has(m)) loose.push(b);
     else by.set(m, [...(by.get(m) ?? []), b]);
   }
+  // B44: a role's bar is its share of the whole table, as a model's is, so every bar in the column compares with every other.
+  const table = models.reduce((n, m) => n + m.total, 0);
   const rows = models.map((m) => ({
     ...m,
-    roles: usageRows(mergeBy(by.get(m.key) ?? [], roleName)).map((r) => ({ ...r, share: m.total > 0 ? r.total / m.total : 0 })),
+    roles: usageRows(mergeBy(by.get(m.key) ?? [], roleName)).map((r) => ({ ...r, share: table > 0 ? r.total / table : 0 })),
   }));
   return { rows, unplaced: usageRows(mergeBy(loose, roleName)) };
 }

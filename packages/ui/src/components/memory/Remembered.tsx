@@ -148,7 +148,7 @@ export function RememberedList(props: {
         return (
           <section key={g.key} aria-label={g.subject} className="flex flex-col">
             <ListRow
-              size="sm"
+              size="md"
               tone="quiet"
               leading={<Glyph icon={isCollapsed ? ChevronRight : ChevronDown} size={14} />}
               title={g.subject}
@@ -175,7 +175,12 @@ export function RememberedList(props: {
                     />
                   ))}
                 </ul>
-                {hidden > 0 && <ListRow size="sm" tone="quiet" title={`Show ${hidden} more`} onClick={() => setUnfolded((u) => flip(u, g.key))} />}
+                {hidden > 0 && (
+                  // On the items' text edge, one step in like them, 32 like the rows around it (P3): never read as a group header.
+                  <div className="pl-6">
+                    <ListRow size="md" tone="quiet" title={`Show ${hidden} more`} onClick={() => setUnfolded((u) => flip(u, g.key))} />
+                  </div>
+                )}
               </>
             )}
           </section>

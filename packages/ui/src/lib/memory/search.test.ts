@@ -115,6 +115,13 @@ test("a long snippet is cut around the match so a one-line row shows it", () => 
   assert.ok(!windowAround(`needle ${"x ".repeat(50)}`, "needle", 30).startsWith("…"));
 });
 
+test("a cut snippet puts a late match near its start, where a short row still shows it (B33)", () => {
+  const text = `${"lorem ipsum dolor ".repeat(6)}the refresh token rotates`;
+  const w = windowAround(text, "refresh", 60);
+  assert.ok(w.startsWith("…"));
+  assert.ok(w.indexOf("refresh") <= 20, w);
+});
+
 test("hits show plain words: Markdown marks are stripped from snippets and titles", () => {
   assert.equal(plainText("## What's **happening**\n\nsee [the doc](http://x) and `code`"), "What's happening\nsee the doc and code");
   const h = toUiHit(hit({ kind: "message", id: "1", snippet: "Plan - **Refresh** tokens", title: "## Plan" }), "refresh");

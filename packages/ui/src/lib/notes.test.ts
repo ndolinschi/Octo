@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Note } from "@octo/agent-client";
-import { autoDescription, filterNotes, indexFooter, noteFileName, noteIndex, parseTags, pinState, sortNotes, titleFromFileName } from "./notes";
+import { autoDescription, filterNotes, indexFooter, noteFileName, noteIndex, noteLine, parseTags, pinState, sortNotes, titleFromFileName } from "./notes";
 
 function note(i: number, over: Partial<Note> = {}): Note {
   const n = String(i).padStart(3, "0");
@@ -67,4 +67,10 @@ test("filter, tags, file names, order", () => {
     sortNotes([note(1), note(2, { pinned: true }), note(3)]).map((n) => n.id),
     ["nte_002", "nte_003", "nte_001"],
   );
+});
+
+test("a note's list line: plain description (no heading marks), then its tags", () => {
+  assert.equal(noteLine({ description: "# Migrations: history", tags: ["migrations", "history"] }), "Migrations: history · #migrations #history");
+  assert.equal(noteLine({ description: "Rules", tags: [] }), "Rules");
+  assert.equal(noteLine({ description: "", tags: ["x"] }), "No description · #x");
 });

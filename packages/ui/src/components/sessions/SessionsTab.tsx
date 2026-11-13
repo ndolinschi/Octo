@@ -7,7 +7,6 @@ import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { onSessionRequest, peekQueuedSession, takeQueuedSession } from "../../state/workspace/sessionsStart";
 import { Button } from "../primitives/Button";
-import { EmptyState } from "../primitives/EmptyState";
 import { FilterTabs, type Filter } from "../primitives/FilterTabs";
 import { ListDetail } from "../primitives/ListDetail";
 import { Notice } from "../primitives/Notice";
@@ -63,11 +62,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   const picked = selected !== null ? (list.find((s) => s.id === selected) ?? null) : null;
 
   if (!bridge.listSessions) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <EmptyState title="This harness has no sessions">Update the harness to see the project's sessions here.</EmptyState>
-      </div>
-    );
+    return <PanelEmpty title="This harness has no sessions">Update the harness to see the project's sessions here.</PanelEmpty>;
   }
   // Counts only where they answer a question (what works now, what is archived): five counts do not fit the list column.
   const options: Filter<SessionFilter>[] = FILTERS.map((f) => ({
@@ -96,90 +91,94 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
           />
         }
       >
-        <ListDetail
-          label="Sessions"
-          listLabel="Sessions"
-          listSemantics="own"
-          placeholder="Choose a session to read its conversation."
-          selected={picked?.id ?? null}
-          onSelect={(id) => setSelected(id)}
-          listHeader={
-            <div className="shrink-0">
-              <PanelFilters>
-                <FilterTabs<SessionFilter>
-                  bare
-                  label="Filter sessions"
-                  options={options}
-                  value={filter}
-                  onChange={(next) => {
-                    setFilter(next);
-                    setAgentsOf(null);
+        {list.length === 0 ? (
+          <PanelEmpty title="No sessions yet">What you ask in the conversation starts the first session. New session starts another.</PanelEmpty>
+        ) : (
+          <ListDetail
+            label="Sessions"
+            listLabel="Sessions"
+            listSemantics="own"
+            placeholder="Choose a session to read its conversation."
+            selected={picked?.id ?? null}
+            onSelect={(id) => setSelected(id)}
+            listHeader={
+              <div className="shrink-0">
+                <PanelFilters>
+                  <FilterTabs<SessionFilter>
+                    bare
+                    label="Filter sessions"
+                    options={options}
+                    value={filter}
+                    onChange={(next) => {
+                      setFilter(next);
+                      setAgentsOf(null);
+                    }}
+                  />
+                </PanelFilters>
+                {filter === "agents" && agentsOf !== null && (
+                  <div className="flex h-row items-center gap-2 px-4 text-xs text-fg-3">
+                    <span className="min-w-0 truncate">Agents of {list.find((s) => s.id === agentsOf)?.title ?? "this session"}</span>
+                    <Button variant="link" size="xs" className="shrink-0" onClick={() => setAgentsOf(null)}>
+                      All agents
+                    </Button>
+                  </div>
+                )}
+              </div>
+            }
+            list={(select) =>
+              nodes.length === 0 ? (
+                <PanelEmpty>{emptyText(filter)}</PanelEmpty>
+              ) : (
+                <SessionRows
+                  nodes={nodes}
+                  selected={picked?.id ?? null}
+                  open={open}
+                  openAll={filter === "working"}
+                  now={now}
+                  onToggle={(s) => setOpen((cur) => toggleOpen(cur, s.id))}
+                  menu={{
+                    list,
+                    onResume: (s) => void actions.resume(s.id),
+                    onArchive: (s, archived) => void actions.archive(s.id, archived),
+                    onDelete: (s) => {
+                      actions.clear();
+                      setDeleting(s);
+                    },
+                  }}
+                  onChoose={(s) => {
+                    select(s.id);
+                    setSelected(s.id);
+                    if (s.kind === "agent") setOpen(parentOf(list, s)?.id ?? null);
+                    else if (s.children > 0) setOpen((cur) => toggleOpen(cur, s.id));
                   }}
                 />
-              </PanelFilters>
-              {filter === "agents" && agentsOf !== null && (
-                <div className="flex h-row items-center gap-2 px-4 text-xs text-fg-3">
-                  <span className="min-w-0 truncate">Agents of {list.find((s) => s.id === agentsOf)?.title ?? "this session"}</span>
-                  <Button variant="link" size="xs" className="shrink-0" onClick={() => setAgentsOf(null)}>
-                    All agents
-                  </Button>
-                </div>
-              )}
-            </div>
-          }
-          list={(select) =>
-            nodes.length === 0 ? (
-              <PanelEmpty>{emptyText(filter, list.length === 0)}</PanelEmpty>
-            ) : (
-              <SessionRows
-                nodes={nodes}
-                selected={picked?.id ?? null}
-                open={open}
-                openAll={filter === "working"}
-                now={now}
-                onToggle={(s) => setOpen((cur) => toggleOpen(cur, s.id))}
-                menu={{
-                  list,
-                  onResume: (s) => void actions.resume(s.id),
-                  onArchive: (s, archived) => void actions.archive(s.id, archived),
-                  onDelete: (s) => {
-                    actions.clear();
-                    setDeleting(s);
-                  },
-                }}
-                onChoose={(s) => {
-                  select(s.id);
-                  setSelected(s.id);
-                  if (s.kind === "agent") setOpen(parentOf(list, s)?.id ?? null);
-                  else if (s.children > 0) setOpen((cur) => toggleOpen(cur, s.id));
-                }}
-              />
-            )
-          }
-          detail={
-            picked ? (
-              <SessionDetail
-                key={picked.id}
-                session={picked}
-                list={list}
-                now={now}
-                renderTranscript={props.renderTranscript}
-                onSelect={(id) => {
-                  setSelected(id);
-                  setOpen(id);
-                }}
-                onOpenAgent={(agentId) => {
-                  const agent = list.find((x) => x.agent_id === agentId);
-                  if (!agent) return;
-                  setSelected(agent.id);
-                  setOpen(agent.parent_session_id ?? null);
-                }}
-                onOpenInTab={props.onOpenInTab}
-                onGone={() => setSelected(null)}
-              />
-            ) : null
-          }
-        />
+              )
+            }
+            detail={
+              picked ? (
+                <SessionDetail
+                  key={picked.id}
+                  session={picked}
+                  list={list}
+                  now={now}
+                  renderTranscript={props.renderTranscript}
+                  onSelect={(id) => {
+                    setSelected(id);
+                    setOpen(id);
+                  }}
+                  onOpenAgent={(agentId) => {
+                    const agent = list.find((x) => x.agent_id === agentId);
+                    if (!agent) return;
+                    setSelected(agent.id);
+                    setOpen(agent.parent_session_id ?? null);
+                  }}
+                  onOpenInTab={props.onOpenInTab}
+                  onGone={() => setSelected(null)}
+                />
+              ) : null
+            }
+          />
+        )}
       </Panel>
       {deleting && (
         <DeleteSessionDialog
@@ -193,8 +192,7 @@ export function SessionsTab(props: { renderTranscript: TranscriptSlot; onOpenInT
   );
 }
 
-function emptyText(filter: SessionFilter, none: boolean): string {
-  if (none) return "No sessions yet. Make a request, or start a new session.";
+function emptyText(filter: SessionFilter): string {
   switch (filter) {
     case "working":
       return "Nothing is working right now.";

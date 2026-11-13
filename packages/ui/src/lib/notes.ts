@@ -41,6 +41,16 @@ export function noteIndex(notes: readonly Note[]): NoteIndex {
 }
 
 /** The quiet footer line: what the model sees of the notes. */
+/**
+ * A note's second line in a list (P3): its description in plain words — an automatic one is the note's first line, which may
+ * be a Markdown heading ("# Migrations"), shown without its marks — then its tags. The row truncates the end.
+ */
+export function noteLine(note: Pick<Note, "description" | "tags">): string {
+  const description = note.description.replace(/^\s*#{1,6}\s+/, "").trim() || "No description";
+  const tags = note.tags.map((t) => `#${t}`).join(" ");
+  return tags ? `${description} · ${tags}` : description;
+}
+
 export function indexFooter(notes: readonly Note[]): string {
   const idx = noteIndex(notes);
   const count = idx.listed.length;

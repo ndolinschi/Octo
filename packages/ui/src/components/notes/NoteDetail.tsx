@@ -1,12 +1,11 @@
 import type { Note } from "@octo/agent-client";
-import { Pencil, Pin, PinOff } from "lucide-react";
+import { Pencil, Pin } from "lucide-react";
 import { useState } from "react";
 import { formatRelative } from "../../lib/format";
 import { Button } from "../primitives/Button";
-import { IconButton } from "../primitives/IconButton";
 import { IconMenu } from "../primitives/IconMenu";
 import { Notice } from "../primitives/Notice";
-import { DetailHeader } from "../primitives/Panel";
+import { DetailHeader, FormActions } from "../primitives/Panel";
 import { SkeletonText } from "../primitives/Skeleton";
 import { Markdown } from "../shared/Markdown";
 import type { DocLoad } from "./useNoteDoc";
@@ -37,13 +36,21 @@ export function NoteDetail(props: {
           .join(" · ")}
         actions={
           <>
-            <IconButton icon={Pencil} label={`Edit ${note.title}`} onClick={props.onEdit} />
-            <IconButton
-              icon={note.pinned ? PinOff : Pin}
-              label={note.pinned ? "Unpin" : "Pin"}
+            {/* P2 (B34): labelled quiet buttons, as Memory's file detail — Edit first, then the pin, the "⋯" last. A pinned note
+                says "Pinned" (pressed); pressing it unpins. */}
+            <Button variant="quiet" size="sm" icon={Pencil} aria-label={`Edit ${note.title}`} onClick={props.onEdit}>
+              Edit
+            </Button>
+            <Button
+              variant="quiet"
+              size="sm"
+              icon={Pin}
               pressed={note.pinned}
+              title={note.pinned ? "Agents get this note whole in every request. Press to unpin." : "Give agents this note whole in every request"}
               onClick={() => void props.onTogglePin()}
-            />
+            >
+              {note.pinned ? "Pinned" : "Pin"}
+            </Button>
             <IconMenu
               label="More"
               items={[
@@ -60,17 +67,22 @@ export function NoteDetail(props: {
         </Notice>
       )}
       {confirming && (
-        <div role="alertdialog" aria-label={`Delete ${note.title}`} className="flex flex-wrap items-center gap-2 px-2 text-sm">
-          <span className="min-w-0 flex-1 text-fg-2">
-            Delete <span className="text-fg">{note.title}</span>?
-          </span>
+        <FormActions
+          note={
+            <>
+              Delete <span className="text-fg">{note.title}</span>?
+            </>
+          }
+          label={`Delete ${note.title}`}
+          className="px-2"
+        >
           <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>
             Cancel
           </Button>
           <Button size="sm" variant="danger" onClick={() => void props.onDelete()} autoFocus>
             Delete note
           </Button>
-        </div>
+        </FormActions>
       )}
       <section aria-label="What agents see" className="flex flex-col gap-1 px-2">
         <p className="text-xs text-fg-3">What agents see</p>

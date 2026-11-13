@@ -133,7 +133,9 @@ const exchangesOf = (s: ProjectSession): string => (s.exchanges > 0 ? exchangeCo
 export type SessionRowModel = { id: string; glyph: GlyphState; state: string; title: string; description: string; tail: string; current: boolean };
 
 export function sessionRow(s: ProjectSession, now: number, modelName: (value: string) => string): SessionRowModel {
-  const parts = [formatDay(s.started_at, now)];
+  // P3 (polish step 5): the count first, then the model; the date is the tail at the right (the last activity), and the day
+  // the session started is in its detail. In a 280px column the line gives way at the model, not in the middle of the count.
+  const parts: string[] = [];
   if (s.kind === "main") parts.push(exchangesOf(s));
   if (s.model !== "") parts.push(modelName(s.model));
   return {
@@ -141,7 +143,7 @@ export function sessionRow(s: ProjectSession, now: number, modelName: (value: st
     glyph: glyphOf(s.state),
     state: sessionStateWord(s),
     title: s.title.trim() === "" ? (s.kind === "main" ? "New session" : "Agent session") : s.title,
-    description: parts.join(" · "),
+    description: parts.length > 0 ? parts.join(" · ") : formatDay(s.started_at, now),
     tail: s.current ? "current" : formatWhen(s.last_activity_at, now),
     current: s.current,
   };

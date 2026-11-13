@@ -101,11 +101,11 @@ test("glyphs: waiting needs you, stopped rests", () => {
 test("row: day, exchanges and model on the second line; 'current' or the last activity at the right", () => {
   const name = (v: string) => (v === "opus" ? "Opus 5.5" : v);
   const row = sessionRow(s("m3", { title: "Plan the release", model: "opus", exchanges: 5, current: true }), NOW, name);
-  assert.equal(row.description, "Nov 12 · 5 exchanges · Opus 5.5");
+  assert.equal(row.description, "5 exchanges · Opus 5.5");
   assert.equal(row.tail, "current");
   assert.equal(sessionRow(s("m1", { last_activity_at: "2026-11-11T09:00:00Z" }), NOW, name).tail, "Yesterday");
   const a = sessionRow(agent("a1", "m2", { model: "haiku", title: "Map the repository" }), NOW, name);
-  assert.equal(a.description, "Nov 12 · haiku");
+  assert.equal(a.description, "haiku");
   assert.equal(sessionRow(s("e", { title: " " }), NOW, name).title, "New session");
 });
 

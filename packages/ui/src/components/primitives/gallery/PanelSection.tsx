@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "../Button";
 import { FilterTabs } from "../FilterTabs";
 import { ListRow } from "../ListRow";
-import { DetailHeader, Panel, PanelBody, PanelEmpty, PanelFilters } from "../Panel";
+import { DetailHeader, FormActions, Panel, PanelBody, PanelEmpty, PanelFilters } from "../Panel";
 import { SearchField } from "../SearchField";
 import { ViewTabs } from "../ViewTabs";
 import { Section } from "./parts";
@@ -20,7 +20,11 @@ export function PanelSection() {
   const [view, setView] = useState<"a" | "b">("a");
   const [query, setQuery] = useState("");
   return (
-    <Section id="panel" title="Panel, PanelFilters, PanelBody, DetailHeader" note="Header 40, filter row 36, rows 32 or 40; edges at 8, text at 16.">
+    <Section
+      id="panel"
+      title="Panel, PanelFilters, PanelBody, DetailHeader, PanelEmpty, FormActions"
+      note="Header 40, filter row 36, rows 32 or 40; edges at 8, text at 16."
+    >
       <div className="grid gap-4 md:grid-cols-2">
         <div className="h-96 overflow-hidden rounded-lg border border-line bg-panel">
           <Panel
@@ -76,7 +80,29 @@ export function PanelSection() {
                 }
               />
               <PanelEmpty>Nothing matches. Try one word.</PanelEmpty>
+              <FormActions className="pt-3">
+                <Button variant="quiet" size="sm">
+                  Cancel
+                </Button>
+                <Button variant="primary" size="sm">
+                  Save
+                </Button>
+              </FormActions>
             </PanelBody>
+          </Panel>
+        </div>
+        <div className="h-96 overflow-hidden rounded-lg border border-line bg-panel">
+          <Panel name="gallery-empty" title="Agents">
+            <PanelEmpty
+              title="No agents yet"
+              actions={
+                <Button variant="secondary" size="sm">
+                  Give the project a task
+                </Button>
+              }
+            >
+              They appear here when a request is split into tasks.
+            </PanelEmpty>
           </Panel>
         </div>
       </div>

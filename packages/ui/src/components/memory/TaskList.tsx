@@ -1,5 +1,5 @@
 import type { Task, TaskStatus } from "@octo/agent-client";
-import { CircleCheck, CircleDashed, Circle } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleDashed, Circle } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { formatRelative } from "../../lib/format";
@@ -51,7 +51,9 @@ export function TaskList(props: {
           />
         ))}
       </ul>
-      {rows.hidden > 0 && <ListRow size="md" tone="quiet" title={`Show ${rows.hidden} more`} onClick={() => setUnfolded(true)} />}
+      {rows.hidden > 0 && (
+        <ListRow size="md" tone="quiet" leading={<Glyph icon={ChevronDown} size={14} />} title={`Show ${rows.hidden} more`} onClick={() => setUnfolded(true)} />
+      )}
     </>
   );
 }

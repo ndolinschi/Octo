@@ -103,6 +103,7 @@ function Folders() {
       {folders.map((f) => (
         <ListRow
           key={f.id}
+          size="md"
           leading={<Glyph icon={GLYPH.files} size={14} />}
           title={f.label}
           meta={middleTruncate(f.path, 40)}
@@ -333,6 +334,8 @@ function Activity() {
       {shown.map((a) => (
         <ListRow
           key={a.id}
+          // P3: the same agents as the Agents tab, at its row height.
+          size="md"
           leading={<StatusIcon status={a.status} />}
           title={
             <>
@@ -384,6 +387,7 @@ function Outputs() {
     return (
       <ListRow
         key={`${f.folder}/${f.path}`}
+        size="md"
         leading={<Glyph icon={fileIcon(f.path)} size={14} />}
         title={
           <>

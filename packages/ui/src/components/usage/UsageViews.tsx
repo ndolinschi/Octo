@@ -8,7 +8,6 @@ import type { UsageView } from "../../lib/usageView";
 import { useModelNames } from "../../state/models";
 import { useProject } from "../../state/project";
 import { DayBars } from "../primitives/DayBars";
-import { EmptyState } from "../primitives/EmptyState";
 import { Notice } from "../primitives/Notice";
 import { SkeletonList } from "../primitives/Skeleton";
 import { UsageTable, type UsageTableRow } from "../shared/UsageTable";
@@ -30,11 +29,19 @@ function UsageState({ load, empty, children }: { load: Load<UsageData>; empty: b
         {load.message}. Check that the harness is running, then reopen this tab.
       </Notice>
     );
-  if (empty) return <EmptyState title="No usage in this range">Tokens appear here after a request or an agent gets a model response.</EmptyState>;
+  // The tab shows its one empty state itself (`usageEmpty`, P1); here an empty report draws nothing.
+  if (empty) return null;
   return <>{children}</>;
 }
 
 const hasUsage = (r: UsageReport) => r.buckets.some((b) => bucketTokens(b) > 0);
+
+/** The view has loaded and has nothing to show: the tab draws `PanelEmpty` in place of the table (P1, B4). */
+export function usageEmpty(load: Load<UsageData>, segment: "model" | "agent" | "day" | "limits"): boolean {
+  if (load.status !== "ok" || segment === "limits") return false;
+  const data = load.value;
+  return !hasUsage(segment === "model" ? data.models : segment === "agent" ? data.breakdown : data.days);
+}
 const countNote = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** By model (decision 86 a): one row per model; with `roles` the roles that ran on each model sit under it. */
