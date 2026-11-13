@@ -256,3 +256,54 @@ For a production integration the router would have to log per session: a scaffol
 prompt and the sorted tool names), the served model and cost, its decision probabilities, and an outcome proxy (the
 last test run in tool output — already parsed into `session_outcomes`; accept / rewind in the harness; a follow-up
 correction). All are noisy proxies of unknown noise rate.
+
+# Stage 5: does a ladder that learns online beat a leaderboard when the work differs? (2026-11-13)
+
+Full text: `results/stage5_report.txt`; numbers: `results/stage5_xbench.json`. 64 tests pass. No paid API.
+SWE-bench Verified (stage 4's 33 models) plays "the leaderboard"; another benchmark plays "the router's own traffic".
+Sources pinned in `config.py`: Terminal-Bench 2 leaderboard (Hugging Face, revision 572b2614…, Apache-2.0; 30 431 kept
+trials over 89 tasks) and SWE-bench Multilingual (14 mini-SWE-agent submissions, 300 tasks).
+
+**Answer: only when the leaderboard's pick is clearly wrong on the target.**
+
+| Target | Does the ranking transfer? (Spearman) | Leaderboard pick → best on the target | Learner minus leaderboard ladder (solved per task) |
+| --- | --- | --- | --- |
+| Terminal-Bench 2, one scaffold (5 matched models, 89 tasks) | 0.40 [−0.10, 0.90] | minimax-m2.5 (falls from 1st to 4th of 5) → opus-4.6 | **+0.09 [+0.03, +0.14]** in one pass (Thompson with a leaderboard prior); about +0.18 on long resampled streams |
+| Terminal-Bench 2, all scaffolds (11 models) | 0.62 [0.39, 0.81] | opus-4.5 → opus-4.6 | +0.004 to +0.019 in one pass (not distinguishable from 0); +0.11 to +0.13 at 2 000 resampled decisions |
+| SWE-bench Multilingual (12 models, 300 tasks) | 0.86 [0.48, 0.93] | opus-4.5 → gemini-3-flash (top four within 0.03) | **−0.01 to −0.08**: the learner loses |
+
+Qualifications that must travel with the positive number:
+
+1. On the single-scaffold Terminal-Bench target a **uniform random** choice also beats the ladder (+0.05): the ladder
+   had picked one of the worst models there.
+2. A leaderboard measured on **a held-out half of the target's own tasks** beats every learner by about 0.1 solved per
+   task (+0.20 over the ladder on the same tasks where learners get +0.08).
+3. Resampled streams repeat the same tasks and so flatter learners.
+4. On Terminal-Bench a "model" is model + scaffold + serving; cost is missing or imputed for three of five models.
+
+Break-even (a simulation): the learner wins once the leaderboard ladder's own regret on the traffic exceeds about
+0.01–0.03 solved per task within 2 000 decisions, 0.03–0.05 within 500, 0.04–0.09 within one pass of 90–300 tasks. Rank
+correlation alone is a poor guide; what matters is whether the top pick changes and by how much.
+
+Cost does not transfer across scaffolds: deepseek-v3.2 costs $0.45 per task on Verified and $0.031 under Terminus 2
+(cost-per-solved rank correlation −0.5), so a cost-aware ladder read from another scaffold can be badly wrong, and
+learners recover almost all of that (reverse control at V = $1: +0.432 of a possible +0.434).
+
+On the owner's router: an error of the Terminal-Bench size (0.2 solved per task) shows with about 50 sessions per model;
+one at the break-even size needs about 800–2 000 per model, more with a noisy outcome proxy. The cheaper first step is to
+replay 50–100 of the owner's own tasks on each candidate model offline — the held-out-half baseline, the best policy
+measured in five stages.
+
+# What five stages support, in one place
+
+| Claim | Verdict |
+| --- | --- |
+| A model predicts the tier from the task's text | not supported (gain +0.000; ceiling about +0.017) |
+| A learned cascade on the cheap model's early steps beats fixed tiers | not supported |
+| Choosing the tier per step of a coding session saves cost | not supported under prompt caching (oracle 0.8 %) |
+| A ladder filled by list price is a poor ladder | supported, large (0.310 against 0.686 reward per task at $1 per solved task) |
+| A ladder read off a leaderboard of the same kind of work | the best simple policy; learning does not beat it |
+| A ladder that learns online beats a leaderboard read from different work | supported when the top pick is wrong by more than 0.03–0.05 solved per task; not otherwise |
+| Learning adapts to a new or degraded model | supported (tens of tasks) |
+| The kind of work decides the tier | supported as a policy (81.1 against 63.6); recognising the kind is a lookup |
+| A quality target can be held online with a stated risk | supported; not cheaper than an offline mixture with a margin |

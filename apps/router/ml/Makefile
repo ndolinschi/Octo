@@ -2,7 +2,7 @@
 PY := .venv/bin/python
 RUN := PYTHONPATH=src $(PY) -m
 
-.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit stage3 audit steps3 gencost triples stage4 ladder workload controller
+.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit stage3 audit steps3 gencost triples stage4 ladder workload controller stage5 xbench-fetch xbench
 
 all: fetch build features test evaluate onnx figures
 
@@ -65,3 +65,13 @@ controller: ## L3: quality controller (lower-confidence-bound) vs the offline mi
 	$(RUN) routerml.stage4_controller
 workload:   ## L2: workload classifier from the first request only + per-workload tier policy, TwinRouterBench metric (~3 min)
 	$(RUN) routerml.stage4_workload
+
+# ---- stage 5: cross-benchmark transfer - does a learned ladder beat a leaderboard ladder when the router's work differs?
+# (results/stage5_xbench.json, figures/stage5_*.png, results/stage5_report.txt)
+stage5: xbench-fetch xbench
+
+xbench-fetch: ## Terminal-Bench 2 leaderboard summaries + per-trial cost of matched systems (~12k small files, ~10 min), Multilingual lists
+	$(RUN) routerml.xbench_fetch index multilingual
+	$(RUN) routerml.xbench_fetch trials
+xbench:     ## transfer of rankings Verified -> TB2 / Multilingual, leaderboard ladder vs learners on the target, reverse control, break-even
+	$(RUN) routerml.stage5

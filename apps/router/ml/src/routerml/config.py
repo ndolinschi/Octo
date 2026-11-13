@@ -50,3 +50,12 @@ FORBIDDEN_FIELDS = (
 )
 # Fields that may be used at routing time. `repo` is used only for grouping splits, never as a feature.
 ROUTING_FIELDS = ("instance_id", "problem_statement", "repo", "base_commit", "created_at", "version")
+
+# ---- stage 5 (cross-benchmark transfer). Revisions read on 2026-11-13.
+# Terminal-Bench 2 leaderboard (Apache-2.0); commit sha of the HF dataset repo.
+TB2_REPO = "harborframework/terminal-bench-2-leaderboard"
+TB2_REVISION = "572b2614be2c0cb2527e14f5b1e4026f1072e6c1"
+# SWE-bench Multilingual task list (MIT); outcomes come from SWE-bench/experiments at EXPERIMENTS_COMMIT.
+ML_DATASET = "SWE-bench/SWE-bench_Multilingual"
+ML_REVISION = "846e647b9f33c0b51b739d005d13d85493c9af09"
+ML_FILE = "data/test-00000-of-00001.parquet"

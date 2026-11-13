@@ -45,6 +45,11 @@ Stage 4 (the three learned parts; report: `results/stage4_report.txt`; `make sta
 - `make controller`: L3, a quality controller (lower confidence bound on the stream's quality ratio) against the offline mixture tuned on a held-out half; tiers and models (~10 min).
 - `make workload`: L2, the workload recognised from the first request only (TwinRouterBench), the per-workload tier policy on the benchmark's own metric, leave-one-workload-out with a safe-tier fallback.
 
+Stage 5 (cross-benchmark transfer; report: `results/stage5_report.txt`; `make stage5` = `make xbench-fetch xbench`):
+
+- `make xbench-fetch`: Terminal-Bench 2 leaderboard (HF `harborframework/terminal-bench-2-leaderboard` at the revision in `config.py`, Apache-2.0): job summaries of all 75 systems and per-trial `result.json` (cost) of the systems whose model matches the Verified core; SWE-bench Multilingual per-instance lists from the pinned experiments clone.
+- `make xbench`: does the Verified ranking of models transfer to Terminal-Bench 2 (Terminus 2 scaffold; all scaffolds pooled) and to Multilingual; the leaderboard ladder read off Verified against bandits (flat, and with a Verified prior of strength n0 = 5 / 20 / 50) on the target's tasks; a held-out-half target leaderboard; the reverse control; a break-even simulation with a perturbed leaderboard (`src/routerml/{xbench_fetch,xbench_data,stage5}.py`, `tests/test_stage5.py`).
+
 Note: the OpenRouter catalogue has no revision. `fetch` keeps the first snapshot it downloads
 (2026-11-13 for the numbers in REPORT.md); a fresh clone gets today's catalogue, which can change the
 prices of the 9 models sourced from it (`results/models.csv`, column `source`).
