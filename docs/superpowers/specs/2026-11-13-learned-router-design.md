@@ -128,3 +128,54 @@ end-to-end comparison (the owner's machine). Steps 1, 2 and 5 need nothing from 
 
 The defence date; whether a GPU is available for M2; the budget for own runs; whether the department requires a neural
 model as the main one (if not, M1 can be the main model and M2 the extension).
+
+---
+
+# Revision 2 (2026-11-13, after three stages of experiments)
+
+The owner said "continue" after the orchestrator proposed this revision; it replaces sections 1, 5, 6 and 8 above where
+they differ. Evidence: `apps/router/ml/REPORT.md` (stages 1–3, every number reproducible with `make`).
+
+## What the experiments decided
+
+Tested on public data and **not supported**: predicting the tier from the task's text (gain +0.000 [−0.004, +0.012];
+the ceiling for any such predictor is about +0.017 curve area); a learned cascade on the cheap model's early trajectory
+(one positive cell of twelve); choosing the tier per step inside a coding session (with prompt caching even the oracle
+saves 0.8 % [−7.2, +8.1]). Most of the "oracle headroom" of task-level routing is noise between runs and models.
+
+**Supported:** (1) which concrete model fills a tier matters (+0.025 to +0.046), and list price per token misorders
+models by cost per solved task; (2) the kind of workload is the strongest routing signal measured (81.1 against 63.6 on
+TwinRouterBench's mixed bank); (3) an operating point can be held online at a declared quality target.
+
+## What is built instead
+
+The thesis's "adaptive routing based on machine learning" means three learned parts and one study:
+
+- **L1, a ladder that learns itself.** Instead of a ladder fixed by list price, an online learner (a bandit over
+  concrete models, cost-aware) estimates each model's success and cost per task from outcomes and keeps the tiers filled
+  with the models that are best per solved task; it re-learns when a model is added or changes.
+- **L2, routing by kind of work.** A small classifier of the request's workload (coding-agent turn, housekeeping call,
+  plain question, …) from what is known at routing time (system prompt, tools, client, the first message's shape) sets the
+  tier policy per kind. It replaces the per-request LLM classifier call.
+- **L3, a quality controller.** An online controller holds a declared target ("at least 95 % of the best model's
+  quality") by moving the mixture / threshold, with a stated violation rate.
+- **S, the study of limits** as the scientific core: the noise ceiling of task-level routing and its decomposition;
+  the negative results with intervals; why per-step switching does not pay under prompt caching.
+
+## Acceptance criteria (replace 2–5; 1 and 6–9 stand, with "model" read as L1–L3)
+
+2'. L1 is evaluated on the task × model matrix as a stream: regret against the best fixed model and the best fixed
+    triple in hindsight, the number of tasks until it is within a stated margin, and the cost per solved task against a
+    ladder chosen by list price; with intervals over stream orders; and a scenario where a better model appears mid-stream.
+3'. L2 is evaluated by held-out trajectories within known workloads and, separately, on an unseen workload (expected
+    not to transfer — reported); the cost–quality result is given in the benchmark's own metric against the workload
+    prior and always-low / always-high.
+4'. L3 reports, for a declared target, the achieved quality, cost and the share of streams that violate the target,
+    against the offline mixture; a controller that violates the target more often than the offline mixture is reported as such.
+5'. The study S is reproducible from pinned public sources and states its limits (single runs, 12 mostly-Python
+    repositories, price-table cost, the benchmark's caching rules).
+
+## Still needed from the owner
+
+The defence date; whether the department accepts this framing of the topic; own runs for a measured (not simulated)
+end-to-end comparison (criterion 8) — the router must first log a solved / not-solved outcome per session.
