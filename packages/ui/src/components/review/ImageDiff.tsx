@@ -35,8 +35,8 @@ function Figure({ label, src }: { label: string; src: string }) {
   }, [src]);
   return (
     <figure className="flex min-w-0 flex-1 basis-60 flex-col gap-2">
-      <figcaption className="text-xs text-fg-2">{label}</figcaption>
-      <div className="grid min-h-24 place-items-center rounded-md border border-line bg-code-bg p-2">
+      <figcaption className="text-xs text-fg-3">{label}</figcaption>
+      <div className="grid min-h-24 place-items-center rounded-md bg-code-bg p-2">
         {failed ? (
           <span role="alert" className="text-xs text-err">
             The image did not load.

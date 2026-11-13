@@ -236,6 +236,11 @@ export function ReviewDiff(props: {
         dom.className = "octo-thread-zone";
         const inner = document.createElement("div");
         dom.appendChild(inner);
+        // A press on the thread is the thread's, not the editor's: Monaco's mouse handler (on an ancestor) would take focus
+        // back to the code, so a reply box opened by a click lost its caret and the review's Esc then restored the layout.
+        // Clicks still reach React (they are separate events, and its root listener is above the editor).
+        const own = (e: Event) => e.stopPropagation();
+        for (const type of ["mousedown", "pointerdown", "mouseup", "pointerup"]) dom.addEventListener(type, own);
         return { z, dom, inner };
       }),
     [props.zones],

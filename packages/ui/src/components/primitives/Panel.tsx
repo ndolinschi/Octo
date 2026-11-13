@@ -31,6 +31,11 @@ export function Panel(props: {
   name: string;
   title: string;
   meta?: ReactNode;
+  /**
+   * Controls that qualify the title (the review picker's repository menu): between the title and the actions, they give way
+   * first (the title keeps its width). Polish step 6b.
+   */
+  lead?: ReactNode;
   actions?: ReactNode;
   /** A problem to say once, above everything else (an action's error). */
   notice?: ReactNode;
@@ -43,10 +48,15 @@ export function Panel(props: {
   return (
     <section data-panel={props.name} aria-label={props.title} className={cn("flex h-full min-h-0 flex-col", props.className)}>
       <header data-panel-header className="flex h-ctl-lg shrink-0 items-center gap-2 px-pane">
-        <h2 data-panel-title className="flex min-w-0 flex-1 items-baseline gap-2 px-2 text-heading text-fg">
+        <h2 data-panel-title className={cn("flex min-w-0 items-baseline gap-2 px-2 text-heading text-fg", props.lead === undefined ? "flex-1" : "shrink-0")}>
           <span className="truncate">{props.title}</span>
           {props.meta !== undefined && <span className="shrink-0 text-xs font-normal text-fg-3 tabular-nums">{props.meta}</span>}
         </h2>
+        {props.lead !== undefined && (
+          <div data-panel-lead className="flex min-w-0 flex-1 items-center gap-1">
+            {props.lead}
+          </div>
+        )}
         {props.actions !== undefined && (
           <div data-panel-actions className="flex shrink-0 items-center gap-1">
             {props.actions}

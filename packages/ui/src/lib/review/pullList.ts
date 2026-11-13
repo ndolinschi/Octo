@@ -88,3 +88,32 @@ export function freshness(list: Pick<PullRequestList, "fetched_at">, now: number
   const m = Math.round(s / 60);
   return m < 60 ? `Updated ${m} min ago` : `Updated ${Math.round(m / 60)} h ago`;
 }
+
+/** The state word a row leads its meta line with (R2, polish step 6b): only when it changes what the reader does. */
+export type PullState = { text: string; tone: "warn" | "strong" | "dim" };
+
+/**
+ * R2 (polish step 6b): a pull-request row's second line, "Review requested · #482 · mira · 14 files · 8 comments". The
+ * state word comes first only when it matters (new since your review, review requested, draft); counts of lines and the
+ * time are not here: they sit right-aligned in the row's meta column.
+ */
+export function pullRowLine(r: PullRequestRow, opts: { showRepo: boolean }): { state: PullState | null; parts: string[] } {
+  const state: PullState | null = newSinceMyReview(r)
+    ? { text: "New since your review", tone: "warn" }
+    : r.review_requested
+      ? { text: "Review requested", tone: "strong" }
+      : r.draft
+        ? { text: "Draft", tone: "dim" }
+        : null;
+  const parts = [
+    `${opts.showRepo && r.repo ? r.repo : ""}#${r.number}`,
+    r.mine ? "you" : r.author,
+    `${r.changed_files} ${r.changed_files === 1 ? "file" : "files"}`,
+  ];
+  const comments = r.comments ?? 0;
+  if (comments > 0) parts.push(`${comments} ${comments === 1 ? "comment" : "comments"}`);
+  // A draft that also needs you keeps "Draft" as a word after the number; a pending draft of yours is worth saying.
+  if (r.draft && state?.text !== "Draft") parts.splice(1, 0, "draft");
+  if (r.review && r.review.pending_comments > 0) parts.push(`${r.review.pending_comments} pending`);
+  return { state, parts };
+}

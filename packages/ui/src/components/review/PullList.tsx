@@ -6,8 +6,8 @@ import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooks";
 import type { ReviewApi } from "../../lib/review/api";
 import { plural } from "../../lib/review/files";
-import { listFailure, parsePullInput, reviewSourceText, unavailableTitle } from "../../lib/review/pull";
-import { filterCounts, freshness, newSinceMyReview, PULL_FILTERS, visibleRows } from "../../lib/review/pullList";
+import { CHECKS_LABEL, listFailure, parsePullInput, reviewSourceText, unavailableTitle } from "../../lib/review/pull";
+import { filterCounts, freshness, PULL_FILTERS, pullRowLine, visibleRows } from "../../lib/review/pullList";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { CommandLine } from "../primitives/CommandLine";
@@ -16,13 +16,14 @@ import { ListRow } from "../primitives/ListRow";
 import { Notice as ViewNotice } from "../primitives/Notice";
 import { SearchField } from "../primitives/SearchField";
 import { SkeletonRows } from "../primitives/InfoList";
-import { MenuButton } from "../primitives/MenuButton";
+import { MiddleText } from "../primitives/MiddleText";
+import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
 import { FilterTabs } from "../primitives/FilterTabs";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { Spinner } from "../primitives/Status";
 import { ErrorNotice } from "../shared/ErrorNotice";
 import { BranchList } from "./BranchList";
-import { ChecksMark, Counts, Notice, ROW } from "./parts";
+import { ChecksMark, Counts, TextMenu } from "./parts";
 import { usePullList } from "./usePullList";
 
 type View = "pulls" | "branches";
@@ -86,7 +87,7 @@ function Picker(props: {
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [now] = useState(() => Date.now());
   const list = useRef<HTMLDivElement>(null);
-  useRowKeys(list);
+  useRowKeys(list, { roving: true });
 
   const ready = state.list;
   // A refusal or an open error belongs to the view it happened in (decision 91i): changing the view clears it.
@@ -148,215 +149,276 @@ function Picker(props: {
     else if (shown[0]) openRow(shown[0]);
   };
 
+  const lead = menu?.show ? (
+    <TextMenu
+      label="Repository"
+      text={menu.current}
+      mono
+      items={menu.items.map((i) => ({
+        id: i.key,
+        label: i.label,
+        ...(i.detail ? { detail: i.detail } : {}),
+        checked: i.selected,
+        run: () => props.onRepo(i.key),
+      }))}
+    />
+  ) : ready ? (
+    ready.repo && (
+      <span title={ready.repo} className="flex min-w-0 px-2 text-xs text-fg-3">
+        <MiddleText text={ready.repo} className="font-mono" />
+      </span>
+    )
+  ) : state.loading && seenMenu.get(folder) !== false ? (
+    <span aria-hidden className="grid h-ctl-sm w-40 min-w-0 shrink items-center px-2">
+      <span className="h-2 rounded-full bg-hover" />
+    </span>
+  ) : null;
+  const fresh = updating ? "Updating" : ready ? freshness(ready, now) : "";
+
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
-      <div className="@container mx-auto flex w-full max-w-home flex-col gap-4 px-4 py-6 max-sm:py-4">
-        <header className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1">
-          <h1 className="shrink-0 text-title whitespace-nowrap text-fg">Pull requests</h1>
-          {menu?.show ? (
-            <MenuButton
-              label="Repository"
-              text={menu.current}
-              className="min-w-0 font-mono text-xs"
-              items={menu.items.map((i) => ({
-                id: i.key,
-                label: i.label,
-                ...(i.detail ? { detail: i.detail } : {}),
-                checked: i.selected,
-                run: () => props.onRepo(i.key),
-              }))}
-            />
-          ) : ready ? (
-            ready.repo && <span className="min-w-0 truncate font-mono text-xs text-fg-3 @max-md:hidden">{ready.repo}</span>
-          ) : (
-            state.loading &&
-            seenMenu.get(folder) !== false && (
-              <span aria-hidden className="grid h-chip w-40 shrink-0 items-center px-2">
-                <span className="h-2 rounded-full bg-hover" />
-              </span>
-            )
-          )}
-          {props.folders.length > 1 && (
-            <MenuButton
-              label="Repository folder"
-              text={folder}
-              items={props.folders.map((f) => ({ id: f.id, label: f.label, checked: f.label === folder, run: () => props.onFolder(f.label) }))}
-            />
-          )}
-          <span className="ml-auto flex shrink-0 items-center gap-2">
-            <span role="status" className="flex items-center gap-1.5 text-xs whitespace-nowrap text-fg-3 @max-md:[&_span:last-child]:hidden">
-              {updating ? (
-                <>
-                  <Spinner /> Updating
-                </>
-              ) : ready ? (
-                freshness(ready, now)
-              ) : null}
+    // R1 (polish step 6b): the picker is a `Panel` (header 40, title at 16, view tabs with the frame's hairline, one filter row,
+    // the list inset 8). The container query folds the freshness words into the refresh button's tooltip in a narrow group.
+    <div className="@container h-full min-h-0">
+      <Panel
+        name="review"
+        title="Pull requests"
+        lead={lead || undefined}
+        actions={
+          <>
+            <span role="status" className="flex items-center gap-1.5 px-1 text-xs whitespace-nowrap text-fg-3 empty:hidden">
+              {updating && <Spinner />}
+              {fresh && <span className="@max-[600px]:sr-only">{fresh}</span>}
             </span>
-            <IconButton icon={RefreshCw} label="Ask the code host now" onClick={reload} disabled={updating} size="sm" />
-          </span>
-        </header>
-
-        <ViewTabs<View> label="What to review" options={VIEWS} value={view} onChange={setView} className="px-0!" />
-
-        {view === "branches" && <BranchList api={api} folder={folder} opening={opening} onOpen={(id, input) => void run(id, input)} />}
-
-        {view === "pulls" && (available || state.loading) && (
-          <div className="flex flex-col gap-3">
-            <SearchField
-              label="Search pull requests, or paste an address or a number"
-              placeholder="Search or paste a PR link"
-              value={query}
-              onChange={setQuery}
-              onKeyDown={(e) => e.key === "Enter" && submitSearch()}
-              inputProps={{ spellCheck: false, autoComplete: "off" }}
+            <IconButton
+              icon={RefreshCw}
+              label={fresh ? `Ask the code host now (${fresh.toLowerCase()})` : "Ask the code host now"}
+              onClick={reload}
+              disabled={updating}
             />
-            <FilterTabs<PullRequestFilter>
-              label="Show"
-              value={filter}
-              onChange={setFilter}
-              bare
-              options={PULL_FILTERS.map((f) => ({
-                id: f.id,
-                // Until the list is in, the count is a figure-space placeholder of its width: the chips do not grow on arrival.
-                label: ready ? f.label : `${f.label}${"\u2007".repeat(f.id === "all" ? 2 : 1)}\u2008\u200a`,
-                ...(ready ? { count: counts[f.id] } : {}),
-              }))}
-            />
-          </div>
-        )}
-        {error && <ViewNotice tone="error">{error}</ViewNotice>}
-        {refusal?.view === view && (
-          <ViewNotice
-            form="block"
-            tone="warn"
-            title={`${sentence(refusal.text)}.`}
-            actions={refusal.choices.map((c) => (
-              <Button key={c.key} size="sm" variant="secondary" onClick={() => choose(c.key)}>
-                <span className="font-mono">{c.label}</span>
-                <span className="text-fg-3">{c.detail}</span>
-              </Button>
-            ))}
-          >
-            {refusal.code === "ambiguous_pr" ? "Which repository is it in?" : "Pick the repository to list or open it from."}
-          </ViewNotice>
-        )}
-
-        {view === "pulls" && state.loading && <SkeletonRows count={7} widths={[70, 52, 64, 44, 58, 66, 48]} />}
-        {view === "pulls" && state.error && !ready && (
-          <ErrorNotice
-            title="The pull requests did not load"
-            fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
-            onRetry={reload}
-            retrying={updating}
+          </>
+        }
+        views={
+          <ViewTabs<View>
+            label="What to review"
+            options={VIEWS}
+            value={view}
+            onChange={setView}
+            // The folder scopes both views: it sits at the view row's end, so the header keeps the repository whole in a
+            // narrow group (R1 asks for it in the header line; there it cut the repository to "/atlas-api" at 360px).
+            trailing={
+              props.folders.length > 1 ? (
+                <TextMenu
+                  label="Repository folder"
+                  text={folder}
+                  alignEnd
+                  items={props.folders.map((f) => ({ id: f.id, label: f.label, checked: f.label === folder, run: () => props.onFolder(f.label) }))}
+                />
+              ) : undefined
+            }
           />
-        )}
-        {view === "pulls" && ready && !available && (
-          <section aria-label="Pull requests are not available" className="flex flex-col gap-3 rounded-md border border-line bg-raised p-4">
-            <h2 className="text-heading text-fg">{unavailableTitle(ready.reason)}</h2>
-            <p className="text-sm text-fg-2">{ready.message ?? "Pull requests cannot be listed for this project."}</p>
-            {ready.command && (
-              <>
-                <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
-                <CommandLine command={ready.command} />
-              </>
-            )}
-            <div>
-              <Button size="sm" variant="secondary" onClick={reload}>
-                I ran it: reload
-              </Button>
-            </div>
-          </section>
-        )}
-
-        {view === "pulls" && (
-          <div ref={list} className="flex flex-col gap-4">
-            {typed && available && (
-              <ListRow
-                size="md"
-                disabled={opening === "address"}
-                leading={opening === "address" ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}
-                title={typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"}
-                tip={`${typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"} (Enter)`}
-                onClick={submitSearch}
+        }
+      >
+        <div className="flex h-full min-h-0 flex-col">
+          {view === "pulls" && (available || state.loading) && (
+            // R1: the frame's one filter row (36, the chips then the search). In a narrow group (under 560) the search takes a
+            // line of its own above the chips, so neither is cut to a stub.
+            <div
+              data-panel-filters
+              className="box-content flex min-h-9 max-w-home shrink-0 items-center gap-x-2 gap-y-1 px-pane @max-[560px]:flex-wrap @max-[560px]:pt-1 touch:min-h-ctl-lg"
+            >
+              <FilterTabs<PullRequestFilter>
+                label="Show"
+                value={filter}
+                onChange={setFilter}
+                bare
+                options={PULL_FILTERS.map((f) => ({
+                  id: f.id,
+                  // Until the list is in, the count is a figure-space placeholder of its width: the chips do not grow on arrival.
+                  label: ready ? f.label : `${f.label}${"\u2007".repeat(f.id === "all" ? 2 : 1)}\u2008\u200a`,
+                  ...(ready ? { count: counts[f.id] } : {}),
+                }))}
               />
-            )}
-            {resume.length > 0 && (
-              <section className="flex flex-col gap-1">
-                <h2 className="px-3 text-xs font-medium text-fg-3">Reviews in progress</h2>
-                {resume.map((r) => (
-                  <OpenRow key={r.id} r={r} now={now} onOpen={() => props.onOpen(r.id)} />
-                ))}
-              </section>
-            )}
-            {available && shown.length > 0 && (
-              <div className="flex flex-col">
-                {shown.map((r) => (
-                  <PullRow
-                    key={`${r.repo ?? ""}#${r.number}`}
-                    r={r}
-                    showRepo={menu?.rowsShowRepo === true}
-                    now={now}
-                    busy={opening === `pr${r.number}`}
-                    onOpen={() => openRow(r)}
+              <SearchField
+                label="Search pull requests, or paste an address or a number"
+                placeholder="Search or paste a PR link"
+                value={query}
+                onChange={setQuery}
+                size="sm"
+                onKeyDown={(e) => e.key === "Enter" && submitSearch()}
+                inputProps={{ spellCheck: false, autoComplete: "off" }}
+                className="ml-auto w-56 shrink-0 @max-[560px]:order-first @max-[560px]:w-full"
+              />
+            </div>
+          )}
+          {(error || refusal?.view === view) && (
+            <div className="flex shrink-0 flex-col gap-2 px-pane pt-1 pb-2">
+              {error && <ViewNotice tone="error">{error}</ViewNotice>}
+              {refusal?.view === view && (
+                <ViewNotice
+                  form="block"
+                  tone="warn"
+                  title={`${sentence(refusal.text)}.`}
+                  actions={refusal.choices.map((c) => (
+                    <Button key={c.key} size="sm" variant="secondary" onClick={() => choose(c.key)}>
+                      <span className="font-mono">{c.label}</span>
+                      <span className="text-fg-3">{c.detail}</span>
+                    </Button>
+                  ))}
+                >
+                  {refusal.code === "ambiguous_pr" ? "Which repository is it in?" : "Pick the repository to list or open it from."}
+                </ViewNotice>
+              )}
+            </div>
+          )}
+          {view === "branches" ? (
+            <BranchList api={api} folder={folder} opening={opening} onOpen={(id, input) => void run(id, input)} />
+          ) : state.loading ? (
+            <PanelBody>
+              <SkeletonRows count={7} widths={[70, 52, 64, 44, 58, 66, 48]} />
+            </PanelBody>
+          ) : ready && !available && resume.length === 0 ? (
+            <PanelEmpty
+              title={unavailableTitle(ready.reason)}
+              actions={
+                <Button size="sm" variant="secondary" onClick={reload}>
+                  I ran it: reload
+                </Button>
+              }
+            >
+              <p>{ready.message ?? "Pull requests cannot be listed for this project."}</p>
+              {ready.command && (
+                <div className="mt-3 flex flex-col gap-1.5 text-left">
+                  <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
+                  <CommandLine command={ready.command} />
+                </div>
+              )}
+            </PanelEmpty>
+          ) : state.error && !ready && resume.length === 0 ? (
+            <PanelBody>
+              <ErrorNotice
+                title="The pull requests did not load"
+                fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
+                onRetry={reload}
+                retrying={updating}
+              />
+            </PanelBody>
+          ) : available && rows.length === 0 && !typed && resume.length === 0 ? (
+            <PanelEmpty title="No open pull requests">
+              There is nothing open on {ready.repo ?? "this repository"} right now. Paste an address or type a number above to review a closed one.
+            </PanelEmpty>
+          ) : (
+            <PanelBody>
+              {/* The list is not available, but reviews in progress are: say why above them (a tone, no outline). */}
+              {state.error && !ready && (
+                <div className="max-w-home pb-3">
+                  <ErrorNotice
+                    title="The pull requests did not load"
+                    fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
+                    onRetry={reload}
+                    retrying={updating}
                   />
-                ))}
+                </div>
+              )}
+              {ready && !available && (
+                <section aria-label="Pull requests are not available" className="octo-in-card mb-3 flex max-w-home flex-col gap-2 rounded-md bg-raised p-4">
+                  <h2 className="text-heading text-fg">{unavailableTitle(ready.reason)}</h2>
+                  <p className="text-sm text-fg-2">{ready.message ?? "Pull requests cannot be listed for this project."}</p>
+                  {ready.command && (
+                    <>
+                      <p className="text-xs text-fg-3">Run this in a terminal, then come back and reload:</p>
+                      <CommandLine command={ready.command} />
+                    </>
+                  )}
+                  <div>
+                    <Button size="sm" variant="secondary" onClick={reload}>
+                      I ran it: reload
+                    </Button>
+                  </div>
+                </section>
+              )}
+              {/* R7: the rows are one Tab stop; ↑/↓/Home/End move between them. */}
+              {/* A maximised review is 1400 wide: the rows keep Home's column (880, left-aligned as every panel body), so the time
+                  and the counts stay near the title they belong to. */}
+              <div ref={list} className="flex max-w-home flex-col">
+                {typed && available && (
+                  <ListRow
+                    size="md"
+                    disabled={opening === "address"}
+                    leading={opening === "address" ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}
+                    title={typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"}
+                    tip={`${typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"} (Enter)`}
+                    onClick={submitSearch}
+                  />
+                )}
+                {resume.length > 0 && (
+                  <section aria-label="Reviews in progress" className="flex flex-col pb-2">
+                    <h2 className="flex h-ctl-md items-center px-2 text-xs font-medium text-fg-3">Reviews in progress</h2>
+                    {resume.map((r) => (
+                      <OpenRow key={r.id} r={r} now={now} onOpen={() => props.onOpen(r.id)} />
+                    ))}
+                  </section>
+                )}
+                {available &&
+                  shown.map((r) => (
+                    <PullRow
+                      key={`${r.repo ?? ""}#${r.number}`}
+                      r={r}
+                      showRepo={menu?.rowsShowRepo === true}
+                      now={now}
+                      busy={opening === `pr${r.number}`}
+                      onOpen={() => openRow(r)}
+                    />
+                  ))}
               </div>
-            )}
-            {available && shown.length === 0 && !typed && (
-              <Notice title={rows.length === 0 ? "No open pull requests" : "Nothing matches"}>
-                {rows.length === 0
-                  ? `There is nothing open on ${ready.repo ?? "this repository"} right now. Paste an address or type a number above to review a closed one.`
-                  : query.trim()
-                    ? "Try fewer words, or pick All."
-                    : "No pull request is in this tab. Pick All to see every open one."}
-              </Notice>
-            )}
-            {ready?.truncated && (
-              <p className="px-3 text-xs text-fg-3">This repository has more open pull requests than are listed. Search by number to find the rest.</p>
-            )}
-          </div>
-        )}
-      </div>
+              {available && shown.length === 0 && !typed && (
+                <PanelEmpty>
+                  {rows.length === 0
+                    ? `Nothing is open on ${ready.repo ?? "this repository"} right now.`
+                    : query.trim()
+                      ? "Nothing matches. Try fewer words, or pick All."
+                      : "No pull request is in this tab. Pick All to see every open one."}
+                </PanelEmpty>
+              )}
+              {ready?.truncated && (
+                <p className="px-2 pt-2 text-xs text-fg-3">This repository has more open pull requests than are listed. Search by number to find the rest.</p>
+              )}
+            </PanelBody>
+          )}
+        </div>
+      </Panel>
     </div>
   );
 }
 
-/** The few words that matter on a row, most important first; "new since your review" is the only one that is not dim. */
-function badges(r: PullRequestRow): { text: string; tone: "warn" | "link" | "dim" }[] {
-  const out: { text: string; tone: "warn" | "link" | "dim" }[] = [];
-  if (newSinceMyReview(r)) out.push({ text: "New since your review", tone: "warn" });
-  else if (r.review_requested) out.push({ text: "Review requested", tone: "link" });
-  else if (r.reviewed_by_me) out.push({ text: "Reviewed by you", tone: "dim" });
-  if (r.draft) out.push({ text: "Draft", tone: "dim" });
-  if (r.review && r.review.pending_comments > 0) out.push({ text: `${r.review.pending_comments} pending`, tone: "dim" });
-  return out;
-}
-
+/** R2 (polish step 6b): title, then one meta line led by the state word when it matters; time and line counts right-aligned. */
 function PullRow({ r, now, busy, showRepo, onOpen }: { r: PullRequestRow; now: number; busy: boolean; showRepo: boolean; onOpen(): void }) {
+  const { state, parts } = pullRowLine(r, { showRepo });
+  const tone = state ? (state.tone === "warn" ? "text-warn" : state.tone === "strong" ? "text-fg-2" : "text-fg-3") : "";
   return (
-    // eslint-disable-next-line octo/no-native-controls -- ListRow's description is one truncated line; this row's wrapping badge line has no ListRow form
-    <button type="button" data-row id={r.review ? `review-row-${r.review.id}` : undefined} className={ROW} disabled={busy} aria-busy={busy} onClick={onOpen}>
-      <span className="mt-0.5">{busy ? <Spinner /> : <ChecksMark state={r.checks} />}</span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-sm text-fg">{r.title}</span>
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-fg-3">
-          {badges(r).map((b) => (
-            <span key={b.text} className={cn(b.tone === "warn" ? "text-warn" : b.tone === "link" ? "text-link" : "text-fg-3")}>
-              {b.text}
-            </span>
-          ))}
-          {showRepo && r.repo && <span className="font-mono">{r.repo}</span>}
-          <span>
-            #{r.number} by {r.mine ? "you" : r.author}
+    <ListRow
+      size="md"
+      {...(r.review ? { id: `review-row-${r.review.id}` } : {})}
+      disabled={busy}
+      tip={r.reviewed_by_me && !state ? `${r.title} (reviewed by you)` : r.title}
+      leading={busy ? <Spinner /> : <ChecksMark state={r.checks} />}
+      title={
+        <>
+          {r.title}
+          <span className="sr-only">, {CHECKS_LABEL[r.checks]}</span>
+        </>
+      }
+      meta={timeAgo(r.updated_at, now)}
+      description={
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate">
+            {state && <span className={cn(tone, state.tone === "strong" && "font-medium")}>{state.text} · </span>}
+            {parts.join(" · ")}
           </span>
-          <span>{plural(r.changed_files, "file")}</span>
           <Counts added={r.additions} removed={r.deletions} />
-          {(r.comments ?? 0) > 0 && <span>{plural(r.comments ?? 0, "comment")}</span>}
-          <span>{timeAgo(r.updated_at, now)}</span>
         </span>
-      </span>
-    </button>
+      }
+      onClick={onOpen}
+    />
   );
 }
 

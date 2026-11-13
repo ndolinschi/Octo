@@ -1,4 +1,5 @@
-import { useEffect, useId, useState } from "react";
+import { MessageSquare, Reply, type LucideIcon } from "lucide-react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { Review, ReviewReplyPost, ReviewSubmitPreview, ReviewSubmitResult, ReviewVerdict } from "@octo/agent-client";
 import { errorMessage } from "../../lib/format";
 import type { ReviewApi } from "../../lib/review/api";
@@ -8,6 +9,7 @@ import { Button } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Dialog } from "../primitives/Dialog";
 import { Field, Textarea } from "../primitives/Field";
+import { Glyph } from "../primitives/Glyph";
 import { Segmented } from "../primitives/Segmented";
 import { Spinner } from "../primitives/Status";
 
@@ -134,7 +136,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
         </>
       }
     >
-      <div className="flex flex-col gap-4">
+      <div data-review-sheet className="flex flex-col gap-4">
         <Field label="Verdict" hint={VERDICTS.find((v) => v.id === verdict)?.hint}>
           <Segmented<ReviewVerdict> label="Verdict" value={verdict} onChange={setVerdict} options={VERDICTS.map((v) => ({ id: v.id, label: v.label }))} />
         </Field>
@@ -149,7 +151,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
           />
         </Field>
         {problem && (
-          <div role="alert" className="flex flex-col gap-2 rounded-md border border-line p-3 text-sm">
+          <div role="alert" className="flex flex-col gap-2 rounded-md bg-code-bg p-3 text-sm">
             <p className="font-medium text-err">{problem.title}</p>
             <p className="text-fg-2">{problem.advice}</p>
             {problem.command && <CommandLine command={problem.command} />}
@@ -185,24 +187,23 @@ function PreviewBody({ preview }: { preview: ReviewSubmitPreview }) {
       {preview.body.trim() && (
         <figure className="flex flex-col gap-1">
           <figcaption className="text-xs text-fg-3">Review text, exactly as it will be posted</figcaption>
-          <pre className="rounded-md border border-line bg-code-bg p-3 font-sans text-sm break-words whitespace-pre-wrap text-fg">{preview.body}</pre>
+          <pre className="rounded-md bg-code-bg p-3 font-sans text-sm break-words whitespace-pre-wrap text-fg">{preview.body}</pre>
         </figure>
       )}
       {preview.comments.length === 0 && !(preview.replies?.length ?? 0) ? (
         <p className="text-fg-3">No comments.</p>
       ) : (
-        <ol className="flex flex-col gap-2">
+        // R5 (polish step 6b): the drafts are list rows (glyph column, where as meta, the text word for word), split by hairlines.
+        <ol className="flex flex-col">
           {preview.comments.map((c) => (
-            <li key={c.id} className="flex flex-col gap-1.5 rounded-md border border-line p-3">
-              <p className="font-mono text-xs break-all text-fg-3">{commentWhere(c)}</p>
-              <p className="break-words whitespace-pre-wrap text-fg">{c.body}</p>
+            <DraftRow key={c.id} icon={MessageSquare} where={commentWhere(c)} body={c.body}>
               {c.suggestion !== undefined && (
                 <pre className="overflow-x-auto rounded-sm bg-code-bg px-2 py-1.5 font-mono text-xs leading-5 text-fg">
                   <span className="mb-1 block font-sans text-fg-3">Suggested change</span>
                   {c.suggestion || " "}
                 </pre>
               )}
-            </li>
+            </DraftRow>
           ))}
         </ol>
       )}
@@ -213,16 +214,29 @@ function PreviewBody({ preview }: { preview: ReviewSubmitPreview }) {
               ? "1 reply, posted into its thread after the review"
               : `${preview.replies?.length} replies, each posted into its thread after the review`}
           </h4>
-          <ol className="flex flex-col gap-2">
+          <ol className="flex flex-col">
             {preview.replies?.map((x) => (
-              <li key={x.comment_id} className="rounded-md border border-line p-3">
-                <p className="break-words whitespace-pre-wrap text-fg">{x.body}</p>
-              </li>
+              <DraftRow key={x.comment_id} icon={Reply} body={x.body} />
             ))}
           </ol>
         </section>
       )}
     </div>
+  );
+}
+
+function DraftRow(props: { icon: LucideIcon; where?: string; body: string; children?: ReactNode }) {
+  return (
+    <li className="flex gap-2 border-t border-line py-2 first:border-t-0 first:pt-1">
+      <span aria-hidden className="grid h-5 w-4 shrink-0 place-items-center text-fg-3">
+        <Glyph icon={props.icon} size={14} />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        {props.where && <p className="font-mono text-xs break-all text-fg-3">{props.where}</p>}
+        <p className="break-words whitespace-pre-wrap text-fg">{props.body}</p>
+        {props.children}
+      </div>
+    </li>
   );
 }
 

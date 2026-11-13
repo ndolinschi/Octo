@@ -4,43 +4,44 @@ import { checkoutSentence, dirtyList, dirtyStatusWord, goBackCommand, hasConflic
 import { Button, IconButton } from "../primitives/Button";
 import { CommandLine } from "../primitives/CommandLine";
 import { Dialog } from "../primitives/Dialog";
-import { MenuButton } from "../primitives/MenuButton";
+import type { MenuItem } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
+import { TextMenu } from "./parts";
 import type { useCheckout } from "./useCheckout";
 
 type Checkout = ReturnType<typeof useCheckout>;
 
-/** "Check out ▾": the two modes, and the way back while this review is the project's workspace. */
-export function CheckoutMenu({ checkout, review }: { checkout: Checkout; review: Review }) {
-  if (!checkout.available || review.state === "closed") return null;
-  return (
-    <MenuButton
-      label="Check out"
-      text={checkout.busy ? "Checking out…" : "Check out"}
-      alignEnd
-      items={[
-        ...(checkout.inWorkspace ? [{ id: "back", label: "Back to my folder", run: () => void checkout.back() }] : []),
-        {
-          id: "workspace",
-          label: "Open in workspace (read-only)",
-          title: "Point the file tree, editor and language server at this pull request. Your folder is untouched.",
-          disabled: checkout.inWorkspace || !review.worktree_present,
-          run: () => void checkout.openWorkspace(),
-        },
-        ...(review.kind === "github"
-          ? [
-              {
-                id: "folder",
-                label: "Check out in my folder…",
-                title: "Switch your working copy to this pull request's branch. Uncommitted changes are shown first.",
-                run: () => void checkout.startWorkingCopy(),
-              },
-            ]
-          : []),
-      ]}
-    />
-  );
+/** The check-out choices: the two modes, and the way back while this review is the project's workspace. Empty when there is none. */
+export function checkoutItems(checkout: Checkout, review: Review): MenuItem[] {
+  if (!checkout.available || review.state === "closed") return [];
+  return [
+    ...(checkout.inWorkspace ? [{ id: "back", label: "Back to my folder", run: () => void checkout.back() }] : []),
+    {
+      id: "workspace",
+      label: "Open in workspace (read-only)",
+      title: "Point the file tree, editor and language server at this pull request. Your folder is untouched.",
+      disabled: checkout.inWorkspace || !review.worktree_present,
+      run: () => void checkout.openWorkspace(),
+    },
+    ...(review.kind === "github"
+      ? [
+          {
+            id: "folder",
+            label: "Check out in my folder…",
+            title: "Switch your working copy to this pull request's branch. Uncommitted changes are shown first.",
+            run: () => void checkout.startWorkingCopy(),
+          },
+        ]
+      : []),
+  ];
+}
+
+/** "Check out ▾" in the review header (28px like the header's other controls). */
+export function CheckoutMenu({ checkout, review, className }: { checkout: Checkout; review: Review; className?: string }) {
+  const items = checkoutItems(checkout, review);
+  if (items.length === 0) return null;
+  return <TextMenu label="Check out" text={checkout.busy ? "Checking out…" : "Check out"} alignEnd items={items} {...(className ? { className } : {})} />;
 }
 
 /** One line under the header that says where you are after a check out, and how to go back. */
@@ -49,7 +50,7 @@ export function CheckoutBanner({ checkout }: { checkout: Checkout }) {
   if (!checkout.inWorkspace && !s && !checkout.error) return null;
   const back = s ? goBackCommand(s) : null;
   return (
-    <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-1.5 text-sm">
+    <div role="status" className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-1.5 text-sm">
       {checkout.error && (
         <>
           <span role="alert" className="min-w-0 flex-1 text-err">

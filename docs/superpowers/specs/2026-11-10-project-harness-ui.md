@@ -3183,3 +3183,38 @@ Rules S1–S7 of the orchestrator's brief; 118 before/after pairs (dark and ligh
   `width-stability`, `frame-colours`, `flicker`, `backdrop-check` ok; theme, On startup, provider pages, Check again, the
   key form, Router, Back/Forward and Esc driven by script. Not driven: Refresh, the project scope menu, Commands edit /
   choose, CSV and diagnostics copy. Open: on a 1440 window the 880 column puts a row's control far from its label.
+
+## As built — polish step 6b: Review (2026-11-13; one commit)
+
+Rules R1–R7 of the orchestrator's brief; 164 before/after pairs (dark and light; side group and maximised at 1440×900,
+900×600, page mode at 390×700).
+
+- **R1, the picker is a `Panel`** (decision 95f listed Review as not on the frame): header 40 with the title at 16 and
+  the repository menu in a new `lead` slot of `Panel` (shrinks first; nothing else in `Panel` changed), view tabs with the
+  frame's hairline, a 36 filter row (chips, then search; below 560 the search takes its own line), rows inset 8; "not
+  logged in" and empty are `PanelEmpty`. The folder menu sits at the right end of the view-tab row (**departs from 91i's**
+  one header line); below 600 "Updated …" is the refresh button's tooltip. A maximised list is capped at 880 and left
+  aligned.
+- **R2, pull rows** are `ListRow`s of two lines, 40 high (were about 72 in a side group): CI glyph · title · time at the
+  right; meta "Review requested · #482 · mira · 14 files · 8 comments" with "+1317 −986" at the right. The state word shows
+  only for New since your review, Review requested and Draft (`lib/review/pullList.ts` `pullRowLine`, tested).
+- **R3, the open review's header**: the title line (Back, title, one group of 28px actions, "Submit review" last) and one
+  meta line cut from the right. It folds by its own width, in a declared order: below 1024 pinned commands go into "Run";
+  below 720 Check out, Pending and Details go into "⋯"; below 480 Run is its glyph and Submit says "Submit · N". Height: 61
+  maximised (was about 77), 41 in a side group (was about 210, three wrapped rows). **Replaces batch 1c's wrapping (A10);
+  departs from 64/78** (Pending and Details moved from the meta line to the actions).
+- **R4, file list, diff bar, threads.** The diff bar is one 40px line on step 4's sizes ("More" became "⋯"); group heads
+  are captions; thread cards are tones on the code's left edge, capped at 720; the reply box ends with the shared action
+  row. **A bug found and fixed:** Monaco's code layer took every click on a thread in the diff, so Reply, "N more replies"
+  and Collapse could not be used with a mouse; the thread zone now sits above it and keeps focus without scrolling.
+- **R5.** The submit sheet's drafts and the Pending panel's items are rows with hairlines; the segmented track inside
+  Review is 8 % in light.
+- **R6, page mode (390×700).** The header is the title line; the file picker, Viewed, previous / next change and "⋯" share
+  one line. Code starts at y 171 (was 355); 505px of code are visible, 326 with a comment box open (were about 320 and 141).
+- **R7.** The pull list and the branch list are one Tab stop with arrow keys: `useRowKeys(ref, { roving: true })` in
+  `lib/hooks.ts`, opt-in; other callers unchanged.
+- Gates: `tsc`, unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (review scenes 0; Review is not in the
+  audit's panel-frame tab list), `width-stability` (two sizes), `frame-colours`, `flicker` ok; batch 1c's Esc and resize
+  scripts still hold; picker, branches, Pending, Details, suggest, three verdicts, check out and Run driven by script.
+  **Known and not fixed:** threads inside the diff are in Monaco's `aria-hidden` zone layer, so a screen reader cannot
+  reach them (it was so before). Not verified: WebKit, touch, a screen reader, a live `gh`.

@@ -1,9 +1,8 @@
-import { ChevronDown, ChevronRight, ChevronUp, MessageCircle, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronRight, MessageCircle, MessageSquare } from "lucide-react";
 import type { ReviewFile, ReviewGroup } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { reasonLabel, splitPath, type FileSection } from "../../lib/review/files";
 import { threadCountText } from "../../lib/review/threads";
-import { IconButton } from "../primitives/IconButton";
 import { Checkbox } from "../primitives/Checkbox";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
@@ -27,7 +26,7 @@ export function FileList(props: {
   onViewed(path: string, viewed: boolean): void;
 }) {
   return (
-    <nav aria-label="Changed files" className="flex flex-col gap-2 p-2">
+    <nav aria-label="Changed files" className="flex flex-col gap-2 px-pane pt-1 pb-2">
       {props.sections.map((s) => {
         const open = !s.folded || props.opened.has(s.group);
         return (
@@ -40,18 +39,18 @@ export function FileList(props: {
                 onClick={() => props.onToggleGroup(s.group)}
                 leading={<Glyph icon={open ? ChevronDown : ChevronRight} size={14} />}
                 title={
-                  <span className="flex min-w-0 items-center gap-1">
-                    <span className="shrink-0 font-medium">{s.label}</span>
-                    <span className="min-w-0 truncate text-xs">
-                      {s.files.length} folded: {[...new Set(s.files.map((f) => reasonLabel(f.reason)))].join(", ")}
-                    </span>
+                  // R4: a folded group's head reads as the other group heads (a caption), its reasons dim after the count.
+                  <span className="flex min-w-0 items-baseline gap-1.5 text-xs">
+                    <span className="shrink-0 font-medium text-fg-3">{s.label}</span>
+                    <span className="shrink-0 text-fg-3">{s.files.length}</span>
+                    <span className="min-w-0 truncate text-fg-3">· {[...new Set(s.files.map((f) => reasonLabel(f.reason)))].join(", ")}</span>
                   </span>
                 }
               />
             ) : (
-              <h3 className="flex h-7 items-center px-2 text-xs font-medium text-fg-3">
+              <h3 className="flex h-ctl-sm items-center gap-1.5 px-2 text-xs font-medium text-fg-3">
                 {s.label}
-                <span className="ml-1.5 font-normal">{s.files.length}</span>
+                <span className="font-normal">{s.files.length}</span>
               </h3>
             )}
             {open && (
@@ -109,7 +108,7 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
             <bdi>{dir}</bdi>
           </span>
           {f.changed_since_viewed && (
-            <span className="shrink-0 rounded-xs border border-line px-1 text-[11px] leading-4 text-warn" title="Changed since you viewed it">
+            <span className="shrink-0 text-xs text-warn" title="Changed since you viewed it">
               changed
             </span>
           )}
@@ -135,8 +134,8 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
   );
 }
 
-/** Narrow windows: the list becomes a picker above the diff, with previous / next. */
-export function FilePicker(props: { sections: readonly FileSection[]; selected: string | null; onSelect(path: string): void; onStep(dir: 1 | -1): void }) {
+/** Page mode: the list becomes a picker in the diff's bar (R6, polish step 6b); previous / next file are in the bar's "⋯". */
+export function FilePicker(props: { sections: readonly FileSection[]; selected: string | null; onSelect(path: string): void }) {
   const options: SelectOption[] = props.sections.flatMap((s) =>
     s.files.map((f) => ({
       value: f.path,
@@ -151,19 +150,15 @@ export function FilePicker(props: { sections: readonly FileSection[]; selected: 
     })),
   );
   return (
-    <div className="flex shrink-0 items-center gap-1 border-b border-line p-2">
-      <Select
-        id="review-file-picker"
-        label="File"
-        size="lg"
-        value={props.selected ?? ""}
-        placeholder="Choose a file"
-        options={options}
-        onChange={props.onSelect}
-        className="min-w-0 flex-1"
-      />
-      <IconButton icon={ChevronUp} label="Previous file" size="lg" onClick={() => props.onStep(-1)} />
-      <IconButton icon={ChevronDown} label="Next file" size="lg" onClick={() => props.onStep(1)} />
-    </div>
+    <Select
+      id="review-file-picker"
+      label="File"
+      size="sm"
+      value={props.selected ?? ""}
+      placeholder="Choose a file"
+      options={options}
+      onChange={props.onSelect}
+      className="min-w-0 flex-1"
+    />
   );
 }
