@@ -3046,3 +3046,20 @@ executor, a sample by the orchestrator.
   `width-stability` (1440×900, 900×600), `frame-colours`, `flicker`, `scroll-on-send`, `picker-keys` ok; approvals, the
   form (Region by Tab and arrows), always-allow, the head's Enter, Check again and the queue driven by script. Not verified:
   plan approve and rewind by script, WebKit, touch, a screen reader.
+
+### As built — fixes after the UI verification, batch 5 (popup lists; decision 95a/b)
+
+- B6: one Home/End rule in `primitives/popupNav.ts` (`popupListKey`, `popupMove`, tested; the contract is in its header): in a
+  list fed by a text field (slash, mention, "+", pickers, the palette) Home/End move the caret and Ctrl/Cmd+Home/End jump to
+  the first/last row; in a list with no field (`Menu`) plain Home/End jump. B7: an open `Popover` keeps Tab and Shift+Tab
+  inside it and closes when focus leaves it (every popover: model picker, context, problems, pending comments, `Select`);
+  `Menu` moves between items on Tab; Tab accepts the active row only in the slash and mention menus. B8: `Menu` rows have the
+  16px leading slot (text at x 32) and are 40 under touch like `PopupList`, whose max height is computed from the row token
+  (9 whole rows at 390 instead of 6.3). B9: the slash and "+" menus close on window resize, as `Menu` and `Popover` do.
+  B12: the composer highlights only a command at the start of the text, from the list `slashRun` runs
+  (`OCTO_COMMAND_NAMES`); agent commands are not highlighted yet. B13: in the model picker an unverified row keeps
+  "Check again" only and shows the full name ("Use anyway" is in the connect sheet the row opens); the state text is what
+  truncates now ("Not logge…"). B10: `/remember` shows "Remembered: … Undo" from `rememberFact`'s answer (the desktop demo's
+  `withDemoMemory` never emitted `fact.remembered`); a harness that also sends the event still gives one line.
+  Checked: `picker-keys` ok, part 3's key script at 1440×900 dark and 390×700 light. Not verified: popovers other than the
+  model picker, the folder picker and the context popover; touch (a resize from an on-screen keyboard would close the menus).

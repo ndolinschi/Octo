@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
 import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { PickerRow, PickerSection } from "../../lib/picker";
-import { popupTarget } from "./popupNav";
+import { popupMove } from "./popupNav";
 import { Glyph } from "./Glyph";
 import { PopupList, popupOptionId } from "./PopupList";
 import { Popover } from "./Popover";
@@ -11,8 +11,8 @@ export type { PickerRow, PickerSection } from "../../lib/picker";
 /**
  * A searchable quick picker anchored to a control (decisions 25 and 27): a search field on top, then sections of
  * 28px rows (leading glyph, name with the match highlighted, muted detail and a right-aligned hint).
- * The field keeps focus: ↑/↓ move the active row (disabled rows are skipped), Enter runs it; Esc or a click outside closes and focus
- * returns to the opener (the `Popover`). `sections` is computed by the caller from the query.
+ * The field keeps focus: ↑/↓ (and Ctrl+Home/End) move the active row (disabled rows are skipped), Enter runs it, Tab moves focus
+ * inside the popover (or completes, with `complete`); Esc or a click outside closes and focus returns to the opener (the `Popover`). `sections` is computed by the caller from the query.
  */
 export function Picker(props: {
   anchor: RefObject<HTMLElement | null>;
@@ -61,17 +61,17 @@ export function Picker(props: {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    const mod = e.ctrlKey || e.metaKey;
     if (props.onShortcut?.(e)) {
       e.preventDefault();
       return;
     }
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    // Decision 95: the search field is a text field, so plain Home / End move its caret (`popupNav`).
+    const to = popupMove(e, true, enabledIds, current?.id ?? null);
+    if (to !== null) {
       e.preventDefault();
-      setActive(popupTarget(e.key, enabledIds, current?.id ?? null));
+      setActive(to);
       return;
     }
-    if ((e.key === "Home" || e.key === "End") && mod) return void setActive(popupTarget(e.key, enabledIds, null));
     if (e.key === "Tab" && !e.shiftKey && props.complete && current) {
       const next = props.complete(current);
       if (next !== null) {

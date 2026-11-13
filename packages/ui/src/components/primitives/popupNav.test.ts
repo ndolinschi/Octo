@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createPointerGate, popupTarget } from "./popupNav";
+import { createPointerGate, popupListKey, popupMove, popupTarget } from "./popupNav";
 
 const ids = ["a", "b", "c"];
 
@@ -22,6 +22,31 @@ test("popupTarget: Home and End jump; other keys and empty lists give null", () 
   assert.equal(popupTarget("End", ids, "a"), "c");
   assert.equal(popupTarget("Enter", ids, "a"), null);
   assert.equal(popupTarget("ArrowDown", [], null), null);
+});
+
+const ev = (key: string, mod = false) => ({ key, ctrlKey: mod, metaKey: false });
+
+test("popupListKey: in a typing list plain Home/End stay with the caret, Ctrl or Cmd + Home/End are the list's", () => {
+  assert.equal(popupListKey(ev("Home"), true), null);
+  assert.equal(popupListKey(ev("End"), true), null);
+  assert.equal(popupListKey(ev("Home", true), true), "Home");
+  assert.equal(popupListKey({ key: "End", ctrlKey: false, metaKey: true }, true), "End");
+  assert.equal(popupListKey(ev("ArrowDown"), true), "ArrowDown");
+  assert.equal(popupListKey(ev("Tab"), true), null);
+});
+
+test("popupListKey: in a list with no text field plain Home/End jump", () => {
+  assert.equal(popupListKey(ev("Home"), false), "Home");
+  assert.equal(popupListKey(ev("End"), false), "End");
+  assert.equal(popupListKey(ev("ArrowUp"), false), "ArrowUp");
+  assert.equal(popupListKey(ev("a"), false), null);
+});
+
+test("popupMove: the event's target row under the rule", () => {
+  assert.equal(popupMove(ev("End"), true, ids, "a"), null);
+  assert.equal(popupMove(ev("End", true), true, ids, "a"), "c");
+  assert.equal(popupMove(ev("End"), false, ids, "a"), "c");
+  assert.equal(popupMove(ev("ArrowUp"), true, ids, "a"), "c");
 });
 
 test("popupTarget: a single row stays active", () => {

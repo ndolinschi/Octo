@@ -1,12 +1,16 @@
-import { useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import type { PickerRow, PickerSection } from "../../lib/picker";
 import { Highlight } from "./Highlight";
 import { createPointerGate } from "./popupNav";
 
-/** Rows visible before the list scrolls (28px each). */
+/** Rows visible before the list scrolls. */
 const VISIBLE = 9;
-const ROW = 28;
+/**
+ * The list's height: whole rows of the row token in force (28px, 40px under `touch:`) plus the list's 4px padding top and
+ * bottom. Computed by CSS from the same tokens as the rows' `h-row` / `touch:h-ctl-lg`, so a narrow window shows whole rows.
+ */
+const MAX_HEIGHT = "max-h-[calc(var(--spacing-row)*var(--popup-rows)+8px)] touch:max-h-[calc(var(--spacing-ctl-lg)*var(--popup-rows)+8px)]";
 
 /** The panel look of every popup list that floats on its own (slash and mention menus; the pickers get it from `Popover`). */
 export const POPUP_PANEL =
@@ -19,7 +23,7 @@ export function popupOptionId(listId: string, rowId: string): string {
 
 /**
  * The one list of every popup (decision 95): the composer's slash and mention menus, the model, folder and routing pickers.
- * Same rows (28px, 40px with a `sub` line; 16px lead slot, name with the match highlighted, dim detail, right-aligned hint),
+ * Same rows (28px, 40px with a `sub` line or under `touch:`; 16px lead slot, name with the match highlighted, dim detail, right-aligned hint),
  * same group captions, same empty line, same keyboard contract.
  *
  * It does not own the keys: the field that keeps focus (a search input, or the composer's text) calls `popupTarget`
@@ -83,8 +87,8 @@ export function PopupList(props: {
         const row = props.sections.flatMap((s) => s.rows).find((r) => r.id === el.dataset.pickerRow);
         if (row && !row.disabled) props.onChoose(row);
       }}
-      className={cn("min-h-0 overflow-y-auto overscroll-contain p-1", props.className)}
-      style={{ maxHeight: (props.maxRows ?? VISIBLE) * ROW + 8 }}
+      className={cn("min-h-0 overflow-y-auto overscroll-contain p-1", MAX_HEIGHT, props.className)}
+      style={{ "--popup-rows": props.maxRows ?? VISIBLE } as CSSProperties}
     >
       {props.sections.map((s) =>
         s.rows.length === 0 ? null : (
@@ -118,7 +122,7 @@ export function PopupList(props: {
                     props.onActive(r.id);
                   }}
                   className={cn(
-                    "group flex min-w-0 items-center gap-2 rounded-sm px-2 press-row max-md:h-bar",
+                    "group flex min-w-0 items-center gap-2 rounded-sm px-2 press-row touch:h-ctl-lg",
                     r.sub ? "h-10" : "h-row",
                     r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg",
                   )}

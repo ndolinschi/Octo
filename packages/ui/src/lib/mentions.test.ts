@@ -3,6 +3,7 @@ import test from "node:test";
 import { composerSpans, hasHighlights } from "./mentions";
 
 const kinds = (text: string) => composerSpans(text).map((s) => `${s.kind}:${s.text}`);
+const kinds2 = (text: string, names: readonly string[]) => composerSpans(text, names).map((s) => `${s.kind}:${s.text}`);
 
 test("a file mention is a span; the spans cover the whole text", () => {
   const text = "look at @src/lib/format.ts, then run it";
@@ -24,11 +25,29 @@ test("an email address is not a mention (the @ is not at a word start)", () => {
   assert.deepEqual(kinds("write to maya@octo.dev"), ["text:write to maya@octo.dev"]);
 });
 
-test("known slash commands highlight, unknown ones do not", () => {
+test("a known command at the start of the text highlights; unknown ones do not", () => {
   assert.deepEqual(kinds("/settings"), ["command:/settings"]);
-  assert.deepEqual(kinds("open /files now"), ["text:open ", "command:/files", "text: now"]);
+  assert.deepEqual(kinds("/context"), ["command:/context"]);
+  assert.deepEqual(kinds("/remember we deploy"), ["command:/remember", "text: we deploy"]);
+  assert.deepEqual(kinds("  /clear"), ["text:  ", "command:/clear"]);
   assert.deepEqual(kinds("/frobnicate"), ["text:/frobnicate"]);
+  assert.deepEqual(kinds("/files"), ["text:/files"]);
   assert.deepEqual(kinds("see src/files/x"), ["text:see src/files/x"]);
+});
+
+test("a command in mid-sentence does not highlight (it would not run there)", () => {
+  assert.deepEqual(kinds("open /settings now"), ["text:open /settings now"]);
+  assert.deepEqual(kinds("/context then @src/auth/refresh.ts and /files and /clear"), [
+    "command:/context",
+    "text: then ",
+    "mention:@src/auth/refresh.ts",
+    "text: and /files and /clear",
+  ]);
+});
+
+test("a caller's own command names replace the Octo ones", () => {
+  assert.deepEqual(kinds2("/init", ["init"]), ["command:/init"]);
+  assert.deepEqual(kinds2("/clear", ["init"]), ["text:/clear"]);
 });
 
 test("newlines separate words and an empty text has no spans", () => {

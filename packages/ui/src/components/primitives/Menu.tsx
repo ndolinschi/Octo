@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
-import { createPointerGate } from "./popupNav";
+import { createPointerGate, popupListKey, popupTarget } from "./popupNav";
 
 export type MenuItem =
   | {
@@ -27,9 +27,12 @@ const EDGE = 8;
 const ITEM = '[data-menu-item]:not([aria-disabled="true"])';
 
 /**
- * A small context menu at a point (or opening upwards from it with `above`). It appears and leaves instantly (no animation): (pointer position or a control's corner). Arrow keys, Home/End and
- * type-ahead move; Enter/Space runs; Esc, Tab, a click outside or scrolling closes. Focus moves into the
- * menu on open and back to the opener when it starts closing (unless the chosen item moved it elsewhere).
+ * A small context menu at a point (pointer position or a control's corner), or opening upwards from it with `above`. It appears
+ * and leaves instantly (no animation). Keys follow decision 95's one contract (`popupNav`; a menu has no text field): ↑/↓ wrap,
+ * Home/End jump, Tab / Shift+Tab move to the next / previous item (focus stays in the menu), type-ahead moves; Enter/Space runs;
+ * Esc, a click outside, resizing the window or scrolling closes. Rows look like `PopupList`'s: a 16px leading slot (the check of a
+ * choice), 28px, 40px under `touch:`. Focus moves into the menu on open and back to the opener when it starts closing (unless the
+ * chosen item moved it elsewhere).
  */
 export function Menu(props: {
   label: string;
@@ -108,28 +111,22 @@ export function Menu(props: {
   }, [open, onClose]);
 
   const items = () => [...(ref.current?.querySelectorAll<HTMLElement>(ITEM) ?? [])];
-  const move = (delta: number | "first" | "last") => {
+  const move = (key: string) => {
     const list = items();
-    if (!list.length) return;
-    const i = list.indexOf(document.activeElement as HTMLElement);
-    const next = delta === "first" ? 0 : delta === "last" ? list.length - 1 : (i + delta + list.length) % list.length;
-    list[next]?.focus();
+    const ids = list.map((el) => el.dataset.id ?? "");
+    const at = list.find((el) => el === document.activeElement)?.dataset.id ?? null;
+    const to = popupTarget(key, ids, at);
+    list.find((el) => el.dataset.id === to)?.focus();
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    const keys: Record<string, () => void> = {
-      ArrowDown: () => move(1),
-      ArrowUp: () => move(-1),
-      Home: () => move("first"),
-      End: () => move("last"),
-      Escape: onClose,
-      Tab: onClose,
-    };
-    const fn = keys[e.key];
-    if (fn) {
+    // Tab moves focus as in every list that is not a typing menu; the menu's items are its only focusable elements.
+    const key = e.key === "Tab" ? (e.shiftKey ? "ArrowUp" : "ArrowDown") : popupListKey(e, false);
+    if (key !== null || e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      fn();
+      if (key === null) onClose();
+      else move(key);
       return;
     }
     if (e.key.length === 1 && /\S/.test(e.key)) {
@@ -182,18 +179,17 @@ export function Menu(props: {
             }}
             className={cn(
               // Radius 6 = menu radius (10) − its padding (4).
-              "flex h-row items-center gap-6 rounded-sm px-2 outline-none focus-visible:shadow-none",
+              "flex h-row items-center gap-2 rounded-sm px-2 outline-none focus-visible:shadow-none touch:h-ctl-lg",
               item.disabled ? "text-fg-3" : "text-fg focus:bg-active",
             )}
           >
+            {/* The same 16px leading slot as `PopupList`'s rows, so every popup's text starts on one line. */}
+            <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+              {item.checked && <Glyph icon={Check} size={14} />}
+            </span>
             <span className="min-w-0 flex-1 truncate">{item.label}</span>
-            {item.detail && <span className="shrink-0 text-xs text-fg-3">{item.detail}</span>}
-            {item.shortcut && <kbd className="shrink-0 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
-            {item.checked !== undefined && (
-              <span aria-hidden className="grid size-4 shrink-0 place-items-center">
-                {item.checked && <Glyph icon={Check} size={14} />}
-              </span>
-            )}
+            {item.detail && <span className="shrink-0 pl-4 text-xs text-fg-3">{item.detail}</span>}
+            {item.shortcut && <kbd className="shrink-0 pl-4 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
           </div>
         ) : (
           <div key={item.id} role="separator" className="mx-2 my-1 h-px bg-line" />

@@ -21,7 +21,7 @@ import { SearchField } from "../primitives/SearchField";
 import { TextField } from "../primitives/TextField";
 import { ProviderMark } from "../primitives/ProviderMark";
 import { PopupList, popupOptionId } from "../primitives/PopupList";
-import { popupTarget } from "../primitives/popupNav";
+import { popupMove } from "../primitives/popupNav";
 import type { PickerSection } from "../../lib/picker";
 import { Popover } from "../primitives/Popover";
 import type { ModelPickerProps } from "./modelPickerProps";
@@ -76,10 +76,6 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const choose = (value: string, name?: { agent: string; model: string }) => {
     if (name) addModel(name.agent, name.model);
     props.onChoose(value);
-    props.onClose();
-  };
-  const pickAnyway = (providerId: string) => {
-    props.onChooseUnverified?.(`acp:${providerId}`);
     props.onClose();
   };
   const checkAgain = async (providerId: string) => {
@@ -157,13 +153,17 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const n = entries.length;
     const row = at >= 0 ? entries[at] : undefined;
-    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && n) {
+    // Decision 95 (`popupNav`): the search is a text field, so plain Home / End move its caret and Ctrl+Home / End jump.
+    const to = n
+      ? popupMove(
+          e,
+          true,
+          entries.map((x) => x.key),
+          row?.key ?? null,
+        )
+      : null;
+    if (to !== null) {
       e.preventDefault();
-      const to = popupTarget(
-        e.key,
-        entries.map((x) => x.key),
-        row?.key ?? null,
-      );
       setSelected(
         Math.max(
           0,
@@ -244,22 +244,19 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     if (r.kind === "custom") return { ...base, label: `Use “${r.label}”`, hint: r.agentId ? "model name" : "model id" };
     if (r.kind === "connect") {
       const text = r.unsupported ? (r.reason ?? r.state) : r.unverified ? r.state : `${r.state} · ${r.action}`;
+      // B13: beside "Check again" the state is the row's detail (it gives way before the name does); a right-aligned hint
+      // took a fraction of a pixel from the name at 320px, enough for "GitHub Co…".
+      const note = r.experimental ? "experimental" : null;
       return {
         ...base,
         label: r.label,
         quiet: true,
-        hint: text,
         lead: <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />,
-        ...(r.experimental ? { detail: "experimental" } : {}),
+        ...(r.unverified ? { detail: note ? `${note} · ${text}` : text } : { hint: text, ...(note ? { detail: note } : {}) }),
         ...(r.unverified
           ? {
               trailing: (
-                <UnverifiedActions
-                  checking={checking === r.providerId}
-                  still={stillOut === r.providerId}
-                  onCheck={() => void checkAgain(r.providerId)}
-                  {...(props.onChooseUnverified ? { onUse: () => pickAnyway(r.providerId) } : {})}
-                />
+                <UnverifiedActions checking={checking === r.providerId} still={stillOut === r.providerId} onCheck={() => void checkAgain(r.providerId)} />
               ),
             }
           : {}),
@@ -414,8 +411,11 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   );
 }
 
-/** "Check again" and "Use anyway" on a not-logged-in agent's row; out of the tab order like the row's remove button (Enter opens the connect sheet with both). */
-function UnverifiedActions({ checking, still, onCheck, onUse }: { checking: boolean; still: boolean; onCheck(): void; onUse?: () => void }) {
+/**
+ * "Check again" on a not-logged-in agent's row; out of the tab order like the row's remove button. One action only, so the
+ * name keeps its room at 320px (B13): "Use anyway" is in the connect sheet the row opens (Enter or a click), beside "Check again".
+ */
+function UnverifiedActions({ checking, still, onCheck }: { checking: boolean; still: boolean; onCheck(): void }) {
   const stop = (fn: () => void) => (e: { stopPropagation(): void }) => {
     e.stopPropagation();
     fn();
@@ -426,11 +426,6 @@ function UnverifiedActions({ checking, still, onCheck, onUse }: { checking: bool
       <Button variant="quiet" size="xs" tabIndex={-1} loading={checking} onClick={stop(onCheck)}>
         Check again
       </Button>
-      {onUse && (
-        <Button variant="quiet" size="xs" tabIndex={-1} onClick={stop(onUse)}>
-          Use anyway
-        </Button>
-      )}
     </span>
   );
 }

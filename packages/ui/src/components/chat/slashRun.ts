@@ -67,7 +67,12 @@ export async function runSlash(d: SlashDeps, name: string, args: string): Promis
       case "remember": {
         if (!bridge.rememberFact) return false;
         if (!args) push?.({ kind: "info", text: "Write what to keep after the command: /remember we deploy from the release branch." });
-        else await bridge.rememberFact(projectId, { text: args });
+        else {
+          // The note comes from the answer, not only from `fact.remembered`: a bridge may store the fact without the event
+          // (the desktop demo's memory layer does, B10). The provider keeps one note per fact when the event comes too.
+          const { task_id, fact } = await bridge.rememberFact(projectId, { text: args });
+          push?.({ kind: "remembered", taskId: task_id, factId: fact.id, text: fact.text, undone: false });
+        }
         return true;
       }
       case "help":

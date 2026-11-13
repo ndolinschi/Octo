@@ -11,7 +11,8 @@ import type { PickerSection } from "../../lib/picker";
 import { fileIcon } from "../primitives/fileIcons";
 import { usePresence } from "../primitives/Presence";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
-import { popupTarget } from "../primitives/popupNav";
+import { popupMove } from "../primitives/popupNav";
+import { useLatest } from "../../lib/hooks";
 
 /** What picking an entry does: text goes into the composer at the trigger (or the caret); `run` does something else. */
 export type MenuPick = { insert: string } | { run(): void };
@@ -45,7 +46,11 @@ export type ComposerMenuHandle = { onKeyDown(e: KeyboardEvent): boolean };
  * The composer's "+" menu: one searchable list above the composer (overlay, radius 10, 28px rows, 8
  * visible, the match highlighted, the selected row's hint on the right). Opened by the "+" button
  * (it then has its own search field) or by typing `/` or `@` at the start of a word (the composer's
- * text after the trigger is the query and focus stays in the composer: ↑/↓/Enter/Esc are forwarded).
+ * text after the trigger is the query and focus stays in the composer: ↑/↓/Enter/Tab/Esc are forwarded).
+ * Keys follow decision 95 (`popupNav`): both inputs are text fields, so plain Home / End move the caret and Ctrl+Home / End jump;
+ * Tab accepts the active row only as the mention menu (a completion of what is typed); in the "+" menu Tab keeps focus in its
+ * search field, the panel's only focusable element, and focus leaving the panel closes it. Resizing the window closes it, as
+ * `Menu` and `Popover` do (B9).
  * Groups appear only with entries: Files (the same loader as Filter files), Agents (available plugin
  * ACP agents), Comments (pending), Actions.
  */
@@ -163,26 +168,40 @@ export const ComposerMenu = forwardRef<
   useEffect(() => onActive(currentId === null ? null : optionId(currentId)));
   useEffect(() => () => onActive(null), [onActive]);
 
-  // Above its anchor, on the anchor's left edge, as wide as the composer box (up to 480px) and never past the window.
+  // Above its anchor, on the anchor's left edge, as wide as the composer box (up to 480px) and never past the window. A window
+  // resize closes it, as it closes `Menu` and `Popover` (B9): the anchor moves after the resize, so a measure on `resize` was stale.
+  const close = useLatest(onClose);
   useLayoutEffect(() => {
-    const place = () => {
-      const r = props.anchor.current?.getBoundingClientRect();
-      const b = props.box.current?.getBoundingClientRect();
-      if (!r || !b) return;
+    const r = props.anchor.current?.getBoundingClientRect();
+    const b = props.box.current?.getBoundingClientRect();
+    if (r && b) {
       const width = Math.min(b.width, 480, window.innerWidth - 16);
       const gap = props.anchor.current === props.box.current ? GAP : CHIP_GAP;
       setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), bottom: window.innerHeight - r.top + gap, width });
-    };
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [props.anchor, props.box]);
+    }
+    const onResize = () => close.current();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [props.anchor, props.box, close]);
 
   // Opened by the button, the search field takes focus once the panel exists (it renders after `pos`).
   const placed = pos !== null;
   useEffect(() => {
     if (props.query === null && placed) search.current?.focus();
   }, [props.query, placed]);
+  // Focus that leaves the "+" menu's search for anything but the menu or its button closes it (decision 95); a move to nothing
+  // (the window lost focus) does not.
+  const plus = props.query === null;
+  useEffect(() => {
+    const el = panel.current;
+    if (!plus || !el) return;
+    const left = (e: FocusEvent) => {
+      const to = e.relatedTarget;
+      if (to instanceof Node && !el.contains(to) && !props.anchor.current?.contains(to)) onClose();
+    };
+    el.addEventListener("focusout", left);
+    return () => el.removeEventListener("focusout", left);
+  }, [plus, placed, onClose, props.anchor]);
   useEffect(() => {
     const outside = (e: PointerEvent) => {
       const t = e.target as Node;
@@ -195,15 +214,18 @@ export const ComposerMenu = forwardRef<
   const choose = (e: Entry | undefined) => e && props.onPick(e.pick);
 
   const keys = (e: KeyboardEvent): boolean => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      const to = popupTarget(
-        e.key,
-        entries.map((x) => x.id),
-        currentId,
-      );
-      if (to !== null) setSelected(to);
+    const to = popupMove(
+      e,
+      true,
+      entries.map((x) => x.id),
+      currentId,
+    );
+    if (to !== null) {
+      setSelected(to);
       return true;
     }
+    // In the "+" menu Tab moves focus, and the search field is the panel's only focusable element: it stays there.
+    if (e.key === "Tab" && props.query === null) return true;
     if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
       if (!current) return false;
       choose(current);

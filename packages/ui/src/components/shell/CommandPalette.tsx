@@ -19,6 +19,7 @@ import { agentGlyph, orchestratorGlyph, type GlyphState } from "../../lib/stateG
 import { projectRowLines } from "../../lib/orchestrator";
 import { useOrchestrators } from "../../state/orchestrators";
 import { useModal } from "../primitives/useModal";
+import { popupListKey } from "../primitives/popupNav";
 
 export type PaletteAction = { id: string; label: string; hint?: string; shortcut?: string; run(): void };
 
@@ -213,7 +214,9 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
       PageDown: () => Math.min(flat.length - 1, current + 5),
       PageUp: () => Math.max(0, current - 5),
     };
-    const move = moves[e.key];
+    // Decision 95 (`popupNav`): the search is a text field, so plain Home / End move its caret and Ctrl+Home / End jump.
+    const jump = popupListKey(e, true);
+    const move = jump === "Home" ? () => 0 : jump === "End" ? () => flat.length - 1 : moves[e.key];
     if (move) {
       e.preventDefault();
       setSelected(move());

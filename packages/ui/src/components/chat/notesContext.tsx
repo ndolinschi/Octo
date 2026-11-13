@@ -34,7 +34,14 @@ export function InlineNotesProvider({ rewindLast, children }: { rewindLast?: (()
   const [notes, setNotes] = useState<InlineNote[]>([]);
   const { onEvent } = useProject();
   const { bridge } = useApp();
-  const push = useCallback((note: NoteInput) => setNotes((all) => [...all, { ...note, id: (next += 1) }]), []);
+  // A fact is noted once: `/remember` pushes the note from its answer and the harness's `fact.remembered` may follow.
+  const push = useCallback(
+    (note: NoteInput) =>
+      setNotes((all) =>
+        note.kind === "remembered" && all.some((n) => n.kind === "remembered" && n.factId === note.factId) ? all : [...all, { ...note, id: (next += 1) }],
+      ),
+    [],
+  );
   const dismiss = useCallback((id: number) => setNotes((all) => all.filter((n) => n.id !== id)), []);
   const markUndone = useCallback(
     (factId: string) => setNotes((all) => all.map((n) => (n.kind === "remembered" && n.factId === factId ? { ...n, undone: true } : n))),
