@@ -8,10 +8,13 @@ import { Button } from "../primitives/Button";
 import { ListRow } from "../primitives/ListRow";
 import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
-import { Spinner } from "../primitives/Status";
+import { StateGlyph } from "../primitives/StateGlyph";
+import type { GlyphState } from "../../lib/stateGlyph";
 import { type FileKey } from "../../lib/files";
 
 const STATE_TEXT = { starting: "starting…", ready: "ready", failed: "failed", stopped: "stopped" } as const;
+/** The server's state in the app's one glyph family (polish step 4, E1): ready is the quiet idle dot. */
+const GLYPH = { starting: "working", ready: "idle", failed: "failed", stopped: "failed" } as const satisfies Record<keyof typeof STATE_TEXT, GlyphState>;
 
 const ICON: Record<ProblemSeverity, { icon: typeof CircleX; className: string; label: string }> = {
   error: { icon: CircleX, className: "text-err", label: "Error" },
@@ -21,21 +24,25 @@ const ICON: Record<ProblemSeverity, { icon: typeof CircleX; className: string; l
 };
 
 /**
- * The right side of a File tab's header when a language server serves the file: a problems count
- * (opens a compact list; a row jumps to its line) and the server's name and state. Quiet: muted
- * text, no state shown for the first 200ms of starting (no flash), Retry after a failure or exit.
- * `compact` (a narrow breadcrumb row) shows the server as a dot only, so it never competes with the crumbs.
+ * The file bar's status when a language server serves the file: a problems count (opens a compact list; a row jumps to
+ * its line) and the server's state as a glyph of the app's family (polish step 4, E1) with its name, and its state in
+ * words when it is not ready ("failed" in `err`, then Retry). Quiet meta text; no state for the first 200ms of
+ * starting (no flash). `compact` (a narrow bar) drops the name but keeps the words of a state that is not ready; a
+ * ready server is then its glyph alone in a 28px box, the name in the tooltip.
  */
 export function EditorStatus({
   intel,
   fileKey,
   onJump,
   compact = false,
+  hideReady = false,
 }: {
   intel: EditorIntel;
   fileKey: FileKey;
   onJump(problem: Problem): void;
-  /** Narrow row: the server as a state dot, its name in the tooltip. */ compact?: boolean;
+  /** Narrow row: the server as its glyph, its name in the tooltip. */ compact?: boolean;
+  /** A very narrow row: a ready server shows nothing (screen readers still hear it); a state that is not ready still shows. */
+  hideReady?: boolean;
 }) {
   const info = useSyncExternalStore(intel.subscribe, () => intel.get(fileKey));
   const { status, problems, notice } = info;
@@ -56,20 +63,27 @@ export function EditorStatus({
         <span
           role="status"
           aria-label={`Language server: ${status.label}, ${STATE_TEXT[status.state]}`}
-          title={status.error ? `${status.label}: ${status.error}` : `${status.label} (language server)`}
-          className="flex min-w-0 shrink-0 items-center gap-1.5"
+          title={status.error ? `${status.label}: ${status.error}` : `${status.label} (language server), ${STATE_TEXT[status.state]}`}
+          data-lsp-state={status.state}
+          className={cn(
+            "flex h-7 min-w-0 shrink items-center gap-1.5",
+            compact && shownState === "ready" ? "w-7 shrink-0 justify-center" : "px-1",
+            hideReady && shownState !== "starting" && !broken && "sr-only",
+          )}
         >
-          {shownState === "starting" && <Spinner size={10} />}
-          {broken && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-err" />}
-          {compact && shownState === "ready" && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-fg-3" />}
-          <span aria-hidden className={cn("max-w-[180px] truncate", compact && "hidden")}>
-            {status.label}
-            {shownState && shownState !== "ready" && <span className={cn(broken && "text-err")}> {STATE_TEXT[shownState]}</span>}
+          {shownState && <StateGlyph state={GLYPH[shownState]} />}
+          <span aria-hidden className={cn("max-w-[200px] min-w-0 truncate", compact && shownState === "ready" && "hidden")}>
+            {!compact && status.label}
+            {shownState && shownState !== "ready" && (
+              <span className={cn(broken && "text-err")}>
+                {compact ? STATE_TEXT[shownState].replace(/^./, (c) => c.toUpperCase()) : ` ${STATE_TEXT[shownState]}`}
+              </span>
+            )}
           </span>
         </span>
       )}
       {status && broken && (
-        <Button variant="quiet" size="xs" onClick={() => intel.retry(fileKey)}>
+        <Button variant="quiet" size="sm" className="shrink-0 text-xs" onClick={() => intel.retry(fileKey)}>
           Retry
         </Button>
       )}
@@ -94,11 +108,11 @@ function ProblemsButton({ problems, onJump }: { problems: Problem[]; onJump(prob
       <Button
         ref={anchor}
         variant="quiet"
-        size="xs"
+        size="sm"
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((x) => !x)}
-        className={cn("tabular-nums", open && "bg-active text-fg")}
+        className={cn("shrink-0 text-xs tabular-nums", open && "bg-active text-fg")}
       >
         <Glyph icon={Icon} size={14} className={top.className} />
         {n}&nbsp;{n === 1 ? "problem" : "problems"}

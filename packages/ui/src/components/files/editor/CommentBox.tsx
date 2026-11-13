@@ -8,15 +8,16 @@ import { TextArea } from "../../primitives/TextField";
 
 /**
  * What an editor view zone shows under a line: the inline composer, or a pending comment card.
- * Both sit on the editor surface as a `raised` box (radius 8, hairline) in the UI font, so they read
- * as part of the editor rather than a form dropped into it. Rendered in their own React root (view
+ * Both sit on the editor surface as a `raised` box (radius 8) in the UI font, so they read as part of the editor rather than
+ * a form dropped into it. Polish step 4, E6: a card is a tone with no outline (step 1's rule); the composer is a field, so it
+ * keeps the fields' edge (`field-edge`, `fg` on focus). Rendered in their own React root (view
  * zones live inside Monaco's DOM), so everything comes in as props.
  */
 export type ZoneProps =
   | { kind: "composer"; start: number; end: number; initial: string; editing: boolean; onSubmit(text: string): void; onCancel(): void }
   | { kind: "card"; start: number; end: number; text: string; onEdit(): void; onRemove(): void };
 
-const BOX = "w-full rounded-md border border-line bg-raised font-sans text-sm text-fg";
+const BOX = "w-full rounded-md bg-raised font-sans text-sm text-fg";
 
 export function CommentZone({ onLayout, ...props }: ZoneProps & { onLayout?: () => void }) {
   // Tells the editor once the box is in the DOM and measurable (it then makes room for it).
@@ -70,7 +71,7 @@ function Composer(props: Extract<ZoneProps, { kind: "composer" }>) {
 
   return (
     <form
-      className={cn(BOX, "transition-[border-color] duration-100 focus-within:border-focus")}
+      className={cn(BOX, "border border-field-edge transition-[border-color] duration-100 focus-within:border-fg")}
       onSubmit={(e) => {
         e.preventDefault();
         submit();

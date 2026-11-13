@@ -3063,3 +3063,37 @@ executor, a sample by the orchestrator.
   `withDemoMemory` never emitted `fact.remembered`); a harness that also sends the event still gives one line.
   Checked: `picker-keys` ok, part 3's key script at 1440×900 dark and 390×700 light. Not verified: popovers other than the
   model picker, the folder picker and the context popover; touch (a resize from an on-screen keyboard would close the menus).
+
+## As built — polish step 4: files and the editor (2026-11-13; one commit)
+
+Rules E1–E7 of the orchestrator's brief; before/after pairs in dark and light at 1440×900, 900×600 and 390×700 read by
+the executor, a sample by the orchestrator.
+
+- **E1, editor bar.** Navigation · crumbs · status words · the language server · one right-hand group of 28×28 controls
+  (16px glyphs, gap 4). Crumbs: folders `fg-3`, the file name `fg` medium; `lib/crumbs.ts` `crumbFloor` (tested) keeps
+  "… › file" readable, so the status folds before the name is cut (B21). The language server is a glyph of the app's state
+  family with its name in the tooltip (and beside it when there is room), and in words when it is not ready ("Starting…",
+  "Failed" + Retry). "Unsaved", "Saving…" and the server's failure share one slot. Preview | Source is the app's
+  `Segmented`. Not done: "Changed on disk" stays a notice line under the bar (two actions do not fit a narrow bar).
+- **E2, tree.** Indent 12 per level (was 16); root folders are 12px caption heads; names one weight, icons `fg-3`; the
+  selected row is the sidebar's selection tint; the filter sits in `PanelFilters` on the rows' edges; rows 28, 40 under
+  touch (B22).
+- **E3, E4, the surface.** The editor's background is the panel tone in dark (`#171717`, was `#141414`), so tree and editor
+  are one surface split by a hairline; the divider draws 2px on hover and drag. Line numbers `#888888` / `#707070` (one step
+  under meta, about 5:1), the active one `fg`; comments are `fg-3`; selection, find matches and the current line come from
+  tokens, no boxes; scrollbar track 8, thumb 4 (6 on hover). The syntax palette lives in `lib/codePalette.ts` (also read by
+  the conversation's code blocks: their comment colour moved too); every token is at or above 5.8:1 in both themes.
+  **Departs from** the Code pane section's listed colours, 14px tree indent and 6/8 scrollbars.
+- **E5, covers.** No file, too large, binary, an open error and "no folders" are centred `EmptyState`s with actions (Copy
+  path, Reveal in tree, Retry, Project settings) — no longer one line in a corner. Monaco's scrollbar cannot show through a
+  cover or the tree page (B20).
+- **E6, comments.** The comment card is a tone without an outline; the Pending comments popover opens on its first comment
+  and "Remove all" is the last stop, in a footer (B23; no Undo).
+- **E7, page mode.** Files / Editor are one control in one place; focus goes to the selected row (else the filter) on the
+  tree page and into the editor on the editor page.
+- The Changes and Review diffs share the theme: only the dark background, the comment and line-number greys and the
+  scrollbars moved.
+- Gates: `tsc`, 619 unit tests (+ crumbs), eslint 0 errors, prettier, `file-open-stability` at 1440×900, 900×600 and
+  390×700, `width-stability` (two sizes), `layout-shift`, `spacing-audit` total=0, `frame-colours`, `flicker` ok; tree keys,
+  divider, save, conflict, comments, Preview/Source, ghost text, LSP retry and page mode re-run by script. Not verified:
+  WebKit, touch, a screen reader.

@@ -1,10 +1,10 @@
-import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, CodeXml, Ellipsis, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { Fragment, lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
-import { crumbName, fitCrumbs } from "../../lib/crumbs";
+import { crumbFloor, crumbName, fitCrumbs } from "../../lib/crumbs";
 import { useCopy, useDelayedLoading } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useCode, type OpenFile } from "../../state/code";
@@ -16,9 +16,11 @@ import { useFloatingHere } from "../../state/workspace/useFloatingHere";
 import { useGroup } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
 import { Button } from "../primitives/Button";
+import { EmptyState } from "../primitives/EmptyState";
 import { IconButton } from "../primitives/IconButton";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
+import { Segmented } from "../primitives/Segmented";
 import { Spinner } from "../primitives/Status";
 import { EditorSkeleton } from "./EditorSkeleton";
 import { CodeEditor } from "./CodeEditor";
@@ -68,6 +70,25 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const shell = useTreeShell(root, tab, fileKey, groupId);
   const { width, page, showEditor } = shell;
   const treeId = `${domId(tab)}-tree`;
+  // A narrow bar: the completion model and the server's name fold to their glyphs (B21: never the file name first).
+  const compact = width > 0 && width < 640;
+  // A very narrow bar (a phone): the page switch is its glyph, "Unsaved" a dot (the tab says it too), a ready server nothing.
+  const narrow = width > 0 && width < 440;
+  // Page mode (E7): the page that shows takes focus — the selected row (else the filter) for the tree, the editor for a file.
+  const showTreePage = () => {
+    shell.showTree();
+    focusSoon(() => {
+      const t = document.getElementById(treeId);
+      return t?.querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"]') ?? t?.querySelector<HTMLElement>("input");
+    });
+  };
+  const showEditorPage = () => {
+    shell.showEditor();
+    focusSoon(() => {
+      const area = root.current?.querySelector("[data-editor-area]");
+      return area?.querySelector<HTMLElement>(".monaco-editor textarea") ?? area?.querySelector<HTMLElement>("[data-file-focus]");
+    });
+  };
   // Files picked in this view's tree open in this group; the empty view turns into the file in place. In page mode the picked
   // file also turns the page to the editor (one change, nothing else moves). Opening a file never leaves focus on nothing:
   // when the picked row went away (the tree page hid, the empty Files view turned into the file in place), the file's editor
@@ -105,9 +126,9 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const ready = file?.status === "ready" && !opening;
   let cover: ReactNode = null;
   if (!fileKey) {
-    cover = <div className="grid h-full place-items-center text-sm text-fg-3">{code.folders.length ? "Select a file" : <NoFolders />}</div>;
+    cover = code.folders.length ? <Cover title="No file open">Pick a file in the tree, or filter the tree by name.</Cover> : <NoFolders />;
   } else if (!ready) {
-    cover = <Message file={file} name={path.slice(path.lastIndexOf("/") + 1)} showLoading={opening} />;
+    cover = <Message file={file} folder={folder} path={path} showLoading={opening} />;
   } else if (markdown && mode === "preview") {
     cover = (
       <Suspense fallback={null}>
@@ -118,7 +139,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const body = (
     <div className="relative h-full min-h-0">
       {fileKey !== null && (
-        <div className="absolute inset-0" inert={cover !== null}>
+        // `isolate`: Monaco's own layers (its scrollbars are z 11) stay inside this box, under the cover (finding B20).
+        <div className="absolute inset-0 isolate" inert={cover !== null}>
           <CodeEditor
             file={shown}
             buffers={code.buffers}
@@ -135,54 +157,64 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
 
   return (
     <div ref={root} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
-      {/* The hairline is an inset shadow, so the 40px row keeps a 40px content box (no half-pixel centring). */}
+      {/* The hairline is an inset shadow, so the 40px row keeps a 40px content box (no half-pixel centring). Polish step 4, E1:
+          navigation · crumbs · one status slot (meta words: saving, unsaved, the language server when it is not ready) · one
+          right-hand group of 28px controls with 16px glyphs, 4 apart. In page mode the Files / Editor switch is the first item. */}
       <div data-file-bar className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]">
-        {page && !shell.treePage && fileKey && (
-          <Button variant="quiet" size="sm" icon={PanelLeft} title="Show the file tree" onClick={shell.showTree}>
-            Files
-          </Button>
-        )}
+        {page &&
+          fileKey &&
+          (narrow ? (
+            <IconButton
+              icon={shell.treePage ? CodeXml : PanelLeft}
+              label={shell.treePage ? "Editor" : "Files"}
+              title={shell.treePage ? "Show the editor" : "Show the file tree"}
+              onClick={shell.treePage ? showEditorPage : showTreePage}
+            />
+          ) : (
+            <Button
+              variant="quiet"
+              size="sm"
+              icon={shell.treePage ? CodeXml : PanelLeft}
+              title={shell.treePage ? "Show the editor" : "Show the file tree"}
+              onClick={shell.treePage ? showEditorPage : showTreePage}
+            >
+              {shell.treePage ? "Editor" : "Files"}
+            </Button>
+          ))}
         <IconButton icon={ArrowLeft} label="Back" title="Back (previous file in this group)" disabled={!group?.canBack} onClick={group?.back} />
         <IconButton icon={ArrowRight} label="Forward" title="Forward (next file in this group)" disabled={!group?.canForward} onClick={group?.forward} />
         {fileKey ? <Crumbs folder={folder} path={path} /> : <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>}
-        <span className="flex shrink-0 items-center gap-2 pl-2">
-          <span className="flex shrink-0 items-center gap-2 empty:hidden" role="status">
-            {saving && (
-              <>
-                <Spinner size={10} /> Saving…
-              </>
-            )}
-            {file?.modified && !saving && <span>Unsaved</span>}
-          </span>
-          {fileKey && <CompletionStatus fileKey={fileKey} compact={width > 0 && width < 640} />}
-          {fileKey && (
-            <EditorStatus
-              compact={width > 0 && width < 640}
-              intel={code.intel}
-              fileKey={fileKey}
-              onJump={(p) => code.openFile(folder, path, { line: p.line, column: p.column })}
+        <span data-file-status className="flex min-w-0 shrink items-center gap-2 pl-1 empty:hidden" role="status">
+          {saving && (
+            <>
+              <Spinner size={10} /> Saving…
+            </>
+          )}
+          {file?.modified && !saving && (narrow ? <UnsavedDot /> : <span className="shrink-0">Unsaved</span>)}
+        </span>
+        {fileKey && (
+          <EditorStatus
+            compact={compact}
+            hideReady={narrow}
+            intel={code.intel}
+            fileKey={fileKey}
+            onJump={(p) => code.openFile(folder, path, { line: p.line, column: p.column })}
+          />
+        )}
+        <span data-file-actions className="flex shrink-0 items-center gap-1 empty:hidden">
+          {fileKey && <CompletionStatus fileKey={fileKey} compact={compact} />}
+          {markdown && file?.status === "ready" && <ModeToggle mode={mode} onChange={setMode} />}
+          {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
+          {!page && (
+            <IconButton
+              icon={shell.open ? PanelLeftClose : PanelLeftOpen}
+              label={shell.open ? "Hide file tree" : "Show file tree"}
+              aria-expanded={shell.open}
+              aria-controls={shell.open ? treeId : undefined}
+              onClick={shell.toggleColumn}
             />
           )}
         </span>
-        {markdown && file?.status === "ready" && <ModeToggle mode={mode} onChange={setMode} />}
-        {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
-        {page ? (
-          shell.treePage &&
-          fileKey && (
-            <Button variant="quiet" size="sm" onClick={shell.showEditor}>
-              Editor
-            </Button>
-          )
-        ) : (
-          <IconButton
-            icon={shell.open ? PanelLeftClose : PanelLeftOpen}
-            label={shell.open ? "Hide file tree" : "Show file tree"}
-            aria-expanded={shell.open}
-            aria-controls={shell.open ? treeId : undefined}
-            onClick={shell.toggleColumn}
-            className={cn(shell.open && "text-fg-2")}
-          />
-        )}
       </div>
       <div className="relative flex min-h-0 flex-1">
         {(page || shell.open) && (
@@ -205,7 +237,8 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
           className={cn(
             "relative flex min-w-0 flex-1 flex-col overflow-clip contain-inline-size",
             page && "absolute inset-0",
-            page && shell.treePage && "invisible",
+            // Monaco's scrollbars set their own `visibility: visible`: hidden with the page (finding B20, page mode).
+            page && shell.treePage && "invisible [&_.scrollbar]:invisible!",
           )}
         >
           {file && <Notice file={file} />}
@@ -220,12 +253,37 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
 function NoFolders() {
   const ws = useWorkspace();
   return (
-    <div className="text-center">
-      <p className="text-fg-2">No folders attached. Add one in project settings.</p>
-      <Button size="sm" className="mt-3" onClick={ws.openSettings}>
-        Project settings
-      </Button>
+    <Cover
+      title="No folders attached"
+      actions={
+        <Button size="sm" onClick={ws.openSettings}>
+          Project settings
+        </Button>
+      }
+    >
+      Add one in project settings.
+    </Cover>
+  );
+}
+
+/** A cover over the editor's box (E5): the app's `EmptyState`, centred, on the panel. */
+function Cover(props: { title: string; children?: ReactNode; actions?: ReactNode; tone?: "plain" | "err" }) {
+  return (
+    <div className="flex h-full flex-col">
+      <EmptyState title={props.title} actions={props.actions} {...(props.tone ? { tone: props.tone } : {})}>
+        {props.children}
+      </EmptyState>
     </div>
+  );
+}
+
+/** "Unsaved" in a narrow bar: a dot with the word for screen readers and in the tooltip. */
+function UnsavedDot() {
+  return (
+    <span title="Unsaved changes" className="grid size-4 shrink-0 place-items-center">
+      <span aria-hidden className="size-2 rounded-full bg-fg-2" />
+      <span className="sr-only">Unsaved</span>
+    </span>
   );
 }
 
@@ -241,6 +299,8 @@ function textWidth(text: string, font: string): number {
 /** Crumb padding (px-1 both sides), the separator glyph, the gap between items, the file crumb's icon + gap. */
 const CRUMB_PAD = 8;
 const SEP = 14;
+/** The floor never takes more than this (a very long name is shortened in the middle instead). */
+const CRUMB_FLOOR_CAP = 200;
 const GAP = 2;
 const FILE_CHROME = CRUMB_PAD + 14 + 8;
 
@@ -276,9 +336,24 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
     // `all` is derived from `path`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room, folder, path, name]);
+  // B21: the crumbs never get less room than `… › file`, so the status beside them folds before the name is cut.
+  const floor = room
+    ? Math.min(
+        CRUMB_FLOOR_CAP,
+        crumbFloor({
+          folder: 0,
+          dirs: [],
+          file: Math.ceil(textWidth(name, room.font)) + FILE_CHROME,
+          fileChrome: FILE_CHROME,
+          sep: SEP,
+          ellipsis: Math.ceil(textWidth("…", room.font)) + CRUMB_PAD,
+          gap: GAP,
+        }),
+      )
+    : 0;
   const Icon = fileIcon(name);
   // A crumb is a quiet link: no padding of its own, so its width is the text plus the CRUMB_PAD the fit model counts.
-  const crumb = "h-6 px-1";
+  const crumb = "h-6 px-1 text-fg-3 hover:text-fg";
   const dirOf = (i: number) => all.slice(0, i + 1).join("/");
   const hidden = plan.hidden.map((i) => (i < 0 ? { label: folder, path: "" } : { label: all[i] ?? "", path: dirOf(i) }));
   return (
@@ -286,6 +361,7 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
       ref={nav}
       aria-label="File path"
       className="ml-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden whitespace-nowrap"
+      style={floor ? { minWidth: floor } : undefined}
       title={middleTruncate(`${folder}/${path}`, 96)}
     >
       {plan.folder && (
@@ -315,7 +391,7 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
         </Fragment>
       ))}
       {(plan.folder || hidden.length > 0) && <Sep />}
-      <span aria-current="page" className="flex h-6 min-w-0 items-center gap-2 px-1 text-sm text-fg" title={name}>
+      <span aria-current="page" className="flex h-6 min-w-0 items-center gap-2 px-1 text-sm font-medium text-fg" title={name}>
         <Glyph icon={Icon} size={14} className="shrink-0 text-fg-3" />
         <span className="min-w-0 overflow-hidden">{crumbName(name, plan)}</span>
       </span>
@@ -343,7 +419,7 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
           const r = button.current?.getBoundingClientRect();
           if (r) setMenu(menu ? null : { x: r.left, y: r.bottom + 4 });
         }}
-        className={cn("h-6 px-1", menu && "bg-active text-fg")}
+        className={cn("h-6 px-1 text-fg-3 hover:text-fg", menu && "bg-active text-fg")}
       >
         …
       </Button>
@@ -362,22 +438,24 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
   );
 }
 
+/** The separator: quieter than the crumbs it separates. */
 function Sep() {
-  return <Glyph icon={ChevronRight} size={14} className="shrink-0 text-fg-3" />;
+  return <Glyph icon={ChevronRight} size={14} className="shrink-0 text-fg-3 opacity-70" />;
 }
 
-/** Preview | Source for Markdown (remembered per tab): two 24px segments, the current one filled. */
+/** Preview | Source for Markdown (remembered per tab): the app's `Segmented` (a track, the chosen one raised). */
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange(m: Mode): void }) {
-  const item = (m: Mode, label: string) => (
-    <Button variant="quiet" size="xs" pressed={mode === m} onClick={() => onChange(m)}>
-      {label}
-    </Button>
-  );
   return (
-    <div role="group" aria-label="Markdown view" className="flex shrink-0 items-center gap-0.5">
-      {item("preview", "Preview")}
-      {item("source", "Source")}
-    </div>
+    <Segmented
+      label="Markdown view"
+      options={[
+        { id: "preview", label: "Preview" },
+        { id: "source", label: "Source" },
+      ]}
+      value={mode}
+      onChange={onChange}
+      className="mx-1"
+    />
   );
 }
 
@@ -429,8 +507,10 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
   );
 }
 
-function Message({ file, name, showLoading }: { file: OpenFile | undefined; name: string; showLoading: boolean }) {
+function Message({ file, folder, path, showLoading }: { file: OpenFile | undefined; folder: string; path: string; showLoading: boolean }) {
   const code = useCode();
+  const [, copy] = useCopy();
+  const name = path.slice(path.lastIndexOf("/") + 1);
   if (showLoading || !file || file.status === "loading" || file.status === "ready") {
     // The editor's place holds grey lines from the first frame (decision 60); the words are for screen readers.
     if (!showLoading && file?.status === "ready") return null;
@@ -443,21 +523,41 @@ function Message({ file, name, showLoading }: { file: OpenFile | undefined; name
       </div>
     );
   }
-  const text =
-    file.status === "too_large"
-      ? "This file is larger than 2 MiB, too large to open here."
-      : file.status === "binary"
-        ? "This is a binary file, so it can't be shown as text."
-        : `Couldn't open this file: ${(file.error ?? "unknown error").replace(/\.$/, "")}.`;
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 pt-3 text-sm text-fg-2">
-      <p className={cn("min-w-0", file.status === "error" && "text-err")}>{text}</p>
+  const absolute = code.folders.find((f) => f.label === folder)?.path;
+  const fullPath = absolute ? `${absolute.replace(/\/$/, "")}/${path}` : `${folder}/${path}`;
+  const actions = (
+    <span className="flex flex-wrap items-center justify-center gap-1.5">
       {file.status === "error" && (
-        <Button size="sm" onClick={() => code.retryOpen(file.key)}>
+        <Button size="sm" variant="secondary" onClick={() => code.retryOpen(file.key)}>
           Retry
         </Button>
       )}
-    </div>
+      <Button size="sm" variant="quiet" onClick={() => copy(fullPath)}>
+        Copy path
+      </Button>
+      <Button size="sm" variant="quiet" onClick={() => code.openFile(folder, path)}>
+        Reveal in tree
+      </Button>
+    </span>
+  );
+  if (file.status === "too_large") {
+    return (
+      <Cover title="Too large to open here" actions={actions}>
+        {name} is larger than 2 MiB.
+      </Cover>
+    );
+  }
+  if (file.status === "binary") {
+    return (
+      <Cover title="Binary file" actions={actions}>
+        {name} can't be shown as text.
+      </Cover>
+    );
+  }
+  return (
+    <Cover title={`Couldn't open ${name}`} tone="err" actions={actions}>
+      {(file.error ?? "Unknown error").replace(/\.$/, "")}.
+    </Cover>
   );
 }
 

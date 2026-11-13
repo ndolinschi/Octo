@@ -116,7 +116,11 @@ export function CodeEditor(props: {
       padding: { top: 8, bottom: bottomPadding.current },
       wordWrap: "off",
       detectIndentation: true,
+      // Gutter (polish step 4, E4): the comment lane (glyph margin, 20), numbers at least 3 digits wide, then a fixed 22px
+      // to the code: 6 for the comment rail and the 16 Monaco adds for the fold chevrons (shown on hover). Steady for any
+      // file up to 999 lines (was 26: Monaco's default 10 + 16).
       lineNumbersMinChars: 3,
+      lineDecorationsWidth: 6,
       // The comment "+" has its own lane left of the line numbers, so it never covers code (any indent).
       glyphMargin: true,
       folding: true,
@@ -129,16 +133,16 @@ export function CodeEditor(props: {
       stickyScroll: { enabled: false },
       bracketPairColorization: { enabled: false },
       guides: { indentation: true, bracketPairs: false },
-      // Slim and quiet like the app's other scroll areas: a 6px thumb in a 10px track, faded in on
-      // scroll or hover (styles.css widens and darkens it on hover/drag); none when content fits.
+      // Slim and quiet like the app's other scroll areas: a 4px thumb in an 8px track (styles.css widens it to 6 and
+      // darkens it on hover/drag); none when content fits.
       scrollbar: {
         vertical: "auto",
         // Always shown when a line is wider than the editor (a cut line needs a visible way to it).
         horizontal: "visible",
-        verticalScrollbarSize: 10,
-        horizontalScrollbarSize: 10,
-        verticalSliderSize: 6,
-        horizontalSliderSize: 6,
+        verticalScrollbarSize: 8,
+        horizontalScrollbarSize: 8,
+        verticalSliderSize: 4,
+        horizontalSliderSize: 4,
         useShadows: false,
         alwaysConsumeMouseWheel: false,
       },
