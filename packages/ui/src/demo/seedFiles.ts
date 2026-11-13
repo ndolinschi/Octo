@@ -3,7 +3,17 @@ import type { DemoFile } from "./store";
 
 type Seed = Record<string, string | { binary: true } | { size: number }>;
 
+/** Width-stability fixtures (decision 79): a 20-column file, a 400-column file and a one-line minified bundle. */
+const narrowLines = Array.from({ length: 12 }, (_, i) => `line ${i + 1}: short`).join("\n");
+const wideLines = Array.from({ length: 40 }, (_, i) => `${String(i + 1).padStart(3, "0")} ` + "0123456789 ".repeat(36)).join("\n");
+const minified =
+  "!function(e){var t={};function n(r){if(t[r])return t[r].exports;var o=t[r]={i:r,l:!1,exports:{}};return e[r].call(o.exports,o,o.exports,n),o.l=!0,o.exports}" +
+  "n.d=function(e,t,r){n.o(e,t)||Object.defineProperty(e,t,{enumerable:!0,get:r})};".repeat(40);
+
 const ATLAS_API: Seed = {
+  "width/narrow.txt": `${narrowLines}\n`,
+  "width/wide.txt": `${wideLines}\n`,
+  "width/minified.js": minified,
   ".gitignore": "node_modules/\ndist/\n.env\ncoverage/\n",
   ".env.example": "DATABASE_URL=postgres://atlas:atlas@localhost:5432/atlas\nJWT_SECRET=change-me\nWEB_ORIGIN=http://localhost:5173\n",
   "README.md": `# atlas-api
@@ -572,9 +582,11 @@ test("drains jobs in order", async () => {
 
 const DOCS_SITE: Seed = {
   "README.md": "# docs-site\n\nMarketing site and docs, built with Astro.\n",
-  "package.json": '{\n  "name": "docs-site",\n  "private": true,\n  "scripts": { "dev": "astro dev", "build": "astro build" },\n  "dependencies": { "astro": "^5.2.0" }\n}\n',
+  "package.json":
+    '{\n  "name": "docs-site",\n  "private": true,\n  "scripts": { "dev": "astro dev", "build": "astro build" },\n  "dependencies": { "astro": "^5.2.0" }\n}\n',
   "astro.config.mjs": 'import { defineConfig } from "astro/config";\n\nexport default defineConfig({\n  site: "https://docs.example.com",\n});\n',
-  "src/content/docs/getting-started.md": "---\ntitle: Getting started\n---\n\n# Getting started\n\nInstall the CLI, then sign in:\n\n```sh\nnpm i -g @example/cli\nexample login\n```\n",
+  "src/content/docs/getting-started.md":
+    "---\ntitle: Getting started\n---\n\n# Getting started\n\nInstall the CLI, then sign in:\n\n```sh\nnpm i -g @example/cli\nexample login\n```\n",
   "src/styles/global.css": "html {\n  font-family: system-ui, sans-serif;\n  line-height: 1.6;\n}\n\nmain {\n  max-width: 720px;\n  margin: 0 auto;\n}\n",
 };
 
@@ -587,7 +599,7 @@ const STRESS_KIT: Seed = {
     ]),
   ),
   "src/components/ConversationTranscriptVirtualizedListWithStickyHeadersAndKeyboardNavigation.tsx":
-    'export function ConversationTranscriptVirtualizedListWithStickyHeadersAndKeyboardNavigation() {\n  return null;\n}\n',
+    "export function ConversationTranscriptVirtualizedListWithStickyHeadersAndKeyboardNavigation() {\n  return null;\n}\n",
   "docs/an-unusually-long-architecture-decision-record-about-retries-and-idempotency-keys.md":
     "# Retries and idempotency keys\n\nEvery write accepts an `Idempotency-Key` header.\n",
   "src/features/chat/transcript/virtual/rows/ListRow.tsx": "export function ListRow() {\n  return null;\n}\n",
@@ -624,15 +636,18 @@ export function total(lines: Line[]): number {
   return lines.reduce((sum, l) => sum + l.amount, 0);
 }
 `,
-  "reports/eu.sql": "select merchant_id, sum(amount_minor) as total_minor\nfrom settlement_lines\nwhere region = 'eu' and settled_on = $1\ngroup by merchant_id\norder by merchant_id;\n",
-  "cmd/reconcile/main.go": "package main\n\nimport \"fmt\"\n\ntype Line struct{ AmountMinor int64 }\n\nfunc total(lines []Line) int64 {\n\tvar sum int64\n\tfor _, l := range lines {\n\t\tsum += l.AmountMinor\n\t}\n\treturn sum\n}\n\nfunc main() { fmt.Println(total(nil)) }\n",
+  "reports/eu.sql":
+    "select merchant_id, sum(amount_minor) as total_minor\nfrom settlement_lines\nwhere region = 'eu' and settled_on = $1\ngroup by merchant_id\norder by merchant_id;\n",
+  "cmd/reconcile/main.go":
+    'package main\n\nimport "fmt"\n\ntype Line struct{ AmountMinor int64 }\n\nfunc total(lines []Line) int64 {\n\tvar sum int64\n\tfor _, l := range lines {\n\t\tsum += l.AmountMinor\n\t}\n\treturn sum\n}\n\nfunc main() { fmt.Println(total(nil)) }\n',
   "package.json": '{\n  "name": "ledger",\n  "private": true,\n  "scripts": { "settle": "tsx jobs/settle.ts" }\n}\n',
 };
 
 /** Infrastructure: Terraform modules and environment stacks. */
 const INFRA: Seed = {
   "README.md": "# infra\n\nShared Terraform modules and the staging / production stacks.\n",
-  "modules/node-pool/main.tf": 'variable "name" {}\nvariable "size" { default = 3 }\n\nresource "google_container_node_pool" "node_pool" {\n  name       = var.name\n  node_count = var.size\n}\n',
+  "modules/node-pool/main.tf":
+    'variable "name" {}\nvariable "size" { default = 3 }\n\nresource "google_container_node_pool" "node_pool" {\n  name       = var.name\n  node_count = var.size\n}\n',
   "envs/staging/main.tf": 'module "pool_a" {\n  source = "../../modules/node-pool"\n  name   = "pool-a"\n}\n',
   "envs/production/main.tf": 'module "pool_a" {\n  source = "../../modules/node-pool"\n  name   = "pool-a"\n  size   = 6\n}\n',
 };

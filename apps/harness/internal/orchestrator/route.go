@@ -19,7 +19,7 @@ func (rt *runtime) meter() budget.Meter {
 func (rt *runtime) hints(a projectstore.Agent) router.Hints {
 	h := router.Hints{
 		BudgetKey: rt.pid(), Role: "orchestrator", Depth: a.Depth, TierHint: string(projectstore.TierBalanced),
-		TierPolicy: rt.models.Policy(), BudgetUSD: rt.info.BudgetUSD,
+		TierPolicy: rt.models.Policy(), BudgetUSD: rt.info.BudgetUSD, BudgetFn: rt.currentBudget,
 	}
 	switch a.Model {
 	case rt.models.Fast:
@@ -36,13 +36,23 @@ func (rt *runtime) hints(a projectstore.Agent) router.Hints {
 	return h
 }
 
-// gate enforces the project budget itself, before each request, when no router
-// does it: spend from the usage rows (reported costs and price-table estimates)
-// against the budget read fresh from the project.
-func (rt *runtime) gate() func(context.Context) error {
-	if rt.o.opts.Router.Has(router.CapBudgetKey) {
-		return nil
+// currentBudget is the project's budget now (read fresh, so one changed during
+// a turn is sent with the turn's next request).
+func (rt *runtime) currentBudget() *float64 {
+	c, cancel := dbCtx(context.Background())
+	defer cancel()
+	info, err := rt.db.Info(c)
+	if err != nil {
+		return rt.info.BudgetUSD
 	}
+	return info.BudgetUSD
+}
+
+// gate checks the project budget before each request, with the very condition
+// delegation uses (budgetReached): the router's last reported spend when one is
+// in the path (the router's 402 stays as the backstop), else the usage rows'
+// reported costs and price-table estimates; against the budget read fresh.
+func (rt *runtime) gate() func(context.Context) error {
 	return func(ctx context.Context) error {
 		if be := rt.budgetReached(ctx); be != nil {
 			return be

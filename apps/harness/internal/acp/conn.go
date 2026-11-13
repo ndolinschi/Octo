@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/acptrace"
 	"io"
 	"log/slog"
 	"strconv"
@@ -49,6 +50,8 @@ type conn struct {
 	wmu  sync.Mutex
 	in   incoming
 	done chan struct{}
+	// tr, when set, records every line on the wire (opt-in trace).
+	tr *acptrace.Trace
 
 	mu      sync.Mutex
 	nextID  int64
@@ -80,6 +83,7 @@ func (c *conn) readLoop(ctx context.Context) error {
 		if len(line) == 0 {
 			continue
 		}
+		c.tr.Received(line)
 		var m wireMessage
 		if err := json.Unmarshal(line, &m); err != nil {
 			slog.Debug("acp: skipping non-JSON line", "bytes", len(line), "err", err)
@@ -242,6 +246,7 @@ func (c *conn) write(m wireMessage) error {
 	if err != nil {
 		return err
 	}
+	c.tr.Sent(line)
 	line = append(line, '\n')
 	c.wmu.Lock()
 	defer c.wmu.Unlock()

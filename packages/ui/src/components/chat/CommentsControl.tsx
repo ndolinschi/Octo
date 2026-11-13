@@ -7,6 +7,7 @@ import { cn } from "../../lib/cn";
 import { useComments } from "../../state/comments";
 import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
+import { PILL } from "./ComposerPills";
 
 function byFile(comments: CodeComment[]): { key: string; folder: string; path: string; items: CodeComment[] }[] {
   const groups = new Map<string, { key: string; folder: string; path: string; items: CodeComment[] }>();
@@ -25,7 +26,7 @@ function byFile(comments: CodeComment[]): { key: string; folder: string; path: s
  * or as a status chip over a file (`variant="chip"`). Opens a compact list grouped by file (jump to the
  * lines, remove one, remove all). `open` / `onOpenChange` let the composer's "+" menu open it.
  */
-export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boolean): void; variant?: "footer" | "chip" }) {
+export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boolean): void; variant?: "pill" | "chip" }) {
   const store = useComments();
   const [ownOpen, setOwnOpen] = useState(false);
   const open = props.open ?? ownOpen;
@@ -52,22 +53,15 @@ export function CommentsControl(props: { open?: boolean; onOpenChange?(open: boo
         className={cn(
           chip
             ? "octo-ring-float flex h-6 shrink-0 press items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs tabular-nums shadow-float hover:text-fg"
-            : "flex h-6 shrink-0 press items-center gap-1.5 rounded-sm px-2 text-xs tabular-nums hover:bg-hover hover:text-fg",
-          open ? (chip ? "text-fg" : "bg-active text-fg") : "text-fg-2",
+            : cn(PILL, "press pr-2 tabular-nums hover:bg-active hover:text-fg"),
+          open ? (chip ? "text-fg" : "bg-active text-fg") : chip ? "text-fg-2" : "text-fg",
         )}
       >
-        <Glyph icon={MessageSquare} size={14} />
+        <Glyph icon={MessageSquare} size={14} className={chip ? undefined : "text-fg-3"} />
         {label}
       </button>
       <Presence show={open}>
-        <Popover
-          anchor={anchor}
-          edge={() => anchor.current?.closest<HTMLElement>("[data-composer], [data-floating-composer]") ?? null}
-          label="Pending comments"
-          side="top"
-          onClose={() => setOpen(false)}
-          className="w-[min(380px,calc(100vw-16px))]"
-        >
+        <Popover anchor={anchor} label="Pending comments" side="top" gap={4} onClose={() => setOpen(false)} className="w-[min(380px,calc(100vw-16px))]">
           <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-2">
             <p className="min-w-0 flex-1 truncate px-2 text-xs text-fg-3">Sent with your next message</p>
             <button

@@ -1,6 +1,6 @@
-import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, Ellipsis, PanelLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { fileKey as fileKeyOf, splitKey, type FileKey } from "../../lib/files";
 import { middleTruncate } from "../../lib/format";
@@ -8,7 +8,6 @@ import { crumbName, fitCrumbs } from "../../lib/crumbs";
 import { useCopy, useDelayedLoading } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useCode, type OpenFile } from "../../state/code";
-import { TREE_MIN, useFileView } from "../../state/fileView";
 import { useProject } from "../../state/project";
 import { fileTab, type TabId } from "../../state/workspace/layout";
 import { focusSoon } from "../../lib/focus";
@@ -16,16 +15,20 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { useFloatingHere } from "../../state/workspace/useFloatingHere";
 import { useGroup } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
+import { EditorSkeleton } from "./EditorSkeleton";
 import { CodeEditor } from "./CodeEditor";
 import { EditorStatus } from "./EditorStatus";
+import { CompletionStatus } from "./editor/completion/CompletionStatus";
 import { fileIcon, isMarkdown } from "../primitives/fileIcons";
-import { MarkdownPreview } from "./MarkdownPreview";
+/** The Markdown preview loads with the first Markdown file (its own chunk). */
+const MarkdownPreview = lazy(() => import("./MarkdownPreview").then((m) => ({ default: m.MarkdownPreview })));
 import { TreeColumn } from "./TreeColumn";
-import { EDITOR_MIN_WIDTH, FILE_VIEW_OVERLAY_BELOW } from "../../lib/constants";
+import { useTreeShell } from "./useTreeShell";
 import { slot } from "../../state/workspace/tabMemory";
 import { useTabMemory } from "../../state/workspace/useTabMemory";
 
@@ -41,14 +44,12 @@ const MD_MODE = slot("md", (v): v is Mode => v === "preview" || v === "source");
 /**
  * A file view: every File tab, and the Files tab while no file is open. One 40px breadcrumb row
  * (back / forward, crumbs, then status, Preview|Source for Markdown, a `…` menu and the tree toggle),
- * the editor edge to edge below it, and the tree column on the right (hairline on its left edge;
- * width and open state shared by every file view of the project). When no Chat tab is visible, the
- * focused file view shows the floating composer over its editor area (never over the tree).
+ * the editor edge to edge below it, and the tree column at the left edge (decision 94a; width and shown/hidden per group).
+ * A group too narrow for the column and a 360px editor shows the tree as a page instead (`useTreeShell`). When no Chat tab
+ * is visible, the focused file view shows the floating composer over its editor area (never over the tree).
  */
 export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileKey: FileKey | null; floatingComposer: FloatingSlot }) {
   const code = useCode();
-  const ws = useWorkspace();
-  const fv = useFileView();
   const group = useGroup();
   const { project } = useProject();
   const { theme } = useApp();
@@ -62,86 +63,31 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
   const opening = useDelayedLoading(fileKey !== null && (!file || file.status === "loading"));
   const saving = useDelayedLoading(Boolean(file?.saving));
 
-  // The view's own width decides whether the tree gets a column or floats over the editor.
+  const groupId = group?.groupId ?? "";
   const root = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = root.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => {
-      if (e) setWidth(Math.round(e.contentRect.width));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  // A column that would leave the editor under `EDITOR_MIN_WIDTH` (a narrow file group beside the orchestrator) floats
-  // over it instead, closed by default.
-  const column = Math.max(TREE_MIN, Math.min(fv.treeWidth, Math.round(width * 0.4)));
-  const overlay = width > 0 && (width < FILE_VIEW_OVERLAY_BELOW || width - column < EDITOR_MIN_WIDTH);
-  // A narrow view keeps the editor visible: there the tree floats over it, starts closed (open in the
-  // empty Files view), and closes
-  // once a file is picked (the shared column preference is left alone).
-  // The empty Files view exists to pick a file: its tree starts open.
-  const [overlayOpen, setOverlayOpen] = useState(fileKey === null);
-  const treeShown = overlay ? overlayOpen : fv.treeOpen;
-  const setTreeShown = (open: boolean) => (overlay ? setOverlayOpen(open) : fv.setTreeOpen(open));
-  const focusTick = useRef(fv.focusTreeTick);
-  useEffect(() => {
-    if (focusTick.current === fv.focusTreeTick) return;
-    focusTick.current = fv.focusTreeTick;
-    if (overlay && ws.isVisible(tab)) setOverlayOpen(true);
-  }, [fv.focusTreeTick, overlay, ws, tab]);
-
+  const shell = useTreeShell(root, tab, fileKey, groupId);
+  const { width, page, showEditor } = shell;
   const treeId = `${domId(tab)}-tree`;
-  // Files picked in this view's tree open in this group; the empty view turns into the file in place.
-  const groupId = group?.groupId;
-  // Opening a file never leaves focus on nothing: when the picked row went away (the overlay closed, the
-  // empty Files view turned into the file in place), the file's editor or preview takes it.
+  // Files picked in this view's tree open in this group; the empty view turns into the file in place. In page mode the picked
+  // file also turns the page to the editor (one change, nothing else moves). Opening a file never leaves focus on nothing:
+  // when the picked row went away (the tree page hid, the empty Files view turned into the file in place), the file's editor
+  // or preview takes it.
   const openHere = useCallback(
     (f: string, p: string) => {
-      setOverlayOpen(false);
-      code.openFile(f, p, undefined, groupId ? (fileKey ? { group: groupId } : { group: groupId, replace: tab }) : undefined);
+      showEditor();
+      code.openFile(f, p, undefined, group ? (fileKey ? { group: group.groupId } : { group: group.groupId, replace: tab }) : undefined);
       const panel = `${domId(fileTab(fileKeyOf(f, p)))}-panel`;
       focusSoon(
         () => {
           const el = document.getElementById(panel);
-          return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
+          const input = [...(el?.querySelectorAll<HTMLElement>(".monaco-editor textarea") ?? [])].find((t) => t.closest("[inert]") === null);
+          return input ?? el?.querySelector<HTMLElement>("[data-file-focus]");
         },
         { onlyIfLost: true, timeout: 1500 },
       );
     },
-    [code, groupId, fileKey, tab],
+    [code, group, fileKey, tab, showEditor],
   );
-
-  // The overlay tree (narrow views) closes on Esc and on a pointer down outside it; focus goes back to the toggle.
-  const toggle = useRef<HTMLButtonElement>(null);
-  const overlayShown = overlay && overlayOpen;
-  useEffect(() => {
-    if (!overlayShown) return;
-    const tree = () => document.getElementById(treeId);
-    const close = (refocus: boolean) => {
-      setOverlayOpen(false);
-      if (refocus) requestAnimationFrame(() => toggle.current?.focus());
-    };
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      const el = tree();
-      if (!el || !(el.contains(document.activeElement) || toggle.current === document.activeElement)) return;
-      e.preventDefault();
-      close(true);
-    };
-    const onDown = (e: PointerEvent) => {
-      const t = e.target;
-      if (!(t instanceof Node) || tree()?.contains(t) || toggle.current?.contains(t)) return;
-      close(tree()?.contains(document.activeElement) ?? false);
-    };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("pointerdown", onDown, true);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("pointerdown", onDown, true);
-    };
-  }, [overlayShown, treeId]);
 
   // Ctrl/Cmd+S anywhere in the view (Monaco binds it too; saving is guarded against doubles).
   const onKeyDown = (e: KeyboardEvent) => {
@@ -151,38 +97,54 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
     }
   };
 
-  let body: ReactNode;
+  // Decision 85: the editor is one Monaco instance for every file this view shows (it swaps models), mounted with the first file;
+  // whatever stands in for it (the empty view, the loading skeleton, a message, the Markdown preview) is a cover over the same
+  // box. `shown` is the last file that was ready: the model the editor keeps until the next one is.
+  const [shown, setShown] = useState<OpenFile | null>(null);
+  if (file?.status === "ready" && file !== shown) setShown(file);
+  const ready = file?.status === "ready" && !opening;
+  let cover: ReactNode = null;
   if (!fileKey) {
-    body = <div className="grid h-full place-items-center text-sm text-fg-3">{code.folders.length ? "Select a file" : <NoFolders />}</div>;
-  } else if (file?.status === "ready" && !opening) {
-    body =
-      markdown && mode === "preview" ? (
+    cover = <div className="grid h-full place-items-center text-sm text-fg-3">{code.folders.length ? "Select a file" : <NoFolders />}</div>;
+  } else if (!ready) {
+    cover = <Message file={file} name={path.slice(path.lastIndexOf("/") + 1)} showLoading={opening} />;
+  } else if (markdown && mode === "preview") {
+    cover = (
+      <Suspense fallback={null}>
         <MarkdownPreview file={file} bottomRoom={bottomRoom} onOpen={openHere} />
-      ) : (
-        <CodeEditor
-          file={file}
-          buffers={code.buffers}
-          theme={theme}
-          bottomPadding={Math.max(8, bottomRoom)}
-          onSave={() => void code.save(file.key)}
-          onMonaco={(mod) => code.startIntel((o) => new mod.LspManager({ ...o, monaco: mod.monaco }))}
-        />
-      );
-  } else {
-    body = <Message file={file} name={path.slice(path.lastIndexOf("/") + 1)} showLoading={opening} />;
+      </Suspense>
+    );
   }
+  const body = (
+    <div className="relative h-full min-h-0">
+      {fileKey !== null && (
+        <div className="absolute inset-0" inert={cover !== null}>
+          <CodeEditor
+            file={shown}
+            buffers={code.buffers}
+            theme={theme}
+            bottomPadding={Math.max(8, bottomRoom)}
+            onSave={() => void (shown && code.save(shown.key))}
+            onMonaco={(mod) => code.startIntel((o) => new mod.LspManager({ ...o, monaco: mod.monaco }))}
+          />
+        </div>
+      )}
+      {cover && <div className="absolute inset-0 z-10 bg-panel">{cover}</div>}
+    </div>
+  );
 
   return (
     <div ref={root} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       {/* The hairline is an inset shadow, so the 40px row keeps a 40px content box (no half-pixel centring). */}
       <div data-file-bar className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]">
+        {page && !shell.treePage && fileKey && (
+          <Button variant="quiet" size="sm" icon={PanelLeft} title="Show the file tree" onClick={shell.showTree}>
+            Files
+          </Button>
+        )}
         <IconButton icon={ArrowLeft} label="Back" title="Back (previous file in this group)" disabled={!group?.canBack} onClick={group?.back} />
         <IconButton icon={ArrowRight} label="Forward" title="Forward (next file in this group)" disabled={!group?.canForward} onClick={group?.forward} />
-        {fileKey ? (
-          <Crumbs key={`${folder}/${path}`} folder={folder} path={path} />
-        ) : (
-          <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>
-        )}
+        {fileKey ? <Crumbs folder={folder} path={path} /> : <p className="ml-1 min-w-0 flex-1 truncate px-1 text-sm text-fg-2">{project?.name}</p>}
         <span className="flex shrink-0 items-center gap-2 pl-2">
           <span className="flex shrink-0 items-center gap-2 empty:hidden" role="status">
             {saving && (
@@ -192,6 +154,7 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
             )}
             {file?.modified && !saving && <span>Unsaved</span>}
           </span>
+          {fileKey && <CompletionStatus fileKey={fileKey} compact={width > 0 && width < 640} />}
           {fileKey && (
             <EditorStatus
               compact={width > 0 && width < 640}
@@ -203,31 +166,52 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
         </span>
         {markdown && file?.status === "ready" && <ModeToggle mode={mode} onChange={setMode} />}
         {fileKey && <MoreMenu tab={tab} folder={folder} path={path} />}
-        <IconButton
-          ref={toggle}
-          icon={PanelRight}
-          label={treeShown ? "Hide file tree" : "Show file tree"}
-          aria-expanded={treeShown}
-          aria-controls={treeShown ? treeId : undefined}
-          onClick={() => setTreeShown(!treeShown)}
-          className={cn(treeShown && "text-fg-2")}
-        />
+        {page ? (
+          shell.treePage &&
+          fileKey && (
+            <Button variant="quiet" size="sm" onClick={shell.showEditor}>
+              Editor
+            </Button>
+          )
+        ) : (
+          <IconButton
+            icon={shell.open ? PanelLeftClose : PanelLeftOpen}
+            label={shell.open ? "Hide file tree" : "Show file tree"}
+            aria-expanded={shell.open}
+            aria-controls={shell.open ? treeId : undefined}
+            onClick={shell.toggleColumn}
+            className={cn(shell.open && "text-fg-2")}
+          />
+        )}
       </div>
       <div className="relative flex min-h-0 flex-1">
-        <div data-editor-area className="relative flex min-w-0 flex-1 flex-col">
+        {(page || shell.open) && (
+          <TreeColumn
+            key="tree"
+            id={treeId}
+            tab={tab}
+            page={page}
+            shown={!page || shell.treePage}
+            width={shell.column}
+            maxWidth={shell.maxWidth}
+            groupId={groupId}
+            onOpenFile={openHere}
+          />
+        )}
+        <div
+          key="editor"
+          data-editor-area
+          inert={page && shell.treePage}
+          className={cn(
+            "relative flex min-w-0 flex-1 flex-col overflow-clip contain-inline-size",
+            page && "absolute inset-0",
+            page && shell.treePage && "invisible",
+          )}
+        >
           {file && <Notice file={file} />}
           <div className="min-h-0 flex-1">{body}</div>
           {floating && floatingComposer(setFloatHeight)}
         </div>
-        {treeShown && (
-          <TreeColumn
-            id={treeId}
-            tab={tab}
-            overlay={overlay}
-            maxWidth={overlay ? width - 48 : Math.max(TREE_MIN, Math.min(width - 320, Math.round(width * 0.4)))}
-            onOpenFile={openHere}
-          />
-        )}
       </div>
     </div>
   );
@@ -293,7 +277,8 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room, folder, path, name]);
   const Icon = fileIcon(name);
-  const crumb = "press h-6 shrink-0 rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg";
+  // A crumb is a quiet link: no padding of its own, so its width is the text plus the CRUMB_PAD the fit model counts.
+  const crumb = "h-6 px-1";
   const dirOf = (i: number) => all.slice(0, i + 1).join("/");
   const hidden = plan.hidden.map((i) => (i < 0 ? { label: folder, path: "" } : { label: all[i] ?? "", path: dirOf(i) }));
   return (
@@ -304,9 +289,9 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
       title={middleTruncate(`${folder}/${path}`, 96)}
     >
       {plan.folder && (
-        <button type="button" className={crumb} title={`Reveal ${folder} in the tree`} onClick={() => code.revealDir(folder, "")}>
+        <Button variant="link" tone="quiet" size="sm" className={crumb} title={`Reveal ${folder} in the tree`} onClick={() => code.revealDir(folder, "")}>
           {folder}
-        </button>
+        </Button>
       )}
       {hidden.length > 0 && (
         <>
@@ -317,9 +302,16 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
       {plan.dirs.map((i) => (
         <Fragment key={i}>
           <Sep />
-          <button type="button" className={crumb} title={`Reveal ${folder}/${dirOf(i)} in the tree`} onClick={() => code.revealDir(folder, dirOf(i))}>
+          <Button
+            variant="link"
+            tone="quiet"
+            size="sm"
+            className={crumb}
+            title={`Reveal ${folder}/${dirOf(i)} in the tree`}
+            onClick={() => code.revealDir(folder, dirOf(i))}
+          >
             {all[i]}
-          </button>
+          </Button>
         </Fragment>
       ))}
       {(plan.folder || hidden.length > 0) && <Sep />}
@@ -338,9 +330,11 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
   const button = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <button
+      <Button
         ref={button}
-        type="button"
+        variant="link"
+        tone="quiet"
+        size="sm"
         aria-haspopup="menu"
         aria-expanded={menu !== null}
         aria-label={`${dirs.length} hidden ${dirs.length === 1 ? "folder" : "folders"}: ${dirs.map((d) => d.label).join("/")}`}
@@ -349,10 +343,10 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
           const r = button.current?.getBoundingClientRect();
           if (r) setMenu(menu ? null : { x: r.left, y: r.bottom + 4 });
         }}
-        className={cn("h-6 shrink-0 press rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg", menu && "bg-active text-fg")}
+        className={cn("h-6 px-1", menu && "bg-active text-fg")}
       >
         …
-      </button>
+      </Button>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Menu
@@ -375,14 +369,9 @@ function Sep() {
 /** Preview | Source for Markdown (remembered per tab): two 24px segments, the current one filled. */
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange(m: Mode): void }) {
   const item = (m: Mode, label: string) => (
-    <button
-      type="button"
-      aria-pressed={mode === m}
-      onClick={() => onChange(m)}
-      className={cn("h-6 press rounded-sm px-2 text-xs", mode === m ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg")}
-    >
+    <Button variant="quiet" size="xs" pressed={mode === m} onClick={() => onChange(m)}>
       {label}
-    </button>
+    </Button>
   );
   return (
     <div role="group" aria-label="Markdown view" className="flex shrink-0 items-center gap-0.5">
@@ -443,11 +432,15 @@ function MoreMenu({ tab, folder, path }: { tab: TabId; folder: string; path: str
 function Message({ file, name, showLoading }: { file: OpenFile | undefined; name: string; showLoading: boolean }) {
   const code = useCode();
   if (showLoading || !file || file.status === "loading" || file.status === "ready") {
-    if (!showLoading) return null;
+    // The editor's place holds grey lines from the first frame (decision 60); the words are for screen readers.
+    if (!showLoading && file?.status === "ready") return null;
     return (
-      <p className="flex items-center gap-2 px-3 pt-3 text-sm text-fg-3">
-        <Spinner /> Opening {name}…
-      </p>
+      <div className="relative h-full">
+        <EditorSkeleton />
+        <p role="status" className="sr-only">
+          Opening {name}…
+        </p>
+      </div>
     );
   }
   const text =

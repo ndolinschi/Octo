@@ -1,4 +1,4 @@
-import type { Agent, ProjectState } from "@octo/agent-client";
+import type { Agent, ProjectAttentionKind, ProjectState } from "@octo/agent-client";
 import { timeAgo } from "./format";
 
 /**
@@ -17,12 +17,19 @@ export function runningAgents(agents: readonly Agent[]): Agent[] {
   return agents.filter((a) => a.parent_id !== null && a.status === "running").sort(byStart);
 }
 
-export function orchestratorState(agents: readonly Agent[], projectStatus: "idle" | "running"): OrchestratorState {
+export function orchestratorState(agents: readonly Agent[], projectStatus: "idle" | "running", attention?: ProjectAttentionKind): OrchestratorState {
   const root = agents.find((a) => a.parent_id === null);
   const running = runningAgents(agents);
   if (projectStatus === "running" || root?.status === "running" || running.length) return { kind: "working", agents: running };
+  // The harness says whether the last turn failed (`attention`); without it (an older harness) the agents decide.
+  if (attention === "failed") return { kind: "needs", error: root?.error?.trim() || null, at: root?.finished_at ?? null };
+  if (attention === "none")
+    return !root || (!root.started_at && agents.length <= 1) ? { kind: "new" } : { kind: "idle", at: root.finished_at ?? root.started_at };
+  // A failed turn needs the user even when nothing was stored (an ACP orchestrator that could not start: owner's live
+  // test showed "Idle" and nothing else). An `error` on a non-running orchestrator counts too, unless it is a warning.
+  if (root && (root.status === "failed" || (root.error && !/^warning:/i.test(root.error))))
+    return { kind: "needs", error: root.error?.trim() || null, at: root.finished_at };
   if (!root || (!root.started_at && agents.length <= 1)) return { kind: "new" };
-  if (root.status === "failed") return { kind: "needs", error: root.error, at: root.finished_at };
   return { kind: "idle", at: root.finished_at ?? root.started_at };
 }
 
@@ -32,16 +39,20 @@ export function liveOrchestratorState(state: ProjectState, projectStatus: "idle"
     const a = state.agents[id];
     return a ? [a] : [];
   });
-  return orchestratorState(agents, projectStatus);
+  const failure = state.attention.state;
+  return orchestratorState(agents, projectStatus, failure === "failed" || failure === "none" ? failure : undefined);
 }
 
-/** One line: "Working, 3 agents", "Working", "Needs you", "Idle, 2h ago", "No requests yet" (no "·" joiners: craft rule). */
+/**
+ * One line: "Working, 3 agents", "Working", "Failed", "Idle, 2h ago", "No requests yet" (no "·" joiners: craft rule). A
+ * failed turn says "Failed" (decision 53): the project is still in the "Needs you" triage group, its ring the alert.
+ */
 export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string): string {
   switch (s.kind) {
     case "working":
       return s.agents.length === 0 ? "Working" : `Working, ${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}`;
     case "needs":
-      return "Needs you";
+      return "Failed";
     case "idle": {
       const at = s.at ?? fallbackAt;
       return at ? `Idle, ${timeAgo(at, now)}` : "Idle";
@@ -49,14 +60,6 @@ export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string
     case "new":
       return "No requests yet";
   }
-}
-
-/** "Dependency auditor, Test runner +1": the first `max` distinct roles, then how many more agents. */
-export function agentStack(roles: readonly string[], max = 2): string {
-  const shown: string[] = [];
-  for (const r of roles) if (!shown.includes(r) && shown.length < max) shown.push(r);
-  const rest = roles.length - roles.filter((r) => shown.includes(r)).length;
-  return rest > 0 ? `${shown.join(", ")} +${rest}` : shown.join(", ");
 }
 
 const ACTIVITY: Record<string, string> = {
@@ -89,12 +92,6 @@ export function lastTeam(agents: readonly Agent[]): Agent[] {
   return agents.filter((a) => a.parent_id !== null && Date.parse(a.started_at ?? a.created_at) >= since).sort(byStart);
 }
 
-/** The idle team line: "Last ran 3 agents, 1h ago", "Worked alone, 2h ago" (no "·" joiners: craft rule). */
-export function teamLine(count: number, at: string | null, now: number): string {
-  const what = count === 0 ? "Worked alone" : `Last ran ${count} ${count === 1 ? "agent" : "agents"}`;
-  return at ? `${what}, ${timeAgo(at, now)}` : what;
-}
-
 export type TeamRole = { role: string; count: number; status: Agent["status"]; agent: Agent };
 
 /**
@@ -115,4 +112,16 @@ export function teamRoles(team: readonly Agent[]): TeamRole[] {
     }
   }
   return out;
+}
+
+/** A role as people read it: the project's agent is always "Orchestrator" (the harness stores "orchestrator"). */
+export function roleText(role: string | null | undefined): string {
+  const r = (role ?? "").trim();
+  if (!r) return "Agent";
+  return r.toLowerCase() === "orchestrator" ? "Orchestrator" : r;
+}
+
+/** An agent's name as shown: "Orchestrator" for the project's agent, its role otherwise. */
+export function roleName(agent: Pick<Agent, "parent_id" | "role">): string {
+  return agent.parent_id === null ? "Orchestrator" : roleText(agent.role);
 }

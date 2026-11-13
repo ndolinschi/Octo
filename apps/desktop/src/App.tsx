@@ -1,12 +1,20 @@
-import { OctoApp } from "@octo/ui";
-import { useMemo } from "react";
-import { bridgeLabel, chooseBridge } from "./bridgeChoice";
-import { useBridge } from "./useBridge";
+import { lazy, Suspense, useMemo } from "react";
+import { chooseBridge, isTauri, usesHostBridge } from "./bridgeChoice";
+import { BridgeShell } from "./BridgeShell";
+
+// Only a Tauri window loads the host start-up code; a browser start never downloads it.
+const HostedApp = lazy(() => import("./HostedApp"));
 
 export default function App() {
   const search = window.location.search;
+  const viaHost = useMemo(() => usesHostBridge(search, import.meta.env, isTauri(window)), [search]);
   const choice = useMemo(() => chooseBridge(search, import.meta.env), [search]);
-  const bridge = useBridge(choice);
-  if (!bridge) return null;
-  return <OctoApp bridge={bridge} bridgeUrl={bridgeLabel(choice)} shell="desktop" demo={choice.kind === "demo"} />;
+  if (viaHost) {
+    return (
+      <Suspense fallback={null}>
+        <HostedApp search={search} />
+      </Suspense>
+    );
+  }
+  return <BridgeShell choice={choice} />;
 }

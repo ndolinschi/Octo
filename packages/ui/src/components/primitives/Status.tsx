@@ -1,6 +1,8 @@
 import type { AgentStatus, Tier } from "@octo/agent-client";
 import { agentGlyph, orchestratorGlyph } from "../../lib/stateGlyph";
 import { StateGlyph } from "./StateGlyph";
+import { modelName } from "../../lib/models";
+import { spinnerBox, type ControlSize } from "../../lib/controls";
 
 const LABEL: Record<AgentStatus, string> = {
   idle: "Idle",
@@ -17,9 +19,12 @@ export function statusLabel(status: AgentStatus): string {
 /**
  * Loading (transient work: a file opening, a server starting) uses the same working ring as everything else
  * (decision 29: no other spinner shape exists). `className` replaces the default colour (`text-fg-2`).
+ * `size` is the control size it sits in (xs/sm 12, md 14, lg 16: one ring per control size); a pixel number is the old
+ * spelling and is deprecated. Animated by definition: show it only while the work runs (decision 76).
  */
-export function Spinner({ size = 12, className = "text-fg-2" }: { size?: number; className?: string }) {
-  return <StateGlyph state="working" size={size >= 14 ? 14 : 12} box={size} className={className} />;
+export function Spinner({ size = 12, className = "text-fg-2" }: { size?: ControlSize | number; className?: string }) {
+  const box = spinnerBox(size);
+  return <StateGlyph state="working" size={box >= 14 ? 14 : 12} box={box} className={className} />;
 }
 
 /** Something is running: the working ring centred in a `box`-sized square. */
@@ -50,12 +55,7 @@ export function isTier(v: unknown): v is Tier {
   return v === "fast" || v === "balanced" || v === "deep";
 }
 
-/** "claude-sonnet-5-5-20261001" → "Sonnet 5.5"; ids that don't follow that shape lose only the vendor prefix. */
+/** A model setting as people read it ("Sonnet 5.5", "Claude Code · Opus 5.5"): `lib/models.ts`, without agent labels. */
 export function modelLabel(model: string): string {
-  // An ACP agent from a plugin: its id, marked as such.
-  if (model.startsWith("acp:")) return `${model.slice(4)} (ACP)`;
-  const id = model.replace(/^claude-/, "").replace(/-\d{8}$/, "");
-  const [, family, major, minor] = /^([a-z]+)-(\d+)(?:-(\d+))?$/.exec(id) ?? [];
-  if (family === undefined || major === undefined) return id;
-  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${major}${minor ? `.${minor}` : ""}`;
+  return modelName(model);
 }

@@ -36,6 +36,8 @@ export function useModal(panel: RefObject<HTMLElement | null>, onClose: () => vo
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // A popover opened from the panel (a model picker) is portalled outside it and closes itself first.
+        if (e.target instanceof Node && panel.current && !panel.current.contains(e.target) && document.activeElement !== document.body) return;
         // A non-empty search field marked `data-esc-clears` takes the first Esc (it clears itself; the next one closes).
         if (e.target instanceof HTMLInputElement && e.target.dataset.escClears !== undefined && e.target.value) return;
         e.stopPropagation();

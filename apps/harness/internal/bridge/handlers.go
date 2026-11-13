@@ -2,10 +2,11 @@ package bridge
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
-
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
+	"github.com/ndolinschi/Octo/apps/harness/internal/router"
 )
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -18,10 +19,23 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	if s.router != nil && s.router.Enabled() {
 		caps = s.router.Capabilities()
 	}
+	builtinOK, builtinWhy := s.builtinState()
+	builtin := map[string]any{"available": builtinOK}
+	if !builtinOK {
+		builtin["reason"] = builtinWhy
+	}
+	defOrch := d.Models.Orchestrator
+	if s.defaultOrch != nil {
+		defOrch = s.defaultOrch()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
+		"builtin_loop": builtin, "default_orchestrator": defOrch,
 		"default_models": d.Models, "default_max_depth": d.MaxDepth,
 		"router": s.router != nil && s.router.Enabled(), "router_capabilities": caps,
+		"route_api":         slices.Contains(caps, router.CapRouteAPI),
 		"acp_orchestrators": s.acpOrchestrators(),
+		// Whether POST /v1/fs/pick-folder can open the system's folder chooser here.
+		"pick_folder": pickFolderAvailable(),
 	})
 }
 
@@ -96,6 +110,20 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) agentMessages(w http.ResponseWriter, r *http.Request) {
+	if sid := r.URL.Query().Get("session_id"); sid != "" {
+		// One main session's part of the orchestrator's conversation (project sessions).
+		if _, err := s.svc.Agent(r.Context(), r.PathValue("pid"), r.PathValue("aid")); err != nil {
+			writeErr(w, err)
+			return
+		}
+		out, err := s.svc.MessagesOfSession(r.Context(), r.PathValue("pid"), r.PathValue("aid"), sid)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	msgs, err := s.svc.Messages(r.Context(), r.PathValue("pid"), r.PathValue("aid"))
 	if err != nil {
 		writeErr(w, err)
@@ -106,19 +134,30 @@ func (s *Server) agentMessages(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs, "compactions": marks})
+	convs, err := s.svc.Conversations(r.Context(), r.PathValue("pid"), r.PathValue("aid"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs, "compactions": marks, "conversations": convs})
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Text string `json:"text"`
+		Text        string   `json:"text"`
+		Mode        *string  `json:"mode"`
+		Attachments []string `json:"attachments"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	msg, err := s.svc.PostMessage(r.Context(), r.PathValue("pid"), in.Text)
+	msg, queued, err := s.svc.PostMessageWith(r.Context(), r.PathValue("pid"), in.Text, in.Mode, in.Attachments)
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if queued != nil {
+		writeJSON(w, http.StatusAccepted, map[string]any{"queued": queued})
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"message": msg})
@@ -139,38 +178,6 @@ func (s *Server) listNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notes": notes})
-}
-
-func (s *Server) createNote(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Title   string `json:"title"`
-		Content string `json:"content"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	n, err := s.notes.Create(r.Context(), r.PathValue("pid"), in.Title, in.Content)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, n)
-}
-
-func (s *Server) updateNote(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Title   *string `json:"title"`
-		Content *string `json:"content"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	n, err := s.notes.Update(r.Context(), r.PathValue("pid"), r.PathValue("nid"), in.Title, in.Content)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, n)
 }
 
 func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) {

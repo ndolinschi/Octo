@@ -8,7 +8,66 @@ export type MessagePortLike = {
 };
 
 export type Theme = "dark" | "light";
-export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer">;
+/** The methods the message bridge forwards: not the optional HTTP-only ones (settings and the v7 members). */
+export type HttpOnlyMethod =
+  | "getSettings"
+  | "putSettings"
+  | "getDiagnostics"
+  | "listTasks"
+  | "getTurnContext"
+  | "listMemory"
+  | "getMemoryFile"
+  | "putMemoryFile"
+  | "deleteMemoryFile"
+  | "searchMemory"
+  | "listMemorySessions"
+  | "getMemorySession"
+  | "forgetExchange"
+  | "listSessions"
+  | "getSession"
+  | "getSessionTranscript"
+  | "createSession"
+  | "resumeSession"
+  | "patchSession"
+  | "deleteSession"
+  | "stopSession"
+  | "messageSession"
+  | "sendOrQueueMessage"
+  | "getQueue"
+  | "editQueued"
+  | "removeQueued"
+  | "clearQueue"
+  | "resumeQueue"
+  | "sendQueuedNow"
+  | "listChanges"
+  | "getChange"
+  | "revertChange"
+  | "listApprovals"
+  | "resolveApproval"
+  | "listInputs"
+  | "submitInput"
+  | "listSecrets"
+  | "putSecret"
+  | "deleteSecret"
+  | "listPullRequests"
+  | "listReviewBranches"
+  | "listReviews"
+  | "openReview"
+  | "getReview"
+  | "patchReview"
+  | "listReviewFiles"
+  | "getReviewFileDiff"
+  | "reviewFileRawUrl"
+  | "setReviewFileViewed"
+  | "listReviewComments"
+  | "createReviewComment"
+  | "updateReviewComment"
+  | "deleteReviewComment"
+  | "listReviewFindings"
+  | "decideReviewFinding"
+  | "previewReviewSubmit"
+  | "submitReview";
+export type BridgeMethod = Exclude<keyof Bridge, "subscribe" | "openLanguageServer" | HttpOnlyMethod>;
 export type WireError = { status: number; code: string; message: string };
 
 export type ClientMessage =
@@ -62,6 +121,7 @@ export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   "listSide",
   "clearSide",
   "listNotes",
+  "getNote",
   "createNote",
   "updateNote",
   "deleteNote",

@@ -34,6 +34,7 @@ async fn forward_chat(
         session_id: None,
         tier_before: None,
         tier_after: None,
+        decided_tier: None,
         trigger: "none".to_string(),
         trimmed_from_tokens: None,
         client_model: None,
@@ -104,6 +105,7 @@ async fn forward_messages(
         session_id: None,
         tier_before: None,
         tier_after: None,
+        decided_tier: None,
         trigger: "none".to_string(),
         trimmed_from_tokens: None,
         client_model: None,
@@ -180,6 +182,7 @@ pub async fn decisions(
                 session_id: None,
                 tier_before: None,
                 tier_after: None,
+                decided_tier: None,
                 trigger: "none".to_string(),
                 trimmed_from_tokens: None,
                 client_model: None,
@@ -196,7 +199,13 @@ pub async fn decisions(
         .await
 }
 
-pub const CAPABILITIES: [&str; 4] = ["autoroute", "route_hints", "result_headers", "budget_key"];
+pub const CAPABILITIES: [&str; 5] = [
+    "autoroute",
+    "route_hints",
+    "result_headers",
+    "budget_key",
+    "route_api",
+];
 
 pub async fn health() -> impl IntoResponse {
     axum::Json(serde_json::json!({

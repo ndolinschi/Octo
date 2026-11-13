@@ -22,6 +22,7 @@ pub struct RouteMeta {
     pub tier_after: String,
     pub trigger: String,
     pub stripped: Option<String>,
+    pub decided_tier: Option<String>,
 }
 
 impl RouteMeta {
@@ -31,6 +32,7 @@ impl RouteMeta {
             tier_after: "low".to_string(),
             trigger: "housekeeping".to_string(),
             stripped: None,
+            decided_tier: None,
         }
     }
 
@@ -40,7 +42,18 @@ impl RouteMeta {
             tier_after,
             trigger: normalize_trigger(reason),
             stripped: None,
+            decided_tier: None,
         }
+    }
+
+    /// Records the tier the router decided when the price rule served a cheaper tier above it.
+    pub fn with_decided_tier(mut self, decided: Option<String>) -> Self {
+        self.decided_tier = decided;
+        self
+    }
+
+    pub fn price_swapped(&self) -> bool {
+        self.decided_tier.is_some()
     }
 
     pub fn with_stripped(mut self, stripped: &[String]) -> Self {

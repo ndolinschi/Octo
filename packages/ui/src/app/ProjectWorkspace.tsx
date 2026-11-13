@@ -10,13 +10,42 @@ import { allTabs, fileTab, focusedGroup, parseTab } from "../state/workspace/lay
 import { useWorkspace, WorkspaceProvider } from "../state/workspace/WorkspaceProvider";
 import { Dock } from "../components/dock/Dock";
 import { Button } from "../components/primitives/Button";
-import { Dialog } from "../components/primitives/Dialog";
 import { Presence } from "../components/primitives/Presence";
+import { ChatSlotsProvider, type ChatSlots } from "../state/chatSlots";
 import { Panel } from "../components/shell/Panel";
-import { PanelBar } from "../components/shell/SidebarToggle";
+
+/** The status bar's project items load after first paint (its own chunk; the row itself is always there, so nothing shifts). */
+const ProjectStatus = lazy(() => import("../components/status/ProjectStatus").then((m) => ({ default: m.ProjectStatus })));
+
+/** Keeps the project's command runs current for the top row, the run tabs and the status bar (decision 68). */
+const ProjectRunsFeed = lazy(() => import("../components/commands/ProjectRunsFeed"));
 
 /** The project dialog loads on first use (its own chunk). */
+const CloseDialog = lazy(() => import("../components/shell/DiscardDialogs").then((m) => ({ default: m.CloseDialog })));
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
+
+/** The v7 pieces the conversation and the composer show (approvals, forms, the harness queue); each renders nothing when the bridge lacks its methods. */
+const ApprovalsSlot = lazy(() => import("../components/v7/ApprovalsSlot").then((m) => ({ default: m.ApprovalsSlot })));
+const QueueSlot = lazy(() => import("../components/v7/QueueSlot").then((m) => ({ default: m.QueueSlot })));
+const QueueBadge = lazy(() => import("../components/v7/QueueList").then((m) => ({ default: m.QueueBadge })));
+const CHAT_SLOTS: ChatSlots = {
+  approvals: ({ onOpenAgent }) => (
+    <Suspense fallback={null}>
+      <ApprovalsSlot onOpenAgent={onOpenAgent} />
+    </Suspense>
+  ),
+  queue: ({ onCount }) => (
+    <Suspense fallback={null}>
+      <QueueSlot onCount={onCount} />
+    </Suspense>
+  ),
+  badge: (count) =>
+    count > 0 ? (
+      <Suspense fallback={null}>
+        <QueueBadge count={count} />
+      </Suspense>
+    ) : null,
+};
 
 /** One project: header row, then the dock of tab groups. */
 export function ProjectWorkspace(props: { agentId: string | null }) {
@@ -24,15 +53,24 @@ export function ProjectWorkspace(props: { agentId: string | null }) {
   const openSettings = useCallback(() => setSettings(true), []);
   const { projectId } = useProject();
   return (
-    <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
-      <FileViewProvider projectId={projectId}>
+    // The file-view state sits above the workspace: the dock's width floors read each group's tree column (decision 94a).
+    <FileViewProvider projectId={projectId}>
+      <WorkspaceProvider routeAgentId={props.agentId} onSettings={openSettings}>
         <Files>
-          <Body />
+          <ChatSlotsProvider value={CHAT_SLOTS}>
+            <Suspense fallback={null}>
+              <ProjectStatus />
+              <ProjectRunsFeed />
+            </Suspense>
+            <Body />
+          </ChatSlotsProvider>
           <SettingsDialog show={settings} onClose={() => setSettings(false)} />
-          <CloseDialog />
+          <Suspense fallback={null}>
+            <CloseDialog />
+          </Suspense>
         </Files>
-      </FileViewProvider>
-    </WorkspaceProvider>
+      </WorkspaceProvider>
+    </FileViewProvider>
   );
 }
 
@@ -83,14 +121,13 @@ function CodeLink() {
   return null;
 }
 
-/** The dock of tab groups; the project's global actions live in the strips (see `WorkspaceActions`). */
+/** The dock of tab groups; tools open from each strip's "+" (`TabPicker`), the palette and the orchestrator header's `…` menu. */
 function Body() {
   const { project, loadError, reload } = useProject();
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       {loadError && !project ? (
-        <Panel className="flex-1">
-          <PanelBar />
+        <Panel className="mt-bar flex-1">
           <LoadError message={loadError} onRetry={reload} />
         </Panel>
       ) : (
@@ -123,37 +160,6 @@ function SettingsDialog({ show, onClose }: { show: boolean; onClose(): void }) {
             }}
           />
         </Suspense>
-      )}
-    </Presence>
-  );
-}
-
-/** Closing tabs with unsaved edits asks first. */
-function CloseDialog() {
-  const ws = useWorkspace();
-  const closing = ws.closing;
-  const many = (closing?.files.length ?? 0) > 1;
-  return (
-    <Presence show={closing !== null}>
-      {closing && (
-        <Dialog
-          width="sm"
-          title={many ? `Discard changes to ${closing.files.length}\u00a0files?` : `Discard changes to ${closing.files[0] ?? "this file"}?`}
-          description={many ? `${closing.files.join(", ")} have unsaved edits that will be lost.` : "Your edits haven't been saved and will be lost."}
-          onClose={ws.cancelClose}
-          footer={
-            <>
-              <Button onClick={ws.cancelClose} data-autofocus>
-                Cancel
-              </Button>
-              <Button variant="danger" onClick={ws.confirmClose}>
-                Discard changes
-              </Button>
-            </>
-          }
-        >
-          {null}
-        </Dialog>
       )}
     </Presence>
   );

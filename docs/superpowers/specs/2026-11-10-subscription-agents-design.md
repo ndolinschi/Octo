@@ -126,3 +126,89 @@ no real CLI, no real MCP client.**
 2. Grok on a subscription in automated tests has no documented headless login. Options: test Grok with an API key in
    CI and on the subscription only on a developer machine; or accept copying the CLI's credential file to the test
    runner. Default: the former.
+
+## As built — live ACP activity (harness, decision 55 of the UI spec)
+
+What was silent: for ACP agents the harness already published `agent_message_chunk` text and, at `tool_call`, the tool row
+(`message.created` + `tool.started`, so rows did appear at the start, not at completion). It dropped `agent_thought_chunk`,
+`plan`, every non-terminal `tool_call_update`, and had no notion of "what is the agent doing now". Now published (details in
+`apps/harness/docs/acp-orchestrator.md`, "Live activity"):
+
+- `message.thinking_delta {agent_id, text}` — scrubbed of secrets, never stored or indexed.
+- `agent.plan {agent_id, entries}` — also stored on the agent row (`plan`; schema version 4, `agents.plan_json`; cleared when
+  the next turn starts).
+- `tool.updated {agent_id, tool_use_id, status?, title?, locations?, summary?}`.
+- `agent.activity {agent_id, kind: thinking|tool|text|waiting_approval|idle|quiet, label, tool_use_id?}` for the built-in loop
+  and ACP (orchestrator and sub-agents). `quiet` after 10 s (`Options.ACPQuietAfter`) without any session/update, permission or
+  fs request; not while waiting for the user.
+- `available_commands_update` and `current_mode_update` are ignored without error but count as signs of life.
+- agent-client: the four event types, `Agent.plan?`, and reducer state `activity`, `thinking` (dropped at `turn.finished`),
+  `plan`, and tool details merged into `activeTools`.
+
+Verified here (scripted agent, mock model): first thought reaches an SSE subscriber within 100 ms of being sent; 20 text chunks
+sent 20 ms apart arrive as 20 deltas over about 400 ms, each within 100 ms; the tool row exists 150–400 ms before it finishes; a
+silent agent is reported quiet exactly once and an agent waiting for an approval never; secrets split across two thought chunks
+and put in a plan never leave the harness; the built-in loop publishes the same activity kinds.
+
+Not verifiable without the real thing: a real Claude Code may send no chunks of any kind until its answer is complete, or only
+`usage_update`s, or batch its text into a few large chunks; none of that can be fixed in the harness. The wire trace
+(`HARNESS_ACP_TRACE=1`, `docs/diagnostics` / R1) shows it exactly: look at the timestamps of the `session/update` lines of one
+turn: no `agent_thought_chunk` or `agent_message_chunk` lines until the end means the agent itself is silent (the UI then shows
+"Starting …", "Thinking…" and, after 10 s, "Still working — no output from <agent> yet"); a few chunks of many characters means
+the agent batches. Whether the Claude Code adapter sends `agent_thought_chunk` and `plan` at all depends on its version and the
+model's thinking setting.
+
+## As built — providers (harness)
+
+Decisions 53 and 58 of the UI contract, harness side (`apps/harness/docs/providers.md`). Verified against the scripted agent and fake probe commands only; no real agent CLI was run.
+
+- `GET /v1/providers`: `api` (built-in loop, catalogue models), `router` (only when detected), then one entry per ACP agent (claude-code, copilot, grok first). States `ready`, `not_connected`, `not_logged_in`, `not_installed` (`error` reserved). Agent models are the manifest list plus the models the agent advertised, cached in `{data-dir}/agent-models.json` (no schema change); a model no longer advertised is flagged `stale`, not dropped. `suggested` is the current defaults when the API is ready, else the first ready agent (claude-code, codex, copilot, rest) in every slot.
+- `providers.updated` is published on every project stream when a probe outcome, a key or default model, the advertised models or router detection changed what is ready.
+- Project create: `409 no_provider` with nothing ready, new projects get `suggested`; create and patch refuse a model whose provider is not ready with `422 model_unavailable {provider, reason}` (patch checks only changed fields); reading a project never fails and lists `models_unavailable`.
+- `ANTHROPIC_API_KEY` via `PUT /v1/settings` now applies at once (key read per request, built-in-loop switch swapped); `restart_required` no longer lists it. Router settings still need the desktop shell's restart.
+- Retry: the UI re-posts the failed text to `POST .../messages`; the harness now reuses the stored user message when the last turn failed and nothing answered it (no duplicate row, no `message.created`). A failed turn leaves `attention: "failed"` on the project JSON and `state: "failed"` + `error` on `project.attention`; the orchestrator row stays `idle` with the error. The UI's "Retrying…" label is a UI state (see report: the banner button never resets when the retried turn fails again at once).
+- The agent-model cache is fed through `Orchestrator.OnAdvertisedModels` / `AdvertisedModels` (the ACP session's `OnModels`); a user message reused by a retry keeps its original timestamp.
+
+
+## As built — agent models can always be chosen
+
+Contract: decision 58 "Revised after the owner's run of 2026-11-12" (and the "Connected means selectable" and preferences part of decision 72) of `2026-11-10-project-harness-ui.md`; feature page `apps/harness/docs/providers.md`. Built with the scripted agent (`internal/fakeacp`) and fake scripts only; no real agent CLI was run.
+
+- **Discovery without a request.** `providers.Discovery` (on by default in `harness serve`; `HARNESS_MODEL_DISCOVERY=0` off): when an agent becomes ready, when its login changes and on `POST /v1/providers/{id}/refresh-models` the harness runs the manifest's `modelsCommand` and, when that gives nothing, starts the agent, does `initialize` + `session/new` (cwd a fresh empty temporary directory, no MCP servers), reads the models and closes it. No prompt. 20 s, one per agent at a time, once an hour unless forced, skipped while the agent has a live session (the live list is read instead). Failures are `models_error` + `models_refreshed_at` on the provider; `providers.updated` when the picture changes. Every model-list shape is read: model config option (flat and grouped), `models.availableModels`, `models` as a bare array, `_meta.models`; the scripted agent has a variant of each (`OCTO_FAKEACP_MODELS_VIA` = `models`, `config`, `config-grouped`, `models-array`, `meta`, `none`) and logs its requests (`OCTO_FAKEACP_REQUEST_LOG`) so a test can assert that no prompt was sent and the session's cwd and MCP servers.
+- **Manifest.** `modelsCommand` ({command, pattern, labelGroup}), `modelLabels`, `modelsNote`, `roles`, `auth.notLoggedInExit`. Built-in: claude-code `opus`/`sonnet`/`haiku` (source `manifest`, README line "aliases accepted by the Claude Code CLI's --model flag; unverified here"), roles haiku/sonnet/opus; Grok `grok models` with a defensive per-line pattern (the real output is unverified; override it in a copied manifest). No model names for Codex or Copilot.
+- **Typed models.** `PUT /v1/providers/{id}/custom-models` (`source: "custom"`, same cache file). `acp:<agent>/<anything>` is accepted for a ready agent (`ValidateACPRef` no longer compares against the list; `spawn_agent`'s model has no enum) and reaches the agent through `modelArg`, the model config option or `session/set_model` (an unlisted name is sent as typed); a refusal fails the turn with "<agent> does not accept model <name>" and a hint listing what the agent advertises (`acp.ModelError`). `ModelPattern` now allows any printable non-space character after a first letter or digit (aliases such as `opus[1m]`).
+- **Connected means selectable.** A probe makes an agent `not_logged_in` only when its output matches `notLoggedInPattern` or it exits with a status in `notLoggedInExit`; a failing, timed-out, unstartable or unexpected probe leaves `login: "unchecked"` and the agent `ready`. The router's agent candidates and the default orchestrator treat an unchecked login as logged in. The cause of the owner's "Grok connected but not selectable" is not reproducible here: with the old rule any non-zero exit of `grok models` (or a probe that never answered, for the candidates) made it unavailable; the new rule cannot.
+- **Preferences and roles.** `preferred_model` and `roles` per agent (`PUT /v1/providers/{id}/prefs`), resolution in the orchestrator as described in `providers.md`.
+
+Verified: `go test -race ./...` (discovery of each shape, failures, timeout, hourly gate and force, in-use skip, models command, custom and typed models on each path, refusal message, probe outcomes, prefs and roles resolution, the HTTP endpoints). Not verified: any real CLI. Only the owner's machine can say which of the four advertise models and in which shape, what `grok models` prints, whether the Claude aliases are accepted, whether each CLI accepts a typed model, and how long the real cold start of a throw-away session takes against the 20 s limit (`npx` may need longer on first use; the error says "timed out after 20s" and a later refresh retries).
+
+## Decision (2026-11-12) — the login probe is advisory, never a lock
+
+Owner's live run: "Couldn't switch the model. models.orchestrator "acp:grok" cannot run: Grok is not logged in" while
+Grok was logged in. A probe is a guess made earlier, by another process; the agent's own session is the truth. Rules:
+1. **Fresh before refusing.** Before any request is refused for `not_logged_in` (project create/patch, model switch,
+   spawn), the harness re-runs that agent's probe synchronously (at most once per 5 s per agent). A probe that now
+   passes lets the request through.
+2. **Negative results expire fast.** A "not logged in" result is re-probed after 15 s in the background while anything
+   shows it (providers were requested in the last minute); a positive one keeps the normal interval.
+3. **`POST /v1/providers/{id}/recheck`** runs the probe now and answers the provider entry ("I've logged in — check
+   again" in the UI); `providers.updated` follows.
+4. **Use anyway.** A refusal for `not_logged_in` carries `can_force: true`; the same request with
+   `"force_unverified": true` is accepted and stored. The agent is then started normally; if it really is logged out,
+   the turn fails with the agent's own error and the login hint (already built). `not_installed` can never be forced.
+5. **Why, without leaking.** `harness doctor` and `GET /v1/diagnostics` say which rule decided (pattern matched /
+   listed exit status / exit 0 / timeout), the exit status, the probe's duration, and the names (not values) of the
+   environment variables the probe was given; with `--show-probe-output` doctor prints the first 20 lines of the
+   probe's output (the owner runs it locally; never sent to a model, never in `/v1/diagnostics`).
+6. **Same environment as a terminal.** The probe and the agent get the login-shell environment the desktop app
+   resolves (HOME, USER, LOGNAME, XDG_*, PATH, SHELL, LANG, TMPDIR, SSH_AUTH_SOCK and on macOS `__CF_USER_TEXT_ENCODING`),
+   so a credential store the CLI reads in a terminal is readable here; a test asserts each is passed when set.
+Acceptance: unit tests for 1–4 with the scripted probe (logged out → log in → request passes without waiting; force
+path; `not_installed` not forceable); doctor output test for 5; env test for 6; UI: the connect sheet and the model
+picker's "Not connected" row offer "Check again" and "Use anyway" with one line saying what each does.
+
+### As built — the login probe is advisory (2026-11-12, harness + agent-client + UI)
+
+Built: rules 1 to 6 as written above. `plugins.Registry.Fresh` / `Recheck` (synchronous probe, joined with one in flight, `FreshProbeAge` 5 s), `NegativeProbeInterval` 15 s, `providers.Service.CheckFresh` / `Recheck`, `POST /v1/providers/{id}/recheck`, `can_force` on `model_unavailable`, `force_unverified` on project create and patch, probe reports with `rule`, `exit_status`, `duration_ms`, `dir`, `env_names` and `harness doctor --show-probe-output`, `__CF_USER_TEXT_ENCODING` in the child-environment allow-list. Exit 0 now always wins over `notLoggedInPattern` (a logged-out Grok, which exits 0 printing "You are not authenticated.", reads as unchecked). A built-in agent's probe runs in the user's home. Also built: `verified` / `experimental`, `unsupported` / `not_supported`, `startHint` and the start-up failure message for rejected launch arguments (`acp.ExitError` carries the first stderr line). UI: "Check again" (spinner, calls recheck) and "Use anyway" (only for `not_logged_in`, one dim line) in the connect sheet, the model picker's "Not set up" rows and the refused-switch notice; Settings → Agents "Check again" rechecks; a dim "experimental" word; a `not_supported` row only says why. Demo bridge: `?recheck=ok` makes "Check again" succeed for a logged-out agent; "Use anyway" works either way.
+
+Verified: unit and HTTP tests with the scripted agent and fake probe scripts (logged out, log in, request passes; force path; not_installed and not_supported not forceable; doctor output; child environment; usage-error launch with an `sh` script, no real CLI). Not verified: the real `grok models` exit status and output on the owner's machine; whether the desktop shell's environment carries every variable of rule 6 on macOS (update 2026-11-13: the sidecar now forwards an allow-list of login-shell variables, see the packaging spec's "As built — login-shell environment"; verified with fake shells only; `harness doctor` lists the names child processes get); the UI in a browser.

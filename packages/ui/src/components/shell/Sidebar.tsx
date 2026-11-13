@@ -1,51 +1,30 @@
-import { ArrowLeft, ArrowRight, House, PanelLeft, Plus, Search, Settings, type LucideIcon } from "lucide-react";
+import type { ProjectSummary } from "@octo/agent-client";
+import { GitPullRequest, House, Plus, Search, Settings, type LucideIcon } from "lucide-react";
 import { navigate } from "../../lib/route";
 import { Glyph } from "../primitives/Glyph";
 import { useMemo, useRef, type ReactNode } from "react";
-import { cn } from "../../lib/cn";
-import { useHistoryAvailability } from "../../lib/history";
 import { useNow, useScrollFade } from "../../lib/hooks";
 import { useApp } from "../../state/app";
 import { useOrchestrators } from "../../state/orchestrators";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
-import { IconButton } from "../primitives/Button";
-import { Spinner } from "../primitives/Status";
+import { IconButton } from "../primitives/IconButton";
+import { ListRow } from "../primitives/ListRow";
+import { SkeletonList } from "../primitives/Skeleton";
 import { ProjectItem } from "./ProjectItem";
 import { CLOCK_SIDEBAR_MS } from "../../lib/constants";
 
-/**
- * Row anatomy shared by every sidebar row: [16px leading slot] 8 [label] flex [trailing], 8px padding,
- * radius 6. Nav rows are 32px; project rows 40px with two lines (name, the orchestrator's state).
- */
-export const NAV_ROW = "press-row flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-sm text-fg hover:bg-hover";
-
-function NavRow(props: {
-  icon: LucideIcon;
-  label: string;
-  onClick(): void;
-  disabled?: boolean;
-  trailing?: ReactNode;
-  shortcut?: { hint: string; keys: string };
-  current?: boolean;
-}) {
-  const Icon = props.icon;
+/** A nav row (decision 90): a 32px `ListRow` with its glyph, label and, when it has one, the key hint. */
+function NavRow(props: { icon: LucideIcon; label: string; onClick(): void; disabled?: boolean; shortcut?: { hint: string; keys: string }; current?: boolean }) {
   return (
-    <button
-      type="button"
+    <ListRow
+      size="md"
+      leading={<Glyph icon={props.icon} size={16} className="text-fg-2" />}
+      title={props.label}
+      meta={props.shortcut?.hint}
+      selected={props.current === true}
+      disabled={props.disabled === true}
       onClick={props.onClick}
-      disabled={props.disabled}
-      aria-keyshortcuts={props.shortcut?.keys}
-      aria-current={props.current ? "page" : undefined}
-      className={cn(NAV_ROW, "disabled:text-fg-3 disabled:hover:bg-transparent", props.current && "bg-active hover:bg-active")}
-    >
-      <Glyph icon={Icon} size={16} className="shrink-0 text-fg-2" />
-      <span className="min-w-0 flex-1 truncate text-left">{props.label}</span>
-      {props.shortcut && (
-        <kbd aria-hidden className="shrink-0 font-sans text-xs text-fg-3">
-          {props.shortcut.hint}
-        </kbd>
-      )}
-    </button>
+    />
   );
 }
 
@@ -61,15 +40,16 @@ export function Sidebar(props: {
   unseen: Set<string>;
   onNewProject(): void;
   onSearch(): void;
+  /** Opens the Review tab of the open project. */
+  onReview(): void;
   onSettings(): void;
   /** A project row was picked (closes the drawer). */
   onPick(): void;
-  /** Hides the inline sidebar, or closes the drawer. */
-  onToggle(): void;
+  /** Mounted under a project row (the app passes the expandable list of its sessions). */
+  projectExtra?: ((project: ProjectSummary, active: boolean) => ReactNode) | undefined;
 }) {
   const { projects, health } = useApp();
   const now = useNow(true, CLOCK_SIDEBAR_MS);
-  const history = useHistoryAvailability();
   const list = useRef<HTMLUListElement>(null);
   useScrollFade(list, "y");
   const canCreate = health === "online";
@@ -82,19 +62,12 @@ export function Sidebar(props: {
   const orchestrators = useOrchestrators(projects);
 
   return (
-    <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window py-gutter pl-gutter max-sm:py-0">
+    <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter">
       <div className="flex min-h-0 flex-1 flex-col p-pane">
-        {/* 2px side padding: the toggle's glyph centres on the rows' leading slot, the last button's on their trailing edge. */}
-        <div className="flex h-row shrink-0 items-center gap-1 px-0.5">
-          <IconButton icon={PanelLeft} label="Hide sidebar" aria-expanded onClick={props.onToggle} />
-          <span className="flex-1" />
-          <IconButton icon={ArrowLeft} label="Back" onClick={() => window.history.back()} disabled={!history.back} />
-          <IconButton icon={ArrowRight} label="Forward" onClick={() => window.history.forward()} disabled={!history.forward} />
-        </div>
-
-        <div className="mt-2 flex shrink-0 flex-col">
+        <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
           <NavRow icon={Search} label="Search" onClick={props.onSearch} shortcut={{ hint: `${MOD}K`, keys: "Control+K Meta+K" }} />
+          <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} disabled={props.activeProjectId === null} />
           <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />
         </div>
 
@@ -105,14 +78,7 @@ export function Sidebar(props: {
           </div>
         )}
         <ul ref={list} className="min-h-0 flex-1 overflow-y-auto overscroll-contain fade-y">
-          {projects === null &&
-            health !== "offline" &&
-            [0, 1, 2].map((i) => (
-              <li key={i} className="flex h-bar items-center gap-2 px-2" aria-hidden>
-                <span className="size-4 shrink-0" />
-                <span className="h-2 rounded-full bg-hover" style={{ width: `${62 - i * 14}%` }} />
-              </li>
-            ))}
+          {projects === null && health !== "offline" && <SkeletonList count={3} size="lg" twoLine />}
           {ordered?.map((p) => (
             <ProjectItem
               key={p.id}
@@ -121,6 +87,7 @@ export function Sidebar(props: {
               unseen={props.unseen.has(p.id)}
               state={orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }}
               onPick={props.onPick}
+              extra={props.projectExtra?.(p, p.id === props.activeProjectId)}
               now={now}
             />
           ))}
@@ -128,21 +95,8 @@ export function Sidebar(props: {
 
         <div className="relative mt-2 shrink-0">
           <NavRow icon={Settings} label="Settings" onClick={props.onSettings} />
-          <ConnectionStatus />
         </div>
       </div>
     </nav>
-  );
-}
-
-/** Silent while the bridge is healthy; speaks up only when it is not (trailing slot of the Settings row). */
-function ConnectionStatus() {
-  const { health } = useApp();
-  return (
-    <span role="status" className="pointer-events-none absolute inset-y-0 right-2 flex max-w-[60%] min-w-0 items-center gap-2 text-xs text-fg-3">
-      {health === "offline" && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-err" />}
-      {health === "checking" && <Spinner size={12} />}
-      {health !== "online" && <span className="truncate">{health === "offline" ? "Bridge offline" : "Connecting…"}</span>}
-    </span>
   );
 }

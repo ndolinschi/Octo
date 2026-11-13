@@ -15,17 +15,15 @@ export type StreakPreset = { anchor: StreakAnchor; rise: number; echo: number; n
 export const STREAK_NARROW_BELOW = 640;
 
 /**
- * Home: a shallow band across the lower part — behind the translucent cards and through the free space under them —
- * so the title row stays in the dark (decision 32: the band is moved, never patched with a scrim).
+ * Decision 91a: ONE band for every screen that shows the streak — one placement (a band at the top of the panel, `--octo-band-h`
+ * tall, over an area with no content: Home's heading area, the empty conversation's upper third, the connect and no-projects
+ * screens) and one angle: the core climbs gently from the lower left to the upper right inside it.
  */
-export const STREAK_HOME: StreakPreset = { anchor: { x: 0.5, y: 0.72 }, rise: 0.45, echo: 0.46 };
-/**
- * Empty project: from the top-left corner across the upper third to the right edge — the core passes ABOVE the
- * title / composer / facts block, which sits in the cool halo and the dark falloff; the echo runs below the block.
- */
-export const STREAK_EMPTY: StreakPreset = { anchor: { x: 0.5, y: 0.14 }, rise: 0.3, echo: 0.66, narrow: { anchor: { x: 0.5, y: 0.1 }, rise: 0.12 } };
-/**
- * No-projects hero: a shallow band across the upper quarter, so the centred text sits in the dark under its warm edge
- * (decision 32: the band is moved, never patched with a scrim).
- */
-export const STREAK_HERO: StreakPreset = { anchor: { x: 0.5, y: 0.2 }, rise: 0.55, echo: 0.46, narrow: { anchor: { x: 0.5, y: 0.16 }, rise: 0.2 } };
+export const STREAK_BAND: StreakPreset = { anchor: { x: 0.5, y: 0.5 }, rise: 0.5, echo: 0.5, narrow: { anchor: { x: 0.5, y: 0.5 }, rise: 0.25 } };
+
+/** @deprecated Decision 91a: every screen uses `STREAK_BAND`; these names stay so the callers of the earlier presets keep compiling. */
+export const STREAK_HOME = STREAK_BAND;
+/** @deprecated See `STREAK_HOME`. */
+export const STREAK_EMPTY = STREAK_BAND;
+/** @deprecated See `STREAK_HOME`. */
+export const STREAK_HERO = STREAK_BAND;

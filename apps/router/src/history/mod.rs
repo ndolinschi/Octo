@@ -17,12 +17,14 @@ mod error;
 mod metrics;
 mod outcomes;
 mod payload;
+mod records;
 
 pub use call::{CallObserve, DecisionRow, FinishedCall};
 pub use call_kind::CallKind;
 pub use call_provider::CallProvider;
 pub use cost::{
-    blended_cost_micros, resolve_cost, CostSource, ModelPrice, PriceTable, ResolvedCost,
+    blended_cost_micros, estimate_ratio, estimate_warn_due, resolve_cost, warn_estimate_ratio,
+    CostSource, ModelPrice, PriceTable, ResolvedCost,
 };
 pub use error::HistoryError;
 pub use metrics::{CostMicros, Millis, TokenCount};
@@ -32,6 +34,7 @@ pub use payload::{
     complete_dropped_usage, describe_input, is_subagent, request_payload, response_payload,
     token_from_headers, usage_from_output, usage_from_parts, DroppedStream, ParsedUsage,
 };
+pub use records::{PruneStats, Retention};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -59,6 +62,7 @@ pub struct History {
     inflight: Arc<AtomicUsize>,
     idle: Arc<Notify>,
     dropped_inserts: Arc<AtomicU64>,
+    retention: Retention,
 }
 
 impl History {
@@ -74,6 +78,7 @@ impl History {
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
             dropped_inserts: Arc::new(AtomicU64::new(0)),
+            retention: Retention::default(),
         }
     }
 
@@ -130,6 +135,7 @@ impl History {
             inflight: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
             dropped_inserts: Arc::new(AtomicU64::new(0)),
+            retention: Retention::default(),
         })
     }
 
@@ -652,6 +658,7 @@ async fn insert_call(
     let client_tool_names = call.client_tool_names.as_deref();
     let bg_signal = call.bg_signal.map(i64::from);
     let hk_text_signal = call.hk_text_signal.map(i64::from);
+    let request_id = call.request_id.as_deref();
     sqlx::query!(
         r#"
         INSERT INTO calls (
@@ -662,8 +669,8 @@ async fn insert_call(
             rerouting, rerouting_reason, session_id, parent_session_id, tier_before, tier_after, trigger,
             or_cost_micros, upstream_cost_micros, estimated_cost_micros, cost_source,
             is_byok, upstream_provider, trimmed_from_tokens,
-            client_model, client_has_thinking, client_tool_names, bg_signal, hk_text_signal
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            client_model, client_has_thinking, client_tool_names, bg_signal, hk_text_signal, request_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         created_at,
         kind,
@@ -703,7 +710,8 @@ async fn insert_call(
         client_has_thinking,
         client_tool_names,
         bg_signal,
-        hk_text_signal
+        hk_text_signal,
+        request_id
     )
     .execute(pool)
     .await?;

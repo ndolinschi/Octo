@@ -1,6 +1,7 @@
 import { Check, CircleX } from "lucide-react";
+import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { formatDuration } from "../../lib/format";
 import { useNow, useLatest } from "../../lib/hooks";
@@ -9,12 +10,9 @@ import { useProject } from "../../state/project";
 import { CHAT } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { RunningDot, Spinner } from "../primitives/Status";
-import { CommentsControl } from "./CommentsControl";
+import { CommentsControl } from "./CommentsControlLazy";
 import { Composer } from "./Composer";
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
-
-const CHIP =
-  "press flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-line bg-overlay px-2 text-xs text-fg-2 tabular-nums shadow-float octo-ring-float hover:text-fg";
 
 /**
  * The orchestrator composer floating over a file view (or Agents / Notes) while no Chat tab is visible:
@@ -27,7 +25,6 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
   const ws = useWorkspace();
   const { project, state, running, ensureMessages } = useProject();
   const composer = useOrchestratorComposer(CHAT);
-  const [commentsOpen, setCommentsOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const orchestratorId = project?.orchestrator_agent_id;
   const messages = orchestratorId ? state.messages[orchestratorId] : undefined;
@@ -80,7 +77,7 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
       </>
     );
   }
-  const chips = turn !== null || agentsRunning > 0 || composer.commentCount > 0;
+  const chips = turn !== null || agentsRunning > 0;
 
   return (
     <div
@@ -93,28 +90,33 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
         {chips && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {turn && (
-              <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the orchestrator">
+              <Button variant="secondary" size="xs" onClick={ws.focusChat} title="Show the conversation">
                 {turn}
-              </button>
+              </Button>
             )}
             {agentsRunning > 0 && (
-              <button type="button" className={CHIP} onClick={ws.focusChat} title="Show the orchestrator">
+              <Button variant="secondary" size="xs" onClick={ws.focusChat} title="Show the conversation">
                 <RunningDot />
                 {agentsRunning}&nbsp;{agentsRunning === 1 ? "agent" : "agents"} running
-              </button>
+              </Button>
             )}
-            {composer.commentCount > 0 && <CommentsControl variant="chip" open={commentsOpen} onOpenChange={setCommentsOpen} />}
           </div>
         )}
         {/* State changes only (not the ticking timer) are announced. */}
         <p role="status" className="sr-only">
-          {last?.state === "working" ? "The orchestrator is working" : last?.state === "failed" ? "Turn failed" : last?.state === "done" ? "Turn finished" : ""}
+          {last?.state === "working" ? "Working" : last?.state === "failed" ? "Turn failed" : last?.state === "done" ? "Turn finished" : ""}
         </p>
         <Composer
           {...composer}
           floating
-          comments={composer.commentCount ? { count: composer.commentCount, render: () => null } : undefined}
-          onOpenComments={() => setCommentsOpen(true)}
+          comments={
+            composer.commentCount
+              ? {
+                  count: composer.commentCount,
+                  render: (open: boolean, setOpen: (open: boolean) => void) => <CommentsControl open={open} onOpenChange={setOpen} />,
+                }
+              : undefined
+          }
         />
       </div>
     </div>

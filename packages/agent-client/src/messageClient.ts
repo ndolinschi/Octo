@@ -138,6 +138,7 @@ export function createMessageClient(port: MessagePortLike): MessageClient {
     listSide: (id) => call("listSide", [id]),
     clearSide: (id) => call("clearSide", [id]),
     listNotes: (id) => call("listNotes", [id]),
+    getNote: (id, noteId) => call("getNote", [id, noteId]),
     createNote: (id, input) => call("createNote", [id, input]),
     updateNote: (id, noteId, patch) => call("updateNote", [id, noteId, patch]),
     deleteNote: (id, noteId) => call("deleteNote", [id, noteId]),

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { matchKind, matchScore, rankGroups } from "./match";
+import { matchScore } from "./match";
+import { matchKind, rankGroups } from "./matchMore";
 
 test("an empty query matches everything with the same score", () => {
   assert.equal(matchScore("", "anything"), 0);

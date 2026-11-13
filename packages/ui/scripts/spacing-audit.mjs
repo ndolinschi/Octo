@@ -8,7 +8,7 @@
  *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--only <state>] [--json <path>]
  *                                              [--strict] [--selftest] [--query "demo=1"] [--list] [--help]
  *
- * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance (see RULES below).
+ * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds, field-row, key-hint, panel-frame (see RULES below).
  * States that cannot be reached are reported as `skipped` with a reason, never as a crash.
  */
 import { createRequire } from "node:module";
@@ -22,13 +22,20 @@ import { writeFileSync } from "node:fs";
 //   reason    why this is not a defect (Monaco internals and text optical offsets are NOT valid reasons)
 // ---------------------------------------------------------------------------------------------------------------
 /** @type {{ rule: string; selector: string; reason: string }[]} */
-const ALLOW = [];
+const ALLOW = [
+  {
+    rule: "scale",
+    selector: "[data-strip]",
+    reason:
+      "the first tab strip of a window whose sidebar is closed starts after the window controls' inset and the three window buttons (decision 67); the width is computed from the host's inset, not authored spacing",
+  },
+];
 
 const SCALE = [2, 4, 6, 8, 12, 16, 20, 24, 32, 40];
 const ROW_HEIGHTS = [24, 28, 32, 36, 40];
 const TOL = 0.5;
 const ICON_GAP_MIN = 6;
-const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance"];
+const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds", "field-row", "key-hint", "panel-frame"];
 
 // ---------------------------------------------------------------------------------------------------------------
 // CLI
@@ -51,7 +58,7 @@ Usage: node packages/ui/scripts/spacing-audit.mjs [options]
 
   --url <base>      dev server to audit (default http://localhost:1420); demo data is required
   --query <q>       query string for the app (default "demo=1")
-  --only <state>    audit one state (see --list)
+  --only <state>    audit one state, or several separated by commas (see --list)
   --json <path>     also write the full report as JSON
   --strict          exit 1 when a state is skipped (unreachable), not only on violations
   --selftest        run the in-page rules against a synthetic page first
@@ -130,9 +137,9 @@ async function openProject(page, ctx, name) {
 
 async function waitChat(page) {
   try {
-    await page.locator("[data-chat-header]").first().waitFor({ state: "visible", timeout: T });
+    await page.locator("[data-composer]").first().waitFor({ state: "visible", timeout: T });
   } catch {
-    skip("no visible chat header (Chat tab not shown)");
+    skip("no visible composer (Chat tab not shown)");
   }
   try {
     await page.locator("[data-column]").first().waitFor({ state: "visible", timeout: 2000 });
@@ -142,12 +149,20 @@ async function waitChat(page) {
   await settle(page, 500);
 }
 
+/** The tool rows of the strip's "+" picker (v6.3 part 2, decision 24: the tool buttons left the strip). */
+const TOOL_ROWS = { "Show agents": "agents", "Show notes": "notes", "Show files": "files", "Show project details": "details", "Show usage": "usage" };
+
 async function clickTool(page, label) {
-  const btn = page.getByRole("button", { name: label, exact: true }).first();
-  if (!(await btn.count())) skip(`button "${label}" not found`);
-  const pressed = await btn.getAttribute("aria-pressed");
-  if (pressed !== "true") await btn.click({ timeout: T });
-  await settle(page, 500);
+  if (
+    label === "Show files" &&
+    (await page
+      .getByRole("tree", { name: "Project files" })
+      .first()
+      .isVisible()
+      .catch(() => false))
+  )
+    return;
+  await openTool(page, label);
 }
 
 /** Expand folders until a file matching `re` is visible; click it. */
@@ -191,17 +206,42 @@ async function openFileMatching(page, re, what) {
 }
 
 /** @type {{ id: string; viewports: {width:number;height:number}[]; run(page, ctx): Promise<void>; checks?: string[] }[]} */
-/** Opens a tool tab from the header strip, or through the folded "Project tools" menu in a narrow group. */
+/** Opens a tool tab through the last strip's "+" picker (decision 25). */
 async function openTool(page, label) {
-  const btn = page.getByRole("button", { name: label, exact: true }).first();
-  if ((await btn.count()) && (await btn.isVisible())) await btn.click({ timeout: T });
-  else {
-    const menu = page.getByRole("button", { name: "Project tools" }).last();
-    if (!(await menu.count())) skip(`button "${label}" not found`);
-    await menu.click({ timeout: T });
-    await page.getByRole("menuitem", { name: label }).click({ timeout: T });
+  const plus = page.locator("[data-tab-plus]:visible").last();
+  if (!(await plus.count())) skip('no "+" in the tab strip');
+  await plus.click({ timeout: T });
+  const row = page.locator(`[role=option][data-picker-row="tool:${TOOL_ROWS[label] ?? label}"]`).first();
+  try {
+    await row.waitFor({ timeout: T });
+  } catch {
+    skip(`"${label}" not in the "+" picker`);
   }
+  await row.click({ timeout: T });
   await settle(page, 900);
+}
+
+async function openMemoryTab(page, ctx) {
+  await openProject(page, ctx, "Atlas API");
+  await openTool(page, "memory");
+  try {
+    await page.locator("[data-memory]").first().waitFor({ timeout: T });
+  } catch {
+    skip("Memory tab did not render");
+  }
+  await settle(page, 500);
+}
+
+async function openSessionsTab(page, ctx) {
+  await openProject(page, ctx, "Atlas API");
+  await openTool(page, "sessions");
+  try {
+    await page.locator("[data-sessions]").first().waitFor({ timeout: T });
+    await page.locator("[data-sessions] [data-row]").first().waitFor({ timeout: T });
+  } catch {
+    skip("Sessions tab did not render");
+  }
+  await settle(page, 500);
 }
 
 const HOME_VPS = [...WIDE, { width: 390, height: 844 }];
@@ -238,6 +278,95 @@ const STATES = [
       await openProject(page, ctx, "Orbit mobile");
       await openTool(page, "Show usage");
       if (!(await page.locator("[data-usage]").count())) skip("Usage tab did not render");
+    },
+  },
+  {
+    // Decision 95f: every tool tab sits in one `Panel` frame. Opens each tab and compares the frame's three numbers.
+    id: "panel-frame",
+    viewports: [WIDE[0]],
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+    },
+    async extra(page) {
+      const TABS = ["sessions", "memory", "notes", "usage", "agents", "details", "changes"];
+      const rows = [];
+      for (const tool of TABS) {
+        await openTool(page, tool);
+        rows.push(
+          (await page.evaluate((name) => {
+            const p = [...document.querySelectorAll(`[data-panel="${name}"]`)].find((e) => e.offsetParent !== null && e.getBoundingClientRect().width > 0);
+            if (!p) return { name, missing: true };
+            const P = p.getBoundingClientRect();
+            const title = p.querySelector("[data-panel-title]");
+            let titleLeft = null;
+            if (title) {
+              const w = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
+              const n = w.nextNode();
+              if (n) {
+                const r = document.createRange();
+                r.selectNodeContents(n);
+                titleLeft = r.getBoundingClientRect().left - P.left;
+              }
+            }
+            const head = p.querySelector("[data-panel-header]");
+            const body = p.querySelector("[data-panel-body]");
+            const scroller =
+              body &&
+              [...body.querySelectorAll("*")].find(
+                (e) => /auto|scroll/.test(getComputedStyle(e).overflowY) && e.offsetParent !== null && !e.closest("[data-panel-filters]"),
+              );
+            const cs = scroller && getComputedStyle(scroller);
+            return {
+              name,
+              headerH: head ? head.getBoundingClientRect().height : null,
+              titleLeft,
+              listInset: scroller && cs ? scroller.getBoundingClientRect().left - P.left + parseFloat(cs.paddingLeft) : null,
+              // The gap from what ends the chrome (header, filter row or view tabs) to the first row's slot: the list's own top inset.
+              listGap: scroller && cs ? parseFloat(cs.paddingTop) : null,
+            };
+          }, tool)) ?? { name: tool, missing: true },
+        );
+      }
+      const out = [];
+      const mode = (vals) => {
+        const c = new Map();
+        for (const v of vals) c.set(v, (c.get(v) ?? 0) + 1);
+        return [...c.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      };
+      for (const r of rows)
+        if (r.missing)
+          out.push({
+            rule: "panel-frame",
+            selector: `[data-panel="${r.name}"]`,
+            text: "",
+            prop: "tab is not in a Panel",
+            measured: "no [data-panel]",
+            expected: "Panel frame",
+          });
+      const seen = rows.filter((r) => !r.missing);
+      for (const [key, label] of [
+        ["headerH", "header height"],
+        ["titleLeft", "header text inset"],
+        ["listInset", "list horizontal inset"],
+        ["listGap", "filter-to-list gap"],
+      ]) {
+        const vals = seen.map((r) => r[key]).filter((v) => v !== null && v !== undefined);
+        const want = mode(vals.map((v) => Math.round(v * 2) / 2));
+        for (const r of seen) {
+          const v = r[key];
+          if (v === null || v === undefined) continue;
+          if (Math.abs(v - want) > TOL)
+            out.push({
+              rule: "panel-frame",
+              selector: `[data-panel="${r.name}"]`,
+              text: "",
+              prop: label,
+              measured: `${Math.round(v * 10) / 10}px`,
+              expected: `${want}px (as the other tabs)`,
+            });
+        }
+      }
+      return out;
     },
   },
   {
@@ -314,6 +443,106 @@ const STATES = [
     },
   },
   {
+    id: "memory-sessions",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.getByRole("tab", { name: "Sessions" }).first().waitFor({ timeout: T });
+    },
+  },
+  {
+    id: "memory-exchange",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.locator("[data-memory] [data-row]").first().click({ timeout: T });
+      await settle(page, 400);
+      const row = page.locator("[data-memory] [data-exchange] [data-row]").first();
+      if (!(await row.count())) skip("no exchange row in the demo session");
+      await row.click({ timeout: T });
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "memory-knowledge",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.getByRole("tab", { name: "Knowledge" }).first().click({ timeout: T });
+      await settle(page, 400);
+      const task = page.getByRole("list", { name: "Tasks" }).locator("[data-row]").first();
+      if (!(await task.count())) skip("no task rows in Knowledge");
+      await task.click({ timeout: T });
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "memory-files",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.getByRole("tab", { name: "Files" }).first().click({ timeout: T });
+      await settle(page, 400);
+      await page.locator("[data-memory] [data-row]").first().click({ timeout: T });
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "sessions-list",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openSessionsTab(page, ctx);
+      await page.locator("[data-sessions] [data-row]").first().click({ timeout: T });
+      await settle(page, 400);
+      // Narrow: the click opened the detail; Back returns to the list with the row open.
+      const backButton = page
+        .locator("[data-sessions]")
+        .getByRole("button", { name: /^(Back to )?Sessions$/ })
+        .first();
+      if (await backButton.isVisible().catch(() => false)) await backButton.click({ timeout: T });
+      await settle(page, 300);
+    },
+  },
+  {
+    id: "sessions-main",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openSessionsTab(page, ctx);
+      const second = page.locator('[data-sessions] ul[aria-label="Sessions"] > li').nth(1).locator("[data-row]").first();
+      if (!(await second.count())) skip("no second session in the demo");
+      await second.click({ timeout: T });
+      await settle(page, 700);
+    },
+  },
+  {
+    id: "sessions-agent",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openSessionsTab(page, ctx);
+      const second = page.locator('[data-sessions] ul[aria-label="Sessions"] > li').nth(1).locator("[data-row]").first();
+      await second.click({ timeout: T });
+      await settle(page, 300);
+      const backButton = page
+        .locator("[data-sessions]")
+        .getByRole("button", { name: /^(Back to )?Sessions$/ })
+        .first();
+      if (await backButton.isVisible().catch(() => false)) await backButton.click({ timeout: T });
+      const agent = page.locator("[data-sessions] [data-row]", { hasText: "Collect the open pull requests" }).first();
+      if (!(await agent.count())) skip("no agent session under the second session");
+      await agent.click({ timeout: T });
+      await settle(page, 700);
+    },
+  },
+  {
+    id: "memory-search",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page, ctx) {
+      await openMemoryTab(page, ctx);
+      await page.getByRole("searchbox", { name: "Search memory" }).fill("refresh token");
+      await settle(page, 1000);
+    },
+  },
+  {
     id: "notes-tab",
     viewports: WIDE,
     async run(page, ctx) {
@@ -358,8 +587,9 @@ const STATES = [
       await settle(page, 400);
     },
   },
+  // Decision 59: Settings is a page; the Providers section and the connect sheet of an agent.
   {
-    id: "settings-dialog",
+    id: "settings-page",
     viewports: WIDE,
     async run(page, ctx) {
       await openProject(page, ctx, "Atlas API");
@@ -367,11 +597,204 @@ const STATES = [
       if (!(await btn.count()) || !(await btn.isVisible())) skip("sidebar Settings button not visible");
       await btn.click({ timeout: T });
       try {
-        await page.getByRole("dialog").first().waitFor({ timeout: T });
+        await page.locator("[data-settings]").waitFor({ timeout: T });
+        await page.getByRole("link", { name: "Providers" }).click({ timeout: T });
+        await page.locator("#row-provider-copilot").waitFor({ timeout: T });
       } catch {
-        skip("settings dialog did not open");
+        skip("settings page did not open");
       }
       await settle(page, 400);
+    },
+  },
+  // Decision 89: Providers is a list and a detail. The owner's live set; three checks beyond the general rules.
+  {
+    id: "providers",
+    viewports: [...WIDE, { width: 390, height: 800 }],
+    async run(page) {
+      await page.goto(`${BASE}/?demo=1&providers=owner#/settings/providers`, { waitUntil: "domcontentloaded" });
+      try {
+        await page.locator("#row-provider-claude-code").waitFor({ timeout: T });
+      } catch {
+        skip("providers page did not open");
+      }
+      await settle(page, 600);
+    },
+    async extra(page) {
+      return page.evaluate(() => {
+        const out = [];
+        const rows = [...document.querySelectorAll('[aria-label="Providers"] [data-row]')].filter((r) => r.getBoundingClientRect().height > 0);
+        const heights = new Set(rows.map((r) => Math.round(r.getBoundingClientRect().height * 2) / 2));
+        if (rows.length && heights.size > 1)
+          out.push({
+            rule: "row-height",
+            selector: "[aria-label=Providers] [data-row]",
+            text: "",
+            prop: "equal heights",
+            measured: [...heights].join(" "),
+            expected: "one height",
+          });
+        for (const r of rows)
+          if (r.querySelector("button, a[href]"))
+            out.push({
+              rule: "row-height",
+              selector: `#${r.id || "row"}`,
+              text: r.textContent.slice(0, 30),
+              prop: "button inside a row",
+              measured: "yes",
+              expected: "none",
+            });
+        const list = document.querySelector('[aria-label="Providers"]');
+        const detail = document.querySelector("[data-provider-detail]");
+        if (list && detail && list.getBoundingClientRect().height > 0 && detail.getBoundingClientRect().height > 0 && window.innerWidth >= 1000) {
+          // The list is its own frame (ProviderRows); the detail sits in a ListFrame, so compare frame tops.
+          const dt = (detail.parentElement ?? detail).getBoundingClientRect().top;
+          const lt = list.getBoundingClientRect().top;
+          if (Math.abs(dt - lt) > 0.5)
+            out.push({ rule: "edges", selector: "[data-provider-detail]", text: "", prop: "top", measured: `${dt}px`, expected: `${lt}px (the list's top)` });
+        }
+        for (const f of document.querySelectorAll("[data-field-row]")) {
+          const tops = [...f.querySelectorAll("[data-field-control]")].map((c) => Math.round(c.getBoundingClientRect().top));
+          if (f.getBoundingClientRect().width > 560 && new Set(tops).size > 1)
+            out.push({ rule: "edges", selector: "[data-field-row]", text: "", prop: "control tops", measured: tops.join(" "), expected: "equal" });
+        }
+        return out;
+      });
+    },
+  },
+  {
+    id: "providers-open",
+    viewports: [WIDE[0]],
+    async run(page) {
+      await page.goto(`${BASE}/?demo=1&providers=owner#/settings/providers`, { waitUntil: "domcontentloaded" });
+      try {
+        await page.getByRole("button", { name: /more (agents|providers) can be added/ }).click({ timeout: T });
+        await page.locator("#row-provider-api").click({ timeout: T });
+      } catch {
+        skip("the folded row did not open");
+      }
+      await settle(page, 400);
+    },
+  },
+  // v6.3 part 2: the new surfaces.
+  {
+    id: "tab-picker",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.locator("[data-tab-plus]:visible").last().click({ timeout: T });
+      try {
+        await page.getByRole("dialog", { name: "Open a tab" }).waitFor({ timeout: T });
+      } catch {
+        skip("the + picker did not open");
+      }
+      await settle(page, 300);
+    },
+  },
+  {
+    id: "model-picker",
+    viewports: HOME_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await waitChat(page);
+      await page.locator("[data-composer] [data-model-picker]").first().click({ timeout: T });
+      try {
+        await page.getByRole("dialog", { name: /^Choose /i }).waitFor({ timeout: T });
+      } catch {
+        skip("the model picker did not open");
+      }
+      await settle(page, 300);
+    },
+  },
+  {
+    id: "side-question",
+    viewports: HOME_VPS,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await waitChat(page);
+      await page.keyboard.press("Control+;");
+      try {
+        await page.locator("[data-side-exchange]").first().waitFor({ timeout: T });
+      } catch {
+        skip("the side question did not open");
+      }
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "home-filtered",
+    viewports: HOME_VPS,
+    async run(page) {
+      await page.evaluate(() => {
+        window.location.hash = "#/";
+      });
+      try {
+        await page.locator("[data-triage=working]").first().waitFor({ timeout: T });
+      } catch {
+        skip("Home triage did not render");
+      }
+      await page.locator("[data-triage=working]").first().click({ timeout: T });
+      await settle(page, 800);
+    },
+  },
+  {
+    id: "acp-orchestrator",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Release notes");
+      await waitChat(page);
+      await settle(page, 600);
+    },
+  },
+  {
+    id: "tool-tables",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Docs site");
+      await waitChat(page);
+      const group = page.getByRole("button", { name: /Ran 1 command, read 1 file/ }).first();
+      if (!(await group.count())) skip("no tabular tool call in Docs site");
+      await group.click({ timeout: T });
+      await page.locator("article button[aria-controls]", { hasText: "pnpm astro build" }).first().click({ timeout: T });
+      try {
+        await page.locator("[data-tool-table] table").first().waitFor({ timeout: T });
+      } catch {
+        skip("the tool result did not render as a table");
+      }
+      await settle(page, 400);
+    },
+  },
+  {
+    id: "new-project-dialog",
+    viewports: [...WIDE, { width: 800, height: 600 }, { width: 640, height: 480 }, { width: 390, height: 700 }],
+    async run(page) {
+      const open = page.getByRole("button", { name: "Show sidebar" }).first();
+      if (await open.isVisible().catch(() => false)) await open.click({ timeout: T });
+      await settle(page, 300);
+      const btn = page.getByRole("button", { name: "New project", exact: true }).first();
+      if (!(await btn.count())) skip("no New project button");
+      await btn.click({ timeout: T });
+      try {
+        await page.getByRole("dialog").first().waitFor({ timeout: T });
+      } catch {
+        skip("the New project dialog did not open");
+      }
+      await settle(page, 500);
+    },
+  },
+  {
+    id: "project-settings-models",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Docs site");
+      await waitChat(page);
+      await page.getByRole("button", { name: "Project actions" }).first().click({ timeout: T });
+      await page.getByRole("menuitem", { name: "Project settings" }).click({ timeout: T });
+      try {
+        await page.getByRole("button", { name: "Models and delegation" }).click({ timeout: T });
+      } catch {
+        skip("project settings did not open");
+      }
+      await settle(page, 500);
     },
   },
   {
@@ -388,6 +811,78 @@ const STATES = [
         skip("right click did not open a tab menu");
       }
       await settle(page, 300);
+    },
+  },
+  {
+    // Decisions 64, 78: an open pull request on the whole dock (header, meta line, file list, diff).
+    id: "review-open",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.locator("[data-tab-plus]:visible").last().click({ timeout: T });
+      try {
+        await page.locator('[role=option][data-picker-row="tool:review"]').first().click({ timeout: T });
+        await page.locator("[data-review-tab] [data-row]").first().click({ timeout: T });
+        await page
+          .getByRole("button", { name: /Submit review/ })
+          .first()
+          .waitFor({ timeout: T });
+      } catch {
+        skip("the review did not open");
+      }
+      await settle(page, 900);
+    },
+  },
+  {
+    // Decision 84: the picker's "Local branches" view.
+    id: "review-branches",
+    viewports: [...WIDE, { width: 390, height: 844 }],
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.locator("[data-tab-plus]:visible").last().click({ timeout: T });
+      try {
+        await page.locator('[role=option][data-picker-row="tool:review"]').first().click({ timeout: T });
+        await page.getByRole("tab", { name: "Local branches" }).first().click({ timeout: T });
+        await page.locator("[data-review-tab] [data-row]").first().waitFor({ timeout: T });
+      } catch {
+        skip("the local branches view did not open");
+      }
+      await settle(page, 500);
+    },
+  },
+  {
+    // Decision 84: a dialog with fields side by side (the command form's Name and Folder).
+    id: "command-dialog",
+    viewports: WIDE,
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+      await page.getByRole("button", { name: "Settings", exact: true }).first().click({ timeout: T });
+      try {
+        await page.locator("[data-settings]").waitFor({ timeout: T });
+        await page.getByRole("link", { name: "Commands" }).first().click({ timeout: T });
+        await page.getByRole("button", { name: "Add", exact: true }).first().click({ timeout: T });
+        await page.locator("[data-field-row]").first().waitFor({ timeout: T });
+      } catch {
+        skip("the command form did not open");
+      }
+      await settle(page, 400);
+    },
+  },
+  {
+    // v7 components in every state (demo-only page; the route is read at render, so the page reloads on it)
+    id: "v7-gallery",
+    viewports: [...WIDE, { width: 390, height: 844 }],
+    async run(page) {
+      await page.evaluate(() => {
+        window.location.hash = "#/__v7";
+      });
+      await page.reload({ waitUntil: "domcontentloaded" });
+      try {
+        await page.locator("[data-v7-gallery]").first().waitFor({ timeout: T });
+      } catch {
+        skip("the v7 gallery did not render");
+      }
+      await settle(page, 2500);
     },
   },
 ];
@@ -528,9 +1023,17 @@ function auditInPage(cfg) {
       const sidebar = document.querySelector('nav[aria-label="Projects"]');
       const sbr = sidebar && visible(sidebar) ? sidebar.getBoundingClientRect() : null;
       const named = [];
-      named.push(["top", Math.min(...groups.map((g) => g.r.top)), groups.reduce((a, b) => (b.r.top < a.r.top ? b : a)).el]);
+      const bar = [...document.querySelectorAll("[data-title-bar]")].find(visible);
+      // Decisions 67 and 73: a group's card starts directly under the top row (its tab strip) and ends directly above the status
+      // bar, so top and bottom are 0 by design; the right side and the gaps between panels carry the 8px gutter.
+      const card = (g) => g.el.querySelector("[data-dock-body]")?.parentElement ?? g.el;
+      const cards = groups.map((g) => ({ el: g.el, r: card(g).getBoundingClientRect() }));
+      const status = [...document.querySelectorAll("[data-status-bar]")].find(visible);
+      const barBottom = bar ? bar.getBoundingClientRect().bottom : 0;
+      const floor = status ? status.getBoundingClientRect().top : vh;
+      named.push(["top", Math.min(...cards.map((g) => g.r.top)) - barBottom, cards.reduce((a, b) => (b.r.top < a.r.top ? b : a)).el]);
+      named.push(["bottom", floor - Math.max(...cards.map((g) => g.r.bottom)), cards.reduce((a, b) => (b.r.bottom > a.r.bottom ? b : a)).el]);
       named.push(["right", vw - Math.max(...groups.map((g) => g.r.right)), groups.reduce((a, b) => (b.r.right > a.r.right ? b : a)).el]);
-      named.push(["bottom", vh - Math.max(...groups.map((g) => g.r.bottom)), groups.reduce((a, b) => (b.r.bottom > a.r.bottom ? b : a)).el]);
       const sorted = [...groups].sort((a, b) => a.r.left - b.r.left);
       if (sbr && sbr.right <= sorted[0].r.left + 1) named.push(["sidebar-to-panel", sorted[0].r.left - sbr.right, sorted[0].el]);
       for (let i = 1; i < sorted.length; i++) {
@@ -538,9 +1041,12 @@ function auditInPage(cfg) {
         if (gap > -1) named.push([`between-groups-${i}`, gap, sorted[i].el]);
       }
       measures.gutter = Object.fromEntries(named.map(([k, v]) => [k, r1(v)]));
-      const ref = named[0][1];
+      // Top and bottom are 0 by design (the strip and the status bar are the neighbours); every other gap is one gutter value.
+      // Full-bleed below 640px (max-sm): no gutter on phones.
+      const ref = vw < 640 ? 0 : Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--spacing-gutter")) || 8;
       for (const [name, v, el] of named) {
-        if (Math.abs(v - ref) > TOL) report("gutter", el, name, `${r1(v)}px`, `${r1(ref)}px (top gutter)`);
+        const want = name === "top" || name === "bottom" ? 0 : ref;
+        if (Math.abs(v - want) > TOL) report("gutter", el, name, `${r1(v)}px`, `${r1(want)}px`);
       }
     }
   }
@@ -734,6 +1240,67 @@ function auditInPage(cfg) {
     }
   }
 
+  // ---- 8. dialog-bounds (decision 51): nothing inside a dialog's body reaches past the body's padding box, so a field
+  // can never run over the dialog's edge. Content that scrolls on its own (an overflow-x container) is exempt.
+  if (rules.includes("dialog-bounds")) {
+    const scrollsX = (el, stop) => {
+      for (let n = el.parentElement; n && n !== stop; n = n.parentElement) {
+        const ox = getComputedStyle(n).overflowX;
+        if (ox === "auto" || ox === "scroll" || ox === "hidden" || ox === "clip") return true;
+      }
+      return false;
+    };
+    for (const body of document.querySelectorAll("[data-dialog-body]")) {
+      if (!visible(body)) continue;
+      const br = body.getBoundingClientRect();
+      const bcs = getComputedStyle(body);
+      const left = br.left + parseFloat(bcs.paddingLeft);
+      const right = br.right - parseFloat(bcs.paddingRight);
+      measures.dialogBounds = { ...(measures.dialogBounds ?? {}), content: `${r1(left)}..${r1(right)}` };
+      for (const el of all) {
+        if (!body.contains(el) || el === body || scrollsX(el, body)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0) continue;
+        // A ghost button with a negative margin bleeds its hover surface into the padding on purpose (text stays aligned).
+        const ecs = getComputedStyle(el);
+        const bleedL = parseFloat(ecs.marginLeft) < 0;
+        const bleedR = parseFloat(ecs.marginRight) < 0;
+        if (r.right > right + TOL && !bleedR) report("dialog-bounds", el, "right edge past the dialog's padding", `${r1(r.right)}px`, `<= ${r1(right)}px`);
+        else if (r.left < left - TOL && !bleedL) report("dialog-bounds", el, "left edge before the dialog's padding", `${r1(r.left)}px`, `>= ${r1(left)}px`);
+      }
+    }
+  }
+
+  // ---- 9. field-row (decision 84): the controls of one FieldRow share a top (and a height), whatever labels and hints are around them.
+  if (rules.includes("field-row")) {
+    for (const row of document.querySelectorAll("[data-field-row]")) {
+      if (!visible(row)) continue;
+      const controls = [...row.querySelectorAll("[data-field-control]")].filter(visible);
+      const first = controls[0];
+      if (!first) continue;
+      const top = first.getBoundingClientRect().top;
+      const height = first.getBoundingClientRect().height;
+      // Stacked below `sm` the controls are on different lines on purpose: only a row that is still a row is compared.
+      const sameLine = controls.every((c) => Math.abs(c.getBoundingClientRect().top - top) < height);
+      if (!sameLine) continue;
+      for (const c of controls.slice(1)) {
+        const r = c.getBoundingClientRect();
+        if (Math.abs(r.top - top) > TOL) report("field-row", c, "top of a control in a field row", `${r1(r.top)}px`, `${r1(top)}px`);
+        if (Math.abs(r.height - height) > TOL) report("field-row", c, "height of a control in a field row", `${r1(r.height)}px`, `${r1(height)}px`);
+      }
+    }
+  }
+
+  // ---- 10. key-hint (decision 92): a keyboard shortcut is never a boxed letter inside a control. It goes into the control's tooltip
+  // ("Allow once (A)"); a menu item shows it right-aligned and dim (the `Menu` shortcut column).
+  if (rules.includes("key-hint")) {
+    for (const k of document.querySelectorAll("[data-key-hint], kbd.octo-keyhint, kbd.octo-v7-kbd")) {
+      if (!visible(k)) continue;
+      const host = k.closest("button, label");
+      if (host) report("key-hint", k, "boxed key hint inside a button or label", `inside <${host.tagName.toLowerCase()}>`, "none (use the tooltip)");
+    }
+  }
+
   return { violations: out, suppressed, measures, scanned: all.length };
 }
 
@@ -752,6 +1319,12 @@ function injectBad() {
     <button style="background:#444;color:#fff;border:0;padding:4px 16px 4px 4px;height:28px">unbalanced inset</button>
     <div style="display:flex;gap:10px;margin-left:5px"><span>gap</span><span>10px</span></div>`;
   document.body.appendChild(host);
+  const dlg = document.querySelector("[data-dialog-body] form, [data-dialog-body]");
+  if (dlg) {
+    const wide = document.createElement("div");
+    wide.style.cssText = "width:2000px;height:8px;position:relative";
+    dlg.appendChild(wide);
+  }
   const p = document.querySelector("[data-prompt]");
   if (p) {
     p.style.position = "relative";
@@ -812,7 +1385,8 @@ async function main() {
   }
   await probe();
 
-  const states = STATES.filter((s) => !ONLY || s.id === ONLY);
+  const only = ONLY ? new Set(ONLY.split(",")) : null;
+  const states = STATES.filter((s) => !only || only.has(s.id));
   if (!states.length) {
     console.error(`No state "${ONLY}". Known: ${STATES.map((s) => s.id).join(", ")}`);
     process.exit(2);
@@ -887,6 +1461,7 @@ async function main() {
           Object.assign(merged.measures, res.measures);
           merged.scanned = Math.max(merged.scanned, res.scanned);
         }
+        if (state.extra) merged.violations.push(...(await state.extra(page)));
 
         // dedupe: same rule + selector + prop + measured value
         const byKey = new Map();

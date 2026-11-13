@@ -12,19 +12,29 @@ export type TabId = string & { readonly __brand: "TabId" };
 export type Group = { id: string; tabs: TabId[]; active: TabId; size: number };
 export type Layout = { groups: Group[]; focused: string };
 
-export type ToolTab = "agents" | "notes" | "files" | "details" | "usage";
-export type TabRef = { kind: "chat" } | { kind: "tool"; tool: ToolTab } | { kind: "agent"; agentId: string } | { kind: "file"; key: FileKey };
+export type ToolTab = "sessions" | "agents" | "notes" | "files" | "details" | "usage" | "changes" | "memory" | "review" | "side";
+export type TabRef =
+  | { kind: "chat" }
+  | { kind: "tool"; tool: ToolTab }
+  | { kind: "agent"; agentId: string }
+  | { kind: "file"; key: FileKey }
+  | { kind: "run"; name: string }
+  | { kind: "session"; sessionId: string };
 
 // The brand is applied here and nowhere else: every call site below has just validated or built the string.
 const brand = (id: string) => id as TabId;
 
 export const CHAT = brand("chat");
 export const MAX_GROUPS = 4;
-const TOOLS: readonly ToolTab[] = ["agents", "notes", "files", "details", "usage"];
+const TOOLS: readonly ToolTab[] = ["sessions", "agents", "notes", "files", "details", "usage", "changes", "memory", "review", "side"];
 
 export const toolTab = (tool: ToolTab): TabId => brand(tool);
 export const agentTab = (agentId: string): TabId => brand(`agent:${agentId}`);
 export const fileTab = (key: FileKey): TabId => brand(`file:${key}`);
+/** The "Run: name" tab of a project command (decision 68). */
+export const runTab = (name: string): TabId => brand(`run:${name}`);
+/** One session of the project in a tab of its own ("Open in tab" of the Sessions tool). */
+export const sessionTab = (sessionId: string): TabId => brand(`session:${sessionId}`);
 
 /** What a tab id refers to; null for any string that is not a tab id (stored layouts, DOM attributes). */
 export function parseTab(id: string): TabRef | null {
@@ -32,6 +42,8 @@ export function parseTab(id: string): TabRef | null {
   const tool = TOOLS.find((t) => t === id);
   if (tool) return { kind: "tool", tool };
   if (id.startsWith("agent:") && id.length > 6) return { kind: "agent", agentId: id.slice(6) };
+  if (id.startsWith("session:") && id.length > 8) return { kind: "session", sessionId: id.slice(8) };
+  if (id.startsWith("run:") && id.length > 4) return { kind: "run", name: id.slice(4) };
   const key = id.startsWith("file:") ? parseFileKey(id.slice(5)) : null;
   return key ? { kind: "file", key } : null;
 }
@@ -305,15 +317,16 @@ export function sideGroup(layout: Layout): Group | null {
   return layout.groups[i + 1] ?? layout.groups[i - 1] ?? null;
 }
 
-/** Moves the divider after group `index` by `delta` (fraction of the row), keeping both sides ≥ `min`. */
-export function resize(layout: Layout, index: number, delta: number, min: number): Layout {
+/** Moves the divider after group `index` by `delta` (fraction of the row), keeping the left side ≥ `min` and the right side ≥ `minRight` (default `min`). */
+export function resize(layout: Layout, index: number, delta: number, min: number, minRight: number = min): Layout {
   const a = layout.groups[index];
   const b = layout.groups[index + 1];
   if (!a || !b) return layout;
   const pair = a.size + b.size;
   // A pair narrower than two minimums splits evenly instead of driving one side negative.
-  const floor = Math.min(min, pair / 2);
-  const left = Math.max(floor, Math.min(pair - floor, a.size + delta));
+  const floorLeft = pair < min + minRight ? pair * (min / (min + minRight)) : min;
+  const floorRight = pair < min + minRight ? pair - floorLeft : minRight;
+  const left = Math.max(floorLeft, Math.min(pair - floorRight, a.size + delta));
   const groups = [...layout.groups];
   groups[index] = { ...a, size: left };
   groups[index + 1] = { ...b, size: pair - left };

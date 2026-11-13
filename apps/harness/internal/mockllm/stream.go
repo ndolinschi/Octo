@@ -21,8 +21,14 @@ func usage(r *request, rep reply) usageNumbers {
 	for _, m := range r.Messages {
 		content += len(m.Content)
 	}
+	// The tool definitions count too, as the real API counts them: without them a
+	// request with many or large tools has no uncached remainder in the mock.
+	toolBytes := 0
+	for _, t := range r.Tools {
+		toolBytes += len(t.Name) + len(t.InputSchema)
+	}
 	return usageNumbers{
-		Input:  300 + 120*len(r.Messages) + 40*len(r.Tools) + (len(r.system())+content)/4,
+		Input:  300 + 120*len(r.Messages) + 40*len(r.Tools) + (len(r.system())+content+toolBytes)/4,
 		Output: len(rep.Text)/4 + 45*len(rep.Calls) + 12,
 	}
 }

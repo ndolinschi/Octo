@@ -23,12 +23,20 @@ const callRecordTimeout = 3 * time.Second
 // a *router.BudgetError. A failed or cancelled request that the router already
 // handled still gets a usage row.
 func (l *Loop) request(ctx context.Context, params anthropic.MessageNewParams) (anthropic.Message, router.Result, error) {
+	var extra []option.RequestOption
+	if l.Temperature != nil {
+		extra = append(extra, option.WithJSONSet("temperature", *l.Temperature))
+	}
 	if !l.Router.Enabled() {
-		resp, err := l.call(ctx, params, nil, nil)
+		var opts []option.RequestOption
+		if len(extra) > 0 {
+			opts = extra
+		}
+		resp, err := l.call(ctx, params, opts, nil)
 		return resp, router.Result{}, err
 	}
 	var httpResp *http.Response
-	opts := []option.RequestOption{option.WithResponseInto(&httpResp)}
+	opts := append(extra, option.WithResponseInto(&httpResp))
 	for name, v := range l.Hints.Header() {
 		opts = append(opts, option.WithHeader(name, v[0]))
 	}
@@ -68,8 +76,8 @@ func (l *Loop) budgetError(res router.Result) error {
 	switch {
 	case res.BudgetUSD != nil:
 		be.Budget = *res.BudgetUSD
-	case l.Hints.BudgetUSD != nil:
-		be.Budget = *l.Hints.BudgetUSD
+	case l.Hints.Budget() != nil:
+		be.Budget = *l.Hints.Budget()
 	}
 	return be
 }
@@ -118,8 +126,13 @@ func (l *Loop) usageOf(ctx context.Context, resp anthropic.Message, res router.R
 		u.CostUSD = rec.CostUSD
 		u.CostEstimated = rec.CostSource == router.CostEstimated
 	}
-	if res.SpentUSD != nil && u.CostUSD != nil {
+	switch {
+	case rec.SpentAfterUSD != nil:
+		// The router's own figure after this call (classifier cost included).
+		l.Router.NoteSpent(l.Hints.BudgetKey, *rec.SpentAfterUSD)
+	case res.SpentUSD != nil && u.CostUSD != nil:
 		// The header is the spend before this response; add this call's cost.
+		// (The router's classifier cost for this call is only in the next header.)
 		l.Router.NoteSpent(l.Hints.BudgetKey, *res.SpentUSD+*u.CostUSD)
 	}
 	return u

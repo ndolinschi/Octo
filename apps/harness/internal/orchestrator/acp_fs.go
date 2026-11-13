@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/approval"
+	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/files"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/local"
@@ -16,6 +19,9 @@ import (
 
 // ReadTextFile serves fs/read_text_file confined to the project's folders.
 func (s *acpSession) ReadTextFile(_ context.Context, req acp.ReadTextFileParams) (string, error) {
+	s.mu.Lock()
+	s.touch()
+	s.mu.Unlock()
 	root, label, rel, err := s.rt.locate(req.Path)
 	if err != nil {
 		s.deny(req.Path, err)
@@ -30,7 +36,10 @@ func (s *acpSession) ReadTextFile(_ context.Context, req acp.ReadTextFileParams)
 
 // WriteTextFile serves fs/write_text_file: confined, atomic, missing parent
 // directories created, and announced as file.changed.
-func (s *acpSession) WriteTextFile(_ context.Context, req acp.WriteTextFileParams) error {
+func (s *acpSession) WriteTextFile(ctx context.Context, req acp.WriteTextFileParams) error {
+	s.mu.Lock()
+	s.touch()
+	s.mu.Unlock()
 	root, label, rel, err := s.rt.locate(req.Path)
 	if err != nil {
 		s.deny(req.Path, err)
@@ -41,13 +50,26 @@ func (s *acpSession) WriteTextFile(_ context.Context, req acp.WriteTextFileParam
 		s.deny(req.Path, err)
 		return fmt.Errorf("path %q is outside the project folders: %w", req.Path, err)
 	}
+	if s.rt.readOnlyMode() {
+		return errors.New(s.rt.modeRefusal("writing files"))
+	}
+	if !s.consumePreapproval(req.Path) {
+		if ok, note := s.rt.approveWrite(ctx, s.agentID, s.label, approval.ToolWriteFile, label, abs, rel, req.Content); !ok {
+			return errors.New(denied(note))
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return fmt.Errorf("create parent directory: %w", err)
 	}
+	t := s.rt.tracker()
+	before := t.PreWrite(abs)
 	if _, err := files.Write(root, rel, req.Content, nil); err != nil {
 		return fmt.Errorf("write %s/%s: %w", label, rel, err)
 	}
-	s.rt.publish(events.FileChanged, map[string]any{"folder": label, "path": rel, "source": events.SourceAgent})
+	scope := s.rt.scope(s.agentID, "", changes.SourceACPFS)
+	if _, recorded := t.PostWrite(ctx, scope, changes.Folder{Label: label, Path: root}, rel, before); !recorded {
+		s.rt.publish(events.FileChanged, map[string]any{"folder": label, "path": rel, "source": events.SourceAgent})
+	}
 	return nil
 }
 

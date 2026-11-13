@@ -1,0 +1,97 @@
+import type { Note } from "@octo/agent-client";
+import { Pencil, Pin, PinOff } from "lucide-react";
+import { useState } from "react";
+import { formatRelative } from "../../lib/format";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
+import { IconMenu } from "../primitives/IconMenu";
+import { Notice } from "../primitives/Notice";
+import { DetailHeader } from "../primitives/Panel";
+import { SkeletonText } from "../primitives/Skeleton";
+import { Markdown } from "../shared/Markdown";
+import type { DocLoad } from "./useNoteDoc";
+
+/** One note, read: title, what agents see, the rendered body. Edit, pin, export and delete are here, not on the list. */
+export function NoteDetail(props: {
+  note: Note;
+  load: DocLoad;
+  now: number;
+  onEdit(): void;
+  onTogglePin(): Promise<void>;
+  onExport(markdown: string): void;
+  onDelete(): Promise<void>;
+  pinError: string | null;
+}) {
+  const { note, load } = props;
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <article className="flex w-full max-w-3xl flex-col gap-4 pb-4" aria-label={note.title}>
+      <DetailHeader
+        title={note.title}
+        meta={[
+          note.author === "orchestrator" ? "Orchestrator" : "You",
+          `Updated ${formatRelative(note.updated_at, props.now)}`,
+          note.read_count > 0 ? `Opened by agents ${note.read_count}×` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        actions={
+          <>
+            <IconButton icon={Pencil} label={`Edit ${note.title}`} onClick={props.onEdit} />
+            <IconButton
+              icon={note.pinned ? PinOff : Pin}
+              label={note.pinned ? "Unpin" : "Pin"}
+              pressed={note.pinned}
+              onClick={() => void props.onTogglePin()}
+            />
+            <IconMenu
+              label="More"
+              items={[
+                { id: "export", label: "Export as .md", disabled: load.status !== "ok", run: () => load.status === "ok" && props.onExport(load.doc.markdown) },
+                { id: "delete", label: "Delete…", run: () => setConfirming(true) },
+              ]}
+            />
+          </>
+        }
+      />
+      {props.pinError && (
+        <Notice tone="error" className="px-2">
+          {props.pinError}
+        </Notice>
+      )}
+      {confirming && (
+        <div role="alertdialog" aria-label={`Delete ${note.title}`} className="flex flex-wrap items-center gap-2 px-2 text-sm">
+          <span className="min-w-0 flex-1 text-fg-2">
+            Delete <span className="text-fg">{note.title}</span>?
+          </span>
+          <Button size="sm" variant="quiet" onClick={() => setConfirming(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="danger" onClick={() => void props.onDelete()} autoFocus>
+            Delete note
+          </Button>
+        </div>
+      )}
+      <section aria-label="What agents see" className="flex flex-col gap-1 px-2">
+        <p className="text-xs text-fg-3">What agents see</p>
+        <p className="text-sm text-fg">{note.description || "No description."}</p>
+        {note.description_auto && <p className="text-xs text-fg-3">Taken from the first line. Edit the note and write one so agents know when to open it.</p>}
+        {note.tags.length > 0 && <p className="text-xs text-fg-3">{note.tags.map((t) => `#${t}`).join(" ")}</p>}
+      </section>
+      <section aria-label="Note" className="flex flex-col gap-1 px-2">
+        {load.status === "loading" && <SkeletonText lines={4} />}
+        {load.status === "error" && (
+          <Notice tone="error" className="text-sm">
+            Couldn't open the note: {load.message}. Select it again to retry.
+          </Notice>
+        )}
+        {load.status === "ok" &&
+          (load.doc.content.trim() ? (
+            <Markdown text={load.doc.content} className="octo-prose octo-prose-sm" />
+          ) : (
+            <p className="text-sm text-fg-3">This note has no body.</p>
+          ))}
+      </section>
+    </article>
+  );
+}

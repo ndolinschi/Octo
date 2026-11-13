@@ -27,6 +27,10 @@ type Call struct {
 	CostUSD          *float64 `json:"cost_usd"`
 	// CostSource is "reported" (the upstream said so) or "estimated".
 	CostSource string `json:"cost_source"`
+	// SpentAfterUSD, when the router provides it, is the budget key's spend once
+	// this call was charged, classifier cost included. The result header
+	// x-octo-spent-usd excludes the response it comes with.
+	SpentAfterUSD *float64 `json:"spent_after_usd"`
 }
 
 var errNotReady = errors.New("router: call record not ready")

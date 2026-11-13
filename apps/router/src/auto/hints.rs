@@ -11,6 +11,84 @@ pub const TASK_HEADER: &str = "x-octo-task";
 const BUDGET_KEY_MAX_LEN: usize = 128;
 const TASK_MAX_CHARS: usize = 200;
 
+/// `x-octo-tier-hint` carried a value that is none of the accepted ones.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidTierHint {
+    reason: TierHintFault,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TierHintFault {
+    Unknown(String),
+    Undecodable,
+    Conflict,
+}
+
+const ACCEPTED_TIERS: &str =
+    "accepted values are low, mid, high (or fast, balanced, deep), case-insensitive";
+
+impl InvalidTierHint {
+    pub fn message(&self) -> String {
+        match &self.reason {
+            TierHintFault::Unknown(value) => {
+                format!("invalid {TIER_HINT_HEADER} `{value}`: {ACCEPTED_TIERS}")
+            }
+            TierHintFault::Undecodable => format!(
+                "invalid {TIER_HINT_HEADER}: the value is not visible ASCII; {ACCEPTED_TIERS}"
+            ),
+            TierHintFault::Conflict => format!(
+                "conflicting {TIER_HINT_HEADER} headers: send one, or repeat the same tier; {ACCEPTED_TIERS}"
+            ),
+        }
+    }
+}
+
+fn parse_tier_hints(headers: &mut HeaderMap) -> Result<Option<&'static str>, InvalidTierHint> {
+    let values: Vec<_> = headers.get_all(TIER_HINT_HEADER).iter().cloned().collect();
+    headers.remove(TIER_HINT_HEADER);
+    let mut found: Option<&'static str> = None;
+    for value in values {
+        let Ok(raw) = value.to_str() else {
+            return Err(InvalidTierHint {
+                reason: TierHintFault::Undecodable,
+            });
+        };
+        let raw = raw.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let band = match raw.to_ascii_lowercase().as_str() {
+            "low" | "fast" => "low",
+            "mid" | "balanced" => "mid",
+            "high" | "deep" => "high",
+            _ => {
+                return Err(InvalidTierHint {
+                    reason: TierHintFault::Unknown(
+                        raw.chars().filter(|c| !c.is_control()).take(40).collect(),
+                    ),
+                })
+            }
+        };
+        match found {
+            Some(earlier) if earlier != band => {
+                return Err(InvalidTierHint {
+                    reason: TierHintFault::Conflict,
+                })
+            }
+            _ => found = Some(band),
+        }
+    }
+    Ok(found)
+}
+
+impl std::fmt::Display for InvalidTierHint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+
+impl std::error::Error for InvalidTierHint {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TierPolicy {
     #[default]
@@ -45,9 +123,11 @@ impl Hints {
         self.tier.is_some()
     }
 
-    pub fn take(headers: &mut HeaderMap) -> Self {
+    /// Reads and removes every hint header. Invalid budget/role/depth/policy/task values are ignored; an invalid
+    /// tier hint is an error (the caller answers 400). All hint headers are removed either way.
+    pub fn take(headers: &mut HeaderMap) -> Result<Self, InvalidTierHint> {
         let budget_key = text(headers, BUDGET_KEY_HEADER).and_then(|value| {
-            if value.len() > BUDGET_KEY_MAX_LEN || !value.chars().all(|c| c.is_ascii_graphic()) {
+            if !valid_budget_key(&value) {
                 tracing::debug!(header = BUDGET_KEY_HEADER, "ignored invalid hint");
                 None
             } else {
@@ -81,17 +161,7 @@ impl Hints {
             }
             parsed
         });
-        let tier = text(headers, TIER_HINT_HEADER).and_then(|value| {
-            match value.to_ascii_lowercase().as_str() {
-                "fast" => Some("low"),
-                "balanced" => Some("mid"),
-                "deep" => Some("high"),
-                _ => {
-                    tracing::debug!(header = TIER_HINT_HEADER, "ignored invalid hint");
-                    None
-                }
-            }
-        });
+        let tier = parse_tier_hints(headers);
         let policy = text(headers, TIER_POLICY_HEADER)
             .and_then(|value| match value.to_ascii_lowercase().as_str() {
                 "auto" => Some(TierPolicy::Auto),
@@ -110,7 +180,8 @@ impl Hints {
             }
             decoded
         });
-        Self {
+        let tier = tier?;
+        Ok(Self {
             budget_micros: budget_key.as_ref().and(budget_micros),
             budget_key,
             role,
@@ -118,8 +189,14 @@ impl Hints {
             tier,
             policy,
             task,
-        }
+        })
     }
+}
+
+pub fn valid_budget_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= BUDGET_KEY_MAX_LEN
+        && value.chars().all(|c| c.is_ascii_graphic())
 }
 
 fn text(headers: &mut HeaderMap, name: &str) -> Option<String> {

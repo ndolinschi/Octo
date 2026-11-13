@@ -1,153 +1,92 @@
-import type { ProjectSummary } from "@octo/agent-client";
-import { Plus } from "lucide-react";
-import { useMemo, useRef } from "react";
-import { cn } from "../../lib/cn";
-import { focusSoon, visibleComposer } from "../../lib/focus";
+import { useMemo, useState } from "react";
 import { CLOCK_MINUTE_MS } from "../../lib/constants";
-import { formatRelative } from "../../lib/format";
-import { useNow, useRowKeys } from "../../lib/hooks";
-import { agentStack, stateLine, type OrchestratorState } from "../../lib/orchestrator";
-import { navigate } from "../../lib/route";
+import { cn } from "../../lib/cn";
+import { useNow } from "../../lib/hooks";
+import type { GlyphState } from "../../lib/stateGlyph";
+import { STREAK_BAND } from "../../lib/streakPresets";
+import { TRIAGE_LABEL, TRIAGE_ORDER, triageOf, type Triage } from "../../lib/triage";
 import { useApp } from "../../state/app";
-import type { Reply } from "../../state/requests";
-import { Glyph } from "../primitives/Glyph";
-import { SkeletonRows } from "../primitives/InfoList";
-import { OrchestratorGlyph } from "../primitives/Status";
+import { Card } from "../primitives/Card";
+import { ListRow } from "../primitives/ListRow";
+import { StateGlyph } from "../primitives/StateGlyph";
 import { StreakLayer } from "../primitives/StreakLayer";
-import { STREAK_HOME } from "../../lib/streakPresets";
-import { ActivityCard, MonthCard, TeamCard, TokensCard } from "./HomeCards";
+import { TeamCard } from "./HomeCards";
+import { Projects } from "./HomeProjects";
+import { STILL } from "./still";
 import { useOverview } from "./useOverview";
 
-const PROJECT_ROWS = 5;
-const ORDER: Record<OrchestratorState["kind"], number> = { working: 0, needs: 1, idle: 2, new: 3 };
-
 /**
- * Home (`#/`, decisions 22 and 23): projects and their orchestrators, not requests — the streak, a title, every
- * project's orchestrator (state, and what it is doing or last said), then Orchestrators at work (agents running
- * across projects), Activity, Tokens and This month. Cards are top-aligned and the block is anchored at the top, so
- * nothing moves when a card's content changes.
+ * Home (`#/`, decisions 22, 23, 75, 91a): projects and their orchestrators, not requests. The streak is a band at the top
+ * (a spacer of its height keeps the content out of it), then the title, the state tiles that filter the list, the project
+ * list (needs you, working, then the rest) and "Agents at work" while an agent runs. Nothing here only reports a number
+ * (decision 75); numbers live in Usage.
  */
-export function Home({ onNewProject, onSearch, onUsage }: { onNewProject(): void; onSearch(): void; onUsage(projectId: string): void }) {
-  const { theme } = useApp();
+export function Home({ onNewProject, onSearch, unseen }: { onNewProject(): void; onSearch(): void; unseen: Set<string> }) {
+  const { theme, backdrop } = useApp();
   const data = useOverview();
   const now = useNow(true, CLOCK_MINUTE_MS);
-  const latest = useMemo(() => [...(data.projects ?? [])].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0], [data.projects]);
+  const [filter, setFilter] = useState<Triage | null>(null);
+  const triaged = useMemo(
+    () =>
+      (data.projects ?? []).map((p) => {
+        const s = data.orchestrators.get(p.id) ?? ({ kind: "idle", at: p.updated_at } as const);
+        return { project: p, state: s, triage: triageOf(s, unseen.has(p.id)) };
+      }),
+    [data.projects, data.orchestrators, unseen],
+  );
+  const count = data.projects?.length ?? 0;
   return (
-    <section aria-labelledby="home-title" data-home className="@container/home relative h-full overflow-x-hidden overflow-y-auto">
-      <StreakLayer preset={STREAK_HOME} theme={theme} />
-      <div className="relative mx-auto flex w-full max-w-home flex-col gap-6 px-6 pt-10 pb-8 max-sm:px-4">
-        <div className="relative">
-          <h1 id="home-title" className="relative text-center text-display text-fg">
-            What should we work on?
-          </h1>
-        </div>
-        <Projects data={data} now={now} onNewProject={onNewProject} onSearch={onSearch} />
-        {/* Two columns that stack independently (a masonry of two), paired so their heights come out close: who is
-            working and this month on the left, tokens and activity on the right; no card stretches, none leaves a
-            hole. One column under 900px, in reading order. */}
-        <div className="grid grid-cols-1 items-start gap-3 @min-[900px]/home:grid-cols-2">
-          <div className="flex min-w-0 flex-col gap-3">
-            <TeamCard projects={data.projects} agents={data.agents} />
-            <MonthCard month={data.month} />
+    // Decision 50: the streak is fixed to the panel (outside the scroller); only the content scrolls, never rubber-bands.
+    <section aria-labelledby="home-title" data-home className="@container/home relative flex h-full flex-col overflow-hidden">
+      {backdrop !== "off" && <StreakLayer preset={STREAK_BAND} theme={theme} mono={backdrop === "mono"} />}
+      <div aria-hidden className={cn("shrink-0", backdrop === "off" ? "h-6" : "h-(--octo-band-h)")} />
+      <div data-home-scroll data-start-scroll className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
+        <div className="mx-auto flex w-full max-w-home flex-col gap-4 px-6 pt-2 pb-8 max-sm:px-4">
+          <div className="flex flex-col gap-3">
+            {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
+            <h1 id="home-title" className="text-center text-display text-fg">
+              {count > 0 && <span className="octo-lead">{count === 1 ? "One project. " : `${count} projects. `}</span>}
+              What should we work on?
+            </h1>
+            <TriageRow items={triaged} loading={data.projects === null} value={filter} onChange={setFilter} />
           </div>
-          <div className="flex min-w-0 flex-col gap-3">
-            <TokensCard usage={data.usage} daily={data.daily} now={now} onOpen={latest ? () => onUsage(latest.id) : null} />
-            <ActivityCard agents={data.agents} requests={data.requests.complete ? data.requests.all : null} now={now} />
-          </div>
+          <Projects items={triaged} data={data} now={now} filter={filter} onNewProject={onNewProject} onSearch={onSearch} />
+          <TeamCard projects={data.projects} agents={data.agents} />
         </div>
       </div>
     </section>
   );
 }
 
-function secondLine(state: OrchestratorState, reply: Reply | null | undefined, loaded: boolean): string {
-  if (state.kind === "working") return state.agents.length ? agentStack(state.agents.map((a) => a.role)) : "Thinking";
-  if (state.kind === "needs") return state.error ?? "The last turn failed";
-  if (reply) return reply.text;
-  return loaded ? "No requests yet" : "";
-}
+const TRIAGE_GLYPH: Record<Triage, GlyphState> = { needs: "needs", working: "working", review: "unseen", idle: "idle" };
 
-function Projects({ data, now, onNewProject, onSearch }: { data: ReturnType<typeof useOverview>; now: number; onNewProject(): void; onSearch(): void }) {
-  const { health } = useApp();
-  const list = useRef<HTMLDivElement>(null);
-  useRowKeys(list);
-  const rows = useMemo(() => {
-    const list = (data.projects ?? []).map((p) => ({ p, s: data.orchestrators.get(p.id) ?? ({ kind: "idle", at: p.updated_at } as const) }));
-    // Orchestrators that are working or need the user come first, then the most recently active.
-    return list.sort((a, b) => ORDER[a.s.kind] - ORDER[b.s.kind] || Date.parse(b.p.updated_at) - Date.parse(a.p.updated_at));
-  }, [data.projects, data.orchestrators]);
-  const shown = rows.slice(0, PROJECT_ROWS);
-  const rest = rows.length - shown.length;
+/**
+ * Decision 26's triage row: four one-row `Card` tiles (two rows of two under 640px) — Needs you, Working, Ready to review,
+ * Idle — each a toggle that filters the project list (one at a time; again to clear). A zero tile stays, quiet. The glyphs
+ * are still (decision 76): a tile counts projects, it is not itself working.
+ */
+function TriageRow(props: { items: { triage: Triage }[]; loading: boolean; value: Triage | null; onChange(t: Triage | null): void }) {
   return (
-    <div ref={list} role="group" aria-label="Projects and their orchestrators" className="octo-card octo-card-dense flex flex-col rounded-lg p-1">
-      {data.projects === null && <SkeletonRows count={3} />}
-      {shown.map(({ p, s }) => (
-        <ProjectRow key={p.id} project={p} state={s} reply={data.requests.replies.get(p.id)} loaded={data.requests.replies.has(p.id)} now={now} />
-      ))}
-      <div className="flex">
-        <button
-          type="button"
-          data-row
-          onClick={onNewProject}
-          disabled={health !== "online"}
-          className="flex h-row-nav min-w-0 flex-1 items-center gap-2 rounded-sm px-2 text-left text-sm text-fg-2 press-row focus-inset hover:bg-hover disabled:text-fg-3"
-        >
-          <Glyph icon={Plus} size={16} className="shrink-0 text-fg-3" />
-          New project
-        </button>
-        {rest > 0 && (
-          <button
-            type="button"
-            data-row
-            onClick={onSearch}
-            className="flex h-row-nav shrink-0 items-center rounded-sm px-2 text-xs text-fg-3 press-row focus-inset hover:bg-hover hover:text-fg-2"
-          >
-            {rest} more {rest === 1 ? "project" : "projects"}
-          </button>
-        )}
-      </div>
+    <div role="group" aria-label="Filter projects by state" className="grid grid-cols-4 gap-2 @max-[640px]/home:grid-cols-2">
+      {TRIAGE_ORDER.map((t) => {
+        const n = props.items.filter((x) => x.triage === t).length;
+        const on = props.value === t;
+        return (
+          <div key={t} data-triage={t} className="min-w-0">
+            <Card padding="none">
+              <ListRow
+                size="lg"
+                selected={on}
+                onClick={() => props.onChange(on ? null : t)}
+                leading={<StateGlyph state={TRIAGE_GLYPH[t]} size={14} box={16} className={STILL} />}
+                title={TRIAGE_LABEL[t]}
+                meta={<span className={cn("tabular-nums", props.loading || n === 0 ? "text-fg-3" : "text-fg")}>{props.loading ? "–" : n}</span>}
+                tip={`${TRIAGE_LABEL[t]}: ${props.loading ? "loading" : n}`}
+              />
+            </Card>
+          </div>
+        );
+      })}
     </div>
-  );
-}
-
-function ProjectRow({
-  project,
-  state,
-  reply,
-  loaded,
-  now,
-}: {
-  project: ProjectSummary;
-  state: OrchestratorState;
-  reply: Reply | null | undefined;
-  loaded: boolean;
-  now: number;
-}) {
-  const line = stateLine(state, now, project.updated_at);
-  const second = secondLine(state, reply, loaded);
-  return (
-    <button
-      type="button"
-      data-row
-      onClick={() => {
-        navigate(project.id);
-        // Decision 35: the opened project's composer takes focus (the row that had it is gone with Home).
-        focusSoon(visibleComposer, { timeout: 3000 });
-      }}
-      title={`${project.name} — ${line}${second ? `\n${second}` : ""}`}
-      className="flex h-bar w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left press-row focus-inset hover:bg-hover"
-    >
-      <OrchestratorGlyph state={state.kind} />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 truncate text-sm text-fg">{project.name}</span>
-          <span className={cn("shrink-0 text-xs", state.kind === "needs" ? "text-warn" : "text-fg-3")}>{state.kind === "idle" ? "Idle" : line}</span>
-        </span>
-        <span className="truncate text-xs text-fg-3">{second}</span>
-      </span>
-      <time dateTime={project.updated_at} className="shrink-0 text-xs text-fg-3 tabular-nums">
-        {formatRelative(project.updated_at, now)}
-      </time>
-    </button>
   );
 }

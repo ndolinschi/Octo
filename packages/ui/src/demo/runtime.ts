@@ -1,3 +1,5 @@
+import { autoDescription, charCount } from "../lib/notes";
+import { listed, newDemoNote } from "./notes";
 import type { Agent, ContentBlock, Message, Note, Tier } from "@octo/agent-client";
 import { agentById, clone, emit, newId, orchestratorOf, writeDemoFile, type ProjectRecord } from "./store";
 import { errorMessage } from "../lib/format";
@@ -77,7 +79,9 @@ function charge(ctx: Ctx, agentId: string, outputChars: number) {
     input_tokens: input,
     output_tokens: agent.output_tokens + Math.ceil(outputChars / 3.6) + 24,
     // An ACP agent reports its context occupancy (`usage_update`): the demo's grows with its transcript.
-    ...(agent.model.startsWith("acp:") ? { context_used: Math.min(ACP_CONTEXT, 1800 + history * 640), context_size: ACP_CONTEXT } : {}),
+    ...(agent.model.startsWith("acp:")
+      ? { context_used: Math.min(ACP_CONTEXT, 1800 + history * 640), context_size: ACP_CONTEXT }
+      : { context_used: Math.min(ACP_CONTEXT * 0.9, 3200 + history * 1900), context_size: ACP_CONTEXT }),
   });
 }
 
@@ -150,11 +154,15 @@ function acpWrite(ctx: Ctx, spec: ToolSpec) {
 
 export function saveNote(ctx: Ctx, title: string, content: string, author: Note["author"] = "orchestrator"): void {
   const existing = ctx.rec.notes.find((n) => n.title === title);
-  const note: Note = existing
-    ? Object.assign(existing, { content, updated_at: iso(ctx) })
-    : { id: newId("note"), title, content, author, created_at: iso(ctx), updated_at: iso(ctx) };
+  const note = existing
+    ? Object.assign(
+        existing,
+        { content, size: charCount(content), updated_at: iso(ctx) },
+        existing.description_auto ? { description: autoDescription(content) } : {},
+      )
+    : newDemoNote(title, content, Date.parse(iso(ctx)), { author });
   if (!existing) ctx.rec.notes.push(note);
-  emit(ctx.rec, { type: "note.changed", note: clone(note), note_id: note.id });
+  emit(ctx.rec, { type: "note.changed", note: clone(listed(note)), note_id: note.id });
 }
 
 /** Spawn several sub-agents from one assistant message; they run concurrently. */
@@ -243,11 +251,13 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
 
   let status: "completed" | "failed" | "cancelled" = "completed";
   let error: string | null = null;
+  let hint: string | undefined;
   try {
     await body(ctx, orch.id);
   } catch (e) {
     status = e === CANCELLED ? "cancelled" : "failed";
     error = e === CANCELLED ? null : errorMessage(e);
+    if (e instanceof Error && "hint" in e && typeof e.hint === "string") hint = e.hint;
     // A cancel happens now; a scripted failure in the past keeps its own time.
     if (status === "cancelled") ctx.t = Math.max(ctx.t, Date.now());
     for (const a of rec.agents) {
@@ -264,5 +274,5 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
   rec.turn = null;
   touch(ctx);
   emit(rec, { type: "project.updated", project: clone(rec.project) });
-  emit(rec, { type: "turn.finished", status, error });
+  emit(rec, { type: "turn.finished", status, error, ...(hint ? { hint } : {}) });
 }

@@ -70,13 +70,19 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
   const hidden = useRef(false);
   const gliding = useRef(false);
   const lastTop = useRef(0);
+  const lastHeight = useRef(0);
+  // The reader has scrolled away themselves: only then does the first render's guess (agent not loaded yet) stop mattering.
+  const touched = useRef(false);
 
   const onScroll = useCallback(() => {
     const el = ref.current;
     // Scroll events from hiding/showing the tab (scrollTop reset) say nothing about the reader.
     if (!el || hidden.current || el.clientHeight === 0) return;
     const end = el.scrollHeight - el.scrollTop - el.clientHeight <= END_TOLERANCE;
-    const movedUp = el.scrollTop < lastTop.current - 1;
+    // Content that got shorter (Markdown replacing plain text, a card resolving) clamps scrollTop: not the reader going up.
+    const shrank = el.scrollHeight < lastHeight.current - 1;
+    lastHeight.current = el.scrollHeight;
+    const movedUp = !shrank && el.scrollTop < lastTop.current - 1;
     lastTop.current = el.scrollTop;
     if (gliding.current) {
       if (!end) return;
@@ -88,6 +94,7 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       el.scrollTop = el.scrollHeight;
       return;
     }
+    if (movedUp && !end) touched.current = true;
     atBottomRef.current = end;
     setAtBottom(end);
   }, []);
@@ -117,16 +124,22 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
     setAtBottom(false);
   }, []);
 
+  // `initialStick` can change after the first render (the agent record arrives): follow it until the reader has moved.
+  useLayoutEffect(() => {
+    if (!touched.current) atBottomRef.current = initialStick;
+  }, [initialStick]);
+
   useLayoutEffect(() => {
     if (atBottomRef.current) scrollToBottom();
   }, deps);
 
   // Reflow (a group resized, a prompt expanded, the composer shrank) keeps a reader at the bottom there;
   // coming back from hidden (the tab was in the background while the turn went on) returns to the end.
-  const observed = useRef<{ el: Element; ro: ResizeObserver } | null>(null);
+  const observed = useRef<{ el: Element; child: Element | null; ro: ResizeObserver } | null>(null);
   useEffect(() => {
     const el = ref.current;
-    if (observed.current?.el === el) return;
+    // The content wrapper can be replaced under the same scroller (loading state → transcript): observe the current one.
+    if (observed.current?.el === el && observed.current.child === el.firstElementChild) return;
     observed.current?.ro.disconnect();
     observed.current = null;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -139,14 +152,22 @@ export function useStickToBottom<T extends HTMLElement>(deps: unknown[], initial
       hidden.current = false;
       if (atBottomRef.current) {
         el.scrollTop = el.scrollHeight;
+        lastHeight.current = el.scrollHeight;
         if (wasHidden) setAtBottom(true);
       }
     });
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
-    observed.current = { el, ro };
+    observed.current = { el, child: el.firstElementChild, ro };
   });
-  useEffect(() => () => observed.current?.ro.disconnect(), []);
+  useEffect(
+    () => () => {
+      // Cleared too: a remount (React strict mode, a kept-alive tab) must observe again, not trust a disconnected observer.
+      observed.current?.ro.disconnect();
+      observed.current = null;
+    },
+    [],
+  );
 
   return { ref, atBottom, onScroll, scrollToBottom, release, restick };
 }
@@ -237,12 +258,25 @@ export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, a
   return update;
 }
 
-/** ↑/↓/Home/End between the `[data-row]` rows inside `ref` (lists of plain buttons: Home, Details). */
+/**
+ * ↑/↓/Home/End between the `[data-row]` rows inside `ref` (lists of plain buttons: Home, Details). The container may mount
+ * after the hook's first render (a list that appears once its data has loaded): every render checks whether `ref` points
+ * at another element and rebinds.
+ */
 export function useRowKeys<T extends HTMLElement>(ref: RefObject<T | null>): void {
+  const bound = useRef<T | null>(null);
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    el.addEventListener("keydown", moveInList);
-    return () => el.removeEventListener("keydown", moveInList);
-  }, [ref]);
+    if (el === bound.current) return;
+    bound.current?.removeEventListener("keydown", moveInList);
+    el?.addEventListener("keydown", moveInList);
+    bound.current = el;
+  });
+  useEffect(
+    () => () => {
+      bound.current?.removeEventListener("keydown", moveInList);
+      bound.current = null;
+    },
+    [],
+  );
 }

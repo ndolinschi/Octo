@@ -40,7 +40,7 @@ type acpEnv struct {
 
 // newACPEnv starts the stack; flags are extra environment switches of the
 // scripted agent (fakeacp.Env*), tune adjusts the orchestrator options.
-func newACPEnv(t *testing.T, flags map[string]string, tune func(*orchestrator.Options)) *acpEnv {
+func newACPEnv(t *testing.T, flags map[string]string, tune func(*orchestrator.Options), bridgeOpts ...bridge.Option) *acpEnv {
 	t.Helper()
 	agentEnv := map[string]string{fakeacp.EnvChild: "1", "GORACE": "atexit_sleep_ms=0", fakeacp.EnvUniqueSessions: "1"}
 	for k, v := range flags {
@@ -78,7 +78,7 @@ func newACPEnv(t *testing.T, flags map[string]string, tune func(*orchestrator.Op
 	svc := project.NewService(store, hub, orch, project.Defaults{Models: config.DefaultModels(), MaxDepth: config.DefaultMaxDepth},
 		project.WithACPAgents(reg))
 	srv := httptest.NewServer(bridge.New(svc, notes, project.NewFiles(store, hub),
-		bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithPlugins(reg)))
+		append([]bridge.Option{bridge.WithMCP(orch.MCPHandler(bridge.Version)), bridge.WithPlugins(reg)}, bridgeOpts...)...))
 	t.Cleanup(srv.Close)
 	orch.SetBridgeURL(srv.URL)
 
@@ -188,6 +188,9 @@ type apiAgentFull struct {
 	Error          *string `json:"error"`
 	SpawnToolUseID *string `json:"spawn_tool_use_id"`
 	ContextUsed    *int64  `json:"context_used"`
+	RouteReason    *string `json:"route_reason"`
+	RouteChoice    *string `json:"route_choice"`
+	RouteBand      *string `json:"route_band"`
 }
 
 func (e *acpEnv) agents(t *testing.T, p projectJSON) []apiAgentFull {
@@ -279,7 +282,7 @@ func checkMCPRun(t *testing.T, e *acpEnv, wantTransport string) identity {
 	if !strings.Contains(text, "mcp="+wantTransport) {
 		t.Errorf("final text = %q, want MCP transport %s", text, wantTransport)
 	}
-	for _, tool := range []string{"spawn_agent", "save_note", "delete_note", "list_dir"} {
+	for _, tool := range []string{"spawn_agent", "save_note", "delete_note", "list_dir", "read_note", "search_notes", "write_note"} {
 		if !strings.Contains(text, tool) {
 			t.Errorf("tool list in %q lacks %s", text, tool)
 		}
@@ -314,11 +317,17 @@ func checkMCPRun(t *testing.T, e *acpEnv, wantTransport string) identity {
 
 	// The note written through MCP is in the notes API.
 	var notes struct {
-		Notes []struct{ Title, Content, Author string } `json:"notes"`
+		Notes []struct{ ID, Title, Content, Author string } `json:"notes"`
 	}
 	e.into(t, "GET", "/v1/projects/"+p.ID+"/notes", nil, http.StatusOK, &notes)
-	if len(notes.Notes) != 1 || notes.Notes[0].Title != "mcp-note" || notes.Notes[0].Content != "written via MCP" {
-		t.Errorf("notes = %+v", notes.Notes)
+	if len(notes.Notes) != 1 || notes.Notes[0].Title != "mcp-note" || notes.Notes[0].Content != "" {
+		t.Errorf("notes = %+v (a list carries no body)", notes.Notes)
+	} else {
+		var got struct{ Content string }
+		e.into(t, "GET", "/v1/projects/"+p.ID+"/notes/"+notes.Notes[0].ID, nil, http.StatusOK, &got)
+		if got.Content != "written via MCP" {
+			t.Errorf("note body = %q", got.Content)
+		}
 	}
 
 	// The orchestrator agent reads acp:<id>, shows the usage the agent reported.
@@ -398,7 +407,7 @@ func TestACPOrchestratorAgentRefusesMCP(t *testing.T) {
 		t.Errorf("text = %q", text)
 	}
 	warn, _ := tr.errMsg.(string)
-	if !strings.HasPrefix(warn, "warning: ") || !strings.Contains(warn, "refused the harness's MCP server") {
+	if !strings.HasPrefix(warn, "warning: ") || !strings.Contains(warn, "could not use Octo's tools") {
 		t.Errorf("turn.finished error = %q, want the one-line warning", warn)
 	}
 	orch := e.agent(t, p, p.OrchestratorAgentID)
@@ -739,10 +748,10 @@ func TestACPModelSettingsValidation(t *testing.T) {
 			body["name"] = "x"
 		}
 		var resp struct {
-			Error struct{ Code, Message string } `json:"error"`
+			Error struct{ Code, Message, Details string } `json:"error"`
 		}
 		e.into(t, method, path, body, http.StatusBadRequest, &resp)
-		if resp.Error.Code != "invalid_request" || !strings.Contains(resp.Error.Message, wantMsg) {
+		if resp.Error.Code != "invalid_request" || !strings.Contains(resp.Error.Details, wantMsg) {
 			t.Errorf("%s %v: error = %+v, want it to mention %q", method, models, resp.Error, wantMsg)
 		}
 	}
@@ -750,7 +759,7 @@ func TestACPModelSettingsValidation(t *testing.T) {
 	bad("POST", "/v1/projects", map[string]string{"orchestrator": "acp:nope"}, `unknown ACP agent "nope"`)
 	bad("PATCH", "/v1/projects/"+p.ID, map[string]string{"orchestrator": "acp:nope/x"}, "available: scripted")
 	bad("PATCH", "/v1/projects/"+p.ID, map[string]string{"deep": "acp:"}, "not a valid ACP setting")
-	bad("PATCH", "/v1/projects/"+p.ID, map[string]string{"side": "acp:scripted"}, "side questions")
+	bad("PATCH", "/v1/projects/"+p.ID, map[string]string{"side": "acp:nope"}, `unknown ACP agent "nope"`)
 
 	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"orchestrator": "acp:scripted/some-model", "deep": "acp:scripted"}},
 		http.StatusOK, nil)

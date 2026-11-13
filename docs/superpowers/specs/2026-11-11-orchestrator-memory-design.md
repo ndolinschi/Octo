@@ -1,0 +1,323 @@
+# Orchestrator memory — design
+
+**Date:** 2026-11-11 · **Status:** approved to build after R1 (owner: "one orchestrator may manage a project for
+months; it must not just work with the raw messages we send; at the moment a message arrives it should remember
+what it needs — a detail map per task, the last five messages, files it can save and search")
+**Builds on:** [`2026-11-10-project-harness-design.md`](./2026-11-10-project-harness-design.md) (notes, compaction),
+[`2026-11-10-subscription-agents-design.md`](./2026-11-10-subscription-agents-design.md) (ACP orchestrator, recap)
+
+## Today
+
+The orchestrator's context is the whole transcript until it overflows, then a compaction summary plus the tail.
+Notes are the only durable memory and are sent in full with every request. An ACP orchestrator that cannot
+`session/load` gets the last ≤ 40 texts. Nothing can be searched; a detail from week one survives only if the
+summary happened to keep it.
+
+## What others do (orchestrator's own research, 2026-11-11)
+
+Read from vendor docs and one paper; search-result summaries, not re-verified line by line.
+
+| Source | What it does | What we take |
+| --- | --- | --- |
+| Anthropic context management (memory tool + context editing) | A file directory the model reads and writes with `view / create / str_replace / insert / delete / rename`, stored by the client; stale tool results are cleared from context near the limit. Anthropic reports 39% better agent performance with both, 29% with clearing alone | The same six file commands (models already know them); **clearing old tool results inside a turn** before summarising anything |
+| Claude Code project memory | An index file always in context, topic files loaded on demand | Index in context, files on demand |
+| Letta (MemGPT) | Small always-visible *blocks* the agent edits; *recall* = raw history, searchable; *archival* = processed facts, searchable; "sleep-time" agents do the memory work off the main agent's path | Three stores with the same split; **memory upkeep by the side model after the turn**, not by the orchestrator during it |
+| LongMemEval (ICLR 2025) | Long histories cost long-context models 30–60% accuracy; indexing by **extracted facts** beats indexing raw text (+4 pts recall, +5 pts answers); **time-aware** retrieval fixes temporal questions; systems fail on *knowledge updates* and on *saying "I don't know"* | Facts as index keys; dates on everything and date filters; superseding instead of overwriting; an explicit "nothing found" |
+| SQLite FTS5 | `unicode61` splits Cyrillic into words but does no Russian stemming (`porter` is English only); `trigram` matches substrings in any script at ~2–3× index size and needs ≥ 3 characters | Two indexes: `unicode61` for exact words, `trigram` for inflected Russian and partial identifiers |
+
+## Principles
+
+1. **Nothing is lost, little is carried.** Every message stays verbatim in the project database. What changes is what
+   is *sent to the model*: a bounded working set, with the rest one search away.
+2. **Exact where exactness matters.** A task record keeps the user's wording for things that must not be paraphrased
+   (names, numbers, paths, commands, acceptance criteria) as quotes with the source message id; the rest is digested.
+3. **The user can see and correct it.** Memory is files and records in the project, shown in the UI, editable and
+   deletable. Each turn records what was put into context.
+4. **Per project, local, no secrets.** Stored in the project's data directory; values from the secret store are
+   redacted before anything is written or indexed.
+5. **The orchestrator thinks about the task, not about filing.** Upkeep (digesting a turn into its task record,
+   extracting facts) is done by the side model after the turn. The orchestrator's tools are for the cases where it
+   knows something is worth keeping or needs something back.
+6. **Newer wins, older stays.** A fact that changes ("the port is 8791 now") supersedes the old one, which is kept
+   with its date and marked superseded — so "what did we decide in October?" still has an answer.
+
+## M1 — store, tools, search (harness)
+
+- **Task records** (the "detail map per task"). Table `tasks`: id, title, status (`open`, `done`, `dropped`),
+  `goal`, `constraints[]`, `acceptance[]`, `quotes[]` (`{text, message_id}`), `decisions[]`, `outcome`, `files[]`,
+  `facts[]` (`{text, date, message_id, superseded_by?}` — short standalone statements: "CI runs on Rust 1.88",
+  "the owner tests on Linux"), `message_ids[]`, timestamps. The harness opens a record when a user message starts a turn (or attaches the message
+  to the open task the orchestrator names). Tool `task_update {id?, title?, status?, goal?, add_constraints?,
+  add_acceptance?, add_quotes?, add_decisions?, outcome?, files?}`. **After every turn the side model digests it** (one call, capped
+  input, off the request path; a failure only logs): fills what the orchestrator left empty, adds facts and quotes,
+  and marks a fact superseded when a new one contradicts it. It never deletes and never rewrites what the
+  orchestrator or the user wrote. With no side model, the first 400 characters of the request become the goal and
+  nothing else is extracted.
+- **Memory files.** Markdown files under `{project}/memory/` (name ≤ 80 chars, file ≤ 64 kB, ≤ 500 files). One tool
+  `memory {command: view | create | str_replace | insert | delete | rename, path, …}` with the semantics of
+  Anthropic's memory tool (paths confined to the directory; traversal refused), plus a required one-line `summary` on
+  `create`. `memory/INDEX.md` is generated by the harness from the summaries, never written by the model. Existing notes
+  stay as they are: short, pinned, always in context. Memory files are the long form: only their index is in context.
+- **Search.** `memory_search {query, in?: ["tasks","facts","files","messages"], after?, before?, limit?}` over two
+  SQLite FTS5 indexes (`unicode61` and `trigram`; results merged, exact-word hits first) of task records, facts,
+  memory files and all user/assistant texts of the project (tool output excluded). A message is also found through
+  the facts and quotes extracted from it. Returns ≤ 10 hits: kind, id, title, snippet (≤ 300 chars), date, and
+  `superseded` where it applies; an empty result says "nothing in memory matches" so the model can say so instead of
+  guessing. `recall_message {id}` returns one message verbatim (≤ 8 kB, with
+  `truncated`). Index updated in the same transaction as the write.
+- **API:** `GET /v1/projects/{id}/tasks`, `GET/PUT/DELETE …/memory/{name}`, `GET …/memory`, `GET …/memory/search?q=`;
+  events `task.updated`, `memory.updated`.
+- **ACP orchestrator:** the same tools over the harness MCP server.
+
+## M2 — context assembly
+
+Per request the harness builds the orchestrator's context from blocks, each with a token cap, in this order (stable
+blocks first so the prompt cache holds):
+
+| Block | Cap (default) |
+| --- | --- |
+| Briefing, project brief, pinned notes | as today |
+| Memory index: file names + summaries | 1 500 tokens |
+| Open task records (newest first; done tasks of the last 7 days as one line each) | 3 000 tokens |
+| Recent window: the last **5** user messages verbatim with the orchestrator's replies (tool output reduced to one line per call) | 12 000 tokens |
+| Current facts (not superseded) of open tasks, newest first, each with its date | 1 500 tokens |
+| The current turn; once it passes 60% of the window, tool results older than the last 5 calls are replaced by a one-line stub (`[cleared: read_file src/x.go, 412 lines]`) before any summarising | — |
+
+Older history is not sent; the briefing says so and names `memory_search` / `recall_message`. Project setting
+`memory: { context: "window" | "full", recent_exchanges: 5 }`; **`full` stays the default until the M2 acceptance run
+passes**, then new projects get `window`. Compaction remains for the current turn only. An ACP orchestrator's recap
+for a new session is this same assembly (replacing "last 40 texts"); a live ACP session is not rewritten — the agent
+owns its context — but gets the tools and, on each request, the open task records that changed since its last turn.
+
+Each turn stores a **context receipt**: block names, token counts, ids included.
+
+## M3 — UI
+
+Project "Memory" view: tasks (status, goal, quotes linking to the original message, decisions, outcome), memory
+files (view, edit, delete), search box, and per turn "what the orchestrator had in front of it" from the receipt.
+
+## Acceptance
+
+- M1: a Russian query in a different case form finds the message ("бюджета" finds "бюджет"); a superseded fact is
+  returned marked and after the current one; a date filter excludes what is outside it; the digest never changes text
+  written by the orchestrator or the user; unit tests for tools, limits, redaction; search finds a detail from a 300-turn scripted history; verbatim
+  recall is byte-exact; deleting a file removes it from the index.
+- M2: with 300 scripted turns the request size stays under the sum of the caps; a scripted orchestrator answers a
+  question about turn 12 by searching; a five-message window is exactly five; cache-read share on the mock does not
+  drop below the `full` mode's by more than 10 points; receipts match what was sent.
+- Not verifiable here: whether real models use search when they should — the owner's long-running project is the
+  test; the receipt view is how to judge it.
+
+## Open
+
+- Embedding search. Lexical search misses paraphrase ("the money limit" vs "budget"); extracted facts narrow that
+  gap but do not close it. Revisit after the owner's first month with receipts in hand.
+- The digest costs one side-model call per turn; on a subscription-only setup there may be no side model. Then
+  memory is what the orchestrator writes itself.
+- Cross-project memory. Out for now.
+
+
+---
+
+## As built — M1 (harness)
+
+Exact API, limits and behaviour: [`apps/harness/docs/memory.md`](../../../apps/harness/docs/memory.md). Client: `@octo/agent-client` (`Task`, `MemoryFile`, `MemoryHit`, optional `listTasks`, `listMemory`, `getMemoryFile`, `putMemoryFile`, `deleteMemoryFile`, `searchMemory`; events `task.updated`, `memory.updated`; reducer `tasks`, `memoryRevision`). **M2 and M3 are not built.** Where the text above was silent or is not what was built:
+
+- **Memory files are rows in `project.sqlite`, not files in `{project}/memory/`** (one transaction with their index entry, no path-escape surface). Same limits (name ≤ 80 characters, ≤ 64 kB, ≤ 500 files, `.md`), `INDEX.md` generated on `view`.
+- **Schema version 2** (migration from 1 builds the index from the existing messages; tested). Search tables: `search_docs` + FTS5 `search_u` (`unicode61 remove_diacritics 2`) and `search_t` (`trigram`).
+- **Russian inflections** are found through the trigram index with a *stem* of the query word (2 characters off a 5 to 7 character word, 3 off a longer one). Endings longer than 3 letters are not covered; this is not stemming. `unicode61` alone fails on "бюджета" for "бюджет" (checked).
+- **Search rules the spec left open**: all words (AND) first; failing that, "any of the significant words" kept only when at least half occur in the document, so a question about something absent finds nothing; exact-index hits before trigram hits; superseded facts after current ones; `after` inclusive, `before` exclusive; a fact hit carries `message_id` and `task_id`.
+- **Superseding works across tasks** (a later request usually opens a new task): the digest is shown up to 20 current facts of other tasks; the older fact's `superseded_by` is `"<taskId>/<factId>"` when it lives in another task.
+- **Quotes are checked**: a quote (from `task_update` or the digest) must be an exact substring of the request message, else `task_update` refuses and the digest drops it.
+- **`auto` and `goal_by`** on a task record tell the digest what it may replace (the harness's fallback goal, never the orchestrator's); `task_update` with another task's `id` attaches the turn's message to it and drops the untouched record the harness opened.
+- **Digest**: after completed turns only, side model (fast tier unless `models.side`), no tools, usage role `digest`, failures only log; nothing without a side model beyond the 400-character fallback goal.
+- Redaction at write and index time, including the index of messages (installed before the first message of a turn is indexed); the transcript itself still holds a user's own text as typed.
+- Not built: everything in M2 and M3; the spec's acceptance items for M2 are open. The mock orchestrator does not search on its own: the tests drive the tools with request markers (`[search: …]`, `[recall: id]`, `[mem-create: …]`, `[task-update: …]`) and the mock digest with `[fact: …]`, `[goal: …]`, `[quote: …]`, `[decision: …]`.
+
+
+---
+
+## As built — M2 (harness)
+
+Details and the receipt format: [`apps/harness/docs/memory.md`](../../../apps/harness/docs/memory.md) ("Context assembly (M2)"). Client: optional `ProjectInput.memory`, `Project.memory`, `getTurnContext`, `ContextReceipt`. M3 (UI) is not built.
+
+**Built as specified:** the setting `memory: {context, recent_exchanges}` (default `full`); window assembly with the table's blocks and caps (1 500 / 3 000 / 12 000 / 1 500 tokens), stable blocks first; the window is exactly N exchanges; tool-result clearing at 60% of the window keeping the last 5 calls, with stubs like `[cleared: read_file src/x.go, 412 lines]`, in both modes and before compaction; the ACP recap of a new session uses the assembly; a live ACP session gets the open tasks changed since its last turn; a receipt per turn.
+
+**Decisions where the spec was silent:**
+- **Receipt API:** `GET /v1/projects/{pid}/turns/{turnId}/context` (table `context_receipts`, schema version 3), not a field of the message. It records the first request of the turn.
+- **Where the blocks go:** the index and task blocks are text blocks at the front of the first user message, the facts block at the front of the current user message; the window is real messages (user text, one assistant message per exchange with its tool calls reduced to lines). Open task blocks change every turn (each request opens a record), so the cache prefix of a window-mode request is shorter than in full mode; see the recommendation.
+- **Clearing applies to the orchestrator only** (sub-agents and side questions unchanged) and **assumes a 200 000-token window when none is configured** (the windows table is empty by design); stored messages are never rewritten.
+- In window mode an older compaction summary is not sent; ACP live sessions in `full` mode behave as before.
+- The mock orchestrator takes the request from the *last* text block of the user message (memory blocks come first), a change in `mockllm`.
+
+**Acceptance (mock):** 300 scripted exchanges plus 60 task records with 720 facts and 50 files: the request holds under the sum of the caps plus the current turn, and exactly five earlier exchanges (`TestWindowModeSendsExactlyNExchangesWithinTheCapsAndSearchFindsTurn12`); the scripted orchestrator answers about turn 12 by searching: turn 12 is absent from the first request, present in the second; a full-mode request on the same history is more than 5 times larger; receipts match (names, ids, counts, message count, block tokens against the request text, caps); switching full to window to full loses nothing and the transcript is sent whole again; sub-agent requests are identical in both modes; clearing happens in both modes and is recorded in the receipt; ACP recap and live-session task blocks. **Cache-read share on the mock over 12 scripted turns: full 47.6%, window 54.8%**: the criterion (no more than 10 points below full) holds, but that number says little about the real API, see below.
+
+**Recommendation: keep `full` as the default for now; do not flip it.** What the mock cannot show and why it matters:
+1. **Prompt cache on the real API.** The window slides by one exchange every turn and the open-task block changes every turn, so from the first changed block onward the cached prefix is lost each turn; only the system prompt and tool definitions stay cached across turns (within one turn, with several tool rounds, the assembled prefix is reused). In `full` mode the prefix grows append-only. The mock's cache model looks back a bounded number of blocks, which makes long `full` histories look worse than they would be there (that is why window beats full on the mock). Judge it on a real router run: the usage report's cache-read tokens per turn in both modes on the same project.
+2. **Whether real orchestrators search** when the answer is outside the window (the scripted one does what its markers say), and whether the digest's facts and task records are good enough to stand in for the history. Both are the owner's test; the receipt (`GET .../turns/{id}/context`) is how to judge what the model had.
+3. The digest runs on the side model; with a subscription-only setup there may be none, then task records hold only the harness's fallback goal and what the orchestrator writes itself.
+
+Criteria to flip the default: on the owner's long-running project, a week of `window` with receipts showing the model found older details by search when asked, cache-read share not clearly worse than `full`, and no case where it asked the user to repeat something said before. Until then `window` is an opt-in per project (`PATCH /v1/projects/{id}` `{"memory": {"context": "window"}}`).
+
+**Not shown:** quality of answers with a real model in either mode; real cache behaviour; behaviour with `recent_exchanges` above the cap of the window block on very long messages (they are cut, tested only structurally); clearing against a real window size (the test uses a configured 6 000-token window); the live-session task block on a real ACP agent.
+
+
+---
+
+## As built — M3 (UI)
+
+`packages/ui/src/components/memory/` (`MemoryView({projectId, onOpenMessage?, onOpenFile?, initialTab?, turnId?})`, `MemoryPanel` for the dock) and `packages/ui/src/lib/memory/` (task filters and fact order, receipt arithmetic, search form and hit targets, file helpers; unit tests in `memory.test.ts`). Lazy: nothing of it is in the initial bundle. Four tabs in one `Segmented`:
+
+- **Tasks**: status filter with counts; list (status ring, title, age) and detail (goal with who wrote it, constraints, acceptance, quotes with "Open the request", decisions, facts oldest first with superseded ones struck through and a link to the replacement in the same task or another one, outcome, files).
+- **Files**: list (newest first), rendered view, editor (summary + text, 64 kB limit checked before the harness says no), delete behind a confirm dialog. Creating a file is not offered.
+- **Search**: query, kinds, From / Before dates; hits current-first, superseded ones struck and marked; each hit opens its task / file / request; an empty answer says "Nothing in memory matches".
+- **Context**: the orchestrator's requests (from the open project's state), the receipt of the chosen one: stacked bar by block share, per block tokens, share, cap fill ("reached" in `warn`), item count and ids as chips (files, tasks, facts link into the other tabs, message ids link to the chat when the host passes `onOpenMessage`). A turn without a receipt (404) is an empty state, not an error.
+
+Layout: container query, list and detail side by side from 640px of view width, one column below (the detail replaces the list under a Back button). Rows are buttons with ↑/↓/Home/End. Loading, empty and error states per tab; reads re-run on `task.updated` and `memory.updated`.
+
+Demo: `?demo=1#/p/<id>/memory` renders the view alone (route handled in `app/AppShell.tsx`, lazy, demo only). The demo's receipts now exist for every request but the oldest, the second oldest being a full-mode turn; a request made after the memory first loaded is found by re-reading the thread (the 404 gap is closed).
+
+**Verified:** Playwright against `?demo=1` (dark and light at 1440x900, dark at 390x700, console clean): tab switching, task filter, keyboard row moves, superseded facts, file edit / save / too-large / delete with cancel and confirm, search with kinds, empty query, no-result, `?memory=fail|empty|none`. **Not verified:** against a real harness (shapes taken from the types and `memory.md`); the dock tab (not registered, see the handover for the snippet); screen-reader behaviour beyond roles and labels; the spacing audit does not reach the Memory route.
+
+## M4 — sessions: what was asked and what was answered (owner, 2026-11-12)
+
+Owner: "memory should contain the user's ask and the model's answer, like a session." Tasks and facts are digests;
+the person also wants the plain record. Rules:
+1. **An exchange is a memory record.** For every finished orchestrator turn the harness stores one exchange: the
+   request as typed (redacted for stored secrets), the final answer text (the last assistant text of the turn, not
+   the tool chatter), when, how long, the model or agent that answered, the outcome (completed / failed / stopped),
+   files changed (count and paths, from the changes ledger), sub-agents used (names), tokens and cost, the task it
+   was filed under. Nothing is summarised: the texts are kept whole (answer capped at 64 KiB with a marker).
+2. **Sessions group exchanges.** A session is a run of exchanges in one conversation: it starts at project creation,
+   after `/clear` (B11), after a rewind that cut everything, or when the person starts a new session; it carries a
+   title (the first request's first line, trimmed to 80 characters) and its dates. *Corrected at the batch-4 merge:* the
+   first draft also started a session "after 6 h without a request". Project sessions removed that rule: a session is the
+   model's context until `/clear` or New session, so a long pause never splits it (see
+   `2026-11-12-project-sessions-design.md`). A memory session is a main session of that design; the 6 h gap now only
+   splits exchanges recorded without a session (old data, unit tests). Old data is back-filled from stored messages
+   on migration.
+3. **API.** `GET /v1/projects/{id}/memory/sessions?limit=&before=` → `{sessions:[{id,title,started_at,ended_at,
+   exchanges,open}]}`; `GET …/memory/sessions/{sid}` → `{session, exchanges:[{id,turn_id,message_id,request,answer,
+   answer_truncated,status,started_at,duration_ms,model,files:[…],agents:[…],tokens,cost_usd,task_id?}]}`;
+   `GET …/memory/search` also searches exchanges (request and answer, same FTS5 index rules incl. Russian stemming)
+   and returns hits of kind `exchange` with `session_id`. Event `memory.updated` already exists and fires.
+4. **The orchestrator can read it.** `recall_message` gains `exchange_id`/`session_id` forms, and the context for a
+   new session gets a three-line pointer to the previous session (title, date, how to recall it), not its text.
+5. **UI.** The Memory tab opens on **Sessions** (list-detail, decision 66): sessions newest first; a session shows
+   its exchanges as request → answer pairs, answers rendered as Markdown and folded after 12 lines, with the meta
+   line (when, model, duration, files changed, cost) quiet under each; "Open in conversation" scrolls the transcript
+   to that request; search covers them. Tasks, Facts and Files stay as further views.
+6. **Privacy.** Stored locally in the project's database only; removed with the project; "Forget this exchange"
+   deletes one (also from the search index) and leaves a "removed" marker in its session.
+Acceptance: unit tests (exchange written once per turn incl. failed and stopped, final-answer extraction with tool
+calls and sub-agents, secret redaction, session boundaries (the 6 h rule of the first draft applies only to exchanges without a session; tested with an injected clock), back-fill
+migration, search hits, forget); e2e case in `e2e-v7.sh` or `e2e-parity.sh`; UI tests for the view model and
+screenshots. Not verified until the owner's run: answer extraction for real ACP agents' message shapes.
+
+## M5 — notes as Markdown with descriptions (owner, 2026-11-12)
+
+Owner: "notes should work on the Markdown principle, have data, and the model should read only the description so its
+memory is not overfilled" and "what happens with 100 notes?". Before M5 every note's whole text was in the orchestrator's
+prompt on every turn. Progressive disclosure: the model sees an index, opens what is relevant.
+
+1. **A note is a Markdown document with front matter:** `title` (required), `description` (one line, at most 200
+   characters), `tags` (list), `pinned` (bool), plus harness-kept `id`, `created_at`, `updated_at`, `last_read_at`,
+   `read_count` (and `description_auto`, true when the description was derived). The body is Markdown. Existing notes are
+   migrated (schema 10): title = the existing title, else the first line; description = the first non-empty line of
+   the body, cut to 200 characters, `description_auto: true`.
+2. **The model sees an index only:** one line per note, `id · title — description [tags]`, no bodies, within a budget of
+   1 500 tokens (the harness's estimator, characters / 4): pinned first, then by `max(last_read_at, updated_at)` newest
+   first; what does not fit is one line "N more notes — use search_notes". The index is part of the context report's
+   `notes` category.
+3. **Pinned notes** (at most 3, 2 000 characters of body together) are included whole, for rules that must always apply.
+   Pinning beyond the limits is refused with a 400 that says which limit.
+4. **Tools** for the orchestrator and built-in sub-agents (and, for an ACP orchestrator, the harness MCP server):
+   `read_note {id}` returns the body and records `last_read_at` / `read_count`; `search_notes {query, limit?}` returns
+   hits `{id, title, description, tags, snippet}` (FTS5 with the memory search's tokenizers and Russian stemming; 5 hits
+   by default, at most 10); `write_note {id?, title, description, body, tags?}` creates (no id) or updates; the description
+   is required; read-only modes (ask, plan) refuse it (and `save_note`, `delete_note`). Results are ordinary tool results,
+   so tool-result clearing applies. `save_note` stays as a quick upsert by title with a derived description.
+5. **API:** `GET .../notes` returns the front-matter fields and `size` without bodies; `GET .../notes/{id}` returns the
+   note with `content` and `markdown`; `POST` / `PATCH` take fields or `markdown` (a parse error is a 400 naming the line);
+   `GET .../notes/{id}/export` serves the `.md` file; import is `POST` with `markdown`. Event: `note.changed` (as before,
+   without the body).
+6. **UI:** list with title, description, tags, pin mark and an "auto description" hint; the editor is a title field, a
+   description field with a character counter and "Agents see this line and open the note only when it is relevant", tags,
+   the Markdown source with a preview toggle, and a pin with its limits explained; import / export of `.md`; a quiet
+   footer "Agents see an index of N notes (≈T tokens); bodies are read on demand". Decisions 64, 66, 75, 76, 79, 81, 82, 84.
+
+Acceptance: migration from schema 8; index budget with 100 notes (order, the "N more" line, token bound); pin limits;
+tools incl. the access-mode refusal and Russian search; front-matter parse/serialise round trip (table tests); context
+report category; an e2e case in `scripts/e2e-parity.sh` (100 notes; the mock model's prompt has descriptions and no
+bodies; `read_note` returns a body); UI view-model tests and screenshots.
+
+## As built — M5 (harness, agent-client, UI)
+
+- Harness: `internal/notemd` (pure: `Parse`, `Serialize`, `Validate`, `AutoDescription`, `BuildIndex`, `CheckPinned`;
+  hand-written front-matter subset, no YAML dependency); `projectstore` schema 10 (`migrate_v10_notes.go`; columns
+  `description`, `description_auto`, `tags_json`, `pinned`, `last_read_at`, `read_count`; notes are documents of kind
+  `note` in `search_docs`, which `Search` leaves out unless asked for); `project.Notes` (limits, `Read`, `Search`, `Write`);
+  `orchestrator/notes_tools.go`; `notesBlock` builds the index; sub-agents get the three tools but no index. Event stays
+  `note.changed` (the brief said `notes.updated`; the UI and agent-client already handle `note.changed`).
+- agent-client (additive): `Note` gained the front-matter fields and `content` became optional; `NoteDocument`, `NoteInput`,
+  `NotePatch`, `NOTE_LIMITS`; optional `Bridge.getNote`.
+- UI: `lib/notes.ts` (index estimate, pin state, filter), `components/notes/{NotesPanel,NoteDetail,NoteEditor,useNoteDoc}`;
+  the demo's Atlas project has 100 notes (the index overflows, "N more" shows in the footer).
+- Verified: see the hand-back list of checks. Not verified: a real model's use of the tools, ACP sub-agents (they have no
+  MCP server, so no note tools), `.md` export download inside the Tauri webview, the live harness driven from the UI.
+### As built — M4
+
+Harness, agent-client and the Memory tab are built; exact JSON and the write path are in `apps/harness/docs/memory.md` ("Sessions").
+
+- Rule 1: written by `orchestrator/exchanges.go` after every finished turn (completed, failed, stopped), before the digest. The answer is the last assistant text of the turn read from the stored messages, so a failed or stopped turn keeps what it said. Tokens and cost are the usage rows since the request (agents and router classifier, not digest or side calls). The 64 KiB cap, redaction and the once-per-turn rule (a retry replaces the record) are tested.
+- Rule 2 (the 6 h rule was removed for sessions by the project-sessions work, see the correction at the end; what follows is what was built at M4): the 6 h rule uses the exchange's own start time against the session's end (tested with explicit times; the service has an injectable clock for the pointer). `(*memory.Service).StartSession(ctx, reason, carry...)` is the boundary: `POST …/clear` calls it with `clear` and the carried summary (wired at merge; `ClearResult` and the `conversation.cleared` event gain `session_id` / `previous_session_id`). It closes the latest session, stores the summary and its source on that session's record (`sessions.summary`, `summary_source`; returned by `GET …/memory/sessions/{sid}`) and opens an empty session (not listed until its first request) the next request joins and names, even after more than 6 h; calling it again changes nothing. A rewind that cut every request calls it with `rewind` (tested only through the function, not through the rewind endpoint). Exchanges stay after both. Back-fill is the schema 12 migration (tested from schemas 8, 9, 10 and 11 with a failed, a stopped, a gap and a rewound case; a `/clear` boundary found in the compactions ends a session and gives it the clear's summary). The service's old `Forget(exchange)` is `ForgetExchange` (the facts' undo took the name).
+- Rule 3: the three routes and the `exchange` hit are built as specified; with `in` empty a message hit already shown by an exchange hit is dropped, so the default search shows a request once. Two existing bridge assertions changed for that.
+- Rule 4: `recall_message` takes `exchange_id` and `session_id`. The three-line pointer is in the window-mode memory index and in the ACP recap; in full mode the transcript is the context and the built-in orchestrator gets no pointer (a decision, not an omission).
+- Rule 5: Sessions is the first Memory view (list-detail, newest first, skeleton rows, request then answer, answers as Markdown folded after 12 lines, quiet meta line, "Open in conversation" through the dock's existing `nav.requestTurn`, "Forget this exchange" behind "⋯" with a confirm, search with an Exchanges kind that opens the session and marks the exchange). Below 640px it is one column with Back. The view switcher is the new `primitives/ViewTabs` and the task filters `primitives/FilterTabs` (decision 82).
+- Rule 6: stored in `project.sqlite` only; forget removes texts and index entries and leaves a marker; the raw index tables are scanned for a secret in the tests.
+
+**Verified:** Go unit and API tests (`memory`, `projectstore`, `project`, `bridge`, `orchestrator` with `-race`), a real turn through the mock model over HTTP, `e2e-v7.sh` (new "memory (M4)" case: sessions, exchange with a Russian request, stemmed search, forget, marker), agent-client request tests, UI view-model tests, Playwright against `?demo=1` (dark and light, 1440x900 and 390x700, console clean), `spacing-audit` (33 states, all total=0; the script then aborted on closing its browser context, so it did not finish), `width-stability` ok. **Not verified:** answer extraction for a real ACP agent's message shapes (the scripted agent only), a real provider's token and cost figures, the dock's "Open in conversation" in a running app (the demo route passes no `onOpenMessage`, so the button is not shown there), the sessions list against a project with more than 50 sessions (the view asks for the latest 50 and does not page), `/clear` (hook only).
+
+## M6 — a task is work, not every request (owner's live screenshot, 2026-11-12)
+
+Live: the Tasks list held one "task" per request — "What is about this repo" three times, "какие у тебя есть
+заметки?", each with nothing but "Goal = the request's first words", four of them open forever. Since M4 the plain
+record of what was asked and answered is the **exchange**; a task that only restates a request is noise. Rules:
+1. **When a task record exists.** A task is created or joined only when the turn did work or set a goal: it changed
+   files, ran commands that changed state, delegated to a sub-agent, produced or approved a plan, or the model's
+   digest states a goal with at least one of constraints / acceptance / decision / open question. A question that
+   was only answered creates no task: its exchange is the record (it stays searchable).
+2. **Joining.** A follow-up joins the open task of the same session when the digest says it continues it; a new
+   goal starts a new task. Never two tasks with the same title in one session: a repeat joins.
+3. **Closing.** A task closes when its turn's digest says the goal is met, when the person says so, on `/clear`
+   (open tasks are carried by title, B11) only if nothing is unfinished, and automatically after 7 days without
+   activity as "dropped: no activity" (shown as such).
+4. **A task is never only its goal.** The digest must fill at least: goal (rewritten as a goal, not the request's
+   first words), state (what is done / what is left), and the files it touched; `remember` items of the turn attach
+   to it. The label "First words of the request" and the raw-request goal are removed.
+5. **Clean-up migration.** Existing tasks that have no constraints, acceptance, decisions, facts or file changes are
+   removed (their exchanges remain); duplicates by title within a day are merged. Counted and logged; reversible
+   only by restoring the database backup the migration writes next to it (`<db>.pre-m6`).
+6. API: task gains `state_summary`, `files:[…]`, `exchange_ids:[…]`, `closed_reason?`; `GET …/tasks` unchanged
+   otherwise.
+Acceptance: tests with the mock model — ten question-only turns create zero tasks and ten exchanges; a turn that
+edits a file creates one task with files and state; a follow-up joins; a repeat does not duplicate; the 7-day drop
+with an injected clock; the clean-up migration on a fixture shaped like the owner's list (ten request-only tasks →
+zero) with the backup written; e2e case in `e2e-v7.sh`.
+
+### As built — M6
+
+Why the earlier rule failed on the owner's machine: the record was opened unconditionally at turn start, and "trivial" was `turnTools == 0 && reply <= 400 characters` (`orchestrator/memory_tools.go`, old `closeTurnTask`); `noteTool` was only called by the built-in loop's sink, so an ACP turn never counted a tool call and the test was reply length alone (a long answer to a question stayed, a short answer after real work was deleted); the digest (which did the follow-up joins, goals and drops) ran only when `builtinOff() == ""`, so with Copilot/Claude Code and no API key nothing but the raw-request fallback goal ever existed, nothing joined, nothing was dropped; a failed turn stayed open forever; and with a key the digest's `DropIfEmpty` applied only to "trivial" turns, while the digest prompt extracts facts from any answer.
+
+Rules 1-6 are built as specified (details and the exact task shape in `apps/harness/docs/memory.md`). Decisions: "commands run" counts only state-changing commands (read-only allow-list), because every question about a repo runs `ls`/`cat`; a turn with no digest closes its task as "turn completed" unless the reply ends in a question; the digest's facts of a taskless turn go to the `Remembered` record; `task_update` creates a record when the turn has none; `goal_by: "rule"` replaces the "first words" label.
+
+**Verified:** Go tests (memory, projectstore incl. migrations from 12- and 13-stamped databases, orchestrator, bridge) with the mock model and the scripted ACP agent (digest asked in the live session, refusal, non-JSON), ten question-only turns → zero tasks and ten exchanges, the 7-day drop with an injected clock, `e2e-v7.sh` (new M6 case), agent-client tests, `tsc` of agent-client, ui and desktop. **Not verified:** a real ACP agent's answer to the digest prompt (Copilot, Claude Code: whether they answer JSON only and without tools), the digest prompt in the agent's own context (it stays there), token/cost of that prompt (not recorded), a state-changing command run by an ACP agent that gives no `rawInput` (only its ledger effects count), a real model's `goal_met` quality.
+
+### As built — batch-4 merge correction (project sessions, M6 and remembered subjects)
+
+- **M4 rule 2 changed.** A session no longer ends after 6 h without a request (project sessions, schema 13). `Sessions()` lists
+  main sessions only; `open` is the session entity's `current` (and not closed), so the UI marks "current" from
+  `state.sessions.currentId` and falls back to `open` only while the entity is not loaded.
+- **Remembered subjects.** A fact the digest produced gets `about` = the digest's own `about` (new optional field of a digest
+  fact), else its task's title (not for the `Remembered` record), so the Knowledge view groups what the harness learnt by
+  the piece of work it came from instead of "General". Test: `TestDigestFactsAreAboutTheirTaskUnlessTheDigestSaysOtherwise`.

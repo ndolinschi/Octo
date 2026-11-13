@@ -6,9 +6,12 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/config"
+	"github.com/ndolinschi/Octo/apps/harness/internal/memory"
+	"github.com/ndolinschi/Octo/apps/harness/internal/projcfg"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -24,9 +27,26 @@ type Input struct {
 	Instructions *string        `json:"instructions"`
 	Folders      *[]FolderInput `json:"folders"`
 	Models       *config.Models `json:"models"`
-	MaxDepth     *int           `json:"max_depth"`
+	// ForceUnverified accepts a model of an agent the login probe says is logged
+	// out (the probe is advisory); a model that is not installed is still refused.
+	ForceUnverified bool `json:"force_unverified"`
+	MaxDepth        *int `json:"max_depth"`
 	// BudgetUSD is the project's spend cap; JSON null removes it.
 	BudgetUSD OptionalFloat `json:"budget_usd"`
+	// Access is "supervised" or "full" (v7 approvals).
+	Access *string `json:"access"`
+	// Memory is the project's memory setting (context mode, window size).
+	Memory *memory.Settings `json:"memory"`
+	// Network is "off" (default) or "on": whether agents get web_fetch.
+	// NetworkPrivate lets web_fetch reach private and loopback addresses.
+	Network        *string `json:"network"`
+	NetworkPrivate *bool   `json:"network_private"`
+	// Mode is the project's default mode: "agent" (default), "ask" or "plan".
+	Mode *string `json:"mode"`
+	// Commands are the project's named commands (decision 68); a patch replaces the whole list.
+	Commands *[]projcfg.Command `json:"commands"`
+	// Review is the project's review configuration; a patch replaces it as a whole (missing fields take their defaults).
+	Review *projcfg.ReviewConfig `json:"review"`
 }
 
 // OptionalFloat distinguishes an absent JSON field from an explicit null.
@@ -56,6 +76,20 @@ func validBudget(o OptionalFloat) error {
 	return nil
 }
 
+func validAccess(a *string) error {
+	if a != nil && *a != projectstore.AccessSupervised && *a != projectstore.AccessFull {
+		return invalid("access must be %q or %q", projectstore.AccessSupervised, projectstore.AccessFull)
+	}
+	return nil
+}
+
+func validNetwork(n *string) error {
+	if n != nil && *n != projectstore.NetworkOff && *n != projectstore.NetworkOn {
+		return invalid("network must be %q or %q", projectstore.NetworkOff, projectstore.NetworkOn)
+	}
+	return nil
+}
+
 func validDepth(n int) error {
 	if n < 1 || n > config.MaxDepthLimit {
 		return invalid("max_depth must be between 1 and %d", config.MaxDepthLimit)
@@ -78,6 +112,17 @@ func mergeModels(base config.Models, over *config.Models) (config.Models, error)
 		if src != "" {
 			*dst = src
 		}
+	}
+	switch over.Completion {
+	case "":
+	case config.CompletionOff:
+		base.Completion = ""
+	default:
+		base.Completion = over.Completion
+	}
+	if over.AutoCandidates != nil {
+		// An empty list clears the restriction.
+		base.AutoCandidates = slices.Clone(over.AutoCandidates)
 	}
 	return base, nil
 }

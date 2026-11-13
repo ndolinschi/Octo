@@ -3,9 +3,9 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
+	"github.com/ndolinschi/Octo/apps/harness/internal/changes"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
@@ -20,28 +20,45 @@ func (rt *runtime) runACP(ctx context.Context, child projectstore.Agent, t acpTa
 	ag := t.agent
 	cwd := rt.folders[0].Path
 	client, err := acp.Start(ctx, acp.Spec{
-		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: ag.ResolvedEnv(), Dir: cwd, Name: ag.ID,
+		Command: ag.Command, Args: ag.ArgsFor(t.model), Env: t.processEnv(), Dir: cwd, Name: ag.ID, Redact: rt.redact,
 	})
 	if err != nil {
-		return "", fmt.Errorf("start ACP agent %q: %w", ag.ID, err)
+		return "", startFailure(t, err)
 	}
 	defer client.Close()
+	defer rt.o.adv.running(ag.ID)()
 
 	h := newACPSession(rt, child.ID, ag.ID, child.Model)
-	stop, err := client.RunWith(ctx, cwd, child.Task, h, acp.RunOptions{
+	h.flat = ag.FlatRateIn(t.processEnv())
+	toolUse := ""
+	if child.SpawnToolUseID != nil {
+		toolUse = *child.SpawnToolUseID
+	}
+	endSpan := rt.trackSpan(ctx, child.ID, toolUse, changes.SourceACPTurn)
+	defer endSpan()
+	sess, err := client.NewSession(ctx, cwd, nil, acp.RunOptions{
 		Model: t.model, ModelRequired: t.requested, ModelApplied: t.model != "" && len(ag.ModelArg) > 0, AuthHint: ag.Hint, Auth: authPolicy(ag),
+		OnModels: func(m []acp.AdvertisedModel, cur string) { rt.o.noteAdvertised(ag.ID, m, cur) },
 	})
+	var stop acp.StopReason
+	if err == nil {
+		rt.keepAgentSession(ctx, child.ID, ag.ID, t.recorded(), sess.ID)
+		stop, err = client.Prompt(ctx, sess.ID, child.Task, h)
+	}
 	h.finish(ctx, err != nil)
 	if err != nil {
-		return "", fmt.Errorf("ACP agent %q: %w", ag.ID, err)
+		return "", acpFailure(ag, false, err)
 	}
 	switch stop {
 	case acp.StopEndTurn:
+		if h.nothing() {
+			return "", nothingError(ag)
+		}
 		return h.finalText(), nil
 	case acp.StopCancelled:
 		return "", errAgentCancelled
 	}
-	return "", fmt.Errorf("ACP agent %q stopped: %s", ag.ID, stop)
+	return "", stopError(ag, stop)
 }
 
 func authPolicy(ag plugins.Agent) acp.AuthPolicy {

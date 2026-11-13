@@ -12,12 +12,17 @@ const acpMarker = "[acp]"
 // modelMarker, "[model:NAME]", passes NAME as spawn_agent's `model`.
 var modelMarker = regexp.MustCompile(`\[model:([A-Za-z0-9._:/@+-]+)\]`)
 
+// envMarker, "[env:NAME=secretname]", passes env {NAME: "secret:secretname"} to spawn_agent.
+var envMarker = regexp.MustCompile(`\[env:([A-Z_][A-Z0-9_]*)=([A-Za-z][A-Za-z0-9_.-]*)\]`)
+
 var bracketMarker = regexp.MustCompile(`\[[a-z-]+\]`)
 
 // acpReply delegates to the first offered ACP agent, then summarizes its report.
 func acpReply(r *request, anchor int, ask, agent string) reply {
 	if r.assistantCountFrom(anchor) == 0 {
 		model := modelMarker.FindStringSubmatch(ask)
+		envs := envMarker.FindAllStringSubmatch(ask, -1)
+		ask = envMarker.ReplaceAllString(ask, "")
 		ask = strings.Join(strings.Fields(modelMarker.ReplaceAllString(ask, "")), " ")
 		task := "The user asked: \"" + clip(ask, 160) + "\". Work on it in the project folder and report back with " +
 			"what you read, what you changed, and anything left open."
@@ -31,6 +36,13 @@ func acpReply(r *request, anchor int, ask, agent string) reply {
 		}
 		if model != nil {
 			input["model"] = model[1]
+		}
+		if len(envs) > 0 {
+			env := map[string]any{}
+			for _, e := range envs {
+				env[e[1]] = "secret:" + e[2]
+			}
+			input["env"] = env
 		}
 		return reply{
 			Text:  "This fits an external agent, so I will delegate it to " + agent + ".",

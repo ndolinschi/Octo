@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -15,12 +16,19 @@ const ACPModelPrefix = "acp:"
 // acpAgents returns the available ACP agents, in plugin load order.
 func (rt *runtime) acpAgents() []plugins.Agent {
 	var out []plugins.Agent
-	for _, a := range rt.o.opts.Agents {
+	for _, a := range rt.o.agents() {
 		if a.Available {
 			out = append(out, a)
 		}
 	}
 	return out
+}
+
+func (o *Orchestrator) agents() []plugins.Agent {
+	if o.opts.AgentSource != nil {
+		return o.opts.AgentSource()
+	}
+	return o.opts.Agents
 }
 
 // acpTarget is an ACP agent with the model one delegation will use: the
@@ -29,6 +37,21 @@ type acpTarget struct {
 	agent     plugins.Agent
 	model     string
 	requested bool // the model came from spawn_agent, not the manifest default
+	// env is extra environment for the agent's process: secrets spawn_agent's
+	// env mapped, already resolved.
+	env map[string]string
+}
+
+// processEnv is the agent's manifest environment plus the mapped secrets.
+func (t acpTarget) processEnv() map[string]string {
+	env := t.agent.ResolvedEnv()
+	if len(t.env) == 0 {
+		return env
+	}
+	out := make(map[string]string, len(env)+len(t.env))
+	maps.Copy(out, env)
+	maps.Copy(out, t.env)
+	return out
 }
 
 // recorded is the model stored on the sub-agent and its usage rows.
@@ -51,13 +74,16 @@ func (rt *runtime) pickACPAgent(id, model string) (acpTarget, string) {
 		}
 		t := acpTarget{agent: a, model: a.DefaultModel}
 		if model == "" {
+			// `acp:<agent>` with no model: the user's preferred model for the agent,
+			// else the agent's own default.
+			if a.PreferredModel != "" {
+				t.model, t.requested = a.PreferredModel, true
+			}
 			return t, ""
 		}
 		switch {
 		case !plugins.ModelPattern.MatchString(model):
 			return acpTarget{}, fmt.Sprintf("invalid model %q", model)
-		case len(a.Models) > 0 && !slices.Contains(a.Models, model):
-			return acpTarget{}, fmt.Sprintf("ACP agent %q has no model %q; choose one of: %s", id, model, strings.Join(a.Models, ", "))
 		}
 		t.model, t.requested = model, true
 		return t, ""
@@ -65,14 +91,23 @@ func (rt *runtime) pickACPAgent(id, model string) (acpTarget, string) {
 	return acpTarget{}, fmt.Sprintf("unknown or unavailable ACP agent %q", id)
 }
 
+// roleModel is the model an agent uses for a delegation decided as tier ("" when
+// none is set: the agent's preferred or own default model then applies).
+func (rt *runtime) roleModel(agentID, tier string) string {
+	for _, a := range rt.acpAgents() {
+		if a.ID == agentID {
+			return a.Roles[tier]
+		}
+	}
+	return ""
+}
+
 // modelChoices describes the models of the available agents for the schema:
 // the union (an enum only when every agent lists its models) and a sentence.
 func modelChoices(agents []plugins.Agent) (enum []string, desc string) {
-	allListed := true
 	var parts []string
 	for _, a := range agents {
 		if len(a.Models) == 0 {
-			allListed = false
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("%s: %s", a.ID, strings.Join(a.Models, ", ")))
@@ -82,9 +117,8 @@ func modelChoices(agents []plugins.Agent) (enum []string, desc string) {
 			}
 		}
 	}
-	if !allListed {
-		enum = nil
-	}
+	// Never an enum: any model name may be tried; the agent says whether it knows it.
+	enum = nil
 	if len(parts) > 0 {
 		desc = " Models by agent: " + strings.Join(parts, "; ") + "."
 	}
@@ -94,6 +128,17 @@ func modelChoices(agents []plugins.Agent) (enum []string, desc string) {
 // spawnSchema is the spawn_agent input schema; `agent` appears only when
 // at least one ACP agent is available.
 func spawnSchema(agents []plugins.Agent) (json.RawMessage, error) {
+	return spawnSchemaFor(agents, false)
+}
+
+// spawnTierAutoDescription describes the tier property while the router can
+// choose (route_api): auto is accepted and is the default.
+const spawnTierAutoDescription = "Who does the task. auto (the default): the router picks the model tier or a flat-rate local agent " +
+	"by task difficulty and price. Or choose a model tier by task difficulty."
+
+// spawnSchemaFor is spawnSchema; with auto the tier property gains "auto" and
+// becomes optional (its default).
+func spawnSchemaFor(agents []plugins.Agent, auto bool) (json.RawMessage, error) {
 	props := map[string]any{
 		"role":  map[string]any{"type": "string", "description": "Specialist role, e.g. Code explorer"},
 		"title": map[string]any{"type": "string", "description": "Short task title"},
@@ -116,6 +161,11 @@ func spawnSchema(agents []plugins.Agent) (json.RawMessage, error) {
 		if len(enum) > 0 {
 			model["enum"] = enum
 		}
+		props["env"] = map[string]any{
+			"type": "object", "additionalProperties": map[string]any{"type": "string"},
+			"description": "Optional, only with agent: environment variables for that external agent's process, each " +
+				"NAME: \"secret:<name>\" naming a secret the user stored through request_input. The harness fills the value in.",
+		}
 		props["model"] = model
 		props["agent"] = map[string]any{
 			"type": "string", "enum": ids,
@@ -124,8 +174,15 @@ func spawnSchema(agents []plugins.Agent) (json.RawMessage, error) {
 				"another harness suits a self-contained coding task. Available: " + agentList(agents) + ". Omit for a normal sub-agent.",
 		}
 	}
+	required := []string{"role", "title", "task", "tier"}
+	if auto {
+		props["tier"] = map[string]any{
+			"type": "string", "enum": []string{TierAuto, "fast", "balanced", "deep"}, "description": spawnTierAutoDescription,
+		}
+		required = required[:3]
+	}
 	return json.Marshal(map[string]any{
-		"type": "object", "properties": props, "required": []string{"role", "title", "task", "tier"},
+		"type": "object", "properties": props, "required": required,
 	})
 }
 

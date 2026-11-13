@@ -3,7 +3,7 @@ import type { AgentStatus } from "@octo/agent-client";
 /**
  * Decision 29 — one state-glyph family. Every state is a ring of one diameter and a 1.5px stroke; the state is told
  * by line style and motion first, colour second (so it survives colour blindness and forced colours):
- * working = faint ring + a turning 90° arc · queued = dashed ring (6 dashes) · needs = ring + pulsing centre dot ·
+ * working = faint ring + a turning 90° arc · queued = dashed ring (6 dashes) · needs = ring + an exclamation mark (pulsing) ·
  * unseen = ring + filled disc · idle = thin ring · failed = ring + a short diagonal bar. Pure geometry here; the SVG is
  * `primitives/StateGlyph.tsx`.
  */
@@ -48,8 +48,13 @@ export type Geometry = {
   ringOpacity: number;
   /** The working arc as an SVG path (90°, from 12 o'clock clockwise). */
   arc: string | null;
-  /** A centre dot (needs you) or disc (unseen): its radius. */
+  /** Unseen's filled disc: its radius. */
   dot: number | null;
+  /**
+   * Needs you: an exclamation mark inside the ring (a short upright stroke over a dot), so it never reads as unseen's
+   * disc in greyscale (owner's live test: the two differed only by colour).
+   */
+  alert: { x: number; y1: number; y2: number; cy: number; dr: number } | null;
   /** The failed state's bar. */
   bar: { x1: number; y1: number; x2: number; y2: number } | null;
 };
@@ -88,7 +93,11 @@ export function glyphGeometry(state: GlyphState, size: GlyphSize = 12): Geometry
     dash: state === "queued" ? dashArray(r) : null,
     ringOpacity: state === "working" ? 0.4 : 1,
     arc: state === "working" ? arcPath(c, r) : null,
-    dot: state === "needs" ? round(inner * 0.5) : state === "unseen" ? round(inner * 0.75) : null,
+    dot: state === "unseen" ? round(inner * 0.75) : null,
+    alert:
+      state === "needs"
+        ? { x: round(c), y1: round(c - inner * 0.62), y2: round(c + inner * 0.12), cy: round(c + inner * 0.55), dr: round(Math.max(0.6, inner * 0.2)) }
+        : null,
     bar: state === "failed" ? { x1: round(c - d), y1: round(c + d), x2: round(c + d), y2: round(c - d) } : null,
   };
 }

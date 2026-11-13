@@ -20,6 +20,13 @@ type UsageQuery struct {
 	ProjectID string
 }
 
+// UsageBucket is one row of the usage report. Contract for subscriptions:
+// cost_usd is money spent, so it is 0 (never null) for a bucket that holds only
+// flat-rate (subscription) usage and null only when an API request has no known
+// cost; subscription_equivalent_usd is what the flat-rate usage would have cost
+// per token (null when there is none); flat_rate is true when the bucket holds
+// flat-rate usage and nothing else. A bucket with both has flat_rate false and
+// both figures.
 type UsageBucket struct {
 	Key              string   `json:"key"`
 	Label            string   `json:"label"`
@@ -30,6 +37,13 @@ type UsageBucket struct {
 	Requests         int64    `json:"requests"`
 	CostUSD          *float64 `json:"cost_usd"`
 	CostEstimated    bool     `json:"cost_estimated"`
+	// SubscriptionEquivalentUSD is what flat-rate (subscription) agents'
+	// usage would have cost per token by their own figures: not spent, not in
+	// CostUSD (null when there is none).
+	SubscriptionEquivalentUSD *float64 `json:"subscription_equivalent_usd"`
+	FlatRate                  bool     `json:"flat_rate"`
+	// TokensEstimated: some token counts in the bucket are the harness's estimate (an ACP agent reported none).
+	TokensEstimated bool `json:"tokens_estimated"`
 }
 
 type UsageReport struct {
@@ -159,12 +173,20 @@ type costSum struct {
 	usd       float64
 	any       bool
 	estimated bool
+	sub       float64
+	subAny    bool
+	// flat counts flat-rate rows, paid the other rows (flat-rate rows excluded).
+	flat, paid int
 }
 
 func (c *costSum) merge(o costSum) {
 	c.usd += o.usd
 	c.any = c.any || o.any
 	c.estimated = c.estimated || o.estimated
+	c.sub += o.sub
+	c.subAny = c.subAny || o.subAny
+	c.flat += o.flat
+	c.paid += o.paid
 }
 
 func (c costSum) apply(b *UsageBucket) {
@@ -173,6 +195,17 @@ func (c costSum) apply(b *UsageBucket) {
 		b.CostUSD = &v
 	}
 	b.CostEstimated = c.estimated
+	if c.flat > 0 && c.paid == 0 {
+		b.FlatRate = true
+		if b.CostUSD == nil {
+			zero := 0.0
+			b.CostUSD = &zero // nothing was spent: 0, not unknown
+		}
+	}
+	if c.subAny {
+		v := c.sub
+		b.SubscriptionEquivalentUSD = &v
+	}
 }
 
 func addRow(b *UsageBucket, c *costSum, r projectstore.UsageRow, tab prices.Table) {
@@ -181,7 +214,18 @@ func addRow(b *UsageBucket, c *costSum, r projectstore.UsageRow, tab prices.Tabl
 	b.CacheReadTokens += r.CacheReadTokens
 	b.CacheWriteTokens += r.CacheWriteTokens
 	b.Requests += r.Requests
+	b.TokensEstimated = b.TokensEstimated || r.TokensEstimated
+	if r.Flat {
+		c.flat++
+	} else {
+		c.paid++
+	}
 	switch {
+	case r.Flat:
+		if r.Reported {
+			c.sub += r.ReportedCostUSD
+			c.subAny = true
+		}
 	case r.Reported:
 		c.usd += r.ReportedCostUSD
 		c.any = true
@@ -203,6 +247,7 @@ func sumTokens(t *UsageBucket, b UsageBucket) {
 	t.CacheReadTokens += b.CacheReadTokens
 	t.CacheWriteTokens += b.CacheWriteTokens
 	t.Requests += b.Requests
+	t.TokensEstimated = t.TokensEstimated || b.TokensEstimated
 }
 
 // sortBuckets orders days oldest first and the other groups by tokens, largest first.

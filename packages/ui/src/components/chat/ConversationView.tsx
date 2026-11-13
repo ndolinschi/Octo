@@ -1,28 +1,47 @@
+import { useScrollAnchor } from "../../lib/scrollAnchor";
+import type { Agent } from "@octo/agent-client";
 import { ArrowDown } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { IconButton } from "../primitives/IconButton";
+import { InlineNotesProvider } from "./notesContext";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { useNow, useStickToBottom } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
+import { useChatSlots } from "../../state/chatSlots";
 import { useProject } from "../../state/project";
 import { CHAT, type TabId } from "../../state/workspace/layout";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { AgentHeader, roleName } from "./AgentHeader";
+import { roleName as baseRoleName } from "../../lib/orchestrator";
+import { useNav, useNavState } from "../../state/nav";
+import { useComposerAnchor } from "./useComposerAnchor";
+
+/** Decision 63: the project's own agent goes by the project's name in its conversation, never "Orchestrator". */
+const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
+import { showRail, turnWarning } from "../../lib/transcript";
+import { TurnBanner, providerIdOf, useAgentName, useLoginHint } from "./Transcript";
+import { errorFieldsOf } from "@octo/agent-client";
+import { recheckAgent } from "../../lib/providers/recheck";
+
+/** A sub-agent's header loads with the first Agent tab (its own chunk). */
+const AgentHeader = lazy(() => import("./AgentHeader").then((m) => ({ default: m.AgentHeader })));
 import { requestTitle } from "../../lib/comments";
 import { buildTurns, promptText, requestSummaries } from "../../lib/transcript";
-import { ChatHeader } from "./ChatHeader";
-import { CommentsControl } from "./CommentsControl";
+import { CommentsControl } from "./CommentsControlLazy";
 import { Composer, type ComposerHandle } from "./Composer";
-import { TurnRail } from "./TurnRail";
+const InlineNotes = lazy(() => import("./InlineNotes").then((m) => ({ default: m.InlineNotes })));
+const TurnRail = lazy(() => import("./TurnRail").then((m) => ({ default: m.TurnRail })));
 import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { STREAK_EMPTY } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
 import { ObserverBar } from "./ObserverBar";
-import { TeamStrip } from "./TeamStrip";
 import { useBackdrop } from "../primitives/backdrop";
-import { StickyPrompt } from "./StickyPrompt";
+const StickyPrompt = lazy(() => import("./StickyPrompt").then((m) => ({ default: m.StickyPrompt })));
 import { Transcript } from "./Transcript";
+import { Presence } from "../primitives/Presence";
+
+/** The rewind dialog loads when first asked for (parity B5). */
+const RewindDialog = lazy(() => import("./RewindDialog").then((m) => ({ default: m.RewindDialog })));
 import { useStuckTurn, useTurnRequests, useViewTurn } from "./turnTracking";
 import { slot } from "../../state/workspace/tabMemory";
 
@@ -41,7 +60,6 @@ const EmptyTitle = lazy(() => import("./EmptyProject").then((m) => ({ default: m
 const EmptyFacts = lazy(() => import("./EmptyProject").then((m) => ({ default: m.EmptyFacts })));
 
 /** The turn rail appears from the first request (decision 34). */
-const RAIL_MIN_REQUESTS = 1;
 
 /**
  * A conversation (the orchestrator's Chat tab or a sub-agent's Agent tab). The header, transcript
@@ -51,9 +69,21 @@ const RAIL_MIN_REQUESTS = 1;
  * then all of them pad by `--pad` (24, or 16 under 560px). Rhythm: turns 32 apart, prompt → reply 16,
  * blocks 12.
  */
-export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab?: TabId }) {
+/** Owns the notes slash commands leave in the conversation (B11); `/rewind` reaches the body's dialog through a ref. */
+export function ConversationView(props: { agentId: string; tab?: TabId }) {
+  const rewindRef = useRef<(() => void) | undefined>(undefined);
+  const rewindLast = useCallback(() => rewindRef.current?.(), []);
+  return (
+    <InlineNotesProvider rewindLast={rewindLast}>
+      <ConversationBody {...props} rewindRef={rewindRef} />
+    </InlineNotesProvider>
+  );
+}
+
+function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string; tab?: TabId; rewindRef: { current: (() => void) | undefined } }) {
   const ws = useOptionalWorkspace();
-  const { theme } = useApp();
+  const slots = useChatSlots();
+  const { theme, backdrop: appBackdrop, bridge } = useApp();
   const { project, state, running, ensureMessages, projectId } = useProject();
   const agent = state.agents[agentId];
   const messages = state.messages[agentId];
@@ -61,6 +91,8 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   const composer = useRef<ComposerHandle>(null);
   const isOrchestrator = agent?.parent_id === null;
   const composerProps = useOrchestratorComposer(tab);
+  const [rewinding, setRewinding] = useState<number | null>(null);
+  const keepEditing = useCallback(() => composer.current?.refinePlan(), []);
   const anyRunning = state.agentOrder.some((id) => state.agents[id]?.status === "running");
   const now = useNow(anyRunning);
   const memory = ws?.memory;
@@ -98,11 +130,28 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
 
   const stuck = useStuckTurn(scroll.ref);
   const promptCount = useMemo(() => messages?.filter((m) => m.role === "user").length ?? 0, [messages]);
+  // Sending always shows the sent message and follows from there: a reader who had scrolled up goes down to it (rule:
+  // `scroll-on-send.mjs`). The first load of the transcript and a rewind (fewer requests) do not count as sending.
+  const seenPrompts = useRef<number | null>(null);
+  const { scrollToBottom } = scroll;
+  useLayoutEffect(() => {
+    if (!isOrchestrator || messages === undefined) return;
+    const before = seenPrompts.current;
+    seenPrompts.current = promptCount;
+    if (before !== null && promptCount > before) scrollToBottom();
+  }, [isOrchestrator, messages, promptCount, scrollToBottom]);
   const lastTurnStatus = isOrchestrator ? (state.lastTurn?.status ?? null) : null;
   const requests = useMemo(
     () => (isOrchestrator && messages ? requestSummaries(buildTurns(messages), agent?.status === "running", lastTurnStatus) : []),
     [isOrchestrator, messages, agent?.status, lastTurnStatus],
   );
+  const newestRequest = requests[requests.length - 1]?.id;
+  useEffect(() => {
+    rewindRef.current = newestRequest === undefined ? undefined : () => setRewinding(newestRequest);
+    return () => {
+      rewindRef.current = undefined;
+    };
+  }, [rewindRef, newestRequest]);
   useViewTurn(scroll.ref, projectId, isOrchestrator, promptCount);
   useTurnRequests({
     root: scroll.ref,
@@ -114,6 +163,22 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   });
   const { onScroll: measureStuck } = stuck;
   useEffect(measureStuck, [messages, streaming, measureStuck]);
+  // Decision 56: "Jump to latest" hides while a popover of the composer is open.
+  const [overlay, setOverlay] = useState(false);
+  const composerRow = useRef<HTMLDivElement>(null);
+  useComposerAnchor(scroll.ref, composerRow, scroll.atBottom);
+  const nav = useNav();
+  const { viewTurn } = useNavState();
+  // Decision 57: Alt+↑/↓ anywhere in the conversation jumps between requests.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown") || requests.length === 0) return;
+    const at = viewTurn?.projectId === projectId ? requests.findIndex((r) => r.id === viewTurn.messageId) : -1;
+    const to = at < 0 ? requests.length - 1 : at + (e.key === "ArrowDown" ? 1 : -1);
+    const target = requests[Math.max(0, Math.min(requests.length - 1, to))];
+    if (!target) return;
+    e.preventDefault();
+    nav.requestTurn({ projectId, messageId: target.id });
+  };
 
   // The empty project's streak runs behind the whole group (strip and header too), not only this view.
   const backdrop = useBackdrop();
@@ -142,6 +207,9 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
       el.scrollTop = at.top;
     }
   }, [messages, memory, tab, scroll]);
+  // Opening a file narrows the conversation and the text re-wraps: keep the reader's place (decision 60). The scroller only
+  // exists once there are messages, so the tracker is bound again when that changes.
+  useScrollAnchor(scroll.ref, "article, article :is(p, li, pre, h1, h2, h3, h4, blockquote, tr)", messages === undefined ? 0 : messages.length === 0 ? 1 : 2);
   // Saved on unmount from the scroller as it is then — it may have appeared after mount (a project that started
   // empty: decision 36), so the element is read at cleanup, before the DOM goes.
   useLayoutEffect(() => {
@@ -153,6 +221,7 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   }, [memory, tab, scroll.ref]);
 
   if (!project) return null;
+  const roleName = nameIn(project.name);
   if (!agent) {
     return (
       <div className="grid h-full place-items-center text-center">
@@ -183,36 +252,53 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
   // messages arrive. The empty project centres title + composer + facts between two flexible halves.
   return (
     <div
+      data-conv
+      onKeyDown={onKeyDown}
+      onDragOver={(e) => {
+        if (isOrchestrator && [...e.dataTransfer.types].includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        // Files dropped on the conversation go to the composer, as if dropped on it (B12).
+        if (!isOrchestrator || e.defaultPrevented || e.dataTransfer.files.length === 0) return;
+        e.preventDefault();
+        composer.current?.addFiles([...e.dataTransfer.files]);
+      }}
       className={cn(
         "@container/conv relative flex h-full min-h-0 flex-col [--pad:24px] @max-[560px]/conv:[--pad:16px]",
-        empty && "overflow-x-hidden overflow-y-auto",
+        // Decision 50: the empty project's streak is on the dock group (never in this scroller); no rubber-band either.
+        empty && "overflow-x-hidden overflow-y-auto overscroll-none",
       )}
     >
-      {isOrchestrator && <ChatHeader transparent={empty} />}
       {empty ? (
         <div data-empty-project className="flex flex-[1_0_auto] flex-col justify-end px-(--pad) pt-8 pb-6">
-          {!backdrop && <StreakLayer preset={STREAK_EMPTY} theme={theme} />}
+          {!backdrop && appBackdrop !== "off" && <StreakLayer preset={STREAK_EMPTY} theme={theme} mono={appBackdrop === "mono"} />}
           <Suspense fallback={null}>
             <EmptyTitle project={project} />
           </Suspense>
+          <StartFailure agent={agent} />
         </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col">
           {stuckPrompt && (
-            <StickyPrompt
-              key={stuckPrompt.id}
-              text={requestTitle(promptText(stuckPrompt))}
-              author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
-              onHeight={stuck.setPinnedHeight}
-            />
+            <Suspense fallback={null}>
+              <StickyPrompt
+                key={stuckPrompt.id}
+                text={requestTitle(promptText(stuckPrompt))}
+                author={isOrchestrator ? null : parent ? roleName(parent) : "Parent"}
+                onHeight={stuck.setPinnedHeight}
+              />
+            </Suspense>
           )}
-          {requests.length >= RAIL_MIN_REQUESTS && (
+          {showRail(requests.length) && (
             // The rail sits in the column's left padding, 4px clear of it; hidden when the padding is 16. The
             // layer covers the whole scroll area (it clips like the transcript) but takes no pointer events.
             <div className={cn(EDGES, "pointer-events-none absolute inset-x-0 top-0 z-20 @max-[560px]/conv:hidden")} style={{ height: scrollHeight }}>
-              <div className="relative mx-auto max-w-measure">
-                <div className="pointer-events-auto absolute top-2 right-full mr-3">
-                  <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
+              {/* Decision 57: centred vertically in the conversation's viewport; it takes no layout width. */}
+              <div className="relative mx-auto h-full max-w-measure">
+                <div className="pointer-events-auto absolute top-1/2 right-full mr-3 -translate-y-1/2">
+                  <Suspense fallback={null}>
+                    <TurnRail requests={requests} projectId={projectId} now={now} maxHeight={scrollHeight - 16} />
+                  </Suspense>
                 </div>
               </div>
             </div>
@@ -227,20 +313,32 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
           >
             <div className="px-(--pad)">
               <div data-column className="mx-auto w-full max-w-measure pt-2 pb-8">
-                {!isOrchestrator && <AgentHeader agent={agent} now={now} />}
+                {!isOrchestrator && (
+                  <Suspense fallback={<div className="mb-5 h-12" aria-hidden />}>
+                    <AgentHeader agent={agent} now={now} />
+                  </Suspense>
+                )}
                 <Transcript
                   agent={agent}
                   messages={messages ?? []}
                   now={now}
                   watched={watched}
-                  speaker={roleName(agent)}
-                  promptAuthor={isOrchestrator ? "You" : parent ? roleName(parent) : "Parent"}
+                  speaker={agent?.parent_id === null ? (project?.name ?? "Assistant") : roleName(agent)}
+                  promptAuthor={isOrchestrator ? "You" : parent ? (parent.parent_id === null ? (project?.name ?? "Assistant") : roleName(parent)) : "Parent"}
                   hideFirstPrompt={!isOrchestrator}
+                  onKeepEditing={isOrchestrator ? keepEditing : undefined}
+                  onRewind={isOrchestrator && bridge.rewind ? setRewinding : undefined}
                 />
+                {isOrchestrator && (
+                  <Suspense fallback={null}>
+                    <InlineNotes />
+                  </Suspense>
+                )}
+                {isOrchestrator && slots?.approvals?.({ onOpenAgent: (id) => ws?.openAgent(id) })}
               </div>
             </div>
           </div>
-          {!scroll.atBottom && (
+          {!scroll.atBottom && !overlay && (
             // Scrolled up, the view ends 40px higher: the button gets its own room below the transcript
             // (4 + 32 + 4), so it never sits on text, and the last 12px of text fade out above that room.
             // The content does not move (the scroll position is kept); at the bottom the room goes again.
@@ -248,24 +346,22 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
               <div aria-hidden className="octo-fade pointer-events-none absolute inset-x-0 -top-3 h-3 overflow-hidden scroll-quiet">
                 <div className="h-full bg-linear-to-t from-panel to-transparent" />
               </div>
-              <button
-                type="button"
+              <IconButton
+                icon={ArrowDown}
+                label="Jump to latest"
+                variant="round"
+                size="md"
+                className="octo-fade octo-ring-pop shadow-pop"
                 onClick={() => scroll.scrollToBottom(true)}
-                aria-label="Jump to latest"
-                title="Jump to latest"
-                className="octo-fade octo-ring-pop grid size-8 press place-items-center rounded-full border border-line-strong bg-overlay text-fg-2 shadow-pop hover:text-fg"
-              >
-                <Glyph icon={ArrowDown} size={14} />
-              </button>
+              />
             </div>
           )}
         </div>
       )}
 
-      <div className={cn(EDGES, "relative shrink-0", !empty && "pb-3")}>
+      <div ref={composerRow} className={cn(EDGES, "relative shrink-0", !empty && "pt-2 pb-3")}>
         <div data-column-edge className={cn("mx-auto w-full", empty ? "max-w-float" : "max-w-measure")}>
-          {isOrchestrator && !empty && <TeamStrip />}
-          {isOrchestrator ? <Composer ref={composer} {...composerProps} comments={commentsSlot} /> : <ObserverBar />}
+          {isOrchestrator ? <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} /> : <ObserverBar />}
         </div>
       </div>
       {empty && (
@@ -276,9 +372,69 @@ export function ConversationView({ agentId, tab = CHAT }: { agentId: string; tab
         </div>
       )}
 
+      <Presence show={rewinding !== null}>
+        {rewinding !== null && (
+          <Suspense fallback={null}>
+            <RewindDialog
+              messageId={rewinding}
+              onClose={() => setRewinding(null)}
+              onDone={(report) => {
+                setRewinding(null);
+                // The request goes back into the box to be edited and sent again.
+                composer.current?.fill(report.request_text);
+              }}
+            />
+          </Suspense>
+        )}
+      </Presence>
+
       <p aria-live="polite" className="sr-only">
         {agent.status === "running" ? `${roleName(agent)} is working` : ""}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The orchestrator failed before anything was stored (an ACP agent that is not logged in): the failed turn shows above
+ * the empty project's composer with its message and the agent's login hint — never a silent "Idle".
+ */
+function StartFailure({ agent }: { agent: Agent }) {
+  const { state } = useProject();
+  const failed =
+    state.lastTurn?.status === "failed"
+      ? state.lastTurn.error
+      : agent.status === "failed" || (agent.error && !turnWarning(agent.error))
+        ? agent.error
+        : undefined;
+  const login = useLoginHint(failed !== undefined ? agent.model : null);
+  const agentName = useAgentName(agent.model);
+  const { bridge } = useApp();
+  const fromTurn = state.lastTurn?.status === "failed" ? errorFieldsOf(state.lastTurn) : agent.error_hint ? { hint: agent.error_hint } : {};
+  const recheck = async () => {
+    const id = providerIdOf(agent.model);
+    const ready = id ? await recheckAgent(bridge, id).catch(() => false) : false;
+    login.recheck();
+    return ready;
+  };
+  if (failed === undefined || agent.status === "running") return null;
+  return (
+    <div data-start-failure className="relative mx-auto mt-4 w-full max-w-float">
+      <Suspense fallback={null}>
+        <TurnBanner
+          status="failed"
+          error={failed}
+          retryText={null}
+          fields={{
+            ...fromTurn,
+            ...(fromTurn.hint || !login.hint ? {} : { hint: login.hint }),
+            ...("action" in fromTurn || !login.hint ? {} : { action: "recheck_provider" as const }),
+          }}
+          agent={agentName}
+          providerId={providerIdOf(agent.model)}
+          onCheck={recheck}
+        />
+      </Suspense>
     </div>
   );
 }

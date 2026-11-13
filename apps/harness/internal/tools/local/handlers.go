@@ -28,11 +28,16 @@ func bashHandler(rs *rootSet) tools.Handler {
 			slog.Warn("bash runs real shell commands with the harness process privileges; not sandboxed")
 		})
 		var in struct {
-			Command string `json:"command"`
-			Folder  string `json:"folder"`
+			Command string            `json:"command"`
+			Folder  string            `json:"folder"`
+			Env     map[string]string `json:"env"`
 		}
 		if err := json.Unmarshal(input, &in); err != nil {
 			return err.Error(), true, nil
+		}
+		extra, resolved := ExtraEnv(ctx)
+		if len(in.Env) > 0 && !resolved {
+			return "env is not available here: it needs the harness's secret store", true, nil
 		}
 		if strings.TrimSpace(in.Command) == "" {
 			return "command required", true, nil
@@ -46,7 +51,7 @@ func bashHandler(rs *rootSet) tools.Handler {
 		cmd := exec.CommandContext(runCtx, "bash", "-c", in.Command)
 		cmd.Dir = dir
 		// Same allow-list as plugin processes: no provider keys or other secrets.
-		cmd.Env = childenv.Build(os.Environ(), nil)
+		cmd.Env = childenv.Build(os.Environ(), extra)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr

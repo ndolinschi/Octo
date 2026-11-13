@@ -7,12 +7,14 @@
 // Import boundaries encode the "Allowed imports" table in packages/ui/ARCHITECTURE.md: the `octo/layer-imports` rule
 // (scripts/eslint/layer-imports.mjs) classifies every relative import by the layer it resolves to. There are no
 // exceptions and no warnings; scripts/check-cycles.mjs forbids import cycles.
+import path from "node:path";
 import js from "@eslint/js";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 import layerImports from "./scripts/eslint/layer-imports.mjs";
+import noNativeControls from "./scripts/eslint/no-native-controls.mjs";
 
 const UI = "packages/ui/src";
 
@@ -133,8 +135,18 @@ export default tseslint.config(
   // ---- Layer imports: the "Allowed imports" table of ARCHITECTURE.md on resolved paths; errors, no exceptions ----
   {
     files: [`${UI}/**/*.{ts,tsx}`],
-    plugins: { octo: { rules: { "layer-imports": layerImports } } },
-    rules: { "octo/layer-imports": ["error", { root: UI }] },
+    plugins: { octo: { rules: { "layer-imports": layerImports, "no-native-controls": noNativeControls } } },
+    // Absolute: `pnpm lint` runs from a package directory, where the relative `UI` would resolve to packages/ui/packages/ui/src
+    // and every file would look "outside" the root (the rule then returned early and was silently off).
+    rules: { "octo/layer-imports": ["error", { root: path.join(import.meta.dirname, UI) }] },
+  },
+
+  // ---- Components: a feature composes primitives and never styles a native control (decision 90) ----
+  // A warning while copies remain; the baseline count is in docs/superpowers/research/2026-11-12-ui-component-audit.md
+  // and may only go down. The rule itself skips components/primitives.
+  {
+    files: [`${UI}/**/*.tsx`],
+    rules: { "octo/no-native-controls": ["warn", { root: path.join(import.meta.dirname, UI) }] },
   },
 
   // ---- Ids: the NUL separator of file keys (and so of file tab ids) is private to lib/files.ts ----

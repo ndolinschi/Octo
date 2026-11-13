@@ -1,9 +1,9 @@
+import { FAIL_TRIGGER, LIVE_TRIGGER, failTurn, liveTurn } from "./live";
 import {
   BridgeError,
   type Agent,
   type Bridge,
   type Models,
-  type Note,
   type Project,
   type ProjectInput,
   type ProjectSummary,
@@ -17,8 +17,18 @@ import { ensureSeeded, listDemoFiles, readDemoFile, writeDemo } from "./files";
 import { genericTurn } from "./generic";
 import { infraAcpTurn, ledgerShowcase, pastHistory } from "./history";
 import { demoLanguageServers, demoPlugins } from "./plugins";
+import { demoProviders } from "./providers";
+import { createDemoNote, docOf, listed, patchDemoNote, seedNotes } from "./notes";
 import { orbitLive } from "./orbit";
+import { withDemoCommands } from "./commands";
+import { withDemoSessions } from "./sessions";
+import { sideModeFromUrl, withDemoSide } from "./side";
+import { withDemoReview } from "./review";
+import { withDemoParity } from "./parity";
+import { withDemoV7 } from "./v7";
+import { withDemoSlash } from "./slash";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
+import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
 import { act, say, sleep, turn, type Ctx } from "./runtime";
 import { clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store";
 
@@ -30,7 +40,8 @@ export type DemoSeed = "full" | "empty" | "one" | "many";
  *  slow (3s to start) · exit (crashes 4s after starting). */
 export type DemoLsp = "ok" | "fail-once" | "slow" | "exit";
 
-export type DemoOptions = { seed?: DemoSeed; lsp?: DemoLsp; plugins?: boolean };
+/** `nokey`: no API key and no router — the built-in loop is unavailable, only ACP agents can run (also `?nokey=1`). */
+export type DemoOptions = { seed?: DemoSeed; lsp?: DemoLsp; plugins?: boolean; nokey?: boolean };
 
 /** Demo-only trace of calls a scripted check wants to observe (console.debug, never shown). */
 function trace(event: string, detail: unknown): void {
@@ -87,6 +98,7 @@ function makeProject(input: ProjectInput, createdAt: number): ProjectRecord {
       models: { ...DEFAULT_MODELS, ...input.models },
       max_depth: input.max_depth ?? 3,
       orchestrator_agent_id: orchestrator.id,
+      ...(input.budget_usd ? { budget_usd: input.budget_usd, spent_usd: 0 } : {}),
     },
     agents: [orchestrator],
     messages: [],
@@ -114,11 +126,6 @@ function dedupeFolders(folders: { path: string; label?: string }[]): Project["fo
   });
 }
 
-function userNote(title: string, content: string, at: number): Note {
-  const iso = new Date(at).toISOString();
-  return { id: newId("note"), title, content, author: "user", created_at: iso, updated_at: iso };
-}
-
 function startScript(rec: ProjectRecord, t: number, script: (ctx: Ctx) => Promise<void>): void {
   void script({ rec, t, signal: { cancelled: false } });
 }
@@ -128,8 +135,8 @@ function seed(): ProjectRecord[] {
   const atlas = makeProject(
     {
       name: "Atlas API",
-      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
-      models: { orchestrator: "claude-opus-5-5" },
+      // Deliberately on Opus, through Claude Code (the ready agent): the normal look of a chip. Projects on the API model show the warning.
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
       description: "Accounts + billing service and its web dashboard",
       instructions: "Prefer small, reviewable changes. Never edit migrations without asking. Every fix needs a test that failed first.",
       folders: [
@@ -139,16 +146,14 @@ function seed(): ProjectRecord[] {
     },
     now - 30 * HOUR,
   );
-  atlas.notes.push(
-    userNote("Deploy constraints", "No deploys on Fridays. Staging is `atlas-stg` and needs the VPN. Ask before touching `src/billing/`.", now - 29 * HOUR),
-  );
+  atlas.notes.push(...seedNotes(now));
   startScript(atlas, now - 28 * HOUR, atlasHistory);
 
   const orbit = makeProject(
     {
       name: "Orbit mobile",
-      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
-      models: { orchestrator: "claude-opus-5-5" },
+      // Deliberately on Opus, through Claude Code (the ready agent): the normal look of a chip. Projects on the API model show the warning.
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
       description: "iOS + Android client (React Native)",
       instructions: "Keep the old-architecture interop until native-camera is rewritten.",
       folders: [{ path: "/Users/maya/code/orbit-app", label: "orbit-app" }],
@@ -165,13 +170,22 @@ function seed(): ProjectRecord[] {
     },
     now - 10 * HOUR,
   );
-  startScript(docs, now - 9 * HOUR, docsHistory);
+  // Behind a router (decision 37): a budget at 86% (amber), the Ceiling policy, and models served other than asked for.
+  docs.project.budget_usd = 25;
+  docs.project.spent_usd = 21.4;
+  docs.project.models.tier_policy = "ceiling";
+  startScript(docs, now - 9 * HOUR, async (ctx) => {
+    await docsHistory(ctx);
+    ctx.t = Math.max(ctx.t, now - 50 * 60_000);
+    await tablesTurn(ctx);
+    routeAgents(ctx.rec, "deepseek/deepseek-v4.1-flash");
+  });
 
   const payments = makeProject(
     {
       name: "Payments ledger reconciliation and nightly settlement jobs",
-      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
-      models: { orchestrator: "claude-opus-5-5" },
+      // Deliberately on Opus, through Claude Code (the ready agent): the normal look of a chip. Projects on the API model show the warning.
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
       description: "Settlement batch jobs and the reconciliation report",
       folders: [{ path: "/Users/maya/code/ledger", label: "ledger" }],
     },
@@ -196,6 +210,7 @@ function seed(): ProjectRecord[] {
     });
     ctx.t = Math.max(ctx.t, now - 26 * HOUR);
     await ledgerShowcase(ctx);
+    routeAgents(ctx.rec, "claude-opus-5-5");
     ctx.t = Math.max(ctx.t, now - 1_200);
     await backgroundTurn(
       "Re-run last night's settlement for the EU merchants and tell me if the totals match.",
@@ -212,8 +227,8 @@ function seed(): ProjectRecord[] {
   const infra = makeProject(
     {
       name: "Infrastructure: Terraform modules for staging and production clusters",
-      // Deliberately on Opus: these long-running projects were moved to the deep tier for planning (their history and usage say so).
-      models: { orchestrator: "claude-opus-5-5" },
+      // Deliberately on Opus, through Claude Code (the ready agent): the normal look of a chip. Projects on the API model show the warning.
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
       description: "Shared Terraform modules and environment stacks",
       folders: [{ path: "/Users/maya/code/infra", label: "infra" }],
     },
@@ -274,6 +289,40 @@ function seed(): ProjectRecord[] {
     });
   });
 
+  // The budget is spent: the header turns red ("Project budget reached").
+  webhooks.project.budget_usd = 10;
+  webhooks.project.spent_usd = 10.42;
+
+  // An orchestrator that runs as an ACP agent (Claude Code on a subscription), with the harness's MCP warning.
+  const release = makeProject(
+    {
+      name: "Release notes",
+      description: "Changelog and release notes for the public API",
+      models: { orchestrator: "acp:claude-code/claude-opus-5-5" },
+      folders: [{ path: "/Users/maya/code/release", label: "release" }],
+    },
+    now - 3 * HOUR,
+  );
+  startScript(release, now - 2 * HOUR, acpOrchestratorHistory);
+
+  // An ACP orchestrator that could not start (GitHub Copilot is not logged in): nothing was stored, the turn failed.
+  // The UI must show the failure and the login hint, and the project "Needs you" (owner's live test).
+  const copilot = makeProject(
+    {
+      name: "Changelog bot",
+      description: "Drafts weekly changelog entries",
+      models: { orchestrator: "acp:copilot" },
+      folders: [{ path: "/Users/maya/code/changelog", label: "changelog" }],
+    },
+    now - 50 * 60_000,
+  );
+  Object.assign(orchestratorOf(copilot), {
+    status: "failed",
+    error: "GitHub Copilot is not logged in.",
+    error_hint: "Log in once with `copilot auth login`, then check again.",
+    finished_at: new Date(now - 40 * 60_000).toISOString(),
+  });
+
   const tokens = makeProject(
     {
       name: "Design system tokens",
@@ -291,7 +340,9 @@ function seed(): ProjectRecord[] {
     now - 40 * 24 * HOUR,
   );
   startScript(stress, now - 30 * HOUR, stressHistory);
-  return [orbit, atlas, docs, payments, infra, webhooks, tokens, stress];
+  payments.project.budget_usd = 120;
+  payments.project.spent_usd = 38.2;
+  return [orbit, atlas, docs, payments, infra, webhooks, release, copilot, tokens, stress];
 }
 
 function seedMany(): ProjectRecord[] {
@@ -314,8 +365,14 @@ const SEEDERS: Record<DemoSeed, () => ProjectRecord[]> = { full: seed, empty: ()
 
 const SIDE_ANSWER = "The orchestrator is between steps: it is waiting on its agents. Nothing you ask here is added to its conversation.";
 
+/** `?nokey=1` on the page: the hosts pass only seed / lsp / plugins, so the demo reads this knob itself. */
+function nokeyFromUrl(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("nokey") === "1";
+}
+
 export function createDemoBridge(options: DemoOptions = {}): Bridge {
   const lspMode = options.lsp ?? "ok";
+  const nokey = options.nokey ?? nokeyFromUrl();
   const pluginsOn = options.plugins ?? true;
   const failedOnce = new Set<string>();
   const records = new Map<string, ProjectRecord>();
@@ -323,6 +380,24 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
 
   const delay = () => new Promise((r) => setTimeout(r, LATENCY_MS));
   const sides: { project: string; message: SideMessage }[] = [];
+  // One earlier side question on Atlas API, so the pane opens with history (decision 40).
+  const atlasId = [...records.values()].find((r) => r.project.name.startsWith("Atlas"))?.project.id;
+  if (atlasId) {
+    const at = new Date(Date.now() - 20 * 60_000).toISOString();
+    sides.push(
+      { project: atlasId, message: { id: 1, side_id: "side_seed", role: "user", text: "Why did it pick the debugger for this?", created_at: at } },
+      {
+        project: atlasId,
+        message: {
+          id: 2,
+          side_id: "side_seed",
+          role: "assistant",
+          text: "The bug only shows under concurrency, so it asked for a **reproduction first**: the debugger writes a failing test before anyone changes code (your project instructions require that).",
+          created_at: at,
+        },
+      },
+    );
+  }
   // One compacted history, so the marker's state exists in the demo: Atlas API's orchestrator (the longest seeded
   // transcript; histories are played in, so the marker is computed when read) had its first exchange summarised.
   const compacted = [...records.values()].find((r) => r.project.name.startsWith("Atlas"))?.project.orchestrator_agent_id;
@@ -346,9 +421,36 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     updated_at: p.updated_at,
   });
 
-  return {
+  const { refuse: refuseModels, ...providerMethods } = demoProviders();
+  const bridge: Bridge = {
+    // Providers, settings and diagnostics (decisions 53, 59): `?providers=none` shows the connect screen.
+    ...providerMethods,
     health: async () => (await delay(), { ok: true, version: "demo" }),
-    getConfig: async () => (await delay(), { default_models: { ...DEFAULT_MODELS }, default_max_depth: 3 }),
+    getConfig: async () => {
+      await delay();
+      const claude = {
+        value: "acp:claude-code" as const,
+        id: "claude-code",
+        label: "Claude Code",
+        models: ["claude-opus-5-5", "claude-sonnet-5-5"],
+        default_model: "claude-sonnet-5-5",
+      };
+      const copilot = { value: "acp:copilot" as const, id: "copilot", label: "GitHub Copilot", models: [] };
+      const codex = { value: "acp:codex" as const, id: "codex", label: "Codex", models: [] };
+      return {
+        pick_folder: true,
+        default_models: { ...DEFAULT_MODELS },
+        default_max_depth: 3,
+        // An Octo router in front of the harness (decision 37), unless the no-key variant is asked for.
+        router: !nokey,
+        ...(nokey ? {} : { router_capabilities: ["autoroute", "route_hints", "result_headers", "budget_key"] }),
+        acp_orchestrators: pluginsOn ? [claude, copilot, codex] : [],
+        builtin_loop: nokey
+          ? { available: false, reason: "No API key: set ANTHROPIC_API_KEY for the harness, or run it behind an Octo router." }
+          : { available: true },
+        default_orchestrator: nokey && pluginsOn ? "acp:claude-code" : DEFAULT_MODELS.orchestrator,
+      };
+    },
     listProjects: async () => {
       await delay();
       return [...records.values()].map((r) => summary(r.project)).sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
@@ -356,6 +458,7 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     createProject: async (input) => {
       await delay();
       if (!input.name.trim()) throw new BridgeError(400, "invalid", "name is required");
+      refuseModels(input.models, input.force_unverified);
       const rec = makeProject(input, Date.now());
       records.set(rec.project.id, rec);
       return clone(rec.project);
@@ -365,11 +468,22 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       await delay();
       const rec = get(id);
       const p = rec.project;
+      refuseModels(patch.models, patch.force_unverified);
       if (patch.name !== undefined) p.name = patch.name;
       if (patch.description !== undefined) p.description = patch.description;
       if (patch.instructions !== undefined) p.instructions = patch.instructions;
       if (patch.max_depth !== undefined) p.max_depth = patch.max_depth;
       if (patch.models) p.models = { ...p.models, ...patch.models };
+      if (patch.budget_usd !== undefined) {
+        if (patch.budget_usd === null) delete p.budget_usd;
+        else p.budget_usd = patch.budget_usd;
+        p.spent_usd ??= 0;
+      }
+      if (patch.models?.orchestrator) {
+        const orch = orchestratorOf(rec);
+        orch.model = patch.models.orchestrator;
+        emit(rec, { type: "agent.updated", agent: clone(orch) });
+      }
       if (patch.folders) p.folders = dedupeFolders(patch.folders);
       p.folder_count = p.folders.length;
       p.updated_at = new Date().toISOString();
@@ -400,13 +514,112 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const parts = [
         { key: "system" as const, tokens: 2_400 },
         { key: "tools" as const, tokens: 3_100 },
-        { key: "notes" as const, tokens: rec.notes.length * 180 },
+        { key: "notes" as const, tokens: Math.min(2_000, rec.notes.length * 30) },
         { key: "messages" as const, tokens: Math.round(text * 0.45) },
         { key: "tool_results" as const, tokens: Math.round(text * 0.55) },
         { key: "summary" as const, tokens: summary },
       ];
       const used = parts.reduce((n, p) => n + p.tokens, 0);
       return { agent_id: agent, model: rec.project.models.orchestrator, window_tokens: 1_000_000, used_tokens: used, estimated: true, parts };
+    },
+    // Decision 65: the context button's popover. A harness project: seven categories at 41% of 200k, compacted two turns ago;
+    // an agent project: only what the agent reports.
+    getContextOverview: async (id) => {
+      await delay();
+      const rec = get(id);
+      if (rec.project.models.orchestrator.startsWith("acp:"))
+        return {
+          window: 200_000,
+          used: 61_000,
+          source: "agent" as const,
+          estimated: false,
+          categories: [],
+          last_request: { input: 58_000, cached: 49_000, output: 2_800 },
+        };
+      return {
+        window: 200_000,
+        used: 82_000,
+        reserved: 8_000,
+        source: "harness" as const,
+        compacted_turns_ago: 2,
+        categories: [
+          { id: "messages", label: "Conversation", tokens: 21_400 },
+          { id: "tool_results", label: "Tool results", tokens: 29_800 },
+          {
+            id: "tools",
+            label: "Tool definitions",
+            tokens: 9_300,
+            // Decision 88: what is inside; the rows add up to the category.
+            items: [
+              ["read_file", 1_900, "Harness tools"],
+              ["write_file", 1_700, "Harness tools"],
+              ["run_command", 1_500, "Harness tools"],
+              ["spawn_agent", 1_400, "Harness tools"],
+              ["search_files", 900, "Harness tools"],
+              ["list_dir", 700, "Harness tools"],
+              ["web_fetch", 700, "Harness tools"],
+              ["task_update", 500, "Harness tools"],
+            ].map(([label, tokens, group]) => ({
+              id: `tool:${String(label)}`,
+              label: String(label),
+              tokens: Number(tokens),
+              group: String(group),
+              loaded: true,
+              estimated: true,
+            })),
+          },
+          { id: "system", label: "Instructions and briefing", tokens: 7_200 },
+          {
+            id: "notes",
+            label: "Project notes and memory",
+            tokens: 6_100,
+            items: [
+              { id: "mem:index", label: "Memory index", tokens: 3_900, group: "Memory", loaded: true, estimated: true },
+              { id: "mem:notes", label: "Pinned notes", tokens: 2_200, group: "Memory", loaded: true, estimated: true },
+            ],
+          },
+          { id: "summary", label: "Compacted summary", tokens: 5_400 },
+          {
+            id: "files",
+            label: "Project instruction files",
+            tokens: 2_800,
+            items: [{ id: "file:agents", label: "AGENTS.md", tokens: 2_800, path: "app:AGENTS.md", actions: ["open"], loaded: true, estimated: true }],
+          },
+        ],
+        last_request: { input: 64_000, cached: 49_600, output: 3_100 },
+        not_loaded: [
+          {
+            id: "mf:release",
+            label: "release-checklist.md",
+            tokens: 1_800,
+            group: "Memory files",
+            path: "/memories/release-checklist.md",
+            actions: ["open"],
+            loaded: false,
+            estimated: true,
+          },
+          {
+            id: "mf:ports",
+            label: "dev-ports.md",
+            tokens: 420,
+            group: "Memory files",
+            path: "/memories/dev-ports.md",
+            actions: ["open"],
+            loaded: false,
+            estimated: true,
+          },
+        ],
+        buffer_tokens: 12_000,
+        largest_messages: [
+          { message_id: 3, role: "user" as const, tokens: 4_100, preview: "Please read the migration guide and plan the upgrade of every package" },
+          { message_id: 12, role: "assistant" as const, tokens: 3_600, preview: "Here is the plan: first the lockfile, then the build scripts" },
+        ],
+      };
+    },
+    compactNow: async (id) => {
+      await delay();
+      get(id);
+      return { upto_message_id: 0, at: new Date().toISOString(), summary_tokens: 0, message_count: 0, manual: true as const };
     },
     // Side questions (decision 40): stored apart from the orchestrator's messages; the answer streams as side.delta
     // events and ends with side.done, like the harness.
@@ -446,7 +659,9 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const rec = get(id);
       if (rec.turn) throw new BridgeError(409, "turn_in_progress", "a turn is already running");
       trace("sendMessage", text);
-      startScript(rec, Date.now(), (ctx) => genericTurn(ctx, text));
+      startScript(rec, Date.now(), (ctx) =>
+        FAIL_TRIGGER.test(text) ? failTurn(ctx, text) : LIVE_TRIGGER.test(text) ? liveTurn(ctx, text) : genericTurn(ctx, text),
+      );
       const orch = orchestratorOf(rec);
       const sent = [...rec.messages].reverse().find((m) => m.agent_id === orch.id && m.role === "user");
       if (!sent) throw new BridgeError(500, "internal", "message not recorded");
@@ -457,23 +672,29 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const rec = get(id);
       if (rec.turn) rec.turn.cancelled = true;
     },
-    listNotes: async (id) => (await delay(), clone(get(id).notes)),
+    listNotes: async (id) => (await delay(), clone(get(id).notes.map(listed))),
+    getNote: async (id, noteId) => {
+      await delay();
+      const note = get(id).notes.find((n) => n.id === noteId);
+      if (!note) throw new BridgeError(404, "not_found", "note not found");
+      return clone(docOf(note));
+    },
     createNote: async (id, input) => {
       await delay();
       const rec = get(id);
-      const note = userNote(input.title, input.content, Date.now());
+      const note = createDemoNote(rec.notes, input, Date.now());
       rec.notes.push(note);
-      emit(rec, { type: "note.changed", note: clone(note), note_id: note.id });
-      return clone(note);
+      emit(rec, { type: "note.changed", note: clone(listed(note)), note_id: note.id });
+      return clone(docOf(note));
     },
     updateNote: async (id, noteId, patch) => {
       await delay();
       const rec = get(id);
       const note = rec.notes.find((n) => n.id === noteId);
       if (!note) throw new BridgeError(404, "not_found", "note not found");
-      Object.assign(note, patch, { updated_at: new Date().toISOString() });
-      emit(rec, { type: "note.changed", note: clone(note), note_id: note.id });
-      return clone(note);
+      patchDemoNote(rec.notes, note, patch);
+      emit(rec, { type: "note.changed", note: clone(listed(note)), note_id: note.id });
+      return clone(docOf(note));
     },
     deleteNote: async (id, noteId) => {
       await delay();
@@ -505,8 +726,30 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
     },
     getLimits: async () => {
       await delay();
+      // Without a key nothing has answered yet: no rate-limit headers were seen (the Limits empty state).
+      if (nokey) return [];
       const { demoLimits } = await import("./usage");
       return demoLimits(Date.now());
+    },
+    // Folder picker (decision 49): a fake home directory; the recent folders are the projects' own, newest first.
+    listDirs: async (path) => {
+      await delay();
+      const { demoListDirs } = await import("./dirs");
+      return demoListDirs(path);
+    },
+    // The system folder dialog (harness side): a fake path after a beat; `?pick=cancel` and `?pick=fail` are the other answers.
+    pickFolder: async () => {
+      await new Promise((r) => setTimeout(r, 400));
+      const how = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("pick");
+      if (how === "cancel") return { cancelled: true };
+      if (how === "fail") return { error: "unavailable", message: "No folder dialog is available on this machine (no display)." };
+      return { path: "/Users/maya/code/picked-from-dialog" };
+    },
+    recentFolders: async () => {
+      await delay();
+      const { demoRecentFolders } = await import("./dirs");
+      const recs = [...records.values()].sort((a, b) => Date.parse(b.project.updated_at) - Date.parse(a.project.updated_at));
+      return demoRecentFolders(recs.flatMap((r) => r.project.folders.map((f) => f.path)));
     },
     listLanguageServers: async (id) => (await delay(), get(id), demoLanguageServers(pluginsOn)),
     openLanguageServer: async (id, serverId) => {
@@ -518,7 +761,11 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       const once = `${id}/${serverId}`;
       if (lspMode === "fail-once" && !failedOnce.has(once)) {
         failedOnce.add(once);
-        throw new BridgeError(500, "spawn_failed", `${info.label} exited during startup (exit status 1)`);
+        throw new BridgeError(500, "spawn_failed", `${info.label} stopped while starting.`, {
+          hint: "Try again. If it keeps happening, check that it runs in a terminal.",
+          action: "retry",
+          details: "exited during startup (exit status 1)",
+        });
       }
       await ensureSeeded(rec);
       const { createDemoServer } = await import("./lsp");
@@ -554,4 +801,9 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
       };
     },
   };
+  return withDemoSide(
+    withDemoSlash(withDemoCommands(withDemoReview(withDemoSessions(withDemoParity(withDemoV7(bridge, records), records), records), records), records), records),
+    records,
+    sideModeFromUrl(),
+  );
 }

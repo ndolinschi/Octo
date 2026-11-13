@@ -7,9 +7,9 @@ Canonical product docs for the Octo proxy (`apps/router`). Operational agent not
 | [overview.md](./overview.md) | What Octo is, who it is for, capabilities at a glance |
 | [architecture.md](./architecture.md) | Layers, runtime shape, module map, diagrams |
 | [proxy.md](./proxy.md) | Passthrough routes, provider selection, streaming, auth |
-| [autoroute.md](./autoroute.md) | Model ladder, decide pipeline, shaping, retries, compact |
-| [history.md](./history.md) | SQLite history, cost accounting, observe, outcomes |
-| [configuration.md](./configuration.md) | `config/*.toml` reference and env overrides |
+| [autoroute.md](./autoroute.md) | Model ladder, decide pipeline, shaping, retries, compact, price rule, harness integration (headers, budget, calls), routing decision for delegation (`/autoroute/v1/route`) |
+| [history.md](./history.md) | SQLite history, cost accounting, observe, outcomes, persisted call records and budget spend |
+| [configuration.md](./configuration.md) | `config/*.toml` reference and env overrides (`OCTO_CONFIG`, `OCTO_HISTORY_TOKEN_KEY`, `OCTO_EXIT_ON_STDIN_CLOSE`) |
 | [status.md](./status.md) | **Works / partial / missing** — honest capability matrix |
 | [ladder-cost-check.md](./ladder-cost-check.md) | Ladder prices vs the OpenRouter catalogue (2026-11-10) |
 
@@ -25,4 +25,4 @@ Dated investigations kept for provenance; prefer the guides above for day-to-day
 | [research/](./research/) | Orchestration investigation |
 | [plans/](./plans/) | Unshipped orchestration plan (P0–P4) |
 
-Root shortcut: [`ARCHITECTURE.md`](../ARCHITECTURE.md) redirects here.
+Root shortcut: [`ARCHITECTURE.md`](../ARCHITECTURE.md) redirects here. How the router fits the whole system (harness, desktop shell, data locations): [`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md).

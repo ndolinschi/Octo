@@ -4,12 +4,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
+import { createPointerGate } from "./popupNav";
 
 export type MenuItem =
   | {
       id: string;
       label: string;
       shortcut?: string;
+      /** Dim text after the label (a role, a remote). */ detail?: string;
       disabled?: boolean;
       /** A choice in a set (menuitemradio). */ checked?: boolean;
       title?: string;
@@ -40,6 +42,7 @@ export function Menu(props: {
 }) {
   const { onClose } = props;
   const ref = useRef<HTMLDivElement>(null);
+  const gate = useRef(createPointerGate());
   const opener = useRef<HTMLElement | null>(null);
   const state = usePresence();
   const open = state === "open";
@@ -80,15 +83,21 @@ export function Menu(props: {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const close = () => onClose();
+    // A scroll that moves the opener closes the menu; a live transcript scrolling elsewhere does not.
+    const scrolled = (e: Event) => {
+      const t = e.target;
+      const o = opener.current;
+      if (t === document || (t instanceof Node && !ref.current?.contains(t) && (!o || t.contains(o)))) onClose();
+    };
     document.addEventListener("pointerdown", outside, true);
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
-    document.addEventListener("scroll", close, true);
+    document.addEventListener("scroll", scrolled, true);
     return () => {
       document.removeEventListener("pointerdown", outside, true);
       window.removeEventListener("blur", close);
       window.removeEventListener("resize", close);
-      document.removeEventListener("scroll", close, true);
+      document.removeEventListener("scroll", scrolled, true);
     };
   }, [open, onClose]);
 
@@ -142,7 +151,7 @@ export function Menu(props: {
       onKeyDown={onKeyDown}
       onContextMenu={(e) => e.preventDefault()}
       style={{ left: pos.left, top: pos.top }}
-      className="fixed z-[60] min-w-[200px] overscroll-contain rounded-lg border border-transparent bg-overlay p-1 text-sm shadow-pop"
+      className="fixed z-[60] max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] min-w-[200px] overflow-y-auto overscroll-contain rounded-lg border border-transparent bg-overlay p-1 text-sm shadow-pop"
     >
       {props.items.map((item) =>
         isAction(item) ? (
@@ -163,7 +172,7 @@ export function Menu(props: {
               }
             }}
             onPointerMove={(e) => {
-              if (!item.disabled) e.currentTarget.focus();
+              if (gate.current(e) && !item.disabled) e.currentTarget.focus();
             }}
             className={cn(
               // Radius 6 = menu radius (10) − its padding (4).
@@ -172,6 +181,7 @@ export function Menu(props: {
             )}
           >
             <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            {item.detail && <span className="shrink-0 text-xs text-fg-3">{item.detail}</span>}
             {item.shortcut && <kbd className="shrink-0 font-sans text-xs text-fg-2">{item.shortcut}</kbd>}
             {item.checked !== undefined && (
               <span aria-hidden className="grid size-4 shrink-0 place-items-center">

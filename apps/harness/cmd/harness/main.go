@@ -24,6 +24,8 @@ func main() {
 		err = cmdShow(os.Args[2:])
 	case "serve":
 		err = cmdServe(os.Args[2:])
+	case "doctor":
+		err = cmdDoctor(os.Args[2:])
 	case "mcp-relay":
 		os.Exit(mcprelay.Main(os.Args[2:]))
 	default:
@@ -42,6 +44,7 @@ func main() {
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage:\n")
 	fmt.Fprintf(os.Stderr, "  harness serve [--addr HOST:PORT] [--data-dir PATH] [--base-url URL] [flags]\n")
+	fmt.Fprintf(os.Stderr, "  harness doctor [--data-dir PATH] [--json] [--show-probe-output]   (what agents are installed and logged in, PATH, router; paste it into a bug report)\n")
 	fmt.Fprintf(os.Stderr, "  harness mcp-relay --url URL --token-env NAME   (stdio-to-HTTP MCP relay; started by ACP agents, not by hand)\n")
 	fmt.Fprintf(os.Stderr, "  harness run --prompt \"...\" [flags]\n")
 	fmt.Fprintf(os.Stderr, "  harness sessions [--data-dir PATH]\n")

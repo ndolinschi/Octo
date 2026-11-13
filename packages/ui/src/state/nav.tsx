@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRequiredContext } from "../lib/context";
+import type { ToolTab } from "./workspace/layout";
 
 /** A request (orchestrator user message) in one project. */
 export type TurnRef = { projectId: string; messageId: number };
@@ -16,6 +17,8 @@ export type WorkspaceCommand = { id: string; label: string; detail?: string; sho
 export type WorkspaceApi = {
   openAgent(agentId: string): void;
   focusChat(): void;
+  /** Opens (or focuses) a tool tab, e.g. the sidebar's Review row. */
+  openTool(tool: ToolTab): void;
   /** Tab actions that apply now (move, split, close…). */
   actions(): WorkspaceCommand[];
   /** One row per open tab. */

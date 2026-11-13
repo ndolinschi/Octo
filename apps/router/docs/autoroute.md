@@ -10,6 +10,7 @@ Autoroute is the session-aware model ladder for Claude Code → OpenRouter. It l
 | `POST` | `/autoroute/v1/chat/completions` | Same decide/shape; **no** Messages compact API; no text-tool-call hook |
 | `GET` | `/autoroute/status` | JSON for statusline (`?session=` optional) |
 | `GET` | `/autoroute/v1/calls/{request-id}` | Final tokens and cost of one finished call (see [Harness integration](#harness-integration)) |
+| `POST` | `/autoroute/v1/route` | Routing decision for a delegated task: which candidate (API tier or subscription agent) should do it (see [Routing decision for delegation](#routing-decision-for-delegation)) |
 
 Ladder slugs and policy: `config/autoroute.toml` (default: `deepseek/deepseek-v4.1-flash` → `minimax/minimax-m3.1-flash` → `deepseek/deepseek-v4.1-flash-1017`; no `provider_order` pin; `allow_fallbacks = true`).
 
@@ -85,6 +86,32 @@ Shipped strip list (Anthropic-only; proven against destinstral `supported_parame
 `require_parameters` modes: `always` | `tools_only` | `never` (invalid values fail config load). Empty `strip_fields` disables stripping — do not leave `require_parameters=always` with an empty list unless you accept OpenRouter 404s.
 
 Protected keys (`tools`, `tool_choice`, `system`, `messages`, `max_tokens`, `stop_sequences`, `metadata`) are never stripped even if listed.
+
+## Price rule: never pay more for less
+
+`[autoroute] never_pay_more_for_less` (default `true`). Whenever the router has decided a ladder tier **T** for a request, whatever picked it (classifier, hint, sticky hold, stall escalation, housekeeping/background routing, fill `upgrade`, budget cap, the unavailable-model retry escalation, a permission check on a remembered session), the tier **served** is the cheapest tier among T and all tiers above T, by the `prices.toml` blended estimate for that request's shape (estimated input tokens and `min(max_tokens, 1024)` output, the same shape budget routing uses).
+
+| Case | Behaviour |
+| --- | --- |
+| Ties | The lower tier wins (a higher tier is served only when strictly cheaper) |
+| Unpriced tiers | A tier without a usable price (missing, partial or all-zero rates) is never preferred over a priced one; if T itself is unpriced, T is served |
+| `tier-policy: ceiling` | Candidates are T up to the ceiling only |
+| `tier-policy: fixed` | The rule does not apply |
+| Context windows | A cheaper tier is a swap candidate only if its model window holds the request (same 75% fill rule as the fill check); when the decided tier does not hold it either, a candidate with a window no smaller is allowed. A model chosen by the fill `upgrade` (`larger_fit`) is never swapped. Unknown windows count as fitting |
+| Unavailable model (retry) | A swapped call whose served model is reported unavailable retries once on the decided tier's model (there is nothing above the swap target); an unswapped call escalates to the next tier up as before, with the rule applied to it. Ceiling and budget checks compare the tier that would be served after the rule |
+| Compaction fallback | The larger-window fallback model for a compaction stays within the ceiling; there is none under `fixed` |
+| Partial price rows | A row without all four rates (`rates_complete`) is unpriced: it takes no part in the rule or in budget routing |
+| `POST /autoroute/v1/route` | The swap is limited to tiers present among the request's API candidates; the reported model and estimate are those of the offered tier that is served |
+| `custom` (client-preferred high model via `high_allow`), passthrough without a tier decision | Not swapped |
+| Rule off | Today's behaviour: the decided tier is served |
+
+Only the served model changes. The session still remembers the **decided** tier T (`sticky_band` and the remembered model), so hysteresis, stall and sticky logic are unchanged; the next turn is decided and priced afresh. Context-window checks, compaction, the retry and `x-octo-tier` all use the served model. Because the served tier is part of the history `tier_before` (computed the same way from the remembered tier), a steady swapped session does not report `rerouting` every turn.
+
+Reporting: `x-octo-model` and `x-octo-tier` are what was served; when the rule changed the tier, `x-octo-decided-tier` carries T and `x-octo-price-swap: 1` is set (a separate header, the `x-octo-trigger` value is not altered). The call record gains `decided_tier` (absent without a swap). The history `calls` table keeps the served tier in `tier_after`; it has no decided-tier column. The retry after a model-unavailable failure decides the tier above the served one and applies the rule to it; if the served tier is already `high` there is no escalation.
+
+The `POST /autoroute/v1/route` endpoint applies the same rule to API candidates: candidate ids are kept as offered, but each API candidate's `estimated_cost_usd`, its ranking and the returned `model` are those of the tier that would really be served; the `reason` then ends with a `Price rule:` sentence and the call record has `decided_tier`.
+
+On the shipped ladder (`docs/ladder-cost-check.md`) the most capable tier is the cheapest for a nominal request, so `low` and `mid` decisions are served by `high`.
 
 ## Sticky, stall, budget
 
@@ -165,14 +192,14 @@ Integration I1 of [`docs/superpowers/specs/2026-11-11-router-harness-integration
 `GET /health` (no auth, even with `client_auth_key`) returns HTTP 200 and JSON:
 
 ```json
-{"status":"ok","service":"octo","version":"0.1.0","capabilities":["autoroute","route_hints","result_headers","budget_key"]}
+{"status":"ok","service":"octo","version":"0.1.0","capabilities":["autoroute","route_hints","result_headers","budget_key","route_api"]}
 ```
 
-`route_api` (the I2 routing-decision endpoint) is not advertised yet.
+`route_api` means `POST /autoroute/v1/route` exists.
 
 ### Request headers (harness to router)
 
-All are optional and stripped before the upstream request (upstream headers are an allowlist anyway). An invalid value is ignored and logged at `debug`; a bad hint never produces a 4xx.
+All are optional and stripped before the upstream request (upstream headers are an allowlist anyway). An invalid value is ignored and logged at `debug`, with one exception: an unrecognised `x-octo-tier-hint` is a 400 `invalid_request_error` (Anthropic error shape on `/autoroute/v1/messages`, OpenAI-style on chat) that names the accepted values, so a typo cannot silently fall back to the classifier.
 
 | Header | Value | Effect |
 | --- | --- | --- |
@@ -180,7 +207,7 @@ All are optional and stripped before the upstream request (upstream headers are 
 | `x-octo-budget-usd` | positive decimal, e.g. `0.50` | Budget for that key; ignored without a budget key. Latest value sent for a key wins |
 | `x-octo-agent-role` | `orchestrator` or `sub` | `sub` (or any depth above 0) makes a new session start at `min(hint, classifier)` |
 | `x-octo-agent-depth` | integer, `0`, `1`, ... | See above |
-| `x-octo-tier-hint` | `fast`, `balanced`, `deep` (map to `low`, `mid`, `high`) | Starting tier of a new session (see below) |
+| `x-octo-tier-hint` | `low`, `mid`, `high` or the aliases `fast`, `balanced`, `deep` (same tiers, in that order); case-insensitive; any other non-empty value, a value that is not visible ASCII, or repeated headers that disagree or include an invalid value is a 400; an empty value is ignored | Starting tier of a new session (see below). The harness sends `fast`, `balanced` or `deep` |
 | `x-octo-tier-policy` | `auto` (default), `ceiling`, `fixed` | How binding the hint is |
 | `x-octo-task` | URL-encoded text, truncated to 200 characters | Prefixed to the classifier input as `Task: ...`; only used when the classifier runs |
 
@@ -197,6 +224,8 @@ Budget rules apply inside these bounds: a budget cap may still pick a cheaper ti
 ### Budget
 
 The effective budget for a budget key is the smaller of `x-octo-budget-usd` and `autoroute.session_budget_usd` (0 means the configured one is off, so the header alone applies). Spend accumulates per budget key from every call (reported cost first, then the price estimate) including compaction calls and classifier calls made with a session id.
+
+**Spend survives a restart.** Every charge to a budget key is also added (off the request path) to the `budget_spend` table of the SQLite history database. The first request that names a key the process does not hold (after a restart, or after the key was idle for an hour and left memory) reads that key's persisted total once and seeds the in-memory ledger with it, so `x-octo-spent-usd` and budget rejection are correct from then on. Chosen over deriving spend from the call records because records are pruned by age and count while a project's spend must not shrink with them, and over a start-up scan because keys are unbounded and the in-memory ledger forgets idle keys anyway. Cost: one primary-key read on the first request per key per process. Spend of sessions without a budget key is unchanged: it is restored from the history `calls` and `decisions` rows of that session. Without a history database (`history disabled`) spend is in memory only, as before.
 
 Action when spend reaches the budget:
 
@@ -218,7 +247,9 @@ Set on the response head, so they are available before a streamed body starts. S
 | Header | Value |
 | --- | --- |
 | `x-octo-model` | The model actually sent upstream (ladder slug after any retry escalation) |
-| `x-octo-tier` | `low`, `mid`, `high` (`custom` for a client-preferred high model) |
+| `x-octo-tier` | `low`, `mid`, `high` (`custom` for a client-preferred high model); the tier actually served |
+| `x-octo-decided-tier` | Only when the [price rule](#price-rule-never-pay-more-for-less) served a different tier than the one decided: the decided tier |
+| `x-octo-price-swap` | `1` exactly when `x-octo-decided-tier` is present |
 | `x-octo-trigger` | Why: `none` (plain sticky turn), `classify`, `reclassify`, `tool_update`, `hint`, `budget_cap`, `budget` (402), `stall:*`, `stall_release`, `hysteresis_hold`, `housekeeping`, `housekeeping_trimmed`, `permission_check`, `upgrade`, `retry`, `classifier_failure`, `compact_not_applied`, `compact`, ... (same values as the history `trigger` column) |
 | `x-octo-request-id` | Id of this call, key for the calls endpoint (`octo_<hex>`). With a retry, the id is the final attempt's |
 | `x-octo-budget-usd`, `x-octo-spent-usd` | Effective budget and spend so far (USD, six decimals) for the budget key, or for the session when only the configured budget applies. Absent when no budget applies. Spend excludes the response being sent |
@@ -226,13 +257,25 @@ Set on the response head, so they are available before a streamed body starts. S
 ### `GET /autoroute/v1/calls/{request-id}`
 
 ```json
-{"model":"deepseek/deepseek-v4.1-flash","tier":"low","trigger":"hint","input_tokens":1000,"output_tokens":500,"cache_read_tokens":0,"cache_write_tokens":0,"cost_usd":0.002,"cost_source":"estimated"}
+{"model":"deepseek/deepseek-v4.1-flash","tier":"low","trigger":"hint","input_tokens":1000,"output_tokens":500,"cache_read_tokens":0,"cache_write_tokens":0,"cost_usd":0.002,"cost_source":"estimated","spent_after_usd":0.002}
 ```
 
+`spent_after_usd` (present for every call charged to a budget key, absent otherwise) is the key's spend once this call was charged, classifier cost included, to the micro-USD. It is read under the same lock as the charge, so overlapping calls each carry a figure that includes their own cost; the highest one is the key's spend. `x-octo-spent-usd` stays the spend before the response it travels with (a streamed response's cost is known only at its end, after the headers are sent), so a client that wants the exact post-call number reads this field. The proxy path, compaction and `POST /autoroute/v1/route` (classifier cost) all set it. Tests: `tests/harness_integration.rs` (`call_record_carries_the_post_call_spend_of_the_budget_key`, streamed too), `tests/route_api.rs`.
+
+A call that reached an upstream may also carry `upstream_id` and `estimate_ratio` (below).
+
+- `decided_tier` is present only when the price rule served another tier than the one decided (then `tier` is the served one).
+- `estimate_ratio` (reported cost / price-table estimate for the same call, 2 decimals) is present only when an upstream-reported cost (OpenRouter `usage.cost` or BYOK upstream cost) differs from the table estimate by more than 25%, in either direction. It means the table or the provider routing is off (the owner measured 1.4-2.5x for the low model when a dearer provider served it). The first such call per model per process also logs one WARN: `reported cost is N.NNx the price table for <model>; the table or provider routing is off`. The reported cost is still what is charged to the budget and written to `cost_usd`; the ratio changes nothing but the record and the log.
+- The estimate is made from the model the response names when that model has a price row (else from the requested one); no `estimate_ratio` is set below an estimate of 100 micro-USD (integer truncation), or when the response named a different, unpriced model. The WARN repeats at most once per model per hour.
+- `upstream_id` is the id the upstream gave the call: on the OpenRouter paths (`/autoroute/v1/chat/completions`, and `/autoroute/v1/messages` served through OpenRouter) the generation id (`gen-...`, from the `x-generation-id` header or the response/stream `id`), which is what OpenRouter's generation lookup (`GET /api/v1/generation?id=...`) takes. If the response carries only an Anthropic-style `msg_...` id (direct Anthropic) that is stored as is; it is **not** a generation id and no mapping to one is attempted. Absent when the upstream returned no id (errors, dropped streams without a head) and on route decisions.
 - 404 `{"error":"unknown or unfinished request",...}` until the response body has ended (the row is written when the stream finishes, before the client sees the end of the body), and for ids that were evicted or never existed.
 - `cost_source` is `reported` when the cost came from the upstream (OpenRouter `usage.cost` or BYOK upstream cost) and `estimated` otherwise (`prices.toml`; when nothing is priced `cost_usd` is `0` and the source is `estimated`).
 - Failed responses (non-2xx) and cancelled ones (client dropped the stream) get a row too, with the tokens known so far (estimated for dropped streams) and no cost when unknown.
-- Storage: a bounded in-memory store of the most recent 4096 calls. Rows are lost on restart. The SQLite history keeps its own `calls` rows (without the request id).
+- Storage: a read-through pair. The most recent 4096 calls are cached in memory and answered first; every finished call is also written (off the response path, after the stream ends) to the `autoroute_calls` table of the SQLite history database, and a miss in the cache is answered from there. Records therefore survive a restart. With the history database disabled or `sqlite::memory:` the persistence lasts as long as the process (memory) or is absent (disabled), and only the cache answers.
+- A record is the JSON shown above (plus `route` for routing decisions). It holds no prompt text, and it is written whatever `history.store_payloads` says; the only free text in it is the `route.reason`, which the router builds from fixed phrases and the candidates' ids and labels.
+- The history `calls` row of a proxied call has a `request_id` column with the same `octo_...` id, so the two can be joined. Route decisions and compactions are in `autoroute_calls` (compactions in `calls` too, with their id).
+- Retention (`config/history.toml`): `calls_max_age_days` (30), `calls_max_rows` (100000), `budget_spend_max_age_days` (90, counted from the last charge), `0` disables a limit. A background pass every `prune_interval_secs` (600; `0` = never prune) deletes in batches of 500 with a pause between batches, so it holds the database's single writer only briefly and no request waits for it. The `calls` / `decisions` history tables are not pruned.
+- What a crash loses: writes are queued after the response body ends. A process kill within a few milliseconds of a call finishing, or a burst that fills the 32-insert queue for more than 5 seconds (the existing history rule, counted in `dropped_inserts`), loses that call's record and its spend increment; a graceful shutdown drains them. The in-memory spend is not affected until the next restart.
 - Cost per call also feeds the budget ledger above; the harness does not have to sum anything itself.
 
 ### Compaction
@@ -248,3 +291,94 @@ How the harness detects and applies it:
 5. If the next request is not shorter than the compacted one, the router logs `compaction was not applied`, forwards normally with trigger `compact_not_applied` and will not compact that session again until its request falls below the fill threshold and rises again (or after `compact_cooldown_requests` requests).
 
 Compaction only exists on `/autoroute/v1/messages`. On `/autoroute/v1/chat/completions` an overflow is forwarded as a normal chat call.
+
+## Routing decision for delegation
+
+Integration I2 of the same spec. Before the harness starts a sub-agent it asks the router which candidate should do the task. Candidates are API tiers and agents (for example ACP agents on a flat-rate subscription); an agent's traffic never passes through the router, so this endpoint is the only place the classifier can help it. The call makes **no upstream model call except one classifier (Decisions) call**.
+
+`POST /autoroute/v1/route` — auth as for the other autoroute endpoints (`x-octo-key` when `client_auth_key` is set). The `Authorization` / `x-api-key` token is used for the classifier call, like on the proxy path.
+
+```json
+{
+  "budget_key": "proj-9",
+  "task": {"title": "Fix the flaky test", "brief": "...", "tools": ["Read", "Edit", "Bash"], "depth": 1},
+  "candidates": [
+    {"id": "api-fast", "kind": "api", "tier": "fast"},
+    {"id": "api-deep", "kind": "api", "tier": "deep"},
+    {"id": "claude-sub", "kind": "agent", "label": "Claude (subscription)", "flat_rate": true,
+     "logged_in": true, "limit_remaining": 12, "strengths": ["medium", "hard"]}
+  ]
+}
+```
+
+```json
+{
+  "choice": "claude-sub",
+  "band": "hard",
+  "reason": "Hard task; Claude (subscription) (claude-sub) is flat-rate and logged in, so it adds no API cost.",
+  "estimated_cost_usd": 0.0,
+  "alternatives": [{"id": "api-deep", "estimated_cost_usd": 0.151}],
+  "request_id": "octo_18c2..."
+}
+```
+
+`model` is present only for an API choice: the ladder slug of the tier (`fast` = `autoroute.low`, `balanced` = `mid`, `deep` = `high`), after the [price rule](#price-rule-never-pay-more-for-less): the slug of the tier that would really be served. `request_id` is the key for `GET /autoroute/v1/calls/{id}`.
+
+Request fields: `task.title` or `task.brief` must be non-empty; `task.tools`, `task.brief` and `task.depth` default to `[]`, `""` and `0`; `budget_key` follows the header rules (1 to 128 printable ASCII characters). `limit_remaining` may be omitted or `null` (unknown). Candidate `id`s must be non-empty and unique.
+
+### Errors
+
+| Status | When |
+| --- | --- |
+| 400 `invalid_request_error` | Body is not JSON of the shape above (unknown `kind` or `tier`, missing `task`, ...) |
+| 422 `invalid_request_error` | Parses but cannot be served: empty `candidates`, duplicate or empty ids, bad `budget_key`, empty task, or no usable candidate (no API candidate and every agent logged out or at `limit_remaining` 0) |
+| 402 `billing_error` | Budget reached, `reject` action in force and no usable flat-rate agent (same message as the proxy path) |
+
+A failing classifier is never an error (see below). Errors are Anthropic-shaped (`{"type":"error","error":{...}}`).
+
+### Classification
+
+One JEV call on `title` + blank line + `brief` (capped to 2000 characters, head and tail kept, like the proxy path). `task.tools` are sent as the tool names; `depth` and `budget_key` are recorded on the call record. The result maps `Low`, `Mid`, `High` to the band `easy`, `medium`, `hard`; as on the proxy path, an `easy` verdict on a task that asks to inspect files or the repo while tools are available is raised to `medium`.
+
+The call has its own timeout, `[autoroute.route].classifier_timeout_ms` (default 2000; `0` = never call it). When the classifier cannot run (no API key, timeout, connection or HTTP failure, unparsable answer) the band comes from a **deterministic text rule** and `reason` says `classifier not used: <why>` (`no API key`, `timed out`, `call failed`, `disabled`). The rule uses the facts `jev::inspect` already computes on the text:
+
+1. If the offered candidates are only API candidates of one single tier (plus agents that are unusable), the band is that tier's band (nothing to decide).
+2. Signals: the text mentions several files (the phrase, or two or more paths), mentions tests, or is longer than 1500 characters.
+3. `hard` when the text mentions a stack trace / traceback / exception, or two or more signals hold. `easy` when no signal holds, the text is at most 280 characters and does not ask to inspect files or the repo. Otherwise `medium`.
+
+Classifier spend (reported cost, else the price estimate) is added to the `budget_key`'s spend like any classifier call.
+
+**Latency.** The decision is one classifier round trip plus in-memory work. Expect the latency of one Decisions call (typically a few hundred milliseconds to about a second; not measured against the real classifier here) when it runs, and well under 10 ms when it does not (no key, `0`, a reached budget, or after a timeout). The harness waits 300 ms by default, so against a real classifier it will often fall back on its own choice; raise the harness wait or lower `classifier_timeout_ms`, whichever fits. The router's worst case is `classifier_timeout_ms`.
+
+### Choice policy
+
+Band to tier: `easy` -> `fast`, `medium` -> `balanced`, `hard` -> `deep`.
+
+| Rule | Behaviour |
+| --- | --- |
+| API candidate is *able* | its tier is the band's tier or higher |
+| Agent candidate is *able* | it is usable and lists the band in `strengths`, or has no recognised `strengths` and the band is `easy` or `medium`; for `hard` an agent without `strengths` is able only when `prefer_flat_rate_for_hard = true` |
+| Usable agent | `logged_in: true` and `limit_remaining` not `0` (or not above 0); an unusable agent is never chosen, not even as a last resort, and never listed as an alternative |
+| Preference order among able candidates | 1. agents with `flat_rate: true` (most `limit_remaining` first, unknown counts as plenty); 2. API candidates by estimated cost (lowest first; unpriced after priced; then lower tier first); 3. agents with `flat_rate: false` (same limit order). Remaining ties by request order |
+| Nothing able | the highest API tier offered (first on ties), else the first usable agent; `reason` says no candidate was rated for the task; `alternatives` is empty |
+| Nothing usable | 422 |
+| Budget reached | no classifier call (band from the text rule). A usable flat-rate agent is chosen (one able for the band if any, else the first by the order above), reason `Budget reached`. With none: if the budget's action is `reject` (always for a harness `x-octo-budget-usd`) 402; with `downgrade` the cheapest offered API tier (else the first usable agent) |
+
+`strengths` vocabulary: `easy`, `medium`, `hard` (case-insensitive). Other words are ignored; a list with no recognised word counts as no `strengths`.
+
+`estimated_cost_usd` is the blended cost of a nominal request through the price table, for the model the router would really serve for that candidate's tier (the candidate's own ladder model unless the price rule picks a cheaper tier above it): `nominal_input_tokens` in and `nominal_output_tokens` out (default 30000 / 500, the same shape budget routing uses). It is `null` for an API tier whose ladder model has no usable price (missing, partial or all-zero rates), `0` for a flat-rate agent and `null` for an agent that is not flat-rate. The estimate is of the delegated work only, not of the classifier call.
+
+### Call record
+
+The decision is stored as a call record (same read-through store as the proxy calls) and readable through `GET /autoroute/v1/calls/{request_id}`: `trigger: "route"`, `model` is the ladder slug (API choice) or the agent id, `tier` is the served `low`/`mid`/`high` or `agent` (`decided_tier` is added when the price rule swapped it), token counts and `cost_usd` are those of the classifier call (zero when it did not run), and an extra `route` object carries `choice`, `band`, `reason`, `classifier` (`used`, `fallback`, `skipped`), `depth` and `budget_key`. The classifier call is also written to the SQLite history as a decision row with purpose `route`.
+
+### Config (`[autoroute.route]`, `config/autoroute.toml`)
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `classifier_timeout_ms` | `2000` | Timeout of the classifier call; `0` disables it |
+| `prefer_flat_rate_for_hard` | `false` | Let an agent without `strengths` take hard tasks |
+| `nominal_input_tokens` | `30000` | Token assumption for API cost estimates |
+| `nominal_output_tokens` | `500` | Token assumption for API cost estimates |
+
+Tests: `tests/route_api.rs`.

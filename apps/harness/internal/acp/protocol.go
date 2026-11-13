@@ -21,6 +21,7 @@ const (
 	methodAuth        = "authenticate"
 	methodSetModel    = "session/set_model"
 	methodSetConfig   = "session/set_config_option"
+	methodSetMode     = "session/set_mode"
 	methodUpdate      = "session/update"
 	methodPermission  = "session/request_permission"
 	methodReadFile    = "fs/read_text_file"
@@ -105,7 +106,10 @@ type initializeResult struct {
 // agentCapabilities is the part of initialize's agentCapabilities this client
 // uses; every field defaults to false when absent (ACP schema).
 type agentCapabilities struct {
-	LoadSession     bool `json:"loadSession"`
+	LoadSession        bool `json:"loadSession"`
+	PromptCapabilities struct {
+		Image bool `json:"image"`
+	} `json:"promptCapabilities"`
 	MCPCapabilities struct {
 		HTTP bool `json:"http"`
 		SSE  bool `json:"sse"`
@@ -116,6 +120,9 @@ type agentCapabilities struct {
 type Capabilities struct {
 	// LoadSession: the agent supports session/load.
 	LoadSession bool
+	// PromptImage: the agent accepts image content blocks in session/prompt
+	// (promptCapabilities.image).
+	PromptImage bool
 	// MCPHTTP: the agent accepts HTTP MCP servers in session/new (stdio is
 	// mandatory for every agent).
 	MCPHTTP bool
@@ -179,11 +186,17 @@ type newSessionResult struct {
 	// unreadable one must not fail the session.
 	Models        json.RawMessage   `json:"models"`
 	ConfigOptions []json.RawMessage `json:"configOptions"`
+	Meta          json.RawMessage   `json:"_meta"`
+	// Modes is the session's mode list (currentModeId, availableModes), raw for the same reason.
+	Modes json.RawMessage `json:"modes"`
 }
 
 type contentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+	// Data and MimeType carry an image block (base64 data).
+	Data     string `json:"data,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
 }
 
 type promptParams struct {
@@ -193,6 +206,20 @@ type promptParams struct {
 
 type promptResult struct {
 	StopReason StopReason `json:"stopReason"`
+	// Usage is the token usage of the prompt, which agents that implement the
+	// usage extension of session/prompt put in its response.
+	Usage *PromptUsage `json:"usage"`
+}
+
+// PromptUsage is the per-prompt token usage an agent may report with its
+// stopReason.
+type PromptUsage struct {
+	InputTokens       int64 `json:"inputTokens"`
+	OutputTokens      int64 `json:"outputTokens"`
+	ThoughtTokens     int64 `json:"thoughtTokens"`
+	CachedReadTokens  int64 `json:"cachedReadTokens"`
+	CachedWriteTokens int64 `json:"cachedWriteTokens"`
+	TotalTokens       int64 `json:"totalTokens"`
 }
 
 type cancelParams struct {

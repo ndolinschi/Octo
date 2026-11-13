@@ -77,6 +77,19 @@ impl BudgetLedger {
         row.1 = Instant::now();
     }
 
+    pub fn has_spend(&mut self, budget_key: &str) -> bool {
+        self.expire();
+        self.spend.contains_key(budget_key)
+    }
+
+    pub fn seed(&mut self, budget_key: &str, micros: u64) {
+        self.expire();
+        self.spend
+            .entry(budget_key.to_string())
+            .or_insert((micros, Instant::now()))
+            .1 = Instant::now();
+    }
+
     pub fn restore(&mut self, session_key: &str, micros: u64) {
         self.expire();
         self.restored

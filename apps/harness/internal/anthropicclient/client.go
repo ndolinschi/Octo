@@ -13,7 +13,10 @@ import (
 // must not retain or modify the header map.
 type ResponseObserver func(host, model string, header http.Header)
 
-type options struct{ observer ResponseObserver }
+type options struct {
+	observer ResponseObserver
+	key      func() string
+}
 
 // Option customizes New.
 type Option func(*options)
@@ -21,6 +24,11 @@ type Option func(*options)
 // WithResponseObserver reports each response's headers, including error
 // responses such as 429, which carry the freshest rate-limit values.
 func WithResponseObserver(o ResponseObserver) Option { return func(c *options) { c.observer = o } }
+
+// WithKeyFunc makes every request carry the key f returns at that moment
+// instead of the one given to New, so a key written to the settings file takes
+// effect without a restart. An empty result leaves the request as it is.
+func WithKeyFunc(f func() string) Option { return func(c *options) { c.key = f } }
 
 func New(apiKey, baseURL, octoKey string, opts ...Option) anthropic.Client {
 	var cfg options
@@ -34,10 +42,30 @@ func New(apiKey, baseURL, octoKey string, opts ...Option) anthropic.Client {
 	if octoKey != "" {
 		reqOpts = append(reqOpts, option.WithHeader("x-octo-key", octoKey))
 	}
+	if cfg.key != nil {
+		reqOpts = append(reqOpts, option.WithMiddleware(currentKey(cfg.key)))
+	}
 	if cfg.observer != nil {
 		reqOpts = append(reqOpts, option.WithMiddleware(observe(cfg.observer)))
 	}
 	return anthropic.NewClient(reqOpts...)
+}
+
+// currentKey replaces the credential header the SDK built from the key given at
+// construction with the current key. Only a header the request already carries
+// is replaced, so a request with no credentials stays without.
+func currentKey(f func() string) option.Middleware {
+	return func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+		if k := f(); k != "" {
+			if req.Header.Get("Authorization") != "" {
+				req.Header.Set("Authorization", "Bearer "+k)
+			}
+			if req.Header.Get("X-Api-Key") != "" {
+				req.Header.Set("X-Api-Key", k)
+			}
+		}
+		return next(req)
+	}
 }
 
 func observe(o ResponseObserver) option.Middleware {

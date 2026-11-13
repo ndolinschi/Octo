@@ -12,6 +12,7 @@ pub struct Compact {
     pub body: Vec<u8>,
     pub model: String,
     pub fallback_model: Option<String>,
+    pub decided_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

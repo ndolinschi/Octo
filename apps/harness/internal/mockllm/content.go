@@ -76,3 +76,15 @@ func finalAnswer(r *request, anchor int) string {
 		"\n| Agent | Tier | Outcome |\n| --- | --- | --- |\n" + rows.String() +
 		"\nTo see the current state of the working tree:\n\n```bash\ngit status --short\n```\n"
 }
+
+// autoMarker makes the orchestrator spawn one sub-agent without naming a tier
+// (spawn_agent's default, "auto", while a router can choose).
+const autoMarker = "[auto]"
+
+func autoSpawnCalls(ask string) []call {
+	req := clip(strings.ReplaceAll(ask, autoMarker, ""), 160)
+	return []call{{Name: "spawn_agent", Input: map[string]any{
+		"role": "Code explorer", "title": "Look into the request",
+		"task": "The user asked: \"" + strings.TrimSpace(req) + "\". Look into it in the attached folder and reply with a short bullet list of findings.",
+	}}}
+}

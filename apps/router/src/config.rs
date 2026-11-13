@@ -19,6 +19,14 @@ const CONFIG_DIR_FILES: &[&str] = &[
     "prices.toml",
 ];
 
+/// Shipped files compiled into the binary. A config directory that lacks one of them (the desktop shell writes only
+/// `server.toml`, `limits.toml` and `history.toml`) is completed from this text; a file on disk always wins.
+const EMBEDDED_DEFAULTS: &[(&str, &str)] = &[
+    ("openrouter.toml", include_str!("../config/openrouter.toml")),
+    ("autoroute.toml", include_str!("../config/autoroute.toml")),
+    ("prices.toml", include_str!("../config/prices.toml")),
+];
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub bind_addr: String,
@@ -45,6 +53,10 @@ pub struct Config {
     pub history_database_path: String,
     pub history_token_key: String,
     pub history_store_payloads: bool,
+    pub history_calls_max_age_days: u64,
+    pub history_calls_max_rows: u64,
+    pub history_budget_spend_max_age_days: u64,
+    pub history_prune_interval_secs: u64,
     pub autoroute_low_model: String,
     pub autoroute_mid_model: String,
     pub autoroute_high_model: String,
@@ -68,6 +80,8 @@ pub struct Config {
     pub autoroute_default_max_tokens: u64,
     pub autoroute_retry_after_max_secs: u64,
     pub autoroute_session_budget_action: String,
+    pub autoroute_never_pay_more_for_less: bool,
+    pub autoroute_route: crate::auto::RoutePolicy,
     pub prices: crate::history::PriceTable,
 }
 
@@ -326,6 +340,14 @@ struct HistorySection {
     token_key: String,
     #[serde(default = "default_history_store_payloads")]
     store_payloads: bool,
+    #[serde(default = "default_calls_max_age_days")]
+    calls_max_age_days: u64,
+    #[serde(default = "default_calls_max_rows")]
+    calls_max_rows: u64,
+    #[serde(default = "default_budget_spend_max_age_days")]
+    budget_spend_max_age_days: u64,
+    #[serde(default = "default_prune_interval_secs")]
+    prune_interval_secs: u64,
 }
 
 impl Default for HistorySection {
@@ -334,8 +356,28 @@ impl Default for HistorySection {
             database_path: default_history_database_path(),
             token_key: String::new(),
             store_payloads: default_history_store_payloads(),
+            calls_max_age_days: default_calls_max_age_days(),
+            calls_max_rows: default_calls_max_rows(),
+            budget_spend_max_age_days: default_budget_spend_max_age_days(),
+            prune_interval_secs: default_prune_interval_secs(),
         }
     }
+}
+
+fn default_calls_max_age_days() -> u64 {
+    30
+}
+
+fn default_calls_max_rows() -> u64 {
+    100_000
+}
+
+fn default_budget_spend_max_age_days() -> u64 {
+    90
+}
+
+fn default_prune_interval_secs() -> u64 {
+    600
 }
 
 fn default_history_store_payloads() -> bool {
@@ -394,6 +436,10 @@ struct AutorouteSection {
     retry_after_max_secs: u64,
     #[serde(default = "default_autoroute_session_budget_action")]
     session_budget_action: String,
+    #[serde(default = "default_autoroute_never_pay_more_for_less")]
+    never_pay_more_for_less: bool,
+    #[serde(default)]
+    route: crate::auto::RoutePolicy,
 }
 
 impl Default for AutorouteSection {
@@ -422,8 +468,14 @@ impl Default for AutorouteSection {
             default_max_tokens: default_autoroute_default_max_tokens(),
             retry_after_max_secs: default_autoroute_retry_after_max_secs(),
             session_budget_action: default_autoroute_session_budget_action(),
+            never_pay_more_for_less: default_autoroute_never_pay_more_for_less(),
+            route: crate::auto::RoutePolicy::default(),
         }
     }
+}
+
+fn default_autoroute_never_pay_more_for_less() -> bool {
+    true
 }
 
 fn default_autoroute_classifier_failure_tier() -> String {
@@ -514,16 +566,33 @@ fn default_autoroute_down_confirm() -> u32 {
 
 impl Config {
     pub fn load() -> Result<Self, ConfigError> {
+        Self::load_with_report().map(|(config, _)| config)
+    }
+
+    /// Like [`Config::load`], also naming the files that came from the embedded defaults (empty for a legacy
+    /// single-file config).
+    pub fn load_with_report() -> Result<(Self, Vec<&'static str>), ConfigError> {
         match config_location()? {
-            ConfigLocation::Directory(dir) => Self::load_from_directory(&dir),
-            ConfigLocation::File(path) => Self::load_from_path(&path),
+            ConfigLocation::Directory(dir) => Self::load_directory_with_report(&dir),
+            ConfigLocation::File(path) => {
+                Self::load_from_path(&path).map(|config| (config, vec![]))
+            }
         }
     }
 
     pub fn load_from_directory(dir: &Path) -> Result<Self, ConfigError> {
+        Self::load_directory_with_report(dir).map(|(config, _)| config)
+    }
+
+    /// Loads a config directory; every embedded default file missing from it is used instead and listed in the result.
+    pub fn load_directory_with_report(
+        dir: &Path,
+    ) -> Result<(Self, Vec<&'static str>), ConfigError> {
         use std::io::ErrorKind;
 
-        let mut merged = Map::new();
+        // Read every file on disk first; the embedded text stands in for the missing embedded ones only.
+        let mut on_disk: Vec<(PathBuf, Map<String, Value>)> = Vec::new();
+        let mut present: Vec<&str> = Vec::new();
         for name in CONFIG_DIR_FILES {
             let path = dir.join(name);
             let contents = match std::fs::read_to_string(&path) {
@@ -543,6 +612,29 @@ impl Config {
             let Value::Table(table) = table else {
                 return Err(ConfigError::InvalidFragment { path });
             };
+            present.push(name);
+            on_disk.push((path, table));
+        }
+        // Embedded fragments go in first and every file on disk after them, so anything on disk wins key by key,
+        // whichever fragment it sits in.
+        let mut merged = Map::new();
+        let mut embedded = Vec::new();
+        for (name, text) in EMBEDDED_DEFAULTS {
+            if present.contains(name) {
+                continue;
+            }
+            let path = dir.join(name);
+            let table: Value = toml::from_str(text).map_err(|source| ConfigError::Parse {
+                path: path.clone(),
+                source,
+            })?;
+            let Value::Table(table) = table else {
+                return Err(ConfigError::InvalidFragment { path });
+            };
+            embedded.push(*name);
+            merge_tables(&mut merged, table);
+        }
+        for (_, table) in on_disk {
             merge_tables(&mut merged, table);
         }
         let file: ConfigFile =
@@ -552,7 +644,7 @@ impl Config {
                     path: dir.to_path_buf(),
                     source,
                 })?;
-        config_from_file(file)
+        Ok((config_from_file(file)?, embedded))
     }
 
     pub fn load_from_path(path: &Path) -> Result<Self, ConfigError> {
@@ -692,6 +784,10 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         history_database_path: file.history.database_path,
         history_token_key: file.history.token_key,
         history_store_payloads: file.history.store_payloads,
+        history_calls_max_age_days: file.history.calls_max_age_days,
+        history_calls_max_rows: file.history.calls_max_rows,
+        history_budget_spend_max_age_days: file.history.budget_spend_max_age_days,
+        history_prune_interval_secs: file.history.prune_interval_secs,
         autoroute_low_model: file.autoroute.low,
         autoroute_mid_model: file.autoroute.mid,
         autoroute_high_model: file.autoroute.high,
@@ -715,6 +811,8 @@ fn config_from_file(file: ConfigFile) -> Result<Config, ConfigError> {
         autoroute_default_max_tokens: file.autoroute.default_max_tokens,
         autoroute_retry_after_max_secs: file.autoroute.retry_after_max_secs,
         autoroute_session_budget_action: file.autoroute.session_budget_action,
+        autoroute_never_pay_more_for_less: file.autoroute.never_pay_more_for_less,
+        autoroute_route: file.autoroute.route,
         prices: {
             use crate::history::{ModelPrice, PriceTable};
             let rows = file

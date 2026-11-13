@@ -36,11 +36,17 @@ func (r *Router) finishCall(e Request, key string, in, out int) {
 	defer r.mu.Unlock()
 	r.requests = append(r.requests, e)
 	r.spent[key] += cost
+	if e.Trigger == "classifier" {
+		r.spent[key] += r.opts.ClassifierUSD
+	}
 	r.records[e.ID] = &record{complete: true, body: map[string]any{
 		"model": e.Served, "tier": e.Tier, "trigger": e.Trigger,
 		"input_tokens": in, "output_tokens": out, "cache_read_tokens": 0, "cache_write_tokens": 0,
 		"cost_usd": cost, "cost_source": source,
 	}}
+	if !r.opts.NoSpentAfter && key != "" {
+		r.records[e.ID].body["spent_after_usd"] = r.spent[key]
+	}
 }
 
 // decide is the fake's routing: its classifier always says mid. Under fixed the

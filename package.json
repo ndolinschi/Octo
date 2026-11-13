@@ -8,7 +8,10 @@
     "test:scripts": "node --test scripts/eslint/*.test.mjs",
     "format:check": "pnpm -r run format:check",
     "format": "pnpm -r run format",
-    "check:bundle": "node scripts/check-bundle-size.mjs"
+    "check:bundle": "node scripts/check-bundle-size.mjs",
+    "dev:all": "bash scripts/dev.sh",
+    "install:app": "bash scripts/install.sh",
+    "test:dev-sh": "bash scripts/test-dev-sh.sh"
   },
   "packageManager": "pnpm@10.33.4",
   "devDependencies": {

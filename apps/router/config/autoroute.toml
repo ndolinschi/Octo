@@ -24,6 +24,12 @@ session_budget_usd = 0
 # CHEAPEST ladder tier by prices.toml (blended estimate for the request shape); "reject"
 # answers 402 (Anthropic error shape, type billing_error) naming the budget and the spend.
 session_budget_action = "downgrade"
+# Never pay more for less: when true, a request decided for tier T is served by the cheapest
+# PRICED tier among T and every tier above it (by the prices.toml blended estimate for the
+# request's shape; ties keep the lower tier). The session still remembers T, only the served
+# model changes. tier-policy ceiling limits the candidates to T..=ceiling; fixed turns the rule off.
+# See docs/autoroute.md (Price rule).
+never_pay_more_for_less = true
 # Keep this many recent messages when trimming housekeeping turns (system + tools always kept).
 housekeeping_keep_messages = 6
 allow_fallbacks = true
@@ -55,3 +61,15 @@ retry_after_max_secs = 10
 compact_cooldown_requests = 0
 # Server tools (web_search / web_fetch / code_execution): passthrough | online_suffix | reject.
 server_tool_mode = "passthrough"
+
+# POST /autoroute/v1/route: which candidate should run a delegated task (see docs/autoroute.md).
+[autoroute.route]
+# Budget for the one classifier call, in milliseconds. On timeout or any failure the band comes
+# from a text rule and the request still succeeds. 0 = never call the classifier.
+classifier_timeout_ms = 2000
+# false: a hard task goes to the deep API tier unless an agent lists "hard" in its strengths.
+# true: an agent without strengths (flat-rate, logged in) may also take hard tasks.
+prefer_flat_rate_for_hard = false
+# Token assumption for the cost estimate of an API candidate (default: the budget-routing shape).
+nominal_input_tokens = 30000
+nominal_output_tokens = 500

@@ -242,7 +242,7 @@ func TestChildFailureIsErrorResult(t *testing.T) {
 	}
 	agents := r.agents(t, pid)
 	child := agents[1]
-	if child.Status != projectstore.StatusFailed || child.Error == nil || !strings.Contains(*child.Error, "boom") {
+	if child.Status != projectstore.StatusFailed || child.Error == nil || !strings.Contains(*child.Error, "did not answer") {
 		t.Fatalf("child = %+v", child)
 	}
 	orch, err := r.svc.Messages(context.Background(), pid, agents[0].ID)

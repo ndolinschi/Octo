@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { Button } from "../primitives/Button";
 import { linesLabel, type SentComment } from "../../lib/comments";
 import { useOptionalCode } from "../../state/code";
 import { useHost } from "../../state/host";
@@ -42,15 +43,9 @@ function CommentCard({ comment: c }: { comment: SentComment }) {
     <li className="overflow-hidden rounded-sm border border-line bg-panel">
       <div className="flex min-h-8 items-center gap-2 px-3 py-1 text-xs">
         {canOpen ? (
-          <button
-            type="button"
-            onClick={open}
-            aria-label={`Open ${full} at ${where}`}
-            title={full}
-            className="min-w-0 truncate rounded-sm text-left font-mono text-fg-2 underline-offset-2 hover:text-fg hover:underline focus-visible:underline"
-          >
+          <Button variant="link" tone="quiet" mono size="xs" onClick={open} aria-label={`Open ${full} at ${where}`} title={full} className="min-w-0 truncate">
             {c.path}
-          </button>
+          </Button>
         ) : (
           <span className="min-w-0 truncate font-mono text-fg-2" title={full}>
             {c.path}

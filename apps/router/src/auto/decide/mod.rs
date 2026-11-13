@@ -1,4 +1,4 @@
-mod classify;
+pub(in crate::auto) mod classify;
 mod gate;
 mod models;
 mod route;
@@ -226,6 +226,72 @@ impl Auto {
         }
     }
 
+    pub async fn restore_budget_key(&self, history: &History, budget_key: &str) {
+        if !history.enabled() {
+            return;
+        }
+        let known = self
+            .ledger
+            .lock()
+            .map(|mut ledger| ledger.has_spend(budget_key))
+            .unwrap_or(true);
+        if known {
+            return;
+        }
+        match history.budget_spent_micros(budget_key).await {
+            Ok(Some(micros)) => {
+                if let Ok(mut ledger) = self.ledger.lock() {
+                    ledger.seed(budget_key, micros);
+                }
+            }
+            Ok(None) => {}
+            Err(err) => tracing::warn!(%err, "budget spend restore failed"),
+        }
+    }
+
+    /// Charges a call and returns the budget key's spend once it was charged (micro-USD), under one lock so
+    /// overlapping calls each see a value that includes their own cost. `None` when the call has no budget key.
+    pub fn charge(
+        &self,
+        history: &History,
+        session_key: Option<&str>,
+        budget_key: Option<&str>,
+        micros: u64,
+    ) -> Option<u64> {
+        let key = budget_key
+            .map(str::to_string)
+            .or_else(|| session_key.and_then(|id| self.budget_key_of(id)));
+        let Some(key) = key else {
+            self.add_cost(session_key, budget_key, micros);
+            return None;
+        };
+        let after = self.ledger.lock().ok().map(|mut ledger| {
+            if micros > 0 {
+                ledger.add(&key, micros);
+            }
+            ledger.spent(&key)
+        });
+        if micros > 0 {
+            history.add_budget_spend(key, micros);
+        }
+        after
+    }
+
+    pub fn record_call_persisted(&self, history: &History, call: super::calls::PersistedCall) {
+        let key = call.budget_key.clone().or_else(|| {
+            call.session_id
+                .as_deref()
+                .and_then(|id| self.budget_key_of(id))
+        });
+        history.record_call_row(
+            &call.request_id,
+            call.session_id.as_deref(),
+            key.as_deref(),
+            &call.row,
+        );
+        self.record_call(call.request_id, call.row);
+    }
+
     pub fn record_call(&self, request_id: String, row: super::calls::CallRow) {
         if let Ok(mut calls) = self.calls.lock() {
             calls.insert(request_id, row);
@@ -385,6 +451,10 @@ pub struct Budget {
 pub struct Limits {
     pub budget_micros: u64,
     pub max_band: Option<&'static str>,
+    pub fixed: bool,
+    /// Set when the model was picked by the context-window upgrade: the price rule must not swap it back.
+    pub no_swap: bool,
+    pub shape: RequestShape,
 }
 
 pub struct DecideRequest<'a> {
@@ -395,6 +465,13 @@ pub struct DecideRequest<'a> {
     pub api_key: &'a str,
     pub body: Value,
     pub allow_compact: bool,
+}
+
+pub fn request_shape(body: &Value) -> RequestShape {
+    RequestShape {
+        input_tokens: metrics::estimate_tokens(models::counted_bytes(body)),
+        output_tokens: body::max_tokens(body).min(1024),
+    }
 }
 
 pub async fn decide(req: DecideRequest<'_>) -> Turn {
@@ -473,13 +550,13 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
         TierPolicy::Ceiling | TierPolicy::Fixed => hints.tier,
         TierPolicy::Auto => None,
     };
+    let budget_shape = request_shape(&req.body);
     let limits = Limits {
         budget_micros: budget.micros,
         max_band,
-    };
-    let budget_shape = RequestShape {
-        input_tokens: client_tokens,
-        output_tokens: reserve.min(1024),
+        fixed: hints.policy == TierPolicy::Fixed,
+        no_swap: false,
+        shape: budget_shape,
     };
 
     if body::is_permission_check(&raw_text) {
@@ -583,10 +660,17 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
                 compact_event = Some(COMPACT_NOT_APPLIED_REASON);
                 allow_compact = false;
             } else if allow_compact {
+                let served = route::serve(
+                    &req.auto.tiers,
+                    &limits,
+                    loaded.as_ref(),
+                    reserve,
+                    &row.model,
+                );
                 let outgoing = body::shape(body::ShapePlan {
                     body: &req.body,
-                    model: &row.model,
-                    previous_model: Some(row.model.as_str()),
+                    model: &served.model,
+                    previous_model: Some(served.model.as_str()),
                     models: loaded.as_ref(),
                     provider_order: &req.auto.tiers.provider_order,
                     allow_fallbacks: req.auto.tiers.allow_fallbacks,
@@ -602,8 +686,10 @@ pub async fn decide_with(req: DecideRequest<'_>, hints: &Hints) -> Turn {
                 return route::repeat_compact(RepeatCompact {
                     auto: req.auto,
                     body: &outgoing,
-                    model: &row.model,
+                    model: &served.model,
+                    decided_tier: served.decided_tier,
                     models: loaded.as_ref(),
+                    limits: &limits,
                 });
             } else if let Some(id) = actor.clone() {
                 req.auto.clear_awaiting_compact(&id);

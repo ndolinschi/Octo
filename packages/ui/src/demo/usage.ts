@@ -21,7 +21,7 @@ function agentUsage(rec: ProjectRecord, a: Agent): Omit<UsageBucket, "key" | "la
   const calls = Math.max(1, rec.messages.filter((m) => m.agent_id === a.id && m.role === "assistant").length);
   const cacheRead = acp ? 0 : Math.round(a.input_tokens * 0.62);
   const cacheWrite = acp ? 0 : Math.round(a.input_tokens * 0.07);
-  const price = PRICES[a.model];
+  const price = PRICES[a.served_model ?? a.model];
   const cost = acp
     ? ((a.input_tokens + a.output_tokens) / 1000) * ACP_USD_PER_K
     : price
@@ -95,7 +95,15 @@ export function demoUsage(records: Iterable<ProjectRecord>, params: UsageParams 
       const share = scaled(u, 1 / times.length);
       for (const at of times) {
         if (at < from || at >= to) continue;
-        const key = group === "model" ? a.model : group === "project" ? rec.project.id : group === "agent" ? a.id : new Date(at).toISOString().slice(0, 10);
+        // Like the harness behind a router, usage is recorded under the model that answered (decision 37).
+        const key =
+          group === "model"
+            ? (a.served_model ?? a.model)
+            : group === "project"
+              ? rec.project.id
+              : group === "agent"
+                ? a.id
+                : new Date(at).toISOString().slice(0, 10);
         const label = group === "project" ? rec.project.name : group === "agent" ? (a.parent_id === null ? "Orchestrator" : a.role) : key;
         const b = buckets.get(key) ?? bucket(key, label);
         buckets.set(key, b);
@@ -105,6 +113,19 @@ export function demoUsage(records: Iterable<ProjectRecord>, params: UsageParams 
     }
   }
   for (const b of [...buckets.values(), total]) round(b);
+  // The harness's shape (live run, 2026-11-11): every bucket carries `flat_rate` and `subscription_equivalent_usd`; an
+  // ACP agent on a subscription has `cost_usd` 0 (spend) and its equivalent apart. Mirrored until the fixtures land.
+  for (const b of [...buckets.values(), total]) Object.assign(b, { flat_rate: false, subscription_equivalent_usd: 0 });
+  let totalEq = 0;
+  if (group === "model")
+    for (const b of buckets.values())
+      if (b.key.startsWith("acp:")) {
+        const eq = b.cost_usd ?? 0;
+        Object.assign(b, { flat_rate: true, subscription_equivalent_usd: eq, cost_usd: 0 });
+        if (total.cost_usd !== null) total.cost_usd -= eq;
+        totalEq += eq;
+      }
+  Object.assign(total, { subscription_equivalent_usd: totalEq });
   return { from: new Date(from).toISOString(), to: new Date(to).toISOString(), group, buckets: [...buckets.values()], total };
 }
 

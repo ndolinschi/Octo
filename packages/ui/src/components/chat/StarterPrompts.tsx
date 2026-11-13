@@ -1,48 +1,35 @@
 import type { Project } from "@octo/agent-client";
-type Starter = { title: string; text: string };
+import { useRef } from "react";
+import { useRowKeys } from "../../lib/hooks";
+import { prompts } from "../../lib/starters";
+import { ListRow } from "../primitives/ListRow";
+import { SectionHeader } from "../primitives/SectionHeader";
 
-function prompts(project: Project): Starter[] {
-  const where = project.folders.length ? `the attached folder${project.folders.length > 1 ? "s" : ""}` : "this project";
-  return [
-    {
-      title: "Map the codebase",
-      text: `Get oriented in ${where}: map the structure, entry points and how the main pieces fit together. Save the key facts as notes.`,
-    },
-    {
-      title: "Find what's risky",
-      text: `Review ${where} for the riskiest areas (fragile code, missing tests, unclear ownership) and rank them with evidence.`,
-    },
-    {
-      title: "Plan a change",
-      text: "I want to make a change. Ask me what it is, then break it into tasks you can delegate, and propose a plan before anyone edits files.",
-    },
-  ];
-}
+/** Decision 91f: at most this many suggestions. */
+const MAX = 3;
 
 /**
- * Starter prompts under the empty project's composer: quiet 32px rows (no box, no icons — three different
- * pictures for three sentences only added noise), [title] 8 [the prompt, muted, truncated]; the full prompt
- * is the row's tooltip (pointer and keyboard focus) and its accessible description, and picking one puts it
- * in the composer, where it can be read and edited before sending.
+ * Suggestions under the empty project's composer (decisions 52, 91f): a quiet caption and `ListRow`s (hover, focus, arrow
+ * keys; Enter or a click puts the prompt in the composer, where it can be read and edited before sending). The full
+ * prompt is the row's tooltip.
  */
 export function StarterPrompts({ project, onPick }: { project: Project; onPick(text: string): void }) {
+  const list = prompts(project).slice(0, MAX);
+  const box = useRef<HTMLUListElement>(null);
+  useRowKeys(box);
+  if (!list.length) return null;
   return (
-    <ul aria-label="Starter prompts" className="flex flex-col px-1">
-      {prompts(project).map((p) => (
-        <li key={p.title}>
-          <button
-            type="button"
-            data-row
-            onClick={() => onPick(p.text)}
-            title={p.text}
-            aria-description={p.text}
-            className="flex h-row-nav w-full items-center gap-2 rounded-sm px-2 text-left text-sm press-row hover:bg-hover"
-          >
-            <span className="shrink-0 text-fg">{p.title}</span>
-            <span className="min-w-0 flex-1 truncate text-fg-3">{p.text}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col px-1">
+      <SectionHeader inset as="h2">
+        Suggestions
+      </SectionHeader>
+      <ul ref={box} aria-label="Suggestions" className="flex flex-col">
+        {list.map((p) => (
+          <li key={p.title}>
+            <ListRow tone="quiet" size="md" title={p.title} tip={p.text} onClick={() => onPick(p.text)} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

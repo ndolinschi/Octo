@@ -162,6 +162,7 @@ impl Capture {
                 session_id: observe.session_id.clone(),
                 tier_before: observe.tier_before.clone(),
                 tier_after: observe.tier_after.clone(),
+                decided_tier: observe.decided_tier.clone(),
                 trigger: observe.trigger.clone(),
                 trimmed_from_tokens: observe.trimmed_from_tokens,
                 client_model: observe.client_model.clone(),
@@ -226,6 +227,11 @@ impl Capture {
         );
         let latency_ms = Millis::new(self.started.elapsed().as_millis() as u64);
         let generation_id = self.header_generation_id.or(usage.generation_id.clone());
+        let generation_id_for_row = generation_id.clone();
+        let estimate_ratio = crate::history::estimate_ratio(&resolved);
+        if let Some(ratio) = estimate_ratio {
+            crate::history::warn_estimate_ratio(self.model.as_deref().unwrap_or(""), ratio);
+        }
         let call_model = self.model.clone().unwrap_or_default();
         let parent = self
             .observe
@@ -272,28 +278,39 @@ impl Capture {
             client_tool_names: self.observe.client_tool_names.clone(),
             bg_signal: self.observe.bg_signal,
             hk_text_signal: self.observe.hk_text_signal,
+            request_id: self.observe.request_id.clone(),
         });
         if let Some(auto) = &self.observe.auto {
-            if let Some(cost) = resolved.cost {
-                auto.add_cost(
-                    self.observe.session_id.as_deref(),
-                    self.observe.budget_key.as_deref(),
-                    cost.0,
-                );
-            }
+            let spent_after = auto.charge(
+                &self.observe.history,
+                self.observe.session_id.as_deref(),
+                self.observe.budget_key.as_deref(),
+                resolved.cost.map_or(0, |c| c.0),
+            );
             if let Some(request_id) = &self.observe.request_id {
-                auto.record_call(
-                    request_id.clone(),
-                    crate::auto::CallRow {
-                        model: call_model,
-                        tier: self.observe.tier_after.clone().unwrap_or_default(),
-                        trigger: self.observe.trigger.clone(),
-                        input_tokens: usage.input_tokens.map_or(0, |t| t.0),
-                        output_tokens: usage.output_tokens.map_or(0, |t| t.0),
-                        cache_read_tokens: usage.cache_read_tokens.map_or(0, |t| t.0),
-                        cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
-                        cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
-                        cost_source: cost_source_label(resolved.source),
+                let row = crate::auto::CallRow {
+                    model: call_model,
+                    tier: self.observe.tier_after.clone().unwrap_or_default(),
+                    decided_tier: self.observe.decided_tier.clone(),
+                    trigger: self.observe.trigger.clone(),
+                    input_tokens: usage.input_tokens.map_or(0, |t| t.0),
+                    output_tokens: usage.output_tokens.map_or(0, |t| t.0),
+                    cache_read_tokens: usage.cache_read_tokens.map_or(0, |t| t.0),
+                    cache_write_tokens: usage.cache_write_tokens.map_or(0, |t| t.0),
+                    cost_usd: resolved.cost.map_or(0.0, |c| c.0 as f64 / 1_000_000.0),
+                    cost_source: cost_source_label(resolved.source),
+                    estimate_ratio,
+                    upstream_id: generation_id_for_row,
+                    spent_after_usd: spent_after.map(crate::auto::micros_usd),
+                    route: None,
+                };
+                auto.record_call_persisted(
+                    &self.observe.history,
+                    crate::auto::PersistedCall {
+                        request_id: request_id.clone(),
+                        session_id: self.observe.session_id.clone(),
+                        budget_key: self.observe.budget_key.clone(),
+                        row,
                     },
                 );
             }

@@ -8,12 +8,17 @@ export type TranscriptCtx = {
   results: Map<string, ToolResult>;
   agentRunning: boolean;
   now: number;
+  /** `compact`: the transcript in a pane narrower than the conversation's own floor (Sessions tab): smaller type, tighter bubbles, time-only reply meta. */
+  density: "regular" | "compact";
+  /** The Sessions tab selects an agent's session in place; absent elsewhere (a delegation row then opens the Sessions tab). */
+  onOpenSession?: ((agentId: string) => void) | undefined;
 };
 
 export const TranscriptContext = createContext<TranscriptCtx>({
   results: new Map(),
   agentRunning: false,
   now: 0,
+  density: "regular",
 });
 
 export function useTranscript() {

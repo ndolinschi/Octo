@@ -11,6 +11,8 @@ const (
 	AgentUpdated   = "agent.updated"
 	MessageCreated = "message.created"
 	MessageDelta   = "message.delta"
+	// MessageUpdated carries a stored message that changed (a tool call whose input arrived late).
+	MessageUpdated = "message.updated"
 	ToolStarted    = "tool.started"
 	ToolFinished   = "tool.finished"
 	NoteChanged    = "note.changed"
@@ -18,9 +20,60 @@ const (
 	ProjectUpdated = "project.updated"
 	TurnFinished   = "turn.finished"
 	AgentCompacted = "agent.compacted"
-	SideDelta      = "side.delta"
-	SideDone       = "side.done"
-	SideError      = "side.error"
+	// ChangeRecorded carries one recorded file change (v7 changes).
+	ChangeRecorded = "change.recorded"
+	// ProjectAttention says how many approvals and forms wait for the user.
+	ProjectAttention = "project.attention"
+	// QueueUpdated carries the whole message queue and whether it is paused.
+	QueueUpdated = "queue.updated"
+	// SecretsChanged carries the names (never values) of secrets that were stored or deleted.
+	SecretsChanged = "secrets.changed"
+	// AgentActivity says what an agent is doing now (kind, label, tool id).
+	AgentActivity = "agent.activity"
+	// ThinkingDelta streams an ACP agent's reasoning; it is never stored.
+	ThinkingDelta = "message.thinking_delta"
+	// AgentPlan carries an ACP agent's whole current plan.
+	AgentPlan = "agent.plan"
+	// ToolUpdated carries what an ACP tool_call_update changed on a tool row.
+	ToolUpdated = "tool.updated"
+	SideDelta   = "side.delta"
+	SideDone    = "side.done"
+	SideError   = "side.error"
+	// SideThinking, SideActivity and SideTool are the live activity of a side
+	// answer, like thinking.delta, agent.activity and tool.* of a turn.
+	SideThinking = "side.thinking"
+	SideActivity = "side.activity"
+	SideTool     = "side.tool"
+	// SettingsChanged carries the ids of settings a PUT /v1/settings changed
+	// (never values). It is delivered on every project stream.
+	SettingsChanged = "settings.changed"
+	// ApprovalRuleCreated carries a rule an "allow always" answer saved;
+	// ApprovalRuleDeleted the id of one that was deleted.
+	ApprovalRuleCreated = "approval_rule.created"
+	ApprovalRuleDeleted = "approval_rule.deleted"
+	// PlanCreated carries the plan a plan-mode turn produced; PlanApproved the plan that was approved.
+	PlanCreated  = "plan.created"
+	PlanApproved = "plan.approved"
+	// ConversationRewound says the conversation was cut back to a request.
+	ConversationRewound = "conversation.rewound"
+	// ConversationCleared says a new conversation started (POST /clear).
+	ConversationCleared = "conversation.cleared"
+	// SessionCreated, SessionUpdated and SessionCurrent are the project sessions' events: a session appeared, its
+	// fields changed (state, title, archive, exchanges), or another main session became current.
+	SessionCreated = "session.created"
+	SessionUpdated = "session.updated"
+	SessionCurrent = "session.current"
+	// SlashCommandsUpdated says the ACP agent's slash commands (or their pending state) changed:
+	// refetch GET /slash-commands.
+	SlashCommandsUpdated = "slash_commands.updated"
+	// MessageSteered says a queued message was injected into the running turn.
+	MessageSteered = "message.steered"
+	// ContextUpdated says the project's context report changed: refetch GET /context.
+	ContextUpdated = "context.updated"
+	// ProvidersUpdated says what can run a model changed (a login probe result,
+	// a key, a router, the advertised models). Delivered on every project
+	// stream; a client refetches GET /v1/providers.
+	ProvidersUpdated = "providers.updated"
 )
 
 // Sources of a file.changed event.
@@ -79,6 +132,21 @@ func (h *Hub) Publish(projectID, typ string, fields map[string]any) {
 			delete(s.subs, ch)
 			close(ch)
 		}
+	}
+}
+
+// PublishAll delivers an event that belongs to no project (settings.changed) on
+// every project stream that exists, each stamped with its own seq. There is no
+// global stream: a client watching any project hears it.
+func (h *Hub) PublishAll(typ string, fields map[string]any) {
+	h.mu.Lock()
+	ids := make([]string, 0, len(h.projects))
+	for id := range h.projects {
+		ids = append(ids, id)
+	}
+	h.mu.Unlock()
+	for _, id := range ids {
+		h.Publish(id, typ, fields)
 	}
 }
 

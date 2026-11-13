@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/files"
+	"github.com/ndolinschi/Octo/apps/harness/internal/instructions"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
@@ -33,24 +36,49 @@ func NewFiles(store *projectstore.Store, hub *events.Hub) *Files {
 	return &Files{store: store, hub: hub}
 }
 
+// ReviewFolder is the reserved folder label that names the active review
+// workspace (the worktree of the review opened "in workspace"). It resolves
+// only while a workspace is active; the worktree's absolute path is accepted
+// as a folder under the same condition. It is read-only: a review's worktree is
+// moved by refreshing the review, which would discard edits.
+const ReviewFolder = "@review"
+
 func (f *Files) root(ctx context.Context, pid, folder string) (string, error) {
+	root, _, err := f.rootFor(ctx, pid, folder)
+	return root, err
+}
+
+// rootFor resolves a folder label; review is true for the review workspace.
+func (f *Files) rootFor(ctx context.Context, pid, folder string) (root string, review bool, err error) {
 	db, err := f.store.Get(ctx, pid)
 	if errors.Is(err, projectstore.ErrNotFound) {
-		return "", notFound("project")
+		return "", false, notFound("project")
 	}
 	if err != nil {
-		return "", err
+		return "", false, storeErr(err)
+	}
+	if folder == ReviewFolder || filepath.IsAbs(folder) {
+		ws, err := db.ReviewWorkspace(ctx)
+		if err != nil {
+			return "", false, err
+		}
+		if ws != nil && (folder == ReviewFolder || filepath.Clean(folder) == filepath.Clean(ws.Path)) {
+			if fi, err := os.Stat(ws.Path); err == nil && fi.IsDir() {
+				return ws.Path, true, nil
+			}
+		}
+		return "", false, notFound("folder")
 	}
 	folders, err := db.Folders(ctx)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	for _, fo := range folders {
 		if fo.Label == folder {
-			return fo.Path, nil
+			return fo.Path, false, nil
 		}
 	}
-	return "", notFound("folder")
+	return "", false, notFound("folder")
 }
 
 func (f *Files) List(ctx context.Context, pid, folder, path string) ([]files.Entry, error) {
@@ -87,15 +115,21 @@ func (f *Files) Write(ctx context.Context, pid, folder, path, content string, ex
 		}
 		expected = &t
 	}
-	root, err := f.root(ctx, pid, folder)
+	root, review, err := f.rootFor(ctx, pid, folder)
 	if err != nil {
 		return FileStat{}, err
+	}
+	if review {
+		return FileStat{}, reviewReadOnly()
 	}
 	info, err := files.Write(root, path, content, expected)
 	if err != nil {
 		return FileStat{}, fileErr(err)
 	}
 	f.hub.Publish(pid, events.FileChanged, map[string]any{"folder": folder, "path": info.Path, "source": events.SourceUser})
+	if instructions.IsInstructionFile(info.Path) {
+		f.hub.Publish(pid, events.ContextUpdated, map[string]any{"project_id": pid})
+	}
 	return stat(folder, info), nil
 }
 

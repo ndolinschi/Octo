@@ -37,7 +37,15 @@ func Open(dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkVersion(context.Background(), reg, filepath.Join(dataDir, "registry.sqlite")); err != nil {
+		_ = reg.Close()
+		return nil, err
+	}
 	if _, err := reg.Exec(registrySchema); err != nil {
+		_ = reg.Close()
+		return nil, err
+	}
+	if err := stampVersion(context.Background(), reg); err != nil {
 		_ = reg.Close()
 		return nil, err
 	}
@@ -79,6 +87,9 @@ func (s *Store) Close() error {
 	}
 	return first
 }
+
+// ProjectDir is the data directory of a project (project.sqlite and files beside it).
+func (s *Store) ProjectDir(id string) string { return s.projectDir(id) }
 
 func (s *Store) projectDir(id string) string {
 	return filepath.Join(s.dir, "projects", id)
@@ -131,7 +142,7 @@ func (s *Store) open(ctx context.Context, id string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db := &DB{id: id, sql: sdb}
+	db := &DB{id: id, sql: sdb, dir: s.projectDir(id)}
 	if err := db.migrate(ctx); err != nil {
 		_ = sdb.Close()
 		return nil, err
@@ -139,6 +150,9 @@ func (s *Store) open(ctx context.Context, id string) (*DB, error) {
 	s.dbs[id] = db
 	return db, nil
 }
+
+// Evict closes the cached database of a project; the next Get reopens it.
+func (s *Store) Evict(id string) { s.drop(id) }
 
 func (s *Store) drop(id string) {
 	s.mu.Lock()

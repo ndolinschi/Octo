@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Limit, UsageBucket, UsageReport } from "@octo/agent-client";
 import {
+  isFlatRate,
+  paidCost,
+  subscriptionTotal,
   barHeights,
   costText,
   daysWithData,
@@ -18,7 +21,7 @@ import {
   shareRows,
   sortLimits,
 } from "./usage";
-import { contextText, isUsageView } from "./usageView";
+import { contextText } from "./usageView";
 
 const NOW = Date.parse("2026-11-10T15:00:00Z");
 const bucket = (key: string, n: number, p: Partial<UsageBucket> = {}): UsageBucket => ({
@@ -149,13 +152,31 @@ test("context: shown only when both figures are reported", () => {
   assert.equal(contextText(1800, 0), null);
 });
 
-test("usage view guard", () => {
-  assert.equal(isUsageView({ segment: "cost", days: 90, scope: "all" }), true);
-  assert.equal(isUsageView({ segment: "cost", days: 14, scope: "all" }), false);
-  assert.equal(isUsageView(null), false);
-});
-
 test("range: the last N UTC days, to exclusive", () => {
   assert.deepEqual(rangeOf(7, NOW), { from: "2026-11-04", to: "2026-11-11" });
   assert.deepEqual(rangeOf(1, NOW), { from: "2026-11-10", to: "2026-11-11" });
+});
+
+test("flat-rate rows: shown as an equivalent, never added to the paid total", () => {
+  const paid = { cost_usd: 1.2 };
+  const flat = { cost_usd: 0.53, flat_rate: true };
+  assert.equal(costText(flat), "≈ $0.53 on your subscription");
+  assert.equal(costText(paid), formatUsd(1.2));
+  assert.equal(isFlatRate(flat), true);
+  assert.equal(isFlatRate(paid), false);
+  assert.equal(paidCost({ cost_usd: 1.73 }, [paid, flat]), 1.2);
+  assert.equal(paidCost({ cost_usd: null }, [flat]), null);
+});
+
+test("the real harness shape: cost_usd null + subscription_equivalent_usd, no flat_rate", () => {
+  const sub = { cost_usd: null, subscription_equivalent_usd: 1.08 };
+  const flatNew = { cost_usd: 0, flat_rate: true, subscription_equivalent_usd: 0.53 };
+  const paid = { cost_usd: 2, flat_rate: false, subscription_equivalent_usd: 0 };
+  assert.equal(isFlatRate(sub), true);
+  assert.equal(costText(sub), "≈ $1.08 on your subscription");
+  assert.equal(costText(flatNew), "≈ $0.53 on your subscription");
+  assert.equal(costText(paid), formatUsd(2));
+  assert.equal(isFlatRate(paid), false);
+  assert.equal(paidCost({ cost_usd: 2 }, [sub, flatNew, paid]), 2);
+  assert.ok(Math.abs(subscriptionTotal([sub, flatNew, paid]) - 1.61) < 1e-9);
 });

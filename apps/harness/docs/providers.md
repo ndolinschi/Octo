@@ -1,0 +1,120 @@
+# Providers
+
+A *provider* is anything that can run a model: the built-in Messages-API loop (an API key or a gateway), a detected Octo router, or an ACP agent CLI on this machine. `GET /v1/providers` says which are ready, what each offers and how to make the others ready, so a client can connect first and choose second (UI decisions 53 and 58). Nothing in this feature runs a provider or an agent: states come from configuration, the plugin registry (command found, background login probe) and a cache of the models agents advertised.
+
+## `GET /v1/providers`
+
+```json
+{
+  "connected": 2,
+  "suggested": { "orchestrator": "claude-sonnet-5-5", "fast": "claude-haiku-5-5", "balanced": "claude-sonnet-5-5", "deep": "claude-opus-5-5" },
+  "providers": [
+    { "id": "api", "kind": "api", "label": "Anthropic API", "state": "ready", "reason": "",
+      "install_hint": "", "login_hint": "Add an API key in Settings (ANTHROPIC_API_KEY).",
+      "models": [{ "id": "claude-opus-5-5", "label": "Claude Opus 5.5", "source": "catalogue" }],
+      "default_model": "claude-sonnet-5-5", "flat_rate": false },
+    { "id": "claude-code", "kind": "agent", "label": "Claude Code", "state": "ready", "reason": "",
+      "install_hint": "", "login_hint": "Run `claude` once.",
+      "models": [
+        { "id": "opus", "label": "Opus", "source": "manifest" },
+        { "id": "default", "label": "Default (recommended)", "source": "advertised", "seen_at": "2026-11-12T12:00:00Z" },
+        { "id": "my-model", "label": "my-model", "source": "custom" }
+      ],
+      "default_model": "default", "flat_rate": true,
+      "models_refreshed_at": "2026-11-12T12:00:03Z", "models_note": "Aliases accepted by the Claude Code CLI's --model flag ...",
+      "accepts_custom_model": true, "login": "unchecked",
+      "preferred_model": "opus", "roles": { "fast": "haiku", "balanced": "sonnet", "deep": "opus" } }
+  ]
+}
+```
+
+Agent entries carry more than the others: `models_refreshed_at` (RFC 3339, when the harness last looked for the models, found or not), `models_error` (short text, only when that look failed; not an error of the provider), `models_note` (the manifest's remark on its list), `accepts_custom_model` (always `true`: any model name can be chosen), `login` (below), `preferred_model` (`""` when none) and `roles` (always the three keys; `""` = the agent's own default). `models[].source` is `catalogue`, `manifest`, `advertised`, `command` or `custom`.
+
+Order: `api`, then `router` (only while an Octo router is detected), then one entry per ACP agent in manifest order with `claude-code`, `copilot`, `grok` first.
+
+| Entry | `ready` when | Models |
+| --- | --- | --- |
+| `api` | the built-in loop can run (a key, an Octo key, or a base URL other than the Anthropic API) and no router is detected. With a router detected it is `not_connected` ("runs through the Octo router") | `catalogue`: the three compiled-in tiers plus any non-ACP default model |
+| `router` | an Octo router answered its health check | the same catalogue |
+| agent | the command (and every `requires` entry) is found and nothing positively says "logged out" (see **Login** below). An agent with no probe, a probe still running, or a probe that could not tell is ready | manifest `models`, then the models command's, the advertised ones and the typed ones |
+
+States: `ready`, `not_connected` (API, router), `not_supported` (an agent whose manifest says `unsupported`: `reason` is the manifest's text, the install hint is kept; never ready, never probed or started, never a router candidate, `acp:<id>` is refused with 422 `model_unavailable` and that reason, not forceable), `not_logged_in` (`login_hint` = manifest `auth.hint`), `not_installed` (`install_hint` = manifest `install`, `reason` = what is missing), `error` (reserved, never produced yet). `connected` counts `ready` entries. `flat_rate` is the manifest's `flatRate`.
+
+### Login (connected means selectable)
+
+`login` is `"ok"` (the probe succeeded), `"not_logged_in"` (the probe positively said so; state `not_logged_in`) or `"unchecked"` (state `ready`): there is no probe (Copilot, OpenCode ...), or it is still running, failed to start, timed out, exited with a status the manifest does not document, or printed something unexpected. An unchecked agent can be chosen and a project can be created on it; if it is really logged out the first turn fails with the agent's own "not logged in" message and the login hint. The agent counts as logged out only when the probe exits non-zero and either its output (stdout and stderr) matches the manifest's `auth.notLoggedInPattern` or its status is listed in `auth.notLoggedInExit`. **Exit 0 always wins**, whatever the probe prints. Why a probe was inconclusive is kept for `harness doctor` / `GET /v1/diagnostics` (`probe.reason`: "the probe exited with status 3, which the manifest does not list as logged out: login not checked"), never shown as an error and never quoting the probe's output. The built-in manifest lists exit status 1 for claude-code, codex, cursor and devin (the conventional "not logged in" status; unverified here) and no status for Grok, whose probe `grok models` exits 0 and prints "You are not authenticated." when logged out: since exit 0 wins, a logged-out Grok reads as `unchecked` and its first turn fails with Grok's own message and the login hint.
+
+### The login probe is advisory (decision 2026-11-12)
+
+A probe is a guess made earlier by another process; the agent's own session is the truth.
+
+1. **Fresh before refusing.** Before a request is refused for `not_logged_in` (project create or patch, model switch), the agent's probe is re-run synchronously, at most once per 5 s per agent (`plugins.Registry.Fresh`). A probe that now passes lets the request through.
+2. **Negative results expire fast.** A "not logged in" result is probed again after 15 s whenever providers are being read (any request that lists them), a positive one after the usual minute.
+3. **`POST /v1/providers/{id}/recheck`** (no body) runs the probe now, joining one already running, and answers `200` with the provider entry exactly as `GET /v1/providers` lists it (`state`, `login`, ...); `providers.updated` follows when the picture changed. `404 not_found` for an id that is not an agent. An unsupported or uninstalled agent is answered without running anything.
+4. **Use anyway.** A `422 model_unavailable` has `can_force`: `true` when the refusal rests on the login probe alone, `false` otherwise (`not_installed`, `not_supported`, the API or router not connected):
+
+```json
+{ "error": { "code": "model_unavailable", "message": "models.orchestrator \"acp:grok\" cannot run: Grok is not logged in. Log in once ...",
+             "provider": "grok", "reason": "Grok is not logged in. Log in once ...", "can_force": true } }
+```
+
+   `POST /v1/projects` and `PATCH /v1/projects/{id}` accept `"force_unverified": true` next to `models`: a model of a not-logged-in agent is then accepted and stored (reading the project still lists it in `models_unavailable`). The agent starts normally; if it is really logged out, the turn fails with the agent's own error and the login hint.
+5. **Why, without leaking.** `harness doctor` and `GET /v1/diagnostics` give each agent's `probe`: `rule` (`pattern`, `exit_status`, `exit_0`, `other_exit`, `timeout`, `not_started`, `none`), `exit_status` (null when it did not exit), `duration_ms`, `dir` (the working directory) and `env_names` (names only, never values). `harness doctor --show-probe-output` also prints the first 20 lines of each probe's output (text only: it is never in JSON, never in `/v1/diagnostics`, never sent to a model). A built-in agent's probe runs in the user's home directory like a terminal; a plugin directory's agent in that directory.
+6. **Same environment as a terminal.** The probe and the agent get HOME, USER, LOGNAME, XDG_*, PATH, SHELL, LANG, LC_*, TMPDIR, SSH_AUTH_SOCK and on macOS `__CF_USER_TEXT_ENCODING` when the harness process has them (`childenv`'s allow-list; a test asserts each). Everything else stays dropped (no `*KEY*`, `*TOKEN*`, `ANTHROPIC_*`, `XAI_*`, ...). `__CF_USER_TEXT_ENCODING` was missing before.
+
+### Experimental agents
+
+A manifest agent has `verified` (default false) and `verifiedNote`. `GET /v1/providers` gives `experimental: true` (and `experimental_note`) for an agent that is not verified: its launch command comes from documentation and has not been run with Octo. Only `claude-code`, `grok` and `copilot` are verified in the built-in manifest. `harness doctor` prints it. A start-up failure caused by rejected launch arguments is explained in the turn error (see `acp-orchestrator.md`).
+
+### Agent models
+
+`models` is, in this order and each id once (the first source wins): the manifest's `models` (`source: "manifest"`, with the manifest's `modelLabels`), what the manifest's `modelsCommand` printed (`"command"`), every model the agent advertised in a session the harness opened or discovered (`"advertised"`) and the names typed by the user (`"custom"`). `seen_at` is when a session last advertised a model. `stale: true` flags an **advertised** model the agent's latest session did not advertise; it is kept, never dropped (a manifest alias is the CLI's own name and is never flagged). `default_model` is the manifest's `defaultModel`, else the model the agent reported as current.
+
+**Any model can be chosen.** Choosing `acp:<agent>/<anything>` is accepted for a ready agent whether or not the model is listed (the name must be 1 to 100 characters, start with a letter or digit and hold no whitespace or control characters). It reaches the agent as the manifest's start-up argument (`modelArg` / `{modelArgs}`) when there is one, else as the session's model config option, else as `session/set_model`; a model the agent did not list is sent all the same. If the agent refuses it, the turn (or the sub-agent) fails with "<agent> does not accept model <name>" and a hint: "It advertises: a, b, c." (what its session offered; else what the manifest lists; else "It advertised no models in this session."). An agent that exits at start-up with a `modelArg` that names a refused model fails the same way ("... (it did not start with it)"). `spawn_agent`'s `model` is free text for the same reason (its schema describes the known models and has no enum).
+
+**Model discovery without a user request.** When an agent becomes ready (its command resolves and its probe answered: logged in, or could not tell, or there is no probe), when its login changes, and on `POST /v1/providers/{id}/refresh-models`, the harness:
+
+1. runs the manifest's `modelsCommand` when there is one (`{command: [...], pattern, labelGroup?}`; the pattern is matched against every output line, group 1 is the model id, `labelGroup` a display name; child environment allow-list plus the entry's `env`, 10 s, 64 KiB of output, at most 100 models, ids validated). When it finds at least one model the session is not needed;
+2. otherwise starts the agent in a fresh empty temporary directory, does `initialize` and `session/new` with no MCP servers, reads the models its answer lists, and closes the process and removes the directory. **No prompt is ever sent**, so nothing is billed. Every place the ACP schema lists models is read: a model config option (flat or grouped: `{value, name}` entries or groups holding them), the `models` object (`{currentModelId, availableModels: [{modelId, name}]}`), `models` as a bare array of `{id, name}` / ids, and `models` under the result's `_meta`.
+
+Limits: 20 s per discovery (a longer one is `models_error: "timed out after 20s"`), one at a time per agent (a forced refresh joins the running one), at most once an hour per agent unless forced or its login changed (failures count), and never while that agent has a live session of a project (its process is in use; the models of its live session, already recorded when that session opened, are read instead). A failure is recorded as `models_error` (a short line such as "the agent is not logged in" or "the agent advertised no models") together with `models_refreshed_at`, never thrown, and a later success clears it. `providers.updated` is published when the picture changes. `HARNESS_MODEL_DISCOVERY=0` turns discovery off (the endpoint then answers `409 discovery_off`).
+
+**`POST /v1/providers/{id}/refresh-models`** (no body) waits for the discovery and answers `200` with the provider entry as `GET /v1/providers` lists it (a failed look is `models_error` on it, not an HTTP error). `404 not_found` for an unknown agent id (the `api` and `router` entries have no models to refresh); `409 not_ready` when the agent is not installed or positively logged out (`message` says which); `409 discovery_off`.
+
+**`PUT /v1/providers/{id}/custom-models`** `{"models": ["name", ...]}` replaces the names typed for the agent and answers `200` with the provider entry. A name is 1 to 80 characters, starts with a letter or digit, no whitespace or control characters; at most 50 per agent, duplicates dropped, `[]` removes them all; one bad name rejects the whole call (`400 invalid_request`, nothing changes); `404` for an unknown agent. A name the manifest already lists stays `manifest`.
+
+**`PUT /v1/providers/{id}/prefs`** `{"preferred_model"?: string, "roles"?: {"fast"?: string, "balanced"?: string, "deep"?: string}}` stores the user's choices globally (same per-agent cache file) and answers `200` with the provider entry. Absent fields are left alone, roles merge key by key, `""` means "the agent's own default" and overrides a manifest hint (`preferred_model: ""` clears the preference). Names are validated like custom models (`400 invalid_request`, `404` for an unknown agent). The manifest may ship role defaults (`roles`; the built-in claude-code entry maps fast to `haiku`, balanced to `sonnet`, deep to `opus`, matching its aliases); the stored value wins.
+
+**Where preferences apply.** (a) A project model `acp:<agent>` without a model runs on the agent's `preferred_model`, else its own default (the manifest's `defaultModel`, else whatever the agent chooses). (b) A delegation decided as fast, balanced or deep runs on `roles[tier]` when its tier is mapped to `acp:<agent>` (`models.<tier>`), and when the router chose the agent for a difficulty band (easy: fast, medium: balanced, hard: deep); an explicit `acp:<agent>/<model>` on the project or in `spawn_agent` always wins, and a model hint the router sends is used only when the manifest allows it. (c) The model actually used is what the sub-agent row and the usage rows record (`acp:<agent>/<model>`); the router's candidate for the agent keeps the id `acp:<agent>` and its label names the preferred model ("Claude Code (opus)"). Every change publishes `providers.updated`.
+
+The cache is `{data-dir}/agent-models.json` (mode `0600`, additive fields, ids validated on read, a corrupt file is ignored): per agent the advertised lists and labels, the models command's list, the custom names, the preferences, and the time and error of the last discovery. It is written when something changes, and at most every 10 minutes otherwise.
+
+**Wiring.** The ACP session code reports what an agent advertised through `acp.RunOptions.OnModels`, which `Orchestrator` keeps (`AdvertisedModels(agentID)`) and announces (`OnAdvertisedModels(fn)`, only when the list changed). `harness serve` registers a callback that copies each report into the providers service (`Service.RecordModels`), which merges it with earlier ones and persists it. Discovery is `providers.Discovery` (`Service` option; `serve` adds `Orchestrator.AgentInUse` and the live list); `acp.Client.Discover` is the session part.
+
+### `suggested`
+
+What a project created without models gets: the current defaults (`HARNESS_MODEL_*`) when the API or router is ready (a default naming an agent that is not ready falls back to the compiled-in model of its slot); otherwise the first ready agent in the order `claude-code`, `codex`, `copilot`, then the rest, as `acp:<id>` in all four slots; empty strings when nothing is ready.
+
+## Event `providers.updated`
+
+`{ "type": "providers.updated", "seq": n, "connected": 2 }` on every project stream (like `settings.changed`). Sent only when the picture changed (seen_at aside): a login probe changed its outcome, a key or default model was written, an agent advertised new models, the router appeared or went away (re-read every 15 s). A client refetches `GET /v1/providers`. State: `providersRevision` in `@octo/agent-client`.
+
+## Model checks
+
+- `POST /v1/projects` with nothing ready: `409 no_provider`.
+- `POST`/`PATCH /v1/projects` naming a model whose provider is not ready: `422 model_unavailable`, `{"error": {"code", "message", "provider", "reason"}}` (`reason` is a sentence with the hint). On PATCH only models that differ from the stored ones are checked, so a client may send the whole object back. Unknown agents or models stay `400 invalid_request`, checked first.
+- A new project's four models come from `suggested`, overlaid by what the request names.
+- Reading never fails: `GET /v1/projects/{id}` lists unusable stored models in `models_unavailable: [{field, model, provider, reason}]` (always an array). A project whose orchestrator equals the server default while the built-in loop is off still runs on a ready agent (`EffectiveOrchestrator`); it is listed anyway.
+
+## Connecting a key without a restart
+
+`PUT /v1/settings` with `ANTHROPIC_API_KEY` applies at once (`applies: "now"`, not in `restart_required`): the Messages client and the router's route call read the key per request (`config.KeySource`), and the orchestrator's built-in-loop switch is swapped (`SetBuiltinUnavailable`), so `GET /v1/config` `builtin_loop`, `/v1/providers` and the next turn see it. Removing the key turns the loop off again. A key from the process environment (for example set by the desktop app for the bundled router) stays `editable: false`. `restart_required` still lists the router settings the desktop shell reads. A process that cannot swap its key (no `Applier.APIKey`, i.e. an embedder) keeps `applies: "restart"`.
+
+## Failed turns and retry
+
+- The orchestrator row keeps the turn's error (`agent.error`) and is `idle`; the project JSON has `attention`: `"needs_you"` (approval or form waiting), `"failed"` (last turn failed, nothing waiting), `"none"`. `project.attention` events carry `state: "failed"` and `error` when a turn fails and `state: "none"` when a retry starts.
+- The UI's Retry posts the same text to `POST /v1/projects/{id}/messages`. If the orchestrator's last turn failed and its newest stored message is that very user message (nothing answered), the stored message is reused: no second user row, no `message.created`, the response carries the existing message, the open task record of the failed attempt continues. Otherwise the text is an ordinary new message. Every turn ends with `turn.finished` (`completed`, `failed` with the error, or `cancelled`).
+
+## Not verified
+
+No real agent CLI was run. Probe results, advertised models, discovery, typed models and logins were exercised with the scripted agent (`internal/fakeacp`, which can list models in each of the shapes above and log its requests) and fake probe and models commands. Only the owner's machine can say which of Claude Code, Codex, Grok and Copilot advertise models in `session/new` (and in which shape), what the real `grok models` prints (the built-in pattern is a guess, see the plugin README), whether the Claude aliases are what the CLI accepts, and whether each agent accepts a typed model.

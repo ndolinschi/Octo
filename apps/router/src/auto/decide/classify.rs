@@ -98,7 +98,7 @@ pub(super) async fn turn(plan: ClassifyTurn<'_>) -> Option<ClassifiedPick> {
     })
 }
 
-fn bump_tool_inspection_off_easy(
+pub(in crate::auto) fn bump_tool_inspection_off_easy(
     complexity: jev::Complexity,
     tools: &[String],
     user_text: &str,
@@ -113,22 +113,33 @@ fn bump_tool_inspection_off_easy(
     }
 }
 
-struct RecordPlan<'a> {
-    auto: &'a Auto,
-    history: &'a History,
-    session_id: Option<String>,
-    purpose: &'a str,
-    asked: &'a jev::Asked,
+pub(in crate::auto) struct RecordPlan<'a> {
+    pub auto: &'a Auto,
+    pub history: &'a History,
+    pub session_id: Option<String>,
+    pub purpose: &'a str,
+    pub asked: &'a jev::Asked,
 }
 
-fn record(plan: RecordPlan<'_>) {
+pub(in crate::auto) struct Recorded {
+    pub cost: Option<crate::history::CostMicros>,
+    pub cost_source: &'static str,
+}
+
+pub(in crate::auto) fn record(plan: RecordPlan<'_>) -> Recorded {
     let parsed = plan.asked.parsed.as_ref();
     let usage = crate::history::usage_from_output(&plan.asked.response_body);
     let resolved =
         crate::history::resolve_cost(&usage, Some("typesafe/jev-1.13"), plan.history.prices());
     let cost = resolved.cost.or(plan.asked.cost);
+    let cost_source = if resolved.cost.is_none() && plan.asked.cost.is_some() {
+        "reported"
+    } else {
+        crate::providers::utils::cost_source_label(resolved.source)
+    };
     if let (Some(session_id), Some(cost)) = (&plan.session_id, cost) {
-        plan.auto.add_session_cost(session_id, cost.0);
+        plan.auto
+            .charge(plan.history, Some(session_id.as_str()), None, cost.0);
     }
     plan.history.record_decision(DecisionRow {
         session_id: plan.session_id,
@@ -157,6 +168,7 @@ fn record(plan: RecordPlan<'_>) {
         estimated_cost: resolved.estimated_cost,
         cost_source: resolved.source.as_str().to_string(),
     });
+    Recorded { cost, cost_source }
 }
 
 fn user_text_from_request(body: &str) -> String {

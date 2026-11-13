@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 )
@@ -72,9 +73,13 @@ type agent struct {
 	cwd      string
 	cancel   context.CancelFunc
 	deafMode bool
+	cumN     int
 	opts     options
 	authed   bool
 	model    string
+	mode     string // current session mode (EnvModes)
+	commands []map[string]any
+	blocks   string // the content blocks of the last prompt (type, or image:mime:len)
 
 	sess    string // current session id ("" until session/new or session/load)
 	nSess   int
@@ -121,6 +126,7 @@ func (a *agent) serve(ctx context.Context) error {
 }
 
 func (a *agent) handleRequest(ctx context.Context, m message) {
+	a.logRequest(m)
 	switch m.Method {
 	case "initialize":
 		version := 1
@@ -130,6 +136,9 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		caps := map[string]any{}
 		if a.opts.loadSession {
 			caps["loadSession"] = true
+		}
+		if a.opts.promptImage {
+			caps["promptCapabilities"] = map[string]any{"image": true}
 		}
 		if a.opts.mcpHTTP {
 			caps["mcpCapabilities"] = map[string]any{"http": true, "sse": false}
@@ -150,6 +159,22 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		a.handleAuthenticate(m)
 	case "session/set_model", "session/set_config_option":
 		a.handleSetModel(m)
+	case "session/set_mode":
+		var p struct {
+			ModeID string `json:"modeId"`
+		}
+		if !a.opts.modes {
+			a.respondError(m.ID, -32601, "method not found: session/set_mode")
+			return
+		}
+		if err := json.Unmarshal(m.Params, &p); err != nil || (p.ModeID != "default" && p.ModeID != "ask" && p.ModeID != "plan") {
+			a.respondError(m.ID, -32602, "unknown mode")
+			return
+		}
+		a.mu.Lock()
+		a.mode = p.ModeID
+		a.mu.Unlock()
+		a.respond(m.ID, map[string]any{})
 	case "session/new":
 		var p struct {
 			Cwd        string
@@ -182,10 +207,12 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 			a.sess = fmt.Sprintf("fake-%d-%d", os.Getpid(), a.nSess)
 		}
 		a.loaded = false
+		a.mode = "default"
 		a.mcpSrvs = p.McpServers
 		a.mu.Unlock()
 		a.closeMCP()
 		a.respond(m.ID, a.sessionResult())
+		a.advertiseCommands(true)
 	case "session/load":
 		var p struct {
 			SessionID  string
@@ -198,6 +225,10 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		}
 		if err := json.Unmarshal(m.Params, &p); err != nil || p.Cwd == "" || p.SessionID == "" {
 			a.respondError(m.ID, -32602, "sessionId and cwd required")
+			return
+		}
+		if a.opts.loadFail {
+			a.respondError(m.ID, -32002, "session not found: "+p.SessionID)
 			return
 		}
 		if a.opts.mcpReject && len(p.McpServers) > 0 {
@@ -216,18 +247,33 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		a.update(map[string]any{"sessionUpdate": "user_message_chunk", "content": textBlock("replayed user message")})
 		a.update(map[string]any{"sessionUpdate": "agent_message_chunk", "content": textBlock("replayed agent message")})
 		a.respond(m.ID, map[string]any{})
+		a.advertiseCommands(true)
 	case "session/prompt":
 		var p struct {
-			Prompt []struct{ Text string }
+			Prompt []struct {
+				Type     string
+				Text     string
+				Data     string
+				MimeType string
+			}
 		}
 		if err := json.Unmarshal(m.Params, &p); err != nil || len(p.Prompt) == 0 {
 			a.respondError(m.ID, -32602, "prompt required")
 			return
 		}
 		text := ""
+		var kinds []string
 		for _, b := range p.Prompt {
 			text += b.Text
+			if b.Type == "image" {
+				kinds = append(kinds, fmt.Sprintf("image:%s:%d", b.MimeType, len(b.Data)))
+			} else {
+				kinds = append(kinds, b.Type)
+			}
 		}
+		a.mu.Lock()
+		a.blocks = strings.Join(kinds, ",")
+		a.mu.Unlock()
 		pctx, cancel := context.WithCancel(ctx)
 		a.mu.Lock()
 		a.cancel = cancel
@@ -235,7 +281,16 @@ func (a *agent) handleRequest(ctx context.Context, m message) {
 		go func() {
 			defer cancel()
 			stop := a.runScript(pctx, text)
-			a.respond(m.ID, map[string]string{"stopReason": stop})
+			if stop == stopAuthRequired {
+				// What a CLI that is not logged in answers to session/prompt.
+				a.respondError(m.ID, -32000, "Authentication required")
+				return
+			}
+			res := map[string]any{"stopReason": stop}
+			if n, err := strconv.ParseInt(a.opts.promptUsage, 10, 64); err == nil {
+				res["usage"] = map[string]int64{"inputTokens": 100, "outputTokens": n, "thoughtTokens": 0, "totalTokens": 100 + n}
+			}
+			a.respond(m.ID, res)
 		}()
 	default:
 		a.respondError(m.ID, -32601, "method not found: "+m.Method)

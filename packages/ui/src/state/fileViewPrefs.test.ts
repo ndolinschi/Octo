@@ -4,8 +4,8 @@ import { TREE_DEFAULT, TREE_MAX, TREE_MIN, clamp, parseTreePref } from "./fileVi
 
 const defaults = { open: true, width: TREE_DEFAULT };
 
-test("the documented bounds: 280 default, 200 to 480", () => {
-  assert.deepEqual([TREE_DEFAULT, TREE_MIN, TREE_MAX], [280, 200, 480]);
+test("the documented bounds: 220 default, 200 to 480", () => {
+  assert.deepEqual([TREE_DEFAULT, TREE_MIN, TREE_MAX], [220, 200, 480]);
 });
 
 test("no stored value reads as the defaults", () => {

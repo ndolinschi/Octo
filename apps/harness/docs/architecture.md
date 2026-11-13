@@ -4,6 +4,26 @@ Go module: `github.com/ndolinschi/Octo/apps/harness`. A thin **Anthropic Message
 
 ## Runtime shape
 
+Two shapes share the Messages loop. **`harness serve`** (the product) is a project server: the bridge (HTTP + SSE) in front of a service layer, an orchestrator that runs one turn per project, and the stores:
+
+```mermaid
+flowchart LR
+  ui[UI / desktop / curl] -->|HTTP + SSE| bridge[internal/bridge]
+  bridge --> svc[internal/project Service]
+  svc --> orch[internal/orchestrator]
+  svc --> pstore[(projectstore: project.sqlite per project)]
+  orch --> loop[internal/agent Loop]
+  orch --> acp[internal/acp: ACP agents]
+  orch --> mem[internal/memory, changes, approval, inputs, secrets]
+  mem --> pstore
+  loop --> llm[Messages API: Octo router or Anthropic]
+  orch --> hub[events.Hub]
+  hub --> bridge
+  acp -->|MCP over HTTP or relay| bridge
+```
+
+The **legacy one-shot CLI** (`harness run`, `sessions`, `show`) uses the loop directly with the `harness.sqlite` store:
+
 ```mermaid
 flowchart TB
   cli[cmd/harness]
@@ -29,7 +49,8 @@ flowchart TB
 
 | Path | Role |
 | --- | --- |
-| `cmd/harness` | CLI: `serve`, `run`, `sessions`, `show` (wiring only; `serve.go` is the one wiring site for the server) |
+| `cmd/harness` | CLI: `serve`, `doctor`, `run`, `sessions`, `show`, `mcp-relay` (wiring only; `serve.go` is the one wiring site for the server) |
+| `internal/settings` | Settings behind `GET`/`PUT /v1/settings`: the fixed list, validation, atomic `harness.env` writes, apply-now hooks, `restart_required`; see [settings.md](./settings.md) |
 | `internal/childenv` | Allow-list environment for every child process (bash tool, ACP agents, language servers, probes); `HARNESS_CHILD_ENV_ALLOW` adds names; see README "Child environment" |
 | `internal/config` | Env defaults (`ANTHROPIC_*`, `HARNESS_*`), model tiers |
 | `internal/anthropicclient` | SDK client + optional `ANTHROPIC_BASE_URL` |
@@ -47,6 +68,12 @@ flowchart TB
 | `internal/fakelsp` | Scripted language server for tests (re-exec of the test binary) |
 | `internal/mcp` | Harness MCP server (Streamable HTTP, POST/JSON, loopback only) with per-session bearer tokens; tools come from a `Backend` |
 | `internal/mcprelay` | `harness mcp-relay`: stdio-to-HTTP relay for agents without HTTP MCP support |
+| `internal/changes`, `internal/diff` | v7 change tracking: per-project tracker (index, pre-image copies, git-aware snapshot walk) and the line-diff counter; see [v7.md](./v7.md) |
+| `internal/approval`, `internal/inputs`, `internal/secrets` | v7 pending approvals and "allow for this turn" grants; open forms (`request_input`); the per-project 0600 secret store and its redactor; see [v7.md](./v7.md) |
+| `internal/memory` | Orchestrator memory service (M1, M2): task records, memory files, search shaping, digest merge, the memory setting, limits and secret redaction; see [memory.md](./memory.md) |
+| `internal/acptrace` | Opt-in ACP wire trace: one redacted, size-capped JSON-lines file per agent process under `{data-dir}/traces/`; see [acp-orchestrator.md](./acp-orchestrator.md#diagnostics-and-the-wire-trace) |
+| `internal/diag` | The diagnostics report (`harness doctor`, `GET /v1/diagnostics`): versions, PATH, per-agent resolution and login state, the scrubbed log ring (last 200 lines) |
+| `internal/limits` | Provider rate-limit headers remembered per model and limit kind (`GET /v1/limits`); in memory only |
 | `internal/permission` | `permission.Decide`, the one seam answering an ACP agent's permission requests (auto-approve today) |
 | `internal/fakeacp` | Scripted ACP agent for tests and demos (`examples/fakeacp` is its `main`); env switches advertise auth methods, models, `loadSession` and HTTP MCP, refuse unknown models or MCP servers; markers drive MCP tool calls (`[mcp-spawn]`), echo the prompt (`[echo]`), crash (`[crash]`) and hang (`[hang]`) |
 | `internal/mockllm` | Scripted Anthropic-compatible Messages server (used by tests and `examples/mockllm`) |
@@ -95,17 +122,20 @@ flowchart LR
 
 Specs: [`2026-11-10-workspace-plugins-acp-design.md`](../../../docs/superpowers/specs/2026-11-10-workspace-plugins-acp-design.md) §1-2. Examples and the manifest reference: [`plugins-examples/README.md`](../plugins-examples/README.md).
 
-Manifests are read once at startup from `{data-dir}/plugins/*/plugin.json` and every `--plugins-dir` / `HARNESS_PLUGINS_DIR` entry (a plugin directory, or a directory of them). `plugins.Load` validates names, required fields and ids (first plugin wins; later duplicates are listed in that plugin's `errors`), resolves commands (absolute as is, path separator = relative to the plugin dir, else `PATH`) and sets `available`. A broken manifest becomes an entry with `errors` and no capabilities. `toolServers` are registered on the shared remote registry (sub-agents only); a failure is logged and recorded in `errors`. `GET /v1/plugins` returns `{"plugins": [...]}` (commands, args and env are never exposed); there is no write endpoint. `languageServers` are parsed and exposed (`Registry.LanguageServers`, `LanguageServer(id)`); they are started by the language-server relay below.
+Manifests are read once at startup from `{data-dir}/plugins/*/plugin.json` and every `--plugins-dir` / `HARNESS_PLUGINS_DIR` entry (a plugin directory, or a directory of them), then the embedded `subscription-agents` manifest (`plugins-examples/subscription-agents/embed.go`, `go:embed` of `plugin.json`; `Plugin.Builtin`, `"builtin": true`) unless `--no-builtin-plugins`: a directory plugin of the same name replaces it and an agent id already taken is skipped silently. `plugins.Load` validates names, required fields and ids (first plugin wins; later duplicates are listed in that plugin's `errors`), resolves commands (absolute as is, path separator = relative to the plugin dir, else `PATH`) and sets `available`. A broken manifest becomes an entry with `errors` and no capabilities. `toolServers` are registered on the shared remote registry (sub-agents only); a failure is logged and recorded in `errors`. `GET /v1/plugins` returns `{"plugins": [...]}` (commands, args and env are never exposed); there is no write endpoint. `languageServers` are parsed and exposed (`Registry.LanguageServers`, `LanguageServer(id)`); they are started by the language-server relay below.
 
-`spawn_agent` gains an optional `agent` (enum of available ACP agent ids; omitted from the schema when there are none). The sub-agent row is created as usual with `model = "acp:<id>"`, then `acp.Start` runs the command in the project's first folder (`initialize` with protocol version 1, fs capabilities on, terminal off), `session/new` (`mcpServers: []`) and one `session/prompt` carrying the task. The orchestrator system prompt names the available agents.
+`spawn_agent` gains an optional `agent` (enum of available ACP agent ids; omitted from the schema when there are none). The sub-agent row is created as usual with `model = "acp:<id>"`, then `acp.Start` runs the command in the project's first folder (`initialize` with protocol version 1, fs capabilities on, terminal off), `session/new` with `mcpServers: []` (an ACP **sub-agent** gets none of the harness's tools; only an ACP-run *orchestrator* gets the MCP server, see [acp-orchestrator.md](./acp-orchestrator.md)) and one `session/prompt` carrying the task. The orchestrator system prompt names the available agents.
 
 Subscription agents (Copilot, Grok, Codex; [`plugins-examples/subscription-agents`](../plugins-examples/subscription-agents/plugin.json)) added manifest fields `models`, `defaultModel`, `modelArg`, `auth {probe, hint}` and `${NAME}` env references (expanded by `Launch.ResolvedEnv` at spawn; an entry with an unset or empty variable is dropped). `spawn_agent` also accepts `model` for ACP agents: validated against the manifest list (else a free token matching `plugins.ModelPattern`), recorded as `acp:<id>/<model>` on the agent and its usage rows (`acp:<id>` when no model applies; the manifest default counts). `acp.Client.RunWith` takes `RunOptions`: when `session/new` is refused and `initialize` advertised `authMethods`, it calls `authenticate` with the first method of type `agent` (no interaction; `terminal`, `env_var` and unknown types are skipped) and retries once, else fails with `acp.ErrAuthRequired` plus the manifest hint. A requested model is selected through a model config option (`session/set_config_option`), else `session/set_model`, or `modelArg` at start-up; one the orchestrator asked for that cannot be selected fails the sub-agent, a manifest default is best effort. Unknown notifications, session updates and capabilities are ignored. `GET /v1/plugins` agents carry `logged_in`, `models`, `default_model`, `hint`: `Registry.StartProbes` enables the login probes, which run in goroutines when `Plugins()` is called (at most once a minute per agent, 5 s timeout, never awaited by the request).
 
 | ACP | Harness |
 | --- | --- |
 | `agent_message_chunk` (text) | `message.delta`; accumulated, flushed as a persisted assistant text message before each tool call and at the end |
-| `agent_thought_chunk`, plans, unknown variants | ignored |
+| `agent_thought_chunk` (text) | `message.thinking_delta {agent_id, text}`, secrets scrubbed; never stored, indexed or part of the transcript |
+| `plan` | the whole plan is stored on the agent row (`plan`, schema 4; cleared when the next turn starts) and published as `agent.plan {agent_id, entries:[{content,status,priority}]}` |
+| `available_commands_update`, `current_mode_update`, unknown variants | ignored (they still count as a sign of life for the silence watcher) |
 | `tool_call` | persisted assistant `tool_use` (`id` = toolCallId, `name` = kind or `tool`, `input` = `{title, raw_input?, locations?}`); `tool.started` |
+| `tool_call_update` (any) | `tool.updated {agent_id, tool_use_id, status?, title?, locations?, summary?}` with the fields that changed (summary: first 300 characters of the content); the activity label follows a new title |
 | `tool_call_update` completed/failed (or a `tool_call` already terminal) | persisted user `tool_result` (text content and diffs flattened to text, `is_error` when failed); `tool.finished`. Tool calls still open at the end get an error result |
 | `usage_update` | ACP reports tokens in context (`used`), not input/output: growth of `used` is added to `input_tokens`; output tokens stay 0 |
 | `session/request_permission` | `selected` with the first `allow_once` (else first `allow_always`); logged with the tool title; `cancelled` once cancellation started |
@@ -115,7 +145,7 @@ Subscription agents (Copilot, Grok, Codex; [`plugins-examples/subscription-agent
 
 Messages are stored as SDK-shaped content arrays exactly like the built-in loop's, so `GET .../agents/{aid}/messages` and normalization need no special case. Turn cancel or server shutdown cancels the run context: `session/cancel` is sent, the agent gets about 3 s to answer, then its process group is killed; the process is always reaped when the run ends. A crash, protocol error or failed `initialize` fails that sub-agent (stderr tail included in the error) and returns an error result to the parent, which continues.
 
-**Trust:** ACP agents run with the user's privileges and are auto-approved for tool permissions. File requests through the client are confined to the project folders, but the agent process itself is not sandboxed. Plugins can only be installed by writing files locally.
+**Trust:** ACP agents run with the user's privileges. Their permission requests are auto-approved in a project with `access: "full"` and become approval cards in a `supervised` one ([v7.md](./v7.md)). File requests through the client are confined to the project folders, but the agent process itself is not sandboxed. Plugins can only be installed by writing files locally.
 
 ### Project storage
 
@@ -237,9 +267,11 @@ Spec: [`2026-11-11-router-harness-integration.md`](../../../docs/superpowers/spe
 
 **Ledger.** Every usage row gains `served_model`, `tier`, `route_trigger` (stored as the router sent it, no fixed list) and `router_request_id`. After the response body has ended the harness reads `GET /autoroute/v1/calls/{x-octo-request-id}` once, and once more after 200 ms if it was still 404. With the record, `cost_usd` is the router's figure and `cost_estimated` is true when the record's `cost_source` is `estimated`. Without it (record never ready, router old, request failed before the router answered) `cost_usd` stays empty and the usage report estimates it from `prices.toml` by the served model, marked estimated; with no price the cost is unknown (`null`), never 0. A record of `cost_usd: 0` with source `estimated` means the router knew no price and is treated the same way. Failed, rejected and cancelled requests that carry a request id get a row too (tokens from the record, else what the stream had delivered). `/v1/usage?group=model` groups by the served model, falling back to the requested one; `agent_id`, `day` and `project` groups are unchanged. Migration: `ALTER TABLE usage ADD COLUMN` for the five new columns, `project.budget_usd`, and a new `compactions` table, all when missing, so Phase A databases open unchanged.
 
-**Budget.** `PATCH /v1/projects/{id}` takes `budget_usd` (a number > 0, `null` removes it); project JSON returns `budget_usd` and `spent_usd` (the larger of the router's last report for the project, which is the header spend plus the call's cost, and the sum of the usage rows; `null` while nothing has a cost). A 402 from the router settles the agent as failed with `Project budget reached ($X of $Y)` (X, Y from the 402's `x-octo-spent-usd` / `x-octo-budget-usd`), the error travels up through every parent, so the turn ends with that message and no further request is made. `spawn_agent` refuses to start a sub-agent once the last known spend is at or over the budget and returns the same message as a tool error. Without a router (or one that does not announce `budget_key`) the harness enforces the budget itself: before every request it sums the project's usage rows (reported costs plus `prices.toml` estimates); unknown prices mean unknown spend and no enforcement.
+**Budget.** `PATCH /v1/projects/{id}` takes `budget_usd` (a number > 0, `null` removes it); project JSON returns `budget_usd` and `spent_usd` (the larger of the router's last report for the project, which is the header spend plus the call's cost, and the sum of the usage rows; `null` while nothing has a cost). A 402 from the router settles the agent as failed with `This project's budget is used up ($X of $Y).` (X, Y from the 402's `x-octo-spent-usd` / `x-octo-budget-usd`), the error travels up through every parent, so the turn ends with that message and no further request is made. `spawn_agent` refuses to start a sub-agent once the last known spend is at or over the budget and returns the same message as a tool error. Without a router (or one that does not announce `budget_key`) the harness enforces the budget itself: before every request it sums the project's usage rows (reported costs plus `prices.toml` estimates); unknown prices mean unknown spend and no enforcement.
 
 **Compaction.** The router answers a compaction with `x-octo-trigger: compact` and the upstream's Messages JSON as a body, never a stream even when one was requested; it succeeded when the status is 2xx and `stop_reason` is `compaction`. The loop reads the summary from the `compaction` content block's `content` string, else the concatenated `text` blocks (`compactionSummary` in `internal/agent/compact.go`, the one function to change if the format changes). A failed compaction ends the turn with an error and leaves the history alone. On success the response is not stored as a message; the summary goes to the `compactions` table (`upto_message_id` = every message stored so far) and the loop continues with a single user message that carries the summary. The raw messages stay in `messages` for the UI. The next turn of the orchestrator rebuilds its history from the latest compaction plus the messages after it (`loadHistory`). The compaction call has its own usage row with trigger `compact`. The sink then publishes `agent.compacted` (`{agent_id, upto_message_id, summary_tokens, at}`, `summary_tokens` estimated from the summary's length) and the transcript endpoint (`GET .../agents/{aid}/messages`) returns the same markers as `compactions` beside `messages`, read from the `compactions` table.
+
+**Automatic choice (I2).** `internal/router/route.go` (`Router.Route`, typed `RouteError`), `internal/orchestrator/auto.go` (candidates from the config, plugins and probes; fallbacks; the `route` usage row) and `spawn.go` (the `auto` tier). With `route_api` announced, `spawn_agent`'s `tier` defaults to `auto`, the harness posts the task and candidates to `/autoroute/v1/route` (timeout `HARNESS_ROUTE_TIMEOUT`, default 2500 ms) and records `route_choice`, `route_reason`, `route_band` and `route_request_id` on the agent row (new nullable `agents` columns, added when missing). Any failure falls back to the default tier with the reason recorded; a 402 is the budget failure. The classifier's cost is a usage row with role `route`. Section "Automatic choice of who does a task (I2)" in the README has the full behaviour.
 
 **Without a router** nothing above is sent or recorded except the harness-side budget (`budget_usd`), the `tier_policy` setting (stored, unused) and an empty `served_model`.
 
@@ -247,7 +279,7 @@ Spec: [`2026-11-11-router-harness-integration.md`](../../../docs/superpowers/spe
 
 | Command | Purpose |
 | --- | --- |
-| `harness serve` | Project HTTP + SSE server on `--addr` (default `127.0.0.1:8790`); requires `ANTHROPIC_API_KEY` |
+| `harness serve` | Project HTTP + SSE server on `--addr` (default `127.0.0.1:8790`); needs no key (the built-in loop is then unavailable, see README "Running without a key"); reads `{data-dir}/harness.env` |
 | `harness run --prompt "…"` | New session, tool loop; session id on stderr, final text on stdout |
 | `harness sessions` | JSON list of sessions |
 | `harness show <session-id>` | JSON message rows for one session |
@@ -280,3 +312,29 @@ Spec: [`2026-11-10-usage-design.md`](../../../docs/superpowers/specs/2026-11-10-
 - **Aggregation.** `project.Service.Usage` asks each project database for sums grouped by key, model, source and "has reported cost" (`DB.UsageRows`), then merges across projects and applies `prices.Table` to API rows without a reported cost. Handlers only pass the raw query parameters.
 - **Prices.** `internal/prices` parses the `prices.toml` subset itself (no TOML dependency); missing or malformed means an empty table.
 - **Limits.** `anthropicclient.New(..., WithResponseObserver(fn))` installs an SDK middleware that reports host, requested model and response headers for every response, including 429s. `limits.Store.Observe` parses them and keeps the latest value per provider, model and kind behind a mutex; nothing is persisted. `cmd/harness` is the only place that connects the client, the store and `GET /v1/limits` (`bridge.WithLimits`).
+
+
+## Live-test fixes (part 0)
+
+- **Flat-rate agents' cost is not spend.** An ACP agent whose manifest says `flatRate: true` reports a USD figure per `usage_update`; it is stored as `cost_usd` with `cost_estimated: true` and the usage field `flat_rate: true`, and left out of `spent_usd`, budget checks and `cost_usd` in `GET /v1/usage`, which reports it as `subscription_equivalent_usd` per bucket (null when none). Other agents keep recording their figure as spend. The agent's counters are cumulative over its session, so the harness records the increase since the previous update; for an ACP orchestrator that state lives with the session and survives turns (before, each turn restarted from zero and recorded the whole session cost again).
+- **One budget, one number.** With a router that announces `budget_key`, the router's last reported spend is authoritative: the harness's own figure is that spend or the costs the router reported in call records, never a price-table estimate or a flat-rate figure. The orchestrator's own requests are gated by the same check as delegation (the router's 402 stays as the backstop), and the budget header is read fresh for every request.
+- **Refused delegation.** A `spawn_agent` refused because the budget is reached creates its sub-agent row, settled `failed` with the reason (`agent.created` then `agent.updated`), so the delegation never stays "starting".
+- **ACP orchestrator calls to harness tools** (`mcp__octo-harness__spawn_agent`, `octo-harness: spawn_agent`, `octo-harness__...`, or a title naming the tool with a raw input that fits its schema) are stored as the tool's own name and arguments; the sub-agent's `spawn_tool_use_id` is matched by arguments (title, task, tier ...) first, timing second.
+- **`turn.finished`** is published after the turn's slot is released.
+- **Bridge API token.** Every `/v1/**` route needs `Authorization: Bearer <token>` (`internal/bridge/auth.go`, `internal/apitoken`); `/health`, a CORS preflight and the MCP routes are outside it; the two SSE routes also take `?token=`. Token: `HARNESS_API_TOKEN`, else generated per start into `{data-dir}/api-token` (0600); `--no-api-token` / `HARNESS_NO_API_TOKEN=1` switch the check off (the `bridge.New` library default is also "no token", so only `serve` enforces it). Kept from agents: not in the child environment, not in doctor or diagnostics, redacted in ACP traces and the log tail, data dir closed to the file tools. Not stopped: a shell command as the same OS user (see the README).
+- **`--exit-on-stdin-close`** (`HARNESS_EXIT_ON_STDIN_CLOSE=1`): graceful shutdown (the SIGTERM path, agents and language servers included) when stdin reaches EOF; off by default.
+- **Manifest** `requires` (commands that must be on PATH) and `unavailable_reason` in `GET /v1/plugins`; built-in `strengths` for claude-code, codex (easy, medium, hard) and copilot, cursor (easy, medium).
+
+## Live run 2 (harness)
+
+Changes from the owner's second live run (findings and decisions: `docs/superpowers/specs/2026-11-11-router-harness-integration.md`).
+
+- **One spend number.** With a router that tracks budgets, a project's spend is the highest `x-octo-spent-usd` seen for its budget key (`Router.NoteSpent` keeps the maximum, so two calls that finish out of order cannot lower it); it is never a sum of usage rows, which miss what the router charges for classifying. The header excludes the response it comes with, so after a call the harness uses the call record's `spent_after_usd` (the router sets it for every call charged to a budget key, the key's spend once the call was charged, classifier cost included), else, with an older router, header plus the call's own cost, which can lag by that call's classifier cost until the next call's header. The fake router mirrors the real one (`spent_after_usd` always; `NoSpentAfter` reproduces an older router; `ClassifierUSD` and `DelayFor` make calls overlap and finish out of order); three overlapping calls with classifier cost end with the harness and the router at the same micro-USD (`TestRouterSpendAfterConcurrentCallsFinishingOutOfOrder`). Before the router has reported anything for a key, the reported costs of the rows count.
+- **Usage contract.** Every bucket of `GET /v1/usage` has `flat_rate` (the bucket holds flat-rate usage and nothing else), `cost_usd` (money spent: **0, never null, for flat-rate usage**; null only when an API request has no known cost), `subscription_equivalent_usd` (what the flat-rate usage would have cost per token; null when none), and `tokens_estimated`. The real shapes are fixtures, written by the harness's contract test (`TestUsageContract`, `OCTO_UPDATE_FIXTURES=1` regenerates): `packages/agent-client/src/fixtures/usage.api.json`, `usage.flat.json`, `usage.mixed.json`.
+- **Flat-rate by environment.** Manifest `billingEnv` lists variables that make a flat-rate agent bill per token when set in the environment it is started with. Grok is `flatRate: true` with `billingEnv: ["XAI_API_KEY"]`. `GET /v1/plugins` shows the effective `flat_rate` (computed from the harness's environment); the usage rows of a spawned agent use the resolved spawn environment (a key passed in `spawn_agent`'s `env` counts).
+- **Probes.** `auth.notLoggedInPattern`: a regular expression matched against the output of a probe that exited non-zero; a match means logged out. Exit 0 always wins (decision 2026-11-12: the login probe is advisory, see `providers.md`).
+- **Errors for people.** An ACP auth failure (`ErrAuthRequired`, an RPC `-32000 "Authentication required"` and similar texts) becomes `<agent label> is not logged in`; the manifest's login hint travels in its own field: `hint` on `turn.finished`, `error_hint` on the agent row (schema 5), never inside `error`. The "agent returned nothing" and unexpected stop reasons do the same. A sub-agent's failure text in the parent's `spawn_agent` result is the message only.
+- **ACP usage.** Output tokens are recorded: the `usage` of the `session/prompt` response when the agent sends it (`outputTokens` plus `thoughtTokens`), else an estimate from the text streamed (runes / 4), with `tokens_estimated` set on the row and the bucket. They are added to the turn's last usage row (or a row of their own when the turn had none), so a turn is still one group of rows.
+- **Cancelled turns.** The text an agent had written is stored as an assistant message with `stopped: true` (the built-in loop's streamed text and an ACP agent's flushed text alike); `message.created` carries the flag and `turn.finished` says `cancelled`. A tool call that is announced without input and given it by a `tool_call_update` keeps the input: the stored `tool_use` row is rewritten and `message.updated {message}` is published (`spawn_agent` rows of an ACP orchestrator were stored as `""`).
+- **Trace.** The ACP wire trace also redacts e-mail addresses.
+- **Doctor, memory and search:** see the README ("Diagnostics") and `memory.md` ("Task records over a turn"). Schema version 5 added `agents.error_hint`, `messages.stopped`, `usage.tokens_estimated` and the `search_s` index (rebuilt from the stored documents when an older database opens).

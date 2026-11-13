@@ -8,6 +8,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools/remote"
+	subscriptionagents "github.com/ndolinschi/Octo/apps/harness/plugins-examples/subscription-agents"
 )
 
 // loadPlugins reads the plugin manifests and registers their tool servers on
@@ -17,5 +18,9 @@ func loadPlugins(ctx context.Context, cfg config.Config, reg *tools.Registry) *p
 	connect := func(ctx context.Context, base string) error {
 		return remote.Register(ctx, reg, []string{base}, cacheDir)
 	}
-	return plugins.Load(ctx, cfg.DataDir, cfg.PluginDirs, connect)
+	var opts []plugins.LoadOption
+	if !cfg.NoBuiltinPlugins {
+		opts = append(opts, plugins.WithBuiltin(subscriptionagents.Manifest))
+	}
+	return plugins.Load(ctx, cfg.DataDir, cfg.PluginDirs, connect, opts...)
 }

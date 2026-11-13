@@ -62,3 +62,28 @@ func TestHubForgetThenCancelIsSafe(t *testing.T) {
 	}
 	cancel()
 }
+
+func TestPublishAllReachesEveryProjectStream(t *testing.T) {
+	h := NewHub()
+	a, cancelA := h.Subscribe("a")
+	defer cancelA()
+	b, cancelB := h.Subscribe("b")
+	defer cancelB()
+	h.Publish("a", AgentCreated, nil)
+	h.PublishAll(SettingsChanged, map[string]any{"ids": []string{"HARNESS_MODEL_FAST"}})
+
+	<-a // agent.created
+	for name, ch := range map[string]<-chan Event{"a": a, "b": b} {
+		ev := <-ch
+		if ev.Type != SettingsChanged {
+			t.Fatalf("%s: type = %s", name, ev.Type)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(ev.Data, &m); err != nil {
+			t.Fatal(err)
+		}
+		if ids, _ := m["ids"].([]any); len(ids) != 1 || ids[0] != "HARNESS_MODEL_FAST" || m["type"] != SettingsChanged {
+			t.Fatalf("%s: data = %s", name, ev.Data)
+		}
+	}
+}

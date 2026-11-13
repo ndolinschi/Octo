@@ -1,199 +1,190 @@
+import { Pin, Plus, Upload } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { Note } from "@octo/agent-client";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import { useId, useMemo, useRef, useState } from "react";
-import { excerpt, formatRelative, errorMessage } from "../../lib/format";
+import { errorMessage } from "../../lib/format";
+import { filterNotes, indexFooter, noteFileName, sortNotes, titleFromFileName } from "../../lib/notes";
 import { useProject } from "../../state/project";
-import { Button, IconButton } from "../primitives/Button";
-import { Input, Textarea } from "../primitives/Field";
-import { Markdown } from "../shared/Markdown";
-import { FloatRoom } from "../primitives/floatRoom";
+import { Button } from "../primitives/Button";
+import { EmptyState } from "../primitives/EmptyState";
+import { FileInput } from "../primitives/FileInput";
+import { Glyph } from "../primitives/Glyph";
+import { ListDetail } from "../primitives/ListDetail";
+import { ListRow } from "../primitives/ListRow";
+import { Notice } from "../primitives/Notice";
+import { Panel, PanelEmpty, PanelFilters } from "../primitives/Panel";
+import { SearchField } from "../primitives/SearchField";
+import { NoteDetail } from "./NoteDetail";
+import { NoteEditor } from "./NoteEditor";
+import { useNoteDoc } from "./useNoteDoc";
 
+type Mode = { kind: "view" } | { kind: "edit" } | { kind: "new" };
+
+/** The id `ListDetail` holds while the new-note form is open, so one column shows it as a detail. */
+const NEW_NOTE = "new-note-form";
+
+/**
+ * Project notes (M5): Markdown documents the model sees as an index of titles and descriptions. List and detail, as
+ * Memory (decision 66, `ListDetail`): side by side from 640px of panel width, one column below. The footer says what the model gets.
+ */
 export function NotesPanel() {
   const { state, createNote, updateNote, deleteNote } = useProject();
-  const [editing, setEditing] = useState<string | null>(null); // a note id, or "new" for the draft row
-  const notes = useMemo(() => [...state.notes].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)), [state.notes]);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>({ kind: "view" });
+  const [query, setQuery] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const [pinError, setPinError] = useState<string | null>(null);
   const now = Date.now();
 
+  const sorted = useMemo(() => sortNotes(state.notes), [state.notes]);
+  const shown = useMemo(() => filterNotes(sorted, query), [sorted, query]);
+  const selected = state.notes.find((n) => n.id === chosen) ?? null;
+  // Wide: the first note is open so the detail is never an empty sentence in a corner. Narrow: nothing is open until chosen.
+  const current = mode.kind === "new" ? null : (selected ?? shown[0] ?? null);
+  const doc = useNoteDoc(current);
+
+  const pick = (id: string | null) => {
+    setChosen(id);
+    setMode({ kind: "view" });
+    setPinError(null);
+  };
+
+  const importFile = async (file: File) => {
+    setProblem(null);
+    try {
+      const made = await createNote({ markdown: await file.text(), title: titleFromFileName(file.name) });
+      pick(made.id);
+    } catch (e) {
+      setProblem(`Couldn't import ${file.name}: ${errorMessage(e)}. Fix it and import again.`);
+    }
+  };
+
+  const exportMarkdown = (note: Note, markdown: string) => {
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = noteFileName(note.title);
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const togglePin = async (note: Note) => {
+    setPinError(null);
+    try {
+      await updateNote(note.id, { pinned: !note.pinned });
+    } catch (e) {
+      setPinError(`Couldn't ${note.pinned ? "unpin" : "pin"} the note: ${errorMessage(e)}`);
+    }
+  };
+
+  const detail =
+    mode.kind === "new" ? (
+      <NoteEditor
+        notes={state.notes}
+        onCancel={() => setMode({ kind: "view" })}
+        onSave={async (input) => {
+          const made = await createNote(input);
+          pick(made.id);
+        }}
+      />
+    ) : current === null ? null : mode.kind === "edit" && doc.status === "ok" ? (
+      <NoteEditor
+        key={current.id}
+        note={doc.doc}
+        notes={state.notes}
+        onCancel={() => setMode({ kind: "view" })}
+        onSave={async (input) => {
+          await updateNote(current.id, input);
+          setMode({ kind: "view" });
+        }}
+      />
+    ) : (
+      <NoteDetail
+        note={current}
+        load={doc}
+        now={now}
+        pinError={pinError}
+        onEdit={() => setMode({ kind: "edit" })}
+        onTogglePin={() => togglePin(current)}
+        onExport={(md) => exportMarkdown(current, md)}
+        onDelete={async () => {
+          await deleteNote(current.id);
+          pick(null);
+        }}
+      />
+    );
+
+  const empty = state.notes.length === 0 && mode.kind !== "new";
   return (
-    <div className="flex h-full min-h-0 flex-col pt-pane">
-      <div className="flex h-8 shrink-0 items-center gap-2 pr-2 pl-4 text-xs text-fg-3">
-        <span className="min-w-0 truncate">The orchestrator reads these every turn</span>
-        <IconButton icon={Plus} label="Add note" size="sm" className="ml-auto" onClick={() => setEditing("new")} disabled={editing === "new"} />
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
-        {editing === "new" && (
-          <NoteEditor
-            onCancel={() => setEditing(null)}
-            onSave={async (input) => {
-              await createNote(input);
-              setEditing(null);
-            }}
+    <div className="h-full min-h-0" data-notes>
+      <Panel
+        name="notes"
+        title="Notes"
+        notice={problem ? <Notice tone="error">{problem}</Notice> : undefined}
+        actions={
+          <>
+            <FileInput
+              button={{ icon: Upload }}
+              label="Import a .md file"
+              accept=".md,.markdown,.txt,text/markdown,text/plain"
+              onFiles={(files) => files[0] && void importFile(files[0])}
+            />
+            <Button variant="secondary" size="sm" icon={Plus} onClick={() => setMode({ kind: "new" })} disabled={mode.kind === "new"}>
+              New note
+            </Button>
+          </>
+        }
+        footer={indexFooter(state.notes)}
+      >
+        {empty ? (
+          <EmptyState title="No notes yet">Decisions and facts saved while working appear here.</EmptyState>
+        ) : (
+          <ListDetail
+            label="Notes"
+            listLabel="Notes"
+            placeholder="Choose a note to read it."
+            selected={mode.kind === "new" ? NEW_NOTE : chosen}
+            onSelect={(id) => pick(id === NEW_NOTE ? null : id)}
+            listHeader={
+              <PanelFilters>
+                <SearchField label="Search notes" size="sm" value={query} onChange={setQuery} className="min-w-0 flex-1" />
+              </PanelFilters>
+            }
+            detail={detail}
+            list={(select) =>
+              shown.length === 0 ? (
+                <div role="listitem">
+                  <PanelEmpty>No note matches "{query}".</PanelEmpty>
+                </div>
+              ) : (
+                shown.map((n) => <NoteRow key={n.id} note={n} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />)
+              )
+            }
           />
         )}
-        {notes.length === 0 && editing !== "new" && (
-          <div className="px-2 py-3 text-sm">
-            <p className="text-fg">No notes yet</p>
-            <p className="mt-0.5 text-fg-2">Decisions and facts the orchestrator saves appear here.</p>
-            <Button size="sm" className="mt-3" onClick={() => setEditing("new")}>
-              Add note
-            </Button>
-          </div>
-        )}
-        <ul className="flex flex-col">
-          {notes.map((note) =>
-            editing === note.id ? (
-              <li key={note.id}>
-                <NoteEditor
-                  note={note}
-                  onCancel={() => setEditing(null)}
-                  onSave={async (input) => {
-                    await updateNote(note.id, input);
-                    setEditing(null);
-                  }}
-                />
-              </li>
-            ) : (
-              <NoteItem key={note.id} note={note} now={now} onEdit={() => setEditing(note.id)} onDelete={() => deleteNote(note.id)} />
-            ),
-          )}
-        </ul>
-        <FloatRoom />
-      </div>
+      </Panel>
     </div>
   );
 }
 
-function NoteItem(props: { note: Note; now: number; onEdit(): void; onDelete(): Promise<void> }) {
+function NoteRow(props: { note: Note; active: boolean; onPick(): void }) {
   const { note } = props;
-  const [confirming, setConfirming] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   return (
-    <li className="group rounded-sm px-2 py-2 transition-[background-color] duration-100 hover:bg-hover">
-      <div className="flex h-6 items-center gap-2">
-        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-fg" title={note.title}>
-          {note.title}
-        </h3>
-        {/* Visible on hover, on keyboard focus, and always on touch screens (no hover there). */}
-        <div className="flex items-center opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-          <IconButton icon={Pencil} label={`Edit ${note.title}`} size="sm" onClick={props.onEdit} />
-          <IconButton icon={Trash2} label={`Delete ${note.title}`} size="sm" onClick={() => setConfirming(true)} />
-        </div>
-      </div>
-      <p className="flex gap-3 text-xs text-fg-3">
-        <span>{note.author === "orchestrator" ? "Orchestrator" : "You"}</span>
-        <time dateTime={note.updated_at} className="tabular-nums">
-          {formatRelative(note.updated_at, props.now)}
-        </time>
-      </p>
-      <button type="button" onClick={() => setExpanded((e) => !e)} aria-expanded={expanded} className="mt-1 block w-full rounded-sm text-left">
-        {expanded ? (
-          <Markdown text={note.content} className="octo-prose octo-prose-sm" />
-        ) : (
-          <p className="line-clamp-2 text-sm text-fg-2">{excerpt(note.content, 400)}</p>
-        )}
-      </button>
-      {confirming && (
-        <div role="alertdialog" aria-label={`Delete ${note.title}`} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-          <span className="min-w-0 flex-1 text-fg-2">
-            Delete <span className="text-fg">{note.title}</span>?
+    <ListRow
+      role="listitem"
+      size="md"
+      selected={props.active}
+      title={note.title}
+      description={note.description || "No description"}
+      meta={
+        note.pinned || note.tags.length > 0 ? (
+          <span className="inline-flex items-center gap-1">
+            {note.pinned && <Glyph icon={Pin} size={14} aria-label="Pinned" />}
+            {note.tags.map((t) => `#${t}`).join(" ")}
           </span>
-          <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-            Cancel
-          </Button>
-          <Button size="sm" variant="danger" onClick={() => void props.onDelete()} autoFocus>
-            Delete note
-          </Button>
-        </div>
-      )}
-    </li>
-  );
-}
-
-function NoteEditor(props: { note?: Note; onCancel(): void; onSave(input: { title: string; content: string }): Promise<void> }) {
-  const [title, setTitle] = useState(props.note?.title ?? "");
-  const [content, setContent] = useState(props.note?.content ?? "");
-  const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const titleRef = useRef<HTMLInputElement>(null);
-  const contentRef = useRef<HTMLTextAreaElement>(null);
-  const id = useId();
-  const titleError = submitted && !title.trim() ? "Give the note a title." : null;
-  const contentError = submitted && !content.trim() ? "Write what the orchestrator should remember." : null;
-
-  const save = async () => {
-    setSubmitted(true);
-    if (!title.trim()) return titleRef.current?.focus();
-    if (!content.trim()) return contentRef.current?.focus();
-    setBusy(true);
-    setError(null);
-    try {
-      await props.onSave({ title: title.trim(), content: content.trim() });
-    } catch (e) {
-      setError(`Couldn't save the note: ${errorMessage(e)}. Try again.`);
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      noValidate
-      className="mb-2 flex flex-col gap-2 px-2 pt-1 pb-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.stopPropagation();
-          props.onCancel();
-        }
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void save();
-      }}
-    >
-      <Input
-        ref={titleRef}
-        aria-label="Note title"
-        placeholder="Title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        aria-invalid={titleError ? true : undefined}
-        aria-describedby={titleError ? `${id}-title-error` : undefined}
-        autoFocus
-      />
-      {titleError && (
-        <p id={`${id}-title-error`} className="-mt-1 text-xs text-err">
-          {titleError}
-        </p>
-      )}
-      <Textarea
-        ref={contentRef}
-        aria-label="Note content"
-        placeholder="What should the orchestrator remember?"
-        rows={4}
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        aria-invalid={contentError ? true : undefined}
-        aria-describedby={contentError ? `${id}-content-error` : undefined}
-      />
-      {contentError && (
-        <p id={`${id}-content-error`} className="-mt-1 text-xs text-err">
-          {contentError}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="text-xs text-err">
-          {error}
-        </p>
-      )}
-      <div className="flex items-center justify-end gap-1.5">
-        <Button size="sm" variant="ghost" onClick={props.onCancel}>
-          Cancel
-        </Button>
-        <Button size="sm" variant="primary" type="submit" disabled={busy}>
-          {props.note ? "Save" : "Add note"}
-        </Button>
-      </div>
-    </form>
+        ) : undefined
+      }
+      tip={note.description_auto ? "Auto description: taken from the first line of the note" : note.title}
+      onClick={props.onPick}
+    />
   );
 }

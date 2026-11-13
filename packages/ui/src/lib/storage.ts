@@ -26,6 +26,22 @@ export const PREFS = {
   fileTree: (projectId: string) => key(`fileTree.${projectId}`),
   /** Pending code comments of one project (JSON list). */
   comments: (projectId: string) => key(`comments.${projectId}`),
+  /** Model names typed in the picker's "Other model…", per agent id: `{ [agentId]: string[] }` (the fallback for a harness that cannot store them). */
+  customModels: key("customModels"),
+  /** Preferred model and role models per agent id, kept when the bridge cannot store them: `{ [agentId]: { preferred_model?, roles? } }`. */
+  agentPrefs: key("agentPrefs"),
+  /** Folders chosen in the folder picker (decision 49), newest first: a JSON list of paths. */
+  chosenFolders: key("chosenFolders"),
+  /** The conversation's width in px beside a side group, as plain text: where the first split opens (decision 60). */
+  chatSplit: key("chatSplit"),
+  /** Start-screen backdrop (decision 31): `"vivid" | "mono" | "off"` as plain text. */
+  backdrop: key("backdrop"),
+  /** Models and agent models left out of every picker (decision 59, Settings → Models): a JSON list of setting strings. */
+  hiddenModels: key("hiddenModels"),
+  /** What opening the app shows (Settings → General): `"last" | "home"` as plain text. */
+  startup: key("startup"),
+  /** Motion (Settings → Appearance): `"system" | "reduced"` as plain text. */
+  motion: key("motion"),
 } as const;
 
 /** How a value is stored. `parse` never throws: missing, malformed or foreign text becomes a valid (default) value. */
@@ -52,6 +68,17 @@ export function choiceCodec<const T extends string>(choices: readonly T[], fallb
   return {
     parse: (raw) => choices.find((c) => c === raw) ?? fallback,
     stringify: (value) => value,
+  };
+}
+
+/** A finite number in [min, max] as plain text; anything else gives `fallback`. */
+export function numberCodec(min: number, max: number, fallback: number): Codec<number> {
+  return {
+    parse: (raw) => {
+      const n = raw === null || raw.trim() === "" ? Number.NaN : Number(raw);
+      return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+    },
+    stringify: (value) => String(Math.round(value)),
   };
 }
 

@@ -44,6 +44,8 @@ Observe: `client_model`, `client_has_thinking`, `client_tool_names`, `bg_signal`
 
 Payloads: `request_payload` / `response_payload` (JSON envelopes). With `store_payloads = false`, text payload columns are omitted; metrics and observe columns remain.
 
+The `calls` row of an autoroute call also has `request_id` (the `x-octo-request-id` value). Autoroute call records and per-budget-key spend are persisted in the `autoroute_calls` and `budget_spend` tables with their own retention (`calls_max_age_days`, `calls_max_rows`, `budget_spend_max_age_days`, `prune_interval_secs`); see [autoroute.md](./autoroute.md#harness-integration).
+
 ### `decisions`
 
 JEV / Decisions rows: scores (`is_hard`, `is_easy`, `tools_enough`), complexity, choice rule, payloads, cost columns. No orchestration score columns yet.

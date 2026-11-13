@@ -1,6 +1,7 @@
 package local
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -15,6 +16,23 @@ const (
 	ToolListDir   = "list_dir"
 )
 
+type extraEnvKey struct{}
+
+// WithExtraEnv gives the bash tool extra environment variables for the call in
+// ctx (already resolved values; the caller keeps them out of the tool input).
+func WithExtraEnv(ctx context.Context, env map[string]string) context.Context {
+	if env == nil {
+		env = map[string]string{}
+	}
+	return context.WithValue(ctx, extraEnvKey{}, env)
+}
+
+// ExtraEnv is what WithExtraEnv set, and whether it was set at all.
+func ExtraEnv(ctx context.Context) (map[string]string, bool) {
+	env, ok := ctx.Value(extraEnvKey{}).(map[string]string)
+	return env, ok
+}
+
 // Root is a labelled directory that file and shell tools are confined to.
 type Root struct {
 	Label string
@@ -22,7 +40,7 @@ type Root struct {
 }
 
 // AllTools lists every tool RegisterRoots can provide.
-var AllTools = []string{ToolBash, ToolReadFile, ToolWriteFile, ToolListDir}
+var AllTools = []string{ToolBash, ToolReadFile, ToolWriteFile, ToolListDir, ToolEdit, ToolGlob}
 
 const folderProp = `"folder":{"type":"string","description":"Folder label; defaults to the first folder"}`
 
@@ -33,6 +51,8 @@ func schemaFor(tool string, multi bool) json.RawMessage {
 		ToolWriteFile:   `"path":{"type":"string","description":"Relative path under the folder"},"content":{"type":"string","description":"File contents"}`,
 		ToolListDir:     `"path":{"type":"string","description":"Relative directory path; defaults to the folder root"}`,
 		ToolSearchFiles: searchProps,
+		ToolEdit:        editProps,
+		ToolGlob:        globProps,
 	}
 	required := map[string]string{
 		ToolBash:        `["command"]`,
@@ -40,6 +60,8 @@ func schemaFor(tool string, multi bool) json.RawMessage {
 		ToolWriteFile:   `["path","content"]`,
 		ToolListDir:     `[]`,
 		ToolSearchFiles: `["pattern"]`,
+		ToolEdit:        `["path","old_string","new_string"]`,
+		ToolGlob:        `["pattern"]`,
 	}
 	p := props[tool]
 	if multi {
@@ -54,9 +76,11 @@ var descriptions = map[string]string{
 	ToolWriteFile:   "Write a text file under a project folder",
 	ToolListDir:     "List a directory under a project folder",
 	ToolSearchFiles: "Search the text files under a project folder for a regular expression; returns path:line: text for each match",
+	ToolEdit:        "Edit a text file by exact string replacement: old_string must match exactly one place in the file (or set replace_all). Read the file first and copy the text exactly",
+	ToolGlob:        "Find files under a project folder by glob pattern (**/*.go); returns paths relative to the folder, honouring .gitignore",
 }
 
-// Register installs all four tools over a single workspace.
+// Register installs all of AllTools over a single workspace.
 func Register(reg *tools.Registry, workspace string) error {
 	return RegisterRoots(reg, []Root{{Label: "workspace", Path: workspace}}, AllTools...)
 }
@@ -86,6 +110,8 @@ func RegisterRootsLimits(reg *tools.Registry, roots []Root, lim tools.Limits, na
 		ToolWriteFile:   writeFileHandler(rs),
 		ToolListDir:     listDirHandler(rs),
 		ToolSearchFiles: searchFilesHandler(rs),
+		ToolEdit:        editHandler(rs),
+		ToolGlob:        globHandler(rs),
 	}
 	for _, name := range names {
 		h, ok := handlers[name]

@@ -290,10 +290,10 @@ func TestACPCrashFailsOnlyTheSubAgent(t *testing.T) {
 		t.Fatalf("parent turn = %s, want completed", got.status)
 	}
 	child := r.acpChild(t, pid)
-	if child.Status != projectstore.StatusFailed || child.Error == nil || !strings.Contains(*child.Error, "exit status 3") {
+	if child.Status != projectstore.StatusFailed || child.Error == nil || !strings.Contains(*child.Error, "stopped in the middle") {
 		t.Fatalf("child = %+v error=%v", child, child.Error)
 	}
-	if res, isErr := orchestratorToolResult(t, r, pid); !isErr || !strings.Contains(res, "sub-agent failed") {
+	if res, isErr := orchestratorToolResult(t, r, pid); !isErr || !strings.Contains(res, "sub-agent failed") || !strings.Contains(res, "exit status 3") {
 		t.Errorf("parent result = %q error=%v", res, isErr)
 	}
 	for _, m := range r.transcript(t, pid, child.ID) {

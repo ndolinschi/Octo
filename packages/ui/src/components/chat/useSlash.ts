@@ -1,0 +1,54 @@
+import type { SlashCommands } from "@octo/agent-client";
+import { useCallback, useEffect, useState } from "react";
+import { useApp } from "../../state/app";
+import { useProject } from "../../state/project";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
+import type { ComposerMode } from "./composerMode";
+import { useInlineNotes } from "./notesContext";
+
+/** The commands of the open project (`getSlashCommands`), refetched on `slash_commands.updated`; null until known or without the endpoint. */
+export function useSlashCommands(): SlashCommands | null {
+  const { bridge } = useApp();
+  const { projectId, onEvent } = useProject();
+  const [commands, setCommands] = useState<SlashCommands | null>(null);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void bridge.getSlashCommands?.(projectId).then(
+      (c) => alive && setCommands(c),
+      // Not loaded: the menu shows the commands the UI runs itself, and a later `slash_commands.updated` asks again.
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [bridge, projectId, round]);
+  useEffect(() => onEvent((e) => e.type === "slash_commands.updated" && setRound((n) => n + 1)), [onEvent]);
+  return bridge.getSlashCommands ? commands : null;
+}
+
+/**
+ * Runs an Octo slash command (B11): the host action or the endpoint named by the command, with what it leaves in the
+ * conversation as inline notes. Returns false when the name is not one it knows (the text is then sent as typed).
+ */
+export function useSlashRunner(ctx: { mode: ComposerMode | null | undefined; openModel(query: string): void }) {
+  const { bridge } = useApp();
+  const { projectId } = useProject();
+  const ws = useOptionalWorkspace();
+  const notes = useInlineNotes();
+  const push = notes?.push;
+  const rewindLast = notes?.rewindLast;
+  const { mode, openModel } = ctx;
+  return useCallback(
+    async (name: string, args: string): Promise<boolean> => {
+      // The runner (compact, export, remember ...) loads with the first command, not with the composer.
+      const { runSlash } = await import("./slashRun");
+      return runSlash(
+        { bridge, projectId, mode, openModel, push, rewindLast, openTool: (t) => ws?.openTool(t), openSettings: () => ws?.openSettings() },
+        name,
+        args,
+      );
+    },
+    [bridge, projectId, ws, push, rewindLast, mode, openModel],
+  );
+}

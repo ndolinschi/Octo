@@ -346,6 +346,7 @@ export function EditorComments(props: {
   const range = sel && sel.end > sel.start && hover.line >= sel.start && hover.line <= sel.end ? sel : { start: hover.line, end: hover.line };
   const onPlus = () => open(range.start, range.end);
   return (
+    // eslint-disable-next-line octo/no-native-controls -- an 18px gutter mark placed over Monaco's line by measured left/top; the smallest IconButton is 24px
     <button
       type="button"
       data-comment-plus

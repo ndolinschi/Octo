@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -23,13 +24,20 @@ const (
 	// call spawn_agent (on the first external agent the schema offers), then
 	// save_note, and report pid, session and transport.
 	MarkerMCPSpawn = "[mcp-spawn]"
+	// MarkerMCPSpawnBuiltin is MarkerMCPSpawn but asks for a built-in sub-agent
+	// (no `agent` argument), the one that needs the Messages API.
+	MarkerMCPSpawnBuiltin = "[mcp-spawn-builtin]"
 	// MarkerEcho makes the agent answer with pid, session and the prompt it got.
 	MarkerEcho = "[echo]"
+	// MarkerBlocks answers with the content blocks of the prompt: "blocks=image:image/png:1234,text".
+	MarkerBlocks = "[blocks]"
 	// MarkerMCPInfo reports the MCP server entry the client gave (url and
 	// bearer token), so a test can speak to the endpoint as the agent would.
 	MarkerMCPInfo = "[mcp-info]"
 	// MarkerNonUSD makes the usage_update costs use EUR instead of USD.
 	MarkerNonUSD = "[eur]"
+	// MarkerSetCommands ("[set-commands:name|desc|hint;...]") replaces the advertised slash commands mid-session.
+	MarkerSetCommands = "[set-commands:"
 )
 
 // Cumulative session costs the default script reports in its usage_updates.
@@ -91,18 +99,57 @@ func textContent(text string) map[string]any {
 
 // runScript plays the scripted turn and returns the stop reason.
 func (a *agent) runScript(ctx context.Context, prompt string) string {
+	if strings.Contains(prompt, digestMarker) {
+		return a.digest(prompt)
+	}
 	// Markers count only in the user's request: the harness may put a recap of
 	// earlier requests (which hold other markers) before "User request:".
 	request := prompt
 	if i := strings.LastIndex(prompt, "User request:\n"); i >= 0 {
 		request = prompt[i+len("User request:\n"):]
 	}
+	// A side question's first prompt carries a recap of the orchestrator's conversation.
+	if i := strings.LastIndex(request, "Side question: "); i >= 0 {
+		request = request[i+len("Side question: "):]
+	}
 	a.mu.Lock()
 	cwd := a.cwd
 	a.deafMode = strings.Contains(request, MarkerDeaf)
 	a.mu.Unlock()
 	has := func(m string) bool { return strings.Contains(request, m) }
+	if strings.Contains(request, "This session is being cleared") {
+		if os.Getenv(EnvSummary) == "fail" {
+			return "refusal"
+		}
+		a.say("Agent summary: the user asked about the project and nothing is unfinished.")
+		return "end_turn"
+	}
+	if rest, ok := strings.CutPrefix(strings.TrimSpace(request), "/"); ok && rest != "" {
+		a.say("command<<" + strings.TrimSpace(request) + ">>") // a slash command is run, not discussed
+		return "end_turn"
+	}
+	if i := strings.Index(request, MarkerSetCommands); i >= 0 {
+		list := request[i+len(MarkerSetCommands):]
+		list, _, _ = strings.Cut(list, "]")
+		a.mu.Lock()
+		a.commands = parseCommandList(list)
+		a.mu.Unlock()
+		a.advertiseCommands(false)
+		a.say("commands updated")
+		return "end_turn"
+	}
 
+	switch {
+	case has(MarkerSilent):
+		return "end_turn" // says nothing, calls nothing: what a CLI that is not logged in can do
+	case has(MarkerRefuse):
+		return "refusal"
+	case has(MarkerMaxTokens):
+		return "max_tokens"
+	case has(MarkerLive) || has(MarkerSlowTool) || has(MarkerQuiet) || has(MarkerSecretThought) || has(MarkerAuthRequired) || has(MarkerLateInput) || has(MarkerSayHang):
+		stop, _ := a.liveScript(ctx, cwd, request)
+		return stop
+	}
 	a.say("I'll look at the project first. ")
 	switch {
 	case has(MarkerCrash):
@@ -118,14 +165,49 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		return "cancelled"
 	case has(MarkerEscape):
 		return a.escape(ctx)
+	case has(MarkerCumCost):
+		return a.cumCost()
+	case has(MarkerOwnEdit):
+		return a.ownEdit(cwd)
+	case has(MarkerPerm):
+		return a.permScript(ctx, cwd)
+	case has(MarkerMode):
+		a.mu.Lock()
+		cur := a.mode
+		a.mu.Unlock()
+		a.say("mode=" + cur)
+		return "end_turn"
+	case has(MarkerWrite):
+		_, rpcErr, err := a.call(ctx, "fs/write_text_file", map[string]any{"sessionId": a.sid(), "path": filepath.Join(cwd, WriteFile), "content": "written\n"})
+		switch {
+		case err != nil:
+			return "cancelled"
+		case rpcErr != nil:
+			a.say("fswrite refused: " + rpcErr.Message)
+		default:
+			a.say("fswrite ok")
+		}
+		return "end_turn"
+	case has(MarkerAskForm):
+		return a.askForm(ctx)
+	case has(MarkerBlocks):
+		a.mu.Lock()
+		b := a.blocks
+		a.mu.Unlock()
+		a.say("blocks=" + b)
+		return "end_turn"
+	case has(MarkerLeakEnv):
+		return a.leakEnv()
 	case has(MarkerEcho):
 		a.mu.Lock()
 		loaded := a.loaded
 		a.mu.Unlock()
 		a.say(fmt.Sprintf("pid=%d session=%s loaded=%v prompt<<%s>>", os.Getpid(), a.sid(), loaded, prompt))
 		return "end_turn"
+	case has(MarkerMCPSpawnBuiltin):
+		return a.mcpSpawn(ctx, true)
 	case has(MarkerMCPSpawn):
-		return a.mcpSpawn(ctx)
+		return a.mcpSpawn(ctx, false)
 	case has(MarkerMCPInfo):
 		a.say(a.mcpInfo())
 		return "end_turn"
@@ -252,7 +334,7 @@ func (a *agent) mcpToolCall(id, title string, args map[string]any) {
 }
 
 // mcpSpawn is the [mcp-spawn] script.
-func (a *agent) mcpSpawn(ctx context.Context) string {
+func (a *agent) mcpSpawn(ctx context.Context, builtin bool) string {
 	a.say("Using the harness tools. ")
 	c, err := a.harnessMCP(ctx)
 	if err != nil {
@@ -266,10 +348,11 @@ func (a *agent) mcpSpawn(ctx context.Context) string {
 		return "end_turn"
 	}
 	names := make([]string, len(tools))
-	spawnAgent := ""
+	spawnAgent, autoTier := "", false
 	for i, t := range tools {
 		names[i] = t.Name
 		if t.Name == "spawn_agent" {
+			autoTier = slices.Contains(t.InputSchema.Properties["tier"].Enum, "auto")
 			if enum := t.InputSchema.Properties["agent"].Enum; len(enum) > 0 {
 				spawnAgent = enum[0]
 			}
@@ -278,11 +361,14 @@ func (a *agent) mcpSpawn(ctx context.Context) string {
 	a.say("Tools: " + strings.Join(names, ",") + ". ")
 
 	args := map[string]any{"role": "Explorer", "title": "Look around", "task": "Report that you are ready.", "tier": "fast"}
-	if spawnAgent != "" {
+	if autoTier {
+		// The schema offers tier auto (a router can choose): leave the choice to it.
+		args["tier"] = "auto"
+	} else if spawnAgent != "" && !builtin {
 		args["agent"] = spawnAgent
 	}
-	a.mcpToolCall("mcp-spawn-1", "octo-harness: spawn_agent", args)
-	granted, ok := a.askPermission(ctx, "mcp-spawn-1", "octo-harness: spawn_agent")
+	a.mcpToolCall("mcp-spawn-1", mcpTitle("spawn_agent"), args)
+	granted, ok := a.askPermission(ctx, "mcp-spawn-1", mcpTitle("spawn_agent"))
 	if !ok {
 		return "cancelled"
 	}
@@ -308,7 +394,7 @@ func (a *agent) mcpSpawn(ctx context.Context) string {
 	}
 
 	noteArgs := map[string]any{"title": "mcp-note", "content": "written via MCP"}
-	a.mcpToolCall("mcp-note-1", "octo-harness: save_note", noteArgs)
+	a.mcpToolCall("mcp-note-1", mcpTitle("save_note"), noteArgs)
 	text, isErr, err := c.callTool(ctx, "save_note", noteArgs)
 	if err != nil || isErr {
 		a.toolUpdate("mcp-note-1", "failed", textContent(fmt.Sprint(text, err)))

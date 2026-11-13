@@ -2,6 +2,7 @@
 # End-to-end check of the harness against a REAL Octo router (integration I1).
 # The harness talks to the router's autoroute path (--base-url .../autoroute), where hints and result headers live.
 #   router :8811  ->  mock upstream :8812     harness :8815 (via router), :8816 (direct to the mock)
+# The harnesses run with HARNESS_NO_BUILTIN_PLUGINS=1: no third-party agent CLI is probed or started.
 # Needs `cargo build -p octo` (target/debug/octo) and Go. Touches only a temp dir.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -10,6 +11,16 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$TMP"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# The harness requires a bridge API token on /v1: every harness started below gets this one, every curl sends it
+# (except to the router, which would forward it upstream). The check itself is exercised by the 401 test further down.
+export HARNESS_API_TOKEN="e2e-token-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+curl() {
+  case "$*" in
+    *127.0.0.1:8811*|*127.0.0.1:8812*) command curl "$@" ;;
+    *) command curl -H "Authorization: Bearer $HARNESS_API_TOKEN" "$@" ;;
+  esac
+}
 jget() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 
 (cd "$ROOT/apps/harness" && go build -o "$TMP/harness" ./cmd/harness && go build -o "$TMP/mockllm" ./examples/mockllm)
@@ -29,8 +40,8 @@ done
 for _ in $(seq 100); do curl -fsS http://127.0.0.1:8811/health >/dev/null 2>&1 && break || sleep 0.2; done
 curl -fsS http://127.0.0.1:8811/health | grep -q '"service":"octo"' || fail "router not up: $(cat "$TMP/router.log")"
 # Harnesses start after the router: detection happens at start-up (a late router is found by the minute re-probe).
-ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8815 --data-dir "$TMP/h1" --base-url http://127.0.0.1:8811/autoroute >"$TMP/h1.log" 2>&1 & PIDS+=($!)
-ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8816 --data-dir "$TMP/h2" --base-url http://127.0.0.1:8812 >"$TMP/h2.log" 2>&1 & PIDS+=($!)
+HARNESS_DEFAULT_ACCESS=full HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8815 --data-dir "$TMP/h1" --base-url http://127.0.0.1:8811/autoroute >"$TMP/h1.log" 2>&1 & PIDS+=($!)
+HARNESS_DEFAULT_ACCESS=full HARNESS_NO_BUILTIN_PLUGINS=1 ANTHROPIC_API_KEY=mock "$TMP/harness" serve --addr 127.0.0.1:8816 --data-dir "$TMP/h2" --base-url http://127.0.0.1:8812 >"$TMP/h2.log" 2>&1 & PIDS+=($!)
 for url in http://127.0.0.1:8815/health http://127.0.0.1:8816/health; do
   for _ in $(seq 50); do curl -fsS "$url" >/dev/null 2>&1 && break || sleep 0.2; done
 done
@@ -52,6 +63,8 @@ run_turn() { # $1 bridge, $2 project, $3 text -> prints turn status
 }
 
 echo "== config"
+[ "$(command curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8815/v1/config)" = 401 ] || fail "harness 8815 answered /v1/config without the API token"
+[ "$(command curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8815/health)" = 200 ] || fail "harness 8815 /health is not open"
 curl -fsS http://127.0.0.1:8815/v1/config | jget 'd["router"], d["router_capabilities"]' | grep -q "True" || fail "harness 8815 did not detect the router"
 curl -fsS http://127.0.0.1:8816/v1/config | jget 'd["router"]' | grep -q "False" || fail "harness 8816 detected a router at the mock"
 
@@ -75,13 +88,39 @@ P2=$(new_project http://127.0.0.1:8815 ',"budget_usd":0.01')
 n_before=$(curl -fsS "http://127.0.0.1:8815/v1/usage?group=day&project=$P2" | jget 'd["total"]["requests"]')
 res=$(run_turn http://127.0.0.1:8815 "$P2" "build it")
 echo "orchestrator error: $res"
-echo "$res" | grep -Eq '^Project budget reached \(\$[0-9.]+ of \$0\.01\)$' || fail "no budget message"
+echo "$res" | grep -Eq '^This project.s budget is used up \(\$[0-9.]+ of \$0\.01\)\.$' || fail "no budget message"
 sleep 1
 n1=$(curl -fsS "http://127.0.0.1:8815/v1/usage?group=day&project=$P2" | jget 'd["total"]["requests"]')
 sleep 1
 n2=$(curl -fsS "http://127.0.0.1:8815/v1/usage?group=day&project=$P2" | jget 'd["total"]["requests"]')
 [ "$n1" = "$n2" ] || fail "requests kept coming after the turn stopped ($n1 -> $n2)"
 curl -fsS "http://127.0.0.1:8815/v1/projects/$P2" | jget 'd["budget_usd"], d["spent_usd"]'
+
+echo "== (6) tier auto: the router chooses who does the task (integration I2)"
+if curl -fsS http://127.0.0.1:8811/health | grep -q '"route_api"'; then
+  curl -fsS http://127.0.0.1:8815/v1/config | jget 'd["route_api"]' | grep -q True || fail "harness 8815 does not report route_api"
+  P4=$(new_project http://127.0.0.1:8815 "")
+  res=$(run_turn http://127.0.0.1:8815 "$P4" "[auto] find the bug")
+  [ "$res" = ok ] || fail "auto turn error: $res"
+  curl -fsS "http://127.0.0.1:8815/v1/projects/$P4/agents" > "$TMP/agents4.json"
+  RID=$(jget '[a for a in d["agents"] if a["parent_id"]][0]["route_request_id"] or ""' < "$TMP/agents4.json")
+  [ -n "$RID" ] || fail "sub-agent has no route_request_id: $(cat "$TMP/agents4.json")"
+  curl -fsS "http://127.0.0.1:8811/autoroute/v1/calls/$RID" > "$TMP/route-call.json" || fail "no call record for $RID"
+  python3 - "$TMP/agents4.json" "$TMP/route-call.json" <<'PY' || fail "route decision not recorded consistently"
+import json, sys
+a = [x for x in json.load(open(sys.argv[1]))["agents"] if x["parent_id"]][0]
+c = json.load(open(sys.argv[2]))
+assert a["route_choice"] in ("fast", "balanced", "deep"), a["route_choice"]  # no ACP agent is configured here
+assert a["route_reason"], a
+assert a["route_band"] in ("easy", "medium", "hard"), a["route_band"]
+assert c["trigger"] == "route" and c["route"]["choice"] == a["route_choice"], c
+# The mock upstream cannot classify, so the router used its text rule (reason says "classifier not used").
+print("choice:", a["route_choice"], "band:", a["route_band"], "reason:", a["route_reason"])
+print("classifier:", c["route"]["classifier"])
+PY
+else
+  echo "SKIPPED: the router does not advertise route_api (build a router with the route endpoint to run this case)"
+fi
 
 echo "== (5) non-Octo base URL: nothing changes"
 P3=$(new_project http://127.0.0.1:8816 "")

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 )
@@ -15,6 +16,20 @@ type Sink interface {
 	ToolStarted(id, name string)
 	ToolFinished(id string, isError bool)
 	Usage(u Usage)
+}
+
+// ActivitySink is implemented by sinks that publish what the agent is doing
+// now. The loop calls Activity on every transition: "thinking" before each
+// model request, "text" when the answer starts streaming, "tool" when a tool
+// starts (label built from its name and arguments).
+type ActivitySink interface {
+	Activity(kind, label, toolID string)
+}
+
+// ToolInputSink is implemented by sinks that want the arguments of a tool call
+// as it starts (the loop calls ToolInput right after ToolStarted).
+type ToolInputSink interface {
+	ToolInput(id, name string, input json.RawMessage)
 }
 
 // Compactor is implemented by sinks that keep compaction summaries; the loop
@@ -41,6 +56,10 @@ type Usage struct {
 	Trigger       string
 	RequestID     string
 	CostEstimated bool
+	// FlatRate: CostUSD is a flat-rate agent's own estimate, not money spent.
+	FlatRate bool
+	// TokensEstimated: the token counts are the harness's estimate (an ACP agent reported none).
+	TokensEstimated bool
 }
 
 func (u *Usage) add(o Usage) {

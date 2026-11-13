@@ -45,13 +45,16 @@ func WithCallRetryWait(d time.Duration) Option { return func(r *Router) { r.retr
 
 // Router is the detected integration state for one base URL.
 type Router struct {
-	origin    string
-	octoKey   string
-	http      *http.Client
-	reprobe   time.Duration
-	retryWait time.Duration
-	life      context.Context
-	now       func() time.Time
+	origin       string
+	octoKey      string
+	apiKey       string
+	apiKeyFn     func() string
+	http         *http.Client
+	reprobe      time.Duration
+	retryWait    time.Duration
+	routeTimeout time.Duration
+	life         context.Context
+	now          func() time.Time
 
 	mu        sync.Mutex
 	on        bool
@@ -67,7 +70,7 @@ type Router struct {
 // answers; ctx bounds those background probes.
 func New(ctx context.Context, baseURL, octoKey string, opts ...Option) *Router {
 	r := &Router{
-		octoKey: octoKey, http: &http.Client{}, reprobe: reprobeEvery, retryWait: callRetryWait,
+		octoKey: octoKey, http: &http.Client{}, reprobe: reprobeEvery, retryWait: callRetryWait, routeTimeout: DefaultRouteTimeout,
 		life: ctx, now: time.Now, spent: map[string]float64{},
 	}
 	for _, o := range opts {
@@ -161,12 +164,16 @@ func (r *Router) Spent(key string) (float64, bool) {
 	return v, ok
 }
 
-// NoteSpent records the router-reported spend for a budget key.
+// NoteSpent records router-reported spend for a budget key. The highest value
+// seen wins: the router's figure only grows, and two calls that run at once
+// can finish in either order, so the later arrival is not the newer figure.
 func (r *Router) NoteSpent(key string, usd float64) {
 	if r == nil || key == "" {
 		return
 	}
 	r.mu.Lock()
-	r.spent[key] = usd
+	if v, ok := r.spent[key]; !ok || usd > v {
+		r.spent[key] = usd
+	}
 	r.mu.Unlock()
 }

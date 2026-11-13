@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ndolinschi/Octo/apps/harness/internal/activity"
 	"net/http"
 	"slices"
 	"strings"
@@ -46,6 +47,17 @@ type Loop struct {
 	Hints  router.Hints
 	// Gate, when set, is checked before every request; its error stops the loop.
 	Gate func(ctx context.Context) error
+	// Temperature, when set, is sent as the request's temperature (the SDK
+	// version in use has no typed field for it). StopSequences end generation.
+	Temperature   *float64
+	StopSequences []string
+	// Steer, when set, is asked at every tool boundary (after a round of tool
+	// results is stored, before the next model request) for user messages to
+	// inject: each becomes a stored user message of the conversation.
+	Steer func(ctx context.Context) []string
+	// Clear, when set, replaces old tool results with stubs once a request is
+	// past its share of the window, before compaction is considered.
+	Clear *ClearPolicy
 }
 
 // Run continues history (which must end with a user message already persisted
@@ -70,6 +82,7 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 	if l.System != "" {
 		params.System = []anthropic.TextBlockParam{{Text: l.System}}
 	}
+	params.StopSequences = l.StopSequences
 	if !l.NoPromptCaching {
 		markStaticPrefix(&params)
 	}
@@ -85,6 +98,21 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 				return res, err
 			}
 		}
+		if l.Clear != nil {
+			sys, tl := 0, 0
+			if len(params.System) > 0 {
+				sys = len(params.System[0].Text)
+			}
+			if raw, err := json.Marshal(params.Tools); err == nil {
+				tl = len(raw)
+			}
+			var n int
+			if messages, n = l.Clear.Apply(sys, tl, messages); n > 0 {
+				if obs, ok := l.Sink.(ClearObserver); ok {
+					obs.Cleared(n)
+				}
+			}
+		}
 		params.Messages = messages
 		send := params
 		if !l.NoPromptCaching {
@@ -92,6 +120,7 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 			// reach the stored history.
 			send.Messages = withMessageBreakpoint(messages)
 		}
+		l.activity(activity.Thinking, "Thinking", "")
 		resp, routed, err := l.request(ctx, send)
 		if err != nil {
 			return res, err
@@ -137,8 +166,23 @@ func (l *Loop) Run(ctx context.Context, history []anthropic.MessageParam) (Resul
 			return res, err
 		}
 		messages = append(messages, toolUser)
+		if l.Steer != nil {
+			for _, text := range l.Steer(ctx) {
+				steered := anthropic.NewUserMessage(anthropic.NewTextBlock(text))
+				if err := l.Sink.Message(ctx, "user", steered); err != nil {
+					return res, err
+				}
+				messages = append(messages, steered)
+			}
+		}
 	}
 	return res, ErrMaxTurns
+}
+
+func (l *Loop) activity(kind, label, toolID string) {
+	if s, ok := l.Sink.(ActivitySink); ok {
+		s.Activity(kind, label, toolID)
+	}
 }
 
 func (l *Loop) call(ctx context.Context, params anthropic.MessageNewParams, opts []option.RequestOption, httpResp **http.Response) (anthropic.Message, error) {
@@ -161,10 +205,15 @@ func (l *Loop) streamMessage(ctx context.Context, params anthropic.MessageNewPar
 		return readJSONMessage((*httpResp).Body)
 	}
 	var message anthropic.Message
+	wrote := false
 	for stream.Next() {
 		event := stream.Current()
 		if e, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 			if delta, ok := e.Delta.AsAny().(anthropic.TextDelta); ok && delta.Text != "" {
+				if !wrote {
+					wrote = true
+					l.activity(activity.Text, "Writing", "")
+				}
 				l.Sink.TextDelta(delta.Text)
 			}
 		}
@@ -182,6 +231,10 @@ func (l *Loop) runTools(ctx context.Context, uses []anthropic.ToolUseBlock) ([]a
 	for i, tu := range uses {
 		g.Go(func() error {
 			l.Sink.ToolStarted(tu.ID, tu.Name)
+			l.activity(activity.Tool, activity.ForTool(tu.Name, tu.Input), tu.ID)
+			if s, ok := l.Sink.(ToolInputSink); ok {
+				s.ToolInput(tu.ID, tu.Name, tu.Input)
+			}
 			block, isError, err := dispatchTool(tools.WithToolUseID(gctx, tu.ID), l.Registry, tu, l.Limits)
 			if err != nil {
 				return err

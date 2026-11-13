@@ -8,6 +8,10 @@ const rootDir = fileURLToPath(new URL(".", import.meta.url));
 // @ts-expect-error set by Tauri during mobile dev
 const host = process.env.TAURI_DEV_HOST as string | undefined;
 
+// `scripts/dev.sh` moves the dev server when 1420 is busy; `tauri dev` always uses the default (its devUrl).
+// @ts-expect-error node globals are not typed in this project
+const uiPort = Number(process.env.OCTO_DEV_UI_PORT) || 1420;
+
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -18,7 +22,7 @@ export default defineConfig(() => ({
   },
   clearScreen: false,
   server: {
-    port: 1420,
+    port: uiPort,
     strictPort: true,
     host: host || false,
     hmr: host

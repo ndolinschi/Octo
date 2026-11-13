@@ -1,14 +1,15 @@
 import type * as Monaco from "monaco-editor";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FilePosition } from "../../lib/files";
 import type { OpenFile } from "../../state/code";
-import { useDelayedLoading, useLatest } from "../../lib/hooks";
-import { Spinner } from "../primitives/Status";
+import { useLatest } from "../../lib/hooks";
+import { EditorSkeleton } from "./EditorSkeleton";
 import type { EditorBuffers, MonacoApi } from "../../lib/buffers";
 import { errorMessage } from "../../lib/format";
 import { type FileKey } from "../../lib/files";
 
 type MonacoModule = typeof import("./monaco");
+const InlineCompletion = lazy(() => import("./editor/completion/InlineCompletion"));
 
 let pending: Promise<MonacoModule> | null = null;
 
@@ -53,11 +54,11 @@ function reveal(editor: Monaco.editor.IStandaloneCodeEditor, at: FilePosition | 
 const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 
 /**
- * Thin Monaco wrapper: one editor instance per File tab, showing that file's model (kept in
- * `buffers` so edits outlive this component); view state is saved on unmount and restored.
+ * Thin Monaco wrapper: one editor instance per file view (it outlives every file the view shows; decision 85), swapping
+ * the file's model in (kept in `buffers` so edits outlive this component); view state is saved on a swap and on unmount and restored.
  */
 export function CodeEditor(props: {
-  file: OpenFile;
+  file: OpenFile | null;
   buffers: EditorBuffers;
   theme: "dark" | "light";
   /** Room below the last line (8, or the floating composer's height + 16 so the last line stays reachable). */
@@ -71,7 +72,6 @@ export function CodeEditor(props: {
   const host = useRef<HTMLDivElement>(null);
   const [mod, setMod] = useState<MonacoModule | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const loadingShown = useDelayedLoading(!mod && !failed);
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const shownKey = useRef<FileKey | null>(null);
   const onSave = useLatest(props.onSave);
@@ -186,10 +186,11 @@ export function CodeEditor(props: {
     return () => sub.dispose();
   }, [editor, props.bottomPadding]);
 
-  // Show the active file's model, saving the previous tab's view state.
-  useEffect(() => {
+  // Show the active file's model, saving the previous file's view state. A layout effect: the swap lands in the same frame
+  // as the commit that removes the cover, so the old file's text is never painted for the new one (decision 85).
+  useLayoutEffect(() => {
     const editor = editorRef.current;
-    if (!mod || !editor || file.status !== "ready") return;
+    if (!mod || !editor || file?.status !== "ready") return;
     if (shownKey.current === file.key && editor.getModel()) return;
     if (shownKey.current && shownKey.current !== file.key) buffers.saveView(shownKey.current, editor.saveViewState());
     const model = buffers.ensure(file.key, file.folder, file.path, file.content);
@@ -198,16 +199,16 @@ export function CodeEditor(props: {
     if (view) editor.restoreViewState(view);
     shownKey.current = file.key;
     reveal(editor, buffers.takeReveal(file.key));
-  }, [mod, buffers, file.key, file.folder, file.path, file.content, file.status]);
+  }, [mod, buffers, file, editor]);
 
   // A link, a comment or a definition asked for a position in this file.
   useEffect(
     () =>
       buffers.onReveal((key) => {
         const editor = editorRef.current;
-        if (key === file.key && editor && shownKey.current === key && editor.getModel()) reveal(editor, buffers.takeReveal(key));
+        if (key === file?.key && editor && shownKey.current === key && editor.getModel()) reveal(editor, buffers.takeReveal(key));
       }),
-    [buffers, file.key],
+    [buffers, file],
   );
 
   if (failed) {
@@ -219,15 +220,16 @@ export function CodeEditor(props: {
   }
 
   return (
-    <div className="relative h-full min-h-0">
-      {loadingShown && (
-        <div className="absolute inset-0 z-10 flex items-start gap-2 bg-panel px-3 pt-3 text-sm text-fg-3">
-          <Spinner />
-          Loading editor…
-        </div>
+    <div className="relative h-full min-h-0 min-w-0 overflow-clip">
+      {/* Decision 60: grey lines in the editor's own box until Monaco is in, shown at once (no empty frame, no late spinner). */}
+      {!editor && !failed && <EditorSkeleton />}
+      <div ref={host} className="h-full min-h-0 min-w-0" data-testid="code-editor" />
+      {mod && editor && file && <mod.EditorComments editor={editor} monaco={mod.monaco} buffers={buffers} folder={file.folder} path={file.path} />}
+      {mod && editor && file && (
+        <Suspense fallback={null}>
+          <InlineCompletion editor={editor} monaco={mod.monaco} fileKey={file.key} folder={file.folder} path={file.path} />
+        </Suspense>
       )}
-      <div ref={host} className="h-full min-h-0" data-testid="code-editor" />
-      {mod && editor && <mod.EditorComments editor={editor} monaco={mod.monaco} buffers={buffers} folder={file.folder} path={file.path} />}
     </div>
   );
 }

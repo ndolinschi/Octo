@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Ladder maps router tiers to the slugs the fake serves.
@@ -52,8 +53,23 @@ type Options struct {
 	// IgnoreBudget makes the fake accept requests over budget (the harness's own
 	// checks are then the only ones in play).
 	IgnoreBudget bool
+	// ClassifierUSD is charged to the budget key's spend, on top of the call's own
+	// cost, for every request the classifier decided (not a hint): the real router
+	// counts its classify cost in spend, and the call record does not show it.
+	ClassifierUSD float64
+	// NoSpentAfter leaves spent_after_usd out of the call records, as a router
+	// older than the post-call figure does. The default mirrors the real router:
+	// every call charged to a budget key carries the key's spend once the call
+	// was charged, classifier cost included.
+	NoSpentAfter bool
+	// DelayFor holds a request before it is answered, after its spend header was
+	// fixed (a way to make calls overlap and finish out of order).
+	DelayFor func(*http.Request) time.Duration
 	// CostSource is the call record's cost_source (default "reported").
 	CostSource string
+	// Route scripts the I2 route endpoint (POST /autoroute/v1/route). When set
+	// and Capabilities is nil, route_api is announced too.
+	Route *RouteScript
 }
 
 // Request is what the fake saw and decided for one Messages request.
@@ -86,19 +102,24 @@ type Router struct {
 	spent     map[string]float64
 	records   map[string]*record
 	compacted map[string]bool
+	route     *RouteScript
+	routeSeen []RouteSeen
 }
 
 // New puts a fake router in front of upstream.
 func New(upstream http.Handler, opts Options) *Router {
 	if opts.Capabilities == nil {
 		opts.Capabilities = []string{"autoroute", "route_hints", "result_headers", "budget_key"}
+		if opts.Route != nil {
+			opts.Capabilities = append(opts.Capabilities, "route_api")
+		}
 	}
 	if opts.CostSource == "" {
 		opts.CostSource = "reported"
 	}
 	return &Router{
 		up: upstream, opts: opts, spent: map[string]float64{},
-		records: map[string]*record{}, compacted: map[string]bool{},
+		records: map[string]*record{}, compacted: map[string]bool{}, route: opts.Route,
 	}
 }
 
@@ -116,6 +137,13 @@ func (r *Router) UpstreamCalls() int {
 	return r.upstream
 }
 
+// SetSpent sets the spend the router reports for a budget key (tests).
+func (r *Router) SetSpent(key string, usd float64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.spent[key] = usd
+}
+
 // Spent is the fake's own spend for a budget key.
 func (r *Router) Spent(key string) float64 {
 	r.mu.Lock()
@@ -129,6 +157,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"service": "octo", "capabilities": r.opts.Capabilities})
 	case req.Method == http.MethodGet && len(req.URL.Path) > len("/autoroute/v1/calls/") && req.URL.Path[:len("/autoroute/v1/calls/")] == "/autoroute/v1/calls/":
 		r.callRecord(w, req.URL.Path[len("/autoroute/v1/calls/"):])
+	case req.Method == http.MethodPost && req.URL.Path == "/autoroute/v1/route":
+		r.routeEndpoint(w, req)
 	case req.Method == http.MethodPost && req.URL.Path == "/v1/messages":
 		r.messages(w, req)
 	default:
@@ -190,6 +220,9 @@ func (r *Router) messages(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if r.opts.DelayFor != nil {
+		time.Sleep(r.opts.DelayFor(req))
+	}
 	session := key + "|" + body.Metadata.UserID
 	if r.shouldCompact(session, len(body.Messages)) {
 		entry.Trigger = "compact"

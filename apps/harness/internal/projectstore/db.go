@@ -3,6 +3,7 @@ package projectstore
 import (
 	"context"
 	"database/sql"
+	"sync/atomic"
 )
 
 const projectSchema = `
@@ -15,7 +16,10 @@ CREATE TABLE IF NOT EXISTS project (
 	max_depth INTEGER NOT NULL,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL,
-	budget_usd REAL
+	budget_usd REAL,
+	access TEXT NOT NULL DEFAULT 'full',
+	queue_paused INTEGER NOT NULL DEFAULT 0,
+	memory_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS folders (
 	id TEXT PRIMARY KEY,
@@ -76,7 +80,8 @@ CREATE TABLE IF NOT EXISTS usage (
 	route_trigger TEXT,
 	router_request_id TEXT,
 	cost_estimated INTEGER NOT NULL DEFAULT 0,
-	role TEXT
+	role TEXT,
+	flat_rate INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS usage_created ON usage (created_at);
 CREATE TABLE IF NOT EXISTS compactions (
@@ -101,22 +106,109 @@ CREATE TABLE IF NOT EXISTS side_messages (
 	role TEXT NOT NULL,
 	content TEXT NOT NULL,
 	created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS blobs (
+	hash TEXT PRIMARY KEY,
+	content BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS changes (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	turn_id INTEGER NOT NULL,
+	agent_id TEXT NOT NULL,
+	folder TEXT NOT NULL,
+	path TEXT NOT NULL,
+	before_hash TEXT,
+	after_hash TEXT,
+	added INTEGER,
+	removed INTEGER,
+	created_at TEXT NOT NULL,
+	kind TEXT NOT NULL DEFAULT 'modified',
+	note TEXT NOT NULL DEFAULT '',
+	source TEXT NOT NULL DEFAULT '',
+	tool_use_id TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS changes_turn ON changes (turn_id, id);
+CREATE TABLE IF NOT EXISTS tasks (
+	id TEXT PRIMARY KEY,
+	title TEXT NOT NULL,
+	status TEXT NOT NULL,
+	goal TEXT NOT NULL DEFAULT '',
+	goal_by TEXT NOT NULL DEFAULT 'harness',
+	auto INTEGER NOT NULL DEFAULT 1,
+	data_json TEXT NOT NULL DEFAULT '{}',
+	outcome TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS memory_files (
+	path TEXT PRIMARY KEY,
+	summary TEXT NOT NULL,
+	content TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS search_docs (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	kind TEXT NOT NULL,
+	ref TEXT NOT NULL,
+	title TEXT NOT NULL,
+	body TEXT NOT NULL,
+	date TEXT NOT NULL,
+	superseded INTEGER NOT NULL DEFAULT 0,
+	message_id INTEGER NOT NULL DEFAULT 0,
+	task_id TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS search_docs_ref ON search_docs (kind, ref);
+CREATE VIRTUAL TABLE IF NOT EXISTS search_u USING fts5(title, body, tokenize = 'unicode61 remove_diacritics 2');
+CREATE VIRTUAL TABLE IF NOT EXISTS search_t USING fts5(title, body, tokenize = 'trigram');
+-- Schema 5: the same documents as stems (Russian Snowball, ё folded to е), searched with stemmed queries.
+CREATE VIRTUAL TABLE IF NOT EXISTS search_s USING fts5(title, body, tokenize = 'unicode61');
+CREATE TABLE IF NOT EXISTS context_receipts (
+	turn_id INTEGER PRIMARY KEY,
+	mode TEXT NOT NULL,
+	receipt_json TEXT NOT NULL,
+	created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS queue (
+	id TEXT PRIMARY KEY,
+	seq INTEGER NOT NULL,
+	text TEXT NOT NULL,
+	created_at TEXT NOT NULL
 );`
 
 // DB is one project's database. All methods are safe for concurrent use.
 type DB struct {
 	id  string
 	sql *sql.DB
+	// dir is the project's data directory (project.sqlite and its files).
+	dir string
+	// redact, when set, scrubs secret values from text before it is indexed.
+	redact atomic.Pointer[func(string) string]
 }
+
+// SetRedactor sets the function that removes secret values from text before it
+// is written to the search index.
+func (d *DB) SetRedactor(f func(string) string) { d.redact.Store(&f) }
+
+func (d *DB) scrub(s string) string {
+	if f := d.redact.Load(); f != nil && *f != nil {
+		return (*f)(s)
+	}
+	return s
+}
+
+// Dir is the project's data directory.
+func (d *DB) Dir() string { return d.dir }
 
 func (d *DB) ID() string { return d.id }
 
 func (d *DB) init(ctx context.Context, in NewProject) error {
 	now := Now()
 	_, err := d.sql.ExecContext(ctx,
-		`INSERT INTO project (id, name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd)
-		 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		in.Name, in.Description, in.Instructions, in.ModelsJSON, in.MaxDepth, now, now, in.BudgetUSD)
+		`INSERT INTO project (id, name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd, access, memory_json, network, network_private, mode)
+		 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		in.Name, in.Description, in.Instructions, in.ModelsJSON, in.MaxDepth, now, now, in.BudgetUSD, orFull(in.Access), orEmptyJSON(in.MemoryJSON),
+		orNetworkOff(in.Network), in.NetworkPrivate, orAgentMode(in.Mode))
 	if err != nil {
 		return err
 	}
@@ -131,8 +223,8 @@ func (d *DB) Info(ctx context.Context) (Project, error) {
 	p := Project{ID: d.id}
 	var budget sql.NullFloat64
 	err := d.sql.QueryRowContext(ctx,
-		`SELECT name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd FROM project WHERE id = 1`,
-	).Scan(&p.Name, &p.Description, &p.Instructions, &p.ModelsJSON, &p.MaxDepth, &p.CreatedAt, &p.UpdatedAt, &budget)
+		`SELECT name, description, instructions, models_json, max_depth, created_at, updated_at, budget_usd, access, memory_json, network, network_private, mode FROM project WHERE id = 1`,
+	).Scan(&p.Name, &p.Description, &p.Instructions, &p.ModelsJSON, &p.MaxDepth, &p.CreatedAt, &p.UpdatedAt, &budget, &p.Access, &p.MemoryJSON, &p.Network, &p.NetworkPrivate, &p.Mode)
 	if err == sql.ErrNoRows {
 		return p, ErrNotFound
 	}
@@ -157,6 +249,13 @@ func (d *DB) UpdateInfo(ctx context.Context, patch InfoPatch) error {
 			v = *patch.BudgetUSD
 		}
 		set.add("budget_usd", v)
+	}
+	set.str("access", patch.Access)
+	set.str("memory_json", patch.MemoryJSON)
+	set.str("network", patch.Network)
+	set.str("mode", patch.Mode)
+	if patch.NetworkPrivate != nil {
+		set.add("network_private", *patch.NetworkPrivate)
 	}
 	set.add("updated_at", Now())
 	return set.exec(ctx, d.sql, "project", "id = 1")

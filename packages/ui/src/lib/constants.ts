@@ -14,23 +14,27 @@ export const DRAWER_QUERY = `(max-width: ${DRAWER_BELOW - 1}px)`;
 
 /* ---------- layout sizes (px unless noted) ---------- */
 
-/** Narrowest a dock group may get; below the sum of these the dock shows one strip. */
+/**
+ * Width floors of a dock group (decision 67). The conversation is never narrower than `CHAT_MIN_WIDTH`, lists (Agents,
+ * Changes, Details, Review...) than `MIN_GROUP`, editors (a file) than `EDITOR_MIN_GROUP`. `state/workspace/floors.ts` picks
+ * the floor of a group from its tabs; below the sum of the floors the dock shows one strip.
+ */
 export const MIN_GROUP = 280;
+export const EDITOR_MIN_GROUP = 360;
+export const CHAT_MIN_WIDTH = 420;
 /** Gap between groups = the window gutter (also the divider's hit area). */
 export const GROUP_GAP = 8;
 /** Width a newly opened side group takes for a tool (Agents, Notes, Details). */
 export const TOOL_WIDTH = 360;
+/** The conversation's width when the first side group opens, until the user drags the divider (decision 60; owner: "chat too narrow"). */
+export const CHAT_SPLIT_DEFAULT = 520;
 /** A group holding a file or the Files tool is widened to at least this fraction of the row. */
 export const FILE_GROUP_MIN_FRACTION = 0.45;
 /** Largest fraction of the row a new tool group takes, and the fraction used before the row has been measured. */
 export const TOOL_GROUP_MAX_FRACTION = 0.5;
 export const TOOL_GROUP_UNMEASURED_FRACTION = 0.3;
-/** A file view narrower than this floats its tree over the editor instead of giving it a column. */
-export const FILE_VIEW_OVERLAY_BELOW = 560;
-/** A tree column that would leave the editor narrower than this floats over it instead (closed by default). */
-export const EDITOR_MIN_WIDTH = 480;
-/** Below this width a group folds its header tools into one `…` menu, so its tabs stay visible. */
-export const STRIP_TOOLS_FOLD_BELOW = 420;
+/** Below this conversation width the composer's context bar folds folders and routing into a `…` menu (decision 30). */
+export const CONTEXT_BAR_FOLD_BELOW = 420;
 
 /* ---------- timings (ms) ---------- */
 

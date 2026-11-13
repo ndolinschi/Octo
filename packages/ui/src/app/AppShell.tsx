@@ -1,24 +1,27 @@
+import { warmBridgeClient, type ProjectSummary } from "@octo/agent-client";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { cn } from "../lib/cn";
 import { useEscape, useMediaQuery } from "../lib/hooks";
 import { focusSoon, visibleComposer } from "../lib/focus";
-import { navigate, useGuardedRoute } from "../lib/route";
+import { navigate, settingsHref, useGuardedRoute, useSettingsSection } from "../lib/route";
+import { useProviders } from "../lib/providers/useProviders";
+import { startupOpensLast, useStoredMotion } from "../components/settings/prefs";
 import { useUnseen } from "../lib/seen";
 import { useApp } from "../state/app";
+import { useHost } from "../state/host";
 import { NavProvider, useNav } from "../state/nav";
 import { ProjectProvider } from "../state/project";
 import { RequestsProvider } from "../state/requests";
 import { ShellContext } from "../state/shell";
-import { Button } from "../components/primitives/Button";
-import { Dialog } from "../components/primitives/Dialog";
 import { Presence, usePresence } from "../components/primitives/Presence";
-import { NoProjectsHero } from "../components/project/NoProjectsHero";
 import type { PaletteAction } from "../components/shell/CommandPalette";
-import { OfflineState } from "../components/shell/OfflineState";
 import { Panel } from "../components/shell/Panel";
-import type { SettingsView } from "../components/shell/SettingsDialog";
 import { Sidebar } from "../components/shell/Sidebar";
-import { PanelBar } from "../components/shell/SidebarToggle";
+import { TitleBar } from "../components/shell/TitleBar";
+import { StatusBar } from "../components/status/StatusBar";
+import { StatusSlotsContext } from "../state/statusSlots";
 import { ProjectWorkspace } from "./ProjectWorkspace";
+import { warmDrag } from "../components/dock/drag";
 import { ActivityProvider } from "../state/activity";
 import { DRAWER_QUERY } from "../lib/constants";
 
@@ -26,13 +29,25 @@ import { DRAWER_QUERY } from "../lib/constants";
 /** The palette loads after the first paint (idle) or on first use, whichever comes first (its own chunk). */
 const loadPalette = () => import("../components/shell/CommandPalette");
 const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
+/** Demo-only `#/p/<id>/memory` (the Memory view on its own); not in a normal start's chunks. */
+const MemoryRoute = lazy(() => import("./MemoryRoute").then((m) => ({ default: m.MemoryRoute })));
+/** States the app is rarely in: their own chunks (bundle budget). */
+const NoProjectsHero = lazy(() => import("../components/project/NoProjectsHero").then((m) => ({ default: m.NoProjectsHero })));
+const OfflineState = lazy(() => import("../components/shell/OfflineState").then((m) => ({ default: m.OfflineState })));
 const Home = lazy(() => import("../components/home/Home").then((m) => ({ default: m.Home })));
-/** The project and settings dialogs load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
-const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/shell/SettingsDialog")]);
+/** The project dialog and the settings page load on first use, warmed with the palette (their own chunks; v6.3 bundle). */
+const loadDialogs = () => Promise.all([import("../components/project/ProjectDialog"), import("../components/settings/SettingsPage")]);
 const ProjectDialog = lazy(() => import("../components/project/ProjectDialog").then((m) => ({ default: m.ProjectDialog })));
-const SettingsDialog = lazy(() => import("../components/shell/SettingsDialog").then((m) => ({ default: m.SettingsDialog })));
+const SettingsPage = lazy(() => import("../components/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+/** Decision 53: the connect sheet and the no-provider screen (their own chunks). */
+const ConnectSheet = lazy(() => import("../components/providers/ConnectSheet").then((m) => ({ default: m.ConnectSheet })));
+const ConnectScreen = lazy(() => import("../components/providers/ConnectScreen").then((m) => ({ default: m.ConnectScreen })));
 
 /** Below this width the sidebar becomes an overlay drawer, closed by default. */
+
+/** Dialogs that only open on a conflict (unsaved edits): their own chunk with `Dialog`, warmed after the first paint. */
+const LeaveDialog = lazy(() => import("../components/shell/DiscardDialogs").then((m) => ({ default: m.LeaveDialog })));
+const SidebarSessions = lazy(() => import("../components/sessions/SidebarSessions").then((m) => ({ default: m.SidebarSessions })));
 
 export function AppShell() {
   return (
@@ -47,7 +62,8 @@ export function AppShell() {
 }
 
 function Shell() {
-  const { health, projects, bridge, refreshProjects } = useApp();
+  const { health, projects, bridge, refreshProjects, demo } = useApp();
+  const host = useHost();
   const nav = useNav();
   // Leaving a project with unsaved editor changes asks first.
   const { route, pending, proceed, stay } = useGuardedRoute(
@@ -57,9 +73,30 @@ function Shell() {
   const [inlineOpen, setInlineOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [settings, setSettings] = useState<SettingsView | null>(null);
+  // Decision 59: Settings is a page at `#/settings/<section>`; "Back" returns to the hash it was opened from.
+  const settings = useSettingsSection();
+  const beforeSettings = useRef("#/");
+  // The project open in the app, kept while Settings is on screen (its route has no project): Models opens its project tab on it.
+  const [openProject, setOpenProject] = useState<string | null>(route.projectId);
+  if (settings === null && openProject !== route.projectId) setOpenProject(route.projectId);
+  useEffect(() => {
+    if (settings === null) beforeSettings.current = window.location.hash || "#/";
+  }, [settings, route]);
+  const [connectTarget, setConnectTarget] = useState<string | null>(null);
+  const [useAnyway, setUseAnyway] = useState<(() => void) | null>(null);
+  const openConnect = (id: string, anyway?: () => void) => {
+    setUseAnyway(() => anyway ?? null);
+    setConnectTarget(id);
+  };
+  // Decision 53 b: nothing connected → the connect screen instead of Home and the project form.
+  const providers = useProviders(bridge, health === "online");
+  const noProvider = providers.status === "ready" && providers.list.connected === 0;
+  useStoredMotion();
   const [palette, setPalette] = useState(false);
   const drawerOpener = useRef<HTMLElement | null>(null);
+  // The two ends of the status bar that the open project fills (see `ProjectStatus`).
+  const [statusStart, setStatusStart] = useState<HTMLElement | null>(null);
+  const [statusEnd, setStatusEnd] = useState<HTMLElement | null>(null);
   const sidebarOpen = drawerMode ? drawerOpen : inlineOpen;
 
   const known = projects?.some((p) => p.id === route.projectId) ?? false;
@@ -69,7 +106,8 @@ function Shell() {
 
   // Opening the app (no route) shows the most recently active project, as before; `#/` is Home and stays
   // (decision 22); an unknown project id falls back to the first project.
-  const opened = useRef(window.location.hash === "" || window.location.hash === "#");
+  // Settings → General → "On startup: Home" keeps Home instead.
+  const opened = useRef((window.location.hash === "" || window.location.hash === "#") && startupOpensLast());
   useEffect(() => {
     if (health !== "online" || projects === null) return;
     const atHome = route.projectId === null && !opened.current;
@@ -79,7 +117,29 @@ function Shell() {
 
   // The drawer closes on navigation and whenever the window grows out of drawer mode.
   useEffect(() => setDrawerOpen(false), [route.projectId, route.agentId, drawerMode]);
-  useEscape(drawerMode && drawerOpen && !palette && settings === null, () => setDrawerOpen(false));
+  useEscape(drawerMode && drawerOpen && !palette, () => setDrawerOpen(false));
+
+  // The first assistant message must not flash as plain text before Markdown arrives: fetch that chunk right after first
+  // paint (idle callback; WebKit has none, so a short timer), still outside the initial bundle.
+  useEffect(() => {
+    const warm = () => {
+      warmBridgeClient();
+      warmDrag();
+      void import("../components/shared/Markdown").catch(() => undefined);
+      void import("../components/chat/ToolGroup").catch(() => undefined);
+      void import("../components/chat/DelegationGroup").catch(() => undefined);
+      void import("../components/chat/TurnBanner").catch(() => undefined);
+      void import("../components/shell/DiscardDialogs").catch(() => undefined);
+      void import("../components/primitives/Menu").catch(() => undefined);
+      void import("../components/chat/ComposerPills").catch(() => undefined);
+    };
+    if (Reflect.has(window, "requestIdleCallback")) {
+      const id = window.requestIdleCallback(warm, { timeout: 500 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(warm, 50);
+    return () => window.clearTimeout(id);
+  }, []);
 
   // Warm the palette's chunk once the app is idle, so Ctrl/Cmd+K opens it without a wait.
   useEffect(() => {
@@ -87,6 +147,12 @@ function Shell() {
     const id = window.setTimeout(() => {
       void loadPalette().catch(() => undefined);
       void loadDialogs().catch(() => undefined);
+      // The chunks the first minutes most likely need (v6.3 part 2 moved them out of the initial bundle): warmed, so a
+      // file, the "+" picker or the model picker opens without a wait. A failure is retried by the first real open.
+      void import("../components/files/FileView").catch(() => undefined);
+      void import("../components/dock/TabPicker").catch(() => undefined);
+      void import("../components/shared/ModelPickerPanel").catch(() => undefined);
+      void import("../components/chat/RoutingLine").catch(() => undefined);
     }, 1500);
     return () => window.clearTimeout(id);
   }, []);
@@ -121,11 +187,12 @@ function Shell() {
   };
   const newProject = () => {
     setDrawerOpen(false);
-    setCreating(true);
+    if (noProvider) navigate(null);
+    else setCreating(true);
   };
-  const openSettings = (view: SettingsView = "general") => {
+  const openSettings = (section = "general") => {
     setDrawerOpen(false);
-    setSettings(view);
+    window.location.hash = settingsHref(section);
   };
   const openPalette = () => {
     setDrawerOpen(false);
@@ -134,19 +201,28 @@ function Shell() {
 
   const workspace = health !== "offline" && known && route.projectId !== null;
   let main: React.ReactNode = null;
-  if (health === "offline") main = <OfflineState />;
-  else if (projects && projects.length === 0) main = <NoProjectsHero onCreate={newProject} />;
+  if (health === "offline")
+    main = (
+      <Suspense fallback={null}>
+        <OfflineState />
+      </Suspense>
+    );
+  else if (noProvider && route.projectId === null)
+    main = (
+      <Suspense fallback={null}>
+        <ConnectScreen />
+      </Suspense>
+    );
+  else if (projects && projects.length === 0)
+    main = (
+      <Suspense fallback={null}>
+        <NoProjectsHero onCreate={newProject} />
+      </Suspense>
+    );
   else if (route.projectId === null && projects)
     main = (
       <Suspense fallback={null}>
-        <Home
-          onNewProject={newProject}
-          onSearch={openPalette}
-          onUsage={(projectId) => {
-            nav.requestTool({ projectId, tool: "usage", scope: "all" });
-            navigate(projectId);
-          }}
-        />
+        <Home unseen={unseen} onNewProject={newProject} onSearch={openPalette} />
       </Suspense>
     );
 
@@ -157,102 +233,124 @@ function Shell() {
     unseen,
     onNewProject: newProject,
     onSearch: openPalette,
+    onReview: () => {
+      setDrawerOpen(false);
+      nav.workspace()?.openTool("review");
+    },
     onSettings: () => openSettings(),
     // Picking a project closes the drawer even when it is the one already open (the route does not change then).
     onPick: () => setDrawerOpen(false),
+    // A project with several sessions expands to its recent ones (lazy chunk: the row costs nothing until the list loads).
+    projectExtra: (p: ProjectSummary, active: boolean) => (
+      <Suspense fallback={null}>
+        <SidebarSessions projectId={p.id} updatedAt={p.updated_at} active={active} onPick={() => setDrawerOpen(false)} />
+      </Suspense>
+    ),
   };
 
   const actions: PaletteAction[] = [
     { id: "home", label: "Go to Home", run: () => navigate(null) },
     { id: "new", label: "New project", run: newProject },
     { id: "settings", label: "Open settings", run: () => openSettings() },
-    { id: "integrations", label: "Open integrations", run: () => openSettings("integrations") },
+    { id: "integrations", label: "Open integrations", run: () => openSettings("editor") },
+    { id: "providers", label: "Connect a provider", run: () => openSettings("providers") },
     { id: "sidebar", label: "Toggle sidebar", run: toggleSidebar },
   ];
 
   return (
-    <ShellContext.Provider value={{ sidebarOpen, toggleSidebar }}>
-      <div className="flex h-full overflow-hidden bg-window text-fg">
-        {!drawerMode && inlineOpen && <Sidebar {...sidebarProps} onToggle={toggleSidebar} />}
-        {/* Equal gutters on every side of every panel (the sidebar card included); full-bleed on phones. */}
-        <div className="relative flex min-w-0 flex-1 flex-col p-gutter max-sm:p-0" inert={drawerShown}>
-          {workspace && route.projectId ? (
-            <ProjectProvider key={route.projectId} projectId={route.projectId}>
-              <ProjectWorkspace agentId={route.agentId} />
-            </ProjectProvider>
-          ) : (
-            <Panel className="flex-1">
-              <PanelBar />
-              <div className="min-h-0 flex-1">{main}</div>
-            </Panel>
+    <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect }}>
+      <StatusSlotsContext.Provider value={{ start: statusStart, end: statusEnd }}>
+        <div className="relative flex h-full flex-col overflow-clip bg-window text-fg">
+          {/* Decision 67: the top row is the window's, 40px across it: the controls float over its left corner and, with a project
+            open, the tab strips of the dock groups are the row. Home and Settings have the bare row (and Settings its title). */}
+          <TitleBar {...(settings !== null ? { title: "Settings" } : {})} />
+          {settings !== null && (
+            <div className="min-h-0 flex-1 pt-bar">
+              <Suspense fallback={null}>
+                <SettingsPage
+                  section={settings}
+                  onBack={() => (window.location.hash = beforeSettings.current)}
+                  connect={setConnectTarget}
+                  restart={host.restart}
+                  projectId={openProject}
+                />
+              </Suspense>
+            </div>
           )}
+          <div className="flex min-h-0 flex-1" hidden={settings !== null}>
+            {!drawerMode && inlineOpen && (
+              <div className="flex h-full shrink-0 pt-bar">
+                <Sidebar {...sidebarProps} />
+              </div>
+            )}
+            {/* Equal gutters on the other sides of every panel (the sidebar card included); the row above is the top one. Full-bleed on phones. */}
+            <div
+              className={cn("relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0", !(workspace && route.projectId) && "pt-bar")}
+              inert={drawerShown}
+            >
+              {workspace && route.projectId ? (
+                <ProjectProvider key={route.projectId} projectId={route.projectId}>
+                  {demo && window.location.hash.endsWith("/memory") ? (
+                    <Suspense fallback={null}>
+                      <MemoryRoute />
+                    </Suspense>
+                  ) : (
+                    <ProjectWorkspace agentId={route.agentId} />
+                  )}
+                </ProjectProvider>
+              ) : (
+                <Panel className="flex-1">
+                  <div className="min-h-0 flex-1">{main}</div>
+                </Panel>
+              )}
+            </div>
+          </div>
+          <StatusBar home={route.projectId === null && settings === null} startRef={setStatusStart} endRef={setStatusEnd} />
+          <Presence show={drawerShown}>
+            <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
+              <Sidebar {...sidebarProps} />
+            </SidebarDrawer>
+          </Presence>
+          <Presence show={creating}>
+            <Suspense fallback={null}>
+              <ProjectDialog
+                onClose={() => setCreating(false)}
+                onSubmit={async (input) => {
+                  const project = await bridge.createProject(input);
+                  await refreshProjects();
+                  setCreating(false);
+                  navigate(project.id);
+                  // The new project's composer takes focus once the dialog is gone and the project is in.
+                  focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
+                }}
+              />
+            </Suspense>
+          </Presence>
+          <Presence show={connectTarget !== null}>
+            <Suspense fallback={null}>
+              <ConnectSheet target={connectTarget ?? ""} onUseAnyway={useAnyway} onClose={() => setConnectTarget(null)} />
+            </Suspense>
+          </Presence>
+          <Presence show={palette}>
+            <Suspense fallback={null}>
+              <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
+            </Suspense>
+          </Presence>
+          <Presence show={pending}>
+            <Suspense fallback={null}>
+              <LeaveDialog
+                count={nav.unsavedCount()}
+                onStay={() => {
+                  nav.clearPendingTurn();
+                  stay();
+                }}
+                onLeave={proceed}
+              />
+            </Suspense>
+          </Presence>
         </div>
-        <Presence show={drawerShown}>
-          <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
-            <Sidebar {...sidebarProps} onToggle={() => setDrawerOpen(false)} />
-          </SidebarDrawer>
-        </Presence>
-        <Presence show={creating}>
-          <Suspense fallback={null}>
-            <ProjectDialog
-              onClose={() => setCreating(false)}
-              onSubmit={async (input) => {
-                const project = await bridge.createProject(input);
-                await refreshProjects();
-                setCreating(false);
-                navigate(project.id);
-                // The new project's composer takes focus once the dialog is gone and the project is in.
-                focusSoon(() => document.getElementById("octo-composer"), { delay: 160, timeout: 3000 });
-              }}
-            />
-          </Suspense>
-        </Presence>
-        <Presence show={settings !== null}>
-          <Suspense fallback={null}>
-            <SettingsDialog initialView={settings ?? "general"} onClose={() => setSettings(null)} />
-          </Suspense>
-        </Presence>
-        <Presence show={palette}>
-          <Suspense fallback={null}>
-            <CommandPalette openProjectId={known ? route.projectId : null} actions={actions} onClose={() => setPalette(false)} />
-          </Suspense>
-        </Presence>
-        <Presence show={pending}>
-          <LeaveDialog
-            count={nav.unsavedCount()}
-            onStay={() => {
-              nav.clearPendingTurn();
-              stay();
-            }}
-            onLeave={proceed}
-          />
-        </Presence>
-      </div>
+      </StatusSlotsContext.Provider>
     </ShellContext.Provider>
-  );
-}
-
-function LeaveDialog(props: { count: number; onStay(): void; onLeave(): void }) {
-  const files = props.count === 1 ? "1\u00a0file has" : `${props.count}\u00a0files have`;
-  return (
-    <Dialog
-      width="sm"
-      title="Discard unsaved changes?"
-      description={`${files} unsaved edits in this project. Leaving the project discards them.`}
-      onClose={props.onStay}
-      footer={
-        <>
-          <Button onClick={props.onStay} data-autofocus>
-            Stay
-          </Button>
-          <Button variant="danger" onClick={props.onLeave}>
-            Discard and leave
-          </Button>
-        </>
-      }
-    >
-      {null}
-    </Dialog>
   );
 }
 
@@ -269,7 +367,8 @@ function SidebarDrawer(props: { onClose(): void; opener: React.RefObject<HTMLEle
     if (state === "closed" && opener.current?.isConnected) opener.current.focus();
   }, [state, opener]);
   return (
-    <div className="fixed inset-0 z-40" inert={state === "closed"}>
+    // Starts under the title bar row, so its toggle stays reachable (it closes the drawer).
+    <div className="fixed inset-x-0 top-bar bottom-chip z-40" inert={state === "closed"}>
       <div className="octo-scrim absolute inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
       <div ref={panel} data-state={state} className="octo-drawer absolute inset-y-0 left-0 max-w-[calc(100%-48px)] overscroll-contain shadow-pop">
         {children}

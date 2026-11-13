@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ign, parseColor, quantize, renderStreak, sideColor, STREAK_LOOK, streakCell, type StreakOptions } from "./streak";
+import { ign, monoLook, parseColor, quantize, renderStreak, sideColor, STREAK_LOOK, streakCell, type StreakOptions } from "./streak";
 
 const dark: Omit<StreakOptions, "cols" | "rows"> = {
   cell: 2,
@@ -121,5 +121,29 @@ test("cell size from the window width, and colour parsing", () => {
   assert.equal(streakCell(1920), 3);
   assert.deepEqual(parseColor("#5c9dff"), [92, 157, 255]);
   assert.deepEqual(parseColor(" rgb(1, 2, 3)"), [1, 2, 3]);
-  assert.deepEqual(parseColor("nonsense"), [0, 0, 0]);
+  assert.equal(parseColor("nonsense"), null, "unreadable: no colour (never black)");
+  assert.equal(parseColor(""), null);
+  assert.deepEqual(parseColor("#fff"), [255, 255, 255]);
+  assert.deepEqual(parseColor("rgb(255 255 255)"), [255, 255, 255]);
+  assert.deepEqual(parseColor("color(srgb 1 1 1)"), [255, 255, 255]);
+});
+
+test("monoLook keeps the band in the accent hue at 35%", () => {
+  const look = monoLook([92, 157, 255], "dark");
+  assert.equal(look.coreAlpha, 0.35);
+  assert.equal(look.glowAlpha, 0.35);
+  assert.ok([...look.warm, ...look.cool].every((c) => c.join() === "92,157,255"));
+});
+
+test("a mono render uses only the accent hue over the panel", () => {
+  const cols = 60;
+  const rows = 40;
+  const out = new Uint32Array(cols * rows);
+  renderStreak(out, { cols, rows, cell: 3, overhang: 0, anchor: { x: 0.5, y: 0.5 }, panel: [23, 23, 23], accent: [92, 157, 255], theme: "dark", mono: true });
+  for (const px of out) {
+    const r = px & 255;
+    const b = (px >>> 16) & 255;
+    // Every pixel lies between the panel and the accent: blue never falls below red.
+    assert.ok(b >= r, `pixel ${px.toString(16)}`);
+  }
 });

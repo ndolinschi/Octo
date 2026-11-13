@@ -1,6 +1,7 @@
 package mockllm
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -74,5 +75,14 @@ func TestACPModelMarker(t *testing.T) {
 				t.Fatalf("marker leaked into task: %q", task)
 			}
 		})
+	}
+}
+
+func TestAutoMarkerSpawnsWithoutTier(t *testing.T) {
+	msg := post(t, `{"model":"m",`+plainTools+`,"messages":[{"role":"user","content":"[auto] find the bug"}]}`)
+	b, _ := json.Marshal(msg)
+	raw := string(b)
+	if got := toolNames(msg); len(got) != 1 || got[0] != "spawn_agent" || strings.Contains(raw, `"tier"`) || strings.Contains(raw, "[auto]") {
+		t.Fatalf("reply = %s", raw)
 	}
 }

@@ -5,9 +5,11 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/ndolinschi/Octo/apps/harness/internal/commands"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/plugins"
 	"github.com/ndolinschi/Octo/apps/harness/internal/project"
+	"github.com/ndolinschi/Octo/apps/harness/internal/review"
 )
 
 const (
@@ -18,16 +20,29 @@ const (
 
 // Server is the HTTP + SSE face of the project service.
 type Server struct {
-	svc     *project.Service
-	notes   *project.Notes
-	files   *project.Files
-	plugins PluginSource
-	langs   LanguageServers
-	lsp     LSPSessions
-	limits  LimitSource
-	router  RouterInfo
-	mcp     http.Handler
-	ping    time.Duration
+	svc      *project.Service
+	notes    *project.Notes
+	files    *project.Files
+	plugins  PluginSource
+	langs    LanguageServers
+	lsp      LSPSessions
+	limits   LimitSource
+	router   RouterInfo
+	mcp      http.Handler
+	reviews  *review.Service
+	commands *commands.Service
+
+	settings         SettingsStore
+	settingsLoopback bool
+	ping             time.Duration
+
+	diagnostics func() any
+	builtinOff  string // reason the built-in loop is unavailable; "" = available
+	builtinFn   func() (bool, string)
+	providers   ProviderSource
+	picker      picker
+	defaultOrch func() string // the orchestrator a project without a choice runs now
+	apiToken    string        // required on /v1 routes when set (WithAPIToken)
 }
 
 // PluginSource is the read-only plugin view GET /v1/plugins serves.
@@ -54,6 +69,26 @@ func WithPlugins(src PluginSource) Option { return func(s *Server) { s.plugins =
 // mcp.PathPrefix. It authenticates by per-session bearer token itself.
 func WithMCP(h http.Handler) Option { return func(s *Server) { s.mcp = h } }
 
+// WithBuiltinLoop reports in GET /v1/config whether the built-in agent loop
+// can run (reason says why not). Without it the loop is reported available.
+func WithBuiltinLoop(available bool, reason string) Option {
+	return func(s *Server) {
+		if !available {
+			s.builtinOff = reason
+			if reason == "" {
+				s.builtinOff = "unavailable"
+			}
+		}
+	}
+}
+
+// WithDefaultOrchestrator supplies default_orchestrator of GET /v1/config.
+// Without it the server default model is reported.
+func WithDefaultOrchestrator(f func() string) Option { return func(s *Server) { s.defaultOrch = f } }
+
+// WithDiagnostics serves GET /v1/diagnostics from f (the report as a JSON value).
+func WithDiagnostics(f func() any) Option { return func(s *Server) { s.diagnostics = f } }
+
 // WithPingInterval overrides the SSE keep-alive period.
 func WithPingInterval(d time.Duration) Option { return func(s *Server) { s.ping = d } }
 
@@ -62,7 +97,7 @@ func New(svc *project.Service, notes *project.Notes, files *project.Files, opts 
 	for _, o := range opts {
 		o(s)
 	}
-	return cors(s.routes())
+	return cors(s.requireToken(s.routes()))
 }
 
 func (s *Server) routes() *http.ServeMux {
@@ -70,6 +105,25 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /v1/config", s.config)
 	mux.HandleFunc("GET /v1/plugins", s.listPlugins)
+	if s.settings != nil {
+		mux.HandleFunc("GET /v1/settings", s.getSettings)
+		mux.HandleFunc("PUT /v1/settings", s.putSettings)
+	}
+	if s.providers != nil {
+		mux.HandleFunc("GET /v1/providers", s.listProviders)
+		if _, ok := s.providers.(ProviderEditor); ok {
+			mux.HandleFunc("POST /v1/providers/{id}/refresh-models", s.refreshProviderModels)
+			mux.HandleFunc("PUT /v1/providers/{id}/custom-models", s.putCustomModels)
+			mux.HandleFunc("PUT /v1/providers/{id}/prefs", s.putProviderPrefs)
+			mux.HandleFunc("POST /v1/providers/{id}/recheck", s.recheckProvider)
+		}
+	}
+	if s.diagnostics != nil {
+		mux.HandleFunc("GET /v1/diagnostics", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, s.diagnostics()) })
+	}
+	mux.HandleFunc("GET /v1/fs/dirs", s.fsDirs)
+	mux.HandleFunc("POST /v1/fs/pick-folder", s.pickFolder)
+	mux.HandleFunc("GET /v1/fs/recent", s.fsRecent)
 	mux.HandleFunc("GET /v1/usage", s.usage)
 	mux.HandleFunc("GET /v1/limits", s.listLimits)
 	mux.HandleFunc("GET /v1/projects", s.listProjects)
@@ -81,24 +135,79 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/projects/{pid}/agents/{aid}", s.getAgent)
 	mux.HandleFunc("GET /v1/projects/{pid}/agents/{aid}/messages", s.agentMessages)
 	mux.HandleFunc("POST /v1/projects/{pid}/messages", s.postMessage)
+	mux.HandleFunc("POST /v1/projects/{pid}/attachments", s.uploadAttachment)
+	mux.HandleFunc("GET /v1/projects/{pid}/attachments/{id}", s.getAttachment)
 	mux.HandleFunc("POST /v1/projects/{pid}/cancel", s.cancel)
+	mux.HandleFunc("GET /v1/projects/{pid}/queue", s.getQueue)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/queue", s.clearQueue)
+	mux.HandleFunc("POST /v1/projects/{pid}/queue/resume", s.resumeQueue)
+	mux.HandleFunc("PATCH /v1/projects/{pid}/queue/{qid}", s.editQueued)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/queue/{qid}", s.removeQueued)
+	mux.HandleFunc("POST /v1/projects/{pid}/queue/{qid}/send-now", s.sendNow)
 	mux.HandleFunc("GET /v1/projects/{pid}/context", s.context)
+	mux.HandleFunc("POST /v1/projects/{pid}/complete", s.complete)
 	mux.HandleFunc("POST /v1/projects/{pid}/side", s.askSide)
+	mux.HandleFunc("POST /v1/projects/{pid}/side/stop", s.stopSide)
 	mux.HandleFunc("GET /v1/projects/{pid}/side", s.listSide)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/side", s.clearSide)
 	mux.HandleFunc("GET /v1/projects/{pid}/notes", s.listNotes)
 	mux.HandleFunc("POST /v1/projects/{pid}/notes", s.createNote)
+	mux.HandleFunc("GET /v1/projects/{pid}/notes/{nid}", s.getNote)
+	mux.HandleFunc("GET /v1/projects/{pid}/notes/{nid}/export", s.exportNote)
 	mux.HandleFunc("PATCH /v1/projects/{pid}/notes/{nid}", s.updateNote)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/notes/{nid}", s.deleteNote)
 	mux.HandleFunc("GET /v1/projects/{pid}/files", s.listFiles)
 	mux.HandleFunc("GET /v1/projects/{pid}/files/content", s.readFile)
 	mux.HandleFunc("PUT /v1/projects/{pid}/files/content", s.writeFile)
+	mux.HandleFunc("GET /v1/projects/{pid}/changes", s.listChanges)
+	mux.HandleFunc("GET /v1/projects/{pid}/changes/{cid}", s.getChange)
+	mux.HandleFunc("POST /v1/projects/{pid}/changes/{cid}/revert", s.revertChange)
+	mux.HandleFunc("GET /v1/projects/{pid}/approvals", s.listApprovals)
+	mux.HandleFunc("POST /v1/projects/{pid}/approvals/{id}", s.resolveApproval)
+	mux.HandleFunc("POST /v1/projects/{pid}/rewind", s.rewind)
+	mux.HandleFunc("POST /v1/projects/{pid}/compact", s.compact)
+	mux.HandleFunc("POST /v1/projects/{pid}/clear", s.clearConversation)
+	mux.HandleFunc("POST /v1/projects/{pid}/facts", s.rememberFact)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/facts/{tid}/{fid}", s.forgetFact)
+	mux.HandleFunc("GET /v1/projects/{pid}/slash-commands", s.slashCommands)
+	mux.HandleFunc("GET /v1/projects/{pid}/export", s.exportConversation)
+	mux.HandleFunc("GET /v1/search", s.searchRequests)
+	mux.HandleFunc("GET /v1/projects/{pid}/plans/latest", s.latestPlan)
+	mux.HandleFunc("POST /v1/projects/{pid}/plans/{id}/approve", s.approvePlan)
+	mux.HandleFunc("GET /v1/projects/{pid}/approval-rules", s.listApprovalRules)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/approval-rules/{rid}", s.deleteApprovalRule)
+	mux.HandleFunc("GET /v1/projects/{pid}/inputs", s.listInputs)
+	mux.HandleFunc("POST /v1/projects/{pid}/inputs/{id}", s.submitInput)
+	mux.HandleFunc("GET /v1/projects/{pid}/secrets", s.listSecrets)
+	mux.HandleFunc("PUT /v1/projects/{pid}/secrets/{name}", s.putSecret)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/secrets/{name}", s.deleteSecret)
+	mux.HandleFunc("GET /v1/projects/{pid}/tasks", s.listTasks)
+	mux.HandleFunc("GET /v1/projects/{pid}/turns/{tid}/context", s.turnContext)
+	mux.HandleFunc("GET /v1/projects/{pid}/memory", s.listMemory)
+	mux.HandleFunc("GET /v1/projects/{pid}/memory/search", s.searchMemory)
+	mux.HandleFunc("GET /v1/projects/{pid}/sessions", s.listSessions)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions", s.createSession)
+	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}", s.getSession)
+	mux.HandleFunc("PATCH /v1/projects/{pid}/sessions/{sid}", s.patchSession)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/sessions/{sid}", s.deleteSession)
+	mux.HandleFunc("GET /v1/projects/{pid}/sessions/{sid}/messages", s.sessionMessages)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/resume", s.resumeSession)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/stop", s.stopSession)
+	mux.HandleFunc("POST /v1/projects/{pid}/sessions/{sid}/messages", s.messageSession)
+	mux.HandleFunc("GET /v1/projects/{pid}/memory/sessions", s.listMemorySessions)
+	mux.HandleFunc("GET /v1/projects/{pid}/memory/sessions/{sid}", s.getMemorySession)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/memory/exchanges/{eid}", s.forgetExchange)
+	mux.HandleFunc("GET /v1/projects/{pid}/memory/{name...}", s.getMemoryFile)
+	mux.HandleFunc("PUT /v1/projects/{pid}/memory/{name...}", s.putMemoryFile)
+	mux.HandleFunc("DELETE /v1/projects/{pid}/memory/{name...}", s.deleteMemoryFile)
 	mux.HandleFunc("GET /v1/projects/{pid}/events", s.events)
 	mux.HandleFunc("GET /v1/projects/{pid}/lsp", s.listLSP)
 	mux.HandleFunc("POST /v1/projects/{pid}/lsp/{server}/sessions", s.createLSPSession)
 	mux.HandleFunc("POST /v1/projects/{pid}/lsp/sessions/{sid}/messages", s.postLSPMessage)
 	mux.HandleFunc("GET /v1/projects/{pid}/lsp/sessions/{sid}/events", s.lspEvents)
 	mux.HandleFunc("DELETE /v1/projects/{pid}/lsp/sessions/{sid}", s.deleteLSPSession)
+	s.reviewRoutes(mux)
+	s.commandRoutes(mux)
 	if s.mcp != nil {
 		mux.Handle(mcp.PathPrefix, s.mcp)
 	}
@@ -117,7 +226,7 @@ func cors(next http.Handler) http.Handler {
 			h.Set("Access-Control-Allow-Origin", origin)
 			h.Add("Vary", "Origin")
 			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Content-Type, Last-Event-ID")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID")
 			h.Set("Access-Control-Max-Age", "600")
 		}
 		if r.Method == http.MethodOptions {

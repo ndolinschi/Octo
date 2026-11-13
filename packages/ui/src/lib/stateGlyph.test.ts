@@ -16,7 +16,7 @@ test("every state is a ring of one diameter (one family), inside its box", () =>
 test("each state differs by line style or mark, not only by colour", () => {
   const sig = ALL.map((s) => {
     const g = glyphGeometry(s);
-    return JSON.stringify([g.dash !== null, g.arc !== null, g.dot, g.bar !== null]);
+    return JSON.stringify([g.dash !== null, g.arc !== null, g.dot, g.bar !== null, g.alert !== null]);
   });
   assert.equal(new Set(sig).size, ALL.length - 0, "six distinct shapes");
 });
@@ -37,10 +37,13 @@ test("the working arc is a quarter from 12 o'clock to 3 o'clock", () => {
   assert.equal(glyphGeometry("working").stroke, 1.5);
 });
 
-test("needs has a smaller dot than unseen's disc; failed has a bar inside the ring", () => {
+test("needs is an exclamation mark, unseen a disc (shape, not colour); failed has a bar inside the ring", () => {
   const needs = glyphGeometry("needs", 14);
   const unseen = glyphGeometry("unseen", 14);
-  assert.ok(needs.dot !== null && unseen.dot !== null && needs.dot < unseen.dot);
+  assert.equal(needs.dot, null, "no disc for needs you");
+  assert.ok(needs.alert && needs.alert.y1 < needs.alert.y2 && needs.alert.y2 < needs.alert.cy, "an upright stroke above a dot");
+  assert.ok(needs.alert.cy + needs.alert.dr < needs.c + needs.r - 0.75, "inside the ring");
+  assert.ok(unseen.dot !== null && unseen.alert === null);
   const bar = glyphGeometry("failed", 14).bar;
   assert.ok(bar);
   const len = Math.hypot(bar.x2 - bar.x1, bar.y2 - bar.y1) / 2;

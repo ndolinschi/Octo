@@ -1,4 +1,5 @@
 import { ChevronRight } from "lucide-react";
+import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
@@ -231,14 +232,9 @@ export const FileTree = forwardRef<
                   <span className="min-w-0 truncate" title={row.error ?? undefined}>
                     Couldn't load{row.error ? `: ${row.error}` : ""}
                   </span>
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={() => code.reloadDir(row.folder, row.path)}
-                    className="ml-auto h-6 shrink-0 press rounded-sm px-2 text-fg-2 hover:bg-hover hover:text-fg"
-                  >
+                  <Button variant="quiet" size="xs" tabIndex={-1} onClick={() => code.reloadDir(row.folder, row.path)} className="ml-auto">
                     Retry
-                  </button>
+                  </Button>
                 </>
               )}
             </div>

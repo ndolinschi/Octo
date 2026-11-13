@@ -48,6 +48,10 @@ pie showData
 | Observe columns | client_model / thinking / tools / bg / hk | `autoroute_observe` |
 | Session outcomes | cargo / pytest / unittest tool_result parse | `session_outcomes` |
 | Statusline | `/autoroute/status` + script | `status.rs`, `scripts/statusline.sh` |
+| Harness integration | Hint headers, result headers (`x-octo-*`), `GET /autoroute/v1/calls/{id}`, header budget, compaction trigger; call records persisted | `harness_integration`, `call_persistence` |
+| Routing decision for delegation | `POST /autoroute/v1/route` (capability `route_api`): one classifier call, ranking of API tiers and flat-rate agents | `route_api` |
+| Price rule | `never_pay_more_for_less`: serve the cheapest tier at or above the decided one; `x-octo-decided-tier`, `x-octo-price-swap` | `price_rule` |
+| Exit with the parent | `OCTO_EXIT_ON_STDIN_CLOSE=1` shuts down gracefully when stdin closes | `stdin_exit` |
 | Per-subagent keys | `{uuid}#sub:{hash}` + `parent_session_id`; first turn defaults low | `subagent_first_turn_*`, `subagent_keys_*`, parent stall test |
 | tool_results_only hold | Keeps sticky model; no JEV | `tool_results_only_hold_*` |
 | Budget recap | Cap after fill-upgrade / before tier escalation on retry; compact adds session cost | `budget_blocks_fill_*`, `autoroute_does_not_escalate_*` |
@@ -64,8 +68,8 @@ pie showData
 | Insert backpressure | 32 slots, 5s, then **drop** | Missing rows under burst (warn includes `session_id`) | verification F3 |
 | Stream fail after headers | Client may see truncated body; history keeps header status | Warn logs session; recon by status alone can miss truncation | AGENTS.md |
 | `session_budget_usd` | **0 (disabled)** | **No spend limit of any kind until set**: nothing is downgraded or refused, so cost is bounded only by the client. Set it (and pick `session_budget_action`) to enable | `autoroute.toml` |
-| Ladder price order | **Inverted by the published prices** | At the 2026-11-10 catalogue prices `high` is the cheapest model and `low` the dearest; the ladder was not reordered. Owner decision | [ladder-cost-check.md](./ladder-cost-check.md) |
-| Budget key state | In memory, 1 h idle expiry, needs a session id in the body | Router restart resets key budgets; per-session budgets are restored from history | `ledger.rs` |
+| Ladder price order | **Inverted by the published prices** | At the catalogue prices `high` is the cheapest model and `low`/`mid` dearer; the ladder order is by capability and was not changed. `never_pay_more_for_less` (default on) serves the cheapest tier at or above the decided one, so low and mid requests are served by `high` for a typical shape; the start-up warning says so | [ladder-cost-check.md](./ladder-cost-check.md), `tests/price_rule.rs` |
+| Budget key state | Spend per `x-octo-budget-key` is persisted (`budget_spend`) and restored on the key's first request after a restart; pruned after 90 idle days by default | A kill within milliseconds of a call finishing loses that call's record and spend increment | `ledger.rs`, `tests/call_persistence.rs` |
 | Toolless compaction | Requests with no `tools[]` keep no session state | An oversized toolless request can still be compacted on every call | `route.rs` |
 | Dropped-stream tokens | Estimated from streamed bytes / 4 | Approximate; the reported figure replaces it when the vendor sent one | `history/payload/common.rs` |
 | Cache behaviour | Not verified against a live OpenRouter key | Real cache hit rates and billing untested | [ladder-cost-check.md](./ladder-cost-check.md) |

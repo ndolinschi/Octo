@@ -21,10 +21,12 @@ export function Popover(props: {
   /** Opens above/below this element instead of the anchor (e.g. the whole composer, not its footer). */
   edge?: () => HTMLElement | null;
   align?: "start" | "end";
+  /** Gap to the anchor (default 6; a composer chip's picker sits 4px from it, decision 56). */
+  gap?: number;
   className?: string;
   children: ReactNode;
 }) {
-  const { anchor, onClose, side = "bottom", align = "start" } = props;
+  const { anchor, onClose, side = "bottom", align = "start", gap = GAP } = props;
   const edge = useLatest(props.edge);
   const ref = useRef<HTMLDivElement>(null);
   const state = usePresence();
@@ -38,28 +40,59 @@ export function Popover(props: {
     const place = () => {
       const r = a.getBoundingClientRect();
       const v = edge.current?.()?.getBoundingClientRect() ?? r;
-      const { width, height } = el.getBoundingClientRect();
-      const roomAbove = v.top - GAP - EDGE;
-      const roomBelow = window.innerHeight - v.bottom - GAP - EDGE;
+      // Layout size, not the painted box: the entry animation scales the panel, which would misplace it (a 1px overlap
+      // with its chip, decision 56).
+      const width = el.offsetWidth;
+      const height = el.offsetHeight;
+      const roomAbove = v.top - gap - EDGE;
+      const roomBelow = window.innerHeight - v.bottom - gap - EDGE;
       const up = side === "top" ? height <= roomAbove || roomAbove > roomBelow : height > roomBelow && roomAbove > roomBelow;
       const left = Math.min(Math.max(EDGE, align === "start" ? r.left : r.right - width), window.innerWidth - width - EDGE);
-      const top = up ? Math.max(EDGE, v.top - GAP - height) : Math.min(v.bottom + GAP, window.innerHeight - height - EDGE);
+      const top = up ? Math.max(EDGE, v.top - gap - height) : Math.min(v.bottom + gap, window.innerHeight - height - EDGE);
       setPos({ left, top, origin: `${align === "start" ? "0%" : "100%"} ${up ? "100%" : "0%"}` });
     };
     place();
     const ro = new ResizeObserver(place);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [anchor, side, align, edge]);
+  }, [anchor, side, align, edge, gap]);
 
+  // Decision 56: while a popover of the composer is open, the "Jump to latest" button hides (it would sit under it).
   useEffect(() => {
-    const opener = anchor.current;
-    const first = ref.current?.querySelector<HTMLElement>("[data-autofocus], button:not(:disabled), [tabindex='0']");
-    (first ?? ref.current)?.focus({ preventScroll: true });
+    if (!anchor.current?.closest("[data-composer]")) return;
+    const root = document.documentElement;
+    root.dataset.composerPopover = "";
     return () => {
-      if (opener?.isConnected && ref.current?.contains(document.activeElement ?? null)) opener.focus({ preventScroll: true });
+      delete root.dataset.composerPopover;
     };
   }, [anchor]);
+
+  // Decision 95 b: focus lands where the arrow keys work. The field a popover marks `data-autofocus` wins, then any text
+  // field (a `SearchField` does not carry the mark: the first *button* used to win, so keys did nothing until a click), then
+  // a button, then the panel itself.
+  useEffect(() => {
+    const el = ref.current;
+    const opener = anchor.current;
+    const first =
+      el?.querySelector<HTMLElement>("[data-autofocus]") ??
+      el?.querySelector<HTMLElement>("input:not(:disabled), textarea:not(:disabled), [role='combobox']") ??
+      el?.querySelector<HTMLElement>("button:not(:disabled), [tabindex='0']");
+    (first ?? el)?.focus({ preventScroll: true });
+    return () => {
+      // Unmounted with focus lost to the page (no exit animation): the opener takes it back.
+      const a = document.activeElement;
+      if (opener?.isConnected && (!a || a === document.body)) opener.focus({ preventScroll: true });
+    };
+  }, [anchor]);
+
+  // Back to the opener the moment the exit starts (the panel goes inert, which would drop focus to the page), and when it unmounts.
+  useEffect(() => {
+    if (open) return;
+    const a = document.activeElement;
+    const opener = anchor.current;
+    // Only while focus is still in the panel or lost: a dialog that the choice opened keeps it.
+    if (opener?.isConnected && (!a || a === document.body || ref.current?.contains(a))) opener.focus({ preventScroll: true });
+  }, [open, anchor]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,8 +100,12 @@ export function Popover(props: {
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !anchor.current?.contains(t)) onClose();
     };
+    // Only a scroll that moves the anchor closes it: a live transcript scrolling elsewhere must not (v6.3 part 2).
     const scrolled = (e: Event) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
+      const t = e.target;
+      if (t instanceof Node && ref.current?.contains(t)) return;
+      const a = anchor.current;
+      if (t === document || (t instanceof Node && a && t.contains(a))) onClose();
     };
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -99,7 +136,7 @@ export function Popover(props: {
       inert={!open}
       style={pos ? ({ left: pos.left, top: pos.top, "--octo-origin": pos.origin } as CSSProperties) : { left: -9999, top: 0 }}
       className={cn(
-        "octo-overlay fixed z-[60] flex max-h-[min(420px,70vh)] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
+        "octo-overlay fixed z-[60] flex max-h-[min(420px,calc(100dvh-24px))] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
         props.className,
       )}
     >

@@ -41,3 +41,14 @@ func (d *DB) DeleteACPSession(ctx context.Context, agentID string) error {
 	_, err := d.sql.ExecContext(ctx, `DELETE FROM acp_sessions WHERE agent_id = ?`, agentID)
 	return err
 }
+
+// ACPSessionSince is when the agent row's stored session was created (the
+// time of its last SaveACPSession); "" when there is none.
+func (d *DB) ACPSessionSince(ctx context.Context, agentID string) (string, error) {
+	var at string
+	err := d.sql.QueryRowContext(ctx, `SELECT updated_at FROM acp_sessions WHERE agent_id = ?`, agentID).Scan(&at)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return at, err
+}

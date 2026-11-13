@@ -16,8 +16,17 @@ type reply struct {
 
 // plan derives the next assistant reply purely from the request.
 func plan(r *request) reply {
+	if strings.Contains(r.system(), digestMarker) {
+		return digestReply(r)
+	}
+	if strings.Contains(r.system(), completionMarker) {
+		return completionReply(r)
+	}
 	if strings.Contains(r.system(), sideMarker) {
 		return sideReply(r)
+	}
+	if rep, ok := ctxReply(r); ok {
+		return rep
 	}
 	if r.hasTool("save_note") {
 		return orchestratorReply(r)
@@ -50,15 +59,27 @@ func orchestratorReply(r *request) reply {
 	if anchor < 0 {
 		return reply{Text: "Hello! Tell me what you would like to do in this project."}
 	}
-	ask := r.Messages[anchor].text()
+	ask := askText(r.Messages[anchor])
 	if agents := r.spawnAgentChoices(); len(agents) > 0 && strings.Contains(ask, acpMarker) {
 		return acpReply(r, anchor, ask, agents[0])
+	}
+	if rep, ok := notesReply(r, anchor, ask); ok {
+		return rep
+	}
+	if rep, ok := memoryReply(r, anchor, ask); ok {
+		return rep
+	}
+	if strings.Contains(ask, formMarker) && r.hasTool("request_input") {
+		return formReply(r, anchor, ask)
 	}
 	if strings.Contains(strings.ToLower(ask), "quick") {
 		return reply{Text: quickAnswer(ask)}
 	}
 	switch r.assistantCountFrom(anchor) {
 	case 0:
+		if strings.Contains(ask, autoMarker) {
+			return reply{Text: "I will delegate this and leave the choice of who does it to the router.", Calls: autoSpawnCalls(ask)}
+		}
 		return reply{Text: planningText(ask), Calls: spawnCalls(ask)}
 	case 1:
 		return reply{
@@ -81,6 +102,9 @@ func subAgentReply(r *request) reply {
 				Calls: []call{{Name: "list_dir", Input: map[string]any{"path": "."}}},
 			}
 		})
+	}
+	if len(r.Messages) > 0 {
+		steps = append(steps, v7Steps(r, r.Messages[0].text(), role)...)
 	}
 	nested := len(r.Messages) > 0 && strings.Contains(r.Messages[0].text(), "[nested]")
 	marked := len(r.Messages) > 0 && strings.Contains(r.Messages[0].text(), "[write]")

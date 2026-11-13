@@ -7,6 +7,7 @@ import (
 
 	"github.com/ndolinschi/Octo/apps/harness/internal/orchestrator"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // AskSide starts a side question; the answer arrives as side.* events.
@@ -18,6 +19,12 @@ func (s *Service) AskSide(ctx context.Context, pid, text string) (orchestrator.S
 	switch {
 	case errors.Is(err, orchestrator.ErrSideInProgress):
 		return start, sideInProgress()
+	case errors.Is(err, orchestrator.ErrNoProvider):
+		detail := ""
+		if errors.Unwrap(err) != nil {
+			_, detail, _ = strings.Cut(err.Error(), ": nothing can answer a side question: ")
+		}
+		return start, of(KindConflict, usererr.SideNoAnswer(detail))
 	case errors.Is(err, projectstore.ErrNotFound):
 		return start, notFound("project")
 	}
@@ -39,6 +46,16 @@ func (s *Service) ClearSide(ctx context.Context, pid string) error {
 	if err != nil {
 		return err
 	}
-	s.turns.CancelSide(pid)
+	s.turns.CloseSide(pid)
 	return db.ClearSide(ctx)
+}
+
+// StopSide stops the running side question, keeping the side conversation and
+// the agent session behind it.
+func (s *Service) StopSide(ctx context.Context, pid string) error {
+	if _, err := s.db(ctx, pid); err != nil {
+		return err
+	}
+	s.turns.CancelSide(pid)
+	return nil
 }

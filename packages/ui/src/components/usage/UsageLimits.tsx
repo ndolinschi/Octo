@@ -1,3 +1,4 @@
+import { useApp } from "../../state/app";
 import type { Limit } from "@octo/agent-client";
 import { useMemo } from "react";
 import { cn } from "../../lib/cn";
@@ -7,7 +8,10 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { isStale, limitKindLabel, observedLabel, remainingShare, remainingText, resetLabel, sortLimits } from "../../lib/usage";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
-import { INFO_ROW, InfoSection, SkeletonRows } from "../primitives/InfoList";
+import { InfoSection } from "../primitives/InfoList";
+import { ListRow } from "../primitives/ListRow";
+import { Notice } from "../primitives/Notice";
+import { SkeletonList } from "../primitives/Skeleton";
 import { modelLabel } from "../primitives/Status";
 import { useLimits } from "./useUsage";
 
@@ -60,6 +64,7 @@ function LimitRow({ limit, now }: { limit: Limit; now: number }) {
  */
 export function UsageLimits() {
   const ws = useWorkspace();
+  const { config } = useApp();
   // Decision 36: nothing polls or ticks while the Usage tab is hidden (it stays mounted) or the page is.
   const pageVisible = usePageVisible();
   const shown = ws.isVisible(toolTab("usage")) && pageVisible;
@@ -73,18 +78,31 @@ export function UsageLimits() {
   }, [limits]);
   return (
     <>
-      {limits.status === "loading" && <SkeletonRows count={4} />}
+      {limits.status === "loading" && <SkeletonList count={4} size="md" />}
       {limits.status === "error" && (
-        <p role="alert" className="px-2 text-sm text-fg-2">
-          Couldn't read limits: {limits.message}. Check that the harness is running, then reopen this tab.
-        </p>
+        <Notice form="block" tone="error" title="Couldn't read limits">
+          {limits.message}. Check that the harness is running, then reopen this tab.
+        </Notice>
       )}
       {limits.status === "ok" && groups.length === 0 && (
-        <div className="flex flex-col gap-1 px-2 py-6 text-center">
-          <p className="text-sm text-fg-2">No rate limits observed yet</p>
-          <p className="text-xs text-fg-3">
-            Limits appear after the first model response that carries rate-limit headers (they are kept until the harness restarts).
-          </p>
+        <div data-limits-empty className="flex flex-col gap-1 px-2 py-6 text-center">
+          {config?.router ? (
+            <>
+              <p className="text-sm text-fg-2">The router reports no rate limits</p>
+              <p className="text-xs text-fg-3">
+                Requests go through an Octo router, and the provider behind it (OpenRouter, for one) sends no rate-limit headers. Limits appear here when a
+                provider that sends them, such as Anthropic's API, answers a request.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-fg-2">No rate limits reported yet</p>
+              <p className="text-xs text-fg-3">
+                Limits appear after the first model response that carries rate-limit headers. Some providers (OpenRouter, for one) send none; the harness keeps
+                what it saw until it restarts.
+              </p>
+            </>
+          )}
         </div>
       )}
       {groups.map(([provider, rows]) => (
@@ -96,13 +114,7 @@ export function UsageLimits() {
       ))}
       <InfoSection title="Plan limits for external agents" labelId="usage-plan-limits">
         {agents.map((a) => (
-          <div key={a.id} className={INFO_ROW}>
-            <span className="grid size-4 shrink-0 place-items-center">
-              <Glyph icon={GLYPH.agent} size={14} className="text-fg-3" />
-            </span>
-            <span className="min-w-0 truncate text-fg-2">{a.label}</span>
-            <span className="ml-auto shrink-0 text-xs text-fg-3">ACP agent</span>
-          </div>
+          <ListRow key={a.id} leading={<Glyph icon={GLYPH.agent} size={14} />} title={a.label} meta="ACP agent" tone="quiet" />
         ))}
         <p className="px-2 pt-1 text-xs text-fg-3">
           {agents.length

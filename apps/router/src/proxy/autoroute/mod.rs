@@ -1,9 +1,11 @@
 mod calls;
 mod compact;
 pub mod retry;
+mod route;
 mod status;
 
 pub use calls::call;
+pub use route::route;
 pub use status::status;
 
 use std::sync::Arc;
@@ -69,9 +71,23 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
         .await
         .map_err(ProxyError::from_read_body)?;
     let api_key = token_from_headers(&parts.headers);
-    let hints = Hints::take(&mut parts.headers);
+    let hints = Hints::take(&mut parts.headers).map_err(|err| {
+        let err = ProxyError::anthropic(
+            StatusCode::BAD_REQUEST,
+            "invalid_request_error",
+            err.message(),
+        );
+        if chat {
+            err
+        } else {
+            err.as_anthropic_messages()
+        }
+    })?;
     let value: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
     let session = session_key(&value);
+    if let Some(key) = hints.budget_key.as_deref() {
+        state.auto.restore_budget_key(&state.history, key).await;
+    }
     state.auto.bind_hints(session.as_deref(), &hints);
     let signals = client_signals(&value, &state.config.autoroute_background_model_patterns);
     let server_tools = server_tool_types(&value);
@@ -135,6 +151,7 @@ async fn run(state: &AppState, request: Request, chat: bool) -> Result<Response,
             let info = ResultInfo {
                 model: None,
                 tier: None,
+                decided_tier: None,
                 trigger: "budget",
                 request_id: &crate::auto::new_request_id(),
                 budget: Some((reject.budget_micros, reject.spent_micros)),
@@ -260,11 +277,31 @@ async fn retry_once(plan: RetryOnce<'_>) -> Option<Result<Response, ProxyError>>
     let payload: Value = serde_json::from_slice(&plan.forward.body).ok()?;
     let current = payload.get("model").and_then(Value::as_str)?.to_string();
     let forward = if plan.failure.model_unavailable {
-        let next = plan.state.auto.tiers().next_up(&current)?;
-        if escalation_blocked(plan.state, plan.session.as_deref(), &plan.hints, &next) {
+        let tiers = plan.state.auto.tiers();
+        // A price-swapped call that finds its model gone retries on the tier that was decided (the swap target is
+        // the top of the ladder, so there is nothing above it); otherwise the next tier up.
+        let decided = plan
+            .forward
+            .meta
+            .decided_tier
+            .as_deref()
+            .filter(|band| matches!(*band, "low" | "mid" | "high"))
+            .map(|band| tiers.slug(band));
+        let (next, swap) = match decided {
+            Some(slug) if tiers.band(&slug) != tiers.band(&current) => (slug, false),
+            _ => (tiers.next_up(&current)?, true),
+        };
+        let shape = crate::auto::request_shape(&payload);
+        if escalation_blocked(
+            plan.state,
+            plan.session.as_deref(),
+            &plan.hints,
+            &next,
+            EscalationShape { shape, swap },
+        ) {
             return None;
         }
-        escalated_forward(&plan, &payload, &current, &next).await?
+        escalated_forward(&plan, &payload, &current, &next, swap).await?
     } else {
         let mut forward = plan.forward.clone();
         forward.meta = RouteMeta {
@@ -272,6 +309,7 @@ async fn retry_once(plan: RetryOnce<'_>) -> Option<Result<Response, ProxyError>>
             tier_after: plan.forward.meta.tier_after.clone(),
             trigger: "retry".to_string(),
             stripped: plan.forward.meta.stripped.clone(),
+            decided_tier: plan.forward.meta.decided_tier.clone(),
         };
         forward.trimmed_from_tokens = None;
         forward
@@ -294,7 +332,22 @@ async fn retry_once(plan: RetryOnce<'_>) -> Option<Result<Response, ProxyError>>
     )
 }
 
-fn escalation_blocked(state: &AppState, session: Option<&str>, hints: &Hints, next: &str) -> bool {
+#[derive(Clone, Copy)]
+pub struct EscalationShape {
+    pub shape: crate::auto::RequestShape,
+    /// Whether the price rule applies to `next` (it does not when retrying on the decided tier).
+    pub swap: bool,
+}
+
+/// Whether an unavailable-model escalation to `next` is refused (ceiling, or budget spent and the tier the rule would
+/// serve is not the cheapest).
+pub fn escalation_blocked(
+    state: &AppState,
+    session: Option<&str>,
+    hints: &Hints,
+    next: &str,
+    how: EscalationShape,
+) -> bool {
     let tiers = state.auto.tiers();
     if matches!(
         hints.policy,
@@ -315,9 +368,21 @@ fn escalation_blocked(state: &AppState, session: Option<&str>, hints: &Hints, ne
     if spent < budget {
         return false;
     }
-    match tiers.cheapest_band(crate::auto::RequestShape::default()) {
-        Some(cheapest) => tiers.band(next) != cheapest,
-        None => crate::auto::band_rank(tiers.band(next)) > crate::auto::band_rank("mid"),
+    // Compare what would be served after the price rule, not the decided tier.
+    let ceiling = match hints.policy {
+        crate::auto::TierPolicy::Ceiling => hints.tier,
+        _ => None,
+    };
+    let served = if how.swap && hints.policy != crate::auto::TierPolicy::Fixed {
+        tiers
+            .price_swap(tiers.band(next), ceiling, how.shape)
+            .unwrap_or(tiers.band(next))
+    } else {
+        tiers.band(next)
+    };
+    match tiers.cheapest_band(how.shape) {
+        Some(cheapest) => served != cheapest,
+        None => crate::auto::band_rank(served) > crate::auto::band_rank("mid"),
     }
 }
 
@@ -326,12 +391,22 @@ async fn escalated_forward(
     payload: &Value,
     current: &str,
     next: &str,
+    swap: bool,
 ) -> Option<crate::auto::Forward> {
     let tiers = plan.state.auto.tiers();
     let models = plan.state.auto.cached_models().await;
+    let decided_band = tiers.band(next);
+    let ceiling = match plan.hints.policy {
+        crate::auto::TierPolicy::Ceiling => plan.hints.tier,
+        _ => None,
+    };
+    let swapped = (swap && plan.hints.policy != crate::auto::TierPolicy::Fixed)
+        .then(|| tiers.price_swap(decided_band, ceiling, crate::auto::request_shape(payload)))
+        .flatten();
+    let served = swapped.map_or_else(|| next.to_string(), |band| tiers.slug(band));
     let mut shaped = crate::auto::shape(crate::auto::ShapePlan {
         body: payload,
-        model: next,
+        model: &served,
         previous_model: Some(current),
         models: models.as_ref(),
         provider_order: &tiers.provider_order,
@@ -347,9 +422,10 @@ async fn escalated_forward(
     let body = serde_json::to_vec(&shaped.body).ok()?;
     let meta = RouteMeta {
         tier_before: plan.forward.meta.tier_after.clone(),
-        tier_after: tiers.band(next).to_string(),
+        tier_after: tiers.band(&served).to_string(),
         trigger: "retry".to_string(),
         stripped: None,
+        decided_tier: swapped.map(|_| decided_band.to_string()),
     }
     .with_stripped(&shaped.stripped);
     Some(crate::auto::Forward {
@@ -407,6 +483,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         session_id,
         tier_before: Some(meta.tier_before.clone()),
         tier_after: Some(meta.tier_after.clone()),
+        decided_tier: meta.decided_tier.clone(),
         trigger: meta.trigger.clone(),
         trimmed_from_tokens: plan.forward.trimmed_from_tokens,
         client_model: plan.signals.client_model.clone(),
@@ -432,6 +509,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
         .auto
         .budget_status(plan.session.as_deref(), plan.hints.budget_key.as_deref());
     let tier = plan.forward.meta.tier_after.clone();
+    let decided_tier = plan.forward.meta.decided_tier.clone();
     let trigger = plan.forward.meta.trigger.clone();
     let result = if plan.chat {
         plan.state
@@ -458,6 +536,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
             &ResultInfo {
                 model: served_model.as_deref(),
                 tier: Some(&tier),
+                decided_tier: decided_tier.as_deref(),
                 trigger: &trigger,
                 request_id: &request_id,
                 budget,
@@ -470,6 +549,7 @@ async fn dispatch_forward(plan: DispatchForward<'_>) -> Result<Response, ProxyEr
 pub(super) struct ResultInfo<'a> {
     pub model: Option<&'a str>,
     pub tier: Option<&'a str>,
+    pub decided_tier: Option<&'a str>,
     pub trigger: &'a str,
     pub request_id: &'a str,
     pub budget: Option<(u64, u64)>,
@@ -487,6 +567,10 @@ pub(super) fn apply_result_headers(response: &mut Response, info: &ResultInfo<'_
     }
     if let Some(tier) = info.tier {
         put("x-octo-tier", tier);
+    }
+    if let Some(decided) = info.decided_tier {
+        put("x-octo-decided-tier", decided);
+        put("x-octo-price-swap", "1");
     }
     put("x-octo-trigger", info.trigger);
     put("x-octo-request-id", info.request_id);
@@ -543,6 +627,7 @@ async fn chat_compact(
                 session_id: None,
                 tier_before: None,
                 tier_after: None,
+                decided_tier: None,
                 trigger: "none".to_string(),
                 trimmed_from_tokens: None,
                 client_model: None,

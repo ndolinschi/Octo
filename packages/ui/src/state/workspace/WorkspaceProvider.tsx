@@ -2,31 +2,38 @@ import { focusSoon, focusSurfaceSoon } from "../../lib/focus";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMediaQuery, useLatest } from "../../lib/hooks";
 import { hrefFor } from "../../lib/route";
-import { PREFS, usePersistentState } from "../../lib/storage";
+import { loadPref, numberCodec, PREFS, usePersistentState, writePref } from "../../lib/storage";
 import { useNav, type WorkspaceApi, type WorkspaceCommand } from "../nav";
 import { useProject } from "../project";
+import { hasQueuedSession } from "./sessionsStart";
 import * as L from "./layout";
 import type { Layout, TabId, ToolTab } from "./layout";
 import {
   DOCKED_QUERY,
-  MIN_GROUP,
+  CHAT_MIN_WIDTH,
+  EDITOR_MIN_GROUP,
   GROUP_GAP,
   TOOL_WIDTH,
   TOOL_GROUP_MAX_FRACTION,
   TOOL_GROUP_UNMEASURED_FRACTION,
+  CHAT_SPLIT_DEFAULT,
   FILE_GROUP_MIN_FRACTION,
   PERSIST_LAYOUT_MS,
 } from "../../lib/constants";
 import { createRequiredContext } from "../../lib/context";
-import { TabMemory, USAGE_VIEW } from "./tabMemory";
+import { SIDE_PINNED, TabMemory, USAGE_VIEW } from "./tabMemory";
 import { jumpIndex, mruOrder, mruTouch, pushClosed, takeClosed, toMoveIndex, type Closed } from "./tabStrip";
 import { useTabKeys } from "./useTabKeys";
+import { dockFits, dockNeeds, groupFloors } from "./floors";
+import { TREE_MIN, useFileView } from "../fileView";
+import { maximisedGroup, toggleMaximise } from "./maximise";
 import { domId, tabButton } from "./ids";
 import { DEFAULT_USAGE_VIEW } from "../../lib/usageView";
 import { type FileKey, keyFolder } from "../../lib/files";
 
 /** Modifier as shown in shortcut hints. */
-export const MOD = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
+export { MOD_LABEL as MOD } from "../../lib/keys";
+import { MOD_LABEL } from "../../lib/keys";
 
 /** Where a dragged tab lands. */
 export type DropTarget =
@@ -48,10 +55,19 @@ export type WorkspaceValue = {
   layout: Layout;
   /** One strip for everything (narrow window or groups that don't fit). */
   narrow: boolean;
+  /** A group's minimum width in the row (decision 67; 94a: a file group that shows its tree column also needs the column). */
+  floorOf(groupId: string): number;
   /** The conversation tab whose live indicator may animate (the one being watched), if visible. */
   watched: TabId | null;
   /** Agent of the conversation last focused (for the agents tree selection). */
   currentAgentId: string | null;
+  /** Decision 68: the state of each project command's run tab, by lowercase name (only running and failed are listed). Set by the commands feature. */
+  runStatuses: Readonly<Record<string, "running" | "failed">>;
+  setRunStatuses(statuses: Readonly<Record<string, "running" | "failed">>): void;
+  /** Decision 78: the group that has the whole dock (the others are hidden, not changed), or null. */
+  maximised: string | null;
+  /** Maximises the group of `tab` (default: the focused tab), or restores when it already is; `on` forces one way. */
+  toggleMaximise(tab?: TabId, on?: boolean): void;
   /** A tab whose button should take focus (after a keyboard move or close). */
   focusRequest: { tab: TabId; n: number } | null;
   /** Per-tab view memory (scroll positions, composer draft) that survives remounts. */
@@ -66,8 +82,16 @@ export type WorkspaceValue = {
   focusChat(): void;
   openAgent(agentId: string, options?: { otherSide?: boolean }): void;
   openTool(tool: ToolTab): void;
+  /** The "+" tab picker (decision 25): open in `group`'s strip (default: the focused group), with a counter so a repeat re-opens. */
+  picker: { group: string; n: number } | null;
+  openPicker(group?: string): void;
+  closePicker(): void;
   /** Opens a file's tab: in `where.group` (in place of `where.replace`) when given, else in the side group. */
   openFileTab(key: FileKey, where?: { group: string; replace?: TabId }): void;
+  /** Opens (or focuses) the "Run: name" tab of a project command beside the conversation (decision 68). */
+  openRun(name: string): void;
+  /** One session in a tab of its own, beside the tab it was opened from (two sessions side by side). */
+  openSession(sessionId: string): void;
   /** Opens (or focuses) a tab in a given group. */
   openIn(tab: TabId, groupId: string): void;
   /** Removes a tab without asking (a restored file that no longer exists). */
@@ -89,6 +113,7 @@ export type WorkspaceValue = {
   cycle(step: number, order: TabId[]): void;
   /** The focused group's tabs in most-recently-used order (taken when a Ctrl+Tab walk starts). */
   mruOrder(): TabId[];
+  walkGroup(): string;
   /** Ends a Ctrl+Tab walk: the tab it stopped on becomes the most recent. */
   endCycle(): void;
   /** Ctrl/Cmd+1…8 by position, 9 the last (decision 25). */
@@ -101,6 +126,9 @@ export type WorkspaceValue = {
   reopenClosed(): void;
   attachCode(link: CodeLink | null): void;
 };
+
+/** The remembered conversation width beside a side group (px). */
+const CHAT_SPLIT_CODEC = numberCodec(CHAT_MIN_WIDTH, 4000, CHAT_SPLIT_DEFAULT);
 
 export const {
   Provider: WorkspaceContextProvider,
@@ -125,8 +153,8 @@ function focusFileSoon(key: FileKey) {
       const el = document.getElementById(panel);
       return el?.querySelector<HTMLElement>(".monaco-editor textarea") ?? el?.querySelector<HTMLElement>("[data-file-focus]");
     },
-    // Monaco loads lazily: wait for it a while (only while focus is still on nothing).
-    { onlyIfLost: true, timeout: 5000 },
+    // Monaco loads lazily: wait for it a while (only while focus is still on nothing, or on the new tab holding it).
+    { onlyIfLost: true, timeout: 5000, holder: () => tabButton(document, L.fileTab(key)) },
   );
 }
 
@@ -143,7 +171,7 @@ function conversationOf(tab: TabId): string | null | undefined {
  */
 export function WorkspaceProvider({ routeAgentId, onSettings, children }: { routeAgentId: string | null; onSettings(): void; children: ReactNode }) {
   const nav = useNav();
-  const { projectId, project, state } = useProject();
+  const { projectId, project, state, clearSide } = useProject();
   const [layout, setLayout] = usePersistentState(PREFS.layout(projectId), L.layoutCodec, { debounceMs: PERSIST_LAYOUT_MS });
   const layoutRef = useRef(layout);
   const [dockWidth, setDockWidth] = useState(0);
@@ -151,17 +179,31 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const [lastConversation, setLastConversation] = useState<TabId>(L.CHAT);
   const [focusRequest, setFocusRequest] = useState<{ tab: TabId; n: number } | null>(null);
   const [closing, setClosing] = useState<Closing | null>(null);
+  const [picker, setPicker] = useState<{ group: string; n: number } | null>(null);
   const [memory] = useState(() => new TabMemory());
   const code = useRef<CodeLink | null>(null);
   const mru = useRef<TabId[]>([]);
   const cycling = useRef(false);
   const [closedTabs, setClosedTabs] = useState<Closed<TabId>[]>([]);
   const selfNav = useRef<string | null>(null);
+  const [maxGroup, setMaxGroup] = useState<string | null>(null);
+  const maxRef = useRef<string | null>(null);
+  const [runStatuses, setRunStatuses] = useState<WorkspaceValue["runStatuses"]>({});
 
-  const n = layout.groups.length;
-  const narrow = !docked || (n > 1 && dockWidth > 0 && dockWidth < n * MIN_GROUP + (n - 1) * GROUP_GAP);
+  const narrow = !docked || !dockFits(layout.groups, dockWidth);
+  const fv = useFileView();
+  const floors = useMemo(
+    () =>
+      groupFloors(layout.groups, dockWidth, (id) => {
+        const c = fv.column(id);
+        return c.open ? Math.max(TREE_MIN, c.width) : 0;
+      }),
+    [layout.groups, dockWidth, fv],
+  );
+  const floorsRef = useLatest(floors);
   const narrowRef = useLatest(narrow);
   const widthRef = useLatest(dockWidth);
+  const maximised = maximisedGroup(layout, maxGroup, narrow);
 
   /** Applies a layout; when the focused tab is a conversation its route goes into the URL. */
   const commit = useCallback(
@@ -169,6 +211,11 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       if (next === layoutRef.current && !options.focusTab) return;
       layoutRef.current = next;
       setLayout(next);
+      // Focus leaving the maximised group (a tool opened elsewhere) or the group going away ends it, for good.
+      if (maxRef.current !== null && maximisedGroup(next, maxRef.current, false) === null) {
+        maxRef.current = null;
+        setMaxGroup(null);
+      }
       const { focusTab } = options;
       if (focusTab) setFocusRequest((r) => ({ tab: focusTab, n: (r?.n ?? 0) + 1 }));
       const active = L.focusedGroup(next).active;
@@ -203,6 +250,17 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     [widthRef],
   );
 
+  /**
+   * The share of the row a new file group takes (decision 60): the conversation keeps its remembered width (default 420px)
+   * and the file view gets the rest, so opening a file moves the divider once, to where it will stay. Not yet measured: half.
+   */
+  const fileFraction = useCallback(() => {
+    const inner = widthRef.current - GROUP_GAP;
+    if (inner <= 0) return undefined;
+    const chat = loadPref(PREFS.chatSplit, CHAT_SPLIT_CODEC);
+    return Math.min(1 - EDITOR_MIN_GROUP / inner, Math.max(FILE_GROUP_MIN_FRACTION, 1 - chat / inner));
+  }, [widthRef]);
+
   const doClose = useCallback(
     (tabs: TabId[]) => {
       const current = layoutRef.current;
@@ -215,11 +273,13 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         if (ref?.kind === "file") code.current?.close(ref.key);
       }
       setClosedTabs((stack) => pushClosed(stack, entries));
+      // Decision 40: closing the side question clears it unless it was pinned ("Keep").
+      if (tabs.includes(L.toolTab("side")) && !memory.get(L.toolTab("side"), SIDE_PINNED)) void clearSide().catch(() => undefined);
       const next = L.close(current, tabs);
       // Decision 35: focus never falls to the page — the tab that becomes active takes it (also after a pointer close).
       commit(next, { focusTab: L.focusedGroup(next).active });
     },
-    [commit],
+    [commit, memory, clearSide],
   );
 
   const requestClose = useCallback(
@@ -256,18 +316,38 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   const value = useMemo<WorkspaceValue>(() => {
     const isVisible = (tab: TabId) => {
       const g = L.groupOf(layout, tab);
-      return !!g && g.active === tab && (!narrow || g.id === layout.focused);
+      return !!g && g.active === tab && (maximised !== null ? g.id === maximised : !narrow || g.id === layout.focused);
     };
     const agentOf = conversationOf(lastConversation);
     return {
       projectId,
       layout,
       narrow,
+      floorOf: (groupId) => floors[layout.groups.findIndex((g) => g.id === groupId)] ?? 0,
       watched: isVisible(lastConversation) ? lastConversation : null,
       currentAgentId: agentOf === undefined ? null : (agentOf ?? project?.orchestrator_agent_id ?? null),
       focusRequest,
+      maximised,
+      runStatuses,
+      setRunStatuses,
+      toggleMaximise: (tab, on) => {
+        const current = layoutRef.current;
+        if (narrowRef.current) return;
+        const next = toggleMaximise(current, maxRef.current, tab ?? L.focusedGroup(current).active, on);
+        maxRef.current = next.maximised;
+        setMaxGroup(next.maximised);
+        commit(next.layout, { route: false });
+      },
       memory,
       closing,
+      picker,
+      openPicker: (group) => {
+        const current = layoutRef.current;
+        // Narrow: one strip shows every tab, so the picker opens there whatever group is focused.
+        const target = narrowRef.current ? (current.groups[0]?.id ?? current.focused) : (group ?? current.focused);
+        setPicker((p) => ({ group: target, n: (p?.n ?? 0) + 1 }));
+      },
+      closePicker: () => setPicker(null),
       openSettings: onSettings,
       isVisible,
       setDockWidth,
@@ -283,28 +363,49 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         focusSoon(() => document.getElementById("octo-composer"));
       },
       openAgent,
-      // The Files tab is a file view (editor + tree column): it opens at half the row like a file.
+      // The Files tab is a file view (editor + tree column) and Changes is a list beside a diff: both open at the width of a
+      // file (the rest of the row after the conversation), not at a tool's 366px where the diff is cramped.
       openTool: (tool) => {
         const tab = L.toolTab(tool);
         // Decision 35: the opened tool takes focus (the header button that opened it may re-mount in another strip).
-        if (tool !== "files") focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
-        openSide(tab, tool === "files" ? undefined : toolFraction());
-        if (tool === "files") {
+        // The side question's input takes the caret (Ctrl/Cmd+; means "ask now").
+        if (tool === "side") focusSoon(() => document.getElementById("octo-side-input"), { timeout: 3000 });
+        else if (tool !== "files") focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
+        const roomy = tool === "files" || tool === "changes";
+        openSide(tab, roomy ? fileFraction() : toolFraction());
+        if (roomy) {
           const g = L.groupOf(layoutRef.current, tab);
-          if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+          if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
+            commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
         }
       },
       // A file needs room: a side group sized for a tool widens to half the row.
       openFileTab: (key, where) => {
         focusFileSoon(key);
+        // Decision 35: until the (lazy) file view and its editor are in, the new tab's button holds focus, so it never
+        // falls to the page when the row that opened the file goes away with its panel.
+        focusSoon(() => tabButton(document, L.fileTab(key)), { onlyIfLost: true, timeout: 1500 });
         if (where) {
           const current = layoutRef.current;
           if (where.replace && L.groupOf(current, where.replace)) return commit(L.replace(current, where.replace, L.fileTab(key)));
           return commit(L.open(current, L.fileTab(key), { group: where.group }));
         }
-        openSide(L.fileTab(key));
+        openSide(L.fileTab(key), fileFraction());
         const g = L.groupOf(layoutRef.current, L.fileTab(key));
-        if (g && !g.tabs.includes(L.CHAT)) commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+        if (g && !g.tabs.includes(L.CHAT) && g.size < FILE_GROUP_MIN_FRACTION)
+          commit(L.ensureSize(layoutRef.current, g.id, FILE_GROUP_MIN_FRACTION), { route: false });
+      },
+      openRun: (name) => openSide(L.runTab(name), fileFraction()),
+      openSession: (sessionId) => {
+        const current = layoutRef.current;
+        const tab = L.sessionTab(sessionId);
+        if (L.groupOf(current, tab)) return commit(L.activate(current, tab));
+        const from = L.groupOf(current, L.toolTab("sessions")) ?? L.chatGroupOf(current);
+        // Split only when the dock is one group (and has room): beside it. With two groups already, a third column leaves
+        // nothing readable, so the session is a tab next to the Sessions tab.
+        const room = !narrowRef.current && current.groups.length === 1 && dockWidth >= dockNeeds([...current.groups, { tabs: [] }]);
+        if (room) return commit(L.open(current, tab, { newAfter: from.id, size: from.size / 2 }));
+        commit(L.open(current, tab, { group: from.id }));
       },
       openIn: (tab, groupId) => commit(L.open(layoutRef.current, tab, { group: groupId })),
       dropTab: (tab) => commit(L.close(layoutRef.current, [tab])),
@@ -330,7 +431,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
       canSplitRight: (tab) => {
         const g = L.groupOf(layout, tab);
-        return !narrow && !!g && L.canSplit(layout, tab, g.id) && dockWidth >= (n + 1) * MIN_GROUP + n * GROUP_GAP;
+        return !narrow && !!g && L.canSplit(layout, tab, g.id) && dockWidth >= dockNeeds([...layout.groups, { tabs: [] }]);
       },
       splitRight: (tab) => {
         const g = L.groupOf(layoutRef.current, tab);
@@ -345,7 +446,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
         if (target.kind === "strip") return true;
         return (
           L.canSplit(layout, tab, target.group) &&
-          (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= (n + 1) * MIN_GROUP + n * GROUP_GAP)
+          (from.tabs.length === 1 && from.id !== target.group ? true : dockWidth >= dockNeeds([...layoutRef.current.groups, { tabs: [] }]))
         );
       },
       // A dropped tab keeps focus on its own button (the drag moved it: its old button is gone).
@@ -360,9 +461,15 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       resize: (index, px) => {
         const inner = widthRef.current - (layoutRef.current.groups.length - 1) * GROUP_GAP;
         if (inner <= 0) return;
-        commit(L.resize(layoutRef.current, index, px / inner, MIN_GROUP / inner));
+        const next = L.resize(layoutRef.current, index, px / inner, (floorsRef.current[index] ?? 0) / inner, (floorsRef.current[index + 1] ?? 0) / inner);
+        commit(next);
+        // Decision 60: where the user puts the divider between the conversation and its one neighbour is where the next first split opens.
+        const [first] = next.groups;
+        if (next.groups.length === 2 && index === 0 && first && first.tabs.includes(L.CHAT))
+          writePref(PREFS.chatSplit, CHAT_SPLIT_CODEC.stringify(first.size * inner));
       },
       equalize: () => commit(L.equalize(layoutRef.current)),
+      walkGroup: () => (narrowRef.current ? "all" : L.focusedGroup(layoutRef.current).id),
       mruOrder: () => {
         const current = layoutRef.current;
         return mruOrder(mru.current, narrowRef.current ? L.allTabs(current) : L.focusedGroup(current).tabs);
@@ -415,16 +522,21 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       },
     };
   }, [
+    fileFraction,
     projectId,
     project,
     layout,
     narrow,
+    floors,
+    floorsRef,
     dockWidth,
-    n,
     lastConversation,
     focusRequest,
+    maximised,
+    runStatuses,
     memory,
     closing,
+    picker,
     closedTabs,
     onSettings,
     commit,
@@ -468,6 +580,8 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   useEffect(() => {
     if (toolAsked.current) return;
     toolAsked.current = true;
+    // The sidebar's session rows (and Memory) ask for the Sessions tab before this workspace mounted.
+    if (hasQueuedSession(projectId)) value.openTool("sessions");
     const asked = nav.takePendingTool(projectId);
     if (!asked) return;
     memory.set(L.toolTab(asked.tool), USAGE_VIEW, { ...DEFAULT_USAGE_VIEW, scope: asked.scope });
@@ -479,10 +593,13 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
   useEffect(() => {
     if (!agentsLoaded || !project) return;
     const folders = new Set(project.folders.map((f) => f.label));
+    const commands = new Set((project.commands ?? []).map((c) => c.name.toLowerCase()));
     const next = L.prune(layoutRef.current, (tab) => {
       const ref = L.parseTab(tab);
       if (ref?.kind === "agent") return Boolean(state.agents[ref.agentId]);
       if (ref?.kind === "file") return folders.has(keyFolder(ref.key));
+      // A run tab of a command that was removed or renamed has nothing to show (its runs keep the old name).
+      if (ref?.kind === "run") return commands.has(ref.name.toLowerCase());
       return true;
     });
     if (next !== layoutRef.current) commit(next, { route: false });
@@ -501,21 +618,28 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     const api: WorkspaceApi = {
       openAgent: (id) => valueRef.current.openAgent(id),
       focusChat: () => valueRef.current.focusChat(),
+      openTool: (tool) => valueRef.current.openTool(tool),
       actions: () => {
         const ws = valueRef.current;
         const active = L.focusedGroup(layoutRef.current).active;
         const name = label(active);
         const out: WorkspaceCommand[] = [
+          { id: "tool-sessions", label: "Show sessions", detail: "conversations and agent sessions", run: () => ws.openTool("sessions") },
           { id: "tool-agents", label: "Show agents", run: () => ws.openTool("agents") },
           { id: "tool-notes", label: "Show notes", run: () => ws.openTool("notes") },
           { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
           { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
+          { id: "tool-changes", label: "Show changes", detail: "what the agents changed", run: () => ws.openTool("changes") },
+          { id: "tool-review", label: "Review a pull request", detail: "pick one, read it, comment, submit", run: () => ws.openTool("review") },
+          { id: "tool-memory", label: "Show memory", detail: "what the project remembers", run: () => ws.openTool("memory") },
           { id: "tool-usage", label: "Show usage", detail: "tokens, cost, limits", run: () => ws.openTool("usage") },
+          { id: "tool-side", label: "Ask a side question", detail: "not added to the conversation", shortcut: `${MOD_LABEL};`, run: () => ws.openTool("side") },
+          { id: "new-tab", label: "Open a tab…", detail: "tools, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },
         ];
         if (ws.canMoveToOtherSide(active))
-          out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD}\\`, run: () => ws.moveToOtherSide(active) });
+          out.push({ id: "move", label: "Move tab to the other side", detail: name, shortcut: `${MOD_LABEL}\\`, run: () => ws.moveToOtherSide(active) });
         if (ws.canSplitRight(active)) out.push({ id: "split", label: "Split right", detail: name, run: () => ws.splitRight(active) });
-        if (L.closable(active)) out.push({ id: "close", label: "Close tab", detail: name, shortcut: `${MOD}W`, run: () => ws.requestClose([active]) });
+        if (L.closable(active)) out.push({ id: "close", label: "Close tab", detail: name, shortcut: `${MOD_LABEL}W`, run: () => ws.requestClose([active]) });
         if (L.allTabs(layoutRef.current).length > 1)
           out.push({ id: "close-others", label: "Close other tabs", detail: name, run: () => ws.closeOthers(active) });
         if (layoutRef.current.groups.length > 1 && !ws.narrow) out.push({ id: "equalize", label: "Make groups equal width", run: () => ws.equalize() });

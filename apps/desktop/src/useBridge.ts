@@ -7,13 +7,16 @@ import type { BridgeChoice } from "./bridgeChoice";
  * `@octo/ui/demo` with `import()`, so a normal start never downloads it, and the hook returns null until it is in.
  */
 export function useBridge(choice: BridgeChoice): Bridge | null {
-  const http = useMemo(() => (choice.kind === "http" ? createHttpBridge({ baseUrl: choice.baseUrl }) : null), [choice]);
+  const http = useMemo(
+    () => (choice.kind === "http" ? createHttpBridge({ baseUrl: choice.baseUrl, ...(choice.token ? { token: choice.token } : {}) }) : null),
+    [choice],
+  );
   const [demo, setDemo] = useState<Bridge | null>(null);
   useEffect(() => {
     if (choice.kind !== "demo") return;
     let live = true;
-    void import("@octo/ui/demo").then((m) => {
-      if (live) setDemo(m.createDemoBridge(choice.options));
+    void Promise.all([import("@octo/ui/demo"), import("./demo")]).then(([m, extras]) => {
+      if (live) setDemo(extras.withDemoExtras(m.createDemoBridge(choice.options), window.location.search));
     });
     return () => {
       live = false;

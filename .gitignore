@@ -16,6 +16,10 @@ apps/router/experiments/**
 !/config/*.env.example
 !/apps/router/config/*.env.example
 apps/harness/octo-harness
+apps/harness/octo-mockllm
 node_modules/
 apps/desktop/dist/
 .pnpm-store/
+
+# Local agent worktrees (never committed)
+.claude/worktrees/

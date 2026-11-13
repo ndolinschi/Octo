@@ -1,289 +1,211 @@
-# Handover — status on 2026-11-11
+# Handover — status on 2026-11-12 (after batch 5 and the sessions merge)
 
-**Branch:** `claude/harness-ui-v6-completion-8ynrkq`, to be merged to `main` by pull request; follow-up work starts
-from fresh `main`. The sections below are earlier handovers; "How to run" and "How the work was orchestrated" are
-still accurate, their status tables are superseded by this one.
+For whoever continues the work: what exists and how far it is verified, what is open, how work runs, what comes next.
+The specs hold the detail; the system overview is [`../ARCHITECTURE.md`](../ARCHITECTURE.md), the monorepo map and
+commands are [`../../AGENTS.md`](../../AGENTS.md). The owner's next step is [`LIVE-CHECKLIST.md`](LIVE-CHECKLIST.md)
+(checklist 4).
 
-| Area | State | Verified by the orchestrator | Not verified |
-| --- | --- | --- | --- |
-| UI v6.2 and v6.3 part 1 (`specs/2026-11-10-project-harness-ui.md`, decisions 23, 25, 29, 32–36) | Built | Frontend gates, screenshots | Touch, screen reader, Tauri shell, live backend |
-| Frontend quality Q1–Q4 (`plans/2026-11-10-frontend-code-quality.md`) | Layer rule as lint errors, no cycles, `@octo/ui/demo` | Gates | Pixel comparison (executor's numbers only) |
-| Router ↔ harness I1 (`specs/2026-11-11-router-harness-integration.md`) | Hints, result headers, one ledger, project budget, compaction applied | Both apps' gates, `apps/harness/scripts/e2e-router.sh` | Compaction and `ceiling`/`fixed` jointly on the real router; a real upstream |
-| Harness: context breakdown, side question, compaction markers | Built (API); UI not yet | Go gates | — |
-| Child environment allow-list (bash tool, ACP agents, language servers, probes); `served_model` on agents | Built | Go gates | `HARNESS_CHILD_ENV_ALLOW` on a running server |
-| Orchestrator on an ACP agent — S2 (`specs/2026-11-10-subscription-agents-design.md`, `apps/harness/docs/acp-orchestrator.md`) | Built | Go gates, `scripts/e2e-acp-orchestrator.sh` | **Any real CLI or MCP client** — scripted agent only |
-| Eleven agent manifests (`plugins-examples/subscription-agents`) | Written | — | None was run |
-
-## Next, in order
-
-1. Owner's live run: `harness serve` with a logged-in Claude Code and `models.orchestrator: "acp:claude-code"`;
-   `apps/harness/scripts/test-subscriptions.sh`.
-2. UI part 2: decisions 24, 26–28, 30, 31, 37–40; show `served_model`; thinking / plan updates of ACP agents; the
-   open majors of `research/2026-11-11-ui-review-v6.2.md`; decision 42 is the bar for every pass.
-3. v7 (`specs/2026-11-10-v7-changes-queue-approvals.md`): changes and diffs (incl. files changed through bash, by
-   a before/after snapshot of the folder), queue, approvals — which also receive ACP permission requests
-   (`internal/permission`) and the forms of decision 43; tables (decision 44).
-4. Q5; bots (`specs/2026-11-11-bots-design.md`); I2 / I3; the harness items of
-   `research/2026-11-11-synara-gap.md`; SQLite persistence of router call records.
-
-Open owner decisions: router ladder (inverted by price); S3 a or b (default a); Grok in tests; bots questions 1–2.
-
----
-
-# Earlier handover (2026-11-10, later session)
-
-**Branch:** `claude/harness-ui-v6-completion-8ynrkq` (continues `claude/project-harness-ui-redesign-qdnem2`; no pull request opened).
-The section below this one is the earlier handover and is still accurate for how to run things and how the work is orchestrated.
-
-## Done and committed in this session
-
-| Area | State | Verified by the orchestrator |
-| --- | --- | --- |
-| UI v6 and v6.1 (spec: `specs/2026-11-10-project-harness-ui.md`, decisions 1–22) | Built | Gates, spacing audit at 0, live run on the mock stack (gopls, code comments, ACP turn, tabs) |
-| Frontend code quality Q1–Q3 (`plans/2026-11-10-frontend-code-quality.md`) | Strict tsconfig, ESLint with boundaries, Prettier, CI job, 203 unit tests, shared helpers, seven defects fixed | Gates; pixel comparison reported by the sub-agent |
-| Harness usage Phase A (`specs/2026-11-10-usage-design.md`) | `/v1/usage`, `/v1/limits`, prices.toml, ACP usage | Go gates; live on an existing data dir |
-| Harness cost fixes (`research/2026-11-10-cost-audit.md`) | Prompt caching, context caps, balanced default orchestrator | Go gates only; caching benefit not measured on long loops |
-| Router cost fixes | Compaction once, classifier fallback, max_tokens default, same-tier retry, budget by price, reported cost first; prices corrected against the OpenRouter catalogue | cargo fmt / clippy / 199 tests |
-| Subscription agents S1 (`specs/2026-11-10-subscription-agents-design.md`) | Manifests for Copilot, Grok, Codex; ACP authenticate and model selection; login probes; live tests behind `-tags subscription` | Go gates; **never run against the real CLIs** |
-| Rules and docs | `.cursor/rules/octo-typescript.mdc` = `.claude/rules/typescript.md`; `packages/ui/ARCHITECTURE.md`; `AGENTS.md` for ui, agent-client, desktop | — |
-
-## Stopped midway: UI pass v6.2 (last commit, marked wip)
-
-The sub-agent was stopped on the owner's request. The commit builds, lints with 0 errors and its 242 unit tests
-pass, but it is **unreviewed and incomplete**: no acceptance scripts, spacing audit, screenshots or live run were
-done on it, and its "As built (v6.2)" section is not written. Its brief (what it was building):
-
-- Decision 23 — the UI reads as "a project's orchestrator at work" (sidebar = projects with orchestrator state,
-  orchestrator header, team strip, Home about orchestrators, no "session/chat" wording).
-- Decision 21b — the bolder dithered streak (hot core, 3px grain, translucent cards), compared side by side with
-  the owner's references (`refs` 18–20; the reference images lived in the session scratchpad and are gone).
-- A Usage tab (Tokens / Cost / Limits) on `getUsage` / `getLimits`.
-- The findings of `research/2026-11-10-ui-review-v6.1.md` (seven P1, about fifteen P2) and one confirmed app race
-  (the composer is rendered in two trees in `ConversationView` and loses focus after a project is created).
-
-To resume: read the diff of the wip commit against its parent, decide what is finished, then re-run the brief's
-verification (gates, `spacing-audit.mjs`, acceptance scripts, screenshots dark/light, live run) before trusting it.
-
-## Open decisions for the owner
-
-1. **Router ladder.** By the catalogue prices the `high` model is the cheapest and `low` costs about 22× more
-   (`apps/router/docs/ladder-cost-check.md`). Either point all tiers at the `high` model or rebuild the ladder. The
-   order was left unchanged; the router logs a warning at start-up.
-2. **Subscriptions in the router.** Recommended: routing decisions in the harness (S3a). Proxying vendors' private
-   endpoints (S3b) was not built and needs an explicit decision.
-3. **Real-CLI check for S1.** Run `apps/harness/scripts/test-subscriptions.sh` on a machine with the subscriptions.
-
-## Next, in the agreed order
-
-1. Finish and verify v6.2, then an independent review of it.
-2. Code quality Q4 (module boundaries) and Q5 (split providers and large components).
-3. v7 (`specs/2026-11-10-v7-changes-queue-approvals.md`): changes per turn with diffs, message queue, approvals.
-4. Subscription agents S2 (orchestrator on a subscription) after S1 is proven on real CLIs.
-5. Cost follow-ups not built: orchestrator history compaction, a per-project budget (the harness does not send
-   `x-octo-budget-key` yet).
-
-Not verified anywhere: a real model or API key, real ACP agents, the Tauri shell, WebKit.
-
----
-
-# Handover — project harness, UI and workspace
-
-**Date:** 2026-11-10
-**Branch:** `claude/project-harness-ui-redesign-qdnem2` (no pull request opened)
-**Last commit of the batch:** `wip(ui): spacing tokens, flipped surfaces, chat header and model selector`
-
-This file is for whoever continues the work in a new session. It says what exists,
-how to run it, what was and was not verified, what is unfinished, and how the work
-was orchestrated.
+**Branch:** `claude/harness-ui-v6-completion-8ynrkq`. Last commit before this pass: `ec4bc05` (batch 4). On top of it,
+uncommitted when this was written: batch 5 (error catalogue `internal/usererr`, file tree column, review fixes of the shell
+and the conversation, slash menu, images, structured errors in the UI, the window report from the context popover, export
+through a Blob), the Sessions tab (`docs/superpowers/specs/2026-11-12-project-sessions-design.md`), a fix to the context
+window scaling (`scaleTo`), and the integration pass below. Not merged to `main`; PR status not recorded.
 
 ## 1. What exists
 
-| Area | Path | State |
-| --- | --- | --- |
-| Harness (Go) | `apps/harness` | `harness serve`: projects, per-project SQLite, orchestrator + nested sub-agents, notes, confined file API, plugin registry, ACP sub-agents, language-server relay, scripted mock model and fake ACP agent |
-| Bridge client (TS) | `packages/agent-client` | HTTP + SSE client, project state reducer, message-port bridge, file / plugin / LSP session methods |
-| UI (React + Tailwind 4) | `packages/ui` | Two-level sidebar, tab workspace (dock), chat, delegation cards, read-only agent tabs, Monaco editor with code comments and an LSP client, command palette, settings with plugins |
-| Browser / Tauri host | `apps/desktop` | Vite host for the UI; `?demo=1` runs on in-memory demo data |
-| Router | `apps/router` | Untouched |
+Marks, four of them: **owner** (verified live by the owner on Linux, runs 1 and 2 of 2026-11-11) · **here** (verified
+here on scripted agents, the mock model, the fake router and a fake `gh`, Chromium on demo data) · **built** (built, not
+verified) · **designed** (designed, not built). "Status not recorded" where no note says. Only Claude Code has run as a
+working agent with a real CLI; Copilot and Grok were run by the owner logged out. Not verified anywhere: Windows, the
+macOS window, the Tauri glue in a real webview, touch, screen readers, WebKit for the UI of batches 1 to 5, a real `gh` on
+a fork, posting a review, images with any real agent.
 
-Design documents (`docs/superpowers/specs/`):
+### Router (`apps/router`)
 
-- `2026-11-10-project-harness-design.md` — projects, bridge API contract.
-- `2026-11-10-project-harness-ui.md` — UI design, tokens, workspace, motion and craft rules.
-- `2026-11-10-code-pane-design.md` — file API and editor.
-- `2026-11-10-workspace-plugins-acp-design.md` — tabs, code comments, plugins, LSP, ACP, acceptance criteria.
-- `2026-11-10-vscode-agents-window-design.md` — **shelved** VS Code fork direction, kept for its findings.
+- Proxy, autoroute ladder, price rule, `tier: auto` route endpoint, budget stop: **owner** (run 2). The packaged-app check
+  is checklist 0.2. A low-tier price against a billed call: **built**.
+- Spend restored after a restart, tier hints and their 400s, call records, embedded default configuration: **here**
+  (`cargo test -p octo`, `e2e-router.sh`). Compaction for the client (`x-octo-trigger: compact`): **built**.
+- 326 tests at the last count recorded (not re-run in this pass: no Rust change).
 
-Design skills are vendored at `.cursor/skills/interfaces` (submodule).
+### Harness (`apps/harness`)
 
-## 2. How to run
+- Bridge, projects, per-project SQLite (**schema 14**; a newer database is refused), file API, events with `seq`, plugins,
+  LSP relay: **owner** for what the app used in both runs; routes **here** (Go tests, `e2e-acp-orchestrator.sh`).
+- ACP orchestrator with Claude Code, sub-agents, stop, logged-out error: **owner**. Copilot and Grok logged out: **owner**.
+  Logged in, and Codex, Cursor, OpenCode, Antigravity, Devin, Droid, omp, pi: **built**.
+- Built-in loop with tiers: **built** with a real key. Router client and budget gate: **owner**.
+- Error catalogue (`internal/usererr`): every failure a person reads is `message`, `hint`, `command`, `action`, `details`
+  (decision 94b; `apps/harness/docs/errors.md`): **here** (catalogue and sweep tests). Real agents' failures: **built**.
+- Project sessions (create, resume with `session/load` or a recap, rename, archive, delete; agent sessions with stop and
+  messages): **here**; with a real agent: **built** (`apps/harness/docs/sessions.md`).
+- Memory M1, M2 (opt-in), M4 (sessions as exchanges), M5 (notes with descriptions), M6 (a task exists only when a turn did
+  work; `project.sqlite.pre-m6` backup): M1 partly **owner**; M2 to M6 **here**.
+- Slash commands and `/clear`, `remember`, images (upload, image blocks, refusal), side question on the project's agent,
+  itemised context report, advisory login probe with recheck and force, usage per model: **here**.
+- v7 (changes, approvals, queue, forms, secrets), modes, plans, rewind, steer, always-allow: **here**; a supervised run
+  with a real agent: **built**.
+- Pull-request review RV1 with forks and several repositories per folder, branches view: **here** with a fake `gh`; list
+  and diff **owner** on a GitHub Enterprise host; posting: **built**. RV3 (AI pass): **designed**.
+- Context window scaling: a part that has something never scales to 0 (`scaleTo`, test in
+  `context_internal_test.go`): **here** (`-count=20 -race`).
+
+### agent-client (`packages/agent-client`)
+
+- HTTP and SSE client, reducer, message-port bridge, LSP sessions, sessions and structured-error types, optional `Bridge`
+  members, token option: **here** (package tests).
+
+### UI (`packages/ui`)
+
+- Workspace, tabs as wide as their title, file view with the tree as a column, comments, LSP, palette, Usage per model,
+  settings page (Providers as list and detail, Models in two scopes, Commands), connect screen, Memory (Sessions,
+  Knowledge, Files, one search), Notes, side question, review workspace, modes, plans, rewind, queue, approvals, forms,
+  slash menu, images, Sessions tab (list, main and agent detail, sidebar rows), structured error notices: **here**
+  (599 UI unit tests, Playwright scripts on `?demo=1`). Against a live harness or real agents: **built**.
+- Component library (decision 90): primitives and a gallery at `?gallery=1`; 49 `octo/no-native-controls` warnings left
+  (per folder in `research/2026-11-12-ui-component-audit.md`): migration **built**, not finished.
+- Entry bundle 157.9 kB gzip, budget 158.9, target 158 met (2026-11-13; cuts in the note in `scripts/check-bundle-size.mjs`). Still open there: the composer's slash and image hooks behind a first-use import, the `WorkspaceProvider` split.
+
+### Desktop (`apps/desktop`)
+
+- Sidecars (free ports, login-shell `PATH`, health waits, stop order), installer on Linux: **owner**. Crate tests: **here**.
+- macOS title bar (inset 86, traffic lights, drag, zoom, full screen): **built**, Rust not compiled here. Tauri system
+  folder dialog: **designed**. `scripts/install.sh` on macOS: **built**.
+
+## 2. UI decisions 79 to 94 (one line each; the full text is in `specs/2026-11-10-project-harness-ui.md`)
+
+79. A pane's width comes from the layout state only, never from what it shows.
+80. A folder has no label anywhere.
+81. No coloured frames: a card that waits for you has a neutral border; the glyph and the one filled button say so.
+82. View tabs (a hairline under the row) and filters never look alike.
+83. A tab is as wide as its title.
+84. Fields in a row share one baseline (`FieldRow`); local review is a list, not a form.
+85. Opening a file changes nothing but the editor's content (one `FileView` per group, the tree is a column).
+86. Tokens per model, per project, in Usage; across projects in Settings; on the turn line.
+87. The composer does not glow.
+88. `/context` shows the whole window, itemised down to each tool and file.
+89. Providers is a list and a detail with equal rows.
+90. One component library: extend primitives, do not repeat them.
+91. UI review round 1: a to k (backdrop, one "needs you" card, one activity row, four controls in the composer row, ...).
+92. A keyboard shortcut is never a boxed letter inside a control.
+93. Memory is Sessions, Knowledge and Files under one search, read in compact prose.
+94. UI review round 2: a to g (the tree stays a column, errors in the person's words, pinned commands look like buttons, one
+    Requests group in the palette, an agent's label never its id, narrow chat, ...).
+
+## 3. In progress
+
+Nothing. The tree holds finished work only; the integration pass left it staged and uncommitted for the coordinator.
+
+## 4. Next, in order
+
+1. **Review fixes not done.** Rounds 1 and 2 of `research/2026-11-12-ui-review-round-1.md` list 27 findings; batch 5 closed
+   the ones named in its commit; which are still open: status not recorded. Walk the list against the screens (the tour,
+   `node packages/ui/scripts/ui-tour.mjs`) and close the rest.
+2. **Library migration batches left.** 49 native-control warnings (folders and counts in the component audit); then lower the
+   lint rule to an error.
+3. **Entry bundle.** Target met (157.9 kB). Further: slash and image hooks behind a first-use import, `WorkspaceProvider` split (Q5 of
+   `plans/2026-11-10-frontend-code-quality.md`); keep lazy-only exports out of modules the entry imports.
+4. **Parity B8 to B10** (`specs/2026-11-12-parity-backlog.md`).
+5. **Review RV3**, the AI pass (`specs/2026-11-11-pr-review-design.md`).
+6. The Tauri system folder dialog and the macOS title bar fix (uncompiled Rust; the owner runs `OCTO_DEBUG_CHROME=1`).
+7. Whatever checklist 4 sends back.
+
+## 5. What is open
+
+- **The owner's run:** [`LIVE-CHECKLIST.md`](LIVE-CHECKLIST.md) (checklist 4) is written and not run.
+- **Default access.** `HARNESS_DEFAULT_ACCESS` is still `full` (`apps/harness/cmd/harness/serve.go`), though the UI shows
+  approval cards. Flipping to `supervised` is an owner decision.
+- **Owner decisions.** S3: a or b (default a). Bots questions 1 and 2. Grok in automated tests: an API key in CI, the
+  subscription on a developer machine (default).
+- **Gaps in the specs.** A router that dies after start is not watched. An ACP `session/load` may count a continued
+  agent's counters twice. A note edited mid-turn is not announced to an ACP agent.
+- **Security.** `bash` is not sandboxed and can read the bridge token file as the harness's user; a supervised project
+  stops the command at an approval card.
+- **Known quirks.** `Settings → Commands` still has a "Settings for" project row. The harness test suites passed with
+  `-race` here; two earlier load-dependent flakes (`TestContextEndpoint`, a digest wait in `memory_life_test.go`) were
+  fixed in this pass and need a full `go test -race ./...` on a quiet machine to confirm.
+- **Doc debt.** Spec and code differences: [`../ARCHITECTURE.md`](../ARCHITECTURE.md#known-contradictions).
+
+## 6. Working rules
+
+**Roles.** One orchestrator session decides, writes contracts (specs with numbered acceptance criteria), briefs, verifies
+independently, commits and reports. Executors do bounded pieces: Go and client code, UI where visual judgment matters,
+documentation, read-only research and review.
+
+**Models.** Sonnet writes code, tests and UI. Haiku does research, documentation and small mechanical edits, each with an
+exact contract. Opus only when the owner asks. The orchestrator re-runs every gate itself before committing.
+
+**Worktrees.** An executor first runs `git reset --hard <work branch>` in its worktree and checks `git log --oneline -1`.
+It never uses `git stash` (the stack is shared); it sets work aside with a WIP commit, and commits only when briefed.
+
+**Third-party CLIs.** No third-party agent CLI runs with this sandbox's environment. Run one only with an empty
+environment (`env -i`), and only on the owner's machine for anything that needs a login.
+
+**The loop for each feature.** Look (measure, do not guess) → contract, committed → executors on disjoint paths
+(`apps/harness`, `packages/agent-client`, `packages/ui`, `apps/desktop`, docs) → verify independently → commit per
+finished piece → read-only review → tell the owner what is still wrong or unproven.
+
+**Rules that are easy to break.**
+
+- Executors never run git write commands unless the brief names one; the orchestrator commits after review.
+- Every harness started by a test or script sets `HARNESS_NO_BUILTIN_PLUGINS=1`, or the router may pick
+  `acp:claude-code` and the harness fetches an adapter with `npx`.
+- No vendor CLI and no provider key here: test with `examples/mockllm`, `examples/fakeacp`, `internal/fakerouter`; say
+  "not verified" for anything that needs the real thing.
+- A change to the shared `Bridge`: client first (`types.ts`, `client.ts`, the message-bridge allow-list, tests), then the
+  UI's demo bridge if the member is not optional.
+- The harness, the router and the shell share no file. Do not import Tauri in `packages/ui`.
+- A behaviour change updates the spec's "As built" section and the feature's doc page in the same commit.
+- Commit when a finished piece's gates pass. The container is ephemeral: anything uncommitted or unpushed is lost,
+  including the scratchpad. UI executors wipe their screenshot folders; copy what to keep.
+- Late owner feedback goes to a running executor as a numbered addendum.
+
+**Gates per area** (from the repo root unless a `cd` is shown):
+
+| Area | Commands |
+| --- | --- |
+| Router | `cargo fmt --check` · `cargo clippy -p octo --all-targets -- -D warnings` · `cargo test -p octo` (proxy variables removed) |
+| Harness | `cd apps/harness && gofmt -l . && go vet ./... && go test -race ./...` (CI also runs `go build`) |
+| Harness end to end | `bash apps/harness/scripts/e2e-acp-orchestrator.sh` · `cargo build -p octo && bash apps/harness/scripts/e2e-router.sh` · `bash apps/harness/scripts/e2e-v7.sh` |
+| agent-client | `pnpm --filter @octo/agent-client lint` · `... test` · `... format:check` |
+| ui | `pnpm --filter @octo/ui lint` · `... test` · `... format:check`; with a dev server up, `pnpm --filter @octo/ui audit:spacing` prints `total=0`; `packages/ui/scripts/layout-shift.mjs` for layout shift |
+| desktop | `pnpm --filter @octo/desktop lint` · `... test` · `... build`, then `pnpm check:bundle` |
+| whole frontend | `pnpm lint` (includes `scripts/check-cycles.mjs`) · `pnpm format:check` · `pnpm test:scripts` (`scripts/eslint/`) |
+| Shell | `cd apps/desktop/src-tauri && cargo test -p octo-sidecar`; `cargo check` needs `bash scripts/build-sidecar.sh --no-router` and WebKitGTK |
+| Dev stack and installer | `pnpm test:dev-sh` · `pnpm test:dev-sh -- --router --mock` · `bash scripts/install.sh --no-install` |
+| Live (owner) | `bash apps/harness/scripts/test-subscriptions.sh [agent ...]` (or `all`); `harness doctor` for the report |
+
+## 7. How to run
 
 ```bash
-git submodule update --init --recursive
-pnpm install
-
-# UI only, on demo data
-pnpm --filter @octo/desktop dev            # http://localhost:1420/?demo=1
-
-# Full stack without an API key (three terminals)
-cd apps/harness && go run ./examples/mockllm
-cd apps/harness && ANTHROPIC_API_KEY=mock go run ./cmd/harness serve \
-  --base-url http://127.0.0.1:8791 --plugins-dir ./plugins-examples/go-tools
-pnpm --filter @octo/desktop dev            # http://localhost:1420
+git submodule update --init --recursive && pnpm install
+pnpm dev:all                    # harness (no key) + UI at :1420; `-- --mock` adds the mock model; `-- --router` adds the router
+pnpm --filter @octo/desktop dev # UI only; ?demo=1 for demo data (also ?providers=none, ?review=...)
+pnpm install:app                # build both sidecars and the Tauri app, install it (owner's machine)
+cd apps/harness && go run ./cmd/harness doctor     # what the harness sees on this machine
 ```
 
-Mock-model triggers in the user message: `quick` (answer without delegating),
-`[write]` (a sub-agent writes `octo-demo-note.md`), `[acp]` (delegate to the first
-plugin ACP agent; build `./examples/fakeacp` and use `plugins-examples/fake-acp`).
-Demo-mode knobs: `?demo=one`, `?demo=many`, `?lsp=fail-once|slow|exit`, `?plugins=none`.
+Mock triggers: `quick`, `[write]`, `[acp]` in a message; `[silent]`, `[refuse]`, `[max-tokens]`, `[crash]` for the fake
+ACP agent; memory markers in `apps/harness/docs/memory.md`.
 
-Gates:
+## 8. Where the older handovers went
 
-```bash
-cd apps/harness && gofmt -l . && go vet ./... && go test -race ./...
-pnpm --filter @octo/agent-client test
-pnpm --filter @octo/ui lint
-pnpm --filter @octo/desktop build
-```
+Older handovers: `git log -- docs/superpowers/HANDOVER.md`. Design direction: the UI spec's "Principles" section.
 
-All four passed on the last commit (Go suite last run at `710ed98`; no Go changes since).
+## Working rule (owner, 2026-11-12) — executors check what they changed; the full gates run once, at merge
 
-## 3. Verified and not verified
-
-Verified by the orchestrator directly:
-
-- Go: formatting, vet, race tests in every package; the real `gopls` test
-  (`TestGoplsDiagnosticsAndHover`) runs and passes.
-- Live stack with the mock model (before the tab workspace): delegation tree, file
-  edit → saved on disk, conflict refusal, agent write refreshing an open tab,
-  tool-row file links.
-- Type-check, build and client tests after every UI pass; selected screenshots read.
-
-Reported by sub-agents, not re-run by the orchestrator:
-
-- UI scripted suites (workspace: 57 of 58; comments/LSP: 75 of 75), contrast tables,
-  frame-sequence motion checks.
-
-Not verified at all:
-
-- Anything against a real model (no API key in the environment).
-- ACP with a real agent (Claude Code, Gemini CLI, Codex) — only the scripted fake.
-  The commands in `plugins-examples/acp-agents` come from secondary sources.
-- The UI's LSP client against a real language server — only the demo fake. `gopls`
-  is proven at the harness level only.
-- The tab workspace, comments and LSP UI on the live harness (only on demo data).
-- The Tauri shell (`cargo check` not run); Windows paths and process handling.
-- Independent review of the UI after the workspace, comments and v6 passes.
-
-## 4. Unfinished: the v6 pass (stopped midway)
-
-The last commit is a partial pass. It builds and renders, but it is not reviewed.
-
-Done in it: spacing-scale tokens, flipped surfaces (near-black window, lighter
-panels), chat header (project / request, working state, token total), composer with
-an orchestrator model selector, sidebar Search row.
-
-Not done (the full brief is section 6 below plus the owner's references):
-
-1. **Spacing audit.** A script that fails on off-scale paddings/gaps, row heights
-   outside the defined set, unequal insets and misaligned shared edges; run before
-   and after, to zero violations. Measured problems before the pass: insets of
-   5/6/7/8/9px, chat panel flush against the sidebar, 32px and 28px rows mixed,
-   Chat tab label hugging its right edge, different selected-row shapes.
-2. **Turn rail** (`components/chat/TurnRail.tsx` exists; check wiring): a marker per
-   request with a hover card (first lines, status) and click-to-scroll.
-3. **File view like the owner's reference:** breadcrumb row with back/forward and
-   view controls, editor edge to edge, file tree as a collapsible column on the
-   right of the file view (replacing the separate Files tab), file-type icons.
-4. **"Filter files"** field in the tree.
-5. **Markdown preview** with a Preview / Source toggle, centred measure.
-6. **Floating composer** with status chips when the Chat tab is not visible.
-7. **Design doc** section for v6 (scale, semantic tokens, row anatomy, new contrast
-   table) — not written.
-
-Defects visible in the partial build's screenshots:
-
-- No gap between the status glyph and the role name in delegation rows.
-- "Jump to latest" overlaps transcript text.
-- The read-only bar wraps to two lines in a narrow group.
-- The chat header overlaps the first transcript line when scrolled.
-
-Earlier known limitations still open: no drag-and-drop in the narrow single-strip
-mode; comment boxes are not reachable with Tab from inside the editor; the problems
-popover can extend over the next panel; Ctrl/Cmd+K is captured before Monaco;
-back/forward stay enabled on WebKit; ACP token counts are approximate; ACP agents
-run unsandboxed with auto-approved permissions.
-
-## 5. Suggested next steps, in order
-
-1. Finish v6 (section 4), then run an **independent review** of the result.
-2. **Live verification** on the real harness: workspace, comments (sent block
-   reaches the orchestrator), LSP with real `gopls` through the UI, an `[acp]` turn.
-3. Fix what the review and the live run find; re-shoot screenshots for the owner.
-4. Update `AGENTS.md` for the current structure; add CI for the new Go packages if
-   the workflow needs it (the Go workflow already runs `go test ./...`).
-5. Decide the fate of `apps/desktop/src-tauri` (never exercised in this work).
-6. Follow-ups from the specs: orchestrator context compaction; a "Changes" view for
-   agent edits; permission prompts for ACP agents.
-
-## 6. Owner's direction and references
-
-- Feel: a premium desktop agent tool; earlier versions were rejected as "AI slop".
-  The owner's latest notes: comments in code must be exact; paddings and margins
-  must be balanced; the code view should work like the referenced agent IDE (file
-  tabs, breadcrumb, tree on the right, floating composer).
-- References were screenshots supplied in chat (two desktop agent tools and an
-  open-source agent app). They lived in the session's temporary directory and are
-  **gone** — ask the owner to attach them again. Use them for structure, proportion
-  and finish only; do not copy another product's name, logo, icons or assets, and do
-  not add features the product does not have.
-- Decisions already made by the owner: own app (not a VS Code fork) with an embedded
-  Monaco editor; one orchestrator conversation per project; projects span several
-  folders; sub-agent transcripts are read-only.
-
-## 7. How the work was orchestrated
-
-Hub and spoke: one orchestrator session makes decisions, writes contracts, verifies
-and commits; sub-agents do bounded pieces of work in the shared working tree.
-
-| Role | Model | Used for |
-| --- | --- | --- |
-| Orchestrator | the session's own model | Specs, acceptance criteria, briefs, independent verification, commits, user updates |
-| Design + UI build | Opus | Anything in `packages/ui` where visual judgment matters |
-| Code + tests | Sonnet | Go packages, `packages/agent-client`, mechanical UI seams |
-| Research | Haiku | Web research with sources; never touches files |
-| Independent review | Opus (the owner asked for the orchestrator's own model next time) | Read-only review with the `better-interface` skill |
-
-The loop for each feature:
-
-1. **Look** — read the code and the owner's references; measure instead of guessing
-   (pixel samples, `getBoundingClientRect`).
-2. **Decide and write a contract** — a spec with exact API shapes and numbered
-   acceptance criteria, committed before any code.
-3. **Dispatch in parallel only on disjoint paths** — one agent per directory
-   (`apps/harness`, `packages/agent-client`, `packages/ui`). Agents never run git
-   write commands; each gets its own dev-server port.
-4. **Brief like a peer** — goal, files to read first, exact scope, constraints,
-   mandatory verification (commands, scripted checks, screenshots), and a short
-   final report format that separates "ran" from "did not run".
-5. **Verify independently** — re-run the gates, read key screenshots, run the live
-   stack for behaviour claims. Report sub-agent self-checks as theirs.
-6. **Commit per finished piece** — only when its gates pass; never mid-flight.
-7. **Review as a separate agent** — read-only, evidence-based, ranked findings; feed
-   them into the next build pass.
-8. **Show the owner** — screenshots plus what is still wrong or unproven.
-
-Practical notes:
-
-- A stop hook asks to commit whenever the tree is dirty. While an agent is mid-edit
-  the tree does not build; commit when the agent finishes.
-- Changing the shared `Bridge` interface breaks the UI type-check until the UI's demo
-  bridge implements the new methods. Sequence: client change → UI change.
-- UI agents regenerate and wipe their screenshot folders; copy what you want to keep
-  before sending it.
-- Late owner feedback can be forwarded to a running agent as a numbered addendum
-  instead of starting a new pass.
-- Sub-agents run long (20–70 minutes for UI passes). Keep the owner updated and send
-  interim screenshots from the agent's dev server.
-- The container is ephemeral: anything not pushed is lost, including the scratchpad
-  (screenshots, review reports, the shelved VS Code extension and fork recipe).
+Many executors running every gate at once made the machine crawl. From now on:
+- **An executor runs only what its change can break.**
+  - UI change: `pnpm --filter @octo/ui exec tsc --noEmit`, `eslint` and `prettier --check` on the files it touched,
+    the `*.test.ts` files next to what it changed (`node --test` on those files, or the package test once at the
+    end), and the browser scripts against **the dev server** (`vite` on its own port) for the screens it changed.
+    No `pnpm --filter @octo/desktop build`, no bundle check, no Tauri or sidecar build.
+  - agent-client change: its `tsc`, its tests, and `tsc` of `packages/ui`.
+  - Harness change: `gofmt`, `go vet` and `go test -race` for the packages it touched and the ones that import them
+    (`go list -deps`/reverse deps), plus the one e2e script that covers the feature. Not the whole tree, not every
+    e2e script.
+  - Never a Rust or Tauri build unless the change is in Rust.
+- **The orchestrator runs the full set once per merge**: lint, format, cycles, all package tests, the production
+  build, the bundle budget, the whole Go tree with `-race`, every e2e script, sidecar tests when Rust changed, and
+  the browser scripts on the merged tree.
+- One heavy command at a time per executor; no parallel test runs.

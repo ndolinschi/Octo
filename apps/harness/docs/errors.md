@@ -1,0 +1,76 @@
+# Errors speak the person's language (decision 94b)
+
+Everything the harness says for a person to read (a failed turn, a notice, a provider that is not ready, an error body) has one
+structured form, built by one catalogue: `internal/usererr`.
+
+| Field | What it is |
+| --- | --- |
+| `message` | One plain sentence of what happened ("GitHub Copilot is not logged in."). No protocol words, no exit status. |
+| `hint` | The next step in plain words ("Log in to it in a terminal, then check again."). |
+| `command` | A copyable terminal command when there is one (`copilot auth login`). |
+| `action` | A machine code the UI turns into a button: `recheck_provider`, `connect_provider`, `retry`, `open_settings`, `update_agent`. Absent means none. |
+| `details` | The technical text (protocol names, exit status, the stderr line, method names), for a "Details" fold and the diagnostic report. |
+
+All five are additive: existing fields stay. Where a route used to return technical text in `message`, the text is now `details` and
+`message` is the plain sentence.
+
+## Where they appear
+
+| Surface | Fields |
+| --- | --- |
+| HTTP error body `{"error": {...}}` (every route) | `code`, `message`, and when set `hint`, `command`, `action`, `details`. `model_unavailable` also `provider`, `reason`, `can_force`. `rewind_conflict`: `details` stays the report object (machine data). |
+| `turn.finished` | `error` (the plain message; for a completed turn with a notice `warning: <message>`), `hint`, `command`, `action`, `details`; a notice also as `notice: {message, hint, command, action, details}` |
+| `project.attention` | `error` (plain message) with `hint`, `command`, `action`, `details` |
+| `side.error` | `error` (plain message), `code`, `hint`, `command`, `action`, `details` |
+| agent rows | `error` = plain message, `error_hint` = hint. Command, action and details are not stored (no schema change): after a restart a failed row has message and hint only |
+| `GET /v1/providers` | `reason` = the plain message while not ready; `problem` = `{message, hint, command, action, details}`; `models_error` = plain message, `models_problem` the same structure |
+| `GET /v1/plugins` | agents add `login_command` (manifest `auth.command`) |
+
+## The catalogue
+
+Constructors live in `internal/usererr/catalogue_*.go`: `catalogue_agent.go` (an ACP agent as the person knows it),
+`catalogue_service.go` (turns, routes, providers), `catalogue_review.go` (code host, git), `catalogue_generic.go` (the plain wording of a
+route's own error code, `usererr.Generic(code, technical)`). A failure of a kind nobody wrote a sentence for becomes `usererr.Unexpected`
+("Something went wrong inside Octo."), its text kept as `details`: `orchestrator.describe` does that at the end of every turn, side
+question and child agent.
+
+Callers use the constructors; `project.Error` carries one (`User`), the review service maps its codes to them (`review.Error.Catalogue`),
+the bridge writes them (`writeProblem`, `writeError`, `errorBody`). `writeError(w, status, code, msg)` is for a route's own error whose
+`msg` is technical: the body gets `usererr.Generic(code, msg)`, `msg` becomes `details`.
+
+## The rule, and how CI keeps it
+
+1. `TestCatalogueWording` (`internal/usererr/catalogue_test.go`) builds every constructor with sample arguments (and every code of
+   `Generic`) and checks `message` and `hint`: none of "ACP", "MCP", "exit status", "stderr", "JSON-RPC", "session/", "initialize",
+   "spawn_agent", a Go error chain (`: ` three times), a tool id with an underscore; starts with a capital letter, ends with a period;
+   at most 140 characters; the action is one of the known codes. `TestEveryConstructorIsListed` parses `catalogue_*.go` and fails for a
+   constructor without a sample, so a new case cannot skip the rules.
+2. `TestNoAdHocStrings` (`internal/usererr/sweep_test.go`) parses the non-test files of `bridge`, `project`, `review`, `commands`,
+   `settings` and collects the first string literal given to `writeError`, `invalid`, `conflict`, `notFound`, `fileTooLarge` or set as the
+   `Message` of an `&Error{}`. The set must equal `testdata/adhoc_strings.txt`. A new literal fails the test: use or add a constructor, or (only
+   for technical text that is `details` for the client's developer) add the line with
+   `UPDATE_ADHOC=1 go test ./internal/usererr -run NoAdHoc` and justify it in review. A line that matches nothing any more fails as stale.
+
+## Cases
+
+| Constructor | Message |
+| --- | --- |
+| `AgentNotLoggedIn` | "<Agent> is not logged in." (command: the login command, action `recheck_provider`) |
+| `AgentNotInstalled` | "<Agent> is not installed." (`recheck_provider`) |
+| `AgentLaunchRejected` | "<Agent> did not start the way Octo asked." (`update_agent`) |
+| `AgentExitedDuringStart` | "<Agent> stopped while starting." (`retry`) |
+| `AgentTimedOut` | "<Agent> did not answer in time." (`retry`) |
+| `AgentRefusedToolServer` | "<Agent> could not use Octo's tools this time; the request ran without delegation and notes." (`update_agent`) |
+| `AgentModelRejected` | "<Agent> does not offer the model <model>." (`open_settings`) |
+| `AgentSilent`, `AgentStopped`, `AgentCrashed`, `AgentFailed`, `AgentUnavailable` | see `catalogue_agent.go` |
+| `NoProvider`, `ProviderNotConnected`, `ProviderNotSupported`, `ProviderNotWorking` | provider states (`connect_provider` / `recheck_provider`) |
+| `BudgetReached` | "This project's budget is used up ($X of $Y)." (`open_settings`) |
+| `TurnInProgress`, `SideInProgress`, `QueueFull`, `ImagesUnsupported`, `SteerUnsupported`, `NothingToCompact`, `CompactUnsupported`, `BuiltinLoopOff`, `NewerSchema`, `PlanNotPending`, `FileChanged`, … | `catalogue_service.go` |
+| `GitHubCLIMissing`, `GitHubCLINotLoggedIn`, `GitHubNoRemote`, `GitMissing`, `RepoMismatch`, `DirtyWorkingCopy`, `CheckoutConflict`, `FetchFailed`, … | `catalogue_review.go` |
+
+## Not covered
+
+Messages that only a model reads (tool results such as "spawn_agent requires role, title and task"), diagnostics (`harness doctor`,
+`GET /v1/diagnostics`), the `unavailable_reason` of `GET /v1/plugins` (technical; the screen reads `GET /v1/providers`), memory tool errors
+and the sentences inside `Generic`-wrapped routes (their text is `details`). Manifest labels are shown as written (the Pi entry's label
+contains "ACP"). No real agent CLI was run: every case was produced by the scripted agent (`internal/fakeacp`) or a unit test.

@@ -13,6 +13,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/events"
 	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 	"github.com/ndolinschi/Octo/apps/harness/internal/router"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 func (rt *runtime) sideSystemPrompt() string {
@@ -40,6 +41,11 @@ func (rt *runtime) sideHints() router.Hints {
 // its answer. A cancelled or failed question leaves no trace but the event.
 func (rt *runtime) runSide(ctx context.Context, run *side, history []anthropic.MessageParam) {
 	text, err := rt.answerSide(ctx, run, history)
+	rt.finishSide(ctx, run, text, err)
+}
+
+// finishSide stores and announces a side answer, or its failure.
+func (rt *runtime) finishSide(ctx context.Context, run *side, text string, err error) {
 	if err != nil {
 		rt.failSide(run, err)
 		return
@@ -87,17 +93,17 @@ func (rt *runtime) answerSide(ctx context.Context, run *side, history []anthropi
 		Limits:          rt.o.opts.Limits,
 		Router:          rt.o.opts.Router,
 		Hints:           rt.sideHints(),
-		Gate:            rt.gate(),
+		Gate:            rt.loopGate(),
 	}
 	res, err := loop.Run(ctx, history)
 	if errors.Is(err, agent.ErrMaxTurns) {
-		return "", fmt.Errorf("the side question used all %d tool rounds without an answer", SideMaxRounds)
+		return "", usererr.TooManySteps(fmt.Sprintf("the side question used all %d tool rounds without an answer", SideMaxRounds))
 	}
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(res.Text) == "" {
-		return "", errors.New("the model returned no answer")
+		return "", usererr.ModelCallFailed("the model returned no answer")
 	}
 	return res.Text, nil
 }
@@ -112,9 +118,17 @@ func (rt *runtime) failSide(run *side, err error) {
 	if derr := rt.db.DeleteSide(c, run.id); derr != nil {
 		rt.logErr("drop failed side question", derr)
 	}
-	msg := err.Error()
+	fields := map[string]any{"side_id": run.id}
 	if errors.Is(err, context.Canceled) {
-		msg = "cancelled"
+		fields["error"] = "cancelled"
+		rt.publish(events.SideError, fields)
+		return
 	}
-	rt.publish(events.SideError, map[string]any{"side_id": run.id, "error": msg})
+	u := rt.redactProblem(describe(err))
+	fields["error"] = u.Message
+	u.AddTo(fields, "hint", "command", "action", "details")
+	if errors.Is(err, ErrNoProvider) || IsNoBuiltinLoop(err) {
+		fields["code"] = "no_provider"
+	}
+	rt.publish(events.SideError, fields)
 }

@@ -195,6 +195,7 @@ pub fn usage_from_parts(prefix: &str, tail: &str, response_bytes: usize) -> Pars
         cache_read_tokens: end.cache_read_tokens.or(head.cache_read_tokens),
         cache_write_tokens: end.cache_write_tokens.or(head.cache_write_tokens),
         generation_id: head.generation_id.or(end.generation_id),
+        model: head.model.or(end.model),
     }
 }
 
@@ -203,6 +204,7 @@ fn fold_usage(found: ParsedUsage, raw: &str) -> ParsedUsage {
         return found;
     };
     let found = apply_generation_id(found, &value);
+    let found = apply_model(found, &value);
     let found = apply_provider(found, &value);
     let found = apply_usage(found, value.get("usage"));
     apply_usage(
@@ -211,6 +213,24 @@ fn fold_usage(found: ParsedUsage, raw: &str) -> ParsedUsage {
             .get("message")
             .and_then(|message| message.get("usage")),
     )
+}
+
+fn apply_model(found: ParsedUsage, value: &Value) -> ParsedUsage {
+    if found.model.is_some() {
+        return found;
+    }
+    let model = value
+        .get("model")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            value
+                .get("message")
+                .and_then(|message| message.get("model"))
+                .and_then(Value::as_str)
+        })
+        .filter(|model| !model.is_empty())
+        .map(str::to_string);
+    ParsedUsage { model, ..found }
 }
 
 fn apply_provider(found: ParsedUsage, value: &Value) -> ParsedUsage {
@@ -299,6 +319,7 @@ fn apply_usage(found: ParsedUsage, usage: Option<&Value>) -> ParsedUsage {
         cache_read_tokens,
         cache_write_tokens,
         generation_id: found.generation_id,
+        model: found.model,
     }
 }
 

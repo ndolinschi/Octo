@@ -303,6 +303,18 @@ test("resize moves one divider, keeps the pair's total and both sides at least m
   check(r, "resize");
 });
 
+test("resize keeps each side at its own floor (decision 67: the conversation 420, the editor 360)", () => {
+  const l = layoutOf([group("a", [CHAT], 0.5), group("b", [FILES], 0.5)]);
+  const left = resize(l, 0, -5, 0.4, 0.3);
+  assert.ok(Math.abs(must(left.groups[0]).size - 0.4) < 1e-9);
+  const right = resize(l, 0, 5, 0.4, 0.3);
+  assert.ok(Math.abs(must(right.groups[1]).size - 0.3) < 1e-9);
+  const tight = layoutOf([group("a", [CHAT], 0.3), group("b", [FILES], 0.3)]);
+  const t = resize(tight, 0, 0.2, 0.4, 0.2);
+  assert.ok(Math.abs(must(t.groups[0]).size + must(t.groups[1]).size - 0.6) < 1e-9, "a pair under its floors keeps its total");
+  assert.ok(must(t.groups[0]).size > must(t.groups[1]).size, "split in proportion to the floors");
+});
+
 test("resize on a pair narrower than two minimums splits it evenly, never a negative size", () => {
   const l = layoutOf([group("a", [CHAT], 0.04), group("b", [FILES], 0.06), group("c", [NOTES], 0.9)]);
   for (const delta of [-1, -0.01, 0, 0.02, 1]) {

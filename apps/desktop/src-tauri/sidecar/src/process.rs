@@ -1,0 +1,456 @@
+//! The harness child process: spawn in its own process group, pump its output to the log, stop the whole group.
+//!
+//! If the app is SIGKILLed or crashes hard, none of the code here runs. Three nets cover that (see
+//! `apps/desktop/README.md`):
+//!
+//! 1. **stdin pipe (primary).** Every child is spawned with a piped stdin whose write end the app keeps open, in
+//!    [`Sidecar`], for the child's whole life and never writes to. When the app dies, however it dies, the OS closes
+//!    that end and the child reads EOF. The sidecars exit on it when asked to: `HARNESS_EXIT_ON_STDIN_CLOSE=1` and
+//!    `OCTO_EXIT_ON_STDIN_CLOSE=1` (see [`EXIT_ON_STDIN_CLOSE_ENV`]; the environment form so that an older binary that
+//!    does not know the setting just ignores it). Works on every platform.
+//! 2. stdout/stderr are pipes the app reads, so a child that logs gets SIGPIPE/EPIPE after the app died.
+//! 3. The next launch reads `harness.pid` / `router.pid` and, if that process is still alive and still has the
+//!    sidecar's name, terminates its group before starting a new one (Unix only).
+
+use crate::logfile::{pump, SharedLog};
+use std::io;
+use std::path::Path;
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
+
+pub const STOP_GRACE: Duration = Duration::from_secs(3);
+
+/// Environment variables that switch the sidecars into "exit when stdin closes" mode (harness, router). Both are
+/// set on both children: each binary reads only its own and ignores the other.
+pub const EXIT_ON_STDIN_CLOSE_ENV: [(&str, &str); 2] = [
+    ("HARNESS_EXIT_ON_STDIN_CLOSE", "1"),
+    ("OCTO_EXIT_ON_STDIN_CLOSE", "1"),
+];
+
+pub struct SpawnSpec<'a> {
+    pub program: &'a Path,
+    pub args: Vec<String>,
+    /// Added to (or replacing) the inherited environment.
+    pub env: Vec<(String, String)>,
+    pub log: SharedLog,
+}
+
+pub struct Sidecar {
+    child: Child,
+    /// The write end of the child's stdin. Held open, never written: its closing (when this process dies) is the
+    /// child's signal to exit. Dropped last, after the child is gone.
+    _stdin: Option<ChildStdin>,
+    pumps: Vec<JoinHandle<()>>,
+    stopped: bool,
+}
+
+impl Sidecar {
+    pub fn spawn(spec: SpawnSpec<'_>) -> io::Result<Self> {
+        let mut cmd = Command::new(spec.program);
+        cmd.args(&spec.args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (k, v) in EXIT_ON_STDIN_CLOSE_ENV {
+            cmd.env(k, v);
+        }
+        for (k, v) in &spec.env {
+            cmd.env(k, v);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            // New group, led by the child: everything it starts (ACP agents, language servers, bash tool) inherits it.
+            cmd.process_group(0);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let mut child = cmd.spawn()?;
+        let stdin = child.stdin.take();
+        let mut pumps = Vec::new();
+        if let Some(out) = child.stdout.take() {
+            let log = spec.log.clone();
+            pumps.push(std::thread::spawn(move || pump(out, log)));
+        }
+        if let Some(err) = child.stderr.take() {
+            let log = spec.log.clone();
+            pumps.push(std::thread::spawn(move || pump(err, log)));
+        }
+        Ok(Self {
+            child,
+            _stdin: stdin,
+            pumps,
+            stopped: false,
+        })
+    }
+
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    /// Some(description) once the leader has exited.
+    pub fn exited(&mut self) -> Option<String> {
+        match self.child.try_wait() {
+            Ok(Some(status)) => Some(format!("it exited ({status})")),
+            Ok(None) => None,
+            Err(e) => Some(format!("cannot query the process: {e}")),
+        }
+    }
+
+    /// SIGTERM to the group, wait up to `grace` for the leader and every group member to go, then SIGKILL the
+    /// group. Idempotent.
+    pub fn stop(&mut self, grace: Duration) {
+        if self.stopped {
+            return;
+        }
+        self.stopped = true;
+        #[cfg(unix)]
+        {
+            let pgid = self.child.id() as i32;
+            signal_group(pgid, libc::SIGTERM);
+            let deadline = Instant::now() + grace;
+            loop {
+                let _ = self.child.try_wait(); // reap the leader, or the zombie keeps the group "alive"
+                if !group_alive(pgid) || Instant::now() >= deadline {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            if group_alive(pgid) {
+                signal_group(pgid, libc::SIGKILL);
+                // Killed members linger as zombies until init reaps them; give that a moment.
+                let until = Instant::now() + Duration::from_secs(1);
+                while group_alive(pgid) && Instant::now() < until {
+                    let _ = self.child.try_wait();
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+            let _ = self.child.wait();
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = grace;
+            let _ = Instant::now();
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+        // The pumps end when the pipes close, i.e. when every process in the group is gone.
+        for h in self.pumps.drain(..) {
+            let _ = h.join();
+        }
+    }
+}
+
+impl Drop for Sidecar {
+    fn drop(&mut self) {
+        self.stop(STOP_GRACE);
+    }
+}
+
+#[cfg(unix)]
+fn signal_group(pgid: i32, sig: i32) {
+    if pgid > 1 {
+        // SAFETY: signalling a process group we created; failure (ESRCH) is fine.
+        unsafe { libc::killpg(pgid, sig) };
+    }
+}
+
+/// True while any process of the group exists (a zombie counts, so reap the leader first).
+#[cfg(unix)]
+pub fn group_alive(pgid: i32) -> bool {
+    if pgid <= 1 {
+        return false;
+    }
+    // SAFETY: signal 0 only checks existence.
+    let r = unsafe { libc::kill(-pgid, 0) };
+    r == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+// ---- pid file: cleanup after a crashed run -------------------------------------------------------------------
+
+/// True when a `ps -o comm=` value names the harness binary (`harness`, `/path/to/harness`, `harness.exe`).
+pub fn looks_like_harness(comm: &str) -> bool {
+    looks_like(comm, &["harness", "harness.exe"])
+}
+
+/// True when the base name of a `ps -o comm=` value is one of `names`.
+pub fn looks_like(comm: &str, names: &[&str]) -> bool {
+    let base = comm.trim().rsplit(['/', '\\']).next().unwrap_or("");
+    names.contains(&base)
+}
+
+pub fn parse_pid(text: &str) -> Option<u32> {
+    text.trim().parse::<u32>().ok().filter(|p| *p > 1)
+}
+
+pub fn write_pidfile(path: &Path, pid: u32) -> io::Result<()> {
+    std::fs::write(path, format!("{pid}\n"))
+}
+
+/// Terminates the group of a harness left behind by an earlier, crashed run. Returns true when it killed one.
+/// Safe against pid reuse: only a live process whose command name is `harness` is signalled.
+#[cfg(unix)]
+pub fn kill_stale(pidfile: &Path) -> bool {
+    kill_stale_named(pidfile, &["harness", "harness.exe"])
+}
+
+/// [`kill_stale`] for any sidecar: only a live process whose command name is in `names` is signalled.
+#[cfg(unix)]
+pub fn kill_stale_named(pidfile: &Path, names: &[&str]) -> bool {
+    let Some(pid) = std::fs::read_to_string(pidfile)
+        .ok()
+        .as_deref()
+        .and_then(parse_pid)
+    else {
+        let _ = std::fs::remove_file(pidfile);
+        return false;
+    };
+    let _ = std::fs::remove_file(pidfile);
+    let comm = Command::new("ps")
+        .args(["-o", "comm=", "-p", &pid.to_string()])
+        .output()
+        .ok();
+    let named = comm
+        .map(|o| looks_like(&String::from_utf8_lossy(&o.stdout), names))
+        .unwrap_or(false);
+    if !named {
+        return false;
+    }
+    let pgid = pid as i32;
+    signal_group(pgid, libc::SIGTERM);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while group_alive(pgid) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    if group_alive(pgid) {
+        signal_group(pgid, libc::SIGKILL);
+    }
+    true
+}
+
+#[cfg(not(unix))]
+pub fn kill_stale(pidfile: &Path) -> bool {
+    kill_stale_named(pidfile, &["harness", "harness.exe"])
+}
+
+#[cfg(not(unix))]
+pub fn kill_stale_named(pidfile: &Path, _names: &[&str]) -> bool {
+    let _ = std::fs::remove_file(pidfile);
+    false
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::logfile::{tail_lines, CappedLog};
+    use std::sync::{Arc, Mutex};
+
+    fn tmp(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("octo-proc-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// True when no non-zombie process is left in the group. (`group_alive` also counts zombies, which linger in
+    /// sandboxes whose PID 1 does not reap orphans; a zombie is not a running process.)
+    fn group_dead(pgid: i32) -> bool {
+        let out = Command::new("ps")
+            .args(["-A", "-o", "pgid=,stat="])
+            .output()
+            .unwrap();
+        !String::from_utf8_lossy(&out.stdout).lines().any(|l| {
+            let mut it = l.split_whitespace();
+            it.next().and_then(|p| p.parse::<i32>().ok()) == Some(pgid)
+                && !it.next().unwrap_or("Z").starts_with('Z')
+        })
+    }
+
+    fn spawn_sh(dir: &Path, script: &str) -> (Sidecar, SharedLog) {
+        let log: SharedLog = Arc::new(Mutex::new(CappedLog::open(dir, "h.log", 1 << 20).unwrap()));
+        let sc = Sidecar::spawn(SpawnSpec {
+            program: Path::new("/bin/sh"),
+            args: vec!["-c".into(), script.into()],
+            env: vec![("OCTO_TEST_VAR".into(), "hello".into())],
+            log: log.clone(),
+        })
+        .unwrap();
+        (sc, log)
+    }
+
+    #[test]
+    fn output_and_env_reach_the_log_and_exit_is_reported() {
+        let d = tmp("out");
+        let (mut sc, log) = spawn_sh(&d, "echo out-$OCTO_TEST_VAR; echo err-line >&2; exit 7");
+        let t0 = Instant::now();
+        let why = loop {
+            if let Some(w) = sc.exited() {
+                break w;
+            }
+            assert!(t0.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        assert!(why.contains('7'), "{why}");
+        sc.stop(Duration::from_millis(200));
+        let path = log.lock().unwrap().path().to_path_buf();
+        let text = tail_lines(&path, 10);
+        assert!(
+            text.contains("out-hello") && text.contains("err-line"),
+            "{text}"
+        );
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn children_get_the_exit_on_stdin_close_settings_and_an_open_stdin() {
+        let d = tmp("stdin-env");
+        // `read` returns only at EOF; the child must see an open (not closed, not /dev/null) stdin, so it waits.
+        let (mut sc, log) = spawn_sh(
+            &d,
+            "echo h=$HARNESS_EXIT_ON_STDIN_CLOSE o=$OCTO_EXIT_ON_STDIN_CLOSE; read -r _; echo eof",
+        );
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(
+            sc.exited().is_none(),
+            "stdin must stay open while the app lives"
+        );
+        sc.stop(Duration::from_millis(500));
+        let path = log.lock().unwrap().path().to_path_buf();
+        let text = tail_lines(&path, 10);
+        assert!(text.contains("h=1 o=1"), "{text}");
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn stop_terminates_the_leader_and_its_children() {
+        let d = tmp("group");
+        let (mut sc, _log) = spawn_sh(&d, "sleep 60 & sleep 60 & wait");
+        let pgid = sc.pid() as i32;
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(group_alive(pgid));
+        let t0 = Instant::now();
+        sc.stop(Duration::from_secs(3));
+        assert!(
+            t0.elapsed() < Duration::from_secs(2),
+            "SIGTERM should be enough: {:?}",
+            t0.elapsed()
+        );
+        assert!(group_dead(pgid), "the group must be gone");
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn a_process_that_ignores_sigterm_is_killed_after_the_grace() {
+        let d = tmp("kill");
+        let (mut sc, _log) = spawn_sh(&d, "trap '' TERM; while :; do sleep 1; done");
+        let pgid = sc.pid() as i32;
+        std::thread::sleep(Duration::from_millis(300));
+        let t0 = Instant::now();
+        sc.stop(Duration::from_millis(400));
+        let took = t0.elapsed();
+        assert!(
+            took >= Duration::from_millis(400),
+            "waited for the grace: {took:?}"
+        );
+        assert!(took < Duration::from_secs(3), "{took:?}");
+        assert!(group_dead(pgid));
+        sc.stop(Duration::from_millis(10)); // idempotent
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn a_background_child_that_outlives_the_leader_is_swept() {
+        let d = tmp("sweep");
+        // The leader exits at once; the child ignores TERM and stays in the group.
+        let (mut sc, _log) = spawn_sh(&d, "(trap '' TERM; sleep 30) & exit 0");
+        let pgid = sc.pid() as i32;
+        std::thread::sleep(Duration::from_millis(300));
+        sc.stop(Duration::from_millis(300));
+        assert!(group_dead(pgid));
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn a_missing_binary_is_an_error() {
+        let d = tmp("missing");
+        let log: SharedLog = Arc::new(Mutex::new(CappedLog::open(&d, "h.log", 1 << 20).unwrap()));
+        let r = Sidecar::spawn(SpawnSpec {
+            program: Path::new("/nonexistent/harness"),
+            args: vec![],
+            env: vec![],
+            log,
+        });
+        assert!(r.is_err());
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn pid_file_helpers() {
+        assert_eq!(parse_pid("1234\n"), Some(1234));
+        assert_eq!(parse_pid(""), None);
+        assert_eq!(parse_pid("abc"), None);
+        assert_eq!(parse_pid("0"), None);
+        assert_eq!(parse_pid("1"), None);
+        assert!(looks_like_harness(
+            "/Applications/Octo.app/Contents/MacOS/harness\n"
+        ));
+        assert!(looks_like_harness("harness"));
+        assert!(!looks_like_harness("harness-helper"));
+        assert!(!looks_like_harness("zsh"));
+        assert!(!looks_like_harness(""));
+    }
+
+    #[test]
+    fn kill_stale_ignores_a_live_process_that_is_not_the_harness() {
+        let d = tmp("stale");
+        let mut other = Command::new("sleep").arg("30").spawn().unwrap();
+        let pidfile = d.join("harness.pid");
+        write_pidfile(&pidfile, other.id()).unwrap();
+        assert!(
+            !kill_stale(&pidfile),
+            "a process named sleep must not be touched"
+        );
+        assert!(other.try_wait().unwrap().is_none());
+        assert!(!pidfile.exists());
+        let _ = other.kill();
+        let _ = other.wait();
+        // A stale file for a dead pid, and garbage, are both harmless.
+        write_pidfile(&pidfile, other.id()).unwrap();
+        assert!(!kill_stale(&pidfile));
+        std::fs::write(&pidfile, "junk").unwrap();
+        assert!(!kill_stale(&pidfile));
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    #[test]
+    fn kill_stale_terminates_a_leftover_harness_group() {
+        let d = tmp("stale2");
+        // A process literally named `harness`: a copy of sleep in its own group.
+        let bin = d.join("harness");
+        std::fs::copy("/bin/sleep", &bin)
+            .or_else(|_| std::fs::copy("/usr/bin/sleep", &bin))
+            .unwrap();
+        let log: SharedLog = Arc::new(Mutex::new(CappedLog::open(&d, "h.log", 1 << 20).unwrap()));
+        let mut sc = Sidecar::spawn(SpawnSpec {
+            program: &bin,
+            args: vec!["30".into()],
+            env: vec![],
+            log,
+        })
+        .unwrap();
+        let pidfile = d.join("harness.pid");
+        write_pidfile(&pidfile, sc.pid()).unwrap();
+        assert!(kill_stale(&pidfile));
+        let t0 = Instant::now();
+        while sc.exited().is_none() {
+            assert!(t0.elapsed() < Duration::from_secs(3));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        sc.stop(Duration::from_millis(100));
+        let _ = std::fs::remove_dir_all(d);
+    }
+}

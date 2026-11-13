@@ -9,6 +9,7 @@ import (
 	"github.com/ndolinschi/Octo/apps/harness/internal/acp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/mcp"
 	"github.com/ndolinschi/Octo/apps/harness/internal/tools"
+	"github.com/ndolinschi/Octo/apps/harness/internal/usererr"
 )
 
 // DefaultACPIdle is how long an ACP orchestrator session may sit unused before
@@ -41,6 +42,10 @@ type orchSession struct {
 	h   *acpHost
 	pid string
 
+	// digestMu is held while a digest prompt (memory M6) is open in the live session;
+	// the next turn waits for it before it prompts.
+	digestMu sync.Mutex
+
 	mu sync.Mutex
 	// What the live process was started for.
 	pluginID string
@@ -51,7 +56,12 @@ type orchSession struct {
 	token    string
 	// noMCP is set when the agent got no harness tools; the text is the
 	// warning shown on every turn of the session.
-	noMCP string
+	noMCP *usererr.Error
+	// modes are the session modes the agent advertised when the session was
+	// created, baseMode the one it started in and curMode the one in use.
+	modes    []acp.SessionMode
+	baseMode string
+	curMode  string
 
 	// Turn state (valid while turnCtx != nil).
 	agentID    string // the project's orchestrator agent row
@@ -62,6 +72,22 @@ type orchSession struct {
 	turnCancel context.CancelFunc
 	fatal      error
 	notesSent  string // hash of the notes block the agent last saw
+	// costSeen and usedSeen are the agent's last cumulative usage counters.
+	costSeen float64
+	usedSeen int64
+	// tasksSeen is when a window-mode session last got task records ("" before its first turn).
+	tasksSeen string
+
+	// unbriefed: the session is new and no prompt has carried the briefing yet (the first
+	// prompt was a slash command, which is sent bare).
+	unbriefed bool
+
+	// The agent's advertised slash commands; kept apart from mu (the agent's reader goroutine
+	// writes them while a close holds mu).
+	cmu       sync.Mutex
+	cmds      []acp.Command
+	cmdsAgent string
+	cmdsSet   bool
 
 	busy     bool
 	lastUsed time.Time
@@ -110,11 +136,19 @@ func (s *orchSession) closeLocked() {
 		s.client = nil
 	}
 	s.sessID = ""
+	s.unbriefed = false
+	s.modes, s.baseMode, s.curMode = nil, "", ""
+	s.costSeen, s.usedSeen = 0, 0 // the counters belong to the session that ended
 }
 
 // CloseProject ends the project's ACP orchestrator process, if any (project
 // delete). It is safe to call at any time.
 func (o *Orchestrator) CloseProject(projectID string) {
+	o.CloseSide(projectID)
+	o.dropTracker(projectID)
+	o.approvals.Forget(projectID)
+	o.inputs.Forget(projectID)
+	o.secrets.Forget(projectID)
 	o.acp.mu.Lock()
 	s := o.acp.sessions[projectID]
 	delete(o.acp.sessions, projectID)
@@ -172,10 +206,10 @@ func (h *acpHost) reap(ctx context.Context) {
 }
 
 // warning is the standing warning of the project's ACP session ("" when none).
-func (h *acpHost) warning(pid string) string {
+func (h *acpHost) warning(pid string) *usererr.Error {
 	s := h.lookup(pid)
 	if s == nil {
-		return ""
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

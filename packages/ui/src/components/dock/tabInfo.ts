@@ -1,4 +1,6 @@
 import { File, type LucideIcon } from "lucide-react";
+import { currentTitle } from "../../lib/sessions/current";
+import { roleText } from "../../lib/orchestrator";
 import { GLYPH } from "../primitives/glyphs";
 import type { ProjectState } from "@octo/agent-client";
 import type { OpenFile } from "../../state/code";
@@ -11,6 +13,8 @@ import type { GlyphState } from "../../lib/stateGlyph";
 export type TabInfo = {
   /** Shown on the tab (long file names are shortened in the middle). */
   label: string;
+  /** Dim second part after the label ("Project / what this conversation is about", decision 67). */
+  detail?: string;
   /** Full name: the tab's accessible name. */
   name?: string;
   /** Tooltip: the full name (path for files, role and title for agents). */
@@ -25,25 +29,55 @@ export type TabInfo = {
 };
 
 const TOOLS: Record<string, { label: string; icon: LucideIcon; title: string }> = {
+  sessions: { label: "Sessions", icon: GLYPH.sessions, title: "Sessions: your conversations with the orchestrator and the agent sessions it started" },
   agents: { label: "Agents", icon: GLYPH.agents, title: "Agents in this project" },
   notes: { label: "Notes", icon: GLYPH.notes, title: "Project notes" },
   files: { label: "Files", icon: GLYPH.files, title: "Project files: select a file to open it here" },
   details: { label: "Details", icon: GLYPH.details, title: "Project details: folders, models, tokens, activity, files written" },
   usage: { label: "Usage", icon: GLYPH.usage, title: "Usage: tokens, cost and rate limits" },
+  changes: { label: "Changes", icon: GLYPH.changes, title: "Changes: what the agents changed in this project, with diffs and revert" },
+  memory: { label: "Memory", icon: GLYPH.memory, title: "Memory: what the orchestrator remembers about this project" },
+  review: { label: "Review", icon: GLYPH.review, title: "Review: read a pull request or a local branch, comment, and submit your review" },
+  side: { label: "Side question", icon: GLYPH.side, title: "Ask about this project without interrupting the orchestrator" },
 };
+
+function firstWords(text: string, n = 6): string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  return words.length > n ? `${words.slice(0, n).join(" ")}…` : words.join(" ");
+}
+
+/** The tool tabs as the "+" picker lists them (decision 25), in that order. */
+export const TOOL_TABS = TOOLS;
 
 export function tabInfo(
   tab: TabId,
-  ctx: { state: ProjectState; orchestratorId: string | undefined; file(key: FileKey): OpenFile | undefined; comments(key: FileKey): number },
+  ctx: {
+    state: ProjectState;
+    projectName?: string | undefined;
+    orchestratorId: string | undefined;
+    file(key: FileKey): OpenFile | undefined;
+    comments(key: FileKey): number;
+    /** The state of a project command's latest run (decision 68). */
+    runStatus(name: string): "running" | "failed" | null;
+  },
 ): TabInfo {
   const ref = parseTab(tab);
   if (!ref) return { label: tab, title: tab, icon: File, status: null, glyph: null, comments: 0 };
   if (ref.kind === "chat") {
     const status = ctx.orchestratorId ? ctx.state.agents[ctx.orchestratorId]?.status : undefined;
     const running = status === "running";
+    // Decision 63: named after what is in it — the project's conversation.
+    const name = ctx.projectName || "Conversation";
+    // Decision 67: the tab is the project's breadcrumb — "Project / the latest task" (dim); the title is the orchestrator's own.
+    // The current session's title (project sessions), else the orchestrator's own.
+    const own = ctx.orchestratorId ? (ctx.state.agents[ctx.orchestratorId]?.title?.trim() ?? "") : "";
+    const topic = currentTitle(ctx.state.sessions.list, ctx.state.sessions.currentId, own).trim();
+    const detail = topic && topic !== name ? middleTruncate(topic, 40) : undefined;
     return {
-      label: "Orchestrator",
-      title: "The project's orchestrator: give it work, follow its agents",
+      label: middleTruncate(name, 28),
+      ...(detail ? { detail } : {}),
+      name: detail ? `${name} / ${topic}` : name,
+      title: `${name}: the project's conversation${topic ? ` — ${topic}` : ""}`,
       icon: GLYPH.chat,
       status: running ? "running" : null,
       glyph: running ? "working" : status === "failed" ? "needs" : null,
@@ -56,13 +90,41 @@ export function tabInfo(
   }
   if (ref.kind === "agent") {
     const agent = ctx.state.agents[ref.agentId];
-    const label = agent?.role || "Agent";
+    // Decision 63: a sub-agent's tab is its task title (else the first words of its task), the role in the tooltip.
+    const task = agent?.title || firstWords(agent?.task ?? "") || roleText(agent?.role);
     return {
-      label,
-      title: agent?.title ? `${label}: ${agent.title}` : label,
+      label: middleTruncate(task, 28),
+      name: task,
+      title: `${roleText(agent?.role)}: ${task}`,
       icon: GLYPH.agent,
       status: agent?.status === "running" ? "running" : null,
       glyph: agent?.status === "running" ? "working" : agent?.status === "failed" ? "failed" : null,
+      comments: 0,
+    };
+  }
+  if (ref.kind === "session") {
+    const s = ctx.state.sessions.list.find((x) => x.id === ref.sessionId);
+    const title = s?.title.trim() || "Session";
+    const working = s?.state === "working" || s?.state === "waiting";
+    return {
+      label: middleTruncate(title, 28),
+      name: title,
+      title: `${s?.kind === "agent" ? "Agent session" : "Session"}: ${title}`,
+      icon: GLYPH.sessions,
+      status: working ? "running" : null,
+      glyph: working ? "working" : s?.state === "failed" ? "failed" : null,
+      comments: 0,
+    };
+  }
+  if (ref.kind === "run") {
+    const status = ctx.runStatus(ref.name);
+    const label = `Run: ${ref.name}`;
+    return {
+      label,
+      title: label,
+      icon: GLYPH.run,
+      status: status === "running" ? "running" : null,
+      glyph: status === "running" ? "working" : status,
       comments: 0,
     };
   }

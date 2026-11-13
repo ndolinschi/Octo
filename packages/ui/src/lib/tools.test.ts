@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SPAWN_TOOL, acpCall, locateInProject, looksLikeDiff, spawnInput, toolMeta, toolPath, writtenFiles } from "./tools";
+import { SPAWN_TOOL, acpCall, toolMeta, harnessTool } from "./tools";
+import { locateInProject, looksLikeDiff, spawnInput, toolPath, writtenFiles, commandRuns } from "./toolsMore";
 
 const folders = [
   { label: "infra", path: "/Users/maya/code/infra" },
@@ -130,4 +131,25 @@ test("diff detection: hunks or headers plus change lines", () => {
   assert.equal(looksLikeDiff("@@ -1 +1 @@\n+added"), true);
   assert.equal(looksLikeDiff("- a list item\n- another"), false, "a Markdown list is not a diff");
   assert.equal(looksLikeDiff('{ "path": "x" }'), false);
+});
+
+test("commandRuns finds bash and ACP execute calls", () => {
+  const at = "2026-11-11T10:00:00Z";
+  const runs = commandRuns([
+    { role: "assistant", created_at: at, content: [{ type: "tool_use", id: "1", name: "bash", input: {} }] },
+    { role: "assistant", created_at: "x", content: [{ type: "tool_use", id: "2", name: "read_file", input: {} }] },
+    { role: "assistant", created_at: "y", content: [{ type: "tool_use", id: "3", name: "execute", input: { title: "Run tests" } }] },
+    { role: "user", created_at: "z", content: [{ type: "tool_use", id: "4", name: "bash", input: {} }] },
+  ]);
+  assert.deepEqual(runs, [at, "y"]);
+});
+
+test("harnessTool reads MCP-prefixed harness tools as the built-in ones", () => {
+  assert.equal(harnessTool("mcp__octo-harness__spawn_agent"), "spawn_agent");
+  assert.equal(harnessTool("octo-harness:save_note"), "save_note");
+  assert.equal(harnessTool("mcp__octo-harness__delete_note"), "delete_note");
+  assert.equal(harnessTool("spawn_agent"), "spawn_agent");
+  assert.equal(harnessTool("mcp__github__create_issue"), "mcp__github__create_issue");
+  assert.equal(harnessTool("my_spawn_agent"), "my_spawn_agent");
+  assert.equal(toolMeta("mcp__octo-harness__save_note", { title: "Plan" }).verb, "Saved note");
 });

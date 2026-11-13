@@ -17,11 +17,22 @@ func (c *Client) notify(_ context.Context, method string, params json.RawMessage
 		slog.Debug("acp: ignoring notification", "agent", c.name, "method", method)
 		return
 	}
+	var n sessionNotification
+	if c.onCommands != nil && json.Unmarshal(params, &n) == nil {
+		var head updateHeader
+		if json.Unmarshal(n.Update, &head) == nil && head.SessionUpdate == "available_commands_update" {
+			var u struct {
+				Commands json.RawMessage `json:"availableCommands"`
+			}
+			if json.Unmarshal(n.Update, &u) == nil {
+				c.onCommands(ParseCommands(u.Commands))
+			}
+		}
+	}
 	r := c.current()
 	if r == nil {
 		return
 	}
-	var n sessionNotification
 	if err := json.Unmarshal(params, &n); err != nil || n.SessionID != r.sessionID {
 		slog.Debug("acp: dropping session/update", "agent", c.name, "err", err)
 		return
@@ -35,7 +46,26 @@ func (c *Client) notify(_ context.Context, method string, params json.RawMessage
 }
 
 func (c *Client) applyUpdate(r *run, kind string, raw json.RawMessage) {
+	if o, ok := r.h.(UpdateObserver); ok {
+		o.UpdateSeen(r.ctx, kind)
+	}
 	switch kind {
+	case "agent_thought_chunk":
+		var chunk contentChunk
+		if h, ok := r.h.(ThoughtHandler); ok {
+			if err := json.Unmarshal(raw, &chunk); err == nil && chunk.Content.Type == "text" && chunk.Content.Text != "" {
+				h.AgentThought(r.ctx, chunk.Content.Text)
+			}
+		}
+	case "plan":
+		if h, ok := r.h.(PlanHandler); ok {
+			var p struct {
+				Entries []PlanEntry `json:"entries"`
+			}
+			if err := json.Unmarshal(raw, &p); err == nil {
+				h.Plan(r.ctx, p.Entries)
+			}
+		}
 	case "agent_message_chunk":
 		var chunk contentChunk
 		if err := json.Unmarshal(raw, &chunk); err == nil && chunk.Content.Type == "text" && chunk.Content.Text != "" {
