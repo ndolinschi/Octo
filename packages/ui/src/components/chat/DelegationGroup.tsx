@@ -1,7 +1,6 @@
 import { agentBySpawnToolUse, descendantCount, type Agent } from "@octo/agent-client";
 import { roleText } from "../../lib/orchestrator";
 import { agentActivity } from "../../lib/orchestrator";
-import { cn } from "../../lib/cn";
 import { agentDuration } from "../../lib/format";
 import { hrefFor } from "../../lib/route";
 import { spawnInput } from "../../lib/toolsMore";
@@ -9,7 +8,7 @@ import type { ToolUse } from "../../lib/transcript";
 import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { isTier, statusLabel, tierLabel } from "../primitives/Status";
-import { readable } from "../../lib/errors/plain";
+import { plainError } from "../../lib/errors/plain";
 import { ActivityRow, type ActivityState } from "./ActivityRow";
 import { useModelNames } from "../../state/models";
 import { useTranscript } from "./transcriptContext";
@@ -39,13 +38,12 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
   const agents = uses.map((u) => agentBySpawnToolUse(state, u.id));
   const caption = uses.length === 1 ? "1\u00a0agent" : `${uses.length}\u00a0agents`;
   const status = progress(agents);
-  const failed = agents.some((a) => a?.status === "failed");
 
   return (
     <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container rounded-md border border-line">
       <div className="flex h-8 items-center gap-3 px-3 text-sm">
         <span className="shrink-0 whitespace-nowrap text-fg-2">{caption}</span>
-        <span className={cn("ml-auto min-w-0 truncate text-xs tabular-nums", failed && status.endsWith("failed") ? "text-err" : "text-fg-3")}>{status}</span>
+        <span className="ml-auto min-w-0 truncate text-xs text-fg-3 tabular-nums">{status}</span>
       </div>
       <ul className="flex flex-col px-3 pb-1">
         {uses.map((u, i) => (
@@ -81,7 +79,8 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
   const nested = agent ? descendantCount(state, agent.id) : 0;
   const duration = agent ? agentDuration(agent, now) : null;
   const running = agent?.status === "running";
-  const error = status === "failed" ? (agent?.error ? readable(agent.error) : "No error details were reported.") : null;
+  // Through the failed-turn mapping (a raw "overloaded (529) after 3 retries" never shows); the raw text stays in the tooltip.
+  const note = status === "failed" ? (agent?.error ? plainError(agent.error).sentence : "No error details were reported.") : null;
   // A compact place: the served model's name alone (decision 37), the requested one in the row's tooltip.
   const served = agent ? names.served(agent) : null;
   const model = served ? served.name : tier ? tierLabel(tier) : "";
@@ -96,7 +95,7 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
             ? statusLabel("cancelled")
             : model;
   const tip =
-    error ??
+    (note && agent?.error ? `${note}\n\n${agent.error}` : null) ??
     (agent?.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : served?.asked ? `${served.asked} → ${served.name} (chosen → served)` : undefined);
   return (
     <ActivityRow
@@ -110,7 +109,7 @@ function DelegationRow({ use, agent }: { use: ToolUse; agent: Agent | undefined 
       detail={title}
       aside={aside}
       duration={duration}
-      error={error}
+      note={note}
       {...(tip ? { tip } : {})}
       {...(session
         ? {

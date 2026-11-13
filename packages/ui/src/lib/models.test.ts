@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { modelLabel, claudeLabel, modelName, parseAcp, servedModel, servedText } from "./models";
+import { modelLabel, claudeLabel, modelName, readableModelId, parseAcp, servedModel, servedText } from "./models";
 import { routeLine, modelIds, budgetState, distinctTails, middleEllipsis, parseBudget, truncateDistinct } from "./modelsMore";
 
 const ACP = [{ id: "claude-code", label: "Claude Code" }];
@@ -21,21 +21,29 @@ test("claudeLabel names Claude ids and leaves the rest whole", () => {
 test("modelName renders an acp value as the agent's label and model, never the raw string", () => {
   assert.equal(modelName("acp:claude-code", ACP), "Claude Code");
   assert.equal(modelName("acp:claude-code/claude-opus-5-5", ACP), "Claude Code · Opus 5.5");
-  assert.equal(modelName("acp:codex/gpt-5.5", ACP), "Codex · gpt-5.5");
+  assert.equal(modelName("acp:codex/gpt-5.5", ACP), "Codex · GPT 5.5");
   assert.equal(modelName("claude-haiku-5-5"), "Haiku 5.5");
-  assert.equal(modelName("deepseek/deepseek-v4.1-flash-0905"), "deepseek-v4.1-flash-0905");
+  assert.equal(modelName("deepseek/deepseek-v4.1-flash-0905"), "DeepSeek v4.1 Flash");
+});
+
+test("readableModelId makes an unknown id readable and leaves Claude ids alone", () => {
+  assert.equal(readableModelId("deepseek-v4.1-flash"), "DeepSeek v4.1 Flash");
+  assert.equal(readableModelId("deepseek-v4.1-flash-1120"), "DeepSeek v4.1 Flash");
+  assert.equal(readableModelId("openai/gpt-5-mini-20251022"), "GPT 5 Mini");
+  assert.equal(readableModelId("claude-sonnet-5-5-20261001"), "Sonnet 5.5");
+  assert.equal(readableModelId("claude-haiku-5-5"), "Haiku 5.5");
 });
 
 test("servedModel prefers the served model and keeps the asked one only when it differs", () => {
-  assert.deepEqual(servedModel({ model: "claude-sonnet-5-5", served_model: "deepseek-v4.1-flash" }), { name: "deepseek-v4.1-flash", asked: "Sonnet 5.5" });
+  assert.deepEqual(servedModel({ model: "claude-sonnet-5-5", served_model: "deepseek-v4.1-flash" }), { name: "DeepSeek v4.1 Flash", asked: "Sonnet 5.5" });
   assert.deepEqual(
     servedModel({ model: "claude-sonnet-5-5", served_model: "deepseek/deepseek-v4.1-flash" }),
-    { name: "deepseek-v4.1-flash", asked: "Sonnet 5.5" },
+    { name: "DeepSeek v4.1 Flash", asked: "Sonnet 5.5" },
     "decision 48: vendor prefix dropped",
   );
   assert.deepEqual(servedModel({ model: "claude-sonnet-5-5", served_model: "claude-sonnet-5-5" }), { name: "Sonnet 5.5", asked: null });
   assert.deepEqual(servedModel({ model: "claude-sonnet-5-5", served_model: null }), { name: "Sonnet 5.5", asked: null });
-  assert.equal(servedText({ model: "claude-sonnet-5-5", served_model: "deepseek-v4.1-flash" }), "deepseek-v4.1-flash · asked for Sonnet 5.5");
+  assert.equal(servedText({ model: "claude-sonnet-5-5", served_model: "deepseek-v4.1-flash" }), "DeepSeek v4.1 Flash · asked for Sonnet 5.5");
   assert.equal(servedText({ model: "claude-sonnet-5-5" }), "Sonnet 5.5");
 });
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { Approval, ApprovalAnswer } from "@octo/agent-client";
 import { errorMessage } from "../../lib/format";
 import { APPROVAL_TIMEOUT_MS, answerFor, approvalDeadline, type Resolution } from "../../lib/v7/approval";
@@ -18,6 +18,19 @@ export function ApprovalGroup(props: {
   const { approvals } = props;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Rows whose "Always allow" panel is open: while one is, its save is the one primary button and "Allow all" is secondary.
+  const [alwaysOpen, setAlwaysOpen] = useState<ReadonlySet<string>>(new Set());
+  const onAlwaysOpen = useCallback(
+    (id: string, open: boolean) =>
+      setAlwaysOpen((prev) => {
+        if (prev.has(id) === open) return prev;
+        const next = new Set(prev);
+        if (open) next.add(id);
+        else next.delete(id);
+        return next;
+      }),
+    [],
+  );
   // The group's countdown is the one that runs out first.
   const timeout = props.timeoutMs ?? APPROVAL_TIMEOUT_MS;
   const deadline = (a: Approval) => approvalDeadline(a.created_at, timeout) ?? Infinity;
@@ -48,7 +61,7 @@ export function ApprovalGroup(props: {
       title={`${approvals.length} requests from ${props.source}`}
       meta={left !== null ? <Countdown left={left} /> : undefined}
       primary={
-        <Button variant="primary" size="sm" loading={busy} disabled={busy} onClick={() => void allowAll()}>
+        <Button variant={alwaysOpen.size > 0 ? "secondary" : "primary"} size="sm" loading={busy} disabled={busy} onClick={() => void allowAll()}>
           Allow all for this turn
         </Button>
       }
@@ -64,6 +77,7 @@ export function ApprovalGroup(props: {
             {...(props.timeoutMs !== undefined ? { timeoutMs: props.timeoutMs } : {})}
             onResolve={props.onResolve}
             onResolved={props.onResolved}
+            onAlwaysOpen={onAlwaysOpen}
             {...(props.onOpenAgent ? { onOpenAgent: props.onOpenAgent } : {})}
           />
         ))}

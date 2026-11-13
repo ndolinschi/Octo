@@ -37,7 +37,7 @@ const PLAN_TURNS = 5;
 /** Tool lines and delegation cards: their own chunks, fetched right after the first paint with the Markdown chunk (`AppShell`). */
 const ToolGroup = lazy(() => import("./ToolGroup").then((m) => ({ default: m.ToolGroup })));
 const DelegationGroup = lazy(() => import("./DelegationGroup").then((m) => ({ default: m.DelegationGroup })));
-import { TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
+import { toolState, TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 import { proseClass } from "../primitives/Prose";
 import { ActivityLine, useBatched } from "./LiveActivity";
 
@@ -347,24 +347,39 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   usage?: string | null;
 }) {
   const { turn, live, streaming } = props;
-  const compact = useTranscript().density === "compact";
+  const ctx = useTranscript();
+  const compact = ctx.density === "compact";
   const empty = turn.items.length === 0 && !streaming && !props.thinking;
   if (empty && !live) return null;
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
   const end = turn.lastAt ? Date.parse(turn.lastAt) : null;
   const worked = !live && start !== null && end !== null && end - start >= 1000 ? end - start : null;
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
+  // The newest step row above, when it already says what the activity line would: a streaming thinking row (nothing after it), a running tool group.
+  const lastItem = turn.items[turn.items.length - 1];
+  const currentStep: "thinking" | "tool" | null = streaming
+    ? null
+    : lastItem === undefined
+      ? props.thinking
+        ? "thinking"
+        : null
+      : lastItem.kind === "tools" && lastItem.uses.some((u) => toolState(ctx, u.id) === "running")
+        ? "tool"
+        : null;
   const prose = proseClass(compact ? "compact" : "reading");
   return (
     // Decision 91j: blocks of a reply (prose, cards) sit 16 apart (12 in the Sessions tab), step rows 8, and the meta line is tight to its reply.
     <article
       aria-label={`${props.speaker} response`}
-      className={cn("flex flex-col [&>[data-activity-row]+[data-activity-row]]:-mt-2", compact ? "gap-3" : "gap-4")}
+      className={cn(
+        "flex flex-col [&>:is([data-activity-row],[data-thinking],[data-activity])+:is([data-activity-row],[data-thinking],[data-activity])]:-mt-2",
+        compact ? "gap-3" : "gap-4",
+      )}
     >
       {worked !== null && <p className={cn("text-fg-3 tabular-nums", compact ? "text-sm" : "text-base")}>Worked for {formatDuration(worked)}</p>}
       <Suspense fallback={null}>
         {live && props.plan && <PlanList entries={props.plan} />}
-        {live && <ThinkingRow text={props.thinking} />}
+        {live && <ThinkingRow text={props.thinking} after={turn.items.length > 0 || streaming.length > 0} />}
       </Suspense>
       {turn.items.map((item) => {
         if (item.kind === "text") return <Markdown key={item.key} text={item.text} className={prose} fileLinks />;
@@ -375,7 +390,9 @@ const AssistantTurn = memo(function AssistantTurn(props: {
         );
       })}
       {streaming && <Markdown text={streaming} className={prose} streaming fileLinks />}
-      {live && <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} now={props.now} watched={props.watched} />}
+      {live && (
+        <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} now={props.now} watched={props.watched} current={currentStep} />
+      )}
       {props.footer && !live && reply && turn.lastAt && (
         <TurnFooter reply={reply} at={turn.lastAt} now={props.now} usage={props.usage ?? null} compact={compact} />
       )}

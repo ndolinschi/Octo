@@ -57,7 +57,7 @@ export function TurnBanner(props: {
         hint={legacy.hint}
         agent={props.agent}
         providerId={props.providerId}
-        onCheck={check ? () => void check() : undefined}
+        onCheck={check}
         onRetry={retryText !== null && !running ? () => void retry() : undefined}
         retrying={busy}
         actions={retryError ? <Notice tone="error">Retry failed: {plainError(retryError, { agent: props.agent }).sentence}</Notice> : undefined}

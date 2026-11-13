@@ -2951,3 +2951,16 @@ executor and by the orchestrator. **A trial: the owner has not approved the dire
   badge after the name.
 - Gates: `tsc`, 617 unit tests, eslint 0 errors, prettier, `spacing-audit` total=0, `width-stability` ok, `frame-colours`
   ok; 390×700 looked at for the conversation and the drawer. Not verified: WebKit, touch, a screen reader on the new row.
+
+### As built — fixes after the UI verification, batch 3 (conversation)
+
+- B15: `ActivityLine` is not drawn when the last step row already is the current step; `ThinkingRow` shows the done tick
+  ("Thought") once a tool call or text follows it. B16: step rows in a live turn are 8 apart (28 high, 36 pitch). B17,
+  second half: "Check again" is `loading` (keeps focus) while it runs and then says "Checked just now — still not logged
+  in" in a status line. B18: a failed sub-agent's row and the Agents row show the plain sentence of `plainError` dim (the raw
+  text in the tooltip); the row's tone is the glyph's. Not covered: the agent transcript's own text. B19: while an
+  always-allow panel is open "Allow all for this turn" (and "Allow once" on a single card) is secondary, and the toggle
+  keeps its label with `aria-expanded`, so the row does not move. B3, in part: `lib/models.ts` `readableModelId` gives an id
+  without a provider entry a readable name ("DeepSeek v4.1 Flash"); checked in the turn meta line and Usage. Not done:
+  Settings → Editor still prints `claude-haiku-5-5`. Also: Esc in "Add note" closes it and returns focus; the pending plan's
+  body lines up with its header. Checked at 1440×900, mostly dark; not at 390×700.

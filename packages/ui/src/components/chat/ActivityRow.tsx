@@ -39,6 +39,8 @@ export function ActivityRow(props: {
   trailing?: ReactNode;
   /** A line under the row, in the error tone (a failed step's reason). */
   error?: ReactNode;
+  /** A dim line under the row (why a step failed, in words; the glyph carries the tone). */
+  note?: ReactNode;
   className?: string;
   data?: string;
 }) {
@@ -90,6 +92,7 @@ export function ActivityRow(props: {
         {...(expandable ? { id: `${id}-row` } : {})}
       />
       {props.error && <p className="-mt-1 truncate pb-1 pl-8 text-xs text-err">{props.error}</p>}
+      {props.note && <p className="-mt-1 truncate pb-1 pl-8 text-xs text-fg-3">{props.note}</p>}
       {expandable && open && (
         <div id={id} className="mt-1 mb-1">
           {props.children}
