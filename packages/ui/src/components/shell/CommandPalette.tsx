@@ -1,5 +1,5 @@
 import type { Agent } from "@octo/agent-client";
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { formatRelative } from "../../lib/format";
 import { matchScore } from "../../lib/match";
@@ -54,6 +54,24 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
 
   useModal(panel, onClose);
 
+  // The chosen command runs once the palette has started closing and focus is back on its opener (useModal's restore runs
+  // first: its effect is declared above). A command that moves focus itself (a tool tab, a file, a dialog, the Files tree's
+  // filter) keeps it; one that moves nothing leaves focus on the opener (decision 95b).
+  const pending = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (state !== "closed") return;
+    const run = pending.current;
+    pending.current = null;
+    run?.();
+  }, [state]);
+  const runAfterClose = useCallback(
+    (fn: () => void) => () => {
+      pending.current = fn;
+      onClose();
+    },
+    [onClose],
+  );
+
   const openId = openProject?.id;
   useEffect(() => {
     if (!openId) return;
@@ -69,10 +87,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
 
   const groups = useMemo<Group[]>(() => {
     const now = Date.now();
-    const go = (fn: () => void) => () => {
-      onClose();
-      fn();
-    };
+    const go = runAfterClose;
     const rank = (items: Item[], text: (i: Item) => string): Item[] => {
       if (!query.trim()) return items.slice(0, LIMIT);
       return items
@@ -176,7 +191,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
       all.filter((g) => g.items.length),
       (g) => g.items.map((i) => i.label),
     );
-  }, [query, projects, requests, agents, props.actions, openId, nav, onClose, workspace, past]);
+  }, [query, projects, requests, agents, props.actions, openId, nav, runAfterClose, workspace, past]);
 
   const flat = groups.flatMap((g) => g.items);
   const current = Math.min(selected, Math.max(0, flat.length - 1));

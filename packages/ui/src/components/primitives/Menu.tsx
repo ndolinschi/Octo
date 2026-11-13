@@ -29,7 +29,7 @@ const ITEM = '[data-menu-item]:not([aria-disabled="true"])';
 /**
  * A small context menu at a point (or opening upwards from it with `above`). It appears and leaves instantly (no animation): (pointer position or a control's corner). Arrow keys, Home/End and
  * type-ahead move; Enter/Space runs; Esc, Tab, a click outside or scrolling closes. Focus moves into the
- * menu on open and back to the opener when it starts closing.
+ * menu on open and back to the opener when it starts closing (unless the chosen item moved it elsewhere).
  */
 export function Menu(props: {
   label: string;
@@ -63,18 +63,24 @@ export function Menu(props: {
     });
   }, [props.x, props.y, props.above, props.alignEnd]);
 
+  // Focus goes back to the opener unless the chosen item already moved it somewhere else (a rename field, a dialog):
+  // only while it is still in a menu (this one, also when React has already let go of its ref) or on nothing.
+  const restore = () => {
+    const o = opener.current;
+    opener.current = null;
+    const at = document.activeElement;
+    const kept = at !== null && at !== document.body && at.closest('[role="menu"]') === null;
+    if (o?.isConnected && !kept) o.focus();
+  };
+
   useEffect(() => {
     opener.current = document.activeElement as HTMLElement | null;
     (ref.current?.querySelector<HTMLElement>(`${ITEM}[aria-checked="true"]`) ?? ref.current?.querySelector<HTMLElement>(ITEM))?.focus();
-    return () => {
-      if (opener.current?.isConnected) opener.current.focus();
-    };
+    return restore;
   }, []);
 
   useEffect(() => {
-    if (open) return;
-    if (opener.current?.isConnected) opener.current.focus();
-    opener.current = null;
+    if (!open) restore();
   }, [open]);
 
   useEffect(() => {

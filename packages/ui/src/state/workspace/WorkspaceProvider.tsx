@@ -192,6 +192,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
 
   const narrow = !docked || !dockFits(layout.groups, dockWidth);
   const fv = useFileView();
+  const { focusTree } = fv;
   const floors = useMemo(
     () =>
       groupFloors(layout.groups, dockWidth, (id) => {
@@ -368,9 +369,10 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
       openTool: (tool) => {
         const tab = L.toolTab(tool);
         // Decision 35: the opened tool takes focus (the header button that opened it may re-mount in another strip).
-        // The side question's input takes the caret (Ctrl/Cmd+; means "ask now").
+        // The side question's input takes the caret (Ctrl/Cmd+; means "ask now"); Files, its tree's filter (a focus request).
         if (tool === "side") focusSoon(() => document.getElementById("octo-side-input"), { timeout: 3000 });
-        else if (tool !== "files") focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
+        else if (tool === "files") focusTree();
+        else focusSurfaceSoon(() => document.getElementById(`${domId(tab)}-panel`));
         const roomy = tool === "files" || tool === "changes";
         openSide(tab, roomy ? fileFraction() : toolFraction());
         if (roomy) {
@@ -542,6 +544,7 @@ export function WorkspaceProvider({ routeAgentId, onSettings, children }: { rout
     commit,
     openAgent,
     openSide,
+    focusTree,
     requestClose,
     doClose,
     narrowRef,

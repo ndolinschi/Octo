@@ -1,6 +1,6 @@
 import type { ProjectSession } from "@octo/agent-client";
 import { Square } from "lucide-react";
-import { useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "../primitives/Button";
 import { IconMenu } from "../primitives/IconMenu";
 import type { MenuItem } from "../primitives/Menu";
@@ -58,20 +58,29 @@ export function SessionHeader(props: {
 
 function RenameField({ initial, onSave, onCancel }: { initial: string; onSave(title: string): void; onCancel(): void }) {
   const [value, setValue] = useState(initial);
+  const input = useRef<HTMLInputElement>(null);
+  const done = useRef(false);
   const save = () => (value.trim() === "" || value.trim() === initial ? onCancel() : onSave(value.trim()));
+  // Enter and Esc hand focus back to the header's "⋯" (the field goes away); its blur then does nothing more.
+  const finish = (fn: () => void) => {
+    done.current = true;
+    input.current?.closest("[data-detail-header]")?.querySelector<HTMLElement>('button[aria-haspopup="menu"]')?.focus();
+    fn();
+  };
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      save();
+      finish(save);
     } else if (e.key === "Escape") {
       // Leaves the field only: the list-detail layout must not also go back.
       e.preventDefault();
       e.stopPropagation();
-      onCancel();
+      finish(onCancel);
     }
   };
   return (
     <TextField
+      ref={input}
       // eslint-disable-next-line jsx-a11y/no-autofocus -- the person just chose Rename: the field is what they asked for
       autoFocus
       aria-label="Session title"
@@ -80,7 +89,7 @@ function RenameField({ initial, onSave, onCancel }: { initial: string; onSave(ti
       maxLength={120}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={onKeyDown}
-      onBlur={save}
+      onBlur={() => done.current || save()}
     />
   );
 }

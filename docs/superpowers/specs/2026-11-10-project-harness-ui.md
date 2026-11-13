@@ -2902,3 +2902,14 @@ again by the orchestrator with Playwright against `?demo=1` (Chromium); not veri
   space and truncates; below the container's `md` the counts, the folder and Revert's label are hidden (Revert is icon-only
   with a title). A7 (Changes half): the Changes list and the diff end with `FloatRoom`, so the last diff lines scroll clear of
   the floating composer. Not done: the composer over Notes, Memory and other tool tabs in one-strip mode (the rest of A7, B2).
+- **Batch 1c (focus).** A1: opening the Files tool asks the tree for focus (`WorkspaceProvider.openTool` calls
+  `fv.focusTree()`), and the palette runs the chosen command after it has closed and handed focus back, so a command that
+  moves focus keeps it; Esc or a click outside only restores focus. Checked: after Ctrl+K "Show files" typing lands in the
+  filter and the waiting approval is untouched (1440×900, 390×700). **Not changed, owner's decision:** an approval card
+  still takes focus by itself and answers the single keys A / D. A2: an empty Files view that becomes visible opens its
+  group's tree column (`files/useTreeShell.ts`); the editor-bar toggle still hides it. A11: `primitives/Menu` does not return
+  focus to its trigger when the item's action already moved it; the rename field hands focus to "⋯" on Enter and Esc. A9:
+  Esc or Cancel in the review's comment box returns focus to the review, the reply box to its Reply button; a second Esc
+  still restores a maximised group (decision 78). A10: the review header's command block wraps inside a narrow group.
+  Not done: B27 (play glyph in the review header). Gates after batches 1a–1c: `tsc`, 615 unit tests, eslint (0 errors),
+  prettier, `file-open-stability` and `picker-keys` at 1440×900.

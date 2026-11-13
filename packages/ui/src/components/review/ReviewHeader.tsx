@@ -37,8 +37,9 @@ export function ReviewHeader(props: {
           {r.title}
           {r.meta.draft && <span className="ml-2 text-xs font-normal text-fg-3">Draft</span>}
         </h1>
-        {/* Rendered once: on a phone-width window it takes a row of its own under the title (order and basis), instead of a second copy. */}
-        <span className="flex shrink-0 items-center gap-1 max-sm:order-last max-sm:basis-full">
+        {/* Rendered once: on a phone-width window it takes a row of its own under the title (order and basis), instead of a second copy.
+            In a narrow group (the side group after the window shrinks) it moves under the title and wraps its own buttons. */}
+        <span className="flex flex-wrap items-center gap-1 max-sm:order-last max-sm:basis-full">
           {props.runs}
           {props.checkout}
         </span>

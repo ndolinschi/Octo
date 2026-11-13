@@ -24,6 +24,18 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
   const [open, setOpen] = useState(!t.resolved);
   const [all, setAll] = useState(false);
   const [replying, setReplying] = useState(false);
+  // The reply box held focus: when it closes (Cancel, Esc, added), focus goes back to the thread's Reply button.
+  const replyButton = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (replying || !refocus.current) return;
+    refocus.current = false;
+    replyButton.current?.focus();
+  }, [replying]);
+  const closeReply = () => {
+    refocus.current = true;
+    setReplying(false);
+  };
   const { shown, hidden } = visibleComments(t.comments, all);
 
   if (!open)
@@ -84,15 +96,15 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
       {!props.actions.readOnly &&
         (replying ? (
           <ReplyBox
-            onCancel={() => setReplying(false)}
+            onCancel={closeReply}
             onSave={async (body) => {
               const problem = await props.actions.reply(t, body);
-              if (!problem) setReplying(false);
+              if (!problem) closeReply();
               return problem;
             }}
           />
         ) : (
-          <Button variant="ghost" size="sm" onClick={() => setReplying(true)} className="w-fit max-md:h-10">
+          <Button ref={replyButton} variant="ghost" size="sm" onClick={() => setReplying(true)} className="w-fit max-md:h-10">
             Reply
           </Button>
         ))}

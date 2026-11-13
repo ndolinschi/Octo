@@ -254,14 +254,7 @@ function Ready(props: {
   };
 
   const composerEl = composer && file && (
-    <ComposerFor
-      key={composer.n}
-      state={composer.state}
-      path={file.path}
-      after={after}
-      onSave={(v) => saveComposer(composer, v)}
-      onCancel={() => setComposer(null)}
-    />
+    <ComposerFor key={composer.n} state={composer.state} path={file.path} after={after} onSave={(v) => saveComposer(composer, v)} onCancel={closeComposer} />
   );
 
   const here = comments.filter((c) => c.path === path && c.line !== undefined);
