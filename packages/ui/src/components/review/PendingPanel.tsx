@@ -35,6 +35,18 @@ export function PendingPanel(props: {
   const [tab, setTab] = useState<Tab>(props.comments.length === 0 && props.findings.length > 0 ? "findings" : "comments");
   const box = useRef<HTMLElement>(null);
   const { onClose } = props;
+  // Closing returns focus to the control that opened the panel (when nothing else took it, like the comment box does).
+  // The opener is read while rendering, before the panel takes focus (an effect would see the panel itself on a re-run).
+  const [opener] = useState(() => document.activeElement);
+  useEffect(
+    () => () => {
+      requestAnimationFrame(() => {
+        const now = document.activeElement;
+        if ((!now || now === document.body) && opener instanceof HTMLElement && opener.isConnected) opener.focus();
+      });
+    },
+    [opener],
+  );
   useEffect(() => {
     const el = box.current;
     el?.focus();

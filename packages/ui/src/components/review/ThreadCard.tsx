@@ -8,6 +8,7 @@ import { Button, IconButton } from "../primitives/Button";
 import { Textarea } from "../primitives/Field";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
+import { proseClass } from "../primitives/Prose";
 import { Markdown } from "../shared/Markdown";
 import { PR_TEXT } from "./ExternalText";
 
@@ -63,7 +64,7 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
             {t.original_line ? `:${t.original_line}` : ""}
           </span>
         )}
-        <span className="shrink-0">{t.outdated ? "Outdated: the code changed since" : t.resolved ? "Resolved" : "Unresolved"}</span>
+        <span className="shrink-0">{t.outdated ? "Outdated: the code changed since this comment was written" : t.resolved ? "Resolved" : "Unresolved"}</span>
         {t.side === "old" && !t.outdated && <span className="shrink-0">removed side</span>}
         <span className="min-w-0 flex-1 truncate text-right">Others' text, shown as text</span>
         {t.resolved && <IconButton icon={ChevronDown} label="Collapse the thread" onClick={() => setOpen(false)} className="max-md:size-10" />}
@@ -74,7 +75,7 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
             <span className="font-medium text-fg">{c.author}</span>
             <span className="text-fg-3">{timeAgo(c.created_at, props.now)}</span>
           </p>
-          <Markdown text={c.body} components={PR_TEXT} />
+          <Markdown text={c.body} components={PR_TEXT} className={proseClass("compact")} />
           {i === 0 && hidden > 0 && (
             <Button variant="link" size="xs" onClick={() => setAll(true)} className="w-fit px-1">
               {hidden === 1 ? "1 more reply" : `${hidden} more replies`}

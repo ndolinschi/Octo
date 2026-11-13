@@ -71,7 +71,7 @@ export function Composer(props: {
       <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1">
         <h3 className="min-w-0 truncate text-sm font-medium text-fg">{props.heading}</h3>
         {props.suggestFor !== undefined && (
-          <span title="Suggest a change (S)" className="ml-auto">
+          <span title="Suggest a change (s)" className="ml-auto">
             <Checkbox label="Suggest a change" checked={suggest} onChange={setSuggest} />
           </span>
         )}

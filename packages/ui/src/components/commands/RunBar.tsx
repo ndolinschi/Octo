@@ -1,7 +1,9 @@
+import { Play } from "lucide-react";
 import { useState } from "react";
 import type { MenuItem } from "../primitives/Menu";
 import { settingsHref } from "../../lib/route";
 import { Button } from "../primitives/Button";
+import { Glyph } from "../primitives/Glyph";
 import { MenuButton } from "../primitives/MenuButton";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
@@ -53,7 +55,10 @@ export function RunBar() {
             onClick={() => (busy ? r.openPanel() : void r.start(c.name))}
             className="max-md:h-10"
           >
-            {busy && <Spinner />}
+            {/* Decision 94c: the same play glyph as the top row's pinned commands, in a slot of its own so the button keeps its width. */}
+            <span aria-hidden className="grid size-4 place-items-center">
+              {busy ? <Spinner /> : <Glyph icon={Play} size={14} />}
+            </span>
             {c.name}
           </Button>
         );

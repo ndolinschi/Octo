@@ -40,6 +40,8 @@ function Live({ api, loadMonaco, loadCommands }: { api: NonNullable<ReturnType<t
   const { project } = useProject();
   const ws = useWorkspace();
   const [openId, setOpenId] = useState<string | null>(() => ws.memory.get(TAB, OPEN_REVIEW) ?? null);
+  // The review the person just left: the list puts focus on its row.
+  const [returnTo, setReturnTo] = useState<string | null>(null);
   const [kit, setKit] = useState<ReviewCommandsKit | null>(null);
   const { memory, toggleMaximise } = ws;
   // Decision 78: opening a pull request puts the review on the whole dock; "back to the list" gives the other panels back.
@@ -67,9 +69,20 @@ function Live({ api, loadMonaco, loadCommands }: { api: NonNullable<ReturnType<t
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-panel" data-review-tab>
       {id ? (
-        <ReviewView key={id} api={api} reviewId={id} theme={theme} commands={kit} loadMonaco={loadMonaco} onBack={() => setOpen(null)} />
+        <ReviewView
+          key={id}
+          api={api}
+          reviewId={id}
+          theme={theme}
+          commands={kit}
+          loadMonaco={loadMonaco}
+          onBack={() => {
+            setReturnTo(id);
+            setOpen(null);
+          }}
+        />
       ) : (
-        <PullList api={api} folders={project?.folders ?? []} onOpen={setOpen} />
+        <PullList api={api} folders={project?.folders ?? []} onOpen={setOpen} returnTo={returnTo} />
       )}
     </div>
   );

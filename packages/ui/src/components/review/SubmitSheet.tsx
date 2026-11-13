@@ -129,7 +129,7 @@ export function SubmitSheet(props: { api: ReviewApi; review: Review; onClose(): 
           </Button>
           <Button variant="primary" disabled={!ok || busy} aria-busy={busy} onClick={() => void submit()}>
             {busy && <Spinner />}
-            {submitText(review, verdict, count, hasBody)}
+            {submitText(review, verdict, ready ? ready.comments.length : count, hasBody, replies.length)}
           </Button>
         </>
       }

@@ -1,12 +1,12 @@
 import { GitBranch, RefreshCw } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFilter, type PullRequestRow, type ReviewSummary } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooks";
 import type { ReviewApi } from "../../lib/review/api";
 import { plural } from "../../lib/review/files";
-import { parsePullInput, unavailableTitle } from "../../lib/review/pull";
+import { listFailure, parsePullInput, reviewSourceText, unavailableTitle } from "../../lib/review/pull";
 import { filterCounts, freshness, newSinceMyReview, PULL_FILTERS, visibleRows } from "../../lib/review/pullList";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
@@ -17,9 +17,10 @@ import { Notice as ViewNotice } from "../primitives/Notice";
 import { SearchField } from "../primitives/SearchField";
 import { SkeletonRows } from "../primitives/InfoList";
 import { MenuButton } from "../primitives/MenuButton";
-import { Segmented } from "../primitives/Segmented";
+import { FilterTabs } from "../primitives/FilterTabs";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { Spinner } from "../primitives/Status";
+import { ErrorNotice } from "../shared/ErrorNotice";
 import { BranchList } from "./BranchList";
 import { ChecksMark, Counts, Notice, ROW } from "./parts";
 import { usePullList } from "./usePullList";
@@ -37,7 +38,7 @@ type Folders = readonly { id: string; label: string; path: string }[];
  * tabs and one search field that also takes a pasted address or a number. The last list paints at once; the refresh
  * happens behind it. One click, or Enter on the first result, opens the review.
  */
-export function PullList(props: { api: ReviewApi; folders: Folders; onOpen(reviewId: string): void }) {
+export function PullList(props: { api: ReviewApi; folders: Folders; onOpen(reviewId: string): void; returnTo?: string | null }) {
   const [folder, setFolder] = useState(props.folders[0]?.label ?? "");
   // The repository choice belongs to a folder: undefined is the harness's default for it.
   const [repo, setRepo] = useState<string | undefined>(undefined);
@@ -56,6 +57,9 @@ export function PullList(props: { api: ReviewApi; folders: Folders; onOpen(revie
   );
 }
 
+/** Whether the folder's list last had the repository menu: the skeleton keeps room for it, so the tabs below never move. */
+const seenMenu = new Map<string, boolean>();
+
 /** A refusal that names the folder's repositories: the message and one button per repository (rule 7 of the forks decision). */
 type Refusal = { text: string; code: string; choices: { key: string; label: string; detail: string }[]; id: string; input: OpenReviewInput; view: View };
 
@@ -70,6 +74,7 @@ function Picker(props: {
   onFolder(label: string): void;
   onRepo(repo: string): void;
   onOpen(reviewId: string): void;
+  returnTo?: string | null | undefined;
 }) {
   const { api, folder } = props;
   const { state, updating, reload } = usePullList(api, folder, props.repo);
@@ -116,6 +121,7 @@ function Picker(props: {
     }
   };
   const menu = ready ? repoMenu(ready) : null;
+  if (menu) seenMenu.set(folder, menu.show);
 
   const available = ready?.available === true;
   const rows = useMemo(() => (ready?.available ? ready.prs : []), [ready]);
@@ -124,6 +130,18 @@ function Picker(props: {
   const typed = parsePullInput(query);
   const inRows = new Set(rows.map((r) => r.review?.id).filter((x): x is string => x !== undefined));
   const resume = state.open.filter((r) => !inRows.has(r.id));
+
+  // Back from a review (B1 family): focus goes to that pull request's row, else the first row, never to the page.
+  const back = useRef(props.returnTo ?? null);
+  const listed = !state.loading;
+  useEffect(() => {
+    const id = back.current;
+    if (!id || !listed) return;
+    back.current = null;
+    const rows = list.current;
+    const row = rows?.querySelector<HTMLElement>(`[id="${CSS.escape(`review-row-${id}`)}"]`) ?? rows?.querySelector<HTMLElement>("[data-row]");
+    row?.focus({ preventScroll: false });
+  }, [listed, rows]);
 
   const submitSearch = () => {
     if (typed) void run("address", { source: "github", ...(typed.kind === "number" ? { pr: typed.pr } : { url: typed.url }) });
@@ -148,8 +166,15 @@ function Picker(props: {
                 run: () => props.onRepo(i.key),
               }))}
             />
+          ) : ready ? (
+            ready.repo && <span className="min-w-0 truncate font-mono text-xs text-fg-3 @max-md:hidden">{ready.repo}</span>
           ) : (
-            ready?.repo && <span className="min-w-0 truncate font-mono text-xs text-fg-3 @max-md:hidden">{ready.repo}</span>
+            state.loading &&
+            seenMenu.get(folder) !== false && (
+              <span aria-hidden className="grid h-chip w-40 shrink-0 items-center px-2">
+                <span className="h-2 rounded-full bg-hover" />
+              </span>
+            )
           )}
           {props.folders.length > 1 && (
             <MenuButton
@@ -180,20 +205,24 @@ function Picker(props: {
           <div className="flex flex-col gap-3">
             <SearchField
               label="Search pull requests, or paste an address or a number"
-              placeholder="Search, or paste a pull request address or number"
+              placeholder="Search or paste a PR link"
               value={query}
               onChange={setQuery}
               onKeyDown={(e) => e.key === "Enter" && submitSearch()}
               inputProps={{ spellCheck: false, autoComplete: "off" }}
             />
-            <div className="overflow-x-auto">
-              <Segmented<PullRequestFilter>
-                label="Show"
-                value={filter}
-                onChange={setFilter}
-                options={PULL_FILTERS.map((f) => ({ id: f.id, label: ready ? `${f.label} ${counts[f.id]}` : f.label }))}
-              />
-            </div>
+            <FilterTabs<PullRequestFilter>
+              label="Show"
+              value={filter}
+              onChange={setFilter}
+              bare
+              options={PULL_FILTERS.map((f) => ({
+                id: f.id,
+                // Until the list is in, the count is a figure-space placeholder of its width: the chips do not grow on arrival.
+                label: ready ? f.label : `${f.label}${"\u2007".repeat(f.id === "all" ? 2 : 1)}\u2008\u200a`,
+                ...(ready ? { count: counts[f.id] } : {}),
+              }))}
+            />
           </div>
         )}
         {error && <ViewNotice tone="error">{error}</ViewNotice>}
@@ -215,17 +244,12 @@ function Picker(props: {
 
         {view === "pulls" && state.loading && <SkeletonRows count={7} widths={[70, 52, 64, 44, 58, 66, 48]} />}
         {view === "pulls" && state.error && !ready && (
-          <Notice
-            tone="err"
+          <ErrorNotice
             title="The pull requests did not load"
-            actions={
-              <Button size="sm" variant="secondary" onClick={reload}>
-                Try again
-              </Button>
-            }
-          >
-            {state.error}. You can still review a local branch: pick Local branches above.
-          </Notice>
+            fields={{ ...listFailure(state.error), details: state.error, action: "retry" }}
+            onRetry={reload}
+            retrying={updating}
+          />
         )}
         {view === "pulls" && ready && !available && (
           <section aria-label="Pull requests are not available" className="flex flex-col gap-3 rounded-md border border-line bg-raised p-4">
@@ -253,7 +277,7 @@ function Picker(props: {
                 disabled={opening === "address"}
                 leading={opening === "address" ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}
                 title={typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"}
-                meta="Enter"
+                tip={`${typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"} (Enter)`}
                 onClick={submitSearch}
               />
             )}
@@ -312,7 +336,7 @@ function badges(r: PullRequestRow): { text: string; tone: "warn" | "link" | "dim
 function PullRow({ r, now, busy, showRepo, onOpen }: { r: PullRequestRow; now: number; busy: boolean; showRepo: boolean; onOpen(): void }) {
   return (
     // eslint-disable-next-line octo/no-native-controls -- ListRow's description is one truncated line; this row's wrapping badge line has no ListRow form
-    <button type="button" data-row className={ROW} disabled={busy} aria-busy={busy} onClick={onOpen}>
+    <button type="button" data-row id={r.review ? `review-row-${r.review.id}` : undefined} className={ROW} disabled={busy} aria-busy={busy} onClick={onOpen}>
       <span className="mt-0.5">{busy ? <Spinner /> : <ChecksMark state={r.checks} />}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-sm text-fg">{r.title}</span>
@@ -340,12 +364,13 @@ function OpenRow({ r, now, onOpen }: { r: ReviewSummary; now: number; onOpen(): 
   return (
     <ListRow
       size="md"
+      id={`review-row-${r.id}`}
       leading={<Glyph icon={GitBranch} size={14} />}
       title={r.title}
       description={
         <>
-          <span className="font-mono">{r.source}</span> · {r.pending_comments > 0 ? plural(r.pending_comments, "pending comment") : "no comments yet"} ·{" "}
-          {timeAgo(r.last_used_at, now)}
+          <span className="font-mono">{reviewSourceText(r.source)}</span> ·{" "}
+          {r.pending_comments > 0 ? plural(r.pending_comments, "pending comment") : "no comments yet"} · {timeAgo(r.last_used_at, now)}
         </>
       }
       onClick={onOpen}

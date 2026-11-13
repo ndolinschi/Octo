@@ -60,3 +60,15 @@ export function unavailableTitle(reason: string | undefined): string {
       return "Pull requests are not available here";
   }
 }
+
+/** A failed list call as one plain sentence and a next step; the technical text is the caller's "Details" (decision 94b). */
+export function listFailure(raw: string): { message: string; hint: string } {
+  const hint = "Check the connection and refresh. You can still review a local branch: pick Local branches above.";
+  if (/resolve host|network|unreachable|timed out|timeout|connection|offline|dns/i.test(raw)) return { message: "Could not reach the code host.", hint };
+  return { message: "The code host did not answer the list request.", hint };
+}
+
+/** The review id `github:owner/repo#12` as a person says it: `owner/repo #12`. */
+export function reviewSourceText(source: string): string {
+  return source.replace(/^(github|local):/, "").replace("#", " #");
+}

@@ -64,7 +64,9 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
       </Notice>
     );
   const shownBase = data?.base ?? "main";
-  const names = [...new Set([data?.default_base ?? "main", ...rows.map((r) => r.name)])];
+  // The base is never offered against itself: the current branch is not a base for its own review.
+  const current = rows.find((r) => r.current)?.name;
+  const names = [...new Set([data?.default_base ?? "main", ...rows.map((r) => r.name)])].filter((n) => n !== current || n === shownBase);
   return (
     <section aria-label="Local branches" className="flex flex-col gap-1">
       <header className="flex min-h-8 items-center gap-2 px-3 text-xs text-fg-3">
@@ -75,7 +77,7 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
               label="Compare against"
               text={`against ${shownBase}`}
               alignEnd
-              items={names.map((n) => ({ id: `base:${n}`, label: n, run: () => setBase(n) }))}
+              items={names.map((n) => ({ id: `base:${n}`, label: n, checked: n === shownBase, run: () => setBase(n) }))}
             />
           )}
         </span>

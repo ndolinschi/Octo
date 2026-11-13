@@ -7,6 +7,7 @@ import { IconButton } from "../primitives/IconButton";
 import { Checkbox } from "../primitives/Checkbox";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
+import { MiddleText } from "../primitives/MiddleText";
 import { Select, type SelectOption } from "../primitives/Select";
 import { LineStat } from "./parts";
 
@@ -100,15 +101,13 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
         </span>
       }
       title={
+        // B28: the marks sit in the title, so the meta holds only the line counts (the meta stops at 40% of the row and clips
+        // what is wider): the path gives way first (the directory, then the name from its middle), the marks and counts never shrink.
         <span className="flex min-w-0 items-center gap-2">
-          <span className={cn("shrink-0 truncate", f.viewed && !f.changed_since_viewed && "text-fg-3")}>{name}</span>
+          <MiddleText text={name} className={cn(f.viewed && !f.changed_since_viewed && "text-fg-3")} />
           <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
             <bdi>{dir}</bdi>
           </span>
-        </span>
-      }
-      meta={
-        <span className="inline-flex items-center gap-2">
           {f.changed_since_viewed && (
             <span className="shrink-0 rounded-xs border border-line px-1 text-[11px] leading-4 text-warn" title="Changed since you viewed it">
               changed
@@ -116,7 +115,7 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
           )}
           {(f.threads ?? 0) > 0 && (
             <span
-              className={cn("flex shrink-0 items-center gap-0.5", unresolved > 0 ? "text-fg" : "text-fg-3")}
+              className={cn("flex shrink-0 items-center gap-0.5 text-xs", unresolved > 0 ? "text-fg" : "text-fg-3")}
               title={threadCountText(f.threads ?? 0, unresolved)}
             >
               <Glyph icon={MessageCircle} size={14} />
@@ -124,14 +123,14 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
             </span>
           )}
           {f.pending_comments > 0 && (
-            <span className="flex shrink-0 items-center gap-0.5 text-fg-2" title={`${f.pending_comments} pending comments`}>
+            <span className="flex shrink-0 items-center gap-0.5 text-xs text-fg-2" title={`${f.pending_comments} pending comments`}>
               <Glyph icon={MessageSquare} size={14} />
               {f.pending_comments}
             </span>
           )}
-          <LineStat file={f} />
         </span>
       }
+      meta={<LineStat file={f} />}
     />
   );
 }

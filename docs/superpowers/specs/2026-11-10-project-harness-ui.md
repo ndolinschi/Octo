@@ -3097,3 +3097,19 @@ the executor, a sample by the orchestrator.
   390×700, `width-stability` (two sizes), `layout-shift`, `spacing-audit` total=0, `frame-colours`, `flicker` ok; tree keys,
   divider, save, conflict, comments, Preview/Source, ghost text, LSP retry and page mode re-run by script. Not verified:
   WebKit, touch, a screen reader.
+
+### As built — fixes after the UI verification, batch 6 (Review)
+
+- B24: the pull-request list's filters are `FilterTabs` with counts (decisions 82b, 82e). B25: thread text is the compact
+  prose scale (13/20). B26: the picker's skeleton reserves the repository-menu line and the chips reserve their count width;
+  header 56, tabs y 137 and filters y 230 are the same before and after load (side group, 1440×900). B27: "Tests" /
+  "Typecheck" in the review header carry the play glyph (the spinner in the same slot while running). B28: a file row's
+  marks moved into its title and the counts alone are the meta, so "+8 −2" is whole (`ListRow` caps `meta` at 40 % of the
+  row — anything else with many marks in `meta` can clip the same way). Focus: Esc in the Pending panel returns to its
+  button; "All pull requests" returns to the review's row in the list. B60, Review part: "atlas-labs/atlas-api #476" instead
+  of the raw source id; a failed list load is an `ErrorNotice` ("Could not reach the code host." + hint, Retry, Details).
+  Also: the base menu ticks the current base and does not offer the current branch; "(s)"; the outdated sentence is whole;
+  "Post 1 comment and 1 reply"; no "Enter" inside the open-by-number row; a shorter search placeholder.
+  Not done: the 24 pull rows are still 24 Tab stops (`ListRow` has no roving tabindex). Looked at only: `Segmented` with its
+  new track in Overview, Pending and the submit sheet (fine; the Pending track is faint in light). Not verified: 390×700, a
+  single-repository project's skeleton.

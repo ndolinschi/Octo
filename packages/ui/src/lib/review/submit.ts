@@ -23,12 +23,14 @@ export function reviewTarget(review: Target): string {
  * The text of the submit button: exactly what will be posted and where. A local review says plainly that nothing leaves
  * the machine. `comments` counts the pending comments (general ones too); `hasBody` is a typed review text.
  */
-export function submitText(review: Target, verdict: ReviewVerdict, comments: number, hasBody: boolean): string {
+export function submitText(review: Target, verdict: ReviewVerdict, comments: number, hasBody: boolean, replies = 0): string {
+  // Replies to existing threads leave with the review too; they are counted apart from the comments ("1 comment and 1 reply").
+  const items = [comments > 0 ? plural(comments, "comment") : "", replies > 0 ? plural(replies, "reply", "replies") : ""].filter(Boolean).join(" and ");
   if (review.kind === "local") {
-    return comments > 0 ? `Mark ${plural(comments, "comment")} as submitted (nothing is posted)` : "Mark review as done (nothing is posted)";
+    return items ? `Mark ${items} as submitted (nothing is posted)` : "Mark review as done (nothing is posted)";
   }
   const target = reviewTarget(review);
-  const parts = comments > 0 ? plural(comments, "comment") : hasBody ? "your review text" : "";
+  const parts = items || (hasBody ? "your review text" : "");
   switch (verdict) {
     case "approve":
       return parts ? `Approve ${target} with ${parts} as you` : `Approve ${target} as you`;
