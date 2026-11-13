@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { emptyProjectState, type Agent } from "@octo/agent-client";
-import { roleText, agentActivity, lastTeam, orchestratorState, runningAgents, stateLine, teamRoles } from "./orchestrator";
+import { roleText, agentActivity, lastTeam, orchestratorState, projectRowLines, runningAgents, stateLine, teamRoles } from "./orchestrator";
 import { agentDisplayName, agentStack, teamLine } from "./orchestratorMore";
 
 const NOW = Date.parse("2026-11-10T12:00:00Z");
@@ -67,6 +67,15 @@ test("idle shows how long since the last turn ended", () => {
   assert.equal(stateLine(orchestratorState([root()], "idle"), NOW), "Idle, 1h ago");
   assert.equal(stateLine({ kind: "idle", at: null }, NOW, "2026-11-10T11:58:00Z"), "Idle, 2m ago");
   assert.equal(stateLine({ kind: "idle", at: null }, NOW), "Idle");
+});
+
+test("a project row is one line when idle (time as meta) and two when the state says something", () => {
+  assert.deepEqual(projectRowLines(orchestratorState([root()], "idle"), NOW), { description: null, meta: "1h" });
+  assert.deepEqual(projectRowLines({ kind: "idle", at: null }, NOW, "2026-11-10T11:58:00Z"), { description: null, meta: "2m" });
+  assert.deepEqual(projectRowLines({ kind: "idle", at: null }, NOW), { description: null, meta: null });
+  assert.deepEqual(projectRowLines({ kind: "new" }, NOW), { description: "No requests yet", meta: null });
+  assert.deepEqual(projectRowLines({ kind: "needs", error: "x", at: null }, NOW), { description: "Failed", meta: null });
+  assert.deepEqual(projectRowLines({ kind: "working", agents: [] }, NOW), { description: "Working", meta: null });
 });
 
 test("agent stack names two distinct roles, then counts the rest", () => {

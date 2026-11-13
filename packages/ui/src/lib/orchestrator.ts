@@ -1,5 +1,5 @@
 import type { Agent, ProjectAttentionKind, ProjectState } from "@octo/agent-client";
-import { timeAgo } from "./format";
+import { formatRelative, timeAgo } from "./format";
 
 /**
  * The project orchestrator's state as the sidebar, the header and Home show it (contract decision 23), derived
@@ -60,6 +60,17 @@ export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string
     case "new":
       return "No requests yet";
   }
+}
+
+/**
+ * The sidebar's project row (polish trial T2): an idle project is one line, its name with the time since its last turn as
+ * right-aligned meta ("1h", "49m"); the second line stays only when it says something (Failed, Working + agents, No requests
+ * yet). An idle project with no known time has neither.
+ */
+export function projectRowLines(s: OrchestratorState, now: number, fallbackAt?: string): { description: string | null; meta: string | null } {
+  if (s.kind !== "idle") return { description: stateLine(s, now, fallbackAt), meta: null };
+  const at = s.at ?? fallbackAt;
+  return { description: null, meta: at ? formatRelative(at, now) : null };
 }
 
 const ACTIVITY: Record<string, string> = {

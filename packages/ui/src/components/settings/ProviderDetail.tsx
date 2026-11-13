@@ -11,6 +11,7 @@ import {
   refreshProviders,
   stateTone,
 } from "../../lib/providers";
+import { cn } from "../../lib/cn";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { ListFrame } from "../primitives/Card";
@@ -19,6 +20,7 @@ import { Notice } from "../primitives/Notice";
 import { AgentPrefs } from "./AgentPrefsPane";
 import { ProviderKey } from "./ProviderKey";
 import { ProviderModels } from "./ProviderModels";
+import { CONTROL_CAP } from "./parts";
 import { ProviderTitle, SectionTitle } from "./ProviderParts";
 
 /**
@@ -65,7 +67,7 @@ export function ProviderDetail({ provider: p }: { provider: Provider }) {
               </div>
             )}
           </div>
-          <div className="flex max-w-measure min-w-0 flex-col gap-6">
+          <div className={cn("flex max-w-measure min-w-0 flex-col gap-6", CONTROL_CAP)}>
             {reason && <Reason provider={p} text={reason} />}
             {p.kind === "api" && <ProviderKey provider={p} />}
             {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}

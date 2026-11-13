@@ -54,7 +54,7 @@ export function StickyPrompt(props: { text: string; author: string | null; onHei
       </span>
     </>
   );
-  const boxClass = "block w-full rounded-md border border-line bg-raised p-card text-left text-base text-fg";
+  const boxClass = "block w-full rounded-md border border-transparent bg-raised p-card text-left text-base text-fg";
 
   return (
     <div ref={root} data-pinned className="pointer-events-none absolute inset-x-0 top-0 z-10 overflow-hidden scroll-quiet">

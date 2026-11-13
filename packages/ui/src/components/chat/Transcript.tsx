@@ -282,7 +282,10 @@ const UserPrompt = memo(function UserPrompt({
     <div data-prompt className="group/prompt relative">
       <div
         data-bubble
-        className={cn("rounded-md border border-line bg-raised text-fg transition-[box-shadow] duration-300", compact ? "p-2 text-sm" : "p-card text-base")}
+        className={cn(
+          "rounded-md border border-transparent bg-raised text-fg transition-[box-shadow] duration-300",
+          compact ? "p-2 text-sm" : "p-card text-base",
+        )}
       >
         {external ? <div className="mb-0.5 text-xs text-fg-3">From {author}</div> : <span className="sr-only">{author}: </span>}
         {steered && (

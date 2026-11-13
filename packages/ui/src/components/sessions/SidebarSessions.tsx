@@ -51,9 +51,11 @@ export function SidebarSessions(props: { projectId: string; updatedAt: string; a
         label={open ? "Hide sessions" : "Show recent sessions"}
         size="xs"
         aria-expanded={open}
+        data-sessions-toggle
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "absolute top-2 right-1 opacity-0 group-focus-within/p:opacity-100 group-hover/p:opacity-100 focus-visible:opacity-100 touch:opacity-100",
+          // Centred on the row's first line (32px): a one-line idle row (T2) and the title line of a two-line row.
+          "absolute top-1 right-1 opacity-0 group-focus-within/p:opacity-100 group-hover/p:opacity-100 focus-visible:opacity-100 touch:opacity-100",
           open && "opacity-100 [&_svg]:rotate-90",
         )}
       />

@@ -48,7 +48,7 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
       {p.models.length === 0 ? (
         <p className="text-sm text-fg-2">{p.kind === "agent" ? "The agent picks its own model." : "No models listed."}</p>
       ) : (
-        <div role="list" className="flex flex-col">
+        <div role="list" className="-mx-2 flex flex-col">
           {shown.map((m) => (
             <ListRow
               key={m.id}
@@ -56,8 +56,18 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
               size="md"
               tone="quiet"
               tip={m.id}
-              title={agentModelLabel(m)}
-              {...(m.id === p.default_model ? { meta: "default" } : m.stale ? { meta: "not advertised last time" } : {})}
+              title={
+                m.id === p.default_model ? (
+                  // T5: "default" is a quiet badge right after the name, not a word at the far edge of the row.
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 truncate">{agentModelLabel(m)}</span>
+                    <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs leading-4 text-fg-3">default</span>
+                  </span>
+                ) : (
+                  agentModelLabel(m)
+                )
+              }
+              {...(m.stale ? { meta: "not advertised last time" } : {})}
             />
           ))}
         </div>

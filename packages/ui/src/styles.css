@@ -9,9 +9,10 @@
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --octo-window: #0a0a0a;
+  /* Polish trial T4: three tones about 4 % lightness apart (window 4 %, panel 9 %, raised 13.5 %), neutral hue. */
+  --octo-window: #0b0b0b;
   --octo-panel: #171717;
-  --octo-raised: #212121;
+  --octo-raised: #232323;
   --octo-overlay: #262626;
   --octo-code-bg: #1d1d1d;
   --octo-hover: rgb(255 255 255 / 0.05);
@@ -22,6 +23,9 @@
   --octo-panel-edge: rgb(255 255 255 / 0.05);
   --octo-panel-highlight: rgb(255 255 255 / 0.04);
   --octo-input-border: #6e6e6e;
+  /* T3: a text field's edge at rest is a hairline no brighter than a card's; focus turns it `fg` (decision 90c).
+     `input-border` stays for the small boxes that need a strong edge to be seen (checkbox) and the composer's focus. */
+  --octo-field-edge: rgb(255 255 255 / 0.14);
   --octo-fg: #f0f0f0;
   --octo-fg-2: #c6c6c6;
   --octo-fg-3: #a2a2a2;
@@ -53,18 +57,21 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --octo-window: #ececec;
+  /* T4: a light, clean ground (was #ececec) under white panels; raised is a soft tone one step under white. */
+  --octo-window: #f5f5f5;
   --octo-panel: #ffffff;
-  --octo-raised: #f6f6f6;
+  --octo-raised: #f3f3f3;
   --octo-overlay: #ffffff;
-  --octo-code-bg: #f5f5f5;
-  --octo-hover: rgb(0 0 0 / 0.04);
-  --octo-active: rgb(0 0 0 / 0.09);
+  --octo-code-bg: #f3f3f3;
+  --octo-hover: rgb(0 0 0 / 0.035);
+  /* Selection is a tint, not mid-grey (was black 9 %); still clearly above hover. */
+  --octo-active: rgb(0 0 0 / 0.065);
   --octo-line: rgb(0 0 0 / 0.09);
   --octo-line-strong: rgb(0 0 0 / 0.14);
   --octo-panel-edge: rgb(0 0 0 / 0.06);
   --octo-panel-highlight: rgb(255 255 255 / 0);
   --octo-input-border: #8a8a8a;
+  --octo-field-edge: rgb(0 0 0 / 0.14);
   --octo-fg: #1a1a1a;
   --octo-fg-2: #424242;
   --octo-fg-3: #5e5e5e;
@@ -113,6 +120,7 @@
   --color-line: var(--octo-line);
   --color-line-strong: var(--octo-line-strong);
   --color-input-border: var(--octo-input-border);
+  --color-field-edge: var(--octo-field-edge);
   --color-focus: var(--octo-focus);
   --color-fg: var(--octo-fg);
   --color-fg-2: var(--octo-fg-2);
@@ -330,6 +338,23 @@
   box-shadow:
     0 0 0 2px var(--octo-focus),
     var(--octo-shadow-panel);
+}
+
+/* Polish trial T3: inside a raised card (primitives/Card) a code block and a field are recessed to the panel's tone, so
+   a block in a card is told apart by tone, never by an outline of its own. */
+.octo-in-card {
+  --octo-code-bg: var(--octo-panel);
+}
+
+/* T2: an idle project row shows its time where the sessions chevron appears (hover, focus, open, touch): the time gives way. */
+[data-project-row]:has(> [data-sessions-toggle]):is(:hover, :focus-within) [data-project-meta],
+[data-project-row]:has(> [data-sessions-toggle][aria-expanded="true"]) [data-project-meta] {
+  visibility: hidden;
+}
+@media (pointer: coarse), (max-width: 767.98px) {
+  [data-project-row]:has(> [data-sessions-toggle]) [data-project-meta] {
+    visibility: hidden;
+  }
 }
 
 /* Under the pinned prompt: 8px of panel, then an ease-in fade (content reappears from ~0%, so a line passing
@@ -975,7 +1000,8 @@
   background-color: color-mix(in srgb, var(--octo-raised) 100%, var(--octo-drop));
 }
 .octo-composer-input {
-  font-size: 15px;
+  /* T1: content size (the reply's 14), so the placeholder is the size of the text around it (was 15). */
+  font-size: 14px;
   line-height: 22px;
   min-height: 22px;
   /* Decision 69: the scrollbar that appears at 10 lines must not change the text width (it re-wrapped the text, flipped the

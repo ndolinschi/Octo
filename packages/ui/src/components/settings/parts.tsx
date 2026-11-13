@@ -17,6 +17,14 @@ export const CONTROL_W = {
 } as const;
 
 /**
+ * Polish trial T5 (widths by meaning): the one cap for the fields of a `FieldRow` inside a settings pane (the provider's
+ * preferred model and roles): columns of at most 16rem, the same 256px as `CONTROL_W.lg`, so a select is as wide as its
+ * content needs, never the page, and a one-field row lines up with the first column of a three-field row. Set on the pane
+ * that holds the rows (an `@container`); below the container's `md` width the fields stack and fill the row (`FieldRow`).
+ */
+export const CONTROL_CAP = "@md:[&_[data-field-row]]:grid-cols-[repeat(3,minmax(0,16rem))]";
+
+/**
  * Decision 59 anatomy on the library (decision 90): a `SectionHeader` over a `ListFrame` of rows; a row is a title and a
  * one-line description on the left and exactly one control on the right, 56px or more tall. Below the settings breakpoint
  * (760px) the control goes under the text.

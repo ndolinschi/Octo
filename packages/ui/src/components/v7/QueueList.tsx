@@ -85,7 +85,7 @@ export function QueueList(props: QueueListProps) {
 
   const count = messages.length;
   return (
-    <section aria-label={queueCountLabel(count)} className="@container/queue flex min-w-0 flex-col rounded-md border border-line bg-panel p-1 text-sm">
+    <section aria-label={queueCountLabel(count)} className="@container/queue flex min-w-0 flex-col border-b border-line p-1 text-sm">
       <SectionHeader inset level="caption" as="h3">
         {props.paused ? (messages.length ? `${queueCountLabel(count)} · paused after a failed or stopped turn` : "Queue paused") : queueCountLabel(count)}
       </SectionHeader>

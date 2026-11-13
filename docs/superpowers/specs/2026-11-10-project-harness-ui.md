@@ -2922,3 +2922,32 @@ again by the orchestrator with Playwright against `?demo=1` (Chromium); not veri
   memory file editor, Knowledge "Add") calls `useBlockFloating()` and the floating composer is not shown while the form is
   mounted. Still as before: over a tool tab without a form the composer covers the lower part of the panel at rest in
   one-strip mode (the content scrolls clear through `FloatRoom`).
+
+## As built — polish trial, step 1: foundation (2026-11-13; one commit, revertable on its own)
+
+Owner: "it looks unfinished, not levelled; not premium like Cursor or the Claude Code desktop app; adapt, do not copy."
+The orchestrator's reading of 2× screenshots: outlines inside outlines, chrome as loud as content, a muddy light theme,
+widths not set by meaning. Five rules were tried on six screens in both themes; before/after pairs were read by the
+executor and by the orchestrator. **A trial: the owner has not approved the direction yet.**
+
+- **T1, type.** Measured first: chrome was already 13px and meta 12px, so little changed. The composer's text is 14px
+  (was 15), so its placeholder matches the reply; the field placeholder is plain `fg-3` (was `fg-3/60` italic, 3.3:1 —
+  finding B61). Not done: fields and field labels stay 13px.
+- **T2, sidebar rows.** An idle project is one 32px line: a 6px quiet dot, the name, the relative time right-aligned
+  ("1h"); rows that say something (Failed, Working, No requests yet) keep two lines at 40px (`lib/orchestrator.ts`
+  `projectRowLines`, tested). The time hides while the sessions chevron shows. **Departs from decision 29** (idle is a thin
+  ring): only the sidebar draws the dot; Sessions and Home still show rings.
+- **T3, one outline per level.** `primitives/Card` has no border: a card is one tone above its panel (`panel` is now an
+  alias of `raised`); inside a card code blocks and fields take the panel's tone (`.octo-in-card`). The request bubble has
+  no outline. The queue is a band inside the composer's one outline. Fields use a new `--octo-field-edge` (14 % of the
+  foreground) at rest; focus still turns the border `fg`. **Departs from decision 90c** (fields named `input-border`) and is
+  under 3:1 against the surface (WCAG 1.4.11): the field is told by edge plus recessed tone. Not done: `DelegationGroup`,
+  the live plan box and `SentComments` still draw their own frames.
+- **T4, surfaces.** Dark: window `#0b0b0b`, panel `#171717`, raised `#232323`. Light: window `#f5f5f5` (was `#ececec`),
+  raised and code `#f3f3f3`, hover 3.5 %, active 6.5 %. **Differs from the visual spec's colour table** (window `#f2f2f2`,
+  active 7 %), which the old values did not match either. Contrast of `fg`, `fg-2`, `fg-3` on every surface is at or above
+  4.5:1 except `fg-3` on raised+active in dark (4.23:1; no screen puts a selected row on a raised card).
+- **T5, widths.** Settings controls are capped at 16rem (`CONTROL_CAP`); in a provider's model list "default" is a quiet
+  badge after the name.
+- Gates: `tsc`, 617 unit tests, eslint 0 errors, prettier, `spacing-audit` total=0, `width-stability` ok, `frame-colours`
+  ok; 390×700 looked at for the conversation and the drawer. Not verified: WebKit, touch, a screen reader on the new row.
