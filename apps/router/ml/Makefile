@@ -2,7 +2,7 @@
 PY := .venv/bin/python
 RUN := PYTHONPATH=src $(PY) -m
 
-.PHONY: all venv fetch build features evaluate quick onnx figures test
+.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit
 
 all: fetch build features test evaluate onnx figures
 
@@ -25,3 +25,19 @@ figures:
 	$(RUN) routerml.figures
 test:
 	$(PY) -m pytest -q
+
+# ---- stage 2: where is the signal? (results/stage2_*.json, figures/stage2_*.png, results/stage2_report.txt)
+stage2: ceiling cascade trajectories steps bandit
+
+ceiling:    ## A: split-half reliability of labels and advantages, cross-fitted oracle (~30 s)
+	$(RUN) routerml.ceiling
+cascade:    ## B: post-hoc failure detector (api_calls, cost) + matrix-level cascade (~15 min)
+	$(RUN) routerml.cascade
+traj-fetch: ## B: mini-SWE-agent trajectories of 9 low-tier submissions from the public S3 bucket (~1.6 GB)
+	$(RUN) routerml.traj_fetch
+trajectories: traj-fetch ## B: early features at K = 5/10/20 steps, early detector, early cascade (~5 min)
+	$(RUN) routerml.trajectories
+steps:      ## B: TwinRouterBench step-level check, leave-one-task-out (~1 min)
+	$(RUN) routerml.steps
+bandit:     ## C: online adaptation with bandit feedback, 200 streams
+	$(RUN) routerml.bandit

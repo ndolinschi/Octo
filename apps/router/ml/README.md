@@ -24,6 +24,14 @@ make all         # all of the above in order
 
 `make quick` runs only the three headline splits (about 5 minutes) into `results/metrics_quick.json`.
 
+Stage 2 (where the signal is; report: `results/stage2_report.txt`; `make stage2` runs all five):
+
+- `make ceiling`: split-half reliability of the soft labels and of tier advantages; oracle built on one half of the submissions, scored on the other.
+- `make cascade`: post-hoc failure detector of a cheap run (api_calls, cost) and the cheap-then-escalate cascade on the matrix.
+- `make trajectories`: fetches 9 low-tier mini-SWE-agent trajectory sets (~1.6 GB, public S3) and tests an early detector after K = 5/10/20 steps.
+- `make steps`: TwinRouterBench's 336 SWE steps, step-time features -> collapsed target tier, leave-one-task-out.
+- `make bandit`: online tier choice per repository with bandit feedback (Thompson, UCB, empirical-Bayes start, Lagrangian), 200 streams.
+
 Note: the OpenRouter catalogue has no revision. `fetch` keeps the first snapshot it downloads
 (2026-11-13 for the numbers in REPORT.md); a fresh clone gets today's catalogue, which can change the
 prices of the 9 models sourced from it (`results/models.csv`, column `source`).
@@ -39,6 +47,7 @@ prices of the 9 models sourced from it (`results/models.csv`, column `source`).
 | `src/routerml/export_onnx.py` | ONNX export + parity check |
 | `src/routerml/figures.py` | figures |
 | `tests/test_pipeline.py` | pytest suite |
+| `src/routerml/{stage2,ceiling,cascade,traj_fetch,trajectories,steps,bandit}.py`, `tests/test_stage2.py` | stage 2 |
 | `results/` | small derived tables and every number in REPORT.md (`build.json`, `metrics.json`, `onnx_check.json`) |
 | `figures/` | cost–quality curve, reliability diagrams, per-repository bars |
 | `models/` | `m1_joint.onnx` (27 KB) and the LightGBM text dump |

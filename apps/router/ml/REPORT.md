@@ -133,3 +133,46 @@ evaluation and exclude its 100 leaderboard tasks, which are Verified tasks, when
 7. **The premise of M1 and M2 — that the task's text predicts the tier — is not supported by this data.** A text
    encoder (M2) on the same input has no reason to do better across repositories; the signal has to come from the
    session (what the agent did so far), which is also what the router sees every turn.
+
+# Stage 2: where is the signal, if not in the task's text? (2026-11-13)
+
+Full text: `results/stage2_report.txt`; numbers: `results/stage2_*.json`; figures: `figures/stage2_*.png`. Same data as
+stage 1 (39 core submissions × 500 tasks, scheme A as the headline); stage 1's code and numbers untouched; 18 tests pass.
+
+**Headline: on this data no signal at the level of a single task beats the fixed-tier mixture, and per-repository
+adaptation does not either. Most of the oracle's headroom is noise between runs and models.**
+
+| Signal | Gain over the fixed-tier mixture (curve area, scheme A) |
+| --- | --- |
+| Choosing the concrete cheap model (a model-level effect, not routing), stopped at step 5 / after the run | +0.046 [+0.041, +0.049] / +0.025 [+0.020, +0.032] |
+| Task-level ceiling: an oracle built on half of each tier's submissions, scored on the other half | +0.014 [−0.029, +0.039], not significant (in-sample on the same halves: +0.097; stage 1's full-data oracle: +0.080) |
+| Cascade on what the cheap run looked like afterwards (`api_calls`, `cost`) | −0.003 [−0.011, +0.004] |
+| Early cascade on the first K = 5 / 10 / 20 steps of the cheap run's trajectory | +0.003 / 0.000 / −0.003, none significant (a perfect stop at step 5 would give +0.068) |
+| Per-repository bandits (Thompson, UCB, with and without a prior) | at most 0.017 per task available near break-even; not captured — every adaptive policy trails the best fixed tier |
+
+- **Reliability.** A tier's soft label is reliable (split-half 0.90 / 0.92 / 0.965). Which tier is better on a given task
+  is not: high − low 0.54 [0.38, 0.68], mid − low 0.11 [−0.26, 0.31], high − mid 0.18 [−0.14, 0.41].
+- **Failure of a cheap run is detectable, moderately:** AUROC within a model 0.705 from calls and cost, 0.54 / 0.61 / 0.64
+  from the first 5 / 10 / 20 steps (a test checks nothing after step K is used), 0.72 from the full trajectory. It does not
+  pay at these price ratios: escalating costs the cheap run plus the dear one.
+- **Step level** (TwinRouterBench, 336 steps from 40 tasks, leave-one-task-out): step-time features predict the needed
+  tier with accuracy 0.66 [0.60, 0.71] and log loss 0.108 [0.029, 0.179] better than the majority tier. Small data; it
+  only shows the session prefix carries some information per step.
+- **Constrained online control** (quality ≥ 95 % of always-high): a threshold bandit reproduces the offline mixture
+  (0.953 of the quality at 0.871 of the cost; the mixture: 0.951 at 0.866); a Lagrangian Thompson sampler violates the
+  constraint in every stream.
+
+## The orchestrator's reading and its limits
+
+1. "The cheapest tier that will solve this task" is not a learnable target on public SWE-bench data: there is almost
+   nothing reproducible to predict at the task level. This is a result about the data as much as about models.
+2. **A limit of that conclusion.** A tier here is a population of different models (qwen2.5-coder-32b solves 9 %, others
+   in the same price tier far more), and each cell is one run. The split-half "noise" therefore mixes run-to-run chance
+   with differences between models inside a tier. A router in production chooses among three concrete models; whether
+   the advantage of one concrete model over another on a task is reproducible is **not measured** here (it needs
+   repeated runs of the same models; five core models have two submissions each, which could give a first estimate).
+3. What is supported: the choice of the concrete model inside a tier matters more than any per-task routing measured
+   here; an operating point can be held online at a declared quality target; the session prefix carries some step-level
+   information.
+4. What the router should log to make any of this learnable on its own traffic: the model, steps, tool errors, test
+   runs, and a solved / not-solved outcome per session (its history has no such label today).
