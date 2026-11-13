@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from conftest import require_data, requires_data
 from routerml import config as C
 from routerml.build import load_tasks
 from routerml.evaluate import FoldFeatures, splits
@@ -16,6 +17,7 @@ SCHEMES = ("A_model_terciles", "B_fixed_1_5", "C_submission_terciles")
 
 @pytest.fixture(scope="module")
 def tasks():
+    require_data("swebench_verified.parquet", target="fetch")
     return load_tasks().sort_values("instance_id").reset_index(drop=True)
 
 
@@ -45,6 +47,7 @@ def test_feature_functions_reject_raw_frames(tasks):
         TfidfSvd(4).fit(tasks)
 
 
+@requires_data("embeddings_minilm.npy", target="features")
 def test_feature_names_have_no_forbidden_or_repo_source(tasks):
     emb = np.load(C.DATA / "embeddings_minilm.npy")
     ff = FoldFeatures(routing_view(tasks), text_stats(routing_view(tasks)), emb, "stats+tfidf+emb")

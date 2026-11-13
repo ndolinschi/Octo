@@ -106,7 +106,7 @@ keeps its mode, `queue` entries carry `mode` when one was chosen). The turn's mo
 - **Prompt.** The orchestrator's system prompt says `Mode: ASK` / `Mode: PLAN` and what that allows (after the instruction files).
   For an ACP orchestrator the same sentence goes in brackets in front of the request.
 - **Plan.** A completed `plan` turn stores its answer as a plan: `plan.created {plan}` event;
-  `GET /v1/projects/{id}/plans/latest` → `{"plan": {"id","turn_id","text","status":"pending"|"approved","created_at","approved_at"}}` (404 `not_found` without one);
+  `GET /v1/projects/{id}/plans/latest` → `{"plan": {"id","turn_id","text","status":"pending"|"approved","created_at","approved_at"}}` (`{"plan": null}` without one; an older harness answered 404 `not_found`);
   `POST /v1/projects/{id}/plans/{planId}/approve` → 202 `{"plan": ..., "message": ...}` marks it approved (`plan.approved {plan}`) and starts an
   `agent` turn whose user message is "The plan above is approved. Carry it out." with the plan pinned in the system prompt (built-in)
   or in front of the prompt (ACP). 409 `plan_not_pending` when it was approved already, 409 `turn_in_progress` while a turn runs, 404 for an unknown id.

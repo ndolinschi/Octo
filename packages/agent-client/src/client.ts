@@ -342,8 +342,11 @@ export interface Bridge {
    * `steer_unsupported`: say the message is sent when the turn ends, or use `sendQueuedNow(..., { interrupt: true })`.
    */
   steerQueued?(projectId: string, queueId: string): Promise<{ steered: boolean }>;
-  /** Parity B3: the plan the newest plan-mode turn produced; 404 `not_found` without one. */
-  getLatestPlan?(projectId: string): Promise<Plan>;
+  /**
+   * Parity B3: the plan the newest plan-mode turn produced; `null` without one (the harness answers `{"plan": null}`;
+   * an older harness answered 404 `not_found`, which this client also turns into `null`).
+   */
+  getLatestPlan?(projectId: string): Promise<Plan | null>;
   /** Approves a plan and starts an `agent` turn with it pinned; 409 `plan_not_pending` / `turn_in_progress`. */
   approvePlan?(projectId: string, planId: string): Promise<{ plan: Plan; message: Message }>;
   /** Parity B5: cut the conversation back to a request and restore the files after it (see {@link RewindReport}). */

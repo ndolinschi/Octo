@@ -1,12 +1,21 @@
 package bridge
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+
+	"github.com/ndolinschi/Octo/apps/harness/internal/projectstore"
 )
 
+// latestPlan answers GET /v1/projects/{pid}/plans/latest: 200 {"plan": {...}}, or 200 {"plan": null} when the project
+// has no plan yet (not a 404, so a browser does not log a failed request for every project without one).
 func (s *Server) latestPlan(w http.ResponseWriter, r *http.Request) {
 	p, err := s.svc.LatestPlan(r.Context(), r.PathValue("pid"))
+	if errors.Is(err, projectstore.ErrNotFound) {
+		writeJSON(w, http.StatusOK, map[string]any{"plan": nil})
+		return
+	}
 	if err != nil {
 		writeErr(w, err)
 		return

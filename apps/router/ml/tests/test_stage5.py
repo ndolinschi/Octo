@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from conftest import requires_data
 
 from routerml import stage5 as S5
 from routerml.stage4_ladder import TS, EpsGreedy
@@ -38,7 +39,7 @@ def test_norm_model(raw, canon):
     assert norm_model(raw) == norm_model(raw.upper())  # case-insensitive, deterministic
 
 
-@pytest.mark.skipif(not TB2_SYS.exists(), reason="TB2 data not fetched (make xbench-fetch)")
+@requires_data(TB2_SYS, target="xbench-fetch")
 def test_matched_lists():
     from routerml.xbench_data import ml_submissions, tb2_matched
     from routerml.stage4_common import load_arms

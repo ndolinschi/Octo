@@ -93,7 +93,7 @@ const latest = new Map<string, { at: number; plan: Promise<Plan | null> }>();
 function latestPlan(bridge: Bridge, projectId: string): Promise<Plan | null> {
   const hit = latest.get(projectId);
   if (hit && Date.now() - hit.at < 1000) return hit.plan;
-  // 404: no plan turn yet. Any other failure: plans still arrive as events, and a reload asks again.
+  // null: no plan turn yet. Any failure: plans still arrive as events, and a reload asks again.
   const plan = (bridge.getLatestPlan?.(projectId) ?? Promise.resolve(null)).catch(() => null);
   latest.set(projectId, { at: Date.now(), plan });
   return plan;

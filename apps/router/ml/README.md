@@ -15,7 +15,7 @@ make fetch       # SWE-bench Verified (HF revision), SWE-bench/experiments (comm
                  # OpenRouter catalogue snapshot, all-MiniLM-L6-v2 ONNX  -> data/ (gitignored)
 make build       # outcomes, results/models.csv, tiers under 3 cut schemes, label + cost tables
 make features    # text statistics, MiniLM embeddings (CPU, ~30 s)
-make test        # leak test, label-table invariants, split disjointness
+make test        # leak test, label-table invariants, split disjointness (tests that need data/ skip and name the make target that builds it)
 make evaluate    # M1 + baselines on LORO / time / grouped 4-fold, bootstrap CIs, ablations (~30-40 min)
 make onnx        # final M1 -> models/m1_joint.onnx, onnxruntime check on 100 rows
 make figures     # figures/*.png

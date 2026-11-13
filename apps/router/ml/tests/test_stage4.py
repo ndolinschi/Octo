@@ -7,6 +7,7 @@ import json
 
 import numpy as np
 import pytest
+from conftest import requires_data
 
 from routerml import stage4_controller as L3
 from routerml import stage4_ladder as L1
@@ -106,6 +107,10 @@ def test_l3_cheapest_mix():
     assert (L3.cheapest_mix(p, c, np.array(0.9)) == [0, 0, 1]).all()
 
 
+@requires_data(
+    "twinrouterbench/data/static/question_bank.jsonl",
+    hint="clone TwinRouterBench into data/twinrouterbench (TWINROUTERBENCH_URL in src/routerml/config.py)",
+)
 def test_l2_features_use_only_the_first_request():
     from routerml import stage4_workload as L2
 

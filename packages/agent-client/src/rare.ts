@@ -115,7 +115,15 @@ export function createRareMethods({ request, unwrap, p, memoryPath, base, token,
     },
     getUsage: (params) => request("GET", `/v1/usage${usageQuery(params)}`) as Promise<UsageReport>,
     getLimits: () => unwrap<Limit[]>(request("GET", "/v1/limits"), "limits"),
-    getLatestPlan: (id) => unwrap<Plan>(request("GET", `${p(id)}/plans/latest`), "plan"),
+    getLatestPlan: async (id) => {
+      try {
+        // `{"plan": null}` is "no plan"; an older harness answered 404 `not_found` instead.
+        return await unwrap<Plan | null>(request("GET", `${p(id)}/plans/latest`), "plan");
+      } catch (e) {
+        if (e instanceof BridgeError && e.status === 404 && e.code === "not_found") return null;
+        throw e;
+      }
+    },
     approvePlan: (id, planId) => request("POST", `${p(id)}/plans/${encodeURIComponent(planId)}/approve`) as Promise<{ plan: Plan; message: Message }>,
     rewind: (id, input) => request("POST", `${p(id)}/rewind`, input) as Promise<RewindReport>,
     compactNow: (id) => request("POST", `${p(id)}/compact`) as Promise<CompactResult | CompactSentToAgent>,

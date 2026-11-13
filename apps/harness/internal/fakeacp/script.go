@@ -27,6 +27,9 @@ const (
 	// MarkerMCPSpawnBuiltin is MarkerMCPSpawn but asks for a built-in sub-agent
 	// (no `agent` argument), the one that needs the Messages API.
 	MarkerMCPSpawnBuiltin = "[mcp-spawn-builtin]"
+	// MarkerMCPSpawnHang is MarkerMCPSpawn with a task that makes the sub-agent hang until it is cancelled
+	// (a test stops the turn while the sub-agent runs).
+	MarkerMCPSpawnHang = "[mcp-spawn-hang]"
 	// MarkerEcho makes the agent answer with pid, session and the prompt it got.
 	MarkerEcho = "[echo]"
 	// MarkerBlocks answers with the content blocks of the prompt: "blocks=image:image/png:1234,text".
@@ -205,9 +208,11 @@ func (a *agent) runScript(ctx context.Context, prompt string) string {
 		a.say(fmt.Sprintf("pid=%d session=%s loaded=%v prompt<<%s>>", os.Getpid(), a.sid(), loaded, prompt))
 		return "end_turn"
 	case has(MarkerMCPSpawnBuiltin):
-		return a.mcpSpawn(ctx, true)
+		return a.mcpSpawn(ctx, true, "Report that you are ready.")
+	case has(MarkerMCPSpawnHang):
+		return a.mcpSpawn(ctx, false, MarkerHang+" wait")
 	case has(MarkerMCPSpawn):
-		return a.mcpSpawn(ctx, false)
+		return a.mcpSpawn(ctx, false, "Report that you are ready.")
 	case has(MarkerMCPInfo):
 		a.say(a.mcpInfo())
 		return "end_turn"
@@ -334,7 +339,7 @@ func (a *agent) mcpToolCall(id, title string, args map[string]any) {
 }
 
 // mcpSpawn is the [mcp-spawn] script.
-func (a *agent) mcpSpawn(ctx context.Context, builtin bool) string {
+func (a *agent) mcpSpawn(ctx context.Context, builtin bool, task string) string {
 	a.say("Using the harness tools. ")
 	c, err := a.harnessMCP(ctx)
 	if err != nil {
@@ -360,7 +365,7 @@ func (a *agent) mcpSpawn(ctx context.Context, builtin bool) string {
 	}
 	a.say("Tools: " + strings.Join(names, ",") + ". ")
 
-	args := map[string]any{"role": "Explorer", "title": "Look around", "task": "Report that you are ready.", "tier": "fast"}
+	args := map[string]any{"role": "Explorer", "title": "Look around", "task": task, "tier": "fast"}
 	if autoTier {
 		// The schema offers tier auto (a router can choose): leave the choice to it.
 		args["tier"] = "auto"

@@ -766,3 +766,34 @@ func TestACPModelSettingsValidation(t *testing.T) {
 	// Anything else is today's loop and is not checked.
 	e.into(t, "PATCH", "/v1/projects/"+p.ID, map[string]any{"models": map[string]string{"orchestrator": "claude-sonnet-5-5"}}, http.StatusOK, nil)
 }
+
+// Stopping a turn while a sub-agent that an ACP orchestrator spawned over MCP is running settles the sub-agent as
+// cancelled (the UI reads "Stopped"), not failed.
+func TestACPOrchestratorCancelSettlesSubAgentCancelled(t *testing.T) {
+	e := newACPEnv(t, nil, nil)
+	p := e.acpProject(t)
+	ch := e.subscribe(t, p.ID)
+	e.into(t, "POST", "/v1/projects/"+p.ID+"/messages", map[string]string{"text": "[mcp-spawn-hang] look around"}, http.StatusAccepted, nil)
+	deadline := time.After(20 * time.Second)
+waitChild:
+	for {
+		select {
+		case ev := <-ch:
+			if a, _ := ev.Data["agent"].(map[string]any); ev.Type == events.AgentCreated && a["parent_id"] != nil {
+				time.Sleep(500 * time.Millisecond) // the sub-agent's process is up and waiting
+				break waitChild
+			}
+		case <-deadline:
+			t.Fatal("the sub-agent never started")
+		}
+	}
+	e.into(t, "POST", "/v1/projects/"+p.ID+"/cancel", nil, http.StatusAccepted, nil)
+	if tr := finishTurn(t, ch); tr.status != "cancelled" {
+		t.Fatalf("turn = %s, want cancelled", tr.status)
+	}
+	for _, a := range e.agents(t, p) {
+		if a.ParentID != nil && (a.Status != "cancelled" || a.Error != nil) {
+			t.Fatalf("sub-agent = %s (error %v), want cancelled without an error", a.Status, a.Error)
+		}
+	}
+}

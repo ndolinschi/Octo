@@ -16,16 +16,13 @@ func validMode(m *string) error {
 	return nil
 }
 
-// LatestPlan is the plan the newest plan-mode turn produced.
+// LatestPlan is the plan the newest plan-mode turn produced. A project without one answers
+// projectstore.ErrNotFound (not a 404 *Error): the bridge turns it into 200 {"plan": null}.
 func (s *Service) LatestPlan(ctx context.Context, pid string) (projectstore.Plan, error) {
 	if _, err := s.db(ctx, pid); err != nil {
 		return projectstore.Plan{}, err
 	}
-	p, err := s.turns.LatestPlan(ctx, pid)
-	if errors.Is(err, projectstore.ErrNotFound) {
-		return p, notFound("plan")
-	}
-	return p, err
+	return s.turns.LatestPlan(ctx, pid)
 }
 
 // ApprovePlan approves a plan and starts an agent turn with it pinned.
