@@ -53,10 +53,10 @@ Counts are the sub-agents' own, before merging duplicates across parts.
 | 6. Sessions, Memory, Notes | 3 | 13 | 14 | 3 of 3 |
 | 7. Usage, Agents, Details, Changes, side question | 2 | 9 | 11 | 2 of 2 |
 | 8. Settings | 1 | 11 | 20 | 1 of 1 |
-| 9. Cross-screen consistency | see section 6 | | | |
-| **Total, parts 1–8** | **14** | **69** | **91** | **14 of 14** |
+| 9. Cross-screen consistency (gallery, same element across screens, light theme, accessibility) | 0 | 7 | 6 | – |
+| **Total** | **14** | **76** | **97** | **14 of 14** |
 
-After merging duplicates (section 3): 14 A, 60 B. No A finding was rejected.
+After merging duplicates (sections 3 and 6): 14 A, 64 B. No A finding was rejected.
 
 ## 3. Findings: A and B
 
@@ -181,13 +181,45 @@ B57–B60 were graded C by the parts that found them; they are listed as B here 
    variables in prose, protocol words in labels, an error mapping that matches a bare "401".
 6. **The panel frame is equal in numbers, not in parts** (B4, B31, B32, B34, B35, B41): empty states, editors' action
    rows, detail header actions and the side question are still each screen's own.
-7. **Touch size is not in every primitive** (B8, B22, B47; C at 390: `SearchField` 38, `ViewTabs` 32).
+7. **Touch size is not in every primitive** (B8, B22, B47; section 6): `Segmented`, `FilterTabs`, `ViewTabs`, `Menu`
+   and `MenuButton` have no `touch-hit`; dock tabs and tree rows stay 28; `SearchField` is 38 at 390.
 8. **Demo data blocks checking** (B10, B14, B38; C in parts 2 and 4): the queue never drains, "Open file" from
    Changes always fails, no message has a `session_id`, an ACP project has no context categories.
 
 ## 6. Part 9 — cross-screen consistency
 
-Pending: this part was interrupted by a container restart and re-run; its findings are added below when it hands back.
+The first run of this part was lost to a container restart after about 40 minutes; the second run finished from the
+first run's measurements (20 screens, dark and light, 1440×900 and 390×700: `09-consistency/data/cross-*.json`,
+`gallery.json`, `gfocus.json`, `data/a11y.json`) and re-ran focus loss on Home, reduced motion and 200 % zoom. It is the
+thinnest part: it read 9 pictures itself (of 126 screenshots and 40 contact sheets), did not take 1100×800 or 900×600,
+and saw Monaco, the diff and scrollbars in light only on reduced sheets. Its numbers come from computed styles, so the
+measured findings stand; "the light theme has no theme-only defect" is **not** a result of this pass.
+
+Three of its seven B findings are the cross-screen form of findings above: the Review filter on `Segmented` (B24), touch
+targets missing in five primitives (B47, B8, B22 — `Segmented`, `FilterTabs`, `ViewTabs`, `Menu`, `MenuButton` have no
+`touch-hit`; dock tabs 28, tree rows 28), and focus lost on Home when the focused row moves to another group (an
+instance of B1; `09-consistency/homerow.mjs`). New:
+
+| # | Screen and state | Theme, size | What is wrong | How to reproduce | Dec. | Evidence | Proposed fix | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| B61 | Every bordered `TextField` / `TextArea` (New project, Project settings, editors, forms) | both | The placeholder is `fg-3/60` italic: contrast 3.33:1 dark, 2.67:1 light. `SearchField` and the composer use plain `fg-3` (7.02 and 6.31). Two placeholder styles, one under 4.5:1. | `node 09-consistency/agg.mjs inputs data/cross-light-1440x900.json` | 90c | `09-consistency/shots/new-project-dialog-light-1440x900.png`; source `lib/controls.ts:56` (`placeholder:text-fg-3/60 placeholder:italic`) | `FIELD`: `placeholder:text-fg-3`, no italic | confirmed in source; ratios as measured by the part |
+| B62 | Any field with `aria-invalid` | both | Focus changes nothing: the border stays red, there is no ring, so focus is not visible. | `?demo=1&gallery=1` → Tab to the invalid textarea | 90c, 81 | `09-consistency/shots/focus-textarea-dark.png`, `gfocus.json` | `FIELD`: a ring or a thicker border for an invalid field in focus | reported |
+| B63 | Primitives gallery | both | No `EmptyState` (required by 90e) and none of `Segmented`, `Menu`, `MenuButton`, `IconMenu`, `Dialog`, `Popover`, `PopupList`, `Picker`, `Tooltips`, `FieldRow`, `ListDetail`, `StateGlyph` — the ones that differ between screens. | `grep` the component names in `primitives/Gallery.tsx` | 90e, 90f | `baseline/gallery/*.png` | Add the sections | reported |
+| B64 | `FilterTabs` counts (Sessions, Integrations, Memory tasks) | both, 1440 | 12 px counts at 4.08:1 dark and 3.26:1 light: `opacity-70` on top of `fg-3`. | `node 09-consistency/agg.mjs contrast data/cross-light-1440x900.json` | WCAG 1.4.3 | `09-consistency/shots/sessions-light-1440x900.png`; source `primitives/FilterTabs.tsx:62` | Drop `opacity-70` | confirmed in source; ratios as measured by the part |
+
+C: icon-to-label gap is not 6 px everywhere (4 at the "Run" and "Repository…" menu buttons, 7 at Tests / Typecheck, 8 in
+the project dialog's folder rows; the other 96 buttons are 6). · Quiet xs "Refresh" and "Clear" are weight 600, other
+quiet buttons 400. · The first row of a `ListFrame` is 27 px, not 28; a `ListRow` glyph is 9 px from its text, not 8. ·
+`SearchField` is 28 in panels, 32 in Review and Settings, 40 in the palette. · Light: the selected sidebar row's second
+line ("Idle, 1h ago") is at 4.49:1. · Region in the conversation's form, with nothing chosen, reads as three words, not
+a control (behaviour: A3).
+
+In order, as measured: buttons in every variant at 24/28/32/40 with radii 6/6/6/8, fields radius 8; visible focus on 17
+control types in both themes (ring on buttons, inset on rows and tabs, `fg` border on fields); dialogs (New project,
+Project settings, Rewind, palette) have `aria-modal` and a name, trap Tab, close on Esc and return focus, width 520
+(palette 560, Rewind 400), full screen at 390, Cancel then primary; no control without an accessible name on 20 screens;
+panel headers 40 everywhere; all other text at or above 4.5:1; with `prefers-reduced-motion` no animation runs; at 200 %
+zoom Home, a project, Settings and Memory have no horizontal page scroll.
 
 ## 7. State of earlier rounds
 
@@ -239,7 +271,8 @@ Pending: this part was interrupted by a container restart and re-run; its findin
    `chat/DelegationGroup`, `agents/AgentsPanel`, `chat/AgentHeader.tsx`, `lib/mentions.ts`: B3, B5, B12, B18, B42, B60.
 7. **Panel parts.** One `PanelEmpty`, one editor action row, labelled detail actions, the side question on `Panel`,
    `FilterTabs` overflow: B4, B30, B32, B34, B41; Review on `FilterTabs` and compact prose: B24, B25, B26.
-8. **Small and local.** B10, B11, B14–B16, B19–B23, B28, B33, B37, B40, B43–B46, B48–B52, B54–B56, B58; then C.
+8. **Small and local.** `lib/controls.ts` `FIELD` (B61, B62), `primitives/FilterTabs.tsx` (B64, with B47), the gallery
+   (B63); B10, B11, B14–B16, B19–B23, B28, B33, B37, B40, B43–B46, B48–B52, B54–B56, B58; then C.
 9. **Demo data and scripts** (so the next check can see more): queue drain and `Stop and send` in `demo/v7.ts`, folder
    names for "Open file", `session_id` on demo messages, context categories for the ACP project; `ui-tour-states.mjs`
    steps that fail under 1000 px (`project()`, `home()`, `sidebar-expanded` do not open the drawer), `picker-skeleton`,
@@ -263,3 +296,5 @@ Pending: this part was interrupted by a container restart and re-run; its findin
 - B findings marked *reported* were not re-run by the orchestrator; each has a script and a screenshot in the
   scratchpad, which does not outlive the session.
 - The full `ui-tour.mjs` set (see section 1).
+- Part 9: the light theme was not walked screen by screen (see section 6); tooltips and skeletons were not compared
+  across screens; contrast ratios and focus pictures come from the interrupted first run's data.
