@@ -13,10 +13,11 @@ import { NavProvider, useNav } from "../state/nav";
 import { ProjectProvider } from "../state/project";
 import { RequestsProvider } from "../state/requests";
 import { ShellContext } from "../state/shell";
-import { Presence, usePresence } from "../components/primitives/Presence";
+import { Presence } from "../components/primitives/Presence";
 import type { PaletteAction } from "../components/shell/CommandPalette";
 import { Panel } from "../components/shell/Panel";
 import { Sidebar } from "../components/shell/Sidebar";
+import { SidebarDrawer } from "../components/shell/SidebarDrawer";
 import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
 import { StatusSlotsContext } from "../state/statusSlots";
@@ -351,28 +352,5 @@ function Shell() {
         </div>
       </StatusSlotsContext.Provider>
     </ShellContext.Provider>
-  );
-}
-
-/** Fixed overlay with a scrim; takes focus on open and gives it back as soon as it starts closing. */
-function SidebarDrawer(props: { onClose(): void; opener: React.RefObject<HTMLElement | null>; children: React.ReactNode }) {
-  const { onClose, opener, children } = props;
-  const panel = useRef<HTMLDivElement>(null);
-  const state = usePresence();
-  useEffect(() => {
-    const el = panel.current;
-    (el?.querySelector<HTMLElement>('a[aria-current="page"]') ?? el?.querySelector<HTMLElement>("button:not([disabled]), a[href]"))?.focus();
-  }, []);
-  useEffect(() => {
-    if (state === "closed" && opener.current?.isConnected) opener.current.focus();
-  }, [state, opener]);
-  return (
-    // Starts under the title bar row, so its toggle stays reachable (it closes the drawer).
-    <div className="fixed inset-x-0 top-bar bottom-chip z-40" inert={state === "closed"}>
-      <div className="octo-scrim absolute inset-0 bg-scrim" data-state={state} onMouseDown={onClose} aria-hidden />
-      <div ref={panel} data-state={state} className="octo-drawer absolute inset-y-0 left-0 max-w-[calc(100%-48px)] overscroll-contain shadow-pop">
-        {children}
-      </div>
-    </div>
   );
 }

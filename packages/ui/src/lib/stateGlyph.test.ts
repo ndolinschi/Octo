@@ -4,9 +4,9 @@ import { agentGlyph, arcPath, dashArray, glyphGeometry, glyphLabel, orchestrator
 
 const ALL: GlyphState[] = ["working", "queued", "needs", "unseen", "idle", "failed"];
 
-test("every state is a ring of one diameter (one family), inside its box", () => {
+test("every state but idle is a ring of one diameter (one family), inside its box", () => {
   for (const size of [12, 14] as const) {
-    const radii = new Set(ALL.map((s) => glyphGeometry(s, size).r));
+    const radii = new Set(ALL.filter((s) => s !== "idle").map((s) => glyphGeometry(s, size).r));
     assert.equal(radii.size, 1, `size ${size}: one radius`);
     const r = ringRadius(size);
     assert.ok(size / 2 - r >= 0.75 + 0.5 - 1e-9, "stroke + half a pixel fits");
@@ -16,7 +16,7 @@ test("every state is a ring of one diameter (one family), inside its box", () =>
 test("each state differs by line style or mark, not only by colour", () => {
   const sig = ALL.map((s) => {
     const g = glyphGeometry(s);
-    return JSON.stringify([g.dash !== null, g.arc !== null, g.dot, g.bar !== null, g.alert !== null]);
+    return JSON.stringify([g.ring, g.dash !== null, g.arc !== null, g.dot, g.bar !== null, g.alert !== null]);
   });
   assert.equal(new Set(sig).size, ALL.length - 0, "six distinct shapes");
 });
@@ -32,9 +32,18 @@ test("queued has six dashes summing to the circumference", () => {
 test("the working arc is a quarter from 12 o'clock to 3 o'clock", () => {
   assert.equal(arcPath(6, 4.75), "M6 1.25A4.75 4.75 0 0 1 10.75 6");
   assert.equal(glyphGeometry("working").ringOpacity, 0.4);
-  assert.equal(glyphGeometry("idle").ringOpacity, 1);
-  assert.equal(glyphGeometry("idle").stroke, 1, "idle is the thin ring");
   assert.equal(glyphGeometry("working").stroke, 1.5);
+});
+
+test("idle is a small quiet dot with no ring (polish step 2, F2), smaller than unseen's disc in its ring", () => {
+  for (const size of [12, 14] as const) {
+    const idle = glyphGeometry("idle", size);
+    assert.equal(idle.ring, false);
+    assert.equal(idle.dot, 3);
+    assert.ok(idle.dotOpacity < 1 && idle.dotOpacity >= 0.7);
+    assert.ok((idle.dot ?? Infinity) < idle.r, "the dot sits well inside the ring's place, so the name column does not move");
+    assert.equal(glyphGeometry("unseen", size).ring, true);
+  }
 });
 
 test("needs is an exclamation mark, unseen a disc (shape, not colour); failed has a bar inside the ring", () => {

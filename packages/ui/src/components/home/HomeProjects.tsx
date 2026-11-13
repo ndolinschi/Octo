@@ -1,6 +1,6 @@
 import type { ProjectSummary } from "@octo/agent-client";
 import { Plus } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { focusSoon, visibleComposer } from "../../lib/focus";
 import { formatRelative } from "../../lib/format";
@@ -13,7 +13,7 @@ import { TRIAGE_LABEL, TRIAGE_ORDER, triageGroups, type Triage } from "../../lib
 import { useApp } from "../../state/app";
 import type { Reply } from "../../state/requests";
 import { Card } from "../primitives/Card";
-import { Glyph } from "../primitives/Glyph";
+import { Button } from "../primitives/Button";
 import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
@@ -21,14 +21,18 @@ import { OrchestratorGlyph } from "../primitives/Status";
 import { STILL } from "./still";
 import type { useOverview } from "./useOverview";
 
-/** Rows in the grouped list before "N more projects" (Home fits 1440×900 with the triage row). */
+/**
+ * Rows in the grouped list before "N more projects" (Home fits 1440×900 with the triage row). B55: "Needs you" and "Working" are
+ * never cut (their tiles' counts must match the rows); the limit applies to the groups after them.
+ */
 const PROJECT_ROWS = 4;
+const NEVER_CUT: readonly Triage[] = ["needs", "working"];
 
 function secondLine(state: OrchestratorState, reply: Reply | null | undefined, loaded: boolean): string {
   if (state.kind === "working") return state.agents.length ? agentStack(state.agents.map((a) => a.role)) : "Thinking";
   if (state.kind === "needs") return state.error ? readable(state.error) : "The last turn failed";
   if (reply) return reply.text;
-  return loaded ? "No requests yet" : "";
+  return loaded || state.kind === "new" ? "No requests yet" : "";
 }
 
 type Item = { project: ProjectSummary; state: OrchestratorState; triage: Triage };
@@ -40,56 +44,67 @@ export function Projects({
   now,
   filter,
   onNewProject,
-  onSearch,
 }: {
   items: Item[];
   data: ReturnType<typeof useOverview>;
   now: number;
   filter: Triage | null;
   onNewProject(): void;
-  onSearch(): void;
 }) {
   const { health } = useApp();
   const list = useRef<HTMLDivElement>(null);
   useRowKeys(list);
+  // B55: "N more projects" shows the whole list here (it opened the palette, which lists six), and "Show fewer" folds it again.
+  const [all, setAll] = useState(false);
   // Grouped by state in triage order, most recent first within a group (decision 26); a tile shows its group whole.
   const groups = useMemo(() => {
     const by = triageGroups(items.map((x) => ({ project: x.project, triage: x.triage })));
     const stateOf = new Map(items.map((x) => [x.project.id, x.state]));
-    const limit = filter ? Infinity : PROJECT_ROWS;
+    const limit = filter || all ? Infinity : PROJECT_ROWS;
     const out: { triage: Triage; rows: { p: ProjectSummary; s: OrchestratorState }[] }[] = [];
     let used = 0;
     for (const t of TRIAGE_ORDER) {
       if (filter && t !== filter) continue;
-      const rows = by[t].slice(0, Math.max(0, limit - used));
+      const rows = NEVER_CUT.includes(t) ? by[t] : by[t].slice(0, Math.max(0, limit - used));
       used += rows.length;
       if (rows.length) out.push({ triage: t, rows: rows.map((p) => ({ p, s: stateOf.get(p.id) ?? ({ kind: "idle", at: p.updated_at } as const) })) });
     }
     return out;
-  }, [items, filter]);
+  }, [items, filter, all]);
   const shown = groups.reduce((n, g) => n + g.rows.length, 0);
   const rest = (filter ? items.filter((x) => x.triage === filter).length : items.length) - shown;
   return (
-    <Card padding="sm">
-      <div ref={list} role="group" aria-label="Projects" className="flex flex-col">
-        {data.projects === null && <SkeletonList count={3} size="lg" twoLine />}
-        {filter && shown === 0 && (
-          <p className="flex h-ctl-lg items-center px-2 text-sm text-fg-3">No projects {filter === "idle" ? "are idle" : `in ${TRIAGE_LABEL[filter]}`}.</p>
+    <div className="flex flex-col gap-1">
+      <Card padding="sm">
+        <div ref={list} role="group" aria-label="Projects" className="flex flex-col">
+          {data.projects === null && <SkeletonList count={3} size="lg" twoLine />}
+          {filter && shown === 0 && (
+            <p className="flex h-ctl-lg items-center px-2 text-sm text-fg-3">No projects {filter === "idle" ? "are idle" : `in ${TRIAGE_LABEL[filter]}`}.</p>
+          )}
+          {groups.map((g) => (
+            <div key={g.triage} role="group" aria-label={TRIAGE_LABEL[g.triage]} className="flex flex-col">
+              <SectionHeader inset as="h2">
+                {TRIAGE_LABEL[g.triage]}
+              </SectionHeader>
+              {g.rows.map(({ p, s }) => (
+                <ProjectRow key={p.id} project={p} state={s} reply={data.replies.get(p.id)} loaded={data.replies.has(p.id)} now={now} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </Card>
+      {/* Polish step 2 (F5): the actions are not rows of the card: a quiet line under it, the "+" on the cards' glyph column. */}
+      <div className="flex items-center gap-1 px-2">
+        <Button variant="quiet" size="sm" icon={Plus} disabled={health !== "online"} onClick={onNewProject}>
+          New project
+        </Button>
+        {(rest > 0 || (all && !filter)) && (
+          <Button variant="quiet" size="sm" aria-expanded={all} onClick={() => setAll((v) => !v)} className="ml-auto">
+            {all ? "Show fewer" : `${rest} more ${rest === 1 ? "project" : "projects"}`}
+          </Button>
         )}
-        {groups.map((g) => (
-          <div key={g.triage} role="group" aria-label={TRIAGE_LABEL[g.triage]} className="flex flex-col">
-            <SectionHeader inset as="h2">
-              {TRIAGE_LABEL[g.triage]}
-            </SectionHeader>
-            {g.rows.map(({ p, s }) => (
-              <ProjectRow key={p.id} project={p} state={s} reply={data.replies.get(p.id)} loaded={data.replies.has(p.id)} now={now} />
-            ))}
-          </div>
-        ))}
-        <ListRow size="md" tone="quiet" leading={<Glyph icon={Plus} size={16} />} title="New project" disabled={health !== "online"} onClick={onNewProject} />
-        {rest > 0 && <ListRow size="md" tone="quiet" leading={<span />} title={`${rest} more ${rest === 1 ? "project" : "projects"}`} onClick={onSearch} />}
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -109,7 +124,8 @@ function ProjectRow({
   const line = stateLine(state, now, project.updated_at);
   const second = secondLine(state, reply, loaded);
   // Decision 91k: the glyph carries the state's tone; the words stay neutral.
-  const status = state.kind === "idle" ? "" : `${line}${second ? " · " : ""}`;
+  // B54: a project never started says "No requests yet" once (its state line and its second line were the same words).
+  const status = state.kind === "idle" || state.kind === "new" ? "" : `${line}${second ? " · " : ""}`;
   return (
     <ListRow
       size="lg"

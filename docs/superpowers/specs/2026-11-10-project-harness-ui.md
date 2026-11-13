@@ -2964,3 +2964,38 @@ executor and by the orchestrator. **A trial: the owner has not approved the dire
   without a provider entry a readable name ("DeepSeek v4.1 Flash"); checked in the turn meta line and Usage. Not done:
   Settings → Editor still prints `claude-haiku-5-5`. Also: Esc in "Add note" closes it and returns focus; the pending plan's
   body lines up with its header. Checked at 1440×900, mostly dark; not at 390×700.
+
+## As built — polish step 2: the frame (2026-11-13; one commit)
+
+Owner, after step 1: "yes, continue part by part, start with the frame". Rules F1–F7 of the orchestrator's brief; pairs
+of 2× screenshots (dark and light, 1440×900; 900×600 and 390×700 for the narrow states) read by the executor and by the
+orchestrator. All x values are CSS px at 1440×900.
+
+- **F1, sidebar rhythm.** Every project row is one 32px line (40 under touch): glyph at x 24, name at x 48, a right-aligned
+  meta of one thing — idle and failed: the relative time; working: "N agents" or nothing; never started: "new"
+  (`lib/orchestrator.ts` `projectRowLines` returns `{ meta, full }`, test rewritten on purpose). The sentence ("Failed ·
+  GitHub Copilot is not logged in") is in the accessible name only: the tooltip still shows the name, because
+  `spacing-audit.mjs` finds rows by the link's `title`. Nav rows, the "Projects" caption and project rows share the height
+  and both edges; session sub-rows are 32; the sessions chevron sits over the meta column and no longer covers a name.
+  **Replaces** the two-line rows of decision 23 and of step 1's T2.
+- **F2, one idle glyph.** `lib/stateGlyph` draws idle as a quiet dot (radius 3, opacity 0.7), no ring, everywhere the glyph
+  family is used (sidebar, Home, Sessions, palette, tabs). **Revises decision 29** (idle was a thin ring). The dot's
+  contrast as a non-text mark: 4.27 dark / 3.13 light on the window.
+- **F3, top row.** The active tab's title is medium weight (an invisible medium copy keeps every tab's width, so the width
+  model of decision 83 is untouched). The end cluster is one group in the last strip: "N agents", pinned commands, Run,
+  "⋯", 28px tall, gaps 4, labels on the tabs' line. "N agents" moved from the conversation's strip to the last strip
+  (**departs from 91g**) and the divider before pinned commands is gone (**departs from 94c**; the play glyph stays). The
+  window controls sit on the sidebar's glyph column. Known cost: in a side group with many tool tabs the tabs get about
+  50px less room.
+- **F4, status bar.** Left glyph on the sidebar's glyph column, last text on the panel's right edge; empty slots take no gap.
+- **F5, Home.** The heading and the tiles share the cards' left edge; a tile with 0 is quiet, glyph included; "New project"
+  and "N more projects" are a quiet action line under the card; "N more projects" expands the whole list on Home (with
+  "Show fewer"), and Needs you / Working are never cut (B55); a project never started says "No requests yet" once (B54).
+- **F6, palette.** Project rows take their glyph and meta from the live state (a failed project shows as failed); captions
+  sit on the rows' text edge; an unselected `role="option"` row hovers at half strength (`primitives/ListRow`), so the
+  keyboard selection is the stronger one (B58).
+- **F7, narrow.** The drawer is `shell/SidebarDrawer` (a modal dialog): Tab stays inside it, Esc closes and returns focus
+  (B59). "Can't reach the harness bridge" fits a 390 window (B56).
+- Gates: `tsc`, 619 unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (2 skips, both the stale `tool-tables`
+  step), `width-stability` at 1440×900 and 900×600, `frame-colours`, `backdrop-check`, `flicker` ok; keyboard of tabs,
+  palette, sidebar and drawer checked by script. Not verified: WebKit, the macOS title bar inset, touch, a screen reader.

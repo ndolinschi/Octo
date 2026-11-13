@@ -4,7 +4,8 @@ import type { AgentStatus } from "@octo/agent-client";
  * Decision 29 — one state-glyph family. Every state is a ring of one diameter and a 1.5px stroke; the state is told
  * by line style and motion first, colour second (so it survives colour blindness and forced colours):
  * working = faint ring + a turning 90° arc · queued = dashed ring (6 dashes) · needs = ring + an exclamation mark (pulsing) ·
- * unseen = ring + filled disc · idle = thin ring · failed = ring + a short diagonal bar. Pure geometry here; the SVG is
+ * unseen = ring + filled disc · idle = a small quiet dot with no ring (polish step 2, F2: a thin ring read as a radio button;
+ * revises decision 29's idle ring) · failed = ring + a short diagonal bar. Pure geometry here; the SVG is
  * `primitives/StateGlyph.tsx`.
  */
 export type GlyphState = "working" | "queued" | "needs" | "unseen" | "idle" | "failed";
@@ -42,14 +43,18 @@ export type Geometry = {
   r: number;
   /** stroke-dasharray of the ring, when dashed. */
   dash: string | null;
-  /** Stroke width: 1.5, and 1 for the idle ring ("a solid thin ring"), so a working row out-weighs an idle one. */
+  /** Stroke width of the ring: 1.5 (idle draws no ring). */
   stroke: number;
+  /** Whether the ring is drawn: every state but idle, which is only its dot. */
+  ring: boolean;
   /** Opacity of the ring (the working ring is faint under its arc). */
   ringOpacity: number;
   /** The working arc as an SVG path (90°, from 12 o'clock clockwise). */
   arc: string | null;
-  /** Unseen's filled disc: its radius. */
+  /** The filled disc: unseen's inside its ring, idle's on its own (smaller, quiet). */
   dot: number | null;
+  /** Opacity of the disc: idle's dot is quiet (0.7 keeps it at or above 3:1 on the window in both themes). */
+  dotOpacity: number;
   /**
    * Needs you: an exclamation mark inside the ring (a short upright stroke over a dot), so it never reads as unseen's
    * disc in greyscale (owner's live test: the two differed only by colour).
@@ -60,6 +65,10 @@ export type Geometry = {
 };
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
+
+/** Idle's dot: 6px across, the size of the sidebar's dot in step 1. */
+export const IDLE_DOT_R = 3;
+export const IDLE_DOT_OPACITY = 0.7;
 
 /** The ring's radius: the stroke sits inside the box with half a pixel to spare, so it never clips. */
 export function ringRadius(size: GlyphSize): number {
@@ -89,11 +98,13 @@ export function glyphGeometry(state: GlyphState, size: GlyphSize = 12): Geometry
     size,
     c,
     r,
-    stroke: state === "idle" ? 1 : GLYPH_STROKE,
+    stroke: GLYPH_STROKE,
+    ring: state !== "idle",
     dash: state === "queued" ? dashArray(r) : null,
     ringOpacity: state === "working" ? 0.4 : 1,
     arc: state === "working" ? arcPath(c, r) : null,
-    dot: state === "unseen" ? round(inner * 0.75) : null,
+    dot: state === "unseen" ? round(inner * 0.75) : state === "idle" ? IDLE_DOT_R : null,
+    dotOpacity: state === "idle" ? IDLE_DOT_OPACITY : 1,
     alert:
       state === "needs"
         ? { x: round(c), y1: round(c - inner * 0.62), y2: round(c + inner * 0.12), cy: round(c + inner * 0.55), dr: round(Math.max(0.6, inner * 0.2)) }

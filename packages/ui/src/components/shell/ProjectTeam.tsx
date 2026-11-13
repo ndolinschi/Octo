@@ -37,7 +37,8 @@ export function ProjectTeam({ orchestrator, compact = false }: { orchestrator: O
       onClick={() => openSessions(project.id)}
     >
       <span aria-hidden className="grid size-4 place-items-center">
-        {working ? <StateGlyph state="working" /> : compact && <Glyph icon={Users} size={14} />}
+        {/* Polish step 2 (F3): the slot always shows a glyph (the people glyph at rest), like its neighbours' play glyphs. */}
+        {working ? <StateGlyph state="working" /> : <Glyph icon={Users} size={14} />}
       </span>
       {compact && <span aria-hidden>{team.length}</span>}
       <span data-team-label aria-hidden={compact || undefined} className={compact ? "pointer-events-none invisible absolute" : undefined}>

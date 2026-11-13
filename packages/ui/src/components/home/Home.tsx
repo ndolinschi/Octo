@@ -21,7 +21,7 @@ import { useOverview } from "./useOverview";
  * list (needs you, working, then the rest) and "Agents at work" while an agent runs. Nothing here only reports a number
  * (decision 75); numbers live in Usage.
  */
-export function Home({ onNewProject, onSearch, unseen }: { onNewProject(): void; onSearch(): void; unseen: Set<string> }) {
+export function Home({ onNewProject, unseen }: { onNewProject(): void; onSearch(): void; unseen: Set<string> }) {
   const { theme, backdrop } = useApp();
   const data = useOverview();
   const now = useNow(true, CLOCK_MINUTE_MS);
@@ -44,13 +44,15 @@ export function Home({ onNewProject, onSearch, unseen }: { onNewProject(): void;
         <div className="mx-auto flex w-full max-w-home flex-col gap-4 px-6 pt-2 pb-8 max-sm:px-4">
           <div className="flex flex-col gap-3">
             {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
-            <h1 id="home-title" className="text-center text-display text-fg">
+            {/* Polish step 2 (F5): one left edge at 16px inside the column — the heading's text, the tiles' glyphs, the cards'
+                captions and glyphs (card 8 + row 8) — instead of a centred heading over left-aligned rows. */}
+            <h1 id="home-title" className="px-4 text-display text-fg">
               {count > 0 && <span className="octo-lead">{count === 1 ? "One project. " : `${count} projects. `}</span>}
               What should we work on?
             </h1>
             <TriageRow items={triaged} loading={data.projects === null} value={filter} onChange={setFilter} />
           </div>
-          <Projects items={triaged} data={data} now={now} filter={filter} onNewProject={onNewProject} onSearch={onSearch} />
+          <Projects items={triaged} data={data} now={now} filter={filter} onNewProject={onNewProject} />
           <TeamCard projects={data.projects} agents={data.agents} />
         </div>
       </div>
@@ -71,16 +73,20 @@ function TriageRow(props: { items: { triage: Triage }[]; loading: boolean; value
       {TRIAGE_ORDER.map((t) => {
         const n = props.items.filter((x) => x.triage === t).length;
         const on = props.value === t;
+        const quiet = props.loading || n === 0;
         return (
           <div key={t} data-triage={t} className="min-w-0">
             <Card padding="none">
               <ListRow
                 size="lg"
+                className="px-2"
                 selected={on}
+                // Polish step 2 (F5): a tile with nothing in it is wholly quiet — words, count and glyph.
+                tone={quiet ? "quiet" : "default"}
                 onClick={() => props.onChange(on ? null : t)}
-                leading={<StateGlyph state={TRIAGE_GLYPH[t]} size={14} box={16} className={STILL} />}
+                leading={<StateGlyph state={TRIAGE_GLYPH[t]} size={14} box={16} quiet={quiet} className={STILL} />}
                 title={TRIAGE_LABEL[t]}
-                meta={<span className={cn("tabular-nums", props.loading || n === 0 ? "text-fg-3" : "text-fg")}>{props.loading ? "–" : n}</span>}
+                meta={<span className={cn("tabular-nums", quiet ? "text-fg-3" : "text-fg")}>{props.loading ? "–" : n}</span>}
                 tip={`${TRIAGE_LABEL[t]}: ${props.loading ? "loading" : n}`}
               />
             </Card>

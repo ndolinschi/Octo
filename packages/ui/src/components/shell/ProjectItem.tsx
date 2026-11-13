@@ -7,11 +7,13 @@ import { ListRow } from "../primitives/ListRow";
 import { OrchestratorGlyph } from "../primitives/Status";
 
 /**
- * A project row (decision 23: the sidebar lists projects, each one an orchestrator at work). Polish trial T2: an idle project
- * is one 32px line — a small quiet dot, the name, the time since its last turn as meta; the second line ("Working, 3 agents",
- * "Failed", "No requests yet") appears only when it says something, and the row is 40px then. Decision 91k: the words are
- * never toned; the state glyph in the leading slot carries the tone (the idle dot is not a ring, so it never reads as a radio
- * button). Requests are not listed here: they live in the conversation's turn rail and in the palette.
+ * A project row (decision 23: the sidebar lists projects, each one an orchestrator at work). Polish step 2 (F1): every row is
+ * ONE 32px line (40 under touch) — the state glyph, the name, a right-aligned meta that says the one thing worth saying
+ * (`projectRowLines`: "1h", "2 agents", "new"). The whole sentence ("Failed: GitHub Copilot is not logged in", "Working, 2
+ * agents") is in the tooltip and the accessible name. Decision 91k: the words are never toned; the glyph carries the tone
+ * (idle is a quiet dot, F2). The meta keeps a 24px column even when empty, which is where the sessions chevron appears
+ * (`SidebarSessions`), so the chevron never covers the name's ellipsis. Requests are not listed here: they live in the
+ * conversation's turn rail and in the palette.
  */
 export function ProjectItem(props: {
   project: ProjectSummary;
@@ -24,30 +26,31 @@ export function ProjectItem(props: {
 }) {
   const { project, active, state } = props;
   const error = useReadable(state.kind === "needs" ? state.error : null);
-  const lines = projectRowLines(state, props.now, project.updated_at);
+  const { meta, full } = projectRowLines(state, props.now, project.updated_at);
   const unseen = props.unseen && !active;
-  const quietIdle = state.kind === "idle" && !unseen;
+  const sentence = `${unseen && state.kind === "idle" ? "New activity" : full}${error ? `: ${error}` : ""}`;
   return (
     <li data-project-row className="group/p relative">
       <ListRow
         href={hrefFor(project.id)}
         selected={active}
+        // The tooltip is the name, and for a failed turn the name and why (as before): the spacing audit finds a project row by
+        // this title, so the other states' sentence is in the accessible name only (see the hand-back of polish step 2).
         tip={error ? `${project.name}: ${error}` : project.name}
         onClick={props.onPick}
         size="md"
-        leading={quietIdle ? <span className="size-1.5 rounded-full bg-fg-3 opacity-60" /> : <OrchestratorGlyph state={state.kind} unseen={unseen} />}
-        title={project.name}
-        {...(lines.description === null ? {} : { description: <span data-meta>{lines.description}</span> })}
-        {...(lines.meta === null
-          ? {}
-          : {
-              meta: (
-                <span data-meta data-project-meta className="tabular-nums">
-                  <span className="sr-only">Idle, </span>
-                  {lines.meta}
-                </span>
-              ),
-            })}
+        leading={<OrchestratorGlyph state={state.kind} unseen={unseen} />}
+        title={
+          <>
+            {project.name}
+            <span className="sr-only">, {sentence}</span>
+          </>
+        }
+        meta={
+          <span aria-hidden data-meta data-project-meta className="inline-block min-w-6 text-right tabular-nums">
+            {meta}
+          </span>
+        }
       />
       {props.extra}
     </li>

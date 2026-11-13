@@ -15,7 +15,9 @@ import { usePresence } from "../primitives/Presence";
 import { SearchField } from "../primitives/SearchField";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
-import { agentGlyph, type GlyphState } from "../../lib/stateGlyph";
+import { agentGlyph, orchestratorGlyph, type GlyphState } from "../../lib/stateGlyph";
+import { projectRowLines } from "../../lib/orchestrator";
+import { useOrchestrators } from "../../state/orchestrators";
 import { useModal } from "../primitives/useModal";
 
 export type PaletteAction = { id: string; label: string; hint?: string; shortcut?: string; run(): void };
@@ -42,6 +44,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const baseId = useId();
   const openProject = projects?.find((p) => p.id === props.openProjectId);
+  const orchestrators = useOrchestrators(projects);
   const { requests } = useRequests(openProject, true);
   const past = useRequestSearch(query);
   const { onClose } = props;
@@ -114,8 +117,9 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
           (projects ?? []).map((p) => ({
             id: `p:${p.id}`,
             label: p.name,
-            detail: p.status === "running" ? "working" : formatRelative(p.updated_at, now),
-            glyph: p.status === "running" ? ("working" as const) : ("idle" as const),
+            // Finding C / polish step 2 (F6): the project's real state (a failed one shows its glyph, not idle) and the sidebar's meta.
+            detail: projectRowLines(orchestrators.get(p.id) ?? { kind: "idle", at: p.updated_at }, now, p.updated_at).meta ?? undefined,
+            glyph: orchestratorGlyph((orchestrators.get(p.id) ?? { kind: "idle" as const }).kind),
             run: go(() => navigate(p.id)),
           })),
           (i) => i.label,
@@ -191,7 +195,7 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
       all.filter((g) => g.items.length),
       (g) => g.items.map((i) => i.label),
     );
-  }, [query, projects, requests, agents, props.actions, openId, nav, runAfterClose, workspace, past]);
+  }, [query, projects, orchestrators, requests, agents, props.actions, openId, nav, runAfterClose, workspace, past]);
 
   const flat = groups.flatMap((g) => g.items);
   const current = Math.min(selected, Math.max(0, flat.length - 1));
@@ -254,7 +258,8 @@ export function CommandPalette(props: { openProjectId: string | null; actions: P
         <div ref={list} id={`${baseId}-list`} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
           {groups.map((g) => (
             <div key={g.title} role="group" aria-labelledby={`${baseId}-${g.title}`} className="pb-1">
-              <SectionHeader inset as="h3" id={`${baseId}-${g.title}`}>
+              {/* Polish step 2 (F6): the caption on the rows' text edge, as in the sidebar. */}
+              <SectionHeader as="h3" id={`${baseId}-${g.title}`} className="pr-2 pl-8">
                 {g.title}
               </SectionHeader>
               {g.items.map((item) => {

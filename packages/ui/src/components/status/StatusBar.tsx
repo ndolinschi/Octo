@@ -22,9 +22,11 @@ export function StatusBar(props: { home: boolean; startRef(el: HTMLElement | nul
     <footer
       aria-label="Status"
       data-status-bar
-      className="flex h-chip shrink-0 items-center gap-4 px-gutter text-xs text-fg-2 [@media(max-height:599px)]:hidden"
+      // Polish step 2 (F4): the first item's glyph starts on the sidebar's glyph column (24 = 16 here + the button's 8), the last
+      // item's text ends on the panel's right edge (the button's 8px inset is the gutter); one size (12px), one colour.
+      className="flex h-chip shrink-0 items-center gap-4 pl-4 text-xs text-fg-2 [@media(max-height:599px)]:hidden"
     >
-      <div ref={props.startRef} className="flex min-w-0 items-center gap-1" />
+      <div ref={props.startRef} className="flex min-w-0 items-center gap-1 empty:hidden" />
       <div className="ml-auto flex shrink-0 items-center gap-1">
         {working && (
           <StatusButton title="Agents are working. Show the projects." onClick={() => navigate(null)}>
@@ -32,7 +34,7 @@ export function StatusBar(props: { home: boolean; startRef(el: HTMLElement | nul
             {working}
           </StatusButton>
         )}
-        <div ref={props.endRef} className="flex items-center gap-1" />
+        <div ref={props.endRef} className="flex items-center gap-1 empty:hidden" />
         {connection && (
           <StatusButton title={connection.hint} onClick={retry} disabled={health === "checking"}>
             {health === "checking" ? <Spinner size={12} /> : <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-err" />}

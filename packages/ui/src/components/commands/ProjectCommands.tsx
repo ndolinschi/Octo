@@ -6,7 +6,7 @@ import { settingsHref } from "../../lib/route";
 import { useProject } from "../../state/project";
 import { useRunsSelector, useRunsStore } from "../../state/projectRuns";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { Minimize2, Play } from "lucide-react";
+import { ChevronDown, Minimize2, Play } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { MOD_LABEL } from "../../lib/keys";
 import { Button } from "../primitives/Button";
@@ -14,7 +14,6 @@ import { IconButton } from "../primitives/IconButton";
 import { Dialog } from "../primitives/Dialog";
 import type { MenuItem } from "../primitives/Menu";
 import { Menu } from "../primitives/Menu";
-import { MenuButton } from "../primitives/MenuButton";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
 import { startProjectRun } from "./startRun";
@@ -98,6 +97,10 @@ export default function ProjectCommands({
     if ("problem" in r) setProblem(r.problem);
     else ws?.openRun(name);
   };
+  const toggleRun = () => {
+    const r = runButton.current?.getBoundingClientRect();
+    if (r) setRunMenu(runMenu ? null : { x: r.right, y: r.bottom + 4 });
+  };
   const items: MenuItem[] = [
     ...commands.map((c): MenuItem => ({
       id: `run:${c.name}`,
@@ -122,9 +125,9 @@ export default function ProjectCommands({
           inert={collapsePinned}
           className={cn("flex items-center gap-1 max-lg:hidden", collapsePinned && "pointer-events-none invisible absolute")}
         >
-          {/* Decision 94c: a pinned command is a quiet button that looks like something that runs: a play glyph and the name,
-              set off from the tabs by a divider; while it runs the glyph is the spinner and a click opens its run tab. */}
-          {pinned.length > 0 && <span aria-hidden className="mr-1 h-4 w-px shrink-0 bg-line" />}
+          {/* Decision 94c: a pinned command is a quiet button that looks like something that runs: a play glyph and the name;
+              while it runs the glyph is the spinner and a click opens its run tab. Polish step 2 (F3): no divider — the end
+              cluster (agents, pinned, Run, "⋯") is one group of equal controls, set off from the tabs by space. */}
           {pinned.map((c) => {
             const running = busy.has(c.name.toLowerCase());
             return (
@@ -146,6 +149,7 @@ export default function ProjectCommands({
             );
           })}
         </span>
+        {/* Polish step 2 (F3): "Run" is the same 28px quiet control as its neighbours (the `MenuButton` primitive is 24px). */}
         {compactRun ? (
           <IconButton
             ref={runButton}
@@ -155,13 +159,22 @@ export default function ProjectCommands({
             aria-haspopup="menu"
             aria-expanded={runMenu !== null}
             className={cn("shrink-0", runMenu && "bg-active text-fg")}
-            onClick={() => {
-              const r = runButton.current?.getBoundingClientRect();
-              if (r) setRunMenu(runMenu ? null : { x: r.right, y: r.bottom + 4 });
-            }}
+            onClick={toggleRun}
           />
         ) : (
-          <MenuButton label="Run a project command" text="Run" alignEnd items={items} />
+          <Button
+            ref={runButton}
+            variant="quiet"
+            size="sm"
+            iconEnd={ChevronDown}
+            aria-label="Run a project command: Run"
+            aria-haspopup="menu"
+            aria-expanded={runMenu !== null}
+            className={cn(runMenu && "bg-active")}
+            onClick={toggleRun}
+          >
+            Run
+          </Button>
         )}
       </span>
       <Presence show={runMenu !== null} exitMs={0}>

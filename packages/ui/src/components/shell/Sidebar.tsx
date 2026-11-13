@@ -72,7 +72,8 @@ export function Sidebar(props: {
         </div>
 
         {(projects ? projects.length > 0 : health !== "offline") && (
-          <div className="mt-4 flex h-row shrink-0 items-center pr-0.5 pl-2">
+          // Polish step 2 (F1): the caption is a row of the same 32px, its text on the rows' text edge (8 inset + 16 glyph + 8).
+          <div className="mt-4 flex h-row-nav shrink-0 items-center pr-0.5 pl-8">
             <h2 className="text-xs text-fg-3">Projects</h2>
             <IconButton icon={Plus} label="Add project" onClick={props.onNewProject} disabled={!canCreate} className="ml-auto" />
           </div>

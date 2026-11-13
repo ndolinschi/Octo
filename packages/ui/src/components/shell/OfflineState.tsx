@@ -10,7 +10,8 @@ export function OfflineState() {
   const [copied, copy] = useCopy();
   return (
     <section aria-labelledby="offline-title" className="grid h-full place-items-center px-6">
-      <div className="w-full max-w-[440px]">
+      {/* B56: a grid item may shrink under its content (the command line), so the block fits a 390px window. */}
+      <div className="w-full max-w-[440px] min-w-0">
         <h1 id="offline-title" className="text-title text-fg">
           Can't reach the harness bridge
         </h1>

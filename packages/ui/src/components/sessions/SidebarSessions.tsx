@@ -54,17 +54,19 @@ export function SidebarSessions(props: { projectId: string; updatedAt: string; a
         data-sessions-toggle
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          // Centred on the row's first line (32px): a one-line idle row (T2) and the title line of a two-line row.
-          "absolute top-1 right-1 opacity-0 group-focus-within/p:opacity-100 group-hover/p:opacity-100 focus-visible:opacity-100 touch:opacity-100",
+          // Polish step 2 (F1): centred on the 32px row (40 under touch) and exactly over the row's 24px meta column (the row's
+          // 8px inset from the right), so it takes the meta's place and never covers the name's ellipsis.
+          "absolute top-1 right-2 opacity-0 group-focus-within/p:opacity-100 group-hover/p:opacity-100 focus-visible:opacity-100 touch:top-2 touch:opacity-100",
           open && "opacity-100 [&_svg]:rotate-90",
         )}
       />
       {open && (
+        // Polish step 2 (F1): the sidebar's one rhythm (32px rows); a session's glyph sits on the project's text edge.
         <ul aria-label="Recent sessions" className="flex flex-col pb-1 pl-6">
           {shown.map((s) => (
             <li key={s.id}>
               <ListRow
-                size="sm"
+                size="md"
                 tone="quiet"
                 leading={<StateGlyph state={glyphOf(s.state)} />}
                 title={s.title}
@@ -75,7 +77,7 @@ export function SidebarSessions(props: { projectId: string; updatedAt: string; a
             </li>
           ))}
           <li>
-            <ListRow size="sm" tone="quiet" title={more ? "All sessions" : "Open Sessions"} onClick={() => show("")} />
+            <ListRow size="md" tone="quiet" leading={<span />} title={more ? "All sessions" : "Open Sessions"} onClick={() => show("")} />
           </li>
         </ul>
       )}

@@ -63,14 +63,25 @@ export function stateLine(s: OrchestratorState, now: number, fallbackAt?: string
 }
 
 /**
- * The sidebar's project row (polish trial T2): an idle project is one line, its name with the time since its last turn as
- * right-aligned meta ("1h", "49m"); the second line stays only when it says something (Failed, Working + agents, No requests
- * yet). An idle project with no known time has neither.
+ * The sidebar's project row (polish step 2, F1): every row is ONE line — state glyph, name, right-aligned meta — and the
+ * meta says the one thing worth saying: idle → the time since its last turn ("1h"); working → "2 agents" when it has agents,
+ * else nothing (the turning glyph says working); needs you (a failed turn) → the time; never started → "new". `full` is the
+ * whole sentence ("Working, 2 agents", "Failed", "Idle, 1h ago", "No requests yet") for the tooltip and the accessible name;
+ * the tone is carried once, by the glyph (decision 91k).
  */
-export function projectRowLines(s: OrchestratorState, now: number, fallbackAt?: string): { description: string | null; meta: string | null } {
-  if (s.kind !== "idle") return { description: stateLine(s, now, fallbackAt), meta: null };
-  const at = s.at ?? fallbackAt;
-  return { description: null, meta: at ? formatRelative(at, now) : null };
+export function projectRowLines(s: OrchestratorState, now: number, fallbackAt?: string): { meta: string | null; full: string } {
+  const full = stateLine(s, now, fallbackAt);
+  switch (s.kind) {
+    case "working":
+      return { meta: s.agents.length ? `${s.agents.length} ${s.agents.length === 1 ? "agent" : "agents"}` : null, full };
+    case "new":
+      return { meta: "new", full };
+    case "needs":
+    case "idle": {
+      const at = s.at ?? fallbackAt;
+      return { meta: at ? formatRelative(at, now) : null, full };
+    }
+  }
 }
 
 const ACTIVITY: Record<string, string> = {

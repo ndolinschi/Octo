@@ -69,13 +69,16 @@ test("idle shows how long since the last turn ended", () => {
   assert.equal(stateLine({ kind: "idle", at: null }, NOW), "Idle");
 });
 
-test("a project row is one line when idle (time as meta) and two when the state says something", () => {
-  assert.deepEqual(projectRowLines(orchestratorState([root()], "idle"), NOW), { description: null, meta: "1h" });
-  assert.deepEqual(projectRowLines({ kind: "idle", at: null }, NOW, "2026-11-10T11:58:00Z"), { description: null, meta: "2m" });
-  assert.deepEqual(projectRowLines({ kind: "idle", at: null }, NOW), { description: null, meta: null });
-  assert.deepEqual(projectRowLines({ kind: "new" }, NOW), { description: "No requests yet", meta: null });
-  assert.deepEqual(projectRowLines({ kind: "needs", error: "x", at: null }, NOW), { description: "Failed", meta: null });
-  assert.deepEqual(projectRowLines({ kind: "working", agents: [] }, NOW), { description: "Working", meta: null });
+test("a project row is one line: the meta says the one thing worth saying, the sentence goes to the tooltip", () => {
+  assert.deepEqual(projectRowLines(orchestratorState([root()], "idle"), NOW), { meta: "1h", full: "Idle, 1h ago" });
+  assert.deepEqual(projectRowLines({ kind: "idle", at: null }, NOW, "2026-11-10T11:58:00Z"), { meta: "2m", full: "Idle, 2m ago" });
+  assert.deepEqual(projectRowLines({ kind: "idle", at: null }, NOW), { meta: null, full: "Idle" });
+  assert.deepEqual(projectRowLines({ kind: "new" }, NOW), { meta: "new", full: "No requests yet" });
+  assert.deepEqual(projectRowLines({ kind: "needs", error: "x", at: "2026-11-10T11:10:00Z" }, NOW), { meta: "50m", full: "Failed" });
+  assert.deepEqual(projectRowLines({ kind: "needs", error: "x", at: null }, NOW), { meta: null, full: "Failed" });
+  assert.deepEqual(projectRowLines({ kind: "working", agents: [] }, NOW), { meta: null, full: "Working" });
+  const two = [agent({ id: "a", status: "running" }), agent({ id: "b", status: "running" })];
+  assert.deepEqual(projectRowLines({ kind: "working", agents: two }, NOW), { meta: "2 agents", full: "Working, 2 agents" });
 });
 
 test("agent stack names two distinct roles, then counts the rest", () => {

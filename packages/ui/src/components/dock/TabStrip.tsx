@@ -5,10 +5,10 @@ import { useOptionalComments } from "../../state/comments";
 import { useScrollFade } from "../../lib/hooks";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
-import { CHAT, toolTab, type TabId } from "../../state/workspace/layout";
+import { toolTab, type TabId } from "../../state/workspace/layout";
 import { SIDE_PAD, useChrome } from "../../state/chrome";
 import { ProjectActions, ProjectTeamLine } from "../shell/ProjectBar";
-import { endPlan, RUN_FREED, slotShift, tabsOverflow } from "../../state/workspace/tabStrip";
+import { endPlan, RUN_FREED, slotShift, TAB_MIN, tabsOverflow } from "../../state/workspace/tabStrip";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Presence } from "../primitives/Presence";
 import { dragStep, pressTab, takeSettle, useDrag } from "./drag";
@@ -205,7 +205,9 @@ export function TabStrip(props: {
         ...(props.last && insetEnd > SIDE_PAD ? { paddingInlineEnd: insetEnd } : {}),
       }}
     >
-      <div ref={wrap} className="flex min-w-0 flex-1 items-center gap-1">
+      {/* Polish step 2 (F3): the tabs' box never measures 0 — at least one tab and the "+" — so a strip whose end cluster is
+          wider than the strip still has a `room` to fold the cluster against (endPlan and useStripFit do nothing at 0). */}
+      <div ref={wrap} className="flex min-w-0 flex-1 items-center gap-1" style={{ minWidth: TAB_MIN + PLUS_ROOM }}>
         <div
           ref={list}
           role="tablist"
@@ -268,8 +270,10 @@ export function TabStrip(props: {
           />
         )}
       </div>
-      {/* Decision 91g: the sub-agents are one quiet "N agents" button at the end of the strip, before the commands. */}
-      {props.tabs.includes(CHAT) && <ProjectTeamLine compact={compactAgents} />}
+      {/* Decision 91g: the sub-agents are one quiet "N agents" button at the end of the strip, before the commands. Polish step 2
+          (F3): it opens the window's one end cluster (agents, pinned commands, Run, "⋯") in the last strip, so with a side group it
+          no longer floats alone at the end of the conversation's strip. */}
+      {props.last && <ProjectTeamLine compact={compactAgents} />}
       {props.last && (
         <Suspense fallback={null}>
           {/* The "Restore" control of a maximised group lives in this chunk too (decision 78): the initial bundle has no room for it. */}
