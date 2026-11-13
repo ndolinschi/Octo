@@ -400,8 +400,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             void submit();
           }}
           onMouseDown={(e) => {
-            // A click on the container's padding still puts the caret in the text.
-            if (e.target === e.currentTarget) {
+            // A click on the container's padding (or the text box's fixed top padding) still puts the caret in the text.
+            if (e.target === e.currentTarget || (e.target instanceof HTMLElement && e.target.hasAttribute("data-composer-pad"))) {
               e.preventDefault();
               area.current?.focus();
             }
@@ -426,7 +426,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <label htmlFor={props.floating ? "octo-composer-float" : "octo-composer"} className="sr-only">
             Message the orchestrator
           </label>
-          <div className="relative">
+          {/* C6: the top padding sits outside the scrolling text, so a long prompt never scrolls it away. */}
+          <div data-composer-pad className="relative pt-3">
             <Suspense fallback={null}>
               <ComposerHighlight text={text} area={area} />
             </Suspense>
@@ -453,7 +454,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-controls={slash ? slashListId : inlineOpen ? listId : undefined}
               aria-activedescendant={slash ? (slashActive ?? undefined) : inlineOpen && activeOption ? activeOption : undefined}
               aria-keyshortcuts="Enter Shift+Enter Control+Enter Escape"
-              className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 pt-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
+              className="octo-composer-input relative block w-full resize-none overscroll-contain bg-transparent px-3 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none disabled:cursor-not-allowed"
             />
           </div>
           <div ref={row} data-composer-row className="flex h-10 min-w-0 items-center gap-1 px-1.5 pb-1.5">

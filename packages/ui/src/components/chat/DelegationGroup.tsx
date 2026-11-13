@@ -30,7 +30,7 @@ function progress(agents: (Agent | undefined)[]): string {
 }
 
 /**
- * Hairline card for one round of delegation: caption ("3 agents") and progress on one line, then one `ActivityRow` per
+ * One round of delegation, unframed: a meta caption ("3 agents · 1/3 done"), then one `ActivityRow` per
  * sub-agent (decision 91d): state glyph, role, dim title, and on the right what it does or the model, then the time.
  */
 export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
@@ -40,12 +40,14 @@ export function DelegationGroup({ uses }: { uses: ToolUse[] }) {
   const status = progress(agents);
 
   return (
-    <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container rounded-md border border-line">
-      <div className="flex h-8 items-center gap-3 px-3 text-sm">
-        <span className="shrink-0 whitespace-nowrap text-fg-2">{caption}</span>
-        <span className="ml-auto min-w-0 truncate text-xs text-fg-3 tabular-nums">{status}</span>
-      </div>
-      <ul className="flex flex-col px-3 pb-1">
+    // Polish step 3, C3: no frame of its own. A meta caption ("3 agents · 1/3 done") over activity rows on the steps' glyph column.
+    <section aria-label={uses.length === 1 ? "Delegated task" : `${caption} in parallel`} className="@container">
+      <p className="flex h-6 min-w-0 items-center gap-1.5 text-xs text-fg-3">
+        <span className="shrink-0 whitespace-nowrap">{caption}</span>
+        <span aria-hidden>·</span>
+        <span className="min-w-0 truncate tabular-nums">{status}</span>
+      </p>
+      <ul className="flex flex-col">
         {uses.map((u, i) => (
           <li key={u.id}>
             <DelegationRow use={u} agent={agents[i]} />

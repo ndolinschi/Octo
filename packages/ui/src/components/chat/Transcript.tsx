@@ -40,6 +40,7 @@ const DelegationGroup = lazy(() => import("./DelegationGroup").then((m) => ({ de
 import { toolState, TranscriptContext, useTranscript, type ToolResult, type TranscriptCtx } from "./transcriptContext";
 import { proseClass } from "../primitives/Prose";
 import { ActivityLine, useBatched } from "./LiveActivity";
+import { ActivityRow } from "./ActivityRow";
 
 /** Memoised: the conversation re-renders on scroll (pinned prompt, jump button); the transcript need not. */
 export const Transcript = memo(function Transcript(props: {
@@ -232,13 +233,19 @@ export const Transcript = memo(function Transcript(props: {
   );
 });
 
-/** Orients in a long-lived conversation (decision 18): a centred 12px line before a request after a pause. */
+/**
+ * Orients in a long-lived conversation (decision 18): a centred 12px line before a request after a pause. Polish step 3, C7:
+ * the one marker style of the transcript (meta text centred on a hairline), shared with the compacted / rewound marker and
+ * "New session started"; 32 above (between turns) and 16 below (to the request).
+ */
 function TimeSeparator({ at, now }: { at: string; now: number }) {
   return (
-    <div data-time-sep className="flex h-4 items-center justify-center text-xs text-fg-3 tabular-nums">
+    <div data-time-sep className="flex h-4 items-center gap-3 text-xs text-fg-3 tabular-nums">
+      <span aria-hidden className="h-px flex-1 bg-line" />
       <time dateTime={at} title={new Date(at).toLocaleString()}>
         {formatSeparator(at, now)}
       </time>
+      <span aria-hidden className="h-px flex-1 bg-line" />
     </div>
   );
 }
@@ -349,11 +356,16 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   const { turn, live, streaming } = props;
   const ctx = useTranscript();
   const compact = ctx.density === "compact";
+  // Polish step 3, C1: a finished turn's tool rows fold under its "Worked for…" head; null = the default (open only when a step failed).
+  const [stepsOpen, setStepsOpen] = useState<boolean | null>(null);
   const empty = turn.items.length === 0 && !streaming && !props.thinking;
   if (empty && !live) return null;
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
   const end = turn.lastAt ? Date.parse(turn.lastAt) : null;
   const worked = !live && start !== null && end !== null && end - start >= 1000 ? end - start : null;
+  const toolUses = turn.items.flatMap((item) => (item.kind === "tools" ? item.uses : []));
+  const stepFailed = toolUses.some((u) => toolState(ctx, u.id) === "error");
+  const showSteps = worked === null || (stepsOpen ?? stepFailed);
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
   // The newest step row above, when it already says what the activity line would: a streaming thinking row (nothing after it), a running tool group.
   const lastItem = turn.items[turn.items.length - 1];
@@ -376,13 +388,23 @@ const AssistantTurn = memo(function AssistantTurn(props: {
         compact ? "gap-3" : "gap-4",
       )}
     >
-      {worked !== null && <p className={cn("text-fg-3 tabular-nums", compact ? "text-sm" : "text-base")}>Worked for {formatDuration(worked)}</p>}
+      {worked !== null && (
+        // C1: the head of the turn's activity, in the steps' own row and glyph column; it opens and folds the tool rows.
+        <ActivityRow
+          data="head"
+          // The failed step below carries the tone (decision 91k: tone once); the head only says the turn's work is over.
+          state="done"
+          verb={<span className="tabular-nums">Worked for {formatDuration(worked)}</span>}
+          {...(toolUses.length > 0 ? { expands: true, open: showSteps, onOpenChange: setStepsOpen } : {})}
+        />
+      )}
       <Suspense fallback={null}>
         {live && props.plan && <PlanList entries={props.plan} />}
         {live && <ThinkingRow text={props.thinking} after={turn.items.length > 0 || streaming.length > 0} />}
       </Suspense>
       {turn.items.map((item) => {
         if (item.kind === "text") return <Markdown key={item.key} text={item.text} className={prose} fileLinks />;
+        if (item.kind === "tools" && !showSteps) return null;
         return (
           <Suspense key={item.key} fallback={null}>
             {item.kind === "tools" ? <ToolGroup uses={item.uses} /> : <DelegationGroup uses={item.uses} />}
@@ -412,7 +434,7 @@ function TurnFooter({ reply, at, now, usage, compact }: { reply: string; at: str
     <div
       data-turn-footer
       title={compact && usage ? `${when} · ${usage}` : undefined}
-      className="-mt-2 -ml-1 flex h-6 min-w-0 items-center gap-1.5 text-sm text-fg-3"
+      className="-mt-2 -ml-1 flex h-6 min-w-0 items-center gap-1.5 text-xs text-fg-3"
     >
       <IconButton icon={copied ? Check : Copy} label={copied ? "Copied" : "Copy reply"} size="xs" className="shrink-0" onClick={() => copy(reply)} />
       <time dateTime={at} title={when} className="shrink-0 whitespace-nowrap tabular-nums">

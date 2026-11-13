@@ -3015,3 +3015,34 @@ orchestrator. All x values are CSS px at 1440×900.
   "Experimental" once, Esc disarms "Confirm remove key" before it leaves Settings, Add command opens on its first field.
   Not done: the "Choose" dialog's first focus (needs `Checkbox` to take `data-autofocus`). Not seen in the UI: the Copilot
   connect dialog from the model chip, `?refresh=fail`, Antigravity.
+
+## As built — polish step 3: the conversation and the composer (2026-11-13; one commit)
+
+Rules C1–C8 of the orchestrator's brief; 72 before/after pairs (dark and light; 1440×900, 900×600, 390×700) read by the
+executor, a sample by the orchestrator.
+
+- **C1, three voices.** Request and reply are content (14px, `fg`). What the agent did is one activity style (13px, `fg-2`,
+  one glyph column): "Worked for Ns" is now an `ActivityRow` that heads the turn's tool rows and opens them in place.
+  **A finished turn's tool rows are folded under that head by default** (open when a step failed) — a behaviour change that
+  **departs from 91d / 91j**; live turns are unchanged. Time stamps, the turn's meta line and counts are meta (12px, `fg-3`).
+  Not folded: delegation rounds (they link to agent sessions).
+- **C2, step rows.** The chevron sits right after the row's text; the duration stays right-aligned; every activity glyph is
+  14px; what a row opens is indented to its text line.
+- **C3, no frames inside frames.** `DelegationGroup` and the live plan are a meta caption over activity rows, no box;
+  `SentComments` and the always-allow panel are recessed tones; a block `Notice` has a tone and no outline (every block
+  notice in the app; that one-line change landed in commit `b6ac876`).
+- **C4, `Segmented` reads as a control.** The group has a recessed track (`--octo-seg-track`), the chosen segment a raised
+  chip (`--octo-seg-on`, `--octo-shadow-seg`); keys, roving tabindex and touch target unchanged; a gallery block was added.
+  **Departs from decision 33** (no track). Looked at in Settings → Appearance, the note editor, the form and the gallery;
+  not looked at in Review, Memory's Add row, the project dialog, Routing. Quiet buttons inside a card hover one step stronger.
+- **C5, form card.** One left edge for labels, fields, the Region track and the lock note; label → field 6, field → next
+  label 16; field text 14 in a conversation form.
+- **C6, composer.** Text 14; the control row's items 28 tall on one centre line with gaps of 4; the context ring is a pie
+  gauge (rim + filled wedge, amber from 80 %), no longer an arc that reads as the spinner; the top padding of a long prompt
+  stays while the text scrolls. Not done: one icon size in the row (chips 14, icon buttons 16 — fixed inside primitives).
+- **C7, markers.** Time separators use the compacted / rewound style: meta text centred on a hairline, 32 above, 16 below.
+- **C8, light.** The same states were read in light; no light-only token moved apart from the segmented and hover tokens.
+- Gates: `tsc`, 619 unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (2 skips, the stale `tool-tables` step),
+  `width-stability` (1440×900, 900×600), `frame-colours`, `flicker`, `scroll-on-send`, `picker-keys` ok; approvals, the
+  form (Region by Tab and arrows), always-allow, the head's Enter, Check again and the queue driven by script. Not verified:
+  plan approve and rewind by script, WebKit, touch, a screen reader.

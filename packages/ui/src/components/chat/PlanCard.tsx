@@ -48,7 +48,7 @@ function PlanCard(props: { plan: Plan; onPlan(plan: Plan): void; onRefresh(): Pr
         <Card surface="panel" padding="none">
           <Button variant="quiet" size="md" fullWidth aria-expanded={open} onClick={() => setOpen((o) => !o)} className="justify-start px-3">
             <Glyph icon={Check} size={14} className="shrink-0 text-ok" />
-            <span className="flex-1 text-left">Plan approved</span>
+            <span className="text-left">Plan approved</span>
             <Glyph icon={ChevronRight} size={14} className={cn("text-fg-3", open && "rotate-90")} />
           </Button>
           {open && (

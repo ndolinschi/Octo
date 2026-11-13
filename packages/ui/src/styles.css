@@ -16,6 +16,7 @@
   --octo-overlay: #262626;
   --octo-code-bg: #1d1d1d;
   --octo-hover: rgb(255 255 255 / 0.05);
+  --octo-hover-in-card: rgb(255 255 255 / 0.08);
   /* Selected rows/tabs sit clearly above hover (v6.1 review: 0.05 vs 0.09 read as two selections). */
   --octo-active: rgb(255 255 255 / 0.12);
   --octo-line: rgb(255 255 255 / 0.08);
@@ -26,6 +27,10 @@
   /* T3: a text field's edge at rest is a hairline no brighter than a card's; focus turns it `fg` (decision 90c).
      `input-border` stays for the small boxes that need a strong edge to be seen (checkbox) and the composer's focus. */
   --octo-field-edge: rgb(255 255 255 / 0.14);
+  /* Polish step 3, C4: a segmented control reads as a control at rest: a recessed track (a tint, no outline) and the chosen
+     segment one step up. */
+  --octo-seg-track: rgb(255 255 255 / 0.06);
+  --octo-seg-on: rgb(255 255 255 / 0.12);
   --octo-fg: #f0f0f0;
   --octo-fg-2: #c6c6c6;
   --octo-fg-3: #a2a2a2;
@@ -41,6 +46,7 @@
   --octo-shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.08), 0 16px 40px -12px rgb(0 0 0 / 0.7);
   --octo-shadow-panel: inset 0 1px 0 var(--octo-panel-highlight);
   --octo-shadow-float: 0 0 0 1px rgb(255 255 255 / 0.08), 0 8px 24px -8px rgb(0 0 0 / 0.7);
+  --octo-shadow-seg: 0 0 #0000;
   --octo-drop: rgb(92 157 255 / 0.1);
   --octo-drop-edge: rgb(92 157 255 / 0.45);
   --octo-selection: rgb(92 157 255 / 0.32);
@@ -64,6 +70,7 @@
   --octo-overlay: #ffffff;
   --octo-code-bg: #f3f3f3;
   --octo-hover: rgb(0 0 0 / 0.035);
+  --octo-hover-in-card: rgb(0 0 0 / 0.055);
   /* Selection is a tint, not mid-grey (was black 9 %); still clearly above hover. */
   --octo-active: rgb(0 0 0 / 0.065);
   --octo-line: rgb(0 0 0 / 0.09);
@@ -72,6 +79,8 @@
   --octo-panel-highlight: rgb(255 255 255 / 0);
   --octo-input-border: #8a8a8a;
   --octo-field-edge: rgb(0 0 0 / 0.14);
+  --octo-seg-track: rgb(0 0 0 / 0.05);
+  --octo-seg-on: #ffffff;
   --octo-fg: #1a1a1a;
   --octo-fg-2: #424242;
   --octo-fg-3: #5e5e5e;
@@ -87,6 +96,8 @@
   --octo-shadow-pop: 0 0 0 1px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.04), 0 16px 40px -12px rgb(0 0 0 / 0.18);
   --octo-shadow-panel: 0 1px 2px rgb(0 0 0 / 0.04);
   --octo-shadow-float: 0 0 0 1px rgb(0 0 0 / 0.08), 0 8px 24px -8px rgb(0 0 0 / 0.18);
+  /* C4: the chosen segment lifts off its track in light (white on a grey tint needs a whisper of shadow to read). */
+  --octo-shadow-seg: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.08);
   --octo-drop: rgb(10 102 224 / 0.08);
   --octo-drop-edge: rgb(10 102 224 / 0.4);
   --octo-selection: rgb(10 102 224 / 0.2);
@@ -121,6 +132,8 @@
   --color-line-strong: var(--octo-line-strong);
   --color-input-border: var(--octo-input-border);
   --color-field-edge: var(--octo-field-edge);
+  --color-seg-track: var(--octo-seg-track);
+  --color-seg-on: var(--octo-seg-on);
   --color-focus: var(--octo-focus);
   --color-fg: var(--octo-fg);
   --color-fg-2: var(--octo-fg-2);
@@ -136,6 +149,7 @@
   --shadow-pop: var(--octo-shadow-pop);
   --shadow-panel: var(--octo-shadow-panel);
   --shadow-float: var(--octo-shadow-float);
+  --shadow-seg: var(--octo-shadow-seg);
   --color-panel-edge: var(--octo-panel-edge);
   --color-drop: var(--octo-drop);
   --color-drop-edge: var(--octo-drop-edge);
@@ -344,6 +358,8 @@
    a block in a card is told apart by tone, never by an outline of its own. */
 .octo-in-card {
   --octo-code-bg: var(--octo-panel);
+  /* Polish step 3, C4: on a raised card the page's hover tint was too faint to say "button"; one step stronger here. */
+  --octo-hover: var(--octo-hover-in-card);
 }
 
 /* T2: an idle project row shows its time where the sessions chevron appears (hover, focus, open, touch): the time gives way. */
@@ -1012,6 +1028,16 @@
 @media (pointer: coarse) {
   .octo-composer-input {
     font-size: 16px;
+  }
+}
+
+/* Polish step 3, C5: a form in the conversation is content: its fields take the reply's 14px (16 under touch, as every field). */
+[data-v7-form] :is(input:not([type="checkbox"]), textarea) {
+  font-size: var(--text-base);
+}
+@media (pointer: coarse), (max-width: 767.98px) {
+  [data-v7-form] :is(input:not([type="checkbox"]), textarea) {
+    font-size: var(--text-input-touch);
   }
 }
 

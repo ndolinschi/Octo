@@ -56,7 +56,8 @@ function OpenForm(props: InputFormCardProps) {
         error={f.error}
       >
         {request.reason && <p className="[overflow-wrap:anywhere] text-fg-2">{request.reason}</p>}
-        <div className="flex flex-col gap-3">
+        {/* C5: label → field 6 (Field), field → next label 16. */}
+        <div className="flex flex-col gap-4">
           {request.fields.map((field) => (
             <FormField
               key={field.id}

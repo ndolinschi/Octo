@@ -40,7 +40,8 @@ function CommentCard({ comment: c }: { comment: SentComment }) {
   };
 
   return (
-    <li className="overflow-hidden rounded-sm border border-line bg-panel">
+    // Polish step 3, C3: a block inside the request bubble is the recessed tone, never an outline of its own.
+    <li className="overflow-hidden rounded-sm bg-panel">
       <div className="flex min-h-8 items-center gap-2 px-3 py-1 text-xs">
         {canOpen ? (
           <Button variant="link" tone="quiet" mono size="xs" onClick={open} aria-label={`Open ${full} at ${where}`} title={full} className="min-w-0 truncate">

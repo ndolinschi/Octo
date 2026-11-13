@@ -4,6 +4,7 @@ import { Checkbox } from "../Checkbox";
 import { Field } from "../Field";
 import { KeyHint } from "../KeyHint";
 import { SearchField } from "../SearchField";
+import { Segmented } from "../Segmented";
 import { Select } from "../Select";
 import { Switch } from "../Switch";
 import { TextArea, TextField } from "../TextField";
@@ -16,12 +17,16 @@ const OPTIONS = [
   { value: "off", label: "Off", disabled: true },
 ];
 
+const REGIONS = ["eu-west", "us-east", "ap-south"].map((id) => ({ id, label: id }));
+
 export function FieldsSection() {
   const [checked, setChecked] = useState(true);
   const [on, setOn] = useState(true);
   const [pick, setPick] = useState("balanced");
   const [q, setQ] = useState("");
   const [q2, setQ2] = useState("memory");
+  const [seg, setSeg] = useState("us-east");
+  const [none, setNone] = useState("");
   return (
     <Section id="fields" title="Fields" note="One focus indicator for every field: the border turns fg and the shadow ring is off. Click into each to see it.">
       <Variants label="TextField sizes (framed), invalid, disabled, bare">
@@ -74,6 +79,13 @@ export function FieldsSection() {
         <W>
           <Select value={pick} onChange={setPick} options={OPTIONS} label="Tier" disabled />
         </W>
+      </Variants>
+      <Variants label="Segmented (C4: a recessed track): chosen, nothing chosen yet, in a card">
+        <Segmented<string> label="Region" options={REGIONS} value={seg} onChange={setSeg} />
+        <Segmented<string> label="Region, none chosen" options={REGIONS} value={none} onChange={setNone} />
+        <span className="octo-in-card rounded-md bg-raised p-card">
+          <Segmented<string> label="Region in a card" options={REGIONS} value={seg} onChange={setSeg} />
+        </span>
       </Variants>
       <Variants label="Checkbox: off, on, indeterminate, description, disabled; Switch: on, off, disabled">
         <Checkbox checked={false} onChange={() => undefined} label="Off" />

@@ -58,11 +58,12 @@ export function PatchView({ patch }: { patch: string }) {
 export function AlwaysPanel(props: { rule: ApprovalRuleSpec; busy: boolean; disabled: boolean; onSave(): void; onCancel(): void }) {
   const v = describeRule(props.rule);
   return (
-    <div data-always-panel role="group" aria-label="Always allow" className="flex flex-col gap-2 rounded-sm border border-line px-3 py-2">
+    // Polish step 3, C3: inside the approval card the panel is the recessed tone, not an outline; its rule line is plain mono.
+    <div data-always-panel role="group" aria-label="Always allow" className="flex flex-col gap-2 rounded-sm bg-panel px-3 py-2">
       <p className="text-fg-2">
         From now on, allow <span className="text-fg">{v.sentence}</span> in this project without asking:
       </p>
-      <pre className="octo-code max-h-24 overflow-auto rounded-sm bg-code-bg px-3 py-1.5 font-mono text-xs break-all whitespace-pre-wrap">
+      <pre className="octo-code max-h-24 overflow-auto font-mono text-xs break-all whitespace-pre-wrap">
         <span className="font-sans text-fg-3 select-none">{v.subject}: </span>
         {v.code}
       </pre>

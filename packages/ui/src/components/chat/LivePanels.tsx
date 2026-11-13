@@ -37,11 +37,13 @@ export function PlanList({ entries }: { entries: PlanEntry[] }) {
   if (!entries.length) return null;
   const done = entries.filter(DONE).length;
   return (
-    <section data-plan aria-label={`Plan, ${done} of ${entries.length} done`} className="rounded-md border border-line px-3 py-2">
-      <p className="flex h-6 items-center justify-between text-xs text-fg-3">
+    // Polish step 3, C3: no frame; a meta caption over the steps' rows, like a delegation round.
+    <section data-plan aria-label={`Plan, ${done} of ${entries.length} done`}>
+      <p className="flex h-6 items-center gap-1.5 text-xs text-fg-3">
         <span>Plan</span>
+        <span aria-hidden>·</span>
         <span className="tabular-nums">
-          {done}/{entries.length}
+          {done}/{entries.length} done
         </span>
       </p>
       <ul className="flex flex-col">
