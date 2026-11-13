@@ -2,7 +2,7 @@
 PY := .venv/bin/python
 RUN := PYTHONPATH=src $(PY) -m
 
-.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit
+.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit stage3 audit steps3 gencost triples
 
 all: fetch build features test evaluate onnx figures
 
@@ -41,3 +41,17 @@ steps:      ## B: TwinRouterBench step-level check, leave-one-task-out (~1 min)
 	$(RUN) routerml.steps
 bandit:     ## C: online adaptation with bandit feedback, 200 streams
 	$(RUN) routerml.bandit
+
+# ---- stage 3: ceiling audit, step-level cost-quality, concrete-model triples (results/stage3_*.json, results/stage3_report.txt)
+stage3: audit steps3 gencost triples
+
+audit:      ## 1: replay stage 2's 200 splits, exact area, symmetric ceiling; same-model run-to-run agreement (~20 s)
+	$(RUN) routerml.stage3_audit
+steps3:     ## 3: TwinRouterBench, all 970 steps, its own v2 metric and tokenizers (needs tiktoken; HF tokenizer download) (~25 min)
+	$(RUN) routerml.stage3_steps
+	$(RUN) routerml.stage3_steps_swe
+gencost:    ## 3: cost estimate of generating more step labels with the benchmark's algorithm and prices (no API calls)
+	$(RUN) routerml.stage3_gencost
+triples:    ## 2: concrete cheap/mid/dear model triples (fetches haiku-4.5 trajectories, ~400 MB, if missing)
+	$(RUN) routerml.traj_fetch 20260217_mini-v2.0.0_claude-4-5-haiku-high
+	$(RUN) routerml.stage3_triples

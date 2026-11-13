@@ -176,3 +176,56 @@ adaptation does not either. Most of the oracle's headroom is noise between runs 
    information.
 4. What the router should log to make any of this learnable on its own traffic: the model, steps, tool errors, test
    runs, and a solved / not-solved outcome per session (its history has no such label today).
+
+# Stage 3: three checks (2026-11-13)
+
+Full text: `results/stage3_report.txt`; numbers: `results/stage3_*.json`. Stage 1 and 2 files and numbers untouched;
+22 tests pass. No paid API was called.
+
+**Verdicts.**
+
+1. *Per-task tier prediction from the prompt* — **not supported.** Stage 1's model minus the mixture: +0.000
+   [−0.004, +0.012]. The corrected ceiling for any task-level tier predictor: +0.017 curve area (scheme A). With concrete
+   models the room is +0.03 to +0.05, but text features reach AUROC ≤ 0.555 for "cheap fails and dear solves" and a text
+   router gains +0.000 to +0.008.
+2. *An early-trajectory detector makes a cascade that beats fixed tiers* — **not supported.** On four concrete triples
+   with honest cost: no gain in two; in one a random stop does better; one positive cell of twelve (+0.010
+   [+0.002, +0.024] at K = 20). A perfect stop would gain +0.04 to +0.07.
+3. *Step-level tier selection saves cost at bounded risk* — **not supported for coding agents; on the mixed benchmark
+   it is mostly a workload effect.** On TwinRouterBench's SWE steps, under the benchmark's own cache-aware cost model,
+   even the oracle saves 0.8 % [−7.2, +8.1] of the always-high bill: with prompt caching, switching model per step is
+   nearly worthless. Over all 970 steps the step model scores 70.6 [66.9, 74.8] against 63.6 for always-low, 90.7 for
+   the oracle and **81.1 for a prior that only knows the workload**; left-one-workload-out it scores 57.6 (does not
+   transfer).
+
+**Check 1, the stage 2 ceiling.** No arithmetic bug. The figure's "one split" came from a separate random generator and
+sits at the 97.5th percentile of the 200 splits (+0.041), which is why it looks better than the mean; its caption needs
+fixing. One definitional flaw is corrected in `stage3_audit.py`: the oracle's hull lacked fixed mid, which the mixture
+had. Corrected ceiling: A +0.017 (93 % of splits above 0), B +0.016, C +0.010 — about a fifth of the in-sample oracle.
+Stage 2's interval was the spread across splits, not an uncertainty of the mean. Run-to-run noise: two runs of the same
+model (four models have repeats; versions or reasoning effort differ, so an upper bound) disagree on 10–17 % of tasks
+(kappa 0.66–0.74); different models of one tier disagree on 34 % (low), 25 % (mid), 17 % (high).
+
+**Check 2, concrete triples** (declared by rule before reading outcomes: gpt-5-nano / mini / gpt-5; haiku / sonnet /
+opus 4.5; the strongest per price band; the cheapest per price band). **Price per token does not order cost per task**:
+gpt-5-mini costs less per task than gpt-5-nano and solves far more; deepseek-v3.2 costs more per task than
+gemini-3-flash and solves less — two of four ladders collapse before any routing. Noise-bounded oracle gain over the
+best mixture of three: +0.03 to +0.05. The cheap model's early trajectory predicts its own failure weakly (AUROC up to
+0.68), not the useful event "cheap fails and dear solves" (about 0.5).
+
+**Check 3, generating step labels** (estimate, the benchmark's algorithm and prices): $3 per task on the bank's short
+trajectories; about $55–85 per task at realistic lengths; 500–2 000 tasks would cost $1.5k–6k (short) or $30k–170k.
+
+**Limits.** The bank's SWE trajectories are short (8.4 routed steps) and the caching rules are the benchmark's, not an
+invoice; thresholds were read off the out-of-sample frontier, not chosen in a nested loop; pure run-to-run noise (same
+version and effort) is not in public data; a router that switches rarely and escalation from cheap to mid were not tested.
+
+## What the thesis can and cannot claim after three stages
+
+- **Cannot:** that a learned model predicts the tier for a task or for a step of a coding agent, or that a learned
+  cascade beats fixed tiers — each was tested and is not supported on public data.
+- **Can, with numbers:** (1) the noise ceiling of task-level routing, decomposed into run-to-run chance and differences
+  between models, and that published-style oracle headroom is mostly noise; (2) the concrete model that fills a tier
+  matters (+0.025 to +0.046) and price per token misorders models by cost per solved task; (3) the kind of workload is
+  the strongest routing signal measured (81.1 against 63.6); (4) an operating point can be held online at a declared
+  quality target; (5) with prompt caching, per-step switching inside a coding session does not pay.

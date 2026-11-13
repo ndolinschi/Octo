@@ -32,6 +32,13 @@ Stage 2 (where the signal is; report: `results/stage2_report.txt`; `make stage2`
 - `make steps`: TwinRouterBench's 336 SWE steps, step-time features -> collapsed target tier, leave-one-task-out.
 - `make bandit`: online tier choice per repository with bandit feedback (Thompson, UCB, empirical-Bayes start, Lagrangian), 200 streams.
 
+Stage 3 (checks; report: `results/stage3_report.txt`; `make stage3` runs all four):
+
+- `make audit`: replays stage 2's ceiling splits, exact area, symmetric ceiling definition; run-to-run agreement of the same model.
+- `make steps3`: TwinRouterBench's whole static bank (970 steps, 5 workloads) scored with the benchmark's own v2 metric; LOTO and leave-one-workload-out.
+- `make gencost`: what generating more step labels would cost with the benchmark's algorithm and prices (estimate; no API calls).
+- `make triples`: concrete cheap/mid/dear model triples: outcome tables, noise-bounded oracle, text and early-trajectory detectors, honest cascade.
+
 Note: the OpenRouter catalogue has no revision. `fetch` keeps the first snapshot it downloads
 (2026-11-13 for the numbers in REPORT.md); a fresh clone gets today's catalogue, which can change the
 prices of the 9 models sourced from it (`results/models.csv`, column `source`).

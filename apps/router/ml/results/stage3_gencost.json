@@ -1,0 +1,61 @@
+{
+ "method": "Stage 3, check 3 (last part): what would it cost to generate more TwinRouterBench-style step labels?\n\nAn ESTIMATE from the benchmark's own construction algorithm (docs/DATA_GENERATION.md: strong-model seed trajectory;\nthen, step by step with earlier steps locked, a candidate tier at the current step and `high` for every later step,\nexecuted to the end and evaluated; up to three models per candidate tier; cheapest tier first) and its own price\ntable and cost model (main/pricing.py, main/eval/section11 with the real tokenizers). Nothing is called.\nPer routed step i of a trajectory with gold tier g: trials = (models tried in tiers below g, all failing) + (models\ntried in g until one passes). Assumed: 3 per failing tier, 2 (expected) in the passing tier; for g = high, the\n9 lower-tier trials all fail and high is the seed. Each trial costs the always-high suffix from step i (the\ncandidate's own step is billed at high too: an upper bound of a few per cent). The seed costs the full always-high\ntrajectory. Docker/evaluation compute and the review pass are not priced.\n",
+ "trials_per_step_by_gold": {
+  "low": 2,
+  "mid": 5,
+  "mid_high": 8,
+  "high": 9
+ },
+ "by_workload": {
+  "swebench": {
+   "trajectories": 40,
+   "mean_routed_steps": 8.4,
+   "seed_usd_per_trajectory": 0.09204,
+   "search_usd_per_trajectory": 2.96215,
+   "total_usd_per_trajectory": 3.05419,
+   "total_usd_whole_workload": 122.16749
+  },
+  "pinchbench": {
+   "trajectories": 12,
+   "mean_routed_steps": 4.0,
+   "seed_usd_per_trajectory": 0.2131,
+   "search_usd_per_trajectory": 1.83307,
+   "total_usd_per_trajectory": 2.04617,
+   "total_usd_whole_workload": 24.55398
+  },
+  "mtrag": {
+   "trajectories": 193,
+   "mean_routed_steps": 1.0,
+   "seed_usd_per_trajectory": 0.02164,
+   "search_usd_per_trajectory": 0.04745,
+   "total_usd_per_trajectory": 0.0691,
+   "total_usd_whole_workload": 13.33552
+  },
+  "qmsum": {
+   "trajectories": 145,
+   "mean_routed_steps": 1.0,
+   "seed_usd_per_trajectory": 0.0308,
+   "search_usd_per_trajectory": 0.06959,
+   "total_usd_per_trajectory": 0.10039,
+   "total_usd_whole_workload": 14.55709
+  },
+  "bfcl": {
+   "trajectories": 130,
+   "mean_routed_steps": 1.90769,
+   "seed_usd_per_trajectory": 0.0261,
+   "search_usd_per_trajectory": 0.12965,
+   "total_usd_per_trajectory": 0.15574,
+   "total_usd_whole_workload": 20.24679
+  }
+ },
+ "all_520": {
+  "usd": 194.86087,
+  "per_trajectory": 0.37473
+ },
+ "swe_scaleup": {
+  "100": 305.41874,
+  "500": 1527.09368,
+  "2000": 6108.3747,
+  "10000": 30541.8735
+ }
+}

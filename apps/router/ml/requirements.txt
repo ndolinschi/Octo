@@ -14,3 +14,4 @@ scikit-learn==1.9.1
 scipy==1.18.1
 skl2onnx==1.20.0
 tokenizers==0.23.3
+tiktoken==0.14.0  # stage 3: TwinRouterBench tokenizers
