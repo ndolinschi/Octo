@@ -6,6 +6,7 @@ import { fold, GROUP_FOLD, itemDescription, keeperName, needsFullFact, remembere
 import { errorMessage } from "../../lib/format";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
+import { useBlockFloating } from "../../state/workspace/useFloatingHere";
 import { cn } from "../../lib/cn";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
@@ -46,6 +47,7 @@ const KINDS: readonly { id: RememberKind; label: string }[] = [
 
 /** Writing an item yourself (`/remember`): one line, a kind, Enter to keep it. */
 export function AddFact(props: { onDone(): void; onKept(): void }) {
+  useBlockFloating();
   const { bridge } = useApp();
   const { projectId } = useProject();
   const [text, setText] = useState("");

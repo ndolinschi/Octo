@@ -1,5 +1,7 @@
+import { Users } from "lucide-react";
 import { agentActivity, lastTeam, teamRoles, type OrchestratorState } from "../../lib/orchestrator";
 import { useProject } from "../../state/project";
+import { Glyph } from "../primitives/Glyph";
 import { Button } from "../primitives/Button";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { useOpenSessions } from "./openSessions";
@@ -9,9 +11,10 @@ import { useOpenSessions } from "./openSessions";
  * commands — never between the tabs and "+" and never one chip per role. The working ring shows only while an agent runs (it
  * has its own 16px slot, so the strip does not change width when a run starts or ends). It opens the agents list
  * (`openSessions`: the Sessions tab filtered to the current session's agents). The team is the running agents while it works, the latest turn's team when idle
- * or failed; nothing shows before the first request.
+ * or failed; nothing shows before the first request. `compact` (a narrow strip, decision 90): the glyph and the count; the name and
+ * the tooltip keep "N agents". The label stays in the layout, hidden, so the strip can measure what folding gives back.
  */
-export function ProjectTeam({ orchestrator }: { orchestrator: OrchestratorState }) {
+export function ProjectTeam({ orchestrator, compact = false }: { orchestrator: OrchestratorState; compact?: boolean }) {
   const { state, project } = useProject();
   const openSessions = useOpenSessions();
   const agents = state.agentOrder.flatMap((id) => (state.agents[id] ? [state.agents[id]] : []));
@@ -28,14 +31,18 @@ export function ProjectTeam({ orchestrator }: { orchestrator: OrchestratorState 
       variant="quiet"
       size="sm"
       data-team-button
+      className="relative"
       title={`${detail}\nOpens the agents list`}
       aria-label={working ? `${label}, working` : label}
       onClick={() => openSessions(project.id)}
     >
       <span aria-hidden className="grid size-4 place-items-center">
-        {working && <StateGlyph state="working" />}
+        {working ? <StateGlyph state="working" /> : compact && <Glyph icon={Users} size={14} />}
       </span>
-      {label}
+      {compact && <span aria-hidden>{team.length}</span>}
+      <span data-team-label aria-hidden={compact || undefined} className={compact ? "pointer-events-none invisible absolute" : undefined}>
+        {label}
+      </span>
     </Button>
   );
 }

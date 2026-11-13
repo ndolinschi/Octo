@@ -1,9 +1,9 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { FileViewSkeleton } from "../files/EditorSkeleton";
 import { useProject } from "../../state/project";
 import { FloatRoomContext } from "../primitives/floatRoom";
 import { parseTab, type TabId } from "../../state/workspace/layout";
-import { useFloatingHere } from "../../state/workspace/useFloatingHere";
+import { FloatingBlockContext, useFloatingHere } from "../../state/workspace/useFloatingHere";
 import { ConversationView } from "../chat/ConversationView";
 import { Transcript } from "../chat/Transcript";
 import { useNow } from "../../lib/hooks";
@@ -159,15 +159,20 @@ function SessionTab({ sessionId, tab }: { sessionId: string; tab: TabId }) {
  * always be scrolled above it.
  */
 function ToolView({ tab, children }: { tab: TabId; children: React.ReactNode }) {
-  const floating = useFloatingHere(tab);
+  // A form with its own input (note editor, memory file editor, "Add") takes the composer away while it is open.
+  const [forms, setForms] = useState(0);
+  const countForms = useCallback((delta: 1 | -1) => setForms((n) => n + delta), []);
+  const floating = useFloatingHere(tab) && forms === 0;
   const [height, setHeight] = useState(0);
   const room = floating && height > 0 ? height + 16 : 0;
   return (
-    <FloatRoomContext.Provider value={room}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {children}
-        {floating && <FloatingComposer onHeight={setHeight} />}
-      </div>
-    </FloatRoomContext.Provider>
+    <FloatingBlockContext.Provider value={countForms}>
+      <FloatRoomContext.Provider value={room}>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {children}
+          {floating && <FloatingComposer onHeight={setHeight} />}
+        </div>
+      </FloatRoomContext.Provider>
+    </FloatingBlockContext.Provider>
   );
 }

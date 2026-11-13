@@ -1,6 +1,7 @@
 import { NOTE_LIMITS, type Note, type NoteDocument, type NoteInput } from "@octo/agent-client";
 import { useId, useRef, useState } from "react";
 import { errorMessage } from "../../lib/format";
+import { useBlockFloating } from "../../state/workspace/useFloatingHere";
 import { charCount, autoDescription, parseTags, pinState } from "../../lib/notes";
 import { Button } from "../primitives/Button";
 import { Checkbox } from "../primitives/Checkbox";
@@ -18,6 +19,7 @@ type View = "write" | "preview";
  */
 export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[]; onCancel(): void; onSave(input: NoteInput): Promise<void> }) {
   const { note } = props;
+  useBlockFloating();
   const [title, setTitle] = useState(note?.title ?? "");
   const [description, setDescription] = useState(note && !note.description_auto ? note.description : "");
   const [tags, setTags] = useState(note?.tags.join(", ") ?? "");

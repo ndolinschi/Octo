@@ -2913,3 +2913,12 @@ again by the orchestrator with Playwright against `?demo=1` (Chromium); not veri
   still restores a maximised group (decision 78). A10: the review header's command block wraps inside a narrow group.
   Not done: B27 (play glyph in the review header). Gates after batches 1a–1c: `tsc`, 615 unit tests, eslint (0 errors),
   prettier, `file-open-stability` and `picker-keys` at 1440×900.
+- **Batch 2.** A5: the end of the tab strip folds to keep the tabs `TAB_MIN` each (`state/workspace/tabStrip.ts`: `endPlan`,
+  tested): first "N agents" becomes its glyph and the count (`ProjectTeam compact`; name and tooltip unchanged), then "Run"
+  becomes an icon-only menu button (`ProjectCommands compactRun`). At 390×700 the tab list is 98 px (was 25). B53, partly:
+  with three tool tabs in a side group "Run" folds first; the active tab still shows two characters ("Me…") — four need a
+  larger `TAB_MIN` or a wider minimum for the active tab, left to the owner. B2: the chips over the floating composer are
+  the new opaque `Button` variant `float` (in the gallery). A7, the rest: a tool tab that shows an editing form (note editor,
+  memory file editor, Knowledge "Add") calls `useBlockFloating()` and the floating composer is not shown while the form is
+  mounted. Still as before: over a tool tab without a form the composer covers the lower part of the panel at rest in
+  one-strip mode (the content scrolls clear through `FloatRoom`).

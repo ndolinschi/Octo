@@ -134,3 +134,24 @@ export function stripPlan(i: { room: number; wanted: number; pinned: number; col
   const collapse = i.pinned > 0 && i.wanted > ifShown;
   return { collapse, overlay: i.wanted > ifShown + (collapse ? i.pinned : 0) };
 }
+
+/** What "Run" gives back when it folds to its icon button (58 → 28 is 30; a little over, so a fold never springs back at once). */
+export const RUN_FREED = 32;
+
+/**
+ * Decision 90, narrow strips: the tab list is guaranteed `TAB_MIN` per tab (the "+" is already outside `room`). To make room,
+ * first "N agents" folds to its glyph with the count, then "Run" to an icon-only menu button. `agents` and `run` are what each
+ * gives back when folded (0: not there; overestimate it a little, never under); `*Compact` say whether they are folded now. What they gave back is added to `room`
+ * before deciding, so folding does not make them come straight back.
+ */
+export function endPlan(i: { room: number; tabs: number; agents: number; run: number; agentsCompact: boolean; runCompact: boolean }): {
+  agentsCompact: boolean;
+  runCompact: boolean;
+} {
+  if (i.room <= 0 || i.tabs <= 0) return { agentsCompact: false, runCompact: false };
+  const need = i.tabs * TAB_MIN + TAB_GAP * (i.tabs - 1);
+  const base = i.room - (i.agentsCompact ? i.agents : 0) - (i.runCompact ? i.run : 0);
+  const agentsCompact = i.agents > 0 && need > base;
+  const runCompact = i.run > 0 && need > base + (agentsCompact ? i.agents : 0);
+  return { agentsCompact, runCompact };
+}

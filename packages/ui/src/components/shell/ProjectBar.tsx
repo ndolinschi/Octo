@@ -17,11 +17,11 @@ const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ de
  * conversation's tab: its sub-agents (`ProjectTeamLine`, decision 34); at the far end of the last strip: the "⋯" menu with the project's actions (`ProjectActions`). The model is chosen
  * in the composer only. Project commands (decision 68) sit before the actions: `commands/ProjectCommands`, mounted by `dock/TabStrip` (features do not import each other).
  */
-export function ProjectTeamLine() {
+export function ProjectTeamLine({ compact = false }: { compact?: boolean }) {
   const { project, state, running } = useProject();
   const orchestrator = useMemo(() => liveOrchestratorState(state, running ? "running" : "idle"), [state, running]);
   if (!project) return null;
-  return <ProjectTeam orchestrator={orchestrator} />;
+  return <ProjectTeam orchestrator={orchestrator} compact={compact} />;
 }
 
 export function ProjectActions() {

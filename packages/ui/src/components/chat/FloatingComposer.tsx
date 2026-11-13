@@ -90,12 +90,12 @@ export function FloatingComposer({ onHeight }: { onHeight?(px: number): void }) 
         {chips && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {turn && (
-              <Button variant="secondary" size="xs" onClick={ws.focusChat} title="Show the conversation">
+              <Button variant="float" size="xs" onClick={ws.focusChat} title="Show the conversation">
                 {turn}
               </Button>
             )}
             {agentsRunning > 0 && (
-              <Button variant="secondary" size="xs" onClick={ws.focusChat} title="Show the conversation">
+              <Button variant="float" size="xs" onClick={ws.focusChat} title="Show the conversation">
                 <RunningDot />
                 {agentsRunning}&nbsp;{agentsRunning === 1 ? "agent" : "agents"} running
               </Button>

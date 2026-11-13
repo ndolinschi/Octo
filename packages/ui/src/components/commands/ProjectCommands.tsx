@@ -9,9 +9,11 @@ import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Minimize2, Play } from "lucide-react";
 import { Glyph } from "../primitives/Glyph";
 import { MOD_LABEL } from "../../lib/keys";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { Dialog } from "../primitives/Dialog";
 import type { MenuItem } from "../primitives/Menu";
+import { Menu } from "../primitives/Menu";
 import { MenuButton } from "../primitives/MenuButton";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
@@ -34,16 +36,20 @@ export default function ProjectCommands({
   onRestore,
   hideCommands = false,
   collapsePinned = false,
+  compactRun = false,
   onPinnedWidth,
 }: {
   /** Set while the strip's group has the whole dock (decision 78). */ onRestore: (() => void) | null;
   /** A review is the active tab: its header has the commands (decision 90), so none are shown here. */ hideCommands?: boolean;
   /** The tabs need the room (decision 90): the pinned buttons are only in the "Run" menu. */ collapsePinned?: boolean;
+  /** The strip is narrow (decision 90): "Run" is an icon-only menu button. */ compactRun?: boolean;
   /** The width the pinned buttons take (with their gap), so the strip can decide before it folds them; 0 when none show. */ onPinnedWidth?: (
     w: number,
   ) => void;
 }) {
   const pinnedBox = useRef<HTMLSpanElement>(null);
+  const runButton = useRef<HTMLButtonElement>(null);
+  const [runMenu, setRunMenu] = useState<{ x: number; y: number } | null>(null);
   const api = useCommandsApi();
   const store = useRunsStore();
   const ws = useOptionalWorkspace();
@@ -57,6 +63,7 @@ export default function ProjectCommands({
   const restore = onRestore && (
     <IconButton
       icon={Minimize2}
+      size="sm"
       label="Restore the layout"
       title={`Restore the other panels (Esc, ${MOD_LABEL}Shift+Enter)`}
       data-restore-layout
@@ -139,8 +146,27 @@ export default function ProjectCommands({
             );
           })}
         </span>
-        <MenuButton label="Run a project command" text="Run" alignEnd items={items} />
+        {compactRun ? (
+          <IconButton
+            ref={runButton}
+            icon={Play}
+            size="sm"
+            label="Run a project command"
+            aria-haspopup="menu"
+            aria-expanded={runMenu !== null}
+            className={cn("shrink-0", runMenu && "bg-active text-fg")}
+            onClick={() => {
+              const r = runButton.current?.getBoundingClientRect();
+              if (r) setRunMenu(runMenu ? null : { x: r.right, y: r.bottom + 4 });
+            }}
+          />
+        ) : (
+          <MenuButton label="Run a project command" text="Run" alignEnd items={items} />
+        )}
       </span>
+      <Presence show={runMenu !== null} exitMs={0}>
+        {runMenu && <Menu label="Run a project command" x={runMenu.x} y={runMenu.y} alignEnd items={items} onClose={() => setRunMenu(null)} />}
+      </Presence>
       <Presence show={problem !== null}>
         {problem !== null && (
           <Dialog

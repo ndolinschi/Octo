@@ -1,3 +1,4 @@
+import { createContext, useContext, useEffect } from "react";
 import { focusedGroup, CHAT, type TabId } from "./layout";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -5,4 +6,20 @@ import { useWorkspace } from "./WorkspaceProvider";
 export function useFloatingHere(tab: TabId): boolean {
   const ws = useWorkspace();
   return focusedGroup(ws.layout).active === tab && !ws.isVisible(CHAT);
+}
+
+/** Provided by a tool tab's host (`dock/TabView`): counts the editing forms the tab shows now. */
+export const FloatingBlockContext = createContext<((delta: 1 | -1) => void) | null>(null);
+
+/**
+ * An editing form (note editor, memory file editor, "Add" fact) has its own input: while it is mounted the tab shows no floating
+ * composer over it (two inputs would compete). No-op outside a tool tab.
+ */
+export function useBlockFloating(): void {
+  const count = useContext(FloatingBlockContext);
+  useEffect(() => {
+    if (!count) return;
+    count(1);
+    return () => count(-1);
+  }, [count]);
 }

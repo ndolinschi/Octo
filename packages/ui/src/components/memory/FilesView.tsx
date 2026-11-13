@@ -8,6 +8,7 @@ import { formatDay, formatWhen } from "../../lib/memory/dates";
 import { draftProblem, fileDir, fileName, formatBytes, sortFiles } from "../../lib/memory/files";
 import type { Load } from "../../lib/memory/load";
 import { useApp } from "../../state/app";
+import { useBlockFloating } from "../../state/workspace/useFloatingHere";
 import { Button } from "../primitives/Button";
 import { Field } from "../primitives/Field";
 import { fileIcon } from "../primitives/fileIcons";
@@ -155,6 +156,7 @@ function FileDetail(props: { projectId: string; file: MemoryFile; now: number; o
 }
 
 function FileEditor(props: { file: MemoryFile; onCancel(): void; onSave(content: string, summary: string): Promise<void> }) {
+  useBlockFloating();
   const [content, setContent] = useState(props.file.content ?? "");
   const [summary, setSummary] = useState(props.file.summary);
   const [busy, setBusy] = useState(false);

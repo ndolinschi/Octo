@@ -8,7 +8,7 @@ import { useProject } from "../../state/project";
 import { CHAT, toolTab, type TabId } from "../../state/workspace/layout";
 import { SIDE_PAD, useChrome } from "../../state/chrome";
 import { ProjectActions, ProjectTeamLine } from "../shell/ProjectBar";
-import { slotShift, tabsOverflow } from "../../state/workspace/tabStrip";
+import { endPlan, RUN_FREED, slotShift, tabsOverflow } from "../../state/workspace/tabStrip";
 import { MOD, useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Presence } from "../primitives/Presence";
 import { dragStep, pressTab, takeSettle, useDrag } from "./drag";
@@ -74,6 +74,22 @@ export function TabStrip(props: {
     measure();
     return () => ro.disconnect();
   }, []);
+  // Decision 90, narrow strips: what "N agents" and "Run" give back when they fold, measured from the end of this strip.
+  const strip = useRef<HTMLDivElement>(null);
+  const [ends, setEnds] = useState({ agents: 0, run: 0 });
+  const [compactAgents, setCompactAgents] = useState(false);
+  const [compactRun, setCompactRun] = useState(false);
+  useLayoutEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const label = el.querySelector<HTMLElement>("[data-team-label]");
+    const next = {
+      agents: label ? label.offsetWidth : 0,
+      run: el.querySelector('[aria-label^="Run a project command"]') ? RUN_FREED : 0,
+    };
+    setEnds((e) => (e.agents === next.agents && e.run === next.run ? e : next));
+    // The lazy commands arrive and the strip's width changes (`room`), a fold flips: measure again.
+  }, [room, compactAgents, compactRun, props.tabs.length]);
   const [menu, setMenu] = useState<{ tab: TabId; x: number; y: number } | null>(null);
   const drag = useDrag();
   const counts = useOptionalComments()?.counts;
@@ -97,6 +113,10 @@ export function TabStrip(props: {
     })
     .join("\n");
   const fit = useStripFit(list, room - reserved, signature);
+  const end = endPlan({ room: room - reserved, tabs: props.tabs.length, ...ends, agentsCompact: compactAgents, runCompact: compactRun });
+  // Derived from measurements already in state: adjusted while rendering, not in an effect.
+  if (end.agentsCompact !== compactAgents) setCompactAgents(end.agentsCompact);
+  if (end.runCompact !== compactRun) setCompactRun(end.runCompact);
   // Decision 90: the review's own header carries the commands (run in its worktree), so the top row does not repeat them.
   const reviewActive = ws.layout.groups.some((g) => g.active === toolTab("review"));
   const listWidth = room > 0 ? room - reserved - (overflow ? ALL_TABS_ROOM : 0) : 0;
@@ -176,6 +196,7 @@ export function TabStrip(props: {
 
   return (
     <div
+      ref={strip}
       data-strip
       data-drag-region
       className="relative flex h-bar shrink-0 items-center gap-1 px-pane"
@@ -248,7 +269,7 @@ export function TabStrip(props: {
         )}
       </div>
       {/* Decision 91g: the sub-agents are one quiet "N agents" button at the end of the strip, before the commands. */}
-      {props.tabs.includes(CHAT) && <ProjectTeamLine />}
+      {props.tabs.includes(CHAT) && <ProjectTeamLine compact={compactAgents} />}
       {props.last && (
         <Suspense fallback={null}>
           {/* The "Restore" control of a maximised group lives in this chunk too (decision 78): the initial bundle has no room for it. */}
@@ -256,6 +277,7 @@ export function TabStrip(props: {
             onRestore={props.maximised ? () => ws.toggleMaximise(props.active, false) : null}
             hideCommands={reviewActive}
             collapsePinned={fit.collapse}
+            compactRun={compactRun}
             onPinnedWidth={fit.setPinned}
           />
         </Suspense>
