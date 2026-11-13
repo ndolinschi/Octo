@@ -4,6 +4,7 @@ import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFil
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooks";
+import { useRovingRows } from "../../lib/rovingRows";
 import type { ReviewApi } from "../../lib/review/api";
 import { plural } from "../../lib/review/files";
 import { CHECKS_LABEL, listFailure, parsePullInput, reviewSourceText, unavailableTitle } from "../../lib/review/pull";
@@ -87,7 +88,8 @@ function Picker(props: {
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [now] = useState(() => Date.now());
   const list = useRef<HTMLDivElement>(null);
-  useRowKeys(list, { roving: true });
+  useRowKeys(list);
+  useRovingRows(list);
 
   const ready = state.list;
   // A refusal or an open error belongs to the view it happened in (decision 91i): changing the view clears it.

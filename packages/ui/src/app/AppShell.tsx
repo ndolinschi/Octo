@@ -17,7 +17,6 @@ import { Presence } from "../components/primitives/Presence";
 import type { PaletteAction } from "../components/shell/CommandPalette";
 import { Panel } from "../components/shell/Panel";
 import { Sidebar } from "../components/shell/Sidebar";
-import { SidebarDrawer } from "../components/shell/SidebarDrawer";
 import { TitleBar } from "../components/shell/TitleBar";
 import { StatusBar } from "../components/status/StatusBar";
 import { StatusSlotsContext } from "../state/statusSlots";
@@ -48,6 +47,8 @@ const ConnectScreen = lazy(() => import("../components/providers/ConnectScreen")
 
 /** Dialogs that only open on a conflict (unsaved edits): their own chunk with `Dialog`, warmed after the first paint. */
 const LeaveDialog = lazy(() => import("../components/shell/DiscardDialogs").then((m) => ({ default: m.LeaveDialog })));
+/** The sidebar as a drawer exists only under the drawer breakpoint: its own chunk (with the modal hook), warmed after first paint. */
+const SidebarDrawer = lazy(() => import("../components/shell/SidebarDrawer").then((m) => ({ default: m.SidebarDrawer })));
 const SidebarSessions = lazy(() => import("../components/sessions/SidebarSessions").then((m) => ({ default: m.SidebarSessions })));
 
 export function AppShell() {
@@ -133,6 +134,8 @@ function Shell() {
       void import("../components/shell/DiscardDialogs").catch(() => undefined);
       void import("../components/primitives/Menu").catch(() => undefined);
       void import("../components/chat/ComposerPills").catch(() => undefined);
+      void import("../components/shell/SidebarDrawer").catch(() => undefined);
+      void import("../components/chat/ContextRing").catch(() => undefined);
     };
     if (Reflect.has(window, "requestIdleCallback")) {
       const id = window.requestIdleCallback(warm, { timeout: 500 });
@@ -308,9 +311,11 @@ function Shell() {
           </div>
           <StatusBar home={route.projectId === null && settings === null} startRef={setStatusStart} endRef={setStatusEnd} />
           <Presence show={drawerShown}>
-            <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
-              <Sidebar {...sidebarProps} />
-            </SidebarDrawer>
+            <Suspense fallback={null}>
+              <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
+                <Sidebar {...sidebarProps} />
+              </SidebarDrawer>
+            </Suspense>
           </Presence>
           <Presence show={creating}>
             <Suspense fallback={null}>

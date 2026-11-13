@@ -263,59 +263,20 @@ export function useScrollFade<T extends HTMLElement>(ref: RefObject<T | null>, a
  * after the hook's first render (a list that appears once its data has loaded): every render checks whether `ref` points
  * at another element and rebinds.
  */
-export function useRowKeys<T extends HTMLElement>(ref: RefObject<T | null>, options?: { roving?: boolean }): void {
+export function useRowKeys<T extends HTMLElement>(ref: RefObject<T | null>): void {
   const bound = useRef<T | null>(null);
-  const unrove = useRef<(() => void) | null>(null);
-  const roving = options?.roving === true;
   useEffect(() => {
     const el = ref.current;
     if (el === bound.current) return;
     bound.current?.removeEventListener("keydown", moveInList);
-    unrove.current?.();
-    unrove.current = null;
     el?.addEventListener("keydown", moveInList);
-    if (el && roving) unrove.current = rove(el);
     bound.current = el;
   });
   useEffect(
     () => () => {
       bound.current?.removeEventListener("keydown", moveInList);
-      unrove.current?.();
-      unrove.current = null;
       bound.current = null;
     },
     [],
   );
-}
-
-/**
- * Polish step 6b, R7 (opt-in `roving`): the list is one Tab stop. Exactly one `[data-row]` has `tabindex="0"` — the row that
- * last had focus while it is still in the list, else the first — and every other row `-1`; ↑/↓/Home/End move as before. Rows
- * that come and go (a filter, a search) are re-ranked by a MutationObserver, so the list needs nothing else.
- */
-function rove(el: HTMLElement): () => void {
-  let current: HTMLElement | null = null;
-  const apply = () => {
-    const rows = [...el.querySelectorAll<HTMLElement>("[data-row]")];
-    if (!current || !rows.includes(current)) current = rows[0] ?? null;
-    for (const r of rows) {
-      const want = r === current ? "0" : "-1";
-      if (r.getAttribute("tabindex") !== want) r.setAttribute("tabindex", want);
-    }
-  };
-  const onFocus = (e: FocusEvent) => {
-    const row = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>("[data-row]") : null;
-    if (!row || !el.contains(row) || row === current) return;
-    current = row;
-    apply();
-  };
-  apply();
-  const mo = new MutationObserver(apply);
-  // `tabindex` is written here and is not in the filter, so the observer never answers its own writes.
-  mo.observe(el, { childList: true, subtree: true });
-  el.addEventListener("focusin", onFocus);
-  return () => {
-    mo.disconnect();
-    el.removeEventListener("focusin", onFocus);
-  };
 }

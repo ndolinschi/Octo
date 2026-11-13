@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isTextFile, refusal, sizeLabel, withAttachments } from "./attachments";
+import { isTextFile, refusal, sizeLabel } from "./attachmentRules";
+import { withAttachments } from "./attachments";
 
 test("text files are recognised by type or name", () => {
   assert.equal(isTextFile("a.ts", ""), true);

@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useEscape, useRowKeys } from "../../lib/hooks";
+import { cn } from "../../lib/cn";
 import { settingsHref } from "../../lib/route";
 import { Button } from "../primitives/Button";
 import { ListFrame } from "../primitives/Card";
@@ -36,7 +37,7 @@ const CONTENT: Record<SectionId, (projectId: string | null) => ReactNode> = {
 
 /**
  * Decision 59: Settings is a page (`#/settings/<section>`), not a dialog. The settings navigation takes the sidebar's
- * place; the content is one centred column (880px, `settings-page`) of groups. Below 760px the navigation is a select on top and
+ * place; the content is one centred column (880px, `settings-page`) of groups; the row sections use its left 660px (`settings-rows`). Below 760px the navigation is a select on top and
  * rows stack their control under the text. Escape (outside a field with text) goes back.
  */
 export function SettingsPage(props: {
@@ -147,7 +148,9 @@ export function SettingsPage(props: {
               {searching ? (
                 <Results query={query} results={results} onOpen={open} list={resultList} />
               ) : (
-                <div className="flex flex-col gap-6">{CONTENT[section](props.projectId ?? null)}</div>
+                // Cross-part leftovers (a): the row sections keep a reading measure (`settings-rows`) from the same left edge, so a
+                // row's control sits near its label; Providers keeps the column for its list | detail surface.
+                <div className={cn("flex flex-col gap-6", section !== "providers" && "max-w-settings-rows")}>{CONTENT[section](props.projectId ?? null)}</div>
               )}
             </div>
           </ScrollArea>

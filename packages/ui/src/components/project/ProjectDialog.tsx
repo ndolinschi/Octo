@@ -314,6 +314,8 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
                       side="bottom"
                       label={`${m.label} model`}
                       value={models[m.key]}
+                      // The notice above the group says the problem once (B52).
+                      problemShown={providers.status === "ready" && unrunnable.length > 0}
                       onChoose={(v) => setModels((cur) => ({ ...cur, [m.key]: v }))}
                     />
                   </Field>

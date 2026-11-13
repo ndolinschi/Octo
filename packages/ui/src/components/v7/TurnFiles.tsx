@@ -70,7 +70,7 @@ function FileRow({ file, selected, state, onClick }: { file: FileChangeSummary; 
       title={`${kindLabel(file.kind)} by ${sourceLabel(file.source)}: ${file.folder}/${file.path}${reverted ? " (reverted)" : ""}`}
       onClick={onClick}
       className={cn(
-        "flex h-7 w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-sm press-row focus-inset max-md:h-10",
+        "flex h-ctl-md w-full min-w-0 items-center gap-2 rounded-sm px-2 text-left text-sm press-row focus-inset max-md:h-ctl-lg touch:h-ctl-lg",
         selected ? "bg-active text-fg" : "text-fg-2 hover:bg-hover hover:text-fg",
       )}
     >

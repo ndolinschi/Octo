@@ -4,7 +4,7 @@ import { forwardRef, lazy, Suspense, useCallback, useEffect, useId, useImperativ
 import { cn } from "../../lib/cn";
 import { useChatSlots } from "../../state/chatSlots";
 import { errorMessage } from "../../lib/format";
-import { canForce, refusedProvider } from "../../lib/providers/recheck";
+import { canForce, refusedProvider } from "../../lib/providers/refusal";
 import { Button } from "../primitives/Button";
 import { IconButton } from "../primitives/IconButton";
 import { Presence } from "../primitives/Presence";
@@ -14,7 +14,6 @@ import { modeNote } from "../../lib/modes";
 import { FolderChip, ModelChip, useShedLabels } from "./ComposerChips";
 import type { ComposerMode } from "./composerMode";
 import type { QueuedMessage } from "./ComposerPills";
-import { ContextRing } from "./ContextRing";
 import { useAttachments } from "./useAttachments";
 import { useImages } from "./useImages";
 import { useHost } from "../../state/host";
@@ -35,6 +34,8 @@ const ModeChip = lazy(() => import("./ModeChip").then((m) => ({ default: m.ModeC
 const ComposerPills = lazy(() => import("./ComposerPills").then((m) => ({ default: m.ComposerPills })));
 const RoutingLine = lazy(() => import("./RoutingLine").then((m) => ({ default: m.RoutingLine })));
 const SlashMenu = lazy(() => import("./SlashMenu").then((m) => ({ default: m.SlashMenu })));
+/** The context gauge shows once the harness reports the context's size (after the project's state loads): warmed after first paint. */
+const ContextRing = lazy(() => import("./ContextRing").then((m) => ({ default: m.ContextRing })));
 const ComposerHighlight = lazy(() => import("./ComposerHighlight").then((m) => ({ default: m.ComposerHighlight })));
 
 export type ComposerHandle = {
@@ -504,7 +505,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             )}
             <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={shed >= 2} disabled={disabled} onOpenChange={onChip} />
             <span className="min-w-0 flex-1" />
-            <ContextRing used={props.context.used} size={props.context.size} />
+            {props.context.used && props.context.size ? (
+              <Suspense fallback={null}>
+                <ContextRing used={props.context.used} size={props.context.size} />
+              </Suspense>
+            ) : null}
             <SendButton action={action} enabled={action === "stop" ? !disabled : canSend} onStop={() => void props.onCancel()} />
           </div>
         </form>

@@ -4,6 +4,7 @@ import type { OpenReviewInput, ReviewBranch, ReviewBranchList } from "@octo/agen
 import { cn } from "../../lib/cn";
 import { errorMessage, timeAgo } from "../../lib/format";
 import { useRowKeys } from "../../lib/hooks";
+import { useRovingRows } from "../../lib/rovingRows";
 import { aheadBehindCompact, aheadBehindText, splitName, branchOrder, hasChanges, openInput } from "../../lib/review/branches";
 import type { ReviewApi } from "../../lib/review/api";
 import { Glyph } from "../primitives/Glyph";
@@ -25,7 +26,8 @@ export function BranchList(props: { api: ReviewApi; folder: string; opening: str
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [now] = useState(() => Date.now());
   const list = useRef<HTMLDivElement>(null);
-  useRowKeys(list, { roving: true });
+  useRowKeys(list);
+  useRovingRows(list);
 
   useEffect(() => {
     let alive = true;

@@ -57,6 +57,11 @@ test("hits group by kind in a fixed order, messages join exchanges, empty groups
     groups[1]?.hits.map((h) => h.key),
     ["fact:t/f2", "task:t", "fact:t/f1"],
   );
+  // Each hit carries its kind (the row's glyph), notes included.
+  assert.deepEqual(
+    groups.map((g) => g.hits.map((h) => h.kind)),
+    [["message", "exchange"], ["fact", "task", "fact"], ["file"], ["note"]],
+  );
   assert.deepEqual(
     groupHits(hits.filter((h) => h.group === "files")).map((g) => g.id),
     ["files"],

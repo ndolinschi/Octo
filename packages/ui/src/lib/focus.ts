@@ -74,25 +74,29 @@ export function moveInList(e: { key: string; currentTarget: EventTarget | null; 
   rows[to]?.focus();
 }
 
-const FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]';
+/**
+ * Where an opened tool panel puts focus (one rule): a target the panel marks (`data-autofocus`), else its search field, else
+ * its list — the chosen row, else the first — and never a header button or a view tab.
+ */
+const PANEL_TARGETS = ["[data-autofocus]", 'input[type="search"]', '[data-row][aria-current="true"], [data-row][aria-selected="true"]', "[data-row]"];
 
-/** The first visible element in `root` that takes keyboard focus. */
-export function firstFocusable(root: ParentNode): HTMLElement | null {
-  for (const el of root.querySelectorAll<HTMLElement>(FOCUSABLE)) if (el.offsetParent !== null && !el.closest("[inert]")) return el;
+function panelTarget(root: ParentNode): HTMLElement | null {
+  for (const selector of PANEL_TARGETS)
+    for (const el of root.querySelectorAll<HTMLElement>(selector)) if (el.offsetParent !== null && !el.closest("[inert]")) return el;
   return null;
 }
 
 /**
- * Decision 35: a surface that just opened takes focus — its first focusable element once it has one (lazy panels load
- * a moment later), else, after `wait`, the container itself (`tabindex="-1"`). Never leaves focus on the page.
+ * Decision 35: a surface that just opened takes focus — its search field or list (`panelTarget`) once it has one (lazy panels
+ * and their lists load a moment later), else, after `wait`, the container itself (`tabindex="-1"`). Never leaves focus on the page.
  */
-export function focusSurfaceSoon(root: () => HTMLElement | null, wait = 600): void {
+export function focusSurfaceSoon(root: () => HTMLElement | null, wait = 1000): void {
   const start = performance.now();
   focusSoon(
     () => {
       const el = root();
       if (!el) return null;
-      return firstFocusable(el) ?? (performance.now() - start > wait ? el : null);
+      return panelTarget(el) ?? (performance.now() - start > wait ? el : null);
     },
     { timeout: wait + 1500 },
   );

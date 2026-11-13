@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import type { AnsweredInput, Approval, ApprovalAnswer, InputAnswer, InputRequest } from "@octo/agent-client";
+import type { AnsweredInput, Approval, ApprovalAnswer, InputAnswer, InputRequest, TurnChanges } from "@octo/agent-client";
+import { earlierRequestLabel } from "../../lib/v7/changes";
 import { useApp } from "../../state/app";
 import type { Resolution } from "../../lib/v7/approval";
 import { ApprovalCard } from "./ApprovalCard";
@@ -210,7 +211,7 @@ function Pane({ height = 520, children }: { height?: number; children: ReactNode
 
 function Changes({ theme, loadMonaco }: { theme: "dark" | "light"; loadMonaco(): Promise<DiffMonaco> }) {
   const [last, setLast] = useState<string>("none yet");
-  const label = (id: number) => TURN_LABELS[id] ?? `Turn ${id}`;
+  const label = (turn: TurnChanges) => TURN_LABELS[turn.turn_id] ?? earlierRequestLabel(turn, Date.now());
   const view = (mode: "ready" | "empty" | "loading" | "error", revert: RevertMode = "ok", extra: { height?: number } = {}) => (
     <Pane height={extra.height ?? 520}>
       <ChangesView

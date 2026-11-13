@@ -3218,3 +3218,34 @@ Rules R1–R7 of the orchestrator's brief; 164 before/after pairs (dark and ligh
   scripts still hold; picker, branches, Pending, Details, suggest, three verdicts, check out and Run driven by script.
   **Known and not fixed:** threads inside the diff are in Monaco's `aria-hidden` zone layer, so a screen reader cannot
   reach them (it was so before). Not verified: WebKit, touch, a screen reader, a live `gh`.
+
+## As built — after the polish: entry bundle and cross-part leftovers (2026-11-13)
+
+- **Entry bundle.** After the fixes and six polish steps the entry measured 160.34 kB gzip (budget 158.90). It is
+  **158.07 kB** again; the budget was not raised. What had entered: the drawer and its modal hook, the composer's one-line
+  form, the roving-row hook, the top row's fold logic and smaller growth across the frame and the transcript. Now lazy and
+  warmed after first paint: `SidebarDrawer`, the agent tab's observer bar (a 40px placeholder holds its row), the start
+  failure, attachment rules and image adding (first drop, paste or picture), `ContextRing` (mounted once the context size
+  is known), `recheck`; Review's roving focus is `lib/rovingRows.ts` (`useRovingRows`; the `roving` option of `useRowKeys`
+  is gone). Tried and dropped: a lazy `FloatingComposer` (+2.4 kB through hoisted chunks), a lazy drag layer.
+- **Settings.** Row sections are 660px wide (`--spacing-settings-rows`) inside the shared 880 column, left aligned;
+  Providers keeps 880. One left edge in all ten sections (title x 450 at 1440); label to control 798 → 626.
+- **Sidebar.** An empty meta takes no column, so a long name uses the free width; the column returns while the sessions
+  chevron shows.
+- **Focus when a tool tab opens** (`lib/focus.ts` `focusSurfaceSoon`): `[data-autofocus]`, else the search field, else the
+  chosen row, else the first row, else the panel itself. Notes and Review open in their search field (were a header icon
+  and a view tab), Sessions and Changes on the first row.
+- `Checkbox` passes `data-*` through (the Choose commands dialog opens on its first box); `ModelPicker problemShown`
+  draws a value in the normal tone when the caller explains the problem (project dialog); an unverified row of the model
+  picker shows its state on a second line (40px), nothing truncates at 310; Memory search hits have a glyph column;
+  Changes headings read "Earlier request · Today 8:11 PM" instead of "Turn 60" and file rows are 32 (40 under touch);
+  `KeySteps`' refusal says the sentence plainly with the variable under Details (not seen in the browser: no demo knob);
+  the desktop demo emits `fact.remembered` and its base session's messages carry a session id.
+- The status bar's "filled box" in several screenshots was a hover state under a parked mouse pointer, not a resting
+  background: no change.
+- Not done: one glyph size in the composer's control row (needs a primitive variant).
+- Gates on the final tree: `pnpm lint` (cycles included), `pnpm format:check`, 636 UI and 42 desktop tests, the
+  production build and bundle check, `spacing-audit` total=0, `width-stability` (two sizes), `frame-colours`, `flicker`,
+  `file-open-stability` at 1440×900, 900×600 and 390×700, `picker-keys`, `scroll-on-send`, `backdrop-check`,
+  `panel-measure`, `layout-shift`. Not verified anywhere in this work: WebKit and macOS, a live harness, real agents and
+  `gh`, touch on a device, a screen reader.

@@ -4,7 +4,7 @@ import type { Approval, ChangeDetail, InputField, InputRequest } from "@octo/age
 import { answerFor, approvalDeadline, approvalItems, diffBlocks, formatCountdown, keyAction, optionAnswer, resolutionCause, resolutionLabel } from "./approval";
 import { answeredLine, buildAnswer, fieldsInError, initialValues, localAnswered, validate } from "./form";
 import { queueLine, queueView, withoutQueued } from "./queue";
-import { diffLayout, netDiff, netIds, revertOrder, revertProblem, sourceLabel, splitPath, turnRevertOrder } from "./changes";
+import { diffLayout, earlierRequestLabel, netDiff, netIds, revertOrder, revertProblem, sourceLabel, splitPath, turnRevertOrder } from "./changes";
 
 const approval = (id: string, created_at: string): Approval => ({
   id,
@@ -166,4 +166,13 @@ test("changes: 409s become a next step; sources and layout", () => {
   assert.equal(diffLayout(1440, 500), "unified");
   assert.deepEqual(splitPath("src/a/b.ts"), { dir: "src/a", name: "b.ts" });
   assert.deepEqual(splitPath("b.ts"), { dir: "", name: "b.ts" });
+});
+
+test("changes: a turn whose request is not loaded is an earlier request with the time of its first change, never a number", () => {
+  const now = Date.parse("2026-11-13T12:00:00");
+  const at = (created_at: string) => ({ created_at });
+  assert.equal(earlierRequestLabel({ files: [] }, now), "Earlier request");
+  assert.equal(earlierRequestLabel({ files: [at("")] } as never, now), "Earlier request");
+  const label = earlierRequestLabel({ files: [at("2026-11-13T10:05:00"), at("2026-11-13T09:30:00")] } as never, now);
+  assert.match(label, /^Earlier request · Today 9:30/);
 });

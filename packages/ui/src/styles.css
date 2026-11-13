@@ -1473,3 +1473,28 @@
   z-index: 1;
 }
 /* ── /polish step 6b: review ── */
+/* cross-part leftovers (after the six polish steps) */
+@theme {
+  /* (a) The row sections of Settings (all but Providers) are this wide from the page column's left edge: a row's control sits
+     within reach of its label at 1440 (was ~800px away across the 880 column). Providers keeps the column for list | detail. */
+  --spacing-settings-rows: 660px;
+}
+/* (b) A project row's name takes the room an empty meta leaves. The 24px column comes back only while the sessions chevron
+   shows there (hover, focus, open; always on touch and when narrow: T2), so the chevron never covers the name. A row without
+   the chevron also lets a short meta ("1h") take only its own width. */
+[data-project-row] span:has(> [data-project-meta]:empty) {
+  display: none;
+}
+[data-project-row]:has(> [data-sessions-toggle]):is(:hover, :focus-within) span:has(> [data-project-meta]:empty),
+[data-project-row]:has(> [data-sessions-toggle][aria-expanded="true"]) span:has(> [data-project-meta]:empty) {
+  display: block;
+}
+@media (pointer: coarse), (max-width: 767.98px) {
+  [data-project-row]:has(> [data-sessions-toggle]) span:has(> [data-project-meta]:empty) {
+    display: block;
+  }
+}
+[data-project-row]:not(:has(> [data-sessions-toggle])) [data-project-meta] {
+  min-width: 0;
+}
+/* end cross-part leftovers */

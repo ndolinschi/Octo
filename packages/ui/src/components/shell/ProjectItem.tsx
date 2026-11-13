@@ -11,9 +11,10 @@ import { OrchestratorGlyph } from "../primitives/Status";
  * ONE 32px line (40 under touch) — the state glyph, the name, a right-aligned meta that says the one thing worth saying
  * (`projectRowLines`: "1h", "2 agents", "new"). The whole sentence ("Failed: GitHub Copilot is not logged in", "Working, 2
  * agents") is in the tooltip and the accessible name. Decision 91k: the words are never toned; the glyph carries the tone
- * (idle is a quiet dot, F2). The meta keeps a 24px column even when empty, which is where the sessions chevron appears
- * (`SidebarSessions`), so the chevron never covers the name's ellipsis. Requests are not listed here: they live in the
- * conversation's turn rail and in the palette.
+ * (idle is a quiet dot, F2). An empty meta gives its room to the name; the 24px column comes back while the sessions chevron
+ * shows there (`SidebarSessions`: hover, focus, open, touch), so the chevron never covers the name's ellipsis, and a row without
+ * the chevron lets a short meta take only its own width (`styles.css`, cross-part leftovers b). Requests are not listed here:
+ * they live in the conversation's turn rail and in the palette.
  */
 export function ProjectItem(props: {
   project: ProjectSummary;

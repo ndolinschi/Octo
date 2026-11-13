@@ -1,21 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage } from "../../lib/format";
-import { room } from "../../lib/images";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 
-export type ImageChip = {
-  id: string;
-  name: string;
-  bytes: number;
-  /** An object URL of the (possibly scaled) picture, for the thumbnail. */
-  url: string;
-  state: "working" | "ready" | "failed";
-  attachmentId?: string;
-  problem?: string;
-};
-
-let nextId = 0;
+export type { ImageChip } from "./addImages";
+import type { ImageChip } from "./addImages";
 
 /**
  * B12: the images of the message being written. Each is scaled in the browser (`lib/images`), shown at once as a chip with a
@@ -42,29 +31,11 @@ export function useImages() {
 
   const add = useCallback(
     (files: readonly File[]) => {
-      const { take, over } = room(count.current, files.length);
-      setNote(over > 0 ? `Only 8 images go with one message; ${over} ${over === 1 ? "was" : "were"} left out.` : null);
-      count.current += take;
-      for (const file of files.slice(0, take)) {
-        const id = `img${(nextId += 1)}`;
-        const url = URL.createObjectURL(file);
-        urls.current.add(url);
-        setImages((cur) => [...cur, { id, name: file.name || "image", bytes: file.size, url, state: "working" }]);
-        void (async () => {
-          try {
-            const { prepare } = await import("./prepareImage");
-            const { blob, name } = await prepare(file);
-            const shown = URL.createObjectURL(blob);
-            urls.current.add(shown);
-            patch(id, { url: shown, bytes: blob.size, name });
-            if (!bridge.uploadAttachment) throw new Error("This harness cannot take images");
-            const att = await bridge.uploadAttachment(projectId, new Uint8Array(await blob.arrayBuffer()), { name });
-            patch(id, { state: "ready", attachmentId: att.id });
-          } catch (e) {
-            patch(id, { state: "failed", problem: errorMessage(e) });
-          }
-        })();
-      }
+      // The work of adding pictures loads with the first one (its own chunk).
+      void import("./addImages").then(
+        (m) => m.addImages(files, { bridge, projectId, count, urls, setImages, setNote, patch }),
+        (e: unknown) => setNote(`Couldn't add the images: ${errorMessage(e)}. Try again.`),
+      );
     },
     [bridge, projectId, patch],
   );

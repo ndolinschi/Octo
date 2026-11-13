@@ -129,9 +129,11 @@ export function OfferedDialog(props: {
     >
       <div className="flex flex-col gap-1">
         {props.all.length === 0 && <p className="text-sm text-fg-3">This project has no commands yet. Add some first.</p>}
-        {props.all.map((c) => (
+        {props.all.map((c, i) => (
           <Checkbox
             key={c.name}
+            // The dialog opens on its first box (the list is what it is for), not on Close.
+            data-autofocus={i === 0 || undefined}
             label={c.name}
             description={<span className="font-mono">{c.command}</span>}
             checked={chosen.has(c.name.toLowerCase())}

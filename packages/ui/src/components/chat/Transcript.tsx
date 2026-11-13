@@ -9,7 +9,6 @@ import { useCopy } from "../../lib/hooks";
 import { splitComments } from "../../lib/comments";
 import { buildTurns, compactionSlots, promptText, turnWarning, type Turn } from "../../lib/transcript";
 import { agentLabelOf } from "../../lib/errors/words";
-import { recheckAgent } from "../../lib/providers/recheck";
 import { useApp } from "../../state/app";
 import { parseAcp } from "../../lib/models";
 import { useAcpNames } from "../../state/models";
@@ -112,7 +111,8 @@ export const Transcript = memo(function Transcript(props: {
   const { bridge } = useApp();
   const recheck = useCallback(async () => {
     const id = providerIdOf(agent.model);
-    const ready = id ? await recheckAgent(bridge, id).catch(() => false) : false;
+    // "Check again" loads its module on the first press.
+    const ready = id ? await import("../../lib/providers/recheck").then((m) => m.recheckAgent(bridge, id)).catch(() => false) : false;
     login.recheck();
     return ready;
   }, [agent.model, bridge, login]);

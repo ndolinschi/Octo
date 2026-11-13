@@ -1,4 +1,6 @@
+import type { TurnChanges } from "@octo/agent-client";
 import { useMemo, useState } from "react";
+import { earlierRequestLabel } from "../../lib/v7/changes";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
 import { ChangesView, type ChangesViewProps } from "./ChangesView";
@@ -39,11 +41,11 @@ function Live(props: ChangesTabProps) {
   const orchestratorId = project?.orchestrator_agent_id;
   const messages = orchestratorId ? state.messages[orchestratorId] : undefined;
   // A turn is the id of the user message that started it: its first words say which request changed the files.
-  const turnLabel = (turnId: number) => {
-    const m = messages?.find((x) => x.id === turnId);
+  const turnLabel = (turn: TurnChanges) => {
+    const m = messages?.find((x) => x.id === turn.turn_id);
     const text = m?.content.find((b) => b.type === "text");
     const line = text && "text" in text ? text.text.replace(/\s+/g, " ").trim() : "";
-    return line ? (line.length > LABEL_MAX ? `${line.slice(0, LABEL_MAX - 1)}…` : line) : `Turn ${turnId}`;
+    return line ? (line.length > LABEL_MAX ? `${line.slice(0, LABEL_MAX - 1)}…` : line) : earlierRequestLabel(turn, Date.now());
   };
   return <ChangesView api={api} theme={theme} refreshKey={recorded} turnLabel={turnLabel} {...props} />;
 }

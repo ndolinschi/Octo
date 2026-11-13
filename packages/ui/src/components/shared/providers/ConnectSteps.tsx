@@ -137,11 +137,16 @@ export function KeySteps({ provider, upstream }: { provider: Provider; upstream:
     );
   if (load.status === "unavailable" || load.status === "error")
     return (
-      <p role={load.status === "error" ? "alert" : undefined} className="text-sm text-fg-2">
-        {load.status === "error" ? `${load.message}. ` : ""}This connection cannot set keys: the harness accepts them only from this machine. Set{" "}
-        <code className="font-mono text-xs">{provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}</code> in the harness's
-        environment instead.
-      </p>
+      // Decision 89 d: the sentence in plain words; the variable to set is under "Details", like the agents' steps.
+      <div role={load.status === "error" ? "alert" : undefined} className="flex flex-col gap-1">
+        <p className="text-sm text-fg-2">
+          {load.status === "error" ? `${load.message}. ` : ""}This connection cannot set keys: the harness accepts them only from this machine. Set the key
+          where the harness runs.
+        </p>
+        <Details
+          text={`Set \`${provider.kind === "api" ? SETTING_IDS.anthropicApiKey : SETTING_IDS.routerUpstreamKey}\` in the harness's environment, then restart it.`}
+        />
+      </div>
     );
   const view = load.view;
   const get = (id: string) => view.settings.find((s) => s.id === id);

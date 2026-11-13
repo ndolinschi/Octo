@@ -24,6 +24,8 @@ export type HitTarget =
  */
 export type UiHit = {
   key: string;
+  /** What the hit is (its row's glyph): the harness's hit kinds, and the notes the UI searches itself. */
+  kind: MemoryHit["kind"] | "note";
   group: HitGroupId;
   name: string;
   /** The word the name marks (the first query word found in it), "" for none. */
@@ -109,6 +111,7 @@ export function afterName(name: string, snippet: string): string {
 export function toUiHit(hit: MemoryHit, q: string): UiHit {
   const base = {
     key: `${hit.kind}:${hit.id}`,
+    kind: hit.kind,
     group: GROUP_OF[hit.kind],
     date: hit.date,
     superseded: hit.superseded === true,
@@ -157,6 +160,7 @@ export function noteHits(notes: readonly Note[], q: string, limit = 5): UiHit[] 
       const inDescription = nameWord === "" ? matchWord(n.description, q) : "";
       return {
         key: `note:${n.id}`,
+        kind: "note" as const,
         group: "notes" as const,
         name: n.title,
         nameWord,

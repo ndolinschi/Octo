@@ -1,4 +1,5 @@
-import type { ChangeDetail, ChangeKind, ChangeNote, ChangeSource, FileChangeSummary } from "@octo/agent-client";
+import type { ChangeDetail, ChangeKind, ChangeNote, ChangeSource, FileChangeSummary, TurnChanges } from "@octo/agent-client";
+import { formatSeparator } from "../format";
 
 /**
  * The changes view (v7 §1, decision 47): per-turn file rows, net diffs, the revert order and its 409s, the diff layout.
@@ -139,4 +140,16 @@ export function neighbours<T>(items: readonly T[], index: number): { prev: T | n
 /** "3 files changed", "1 file changed". */
 export function filesChanged(n: number): string {
   return `${n} file${n === 1 ? "" : "s"} changed`;
+}
+
+/**
+ * The heading of a turn whose request is not among the loaded messages: "Earlier request · Yesterday 18:42" with the time of
+ * its first recorded change, "Earlier request" without one — never the turn's internal id.
+ */
+export function earlierRequestLabel(turn: Pick<TurnChanges, "files">, now: number): string {
+  const first = turn.files
+    .map((f) => f.created_at)
+    .filter((at) => !Number.isNaN(Date.parse(at)))
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+  return first ? `Earlier request · ${formatSeparator(first, now)}` : "Earlier request";
 }

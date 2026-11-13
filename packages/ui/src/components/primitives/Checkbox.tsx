@@ -11,10 +11,11 @@ import { Glyph } from "./Glyph";
  * - `checked`, `onChange(next)`; `indeterminate` shows a dash (a parent of partly chosen children).
  * - `label` is required; `hideLabel` keeps it as the accessible name only (a checkbox in a table row).
  * - `description`: one dim line under the label.
+ * - `data-*` attributes go on the input (`data-autofocus`: a dialog opens on this box).
  *
  * Not for: an on/off setting that applies at once (`Switch`), one of several exclusive choices (`Segmented`).
  */
-type CheckboxProps = {
+type CheckboxProps = Record<`data-${string}`, string | boolean | undefined> & {
   checked: boolean;
   onChange(next: boolean): void;
   label: ReactNode;
@@ -38,9 +39,11 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
     if (input.current) input.current.indeterminate = mixed;
   }, [mixed]);
   const on = props.checked || mixed;
+  const data = Object.fromEntries(Object.entries(props).filter(([key]) => key.startsWith("data-")));
   return (
     <label className={cn("group touch-hit relative inline-flex min-w-0 items-start gap-2 text-sm text-fg", props.disabled && "opacity-50", props.className)}>
       <input
+        {...data}
         ref={(el) => {
           input.current = el;
           if (typeof outer === "function") outer(el);

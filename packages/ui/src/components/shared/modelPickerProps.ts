@@ -23,6 +23,8 @@ export type ModelPickerProps = {
   side?: "top" | "bottom";
   /** The harness cannot run this setting now: the chip turns warn-coloured. */
   warn?: boolean;
+  /** The caller already says what is wrong (a notice above the group, as Settings → Models does): the value keeps the normal tone; the tooltip still says it. */
+  problemShown?: boolean;
   /** Tooltip (the served model, the unavailable reason); default "Model: <label>". */
   tip?: string | undefined;
   onOpenChange?(open: boolean): void;

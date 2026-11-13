@@ -2,7 +2,7 @@ import { PanelEmpty } from "../primitives/Panel";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { TurnChanges } from "@octo/agent-client";
 import { useMediaQuery } from "../../lib/hooks";
-import { DIFF_SPLIT_MIN, diffLayout, filesChanged, neighbours, rowKey, splitPath } from "../../lib/v7/changes";
+import { DIFF_SPLIT_MIN, diffLayout, earlierRequestLabel, filesChanged, neighbours, rowKey, splitPath } from "../../lib/v7/changes";
 import { Button } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
 import { SkeletonRows } from "../primitives/InfoList";
@@ -26,8 +26,8 @@ export type ChangesViewProps = {
   refreshKey?: number;
   /** Show one turn only (the transcript's "Review"); null or absent: every turn, newest first. */
   focusTurn?: number | null;
-  /** The request that started a turn, by its id (its first words); default "Turn {id}". */
-  turnLabel?(turnId: number): string;
+  /** The request that started a turn (its first words); default "Earlier request" with the time of its first change. */
+  turnLabel?(turn: TurnChanges): string;
   /** Decision 47: a line comment goes to the composer's pending comments. */
   onAddComment?(comment: { folder: string; path: string; start: number; end: number; text: string }): void;
   /** Lines of a file that already carry a pending comment. */
@@ -51,7 +51,7 @@ export function ChangesView(props: ChangesViewProps) {
   const [turnBusy, setTurnBusy] = useState<number | null>(null);
   const two = width === null || width >= TWO_COLUMNS_MIN;
   const layout = diffLayout(wideWindow ? DIFF_SPLIT_MIN : 0, two && width !== null ? width - 288 : 0);
-  const label = props.turnLabel ?? ((id: number) => `Turn ${id}`);
+  const label = props.turnLabel ?? ((turn: TurnChanges) => earlierRequestLabel(turn, Date.now()));
 
   const index = c.selected ? c.all.findIndex((s) => s.turnId === c.selected?.turnId && s.file === c.selected.file) : -1;
   const near = neighbours(c.all, index);
@@ -93,7 +93,7 @@ export function ChangesView(props: ChangesViewProps) {
       <TurnFiles
         key={t.turn_id}
         turn={t}
-        label={label(t.turn_id)}
+        label={label(t)}
         selectedKey={two || showDiff ? c.selectedKey : null}
         rows={c.rows}
         reverting={turnBusy === t.turn_id}

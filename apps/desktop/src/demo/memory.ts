@@ -11,6 +11,7 @@ import {
   type MemorySearchResult,
   type Message,
   type RememberKind,
+  type SubscribeHandlers,
   type ReceiptBlock,
   type Task,
   type TaskFact,
@@ -312,6 +313,9 @@ export function receipt(store: Store, turnId: number): ContextReceipt {
 export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
   if (mode === "none") return bridge;
   const stores = new Map<string, Promise<Store>>();
+  // The project's event listeners (and the last seq they saw), so `rememberFact` can say `fact.remembered` as the harness does.
+  const listeners = new Map<string, Set<SubscribeHandlers>>();
+  const lastSeq = new Map<string, number>();
   const readThread = async (projectId: string): Promise<{ requests: Request[]; replies: Request[] }> => {
     const agents = await bridge.listAgents(projectId);
     const orchestrator = agents.find((a) => a.parent_id === null);
@@ -353,6 +357,22 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
   };
   return {
     ...bridge,
+    subscribe: (pid, handlers) => {
+      const own: SubscribeHandlers = {
+        ...handlers,
+        onEvent: (e) => {
+          lastSeq.set(pid, Math.max(lastSeq.get(pid) ?? 0, e.seq));
+          handlers.onEvent(e);
+        },
+      };
+      const set = listeners.get(pid) ?? new Set<SubscribeHandlers>();
+      listeners.set(pid, set.add(own));
+      const off = bridge.subscribe(pid, own);
+      return () => {
+        set.delete(own);
+        off();
+      };
+    },
     listTasks: (pid) => read(pid, (s) => [...s.tasks].sort((a, b) => b.updated_at.localeCompare(a.updated_at))),
     listMemory: (pid) =>
       read(pid, (s) => ({
@@ -446,7 +466,8 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
         },
       ];
       const conversations = earlier ? mark(earlier) : [];
-      if (sid === BASE_SESSION) return { messages: await bridge.listMessages(pid, orchestrator), compactions: [], conversations };
+      if (sid === BASE_SESSION)
+        return { messages: (await bridge.listMessages(pid, orchestrator)).map((m) => ({ ...m, session_id: sid })), compactions: [], conversations };
       return { messages: sessionMessages(main, sid, orchestrator), compactions: [], conversations };
     },
     stopSession: async (pid, sid) => {
@@ -524,8 +545,8 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
       read(pid, (s) => {
         if (!s.sessions || !forget(s.sessions, eid)) throw new BridgeError(404, "not_found", `no exchange ${eid}`);
       }),
-    rememberFact: (pid, input) =>
-      read(pid, (s) => {
+    rememberFact: async (pid, input) => {
+      const kept = await read(pid, (s) => {
         const task = s.tasks.find((t) => t.status === "open") ?? s.tasks[0];
         if (!task) throw new BridgeError(409, "no_task", "there is no task to attach this to yet");
         const fact: TaskFact = {
@@ -540,7 +561,12 @@ export function withDemoMemory(bridge: Bridge, mode: DemoMemoryMode): Bridge {
         task.facts = [...task.facts, fact];
         task.updated_at = fact.date;
         return { task_id: task.id, fact };
-      }),
+      });
+      const agent = (await bridge.listAgents(pid)).find((a) => a.parent_id === null)?.id ?? "";
+      const event = { type: "fact.remembered" as const, seq: lastSeq.get(pid) ?? 0, ...kept, turn_id: kept.fact.message_id, agent_id: agent };
+      for (const l of listeners.get(pid) ?? []) l.onEvent(event);
+      return kept;
+    },
     forgetFact: (pid, taskId, factId) =>
       read(pid, (s) => {
         const task = s.tasks.find((t) => t.id === taskId);

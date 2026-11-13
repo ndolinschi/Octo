@@ -17,10 +17,9 @@ import { useComposerAnchor } from "./useComposerAnchor";
 
 /** Decision 63: the project's own agent goes by the project's name in its conversation, never "Orchestrator". */
 const nameIn = (projectName: string) => (a: Pick<Agent, "parent_id" | "role">) => (a.parent_id === null ? projectName : baseRoleName(a));
-import { showRail, turnWarning } from "../../lib/transcript";
-import { TurnBanner, providerIdOf, useAgentName, useLoginHint } from "./Transcript";
-import { errorFieldsOf } from "@octo/agent-client";
-import { recheckAgent } from "../../lib/providers/recheck";
+import { showRail } from "../../lib/transcript";
+/** The failed start of an empty project (rare): its own chunk. */
+const StartFailure = lazy(() => import("./StartFailure").then((m) => ({ default: m.StartFailure })));
 
 /** A sub-agent's header loads with the first Agent tab (its own chunk). */
 const AgentHeader = lazy(() => import("./AgentHeader").then((m) => ({ default: m.AgentHeader })));
@@ -34,7 +33,8 @@ import { useOrchestratorComposer } from "./useOrchestratorComposer";
 import { StreakLayer } from "../primitives/StreakLayer";
 import { STREAK_EMPTY } from "../../lib/streakPresets";
 import { useApp } from "../../state/app";
-import { ObserverBar } from "./ObserverBar";
+/** An Agent tab's read-only bar loads with the first Agent tab, like its header (a 40px placeholder keeps the row's height). */
+const ObserverBar = lazy(() => import("./ObserverBar").then((m) => ({ default: m.ObserverBar })));
 import { useBackdrop } from "../primitives/backdrop";
 const StickyPrompt = lazy(() => import("./StickyPrompt").then((m) => ({ default: m.StickyPrompt })));
 import { Transcript } from "./Transcript";
@@ -275,7 +275,9 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
           <Suspense fallback={null}>
             <EmptyTitle project={project} />
           </Suspense>
-          <StartFailure agent={agent} />
+          <Suspense fallback={null}>
+            <StartFailure agent={agent} />
+          </Suspense>
         </div>
       ) : (
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -361,7 +363,13 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
 
       <div ref={composerRow} className={cn(EDGES, "relative shrink-0", !empty && "pt-2 pb-3")}>
         <div data-column-edge className={cn("mx-auto w-full", empty ? "max-w-float" : "max-w-measure")}>
-          {isOrchestrator ? <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} /> : <ObserverBar />}
+          {isOrchestrator ? (
+            <Composer ref={composer} {...composerProps} comments={commentsSlot} onOverlay={setOverlay} />
+          ) : (
+            <Suspense fallback={<div className="h-bar" />}>
+              <ObserverBar />
+            </Suspense>
+          )}
         </div>
       </div>
       {empty && (
@@ -391,50 +399,6 @@ function ConversationBody({ agentId, tab = CHAT, rewindRef }: { agentId: string;
       <p aria-live="polite" className="sr-only">
         {agent.status === "running" ? `${roleName(agent)} is working` : ""}
       </p>
-    </div>
-  );
-}
-
-/**
- * The orchestrator failed before anything was stored (an ACP agent that is not logged in): the failed turn shows above
- * the empty project's composer with its message and the agent's login hint — never a silent "Idle".
- */
-function StartFailure({ agent }: { agent: Agent }) {
-  const { state } = useProject();
-  const failed =
-    state.lastTurn?.status === "failed"
-      ? state.lastTurn.error
-      : agent.status === "failed" || (agent.error && !turnWarning(agent.error))
-        ? agent.error
-        : undefined;
-  const login = useLoginHint(failed !== undefined ? agent.model : null);
-  const agentName = useAgentName(agent.model);
-  const { bridge } = useApp();
-  const fromTurn = state.lastTurn?.status === "failed" ? errorFieldsOf(state.lastTurn) : agent.error_hint ? { hint: agent.error_hint } : {};
-  const recheck = async () => {
-    const id = providerIdOf(agent.model);
-    const ready = id ? await recheckAgent(bridge, id).catch(() => false) : false;
-    login.recheck();
-    return ready;
-  };
-  if (failed === undefined || agent.status === "running") return null;
-  return (
-    <div data-start-failure className="relative mx-auto mt-4 w-full max-w-float">
-      <Suspense fallback={null}>
-        <TurnBanner
-          status="failed"
-          error={failed}
-          retryText={null}
-          fields={{
-            ...fromTurn,
-            ...(fromTurn.hint || !login.hint ? {} : { hint: login.hint }),
-            ...("action" in fromTurn || !login.hint ? {} : { action: "recheck_provider" as const }),
-          }}
-          agent={agentName}
-          providerId={providerIdOf(agent.model)}
-          onCheck={recheck}
-        />
-      </Suspense>
     </div>
   );
 }

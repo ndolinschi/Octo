@@ -244,15 +244,15 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     if (r.kind === "custom") return { ...base, label: `Use “${r.label}”`, hint: r.agentId ? "model name" : "model id" };
     if (r.kind === "connect") {
       const text = r.unsupported ? (r.reason ?? r.state) : r.unverified ? r.state : `${r.state} · ${r.action}`;
-      // B13: beside "Check again" the state is the row's detail (it gives way before the name does); a right-aligned hint
-      // took a fraction of a pixel from the name at 320px, enough for "GitHub Co…".
+      // B13: beside "Check again" the state is a second dim line under the name (a 40px row), so neither the name nor the state
+      // truncates at 320px; a right-aligned hint took a fraction of a pixel from the name, enough for "GitHub Co…".
       const note = r.experimental ? "experimental" : null;
       return {
         ...base,
         label: r.label,
         quiet: true,
         lead: <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />,
-        ...(r.unverified ? { detail: note ? `${note} · ${text}` : text } : { hint: text, ...(note ? { detail: note } : {}) }),
+        ...(r.unverified ? { sub: note ? `${note} · ${text}` : text } : { hint: text, ...(note ? { detail: note } : {}) }),
         ...(r.unverified
           ? {
               trailing: (
