@@ -2,12 +2,13 @@ import type { Limit, Project, ProjectInput } from "@octo/agent-client";
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from "react";
 import { errorMessage } from "../../lib/format";
 import { modelName } from "../../lib/models";
+import { remainingText } from "../../lib/usage";
 import { useApp } from "../../state/app";
 import { Notice } from "../primitives/Notice";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
 import { TextField } from "../primitives/TextField";
-import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { CONTROL_W, LoadErrorRow, SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
 import { useProjectDetails, type ProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
 import { UsageByProject } from "./UsageByProject";
@@ -54,17 +55,18 @@ function ProjectSelect<T extends string>(props: {
       description={props.description}
       status={<SaveStatus state={saved} />}
       control={
-        <Select
-          id={id}
-          label={`${props.project.name}: ${props.title}`}
-          value={props.value}
-          options={props.options.map((o) => ({ value: o.id, label: o.label }))}
-          onChange={(value) => {
-            const v = props.options.find((o) => o.id === value)?.id;
-            if (v !== undefined) void run(() => props.update(props.project.id, props.patch(v)));
-          }}
-          className={CONTROL_W.md}
-        />
+        <div className={SELECT_W}>
+          <Select
+            id={id}
+            label={`${props.project.name}: ${props.title}`}
+            value={props.value}
+            options={props.options.map((o) => ({ value: o.id, label: o.label }))}
+            onChange={(value) => {
+              const v = props.options.find((o) => o.id === value)?.id;
+              if (v !== undefined) void run(() => props.update(props.project.id, props.patch(v)));
+            }}
+          />
+        </div>
       }
     />
   );
@@ -105,7 +107,7 @@ export function EditorSection() {
         }}
       />
       <SettingsGroup label="Plugins and language servers" id="row-plugins">
-        <div className="p-4">
+        <div className="px-settings-inset py-4">
           <Suspense fallback={<p className="h-9" aria-busy />}>
             <IntegrationsView />
           </Suspense>
@@ -243,9 +245,13 @@ function Limits() {
             key={`${l.provider}/${l.model}/${l.kind}`}
             title={`${l.provider} · ${l.kind.replace(/_/g, " ")}`}
             description={l.resets_at ? `Resets ${new Date(l.resets_at).toLocaleString()}` : "No reset time reported"}
+            // S6: compact numbers ("1.7M of 2M left"), the full values in the tooltip.
             control={
-              <span className="text-sm text-fg-2 tabular-nums">
-                {l.remaining ?? "?"} of {l.limit ?? "?"} left
+              <span
+                className="text-sm text-fg-2 tabular-nums"
+                title={`${l.remaining?.toLocaleString("en-US") ?? "?"} of ${l.limit?.toLocaleString("en-US") ?? "?"} left`}
+              >
+                {remainingText(l)}
               </span>
             }
           />

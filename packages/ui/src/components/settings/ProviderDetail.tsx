@@ -5,7 +5,6 @@ import { billingLine, commandsIn, extraReason, primaryAction, reasonLine, rechec
 import { cn } from "../../lib/cn";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
-import { ListFrame } from "../primitives/Card";
 import { CommandLine } from "../primitives/CommandLine";
 import { Rich } from "../shared/providers/ConnectSteps";
 import { Notice } from "../primitives/Notice";
@@ -43,34 +42,37 @@ export function ProviderDetail({ provider: p }: { provider: Provider }) {
   const reason = reasonLine(p);
   const restartNeeded = p.kind === "api" && harness.needsRestart(SETTING_IDS.anthropicApiKey);
   return (
-    <div ref={pane} className="@container flex min-w-0 flex-1 flex-col">
-      <ListFrame>
-        <div data-provider-detail className="flex min-w-0 flex-col gap-6 p-5">
-          <div className="flex min-h-8 flex-wrap items-center gap-x-4 gap-y-2">
-            <ProviderTitle provider={p} tone={restartNeeded ? "warn" : stateTone(p)} {...(restartNeeded ? { stateLabel: "Restart needed" } : {})} />
-            {action && (
-              <div className="flex items-center gap-2">
-                {checked && !checking && p.state !== "ready" && <Notice tone="warn">Still not ready.</Notice>}
-                <Button variant="primary" disabled={checking} aria-busy={checking} onClick={() => (action === "Check again" ? void check() : connect())}>
-                  {checking ? "Checking…" : action}
-                </Button>
-              </div>
-            )}
+    // S1/S5: the right half of the Providers surface (no frame of its own): the title line, then groups in the page's
+    // style — a meta caption over its rows, 24 apart.
+    <div ref={pane} data-provider-detail className="@container flex min-w-0 flex-1 flex-col gap-6 p-5">
+      <div className="flex min-h-ctl-md flex-wrap items-center gap-x-4 gap-y-2">
+        <ProviderTitle provider={p} tone={restartNeeded ? "warn" : stateTone(p)} {...(restartNeeded ? { stateLabel: "Restart needed" } : {})} />
+        {action && (
+          <div className="flex items-center gap-2">
+            {checked && !checking && p.state !== "ready" && <Notice tone="warn">Still not ready.</Notice>}
+            <Button
+              variant="primary"
+              // Not `disabled` while checking: a disabled button drops focus to the page (part 8, finding 3).
+              aria-busy={checking}
+              onClick={() => (checking ? undefined : action === "Check again" ? void check() : connect())}
+            >
+              {checking ? "Checking…" : action}
+            </Button>
           </div>
-          <div className={cn("flex max-w-measure min-w-0 flex-col gap-6", CONTROL_CAP)}>
-            {reason && <Reason provider={p} text={reason} />}
-            {p.kind === "api" && <ProviderKey provider={p} />}
-            {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}
-            {p.kind === "agent" && p.state === "ready" && <AgentPrefs agent={p} />}
-            {p.state !== "not_installed" && p.state !== "not_connected" && (
-              <section className="flex flex-col gap-1">
-                <SectionTitle>Billing</SectionTitle>
-                <p className="text-sm text-fg-2">{billingLine(p)}</p>
-              </section>
-            )}
-          </div>
-        </div>
-      </ListFrame>
+        )}
+      </div>
+      <div className={cn("flex max-w-measure min-w-0 flex-col gap-6", CONTROL_CAP)}>
+        {reason && <Reason provider={p} text={reason} />}
+        {p.kind === "api" && <ProviderKey />}
+        {(p.models.length > 0 || p.state === "ready") && p.kind !== "router" && <ProviderModels provider={p} />}
+        {p.kind === "agent" && p.state === "ready" && <AgentPrefs agent={p} />}
+        {p.state !== "not_installed" && p.state !== "not_connected" && (
+          <section className="flex flex-col gap-1">
+            <SectionTitle>Billing</SectionTitle>
+            <p className="text-sm text-fg-2">{billingLine(p)}</p>
+          </section>
+        )}
+      </div>
     </div>
   );
 }
@@ -79,7 +81,8 @@ export function ProviderDetail({ provider: p }: { provider: Provider }) {
 function Reason({ provider: p, text }: { provider: Provider; text: string }) {
   const steps =
     p.kind === "agent" ? [...(p.state === "not_installed" ? [{ title: "Install", hint: p.install_hint }] : []), { title: "Log in", hint: p.login_hint }] : [];
-  const extra = extraReason(p);
+  // S5: the API provider's "No API key" is said by its key group; one label, not three.
+  const extra = p.kind === "api" ? "" : extraReason(p);
   return (
     <section className="flex flex-col gap-3">
       <p className="text-sm text-fg-2">
@@ -94,8 +97,8 @@ function Reason({ provider: p, text }: { provider: Provider; text: string }) {
         steps.map((s) => {
           const commands = commandsIn(s.hint);
           return (
-            <div key={s.title} className="flex flex-col gap-2">
-              <h3 className="text-sm font-medium text-fg">{s.title}</h3>
+            <div key={s.title} className="flex flex-col gap-1">
+              <SectionTitle>{s.title}</SectionTitle>
               {commands.map((c) => (
                 <CommandLine key={c} command={c} label={`${s.title.toLowerCase()} command`} />
               ))}

@@ -6,7 +6,7 @@ import { Select } from "../primitives/Select";
 import { useHarnessSettings } from "./harnessSettings";
 import { ModelsProblem } from "./ModelsProblem";
 import { modelOptions, MODEL_ROWS, type ModelRow } from "./modelRows";
-import { CONTROL_W, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 
 /**
@@ -68,7 +68,7 @@ function ProjectModelRow(props: {
               Reset to default
             </Button>
           )}
-          <div className={CONTROL_W.lg}>
+          <div className={SELECT_W}>
             <Select id={id} label={`${row.title} of ${project.name}`} value={value} options={options} onChange={set} />
           </div>
         </>

@@ -61,11 +61,14 @@ function BridgeRow() {
     <SettingsRow
       rowId="bridge"
       title="Harness connection"
-      leading={health === "checking" ? <Spinner size={10} /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
       description={
         <span className="flex min-w-0 flex-wrap gap-x-2">
           <code className="min-w-0 font-mono text-xs break-all text-fg-2">{bridgeUrl}</code>
-          <span role="status">{state}</span>
+          {/* S1: the state glyph sits with the state's words, so the label keeps the rows' left edge. */}
+          <span role="status" className="inline-flex items-center gap-1.5">
+            {health === "checking" ? <Spinner size={10} /> : <ToneDot tone={health === "online" ? "ok" : "err"} />}
+            {state}
+          </span>
         </span>
       }
       control={
@@ -96,13 +99,26 @@ export function AppearanceSection() {
   const forced = backdrop === "off" && backdropPref !== "off";
   const [motion, setMotion] = useMotionPref();
   const motionId = useId();
+  // S2: every section confirms a change in the same place ("Saved" left of the control); these apply at once.
+  const [themeSaved, saveTheme] = useSave();
+  const [backdropSaved, saveBackdrop] = useSave();
+  const [motionSaved, saveMotion] = useSave();
+  const now = (set: () => void) => async () => {
+    set();
+    await Promise.resolve();
+  };
   return (
     <SettingsGroup label="Look">
       <SettingsRow
         rowId="theme"
         title="Theme"
         description={canChooseTheme ? "System follows your operating system's appearance." : "Set by the app that hosts this window."}
-        control={canChooseTheme ? <Segmented label="Theme" options={THEMES} value={themePref} onChange={setThemePref} /> : undefined}
+        status={<SaveStatus state={themeSaved} />}
+        control={
+          canChooseTheme ? (
+            <Segmented label="Theme" options={THEMES} value={themePref} onChange={(v) => void saveTheme(now(() => setThemePref(v)))} />
+          ) : undefined
+        }
       />
       <SettingsRow
         rowId="backdrop"
@@ -110,14 +126,30 @@ export function AppearanceSection() {
         description={
           forced ? "Off while your system asks for reduced transparency or forced colours." : "Behind Home, an empty project and the first-run screen."
         }
-        control={<Segmented label="Start-screen backdrop" options={BACKDROPS} value={backdropPref} onChange={setBackdropPref} />}
+        status={<SaveStatus state={backdropSaved} />}
+        control={
+          <Segmented
+            label="Start-screen backdrop"
+            options={BACKDROPS}
+            value={backdropPref}
+            onChange={(v) => void saveBackdrop(now(() => setBackdropPref(v)))}
+          />
+        }
       />
       <SettingsRow
         rowId="motion"
         title="Reduce motion"
         htmlFor={motionId}
         description="Turn off transitions and animations in this app, whatever the system says."
-        control={<Switch id={motionId} label="Reduce motion" checked={motion === "reduced"} onChange={(on) => setMotion(on ? "reduced" : "system")} />}
+        status={<SaveStatus state={motionSaved} />}
+        control={
+          <Switch
+            id={motionId}
+            label="Reduce motion"
+            checked={motion === "reduced"}
+            onChange={(on) => void saveMotion(now(() => setMotion(on ? "reduced" : "system")))}
+          />
+        }
       />
     </SettingsGroup>
   );

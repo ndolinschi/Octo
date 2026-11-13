@@ -30,6 +30,8 @@ export function ProviderRows(props: {
   onExpand(open: boolean): void;
   /** `false`: no border and fill of its own (it sits in a frame that has them, as on the connect screen). */
   framed?: boolean;
+  /** Nothing opened yet: in one column (the list alone) no row reads as chosen (polish step 6a, S7; styles.css). */
+  unpicked?: boolean;
   className?: string;
 }) {
   const list = useRef<HTMLDivElement>(null);
@@ -39,6 +41,7 @@ export function ProviderRows(props: {
       ref={list}
       role="group"
       aria-label="Providers"
+      data-unpicked={props.unpicked || undefined}
       className={cn(
         "flex flex-col p-1",
         props.framed !== false && "overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel",

@@ -17,9 +17,6 @@ export const SECTIONS = [
 
 export type SectionId = (typeof SECTIONS)[number]["id"];
 
-/** Sections whose page uses the whole width (a list beside a detail) instead of the 780px column. */
-export const isWideSection = (id: SectionId): boolean => id === "providers";
-
 /** Decision 89 f: the Agents page is gone; its address opens Providers. */
 const RENAMED: Record<string, SectionId> = { agents: "providers" };
 
@@ -74,7 +71,13 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
     description: "The key the router forwards to (for example OpenRouter)",
     keywords: "openrouter secret",
   },
-  { section: "models", id: "default-orchestrator", title: "Default orchestrator", description: "Runs new projects' orchestrators", keywords: "model default" },
+  {
+    section: "models",
+    id: "default-orchestrator",
+    title: "Default model",
+    description: "Answers in new projects",
+    keywords: "model default orchestrator main",
+  },
   { section: "models", id: "tiers", title: "Tiers", description: "Fast, balanced and deep models for delegated work", keywords: "fast balanced deep tier" },
   { section: "models", id: "visible", title: "Models in pickers", description: "Which models appear when you choose one", keywords: "hide show list picker" },
   {
@@ -138,9 +141,9 @@ export const SETTINGS_INDEX: readonly IndexedRow[] = [
   {
     section: "privacy",
     id: "trace",
-    title: "Record an ACP wire trace",
-    description: "Write what agents send and receive, secrets removed",
-    keywords: "debug log trace",
+    title: "Record what agents send and receive",
+    description: "A trace of the agent protocol, secrets removed",
+    keywords: "debug log trace acp wire",
   },
   { section: "privacy", id: "data-dir", title: "Data folder", description: "Where the harness keeps projects and traces", keywords: "directory folder path" },
   {

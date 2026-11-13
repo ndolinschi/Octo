@@ -16,6 +16,9 @@ export const CONTROL_W = {
   lg: "w-64 max-settings:w-full",
 } as const;
 
+/** S2: every select in a settings row is this one width (the model names need it; a short list reads the same). */
+export const SELECT_W = CONTROL_W.lg;
+
 /**
  * Polish trial T5 (widths by meaning): the one cap for the fields of a `FieldRow` inside a settings pane (the provider's
  * preferred model and roles): columns of at most 16rem, the same 256px as `CONTROL_W.lg`, so a select is as wide as its
@@ -25,29 +28,36 @@ export const CONTROL_W = {
 export const CONTROL_CAP = "@md:[&_[data-field-row]]:grid-cols-[repeat(3,minmax(0,16rem))]";
 
 /**
- * Decision 59 anatomy on the library (decision 90): a `SectionHeader` over a `ListFrame` of rows; a row is a title and a
- * one-line description on the left and exactly one control on the right, 56px or more tall. Below the settings breakpoint
- * (760px) the control goes under the text.
+ * Decision 59 anatomy on the library, composed by polish step 6a (S1): a group is a caption (meta) over one surface
+ * (`ListFrame`) that holds its rows, and an optional meta note under it. Caption, row labels and the note share one left edge
+ * (`settings-inset`, the rows' own padding), the same edge as the page title. Below the settings breakpoint (760px) a row's
+ * control goes under its text.
  */
-export function SettingsGroup(props: { label: string; children: ReactNode; id?: string | undefined; footer?: ReactNode; aside?: ReactNode }) {
+export function SettingsGroup(props: { label: ReactNode; children: ReactNode; id?: string | undefined; footer?: ReactNode; aside?: ReactNode }) {
   const labelId = useId();
   return (
-    <section aria-labelledby={labelId} id={props.id} className="flex flex-col gap-2">
-      <SectionHeader id={labelId} inset aside={props.aside}>
+    <section aria-labelledby={labelId} id={props.id} className="flex scroll-mt-6 flex-col gap-1">
+      <SectionHeader id={labelId} aside={props.aside} className="px-settings-inset">
         {props.label}
       </SectionHeader>
       <ListFrame>{props.children}</ListFrame>
-      {props.footer && <div className="px-2 text-xs text-fg-3">{props.footer}</div>}
+      {props.footer && <div className="px-settings-inset pt-1 text-xs text-fg-3">{props.footer}</div>}
     </section>
   );
 }
 
+/**
+ * S2: one anatomy for every settings row. The label (content, 14px) and one explanation line under it (meta, 12px `fg-3`) on
+ * the left; the control at the right, centred on the label's first line, its right edge the row's edge; the save status
+ * ("Saving…", "Saved", a restart, an error) in the control line just left of the control, so a save never changes the row's
+ * height. 60px for a label and one explanation line; a row with no explanation keeps 60 and centres its one line.
+ */
 export function SettingsRow(props: {
   title: ReactNode;
   description?: ReactNode;
   /** The one control. */
   control?: ReactNode;
-  /** "Saved", "Restart required", an error: one line under the description. */
+  /** `SaveStatus`: shown in the control line, left of the control. */
   status?: ReactNode;
   /** A long explanation behind a "?" (decision 59). */
   help?: string | undefined;
@@ -58,33 +68,44 @@ export function SettingsRow(props: {
   leading?: ReactNode;
   className?: string;
 }) {
+  const one = props.description === undefined || props.description === null || props.description === "";
   return (
     <div
       id={props.rowId ? `row-${props.rowId}` : undefined}
       data-settings-row
       className={cn(
-        "flex min-h-14 scroll-mt-6 items-center gap-4 px-4 py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-3",
+        "flex min-h-settings-row scroll-mt-6 gap-4 px-settings-inset py-3 max-settings:flex-col max-settings:items-stretch max-settings:gap-2",
+        one ? "items-center" : "items-start",
         props.className,
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        {props.leading}
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        {props.leading && <span className="flex h-5 shrink-0 items-center">{props.leading}</span>}
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-h-5 min-w-0 items-center gap-1.5">
             {props.htmlFor ? (
-              <label htmlFor={props.htmlFor} className="min-w-0 text-base break-words text-fg">
+              <label htmlFor={props.htmlFor} data-settings-label className="min-w-0 text-base/5 break-words text-fg">
                 {props.title}
               </label>
             ) : (
-              <span className="min-w-0 text-base break-words text-fg">{props.title}</span>
+              <span data-settings-label className="min-w-0 text-base/5 break-words text-fg">
+                {props.title}
+              </span>
             )}
-            {props.help && <IconButton icon={CircleHelp} label="More about this setting" size="xs" title={props.help} />}
+            {props.help && <IconButton icon={CircleHelp} label="More about this setting" size="xs" title={props.help} className="-my-0.5" />}
           </div>
-          {props.description && <div className="text-sm break-words text-fg-3">{props.description}</div>}
-          {props.status}
+          {!one && <div className="text-xs break-words text-fg-3">{props.description}</div>}
         </div>
       </div>
-      {props.control && <div className="flex shrink-0 items-center justify-end gap-2 max-settings:justify-start">{props.control}</div>}
+      {(props.control || props.status) && (
+        <div
+          data-settings-control
+          className="flex h-5 shrink-0 items-center justify-end gap-3 max-settings:h-auto max-settings:min-h-5 max-settings:flex-wrap max-settings:justify-start"
+        >
+          {props.status && <span className="flex min-w-0 items-center empty:hidden max-settings:order-last">{props.status}</span>}
+          {props.control}
+        </div>
+      )}
     </div>
   );
 }
@@ -108,18 +129,22 @@ export function LoadErrorRow(props: { what: string; message: string; hint: strin
   );
 }
 
-/** The line a row shows after a change (decision 59: every change says "Saved"; a restart says so with a button). */
+/**
+ * What a row says after a change (decision 59: every change says "Saved"; a restart says so with a button). S2: one short
+ * line that sits in the row's control line (or under a `FieldRow`), never a line that grows the row; an error keeps its
+ * sentence and wraps inside 16rem.
+ */
 export function SaveStatus(props: { state: SaveState; restart?: boolean; onRestart?: (() => void) | undefined }) {
   const { state } = props;
   if (state.kind === "saving")
     return (
-      <p role="status" className="mt-1 flex items-center gap-1.5 text-xs text-fg-3">
+      <p role="status" className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-fg-3">
         <Spinner size={10} /> Saving…
       </p>
     );
   if (state.kind === "error")
     return (
-      <Notice tone="error" className="mt-1">
+      <Notice tone="error" className="max-w-64">
         {state.message}
       </Notice>
     );
@@ -127,7 +152,7 @@ export function SaveStatus(props: { state: SaveState; restart?: boolean; onResta
     return (
       <Notice
         tone="warn"
-        className="mt-1"
+        className="shrink-0 whitespace-nowrap"
         action={
           props.onRestart ? (
             <Button variant="link" size="xs" onClick={props.onRestart}>
@@ -136,12 +161,12 @@ export function SaveStatus(props: { state: SaveState; restart?: boolean; onResta
           ) : undefined
         }
       >
-        {props.onRestart ? "Saved. Applies after a restart." : "Saved. Applies after a restart — quit and reopen the app."}
+        {props.onRestart ? "Saved · applies after a restart" : "Saved · quit and reopen the app to apply"}
       </Notice>
     );
   if (state.kind === "saved")
     return (
-      <Notice tone="success" className="mt-1">
+      <Notice tone="success" className="shrink-0 whitespace-nowrap">
         Saved
       </Notice>
     );

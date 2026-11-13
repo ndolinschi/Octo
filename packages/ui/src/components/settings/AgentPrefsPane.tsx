@@ -26,27 +26,30 @@ export function AgentPrefs({ agent }: { agent: Provider }) {
   const { bridge } = useApp();
   const { local, save } = useAgentPrefs(bridge);
   const [typed] = usePersistentState(PREFS.customModels, customModelsCodec, { persistInitial: false });
+  // S2: each group says "Saved" at its caption's right, so a save never adds a line under the fields.
+  const [preferredState, runPreferred] = useSave();
   const [state, run] = useSave();
   const base = useId();
-  const control = (key: string, value: string, label: string, onSave: (m: string) => Promise<void>) => (
-    <ModelControl id={`${base}-${key}`} label={label} agent={agent} value={value} typed={typed} onSave={(m) => void run(() => onSave(m))} />
+  const control = (key: string, value: string, label: string, onSave: (m: string) => Promise<void>, go = run) => (
+    <ModelControl id={`${base}-${key}`} label={label} agent={agent} value={value} typed={typed} onSave={(m) => void go(() => onSave(m))} />
   );
   return (
     <>
-      <section className="flex flex-col gap-3">
-        <SectionTitle>Preferred model</SectionTitle>
+      <section className="flex flex-col gap-1">
+        <SectionTitle aside={<SaveStatus state={preferredState} />}>Preferred model</SectionTitle>
         <FieldRow
           fields={[
             {
               id: `${base}-preferred`,
-              label: "Used when this provider is chosen",
-              control: control("preferred", preferredModel(agent, local), "Preferred model", (m) => save(agent.id, { preferred_model: m })),
+              label: "Model",
+              control: control("preferred", preferredModel(agent, local), "Preferred model", (m) => save(agent.id, { preferred_model: m }), runPreferred),
             },
           ]}
+          hint="Used whenever this provider is chosen."
         />
       </section>
-      <section className="flex flex-col gap-3">
-        <SectionTitle>Roles</SectionTitle>
+      <section className="flex flex-col gap-1">
+        <SectionTitle aside={<SaveStatus state={state} />}>Roles</SectionTitle>
         <FieldRow
           fields={ROLES.map((r) => ({
             id: `${base}-${r.id}`,
@@ -54,7 +57,6 @@ export function AgentPrefs({ agent }: { agent: Provider }) {
             control: control(r.id, roleModel(agent, r.id, local), r.label, (m) => save(agent.id, { roles: { [r.id]: m } })),
           }))}
           hint="The router decides how hard a task is; roles say which of this provider's models does it."
-          status={<SaveStatus state={state} />}
         />
       </section>
     </>

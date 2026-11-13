@@ -3155,3 +3155,31 @@ sample by the orchestrator.
   `panel-measure` (header 40, inset 16 on every tab), `width-stability` (two sizes), `frame-colours`, `flicker`,
   `scroll-on-send` ok. Not verified: an empty Sessions list and the budget tooltip (the demo has neither), keyboard reach
   of the queue inside the collapsed composer, WebKit, touch, a screen reader.
+
+## As built — polish step 6a: Settings (2026-11-13; one commit)
+
+Rules S1–S7 of the orchestrator's brief; 118 before/after pairs (dark and light; 1440×900, 900×600, 390×700).
+
+- **S1, one page structure.** Every section, Providers included, is one centred 880px column (`--spacing-settings-page`):
+  the page title, group captions (meta) and row labels on one left edge (x 450 at 1440; before 488 for row sections and 288
+  for Providers), each group one surface. Providers is one group — caption "N providers connected", one surface split by a
+  hairline into the list (288) and the detail, equal heights; Router is a group with a Show / Hide row.
+  **Departs from decision 59** (780px column) and from 89's "full width of the settings page".
+- **S2, one row anatomy.** Label (14/20), explanation (12/16, `fg-3`), the control on the label's line ending on the row's
+  right edge (x 1249 in every section); rows 60. `SaveStatus` sits beside the control and no longer changes the row's
+  height (60 → 60; was 66 → 86 → 66); Appearance confirms its changes. Every select is 256 wide (`SELECT_W`).
+- **S3, type roles.** The provider detail's Models / Preferred model / Roles / Billing are meta captions, not bold body
+  text (**departs from 89d's** titles).
+- **S4, nav.** ↑ / ↓ / Home / End move between sections, Enter opens; in the settings search ArrowDown goes to the results
+  and Enter opens the first. Under the floor Back and the section menu share one 40px line.
+- **S5, provider detail.** Title: mark, name, state once ("· Experimental" in the same run); the name no longer truncates
+  in a narrow pane (the action wraps under it). Models' count and age are in its caption with Refresh at the right; a stale
+  model's note follows its name. One "API key" label. "Check again" keeps focus while it runs (it is not `disabled`).
+- **S6, words.** `document.title` is "Settings · Octo"; "Record what agents send and receive" (the protocol's name in the
+  explanation); About says what the app is connected to; "Default model" in the project dialog too; Plan limits in compact
+  numbers. Not done: project names in Usage by project still truncate (the shared table).
+- **S7, narrow.** `ViewTabs` are 40 under touch; Providers in list-only mode marks no row as chosen.
+- Gates: `tsc`, eslint 0 errors, prettier, unit tests, `spacing-audit` total=0 (settings and providers scenes 0),
+  `width-stability`, `frame-colours`, `flicker`, `backdrop-check` ok; theme, On startup, provider pages, Check again, the
+  key form, Router, Back/Forward and Esc driven by script. Not driven: Refresh, the project scope menu, Commands edit /
+  choose, CSV and diagnostics copy. Open: on a 1440 window the 880 column puts a row's control far from its label.

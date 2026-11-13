@@ -93,16 +93,16 @@ function TraceRow() {
   return (
     <SettingsRow
       rowId="trace"
-      title="Record an ACP wire trace"
+      title="Record what agents send and receive"
       htmlFor={s ? id : undefined}
       help="One file per agent session under the data folder's traces directory, secrets removed, size-capped. Turn it on to diagnose a failing agent, then send the file with the report."
-      description={s ? "What agents send and receive, written to the data folder." : "Not available on this connection."}
+      description={s ? "A trace of the agent protocol (ACP) in the data folder, secrets removed." : "Not available on this connection."}
       status={<SaveStatus state={saved} restart={s ? harness.needsRestart(s.id) : false} onRestart={restart} />}
       control={
         s ? (
           <Switch
             id={id}
-            label="Record an ACP wire trace"
+            label="Record what agents send and receive"
             disabled={!s.editable}
             checked={s.value === true}
             onChange={(on) => void run(() => harness.save({ set: { [s.id]: on } }))}
@@ -183,7 +183,11 @@ export function AboutSection() {
         description={demo ? "Demo data, in memory: no harness runs." : "The harness this window is connected to."}
         control={<span className="text-sm text-fg-2 tabular-nums">{version ?? "Unknown"}</span>}
       />
-      <SettingsRow title="App" description={`The ${shell} app, talking to ${bridgeUrl}.`} />
+      {/* S6: a sentence a person would write. */}
+      <SettingsRow
+        title="App"
+        description={demo ? `The ${shell} app, running on demo data in memory.` : `The ${shell} app, connected to the harness at ${bridgeUrl}.`}
+      />
     </SettingsGroup>
   );
 }

@@ -26,7 +26,7 @@ import { ApprovalRules } from "./ApprovalRules";
 type FolderRow = { key: number; path: string };
 
 const MODEL_FIELDS: { key: "orchestrator" | "fast" | "balanced" | "deep"; label: string }[] = [
-  { key: "orchestrator", label: "Main model" },
+  { key: "orchestrator", label: "Default model" },
   { key: "fast", label: "Fast tier" },
   { key: "balanced", label: "Balanced tier" },
   { key: "deep", label: "Deep tier" },

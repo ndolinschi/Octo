@@ -16,6 +16,8 @@ export function ModelsProblem(props: { list: ProviderList; values: readonly stri
   return (
     <Notice
       tone="warn"
+      // S1: on the page's one left edge (the captions' and labels').
+      className="px-settings-inset"
       action={
         <Button variant="link" size="xs" onClick={() => connect("providers")}>
           Connect a provider

@@ -1,4 +1,3 @@
-import type { Provider } from "@octo/agent-client";
 import { SETTING_IDS } from "@octo/agent-client";
 import { useEffect, useState } from "react";
 import { Button } from "../primitives/Button";
@@ -7,14 +6,13 @@ import { useHarnessSettings } from "./harnessSettings";
 import { useSettingsActions } from "./pageContext";
 import { Notice } from "../primitives/Notice";
 import { SaveStatus } from "./parts";
-import { SectionTitle } from "./ProviderParts";
 import { useSave } from "./useSave";
 
 /**
  * Decision 89 d: the API provider's key is a field in its detail pane (write-only, through the settings API), never prose
  * about an environment variable. Ready: "Replace key" and a quiet "Remove key".
  */
-export function ProviderKey({ provider }: { provider: Provider }) {
+export function ProviderKey() {
   const harness = useHarnessSettings();
   const { restart } = useSettingsActions();
   const [saved, run] = useSave();
@@ -33,8 +31,8 @@ export function ProviderKey({ provider }: { provider: Provider }) {
   const id = SETTING_IDS.anthropicApiKey;
   const s = harness.get(id);
   return (
-    <section id="row-api-key" className="flex flex-col gap-3">
-      <SectionTitle>API key</SectionTitle>
+    // S5: one label for the key ("API key", the field's own), not a caption, a state line and a field label saying it thrice.
+    <section id="row-api-key" aria-label="API key" className="flex flex-col gap-3">
       {harness.load.status === "loading" && <p className="text-sm text-fg-3">Loading…</p>}
       {harness.load.status === "unavailable" && <p className="text-sm text-fg-2">This connection cannot read or change the harness&apos;s settings.</p>}
       {harness.load.status === "error" && (
@@ -54,7 +52,7 @@ export function ProviderKey({ provider }: { provider: Provider }) {
         <>
           <div className="max-w-measure">
             <SecretForm
-              label={provider.state === "ready" ? "Replace the key" : "Anthropic API key"}
+              label="API key"
               set={s.set === true}
               hint={s.hint}
               placeholder="sk-ant-…"

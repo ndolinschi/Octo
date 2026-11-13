@@ -1333,6 +1333,27 @@
   scroll-behavior: auto !important;
 }
 /* end settings */
+/* polish step 6a: settings — one composed page for every section (S1-S7). */
+@theme {
+  /* S1: one content column for every section, Providers included (decision 59 had 780 for rows and the full width for
+     Providers, so the page's left edge moved between sections). Home's column is the same 880. */
+  --spacing-settings-page: 880px;
+  /* S1: the one left edge inside the column: page title, group captions, row labels and footers sit this far in from the
+     surfaces' edge (a row's own side padding). */
+  --spacing-settings-inset: 16px;
+  /* S2: a settings row is a label line (20) and one explanation line (16) between 12px paddings: 60. A row without an
+     explanation keeps the height and centres its one line. */
+  --spacing-settings-row: 60px;
+  /* S1: Providers' list column inside the one list | detail surface (decision 89 a). */
+  --spacing-settings-list: 288px;
+}
+/* S7: Providers in one column (the list alone) marks no row as chosen until a row is pressed, as `ListDetail` does (P7). */
+@container providers (width < 768px) {
+  [data-unpicked] .group:has(> [data-row][aria-current="true"]) {
+    background-color: transparent;
+  }
+}
+/* end polish step 6a */
 /* review */
 /* Pull-request review (RV2): a finding's lines in the diff get a warn tint and rail; comments reuse the v7 rail. */
 .monaco-editor .octo-review-finding {
@@ -1435,3 +1456,20 @@
   background: var(--octo-active);
 }
 /* /parity */
+
+/* ── polish step 6b: review ─────────────────────────────────────────────────────────────────────────────────────────────
+   R4: a thread card in the diff keeps a reading width from the code's left edge (`max-w-thread`).
+   R5: the segmented track inside the review (Pending's Comments | Findings, the overview's sections) and the submit sheet
+   reads in light: the global 5 % tint is faint on the white overlay; 8 % here. Dark keeps the global track. */
+@theme {
+  --container-thread: 720px;
+}
+:root[data-theme="light"] :where([data-review], [data-review-sheet]) {
+  --octo-seg-track: rgb(0 0 0 / 0.08);
+}
+/* A thread in the diff sits in Monaco's view-zone layer, under the code's line layer: lift it so a pointer reaches its Reply,
+   links and fold buttons (found while taking these shots: Monaco's `view-lines` took every click on the card). */
+.octo-thread-zone {
+  z-index: 1;
+}
+/* ── /polish step 6b: review ── */

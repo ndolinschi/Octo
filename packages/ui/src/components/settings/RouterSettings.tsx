@@ -2,13 +2,12 @@ import { SETTING_IDS } from "@octo/agent-client";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "../primitives/Button";
-import { ListFrame } from "../primitives/Card";
 import { SkeletonList } from "../primitives/Skeleton";
 import { Switch } from "../primitives/Switch";
 import { TextField } from "../primitives/TextField";
 import { useHarnessSettings } from "./harnessSettings";
 import { useSettingsActions } from "./pageContext";
-import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsRow } from "./parts";
+import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { useSave } from "./useSave";
 
 /** The router's switch, URL and upstream key, folded (decision 59; the API key moved into its provider's detail, decision 89). Values are write-only. */
@@ -16,21 +15,27 @@ export function RouterSettings() {
   const [open, setOpen] = useState(false);
   const harness = useHarnessSettings();
   const panelId = useId();
+  // S1: a group like every other (caption over one surface), folded to one row until it is opened (decision 89).
   return (
-    <section className="flex flex-col gap-2">
-      <Button
-        variant="quiet"
-        size="xs"
-        icon={open ? ChevronDown : ChevronRight}
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((o) => !o)}
-        className="self-start"
-      >
-        Router
-      </Button>
-      <div id={panelId} hidden={!open}>
-        <ListFrame>
+    <SettingsGroup label="Router" id="row-router-group">
+      <SettingsRow
+        title="Octo router"
+        description="The bundled router's switch, a router you run yourself, and its upstream key."
+        control={
+          <Button
+            variant="quiet"
+            size="sm"
+            icon={open ? ChevronDown : ChevronRight}
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? "Hide" : "Show"}
+          </Button>
+        }
+      />
+      {open && (
+        <div id={panelId} className="divide-y divide-line">
           {harness.load.status === "unavailable" && (
             <SettingsRow title="Not available here" description="This connection cannot read or change the harness's settings." />
           )}
@@ -45,9 +50,9 @@ export function RouterSettings() {
               <SecretRow id={SETTING_IDS.routerUpstreamKey} rowId="upstream-key" target="router-upstream" />
             </>
           )}
-        </ListFrame>
-      </div>
-    </section>
+        </div>
+      )}
+    </SettingsGroup>
   );
 }
 

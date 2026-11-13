@@ -29,7 +29,7 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
     }
   };
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-1">
       <SectionTitle
         aside={
           p.kind === "agent" &&
@@ -40,9 +40,9 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
           )
         }
       >
-        Models
+        {/* S5: the count and "updated …" are meta in the caption line. */}
+        Models · {modelsSummary(p, now)}
       </SectionTitle>
-      <p className="text-xs text-fg-3">{modelsSummary(p, now)}</p>
       {p.models_error && <Notice tone="warn">The last look failed: {p.models_error.replace(/\.$/, "")}. The list below is what was known before.</Notice>}
       {p.models_note && <p className="text-xs text-fg-3">{p.models_note}</p>}
       {p.models.length === 0 ? (
@@ -57,17 +57,18 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
               tone="quiet"
               tip={m.id}
               title={
-                m.id === p.default_model ? (
-                  // T5: "default" is a quiet badge right after the name, not a word at the far edge of the row.
+                m.id === p.default_model || m.stale ? (
+                  // T5: "default" is a quiet badge right after the name; S5: a stale model's note is meta right after the
+                  // name too, not at the far edge of the row.
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="min-w-0 truncate">{agentModelLabel(m)}</span>
-                    <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs leading-4 text-fg-3">default</span>
+                    {m.id === p.default_model && <span className="shrink-0 rounded-xs bg-hover px-1.5 text-xs leading-4 text-fg-3">default</span>}
+                    {m.stale && <span className="shrink-0 text-xs text-fg-3">not advertised last time</span>}
                   </span>
                 ) : (
                   agentModelLabel(m)
                 )
               }
-              {...(m.stale ? { meta: "not advertised last time" } : {})}
             />
           ))}
         </div>

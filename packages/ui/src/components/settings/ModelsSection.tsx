@@ -7,7 +7,7 @@ import { SkeletonList } from "../primitives/Skeleton";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { useHarnessSettings } from "./harnessSettings";
 import { modelOptions, MODEL_ROWS, type ModelRow } from "./modelRows";
-import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { LoadErrorRow, SELECT_W, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
 import { ModelsProblem } from "./ModelsProblem";
 import { ProjectModels } from "./ProjectModels";
 import { useProjectDetails } from "./useProjectDetails";
@@ -106,7 +106,7 @@ function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
       status={<SaveStatus state={saved} />}
       control={
         // The width sits on a wrapper: the select's own `w-full` would win over a `w-64` on it and size it by its text.
-        <div className={CONTROL_W.lg}>
+        <div className={SELECT_W}>
           <Select
             id={id}
             label={def.title}

@@ -6,7 +6,7 @@ import { Button } from "../primitives/Button";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
 import { CommandDialog, GlobsDialog, OfferedDialog } from "./CommandDialogs";
-import { CONTROL_W, LoadErrorRow, SaveStatus, SettingsGroup, SettingsRow } from "./parts";
+import { LoadErrorRow, SaveStatus, SELECT_W, SettingsGroup, SettingsRow } from "./parts";
 import { useProjectDetails } from "./useProjectDetails";
 import { useSave } from "./useSave";
 
@@ -69,14 +69,15 @@ function ProjectPick(props: { projects: readonly Project[]; value: string; onCha
       htmlFor={id}
       description="Commands belong to one project."
       control={
-        <Select
-          id={id}
-          label="Settings for"
-          value={props.value}
-          options={props.projects.map((p) => ({ value: p.id, label: p.name }))}
-          onChange={props.onChange}
-          className={CONTROL_W.md}
-        />
+        <div className={SELECT_W}>
+          <Select
+            id={id}
+            label="Settings for"
+            value={props.value}
+            options={props.projects.map((p) => ({ value: p.id, label: p.name }))}
+            onChange={props.onChange}
+          />
+        </div>
       }
     />
   );
@@ -168,17 +169,18 @@ function ProjectCommands({ project, update }: { project: Project; update: Update
           description="Side by side only when each side has room; narrower panes always use one column."
           status={<SaveStatus state={saved} />}
           control={
-            <Select
-              id={preferId}
-              label="Diff layout"
-              value={review.prefer}
-              options={PREFER.map((o) => ({ value: o.id, label: o.label }))}
-              onChange={(value) => {
-                const v = PREFER.find((o) => o.id === value)?.id;
-                if (v) void run(() => update(project.id, { review: { ...review, prefer: v } }));
-              }}
-              className={CONTROL_W.md}
-            />
+            <div className={SELECT_W}>
+              <Select
+                id={preferId}
+                label="Diff layout"
+                value={review.prefer}
+                options={PREFER.map((o) => ({ value: o.id, label: o.label }))}
+                onChange={(value) => {
+                  const v = PREFER.find((o) => o.id === value)?.id;
+                  if (v) void run(() => update(project.id, { review: { ...review, prefer: v } }));
+                }}
+              />
+            </div>
           }
         />
       </SettingsGroup>

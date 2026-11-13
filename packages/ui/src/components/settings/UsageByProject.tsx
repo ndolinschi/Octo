@@ -11,7 +11,7 @@ import { Notice } from "../primitives/Notice";
 import { Select } from "../primitives/Select";
 import { SkeletonList } from "../primitives/Skeleton";
 import { UsageTable, type UsageTableRow } from "../shared/UsageTable";
-import { CONTROL_W, SettingsGroup, SettingsRow } from "./parts";
+import { SELECT_W, SettingsGroup, SettingsRow } from "./parts";
 
 const DAY_MS = 86_400_000;
 
@@ -88,18 +88,18 @@ export function UsageByProject() {
         title="Period"
         htmlFor="usage-period"
         control={
-          <Select
-            id="usage-period"
-            label="Period"
-            size="sm"
-            value={period}
-            options={USAGE_PERIODS.map((p) => ({ value: p.id, label: p.label }))}
-            onChange={(v) => {
-              const next = USAGE_PERIODS.find((p) => p.id === v);
-              if (next) pick(next.id);
-            }}
-            className={CONTROL_W.md}
-          />
+          <div className={SELECT_W}>
+            <Select
+              id="usage-period"
+              label="Period"
+              value={period}
+              options={USAGE_PERIODS.map((p) => ({ value: p.id, label: p.label }))}
+              onChange={(v) => {
+                const next = USAGE_PERIODS.find((p) => p.id === v);
+                if (next) pick(next.id);
+              }}
+            />
+          </div>
         }
       />
       <div className="px-2 py-1">
