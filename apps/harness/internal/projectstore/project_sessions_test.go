@@ -199,7 +199,14 @@ func TestSessionLifecycle(t *testing.T) {
 	if l, _ := db.ListSessions(ctx, SessionFilter{Archived: "true"}); len(l) != 1 || l[0].ID != first {
 		t.Fatalf("archived list: %+v", l)
 	}
-	// Delete removes the exchanges from the index and the messages.
+	// Delete removes the exchanges from the index and the messages; a task made in the session stays, marked.
+	made, err := db.CreateTask(ctx, Task{Title: "Kept task", Goal: "Kept", SessionID: first})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := db.Task(ctx, made.ID); got.SessionDeleted {
+		t.Fatal("a task of a live session is marked deleted")
+	}
 	ids, err := db.DeleteSession(ctx, first)
 	if err != nil || len(ids) != 1 {
 		t.Fatalf("delete = %v %v", ids, err)
@@ -209,6 +216,9 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	if _, err := db.SessionInfoOf(ctx, first); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("deleted session = %v", err)
+	}
+	if all, err := db.Tasks(ctx); err != nil || len(all) != 1 || !all[0].SessionDeleted || all[0].SessionID != first {
+		t.Fatalf("task after its session was deleted = %+v %v", all, err)
 	}
 	if _, err := db.SetCurrentSession(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("resume unknown = %v", err)

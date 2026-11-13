@@ -8,10 +8,10 @@ import { Button } from "../primitives/Button";
 import { EmptyState } from "../primitives/EmptyState";
 import { FileInput } from "../primitives/FileInput";
 import { Glyph } from "../primitives/Glyph";
-import { IconButton } from "../primitives/IconButton";
 import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
+import { Panel, PanelEmpty, PanelFilters } from "../primitives/Panel";
 import { SearchField } from "../primitives/SearchField";
 import { NoteDetail } from "./NoteDetail";
 import { NoteEditor } from "./NoteEditor";
@@ -113,64 +113,55 @@ export function NotesPanel() {
       />
     );
 
-  const toolbar = (
-    <div className="box-content flex h-ctl-md shrink-0 items-center gap-1 px-pane pt-pane pb-1">
-      <SearchField label="Search notes" size="sm" value={query} onChange={setQuery} className="min-w-0 flex-1" />
-      <FileInput
-        button={{ icon: Upload }}
-        label="Import a .md file"
-        accept=".md,.markdown,.txt,text/markdown,text/plain"
-        onFiles={(files) => files[0] && void importFile(files[0])}
-      />
-      <IconButton icon={Plus} label="Add note" onClick={() => setMode({ kind: "new" })} disabled={mode.kind === "new"} />
-    </div>
-  );
-
+  const empty = state.notes.length === 0 && mode.kind !== "new";
   return (
-    <div className="flex h-full min-h-0 flex-col" data-notes>
-      {problem && (
-        <Notice tone="error" className="px-pane pt-pane">
-          {problem}
-        </Notice>
-      )}
-      {state.notes.length === 0 && mode.kind !== "new" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {toolbar}
-          <EmptyState
-            title="No notes yet"
-            actions={
-              <Button size="sm" variant="secondary" onClick={() => setMode({ kind: "new" })}>
-                Add note
-              </Button>
+    <div className="h-full min-h-0" data-notes>
+      <Panel
+        name="notes"
+        title="Notes"
+        notice={problem ? <Notice tone="error">{problem}</Notice> : undefined}
+        actions={
+          <>
+            <FileInput
+              button={{ icon: Upload }}
+              label="Import a .md file"
+              accept=".md,.markdown,.txt,text/markdown,text/plain"
+              onFiles={(files) => files[0] && void importFile(files[0])}
+            />
+            <Button variant="secondary" size="sm" icon={Plus} onClick={() => setMode({ kind: "new" })} disabled={mode.kind === "new"}>
+              New note
+            </Button>
+          </>
+        }
+        footer={indexFooter(state.notes)}
+      >
+        {empty ? (
+          <EmptyState title="No notes yet">Decisions and facts saved while working appear here.</EmptyState>
+        ) : (
+          <ListDetail
+            label="Notes"
+            listLabel="Notes"
+            placeholder="Choose a note to read it."
+            selected={mode.kind === "new" ? NEW_NOTE : chosen}
+            onSelect={(id) => pick(id === NEW_NOTE ? null : id)}
+            listHeader={
+              <PanelFilters>
+                <SearchField label="Search notes" size="sm" value={query} onChange={setQuery} className="min-w-0 flex-1" />
+              </PanelFilters>
             }
-          >
-            Decisions and facts saved while working appear here.
-          </EmptyState>
-        </div>
-      ) : (
-        <ListDetail
-          label="Notes"
-          listLabel="Notes"
-          placeholder="Choose a note to read it."
-          selected={mode.kind === "new" ? NEW_NOTE : chosen}
-          onSelect={(id) => pick(id === NEW_NOTE ? null : id)}
-          listHeader={toolbar}
-          detail={detail}
-          detailClassName="p-0"
-          list={(select) =>
-            shown.length === 0 ? (
-              <p role="listitem" className="px-2 py-3 text-sm text-fg-3">
-                No note matches "{query}".
-              </p>
-            ) : (
-              shown.map((n) => <NoteRow key={n.id} note={n} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />)
-            )
-          }
-        />
-      )}
-      <p className="line-clamp-2 shrink-0 border-t border-line px-pane py-1 text-xs text-fg-3" data-notes-footer>
-        {indexFooter(state.notes)}
-      </p>
+            detail={detail}
+            list={(select) =>
+              shown.length === 0 ? (
+                <div role="listitem">
+                  <PanelEmpty>No note matches "{query}".</PanelEmpty>
+                </div>
+              ) : (
+                shown.map((n) => <NoteRow key={n.id} note={n} active={current?.id === n.id && mode.kind !== "new"} onPick={() => select(n.id)} />)
+              )
+            }
+          />
+        )}
+      </Panel>
     </div>
   );
 }
@@ -182,10 +173,16 @@ function NoteRow(props: { note: Note; active: boolean; onPick(): void }) {
       role="listitem"
       size="md"
       selected={props.active}
-      leading={note.pinned ? <Glyph icon={Pin} size={14} aria-label="Pinned" /> : undefined}
       title={note.title}
       description={note.description || "No description"}
-      meta={note.tags.length > 0 ? note.tags.map((t) => `#${t}`).join(" ") : undefined}
+      meta={
+        note.pinned || note.tags.length > 0 ? (
+          <span className="inline-flex items-center gap-1">
+            {note.pinned && <Glyph icon={Pin} size={14} aria-label="Pinned" />}
+            {note.tags.map((t) => `#${t}`).join(" ")}
+          </span>
+        ) : undefined
+      }
       tip={note.description_auto ? "Auto description: taken from the first line of the note" : note.title}
       onClick={props.onPick}
     />

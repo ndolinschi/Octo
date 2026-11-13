@@ -15,7 +15,8 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { useFloatingHere } from "../../state/workspace/useFloatingHere";
 import { useGroup } from "../../state/workspace/group";
 import { domId } from "../../state/workspace/ids";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { Menu } from "../primitives/Menu";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
@@ -276,7 +277,8 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room, folder, path, name]);
   const Icon = fileIcon(name);
-  const crumb = "press h-6 shrink-0 rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg";
+  // A crumb is a quiet link: no padding of its own, so its width is the text plus the CRUMB_PAD the fit model counts.
+  const crumb = "h-6 px-1";
   const dirOf = (i: number) => all.slice(0, i + 1).join("/");
   const hidden = plan.hidden.map((i) => (i < 0 ? { label: folder, path: "" } : { label: all[i] ?? "", path: dirOf(i) }));
   return (
@@ -287,9 +289,9 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
       title={middleTruncate(`${folder}/${path}`, 96)}
     >
       {plan.folder && (
-        <button type="button" className={crumb} title={`Reveal ${folder} in the tree`} onClick={() => code.revealDir(folder, "")}>
+        <Button variant="link" tone="quiet" size="sm" className={crumb} title={`Reveal ${folder} in the tree`} onClick={() => code.revealDir(folder, "")}>
           {folder}
-        </button>
+        </Button>
       )}
       {hidden.length > 0 && (
         <>
@@ -300,9 +302,16 @@ function Crumbs({ folder, path }: { folder: string; path: string }) {
       {plan.dirs.map((i) => (
         <Fragment key={i}>
           <Sep />
-          <button type="button" className={crumb} title={`Reveal ${folder}/${dirOf(i)} in the tree`} onClick={() => code.revealDir(folder, dirOf(i))}>
+          <Button
+            variant="link"
+            tone="quiet"
+            size="sm"
+            className={crumb}
+            title={`Reveal ${folder}/${dirOf(i)} in the tree`}
+            onClick={() => code.revealDir(folder, dirOf(i))}
+          >
             {all[i]}
-          </button>
+          </Button>
         </Fragment>
       ))}
       {(plan.folder || hidden.length > 0) && <Sep />}
@@ -321,9 +330,11 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
   const button = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <button
+      <Button
         ref={button}
-        type="button"
+        variant="link"
+        tone="quiet"
+        size="sm"
         aria-haspopup="menu"
         aria-expanded={menu !== null}
         aria-label={`${dirs.length} hidden ${dirs.length === 1 ? "folder" : "folders"}: ${dirs.map((d) => d.label).join("/")}`}
@@ -332,10 +343,10 @@ function HiddenCrumbs({ folder, dirs }: { folder: string; dirs: { label: string;
           const r = button.current?.getBoundingClientRect();
           if (r) setMenu(menu ? null : { x: r.left, y: r.bottom + 4 });
         }}
-        className={cn("h-6 shrink-0 press rounded-sm px-1 text-sm text-fg-3 hover:bg-hover hover:text-fg", menu && "bg-active text-fg")}
+        className={cn("h-6 px-1", menu && "bg-active text-fg")}
       >
         …
-      </button>
+      </Button>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Menu
@@ -358,14 +369,9 @@ function Sep() {
 /** Preview | Source for Markdown (remembered per tab): two 24px segments, the current one filled. */
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange(m: Mode): void }) {
   const item = (m: Mode, label: string) => (
-    <button
-      type="button"
-      aria-pressed={mode === m}
-      onClick={() => onChange(m)}
-      className={cn("h-6 press rounded-sm px-2 text-xs", mode === m ? "bg-active text-fg" : "text-fg-3 hover:bg-hover hover:text-fg")}
-    >
+    <Button variant="quiet" size="xs" pressed={mode === m} onClick={() => onChange(m)}>
       {label}
-    </button>
+    </Button>
   );
   return (
     <div role="group" aria-label="Markdown view" className="flex shrink-0 items-center gap-0.5">

@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ReviewComment, ReviewThread } from "@octo/agent-client";
 import { plural } from "../../lib/review/files";
 import { Glyph } from "../primitives/Glyph";
+import { ListRow } from "../primitives/ListRow";
 import { ThreadCard, type ThreadActions } from "./ThreadCard";
 
 /**
@@ -16,15 +17,14 @@ export function ApartThreads(props: { threads: readonly ReviewThread[]; pending:
   const label = outdated === props.threads.length ? plural(outdated, "outdated thread") : `${plural(props.threads.length, "thread")} not at a line`;
   return (
     <div className="flex max-h-72 shrink-0 flex-col border-b border-line">
-      <button
-        type="button"
-        aria-expanded={open}
+      <ListRow
+        size="sm"
+        tone="quiet"
+        expanded={open}
+        leading={<Glyph icon={open ? ChevronDown : ChevronRight} size={14} />}
+        title={label}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-7 w-full items-center gap-1 px-3 text-left text-xs text-fg-3 press-row focus-inset hover:bg-hover hover:text-fg max-md:h-10"
-      >
-        <Glyph icon={open ? ChevronDown : ChevronRight} size={14} />
-        {label}
-      </button>
+      />
       {open && (
         <div className="flex min-h-0 flex-col gap-2 overflow-y-auto px-3 pb-3">
           {props.threads.map((t) => (

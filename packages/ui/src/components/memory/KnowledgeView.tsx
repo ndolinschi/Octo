@@ -7,6 +7,7 @@ import type { Load } from "../../lib/memory/load";
 import { filterCounts, rememberedItems, TASK_FILTERS } from "../../lib/memory/tasks";
 import { useApp } from "../../state/app";
 import { FilterTabs } from "../primitives/FilterTabs";
+import { PanelFilters } from "../primitives/Panel";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
@@ -50,10 +51,10 @@ export function KnowledgeView(props: {
     );
   }
   return (
-    <ScrollArea className="h-full min-h-0 px-pane pb-6">
+    <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-6">
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- ↑/↓/Home/End between the rows of both lists */}
       <div onKeyDown={moveInList} className={DETAIL_MAX}>
-        <section aria-label="Remembered" className="pt-1">
+        <section aria-label="Remembered">
           <RememberedHeader count={items.length} onAdd={canAdd && !adding ? () => setAdding(true) : undefined} />
           {adding && <AddFact onDone={() => setAdding(false)} onKept={props.reload} />}
           {items.length === 0 && !adding ? (
@@ -64,13 +65,15 @@ export function KnowledgeView(props: {
         </section>
         <section aria-label="Tasks" className="pt-4">
           <SectionHeader inset>Tasks</SectionHeader>
-          <FilterTabs<TaskStatus>
-            label="Task status"
-            className="px-2"
-            options={TASK_FILTERS.map((f) => ({ id: f.id, label: f.label, count: counts?.[f.id] ?? 0 }))}
-            value={status}
-            onChange={setStatus}
-          />
+          <PanelFilters flush>
+            <FilterTabs<TaskStatus>
+              bare
+              label="Task status"
+              options={TASK_FILTERS.map((f) => ({ id: f.id, label: f.label, count: counts?.[f.id] ?? 0 }))}
+              value={status}
+              onChange={setStatus}
+            />
+          </PanelFilters>
           <TaskList
             // Another status is another list: its open row and fold start over.
             key={status}

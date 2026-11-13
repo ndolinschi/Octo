@@ -1,11 +1,10 @@
-import { ListFilter, X } from "lucide-react";
-import { Glyph } from "../primitives/Glyph";
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "../../lib/cn";
 import { useCode } from "../../state/code";
 import { TREE_DEFAULT, TREE_MAX, TREE_MIN, useFileView } from "../../state/fileView";
 import type { TabId } from "../../state/workspace/layout";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
+import { SearchField } from "../primitives/SearchField";
 import { FileTree, type FileTreeHandle } from "./FileTree";
 
 /**
@@ -47,11 +46,7 @@ export function TreeColumn(props: {
   }, [fv.focusTreeTick, ws, props.tab, takeFocusRequest, shown]);
 
   const onInputKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape" && filter) {
-      e.preventDefault();
-      e.stopPropagation();
-      setFilter("");
-    } else if (e.key === "ArrowDown") {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       tree.current?.focusFirst();
     }
@@ -67,36 +62,16 @@ export function TreeColumn(props: {
     >
       {!page && <ResizeHandle groupId={props.groupId} width={width} max={props.maxWidth} />}
       <div className="flex h-bar shrink-0 items-center px-2">
-        <label className="flex h-row min-w-0 flex-1 items-center gap-2 rounded-sm border border-line px-2 text-fg-3 transition-[border-color] duration-100 focus-within:border-focus">
-          <Glyph icon={ListFilter} size={14} className="shrink-0" />
-          <span className="sr-only">Filter files</span>
-          <input
-            ref={input}
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            onKeyDown={onInputKey}
-            placeholder="Filter files"
-            spellCheck={false}
-            autoComplete="off"
-            aria-controls={`${props.id}-list`}
-            className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
-          />
-          {filter && (
-            <button
-              type="button"
-              aria-label="Clear filter"
-              title="Clear filter"
-              onClick={() => {
-                setFilter("");
-                input.current?.focus();
-              }}
-              className="relative -mr-1 grid size-5 shrink-0 press place-items-center rounded-2xs text-fg-3 before:absolute before:-inset-0.5 before:content-[''] hover:bg-hover hover:text-fg"
-            >
-              <Glyph icon={X} size={14} />
-            </button>
-          )}
-        </label>
+        <SearchField
+          ref={input}
+          label="Filter files"
+          size="sm"
+          value={filter}
+          onChange={setFilter}
+          onKeyDown={onInputKey}
+          inputProps={{ spellCheck: false, autoComplete: "off", "aria-controls": `${props.id}-list` }}
+          className="flex-1"
+        />
       </div>
       <div id={`${props.id}-list`} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
         {active && fileIndex.status === "done" && fileIndex.partial && (

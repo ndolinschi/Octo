@@ -8,9 +8,17 @@ export type Filter<T extends string> = { id: T; label: string; /** Dim number af
  * Decision 82 (b): a list's filters (All, Open, Done, Dropped). Small, quiet text with dim counts, no fill, no
  * underline: the chosen filter is full-strength text, the others `fg-3`. It lives inside the list column under the view
  * switcher's hairline with the list's inset, never across the detail pane, and never as a second pill row. A radio
- * group: one tab stop, ←/→ / Home / End move and choose.
+ * group: one tab stop, ←/→ / Home / End move and choose. Chips are 24px high with 8px of side padding, so their text starts on
+ * the rows' text edge (decision 95f); `bare` drops the row's own height and inset for `PanelFilters`.
  */
-export function FilterTabs<T extends string>(props: { label: string; options: readonly Filter<T>[]; value: T; onChange(value: T): void; className?: string }) {
+export function FilterTabs<T extends string>(props: {
+  label: string;
+  options: readonly Filter<T>[];
+  value: T;
+  onChange(value: T): void;
+  className?: string;
+  bare?: boolean;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const at = Math.max(
     0,
@@ -32,7 +40,7 @@ export function FilterTabs<T extends string>(props: { label: string; options: re
       tabIndex={-1}
       aria-label={props.label}
       onKeyDown={onKeyDown}
-      className={cn("flex h-row shrink-0 items-center gap-3 overflow-x-auto px-pane text-xs", props.className)}
+      className={cn("flex shrink-0 items-center gap-1 overflow-x-auto text-xs", props.bare ? "min-w-0" : "h-row px-pane", props.className)}
     >
       {props.options.map((o) => {
         const on = o.id === props.value;
@@ -46,7 +54,7 @@ export function FilterTabs<T extends string>(props: { label: string; options: re
             title={o.title}
             onClick={() => props.onChange(o.id)}
             className={cn(
-              "flex shrink-0 items-baseline gap-1 rounded-sm px-0.5 whitespace-nowrap press-row focus-inset",
+              "flex h-ctl-xs shrink-0 items-center gap-1 rounded-sm px-2 whitespace-nowrap press-row focus-inset",
               on ? "text-fg" : "text-fg-3 hover:text-fg-2",
             )}
           >

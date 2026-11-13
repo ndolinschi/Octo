@@ -8,7 +8,12 @@ import { emit, newId, type ProjectRecord } from "./store";
  */
 const OCTO: SlashCommands["octo"] = [
   { name: "compact", description: "Summarise the conversation to free context", available: true, endpoint: "POST /v1/projects/{id}/compact" },
-  { name: "clear", description: "Start a new session; nothing is deleted", available: true, endpoint: "POST /v1/projects/{id}/clear" },
+  {
+    name: "clear",
+    description: "Start a new session; keeps a summary of this one, nothing is deleted",
+    available: true,
+    endpoint: "POST /v1/projects/{id}/clear",
+  },
   { name: "mode", description: "Choose Agent, Ask or Plan for the next message", args: "ask|plan|agent", available: true, endpoint: "ui:mode" },
   { name: "model", description: "Choose the model", available: true, endpoint: "ui:model" },
   { name: "rewind", description: "Cut back to your last request and restore files", available: true, endpoint: "POST /v1/projects/{id}/rewind" },

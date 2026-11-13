@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "./Button";
 import { ButtonsSection } from "./gallery/ButtonsSection";
 import { FieldsSection } from "./gallery/FieldsSection";
+import { PanelSection } from "./gallery/PanelSection";
 import { RowsSection, SurfacesSection } from "./gallery/SurfacesSection";
 import { ScrollArea } from "./ScrollArea";
 
@@ -34,6 +35,7 @@ export function Gallery() {
         <FieldsSection />
         <RowsSection />
         <SurfacesSection />
+        <PanelSection />
       </div>
     </ScrollArea>
   );

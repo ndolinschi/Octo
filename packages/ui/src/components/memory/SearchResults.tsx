@@ -5,6 +5,7 @@ import { formatWhen } from "../../lib/memory/dates";
 import { emptyText, HIT_LIMIT, type HitTarget, type UiHit } from "../../lib/memory/search";
 import { Highlight } from "../primitives/Highlight";
 import { ListRow } from "../primitives/ListRow";
+import { PanelEmpty } from "../primitives/Panel";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
@@ -20,18 +21,22 @@ export function SearchResults(props: { state: SearchState; query: string; canOpe
   const now = useNow(false, CLOCK_MINUTE_MS);
   const { state, query } = props;
   if (state.status === "idle")
-    return <p className="px-pane py-3 text-sm text-fg-3">Type two letters or more to search exchanges, knowledge, files and notes.</p>;
+    return (
+      <div className="px-pane">
+        <PanelEmpty>Type two letters or more to search exchanges, knowledge, files and notes.</PanelEmpty>
+      </div>
+    );
   if (state.status === "loading") return <SkeletonList count={5} size="md" twoLine shimmer />;
   if (state.status === "error") return <MemoryError message={state.message} />;
   if (state.count === 0) {
     return (
-      <p role="status" className="px-pane py-3 text-sm text-fg-2">
-        {emptyText(query, state.message)}. Try one word.
-      </p>
+      <div className="px-pane">
+        <PanelEmpty>{emptyText(query, state.message)}. Try one word.</PanelEmpty>
+      </div>
     );
   }
   return (
-    <ScrollArea className="h-full min-h-0 px-pane pb-6">
+    <ScrollArea className="h-full min-h-0 px-pane pt-1 pb-6">
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- ↑/↓/Home/End between the result rows */}
       <div role="region" aria-label="Results" onKeyDown={moveInList} className={DETAIL_MAX}>
         {state.groups.map((g) => (

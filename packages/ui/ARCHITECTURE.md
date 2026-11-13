@@ -83,7 +83,7 @@ comment with its purpose, props, variants, sizes and when NOT to use it; `?demo=
 | Surfaces | `Card` (raised, panel, code), `Dialog`, `Popover`, `Tooltips`, `CommandLine`, `KeyHint` (`Kbd`, `Key` aliases) | |
 | Marks | `Glyph`, `StateGlyph`, status glyphs, `ProviderMark`, `Highlight`, `DayBars`, `Presence`, `Streak` + `StreakLayer`, file icons | |
 
-Reserved, being built by other batches: `ViewTabs`, `FilterTabs`, `FieldRow`. Not yet built (audit group list): `RadioGroup`,
+Frame (decision 95f): `Panel` (+ `PanelFilters`, `PanelBody`, `PanelEmpty`, `DetailHeader`), the one frame of every tool tab; keep it out of the entry chunk (tool tabs are lazy). Reserved, being built by other batches: `FieldRow`. Not yet built (audit group list): `RadioGroup`,
 `SelectButton`, `Badge`, `Loading`, `Toolbar`, `ListDetail`, `Meter`, `Dialog variant="palette"`.
 
 ## Providers

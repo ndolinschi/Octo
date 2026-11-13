@@ -121,14 +121,9 @@ function CommentCard(props: {
     <li className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3">
       <div className="flex min-w-0 items-center gap-1">
         {c.path ? (
-          <button
-            type="button"
-            onClick={jump}
-            className="min-w-0 truncate rounded-xs text-left font-mono text-xs text-link hover:underline focus-visible:underline"
-            title={commentWhere(c)}
-          >
+          <Button variant="link" mono size="xs" onClick={jump} className="min-w-0 truncate" title={commentWhere(c)}>
             {commentWhere(c)}
-          </button>
+          </Button>
         ) : (
           <span className="text-xs font-medium text-fg-2">General comment</span>
         )}
@@ -176,14 +171,16 @@ function FindingCard(props: {
     <li className={cn("flex flex-col gap-2 rounded-md border border-line bg-raised p-3", f.status === "dismissed" && "opacity-70")}>
       <div className="flex min-w-0 items-center gap-2">
         <span className={cn("shrink-0 text-xs font-medium", SEVERITY_TONE[f.severity])}>{f.severity}</span>
-        <button
-          type="button"
+        <Button
+          variant="link"
+          mono
+          size="xs"
           onClick={() => props.onJump({ path: f.path, line: f.start_line, side: "new" })}
-          className="min-w-0 truncate rounded-xs text-left font-mono text-xs text-link hover:underline focus-visible:underline"
+          className="min-w-0 truncate"
           title={`${f.path}:${lines}`}
         >
           {f.path}:{lines}
-        </button>
+        </Button>
         {f.verdict && <span className="ml-auto shrink-0 text-xs text-fg-3">{f.verdict}</span>}
       </div>
       <p className="text-sm text-fg">{f.statement}</p>

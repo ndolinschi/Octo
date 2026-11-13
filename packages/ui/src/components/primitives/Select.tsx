@@ -2,7 +2,7 @@ import { Check, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { forwardRef, Fragment, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { CONTROL, FIELD, type ControlSize } from "../../lib/controls";
-import { listKeyTarget } from "../../lib/focus";
+import { createPointerGate, popupTarget } from "./popupNav";
 import { Glyph } from "./Glyph";
 import { Popover } from "./Popover";
 import { Presence } from "./Presence";
@@ -55,6 +55,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
   const current = options.find((o) => o.value === value);
   const optionId = (i: number) => `${listId}-${i}`;
   const typed = useRef({ text: "", at: 0 });
+  const gate = useRef(createPointerGate());
 
   // Keeps the active row visible while arrows walk a list taller than the popover.
   useEffect(() => {
@@ -115,12 +116,10 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
       }
       return;
     }
-    const at = Math.max(0, enabled.indexOf(active));
-    const to = listKeyTarget(e.key, at, enabled.length);
-    const next = to === null ? undefined : enabled[to];
-    if (next === undefined) return;
+    const to = popupTarget(e.key, enabled.map(String), String(active));
+    if (to === null) return;
     e.preventDefault();
-    setActive(next);
+    setActive(Number(to));
   };
 
   return (
@@ -181,7 +180,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
                   role="option"
                   aria-selected={o.value === value}
                   aria-disabled={o.disabled || undefined}
-                  onPointerMove={() => !o.disabled && setActive(i)}
+                  onPointerMove={(e) => gate.current(e) && !o.disabled && setActive(i)}
                   data-option={i}
                   className={cn(
                     "flex min-w-0 items-center gap-2 rounded-sm px-2 press-row touch:min-h-ctl-lg",

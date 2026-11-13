@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { cn } from "../../../lib/cn";
 import { linesLabel } from "../../../lib/comments";
 import { Button } from "../../primitives/Button";
+import { TextArea } from "../../primitives/TextField";
 
 /**
  * What an editor view zone shows under a line: the inline composer, or a pending comment card.
@@ -75,7 +76,8 @@ function Composer(props: Extract<ZoneProps, { kind: "composer" }>) {
         submit();
       }}
     >
-      <textarea
+      <TextArea
+        variant="bare"
         ref={area}
         rows={1}
         value={text}
@@ -83,7 +85,7 @@ function Composer(props: Extract<ZoneProps, { kind: "composer" }>) {
         placeholder={props.editing ? "Edit comment" : `Comment on ${linesLabel(props.start, props.end)}`}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
-        className="block max-h-[200px] min-h-9 w-full resize-none overscroll-contain bg-transparent px-3 pt-2 pb-1 text-sm leading-5 wrap-anywhere text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none"
+        className="block max-h-[200px] min-h-9 overscroll-contain px-3 pt-2 pb-1 leading-5 wrap-anywhere"
       />
       <div className="flex items-center justify-end gap-1.5 pt-0.5 pr-1.5 pb-1.5 pl-3">
         <p className="mr-auto min-w-0 truncate text-xs text-fg-3 @max-[360px]/zone:hidden">Enter to add, Shift+Enter for a new line</p>
@@ -106,12 +108,12 @@ function Card(props: Extract<ZoneProps, { kind: "card" }>) {
         <Glyph icon={MessageSquare} size={14} className="shrink-0" />
         <span className="min-w-0 truncate tabular-nums">{label.replace(/^l/, "L")}</span>
         <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100">
-          <button type="button" onClick={props.onEdit} className="h-6 press rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg">
+          <Button variant="quiet" size="xs" onClick={props.onEdit}>
             Edit
-          </button>
-          <button type="button" onClick={props.onRemove} className="h-6 press rounded-sm px-1.5 text-xs text-fg-2 hover:bg-hover hover:text-fg">
+          </Button>
+          <Button variant="quiet" size="xs" onClick={props.onRemove}>
             Remove
-          </button>
+          </Button>
         </span>
       </header>
       <p className="text-sm wrap-anywhere whitespace-pre-wrap text-fg">{props.text}</p>

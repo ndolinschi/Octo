@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/cn";
 import { MOD_LABEL } from "../../lib/keys";
 import { Button } from "../primitives/Button";
+import { Checkbox } from "../primitives/Checkbox";
 import { Textarea } from "../primitives/Field";
 import { Spinner } from "../primitives/Status";
 
@@ -70,10 +71,9 @@ export function Composer(props: {
       <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1">
         <h3 className="min-w-0 truncate text-sm font-medium text-fg">{props.heading}</h3>
         {props.suggestFor !== undefined && (
-          <label title="Suggest a change (S)" className="ml-auto flex h-6 cursor-pointer items-center gap-2 text-sm text-fg-2 max-sm:h-10">
-            <input type="checkbox" className="size-4 accent-[var(--octo-primary)]" checked={suggest} onChange={(e) => setSuggest(e.target.checked)} />
-            Suggest a change
-          </label>
+          <span title="Suggest a change (S)" className="ml-auto">
+            <Checkbox label="Suggest a change" checked={suggest} onChange={setSuggest} />
+          </span>
         )}
       </div>
       <Textarea

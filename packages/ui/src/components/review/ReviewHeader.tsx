@@ -1,13 +1,9 @@
 import { ArrowLeft, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Review } from "@octo/agent-client";
-import { cn } from "../../lib/cn";
 import { plural } from "../../lib/review/files";
 import { reviewTarget } from "../../lib/review/submit";
 import { Button, IconButton } from "../primitives/Button";
-import { Glyph } from "../primitives/Glyph";
-
-const QUIET = "inline-flex h-6 shrink-0 press items-center gap-1 rounded-sm px-2 text-fg-2 hover:bg-hover hover:text-fg max-md:h-10";
 
 /**
  * Decision 64 and 78: one title row (back, title, the run buttons and "Check out" as quiet controls, and the single
@@ -61,19 +57,23 @@ export function ReviewHeader(props: {
         </span>
         {props.unresolved > 0 && <span className="shrink-0 max-sm:hidden">{plural(props.unresolved, "unresolved thread")}</span>}
         {props.behind && r.kind !== "local" && (
-          <button type="button" disabled={props.refreshing} onClick={props.onRefresh} className={QUIET}>
-            <Glyph icon={RefreshCw} size={14} className={cn(props.refreshing && "animate-spin")} />
+          <Button variant="quiet" size="xs" icon={RefreshCw} loading={props.refreshing} onClick={props.onRefresh}>
             New commits: update
-          </button>
+          </Button>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-1">
-          <button type="button" onClick={props.onPending} aria-haspopup="dialog" className={QUIET}>
+          <Button variant="quiet" size="xs" onClick={props.onPending} aria-haspopup="dialog">
             Pending {props.pending}
-          </button>
-          <button type="button" aria-expanded={props.overviewOpen} onClick={props.onOverview} className={QUIET}>
-            <Glyph icon={props.overviewOpen ? ChevronDown : ChevronRight} size={14} />
+          </Button>
+          <Button
+            variant="quiet"
+            size="xs"
+            icon={props.overviewOpen ? ChevronDown : ChevronRight}
+            aria-expanded={props.overviewOpen}
+            onClick={props.onOverview}
+          >
             Details
-          </button>
+          </Button>
         </span>
       </div>
     </header>

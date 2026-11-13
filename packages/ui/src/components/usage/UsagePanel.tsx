@@ -7,9 +7,8 @@ import { DEFAULT_USAGE_VIEW, type UsageSegment, type UsageView } from "../../lib
 import { toolTab } from "../../state/workspace/layout";
 import { USAGE_VIEW } from "../../state/workspace/tabMemory";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { FloatRoom } from "../primitives/floatRoom";
 import { Button } from "../primitives/Button";
-import { ScrollArea } from "../primitives/ScrollArea";
+import { Panel, PanelBody, PanelFilters } from "../primitives/Panel";
 import { Select } from "../primitives/Select";
 import { UsageLimits } from "./UsageLimits";
 import { UsageByAgent, UsageByDay, UsageByModel } from "./UsageViews";
@@ -42,13 +41,12 @@ export function UsagePanel() {
     { id: "limits", label: "Limits" },
   ];
   return (
-    <div data-usage className="flex h-full min-h-0 flex-col">
-      <ViewTabs label="Usage" options={items} value={view.segment} onChange={(segment) => setView({ segment })} />
-      <ScrollArea fade className="min-h-0 flex-1 px-pane pt-pane pb-4">
-        {/* The table needs a wider measure than the label / value rows of Limits. */}
-        <div className={cn("@container/usage mx-auto flex w-full flex-col gap-3", view.segment === "limits" ? "max-w-details" : "max-w-home")}>
+    <div data-usage className="h-full min-h-0">
+      <Panel name="usage" title="Usage" views={<ViewTabs label="Usage" options={items} value={view.segment} onChange={(segment) => setView({ segment })} />}>
+        {/* The table needs a wider measure than the label / value rows of Limits; both stay left-aligned on the frame's inset. */}
+        <div className="flex h-full min-h-0 flex-col">
           {view.segment !== "limits" && (
-            <div className="flex flex-wrap items-center gap-2 px-2">
+            <PanelFilters>
               <div className="w-36">
                 <Select
                   size="sm"
@@ -75,15 +73,20 @@ export function UsagePanel() {
                   Show roles
                 </Button>
               )}
-            </div>
+            </PanelFilters>
           )}
-          {view.segment === "model" && <UsageByModel load={reports} view={view} />}
-          {view.segment === "agent" && <UsageByAgent load={reports} view={view} />}
-          {view.segment === "day" && <UsageByDay load={reports} view={view} now={now} />}
-          {view.segment === "limits" && <UsageLimits />}
+          <div className="min-h-0 flex-1">
+            <PanelBody fade>
+              <div className={cn("@container/usage flex w-full flex-col gap-3", view.segment === "limits" ? "max-w-details" : "max-w-home")}>
+                {view.segment === "model" && <UsageByModel load={reports} view={view} />}
+                {view.segment === "agent" && <UsageByAgent load={reports} view={view} />}
+                {view.segment === "day" && <UsageByDay load={reports} view={view} now={now} />}
+                {view.segment === "limits" && <UsageLimits />}
+              </div>
+            </PanelBody>
+          </div>
         </div>
-        <FloatRoom />
-      </ScrollArea>
+      </Panel>
     </div>
   );
 }

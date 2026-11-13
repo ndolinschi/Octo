@@ -105,6 +105,7 @@ function BranchRow({ b, now, busy, onOpen }: { b: ReviewBranch; now: number; bus
   // Decision 90: the name has the room first (24 characters, cut in the middle); ahead/behind is two short numbers; the subject
   // joins on the same line only when the column is wide, and goes to a second line below the list floor; the time stays right.
   return (
+    // eslint-disable-next-line octo/no-native-controls -- name, ahead/behind and subject re-flow by container query (decision 90), which ListRow's fixed title/meta/description slots cannot do
     <button type="button" data-row className={cn(ROW, "h-10 items-center py-0", dim && "text-fg-3")} disabled={busy} aria-busy={busy} onClick={onOpen}>
       <span className="text-fg-3">{busy ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}</span>
       <span className="flex min-w-0 flex-1 flex-col">

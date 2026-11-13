@@ -243,6 +243,38 @@ func TestSessionEvents(t *testing.T) {
 	}
 }
 
+// Owner's report (decision 95 d): after /clear the new session was announced as "working" with nothing running,
+// because the clear holds the project's turn slot while it publishes. No event and no listing may say so.
+func TestClearedSessionIsNotWorking(t *testing.T) {
+	e := newEnv(t, nil)
+	pid, _ := e.v7Project(t, "full")
+	e.into(t, "POST", "/v1/projects/"+pid+"/messages", map[string]string{"text": "quick one"}, http.StatusAccepted, nil)
+	collectUntilTurnFinished(t, e.subscribe(t, pid))
+	stream := e.subscribe(t, pid)
+	e.into(t, "POST", "/v1/projects/"+pid+"/clear", nil, http.StatusOK, nil)
+	var got []sseEvent
+	deadline := time.After(10 * time.Second)
+	for count(got, "session.created") == 0 || count(got, "context.updated") == 0 {
+		select {
+		case ev := <-stream:
+			got = append(got, ev)
+		case <-deadline:
+			t.Fatalf("events = %+v", got)
+		}
+	}
+	for _, ev := range got {
+		if ev.Type != "session.created" && ev.Type != "session.updated" {
+			continue
+		}
+		if s, ok := ev.Data["session"].(map[string]any); ok && s["state"] != "idle" {
+			t.Fatalf("%s announces %v while nothing runs: %+v", ev.Type, s["state"], s)
+		}
+	}
+	if c := current(t, e.sessions(t, pid, "")); c.State != projectstore.SessionIdle {
+		t.Fatalf("listed state = %q", c.State)
+	}
+}
+
 // A turn in progress: resume and new session are 409 turn_in_progress; the working state is shown; Stop ends it.
 func TestSessionsWhileATurnRuns(t *testing.T) {
 	gate := make(chan struct{})

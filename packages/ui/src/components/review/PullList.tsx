@@ -1,4 +1,4 @@
-import { GitBranch, RefreshCw, Search } from "lucide-react";
+import { GitBranch, RefreshCw } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { refusalRepoChoices, repoMenu, type OpenReviewInput, type PullRequestFilter, type PullRequestRow, type ReviewSummary } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
@@ -8,10 +8,13 @@ import type { ReviewApi } from "../../lib/review/api";
 import { plural } from "../../lib/review/files";
 import { parsePullInput, unavailableTitle } from "../../lib/review/pull";
 import { filterCounts, freshness, newSinceMyReview, PULL_FILTERS, visibleRows } from "../../lib/review/pullList";
-import { Button, IconButton } from "../primitives/Button";
+import { Button } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
 import { CommandLine } from "../primitives/CommandLine";
-import { Input } from "../primitives/Field";
 import { Glyph } from "../primitives/Glyph";
+import { ListRow } from "../primitives/ListRow";
+import { Notice as ViewNotice } from "../primitives/Notice";
+import { SearchField } from "../primitives/SearchField";
 import { SkeletonRows } from "../primitives/InfoList";
 import { MenuButton } from "../primitives/MenuButton";
 import { Segmented } from "../primitives/Segmented";
@@ -54,7 +57,10 @@ export function PullList(props: { api: ReviewApi; folders: Folders; onOpen(revie
 }
 
 /** A refusal that names the folder's repositories: the message and one button per repository (rule 7 of the forks decision). */
-type Refusal = { text: string; code: string; choices: { key: string; label: string; detail: string }[]; id: string; input: OpenReviewInput };
+type Refusal = { text: string; code: string; choices: { key: string; label: string; detail: string }[]; id: string; input: OpenReviewInput; view: View };
+
+/** Error texts from the harness start lower-case ("the number is in several repositories"): a sentence starts with a capital. */
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 function Picker(props: {
   api: ReviewApi;
@@ -69,7 +75,7 @@ function Picker(props: {
   const { state, updating, reload } = usePullList(api, folder, props.repo);
   const [filter, setFilter] = useState<PullRequestFilter>("all");
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<View>("pulls");
+  const [view, setViewState] = useState<View>("pulls");
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
@@ -78,6 +84,12 @@ function Picker(props: {
   useRowKeys(list);
 
   const ready = state.list;
+  // A refusal or an open error belongs to the view it happened in (decision 91i): changing the view clears it.
+  const setView = (next: View) => {
+    setViewState(next);
+    setError(null);
+    setRefusal(null);
+  };
   const run = async (id: string, input: OpenReviewInput) => {
     setOpening(id);
     setError(null);
@@ -88,7 +100,7 @@ function Picker(props: {
     } catch (e) {
       const choices = refusalRepoChoices(e as { code?: string; repos?: never });
       const text = errorMessage(e).replace(/\.$/, "");
-      if (choices.length > 0) setRefusal({ text, code: (e as { code: string }).code, choices, id, input });
+      if (choices.length > 0) setRefusal({ text, code: (e as { code: string }).code, choices, id, input, view });
       else setError(`Could not open it: ${text}. Check the address, or try again.`);
       setOpening(null);
     }
@@ -121,7 +133,7 @@ function Picker(props: {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
       <div className="@container mx-auto flex w-full max-w-home flex-col gap-4 px-4 py-6 max-sm:py-4">
-        <header className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1">
+        <header className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1">
           <h1 className="shrink-0 text-title whitespace-nowrap text-fg">Pull requests</h1>
           {menu?.show ? (
             <MenuButton
@@ -139,15 +151,14 @@ function Picker(props: {
           ) : (
             ready?.repo && <span className="min-w-0 truncate font-mono text-xs text-fg-3 @max-md:hidden">{ready.repo}</span>
           )}
+          {props.folders.length > 1 && (
+            <MenuButton
+              label="Repository folder"
+              text={folder}
+              items={props.folders.map((f) => ({ id: f.id, label: f.label, checked: f.label === folder, run: () => props.onFolder(f.label) }))}
+            />
+          )}
           <span className="ml-auto flex shrink-0 items-center gap-2">
-            {props.folders.length > 1 && (
-              <MenuButton
-                label="Repository folder"
-                text={folder}
-                alignEnd
-                items={props.folders.map((f) => ({ id: f.id, label: f.label, checked: f.label === folder, run: () => props.onFolder(f.label) }))}
-              />
-            )}
             <span role="status" className="flex items-center gap-1.5 text-xs whitespace-nowrap text-fg-3 @max-md:[&_span:last-child]:hidden">
               {updating ? (
                 <>
@@ -157,7 +168,7 @@ function Picker(props: {
                 freshness(ready, now)
               ) : null}
             </span>
-            <IconButton icon={RefreshCw} label="Ask the code host now" onClick={reload} disabled={updating} className="max-md:size-10" />
+            <IconButton icon={RefreshCw} label="Ask the code host now" onClick={reload} disabled={updating} size="sm" />
           </span>
         </header>
 
@@ -167,19 +178,14 @@ function Picker(props: {
 
         {view === "pulls" && (available || state.loading) && (
           <div className="flex flex-col gap-3">
-            <div className="relative">
-              <Glyph icon={Search} size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg-3" />
-              <Input
-                aria-label="Search pull requests, or paste an address or a number"
-                placeholder="Search, or paste a pull request address or number"
-                value={query}
-                spellCheck={false}
-                autoComplete="off"
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitSearch()}
-                className="pl-9 max-sm:h-10 max-sm:text-input-touch"
-              />
-            </div>
+            <SearchField
+              label="Search pull requests, or paste an address or a number"
+              placeholder="Search, or paste a pull request address or number"
+              value={query}
+              onChange={setQuery}
+              onKeyDown={(e) => e.key === "Enter" && submitSearch()}
+              inputProps={{ spellCheck: false, autoComplete: "off" }}
+            />
             <div className="overflow-x-auto">
               <Segmented<PullRequestFilter>
                 label="Show"
@@ -190,26 +196,21 @@ function Picker(props: {
             </div>
           </div>
         )}
-        {error && (
-          <p role="alert" className="text-sm text-err">
-            {error}
-          </p>
-        )}
-        {refusal && (
-          <div role="alert" className="flex flex-col gap-2 rounded-md border border-line bg-raised p-3">
-            <p className="text-sm text-err">{refusal.text}.</p>
-            <p className="text-xs text-fg-3">
-              {refusal.code === "ambiguous_pr" ? "Which repository is it in?" : "Pick the repository to list or open it from:"}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {refusal.choices.map((c) => (
-                <Button key={c.key} size="sm" variant="secondary" onClick={() => choose(c.key)}>
-                  <span className="font-mono">{c.label}</span>
-                  <span className="text-fg-3">{c.detail}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
+        {error && <ViewNotice tone="error">{error}</ViewNotice>}
+        {refusal?.view === view && (
+          <ViewNotice
+            form="block"
+            tone="warn"
+            title={`${sentence(refusal.text)}.`}
+            actions={refusal.choices.map((c) => (
+              <Button key={c.key} size="sm" variant="secondary" onClick={() => choose(c.key)}>
+                <span className="font-mono">{c.label}</span>
+                <span className="text-fg-3">{c.detail}</span>
+              </Button>
+            ))}
+          >
+            {refusal.code === "ambiguous_pr" ? "Which repository is it in?" : "Pick the repository to list or open it from."}
+          </ViewNotice>
         )}
 
         {view === "pulls" && state.loading && <SkeletonRows count={7} widths={[70, 52, 64, 44, 58, 66, 48]} />}
@@ -247,11 +248,14 @@ function Picker(props: {
         {view === "pulls" && (
           <div ref={list} className="flex flex-col gap-4">
             {typed && available && (
-              <button type="button" data-row disabled={opening === "address"} onClick={submitSearch} className={cn(ROW, "items-center")}>
-                {opening === "address" ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}
-                <span className="text-sm text-fg">{typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"}</span>
-                <span className="ml-auto text-xs text-fg-3">Enter</span>
-              </button>
+              <ListRow
+                size="md"
+                disabled={opening === "address"}
+                leading={opening === "address" ? <Spinner /> : <Glyph icon={GitBranch} size={14} />}
+                title={typed.kind === "number" ? `Open pull request #${typed.pr}` : "Open this address"}
+                meta="Enter"
+                onClick={submitSearch}
+              />
             )}
             {resume.length > 0 && (
               <section className="flex flex-col gap-1">
@@ -307,6 +311,7 @@ function badges(r: PullRequestRow): { text: string; tone: "warn" | "link" | "dim
 
 function PullRow({ r, now, busy, showRepo, onOpen }: { r: PullRequestRow; now: number; busy: boolean; showRepo: boolean; onOpen(): void }) {
   return (
+    // eslint-disable-next-line octo/no-native-controls -- ListRow's description is one truncated line; this row's wrapping badge line has no ListRow form
     <button type="button" data-row className={ROW} disabled={busy} aria-busy={busy} onClick={onOpen}>
       <span className="mt-0.5">{busy ? <Spinner /> : <ChecksMark state={r.checks} />}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -333,18 +338,17 @@ function PullRow({ r, now, busy, showRepo, onOpen }: { r: PullRequestRow; now: n
 
 function OpenRow({ r, now, onOpen }: { r: ReviewSummary; now: number; onOpen(): void }) {
   return (
-    <button type="button" className={ROW} onClick={onOpen}>
-      <span className="mt-0.5 text-fg-3">
-        <Glyph icon={GitBranch} size={14} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-sm text-fg">{r.title}</span>
-        <span className="flex flex-wrap gap-x-3 text-xs text-fg-3">
-          <span className="font-mono">{r.source}</span>
-          <span>{r.pending_comments > 0 ? plural(r.pending_comments, "pending comment") : "no comments yet"}</span>
-          <span>{timeAgo(r.last_used_at, now)}</span>
-        </span>
-      </span>
-    </button>
+    <ListRow
+      size="md"
+      leading={<Glyph icon={GitBranch} size={14} />}
+      title={r.title}
+      description={
+        <>
+          <span className="font-mono">{r.source}</span> · {r.pending_comments > 0 ? plural(r.pending_comments, "pending comment") : "no comments yet"} ·{" "}
+          {timeAgo(r.last_used_at, now)}
+        </>
+      }
+      onClick={onOpen}
+    />
   );
 }

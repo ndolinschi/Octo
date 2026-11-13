@@ -210,13 +210,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (query !== undefined) setMenu({ mode: "inline", start: caret - query.length - 1, query });
     else setMenu((cur) => (cur?.mode === "inline" ? null : cur));
   };
-  // Closing the button-opened menu (Esc, a pick) gives focus back to the text.
-  const closeMenu = useCallback(() => {
-    setMenu((cur) => {
-      if (cur?.mode === "button") requestAnimationFrame(() => area.current?.focus());
-      return null;
-    });
-  }, [area]);
+  // Closing the button-opened menu gives focus back: Esc to the "+" that opened it (decision 95 b), a pick or a click to the text.
+  const closeMenu = useCallback(
+    (reason?: "escape") => {
+      setMenu((cur) => {
+        if (cur?.mode === "button") requestAnimationFrame(() => (reason === "escape" ? plus : area).current?.focus());
+        return null;
+      });
+    },
+    [area, plus],
+  );
   const openComments = useCallback(() => setCommentsOpen(true), []);
 
   const pick = (p: MenuPick) => {

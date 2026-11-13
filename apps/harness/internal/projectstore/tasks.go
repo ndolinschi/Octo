@@ -69,6 +69,9 @@ type Task struct {
 	ClosedReason string `json:"closed_reason,omitempty"`
 	// SessionID is the memory session the task started in ("" for a task that predates M6).
 	SessionID string `json:"session_id,omitempty"`
+	// SessionDeleted is true when that session was deleted by the person: the record (and its facts) stay, the
+	// session they came from is gone. Computed on read, never stored.
+	SessionDeleted bool `json:"session_deleted,omitempty"`
 	// ExchangeIDs are the exchanges (M4) of the turns that worked on the task, oldest first; filled on read.
 	ExchangeIDs []string `json:"exchange_ids"`
 }
@@ -236,8 +239,18 @@ func (d *DB) Task(ctx context.Context, id string) (Task, error) {
 	}
 	if err == nil {
 		t.ExchangeIDs = d.exchangeIDsOf(ctx, t.ID)
+		t.SessionDeleted = d.sessionGone(ctx, t.SessionID)
 	}
 	return t, err
+}
+
+// sessionGone is true for a session id that names no session any more (it was deleted).
+func (d *DB) sessionGone(ctx context.Context, sid string) bool {
+	if sid == "" {
+		return false
+	}
+	var n int
+	return d.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE id = ?`, sid).Scan(&n) == nil && n == 0
 }
 
 // Tasks lists the task records, newest update first.
@@ -259,7 +272,14 @@ func (d *DB) Tasks(ctx context.Context) ([]Task, error) {
 		return nil, err
 	}
 	by := d.exchangeIDsByTask(ctx)
+	gone := map[string]bool{}
 	for i := range out {
+		if sid := out[i].SessionID; sid != "" {
+			if _, seen := gone[sid]; !seen {
+				gone[sid] = d.sessionGone(ctx, sid)
+			}
+			out[i].SessionDeleted = gone[sid]
+		}
 		if ids := by[out[i].ID]; ids != nil {
 			out[i].ExchangeIDs = ids
 		}

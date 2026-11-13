@@ -42,7 +42,7 @@ All routes are under `/v1/projects/{id}`. Errors have the usual shape `{"error":
 | `POST /sessions` `{title?}` | 201 `{"session"}`: a new main session made current, the old one summarised and kept (this is `/clear`; `POST /clear` also creates one). 409 `turn_in_progress`. |
 | `POST /sessions/{sid}/resume` | 200 `{"session"}`. Makes a main session current (unarchives it). Resuming the current one is a no-op. 409 `turn_in_progress`, 409 `not_main_session`, 404. |
 | `PATCH /sessions/{sid}` `{title?, archived?}` | 200 `{"session"}`. 400 for neither field or an empty title; 409 `current_session` when archiving the current main session. |
-| `DELETE /sessions/{sid}` | 204. A main session: its exchanges (and their search entries), its messages, compaction rows and agent sessions go (their agents are hidden like a rewound one). An agent session: its transcript goes. 409 `current_session`, 409 `session_running` (it or a child runs). |
+| `DELETE /sessions/{sid}` | 204. Only a session that is not the current main one and has nothing running (it or a child agent). A main session: its exchanges (and their search entries), its messages, compaction rows and agent sessions go (their agents are hidden like a rewound one). An agent session: its transcript goes. 409 `current_session`, 409 `session_running` (it or a child runs). |
 | `POST /sessions/{sid}/stop` | 200 `{"session"}`. The current main session: cancels the running turn. An agent session: cancels that agent only (the delegation returns "sub-agent stopped by the user" to the orchestrator). 409 `not_running`. |
 | `POST /sessions/{sid}/messages` `{text, report_to_parent?}` | 202 `{"outcome": "steered"\|"continued", "session"}` (agent sessions only). 409 `not_agent_session` (a main session's messages use `POST /messages`), `steer_unsupported`, `not_running`, `not_continuable`, `builtin_loop_unavailable`; 400 for empty text. |
 
@@ -51,6 +51,7 @@ All routes are under `/v1/projects/{id}`. Errors have the usual shape `{"error":
 - `session.created {session}`: a new main session (new session, `/clear`) or a sub-agent's session.
 - `session.updated {session}`: state, title, archive or counts changed; the current main session is announced when a turn starts
   and when it ends; an agent session follows `agent.updated`. `{session_id, deleted: true}` after a delete (one per removed session).
+- A new (or `/clear`ed) session is announced after the clear released the project's turn slot, so its `state` is `idle`, never `working`: `working` comes from a running turn only.
 - `session.current {session_id, previous_session_id}`: another main session became current (resume, new session, `/clear`).
 - `memory.updated {session_id, deleted: true}` after a main session is deleted.
 
@@ -83,6 +84,31 @@ of the spawning turn and to that turn.
   next turn it is stored as a user message with `command: "session_report"` before the request ("Results the user collected
   from sub-agent sessions ...") and, for an ACP orchestrator, put in the prompt. It never interrupts a running turn. The UI
   shows such a message as a quiet note.
+
+## What carries over (`/clear` and "New session")
+
+"New session" (`POST /sessions`) and `/clear` are one operation (`orchestrator.NewSession` calls `Clear`, `internal/orchestrator/clear.go`).
+It is refused (409 `turn_in_progress`) while a turn runs. What a new session's first request is built from:
+
+| Part | In the model's prompt? | Source |
+| --- | --- | --- |
+| **Summary of the session that ended** | Yes, as the first message (built-in loop) or in the first prompt (ACP). Written at the moment of the clear: by the model (fast tier), by the ACP agent in its live session (30 s), else built from the stored requests and answers ("summary unavailable"). Together with the titles of up to 5 open tasks and a pointer to `memory_search` / `recall_message` it is cut to 600 tokens (`CarryOverTokens`, `carryOver`). | `clear.go`, `history.go` (`loadHistory`), `acp_orch.go` (`recap`) |
+| **Project settings**: name, description, custom instructions, folders, instruction files (built-in loop; an ACP agent reads its own), mode, access, model | Yes (system prompt / briefing) | `prompts.go` (`brief`, `orchestratorPromptParts`) |
+| **Notes**: pinned notes whole (at most 3, 2 000 characters together) and an index `id · title - description` within 1 500 tokens | Yes | `prompts.go` (`notesBlock`) |
+| **Remembered facts**, task records, memory files | **Not by default.** With the project setting `memory.context: "window"` the prompt also carries the memory index, the open tasks, the facts and the last exchanges (`memory.md`, M2). With the default `full` they are stored and searchable: the agent finds them with `memory_search` and `recall_message`. | `window.go`, `memory_tools.go` |
+| **Earlier sessions** (exchanges, word for word) | **Not in the prompt.** Searchable (`memory_search`, `recall_message` with a session or exchange id). An ACP orchestrator in `full` mode and the `window` mode also get a three-line pointer to the previous session (title, date, count, id). | `memory/sessions.go` (`PreviousSessionPointer`) |
+| **The conversation itself**: messages, tool results, approved plan text of the old session | **No.** The model starts without them; they stay in the session (Resume brings them back). | `history.go` |
+
+Sub-agents never carry anything between sessions: each starts from its brief.
+
+**How memory is recorded** (all automatic except the agent's own writes): after every finished turn the harness stores an
+exchange (request and final answer as typed, redacted; M4) and indexes it; a task record is made when the turn did work
+(M6), and a side model's digest adds facts to it (not possible without a side model or, for an ACP agent, a turn that
+did work); the agent itself may call `remember` (at most 3 per turn) and `write_note`. A clear also closes finished tasks
+and keeps unfinished ones open. Nothing is deleted by it.
+
+**Deleting a session** keeps memory's task records and facts: `GET /tasks` marks a task whose session is gone with
+`session_deleted: true` (computed on read, no schema change). Its exchanges and search entries are deleted with the session.
 
 ## Schema 13
 

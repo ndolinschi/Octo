@@ -15,10 +15,9 @@ import { useTabMemory } from "../../state/workspace/useTabMemory";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
 import { EmptyState } from "../primitives/EmptyState";
-import { FloatRoom } from "../primitives/floatRoom";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
-import { ScrollArea } from "../primitives/ScrollArea";
+import { Panel, PanelBody } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
 
@@ -100,40 +99,38 @@ export function AgentsPanel() {
 
   const empty = groups.running.length + groups.finished.length === 0;
   return (
-    <ScrollArea
-      ref={scroller}
-      data-agents
-      onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)}
-      className={cn("h-full min-h-0 px-pane pt-pane pb-4", empty && "flex flex-col")}
-    >
-      <div ref={rows} className={cn("mx-auto flex w-full max-w-details flex-col gap-5", empty && "min-h-0 flex-1")}>
-        {empty && (
-          <EmptyState
-            title="No agents yet"
-            actions={
-              <Button variant="quiet" data-row onClick={ws.focusChat}>
-                Give the project a task
-              </Button>
-            }
-          >
-            They appear here when a request is split into tasks.
-          </EmptyState>
-        )}
-        {groups.running.length > 0 && (
-          <section aria-labelledby="agents-running" className="flex flex-col">
-            <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
-            <ul className="flex flex-col">{groups.running.map((n) => node(n, true))}</ul>
-          </section>
-        )}
-        {groups.finished.length > 0 && (
-          <section aria-labelledby="agents-finished" className="flex flex-col">
-            <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
-            <ul className="flex flex-col">{groups.finished.map((n) => node(n, false))}</ul>
-          </section>
-        )}
-      </div>
-      <FloatRoom />
-    </ScrollArea>
+    <div data-agents className="h-full min-h-0">
+      <Panel name="agents" title="Agents" meta={groups.running.length > 0 ? `${groups.running.length} running` : undefined}>
+        <PanelBody ref={scroller} onScroll={(e) => memory.set(AGENTS_TAB, SCROLL, e.currentTarget.scrollTop)} className={cn(empty && "flex flex-col")}>
+          <div ref={rows} className={cn("flex w-full max-w-details flex-col gap-4", empty && "min-h-0 flex-1")}>
+            {empty && (
+              <EmptyState
+                title="No agents yet"
+                actions={
+                  <Button variant="quiet" data-row onClick={ws.focusChat}>
+                    Give the project a task
+                  </Button>
+                }
+              >
+                They appear here when a request is split into tasks.
+              </EmptyState>
+            )}
+            {groups.running.length > 0 && (
+              <section aria-labelledby="agents-running" className="flex flex-col">
+                <SectionHeader inset id="agents-running">{`Running ${groups.running.length}`}</SectionHeader>
+                <ul className="flex flex-col">{groups.running.map((n) => node(n, true))}</ul>
+              </section>
+            )}
+            {groups.finished.length > 0 && (
+              <section aria-labelledby="agents-finished" className="flex flex-col">
+                <SectionHeader inset id="agents-finished">{`Finished ${groups.finished.length}`}</SectionHeader>
+                <ul className="flex flex-col">{groups.finished.map((n) => node(n, false))}</ul>
+              </section>
+            )}
+          </div>
+        </PanelBody>
+      </Panel>
+    </div>
   );
 }
 

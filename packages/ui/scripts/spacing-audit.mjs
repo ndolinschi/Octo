@@ -8,7 +8,7 @@
  *   node packages/ui/scripts/spacing-audit.mjs [--url http://localhost:1420] [--only <state>] [--json <path>]
  *                                              [--strict] [--selftest] [--query "demo=1"] [--list] [--help]
  *
- * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds, field-row, key-hint (see RULES below).
+ * Rules: scale, row-height, gutter, edges, icon-gap, overlap, inset-balance, dialog-bounds, field-row, key-hint, panel-frame (see RULES below).
  * States that cannot be reached are reported as `skipped` with a reason, never as a crash.
  */
 import { createRequire } from "node:module";
@@ -35,7 +35,7 @@ const SCALE = [2, 4, 6, 8, 12, 16, 20, 24, 32, 40];
 const ROW_HEIGHTS = [24, 28, 32, 36, 40];
 const TOL = 0.5;
 const ICON_GAP_MIN = 6;
-const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds", "field-row", "key-hint"];
+const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds", "field-row", "key-hint", "panel-frame"];
 
 // ---------------------------------------------------------------------------------------------------------------
 // CLI
@@ -281,6 +281,95 @@ const STATES = [
     },
   },
   {
+    // Decision 95f: every tool tab sits in one `Panel` frame. Opens each tab and compares the frame's three numbers.
+    id: "panel-frame",
+    viewports: [WIDE[0]],
+    async run(page, ctx) {
+      await openProject(page, ctx, "Atlas API");
+    },
+    async extra(page) {
+      const TABS = ["sessions", "memory", "notes", "usage", "agents", "details", "changes"];
+      const rows = [];
+      for (const tool of TABS) {
+        await openTool(page, tool);
+        rows.push(
+          (await page.evaluate((name) => {
+            const p = [...document.querySelectorAll(`[data-panel="${name}"]`)].find((e) => e.offsetParent !== null && e.getBoundingClientRect().width > 0);
+            if (!p) return { name, missing: true };
+            const P = p.getBoundingClientRect();
+            const title = p.querySelector("[data-panel-title]");
+            let titleLeft = null;
+            if (title) {
+              const w = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
+              const n = w.nextNode();
+              if (n) {
+                const r = document.createRange();
+                r.selectNodeContents(n);
+                titleLeft = r.getBoundingClientRect().left - P.left;
+              }
+            }
+            const head = p.querySelector("[data-panel-header]");
+            const body = p.querySelector("[data-panel-body]");
+            const scroller =
+              body &&
+              [...body.querySelectorAll("*")].find(
+                (e) => /auto|scroll/.test(getComputedStyle(e).overflowY) && e.offsetParent !== null && !e.closest("[data-panel-filters]"),
+              );
+            const cs = scroller && getComputedStyle(scroller);
+            return {
+              name,
+              headerH: head ? head.getBoundingClientRect().height : null,
+              titleLeft,
+              listInset: scroller && cs ? scroller.getBoundingClientRect().left - P.left + parseFloat(cs.paddingLeft) : null,
+              // The gap from what ends the chrome (header, filter row or view tabs) to the first row's slot: the list's own top inset.
+              listGap: scroller && cs ? parseFloat(cs.paddingTop) : null,
+            };
+          }, tool)) ?? { name: tool, missing: true },
+        );
+      }
+      const out = [];
+      const mode = (vals) => {
+        const c = new Map();
+        for (const v of vals) c.set(v, (c.get(v) ?? 0) + 1);
+        return [...c.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      };
+      for (const r of rows)
+        if (r.missing)
+          out.push({
+            rule: "panel-frame",
+            selector: `[data-panel="${r.name}"]`,
+            text: "",
+            prop: "tab is not in a Panel",
+            measured: "no [data-panel]",
+            expected: "Panel frame",
+          });
+      const seen = rows.filter((r) => !r.missing);
+      for (const [key, label] of [
+        ["headerH", "header height"],
+        ["titleLeft", "header text inset"],
+        ["listInset", "list horizontal inset"],
+        ["listGap", "filter-to-list gap"],
+      ]) {
+        const vals = seen.map((r) => r[key]).filter((v) => v !== null && v !== undefined);
+        const want = mode(vals.map((v) => Math.round(v * 2) / 2));
+        for (const r of seen) {
+          const v = r[key];
+          if (v === null || v === undefined) continue;
+          if (Math.abs(v - want) > TOL)
+            out.push({
+              rule: "panel-frame",
+              selector: `[data-panel="${r.name}"]`,
+              text: "",
+              prop: label,
+              measured: `${Math.round(v * 10) / 10}px`,
+              expected: `${want}px (as the other tabs)`,
+            });
+        }
+      }
+      return out;
+    },
+  },
+  {
     id: "details-tab",
     viewports: WIDE,
     async run(page, ctx) {
@@ -406,7 +495,10 @@ const STATES = [
       await page.locator("[data-sessions] [data-row]").first().click({ timeout: T });
       await settle(page, 400);
       // Narrow: the click opened the detail; Back returns to the list with the row open.
-      const backButton = page.locator("[data-sessions] button", { hasText: /^Sessions$/ }).first();
+      const backButton = page
+        .locator("[data-sessions]")
+        .getByRole("button", { name: /^(Back to )?Sessions$/ })
+        .first();
       if (await backButton.isVisible().catch(() => false)) await backButton.click({ timeout: T });
       await settle(page, 300);
     },
@@ -430,7 +522,10 @@ const STATES = [
       const second = page.locator('[data-sessions] ul[aria-label="Sessions"] > li').nth(1).locator("[data-row]").first();
       await second.click({ timeout: T });
       await settle(page, 300);
-      const backButton = page.locator("[data-sessions] button", { hasText: /^Sessions$/ }).first();
+      const backButton = page
+        .locator("[data-sessions]")
+        .getByRole("button", { name: /^(Back to )?Sessions$/ })
+        .first();
       if (await backButton.isVisible().catch(() => false)) await backButton.click({ timeout: T });
       const agent = page.locator("[data-sessions] [data-row]", { hasText: "Collect the open pull requests" }).first();
       if (!(await agent.count())) skip("no agent session under the second session");

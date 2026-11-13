@@ -2,7 +2,8 @@ import type { Agent, Message, ProjectSession } from "@octo/agent-client";
 import { MessageSquareShare } from "lucide-react";
 import { useState } from "react";
 import { formatTokens } from "../../lib/format";
-import { detailLine, earlierSession, isWorking, parentOf } from "../../lib/sessions/model";
+import { EMPTY_FIRST_LINE, EMPTY_SESSION_LINE } from "../../lib/sessions/carry";
+import { canDelete, detailLine, earlierSession, hasNoRequests, isWorking, parentOf } from "../../lib/sessions/model";
 import { roleText } from "../../lib/orchestrator";
 import { useModelNames } from "../../state/models";
 import { useProject } from "../../state/project";
@@ -12,7 +13,8 @@ import { Button } from "../primitives/Button";
 import { Notice } from "../primitives/Notice";
 import { SkeletonText } from "../primitives/Skeleton";
 import { Prose } from "../shared/Prose";
-import { BoundaryMarker, ConfirmDelete, QuietLine, type TranscriptSlot } from "./parts";
+import { BoundaryMarker, QuietLine, type TranscriptSlot } from "./parts";
+import { DeleteSessionDialog } from "./DeleteSessionDialog";
 import { SessionComposer } from "./SessionComposer";
 import { SessionHeader } from "./SessionHeader";
 import { useCompact } from "./useCompact";
@@ -20,7 +22,7 @@ import { useSessionActions } from "./useSessionActions";
 import { useSessionConversation } from "./useSessionConversation";
 
 /** The reading width of a detail pane, as Memory's. */
-const DETAIL_MAX = "mx-auto w-full max-w-3xl";
+const DETAIL_MAX = "w-full max-w-3xl";
 
 /**
  * One session: its header with actions, for an agent its task, who started it and its usage, then the conversation in the
@@ -74,6 +76,7 @@ export function SessionDetail(props: {
         }}
         onResume={() => void actions.resume(s.id)}
         onArchive={(next) => void actions.archive(s.id, next)}
+        canDelete={canDelete(props.list, s)}
         onDelete={() => {
           actions.clear();
           setConfirm(true);
@@ -113,7 +116,15 @@ export function SessionDetail(props: {
         {conversation.status === "error" && <Notice tone="error">{`Could not read this session. ${conversation.message}`}</Notice>}
         {conversation.status === "ok" &&
           (conversation.messages.length === 0 ? (
-            <QuietLine>{isWorking(s) ? "Nothing yet. The first words appear here as they are written." : "This session has no messages."}</QuietLine>
+            <QuietLine>
+              {isWorking(s)
+                ? "Nothing yet. The first words appear here as they are written."
+                : hasNoRequests(s)
+                  ? earlier
+                    ? EMPTY_SESSION_LINE
+                    : EMPTY_FIRST_LINE
+                  : "This session has no messages."}
+            </QuietLine>
           ) : (
             props.renderTranscript({
               agent: conversation.agent,
@@ -133,27 +144,7 @@ export function SessionDetail(props: {
           <MainFooter session={s} busy={actions.busy} onResume={() => void actions.resume(s.id)} onOpenConversation={() => ws?.focusChat()} />
         )}
       </footer>
-      {confirm && (
-        <ConfirmDelete
-          title={s.kind === "main" ? "Delete this session?" : "Delete this agent session?"}
-          description={
-            s.kind === "main"
-              ? "Its requests and answers are deleted from memory and from search, together with the agent sessions it started. This cannot be undone."
-              : "Its transcript is deleted. The orchestrator's conversation is not changed. This cannot be undone."
-          }
-          busy={actions.busy === "delete"}
-          error={actions.error}
-          onClose={() => setConfirm(false)}
-          onConfirm={() =>
-            void actions.remove(s.id).then((ok) => {
-              if (ok) {
-                setConfirm(false);
-                props.onGone();
-              }
-            })
-          }
-        />
-      )}
+      {confirm && <DeleteSessionDialog session={s} actions={actions} onClose={() => setConfirm(false)} onDeleted={props.onGone} />}
     </div>
   );
 }

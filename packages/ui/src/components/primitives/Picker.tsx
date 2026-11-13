@@ -1,16 +1,12 @@
 import { Search } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
-import { cn } from "../../lib/cn";
-import { pickerIndex, type PickerRow, type PickerSection } from "../../lib/picker";
+import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import type { PickerRow, PickerSection } from "../../lib/picker";
+import { popupTarget } from "./popupNav";
 import { Glyph } from "./Glyph";
-import { Highlight } from "./Highlight";
+import { PopupList, popupOptionId } from "./PopupList";
 import { Popover } from "./Popover";
 
 export type { PickerRow, PickerSection } from "../../lib/picker";
-
-/** Rows visible before the list scrolls (28px each). */
-const VISIBLE = 10;
-const ROW = 28;
 
 /**
  * A searchable quick picker anchored to a control (decisions 25 and 27): a search field on top, then sections of
@@ -49,17 +45,13 @@ export function Picker(props: {
   const sections = props.sections(query);
   const flat = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
   const enabled = flat.filter((r) => !r.disabled);
+  const enabledIds = enabled.map((r) => r.id);
   const [active, setActive] = useState<string | null>(null);
   const current = enabled.find((r) => r.id === active) ?? enabled[0] ?? null;
-  const list = useRef<HTMLDivElement>(null);
   const ownSearch = useRef<HTMLInputElement>(null);
   const search = props.searchRef ?? ownSearch;
   const baseId = useId();
-  const optionId = (id: string) => `${baseId}-o-${id.replace(/[^\w-]/g, "_")}`;
-
-  useEffect(() => {
-    if (current) list.current?.querySelector(`#${CSS.escape(optionId(current.id))}`)?.scrollIntoView({ block: "nearest" });
-  });
+  const optionId = (id: string) => popupOptionId(`${baseId}-list`, id);
 
   const run = (id: string | undefined) => {
     const row = flat.find((r) => r.id === id);
@@ -69,7 +61,6 @@ export function Picker(props: {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    const at = current ? enabled.indexOf(current) : -1;
     const mod = e.ctrlKey || e.metaKey;
     if (props.onShortcut?.(e)) {
       e.preventDefault();
@@ -77,12 +68,10 @@ export function Picker(props: {
     }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      const next = pickerIndex(at, enabled.length, e.key === "ArrowDown" ? 1 : -1);
-      setActive(enabled[next]?.id ?? null);
+      setActive(popupTarget(e.key, enabledIds, current?.id ?? null));
       return;
     }
-    if (e.key === "Home" && mod) return void setActive(enabled[0]?.id ?? null);
-    if (e.key === "End" && mod) return void setActive(enabled.at(-1)?.id ?? null);
+    if ((e.key === "Home" || e.key === "End") && mod) return void setActive(popupTarget(e.key, enabledIds, null));
     if (e.key === "Tab" && !e.shiftKey && props.complete && current) {
       const next = props.complete(current);
       if (next !== null) {
@@ -132,82 +121,17 @@ export function Picker(props: {
           className="h-full min-w-0 flex-1 bg-transparent text-sm text-fg placeholder:text-fg-3 focus:outline-none focus-visible:shadow-none max-sm:text-input-touch"
         />
       </div>
-      <div
-        ref={list}
+      <PopupList
         id={`${baseId}-list`}
-        role="listbox"
-        tabIndex={-1}
-        // One handler for every row (the field keeps focus: rows are reached through aria-activedescendant).
-        onMouseDown={(e) => e.preventDefault()}
-        // Keys belong to the search field (it owns the active row).
+        label={props.label}
+        sections={sections}
+        activeId={current?.id ?? null}
+        onActive={setActive}
+        onChoose={(row) => run(row.id)}
         onKeyDown={() => search.current?.focus()}
-        onClick={(e) => {
-          const row = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-picker-row]") : null;
-          if (row && !(e.target instanceof Element && e.target.closest("button"))) run(row.dataset.pickerRow);
-        }}
-        aria-label={props.label}
-        className="min-h-0 overflow-y-auto overscroll-contain p-1"
-        style={{ maxHeight: VISIBLE * ROW + 8 }}
-      >
-        {sections.map((s) =>
-          s.rows.length === 0 ? null : (
-            <div
-              key={s.title}
-              role="group"
-              {...(s.title ? { "aria-labelledby": `${baseId}-g-${s.title.replace(/\W/g, "_")}` } : { "aria-label": props.label })}
-            >
-              {s.title && (
-                <div id={`${baseId}-g-${s.title.replace(/\W/g, "_")}`} className="flex h-row items-center px-2 text-xs text-fg-3">
-                  {s.title}
-                </div>
-              )}
-              {s.rows.map((r) => {
-                const on = current?.id === r.id;
-                return (
-                  <div
-                    key={r.id}
-                    id={optionId(r.id)}
-                    role="option"
-                    aria-selected={on}
-                    aria-disabled={r.disabled || undefined}
-                    aria-checked={r.checked}
-                    title={r.title}
-                    data-picker-row={r.id}
-                    onPointerMove={() => !r.disabled && !on && setActive(r.id)}
-                    aria-busy={r.busy || undefined}
-                    className={cn(
-                      "group flex min-w-0 items-center gap-2 rounded-sm px-2 press-row max-md:h-bar",
-                      r.sub ? "h-10" : "h-row",
-                      r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg",
-                    )}
-                  >
-                    <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
-                      {r.lead}
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      {/* The name keeps its room: the detail and the hint give way first (decision 64 f). */}
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className="min-w-0 shrink-[0.1] truncate">
-                          <Highlight text={r.label} query={query} />
-                        </span>
-                        {r.checked && <span className="sr-only">(current)</span>}
-                        {/* On the active row the muted detail steps up to fg-2 (fg-3 over the active fill measured 4.06:1). */}
-                        {r.detail && <span className={cn("min-w-0 flex-1 shrink-[10] truncate text-xs", on ? "text-fg-2" : "text-fg-3")}>{r.detail}</span>}
-                        <span className="ml-auto flex min-w-0 shrink-[10] items-center gap-1 pl-1">
-                          {r.hint && <span className={cn("min-w-0 truncate text-xs", on ? "text-fg-2" : "text-fg-3")}>{r.hint}</span>}
-                          {r.checked && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-fg-2" />}
-                        </span>
-                      </span>
-                      {r.sub && <span className={cn("min-w-0 truncate text-xs", on ? "text-fg-2" : "text-fg-3")}>{r.sub}</span>}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          ),
-        )}
-        {flat.length === 0 && <p className="flex h-row items-center px-2 text-xs text-fg-3">{props.empty ?? "Nothing matches"}</p>}
-      </div>
+        query={query}
+        {...(props.empty !== undefined ? { empty: props.empty } : {})}
+      />
       {props.footer && <div className="shrink-0 border-t border-line p-1">{props.footer}</div>}
     </Popover>
   );

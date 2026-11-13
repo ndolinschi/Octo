@@ -12,6 +12,7 @@ import { requestSession } from "../../state/workspace/sessionsStart";
 import { IconMenu } from "../primitives/IconMenu";
 import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
+import { DetailHeader } from "../primitives/Panel";
 import { SkeletonText } from "../primitives/Skeleton";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { Prose } from "../shared/Prose";
@@ -56,7 +57,6 @@ export function SessionsView(props: {
       loading={sessions.load.status === "loading"}
       selected={picked}
       onSelect={(id) => props.onSelect(id)}
-      detailClassName="px-pane pb-6"
       list={(select) =>
         list.map((s) => {
           const r = sessionRow(s, now, working, currentId);
@@ -118,29 +118,29 @@ function SessionDetail(props: {
   const note = endedNote(session);
   return (
     <div className={DETAIL_MAX}>
-      <header className="flex items-start gap-2 px-2 pt-3 pb-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <h2 className="text-heading break-words text-fg">{session.title}</h2>
-          <p className="truncate text-xs text-fg-3">
-            {[formatDay(session.started_at, props.now), exchangeCount(session.exchanges), note].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-        {ws && (
-          <IconMenu
-            label="Session actions"
-            items={[
-              {
-                id: "open-sessions",
-                label: "Open in Sessions",
-                run: () => {
-                  ws.openTool("sessions");
-                  requestSession(props.projectId, session.id);
-                },
-              },
-            ]}
-          />
-        )}
-      </header>
+      <DetailHeader
+        title={session.title}
+        meta={[formatDay(session.started_at, props.now), exchangeCount(session.exchanges), note].filter(Boolean).join(" · ")}
+        {...(ws
+          ? {
+              actions: (
+                <IconMenu
+                  label="Session actions"
+                  items={[
+                    {
+                      id: "open-sessions",
+                      label: "Open in Sessions",
+                      run: () => {
+                        ws.openTool("sessions");
+                        requestSession(props.projectId, session.id);
+                      },
+                    },
+                  ]}
+                />
+              ),
+            }
+          : {})}
+      />
       {session.summary && (
         <div className="px-2 pb-2 text-fg-2">
           <Prose size="compact" text={session.summary} />

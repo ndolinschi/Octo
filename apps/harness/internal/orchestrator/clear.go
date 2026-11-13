@@ -72,9 +72,15 @@ func (o *Orchestrator) Clear(ctx context.Context, pid string) (ClearResult, erro
 	if o.Active(pid) || !o.claim(pid, cancel) {
 		return ClearResult{}, ErrTurnInProgress
 	}
+	// Session announcements wait until the turn slot is released: while the clear holds it the project reads as
+	// Active, and the new session would be announced as "working" with nothing running (decision 95 d).
+	var announce []func()
 	defer func() {
 		// A message sent meanwhile was queued: start it now.
 		o.release(pid)
+		for _, f := range announce {
+			f()
+		}
 		o.qmu.Lock()
 		defer o.qmu.Unlock()
 		if db, err := o.store.Get(context.Background(), pid); err == nil {
@@ -143,9 +149,11 @@ func (o *Orchestrator) Clear(ctx context.Context, pid string) (ClearResult, erro
 		res.SessionID, res.PreviousSessionID = boundary.SessionID, boundary.PreviousID
 		if res.SessionID != before {
 			// A new main session exists and is current; the one that ended changed state too.
-			o.publishSession(ctx, db, res.SessionID, true)
-			o.hub.Publish(pid, events.SessionCurrent, map[string]any{"session_id": res.SessionID, "previous_session_id": before})
-			o.publishSession(ctx, db, before, false)
+			announce = append(announce, func() {
+				o.publishSession(context.Background(), db, res.SessionID, true)
+				o.hub.Publish(pid, events.SessionCurrent, map[string]any{"session_id": res.SessionID, "previous_session_id": before})
+				o.publishSession(context.Background(), db, before, false)
+			})
 		}
 	}
 	o.hub.Publish(pid, events.ConversationCleared, map[string]any{

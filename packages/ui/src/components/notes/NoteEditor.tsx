@@ -61,7 +61,7 @@ export function NoteEditor(props: { note?: NoteDocument; notes: readonly Note[];
     <form
       noValidate
       aria-label={note ? `Edit ${note.title}` : "New note"}
-      className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-4 py-4"
+      className="flex w-full max-w-3xl flex-col gap-4 px-2 pt-2 pb-4"
       onSubmit={(e) => {
         e.preventDefault();
         void save();

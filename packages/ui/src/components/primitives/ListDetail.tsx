@@ -4,6 +4,7 @@ import { cn } from "../../lib/cn";
 import { useRowKeys } from "../../lib/hooks";
 import { escapeTarget, paneReducer } from "../../lib/listDetail";
 import { Button } from "./Button";
+import { DetailBackContext } from "./Panel";
 import { EmptyState } from "./EmptyState";
 import { FloatRoom } from "./floatRoom";
 import { ScrollArea } from "./ScrollArea";
@@ -96,7 +97,7 @@ export function ListDetail(props: {
           )}
         >
           {props.listHeader}
-          <ScrollArea className="min-h-0 flex-1 px-pane pb-4">
+          <ScrollArea className="min-h-0 flex-1 px-pane pt-1 pb-4">
             <div ref={rows} {...(props.listSemantics === "own" || props.loading ? {} : { role: "list", "aria-label": props.listLabel })}>
               {props.loading ? (props.listSkeleton ?? <SkeletonList count={7} size="md" twoLine />) : props.list(select)}
             </div>
@@ -108,9 +109,10 @@ export function ListDetail(props: {
           aria-label="Detail"
           aria-busy={props.loading || undefined}
           onKeyDown={onDetailKey}
-          className={cn("min-h-0 min-w-0 flex-1 flex-col @min-[640px]/ld:flex", open ? "flex" : "hidden")}
+          className={cn("group/detail min-h-0 min-w-0 flex-1 flex-col @min-[640px]/ld:flex", open ? "flex" : "hidden")}
         >
-          <div className="flex h-ctl-md shrink-0 items-center px-pane @min-[640px]/ld:hidden">
+          {/* A `DetailHeader` in the detail carries its own Back control (decision 95f): then this row is not drawn. */}
+          <div className="flex h-ctl-md shrink-0 items-center px-pane group-has-[[data-detail-header]]/detail:hidden @min-[640px]/ld:hidden">
             <Button ref={back} variant="quiet" size="sm" icon={ArrowLeft} onClick={goBack}>
               {props.listLabel}
             </Button>
@@ -118,8 +120,8 @@ export function ListDetail(props: {
           {props.loading ? (
             <div className="hidden px-4 pt-4 @min-[640px]/ld:block">{props.detailSkeleton ?? <SkeletonText lines={5} />}</div>
           ) : hasDetail ? (
-            <ScrollArea className={cn("min-h-0 flex-1", props.detailClassName ?? "px-4 pb-6")}>
-              {props.detail}
+            <ScrollArea className={cn("min-h-0 flex-1", props.detailClassName ?? "px-pane pb-6")}>
+              <DetailBackContext value={{ back: goBack, label: props.listLabel }}>{props.detail}</DetailBackContext>
               <FloatRoom />
             </ScrollArea>
           ) : (

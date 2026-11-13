@@ -7,6 +7,7 @@ import { threadSummary, visibleComments } from "../../lib/review/threads";
 import { Button, IconButton } from "../primitives/Button";
 import { Textarea } from "../primitives/Field";
 import { Glyph } from "../primitives/Glyph";
+import { ListRow } from "../primitives/ListRow";
 import { Markdown } from "../shared/Markdown";
 import { PR_TEXT } from "./ExternalText";
 
@@ -27,16 +28,15 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
 
   if (!open)
     return (
-      <button
-        type="button"
+      <ListRow
+        size="sm"
+        tone="quiet"
+        expanded={false}
+        leading={<Glyph icon={ChevronRight} size={14} />}
+        title={`Resolved · ${threadSummary(t)}`}
         onClick={() => setOpen(true)}
-        aria-expanded={false}
-        className="flex min-h-7 w-full items-center gap-2 rounded-sm border border-line bg-raised px-2 py-1 text-left text-xs text-fg-3 press-row focus-inset hover:bg-hover max-md:min-h-10"
-      >
-        <Glyph icon={ChevronRight} size={14} />
-        <span className="shrink-0">Resolved</span>
-        <span className="min-w-0 truncate">{threadSummary(t)}</span>
-      </button>
+        className="border border-line bg-raised"
+      />
     );
 
   return (
@@ -64,9 +64,9 @@ export function ThreadCard(props: { thread: ReviewThread; pending: readonly Revi
           </p>
           <Markdown text={c.body} components={PR_TEXT} />
           {i === 0 && hidden > 0 && (
-            <button type="button" onClick={() => setAll(true)} className="w-fit rounded-sm px-1 text-xs text-link hover:underline max-md:min-h-10">
+            <Button variant="link" size="xs" onClick={() => setAll(true)} className="w-fit px-1">
               {hidden === 1 ? "1 more reply" : `${hidden} more replies`}
-            </button>
+            </Button>
           )}
         </div>
       ))}

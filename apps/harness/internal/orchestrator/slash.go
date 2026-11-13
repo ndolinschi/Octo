@@ -25,7 +25,7 @@ type OctoCommand struct {
 // octoCommands are the Octo commands in menu order; Available is filled per project.
 var octoCommands = []OctoCommand{
 	{Name: "compact", Description: "Summarise the conversation so far to free context", Endpoint: "POST /v1/projects/{id}/compact"},
-	{Name: "clear", Description: "Start a new conversation; the history stays searchable", Endpoint: "POST /v1/projects/{id}/clear"},
+	{Name: "clear", Description: "Start a new session; keeps a summary of this one, nothing is deleted", Endpoint: "POST /v1/projects/{id}/clear"},
 	{Name: "mode", Description: "Set the mode of the next requests", Args: "ask|plan|agent", Endpoint: "PATCH /v1/projects/{id} {\"mode\"} or the mode of POST /v1/projects/{id}/messages"},
 	{Name: "model", Description: "Choose the orchestrator model", Args: "<name>", Endpoint: "PATCH /v1/projects/{id} {\"models\"}"},
 	{Name: "rewind", Description: "Cut the project back to an earlier request", Endpoint: "POST /v1/projects/{id}/rewind"},

@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import type { HitTarget } from "../../lib/memory/search";
 import { useApp } from "../../state/app";
+import { Panel, PanelFilters } from "../primitives/Panel";
 import { SearchField } from "../primitives/SearchField";
 import { ViewTabs } from "../primitives/ViewTabs";
 import { FilesView } from "./FilesView";
@@ -74,18 +75,29 @@ export function MemoryView(props: {
 
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Ctrl/Cmd+F while the tab has focus goes to its search field (decision 93 b)
-    <div className="flex h-full min-h-0 flex-col" data-memory onKeyDown={onKeyDown}>
-      <div className="shrink-0 px-pane pt-2 pb-2">
-        <SearchField ref={field} label="Search memory" placeholder="Search exchanges, knowledge, files and notes" size="sm" value={query} onChange={setQuery} />
-      </div>
-      {searching ? (
-        <div className="min-h-0 flex-1 border-t border-line">
+    <div className="h-full min-h-0" data-memory onKeyDown={onKeyDown}>
+      <Panel
+        name="memory"
+        title="Memory"
+        filters={
+          <PanelFilters>
+            <SearchField
+              ref={field}
+              label="Search memory"
+              placeholder="Search exchanges, knowledge, files and notes"
+              size="sm"
+              value={query}
+              onChange={setQuery}
+              className="min-w-0 flex-1"
+            />
+          </PanelFilters>
+        }
+        views={searching ? <div className="border-b border-line" /> : <ViewTabs<MemoryTab> label="Memory" options={TABS} value={view} onChange={setView} />}
+      >
+        {searching ? (
           <SearchResults state={search} query={query} canOpenMessage={onOpenMessage !== undefined} onOpen={open} />
-        </div>
-      ) : (
-        <>
-          <ViewTabs<MemoryTab> label="Memory" options={TABS} value={view} onChange={setView} />
-          <div className="min-h-0 flex-1">
+        ) : (
+          <div className="h-full min-h-0">
             {view === "sessions" && (
               <SessionsView
                 projectId={projectId}
@@ -100,8 +112,8 @@ export function MemoryView(props: {
             )}
             {view === "files" && <FilesView projectId={projectId} load={files.load} reload={files.reload} selected={file} onSelect={setFile} />}
           </div>
-        </>
-      )}
+        )}
+      </Panel>
     </div>
   );
 }

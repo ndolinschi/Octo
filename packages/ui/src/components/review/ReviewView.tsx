@@ -11,6 +11,7 @@ import { anchorProblem, commentWhere, fileCommentInput, generalCommentInput, lin
 import { reviewDiffLayout } from "../../lib/review/diffLayout";
 import { repliesByThread, threadsOfFile, unresolvedTotal } from "../../lib/review/threads";
 import { Button } from "../primitives/Button";
+import { Checkbox } from "../primitives/Checkbox";
 import { SkeletonRows } from "../primitives/InfoList";
 import { Presence } from "../primitives/Presence";
 import { ApartThreads } from "./ApartThreads";
@@ -524,15 +525,7 @@ function Banners(props: {
           <span className="text-warn">
             New commits since your review: {props.count} {props.count === 1 ? "file" : "files"} changed.
           </span>
-          <label className="flex min-h-6 cursor-pointer items-center gap-2 text-fg-2 max-md:min-h-10">
-            <input
-              type="checkbox"
-              className="size-3.5 accent-[var(--octo-primary)]"
-              checked={props.onlyNew}
-              onChange={(e) => props.onOnlyNew(e.target.checked)}
-            />
-            Only what changed since your review
-          </label>
+          <Checkbox label="Only what changed since your review" checked={props.onlyNew} onChange={props.onOnlyNew} />
         </div>
       )}
     </>

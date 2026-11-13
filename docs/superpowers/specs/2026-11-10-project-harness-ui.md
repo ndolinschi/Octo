@@ -2830,12 +2830,52 @@ c. **Sessions can be deleted.** A session that is not current and has nothing ru
    deleted"). The current session cannot be deleted; it can be cleared or replaced by a new one.
 d. **A cleared or new session with no request is not "working".** State comes from a running turn only; an empty
    session shows "No requests yet".
-e. **"New session" says what it keeps.** The action's confirmation (or the empty session's first screen) states in
-   plain words what carries over (remembered facts, notes, searchable past sessions, project settings and files) and
-   what does not (the conversation itself), with a link "What it remembers" opening Memory. The same text explains
-   `/clear` (carries a summary). The wording is taken from what the harness really does (memory and sessions specs).
+e. **"New session" says what it keeps.** The action's popover states in plain words what carries over (a summary
+   of the session being left, the open tasks, the project's notes and instructions) and what does not (the
+   conversation itself; earlier sessions and remembered facts stay stored and searchable but are not put into the
+   context by default), with a link "What it remembers" opening Memory. "New session" and `/clear` are one
+   operation. The wording follows what the harness does (`apps/harness/docs/sessions.md`, "What carries over").
 f. **One panel frame.** Sessions, Memory, Notes, Usage, Files list and every other tool tab share one frame
    (`primitives/Panel`): header line (title · primary action right), one filter row (`FilterTabs`, then search), list
    with one horizontal inset, one row rhythm, one empty state. Insets and gaps come from the frame, not from each
    screen; a screen may not set its own outer padding. Test: the spacing audit gains a "panel-frame" check — header
    height, horizontal inset and the gap between filter row and list are equal across all tool tabs.
+
+## As built — review and files on the component library (B3, B5; 91i)
+
+- `components/review` and `components/files` report 0 of `octo/no-native-controls` (19 and 14 before). File rows, folded groups, the
+  "outdated threads" strip, a resolved thread, the typed-address row and "Reviews in progress" are `ListRow`; "viewed" and "suggest a change"
+  are `Checkbox`; the narrow file picker is `Select`; the tree filter is `SearchField`; the comment box is `TextArea variant="bare"`; crumbs,
+  the Markdown Preview/Source toggle, Retry and the problems button are `Button`; the problem rows are `ListRow`. No primitive was changed.
+- Kept native, with an `eslint-disable-next-line` and its reason: `PullRow` (wrapping badge line), `BranchRow` (container-query layout),
+  the comment "+" over Monaco (18px, measured position).
+- 91i: the picker header is one wrapping flex line, title, repository menu, folder menu, then freshness and refresh; it holds one line from
+  the container's `md` width and wraps below it. A refusal is a `Notice form="block"` tied to the view it came from (`Refusal.view`);
+  changing the view clears it and the open error; the sentence starts with a capital.
+- Verified (Chromium, demo, dev server): `tsc`, eslint (0 errors), prettier, `check-cycles`, `@octo/ui` tests (602), `spacing-audit` total=0,
+  `width-stability`, `file-open-stability`, `frame-colours`, `ui-tour` groups review, review-b3, files at 1440x900 dark and light (0 missing).
+  Not verified: 1100 and 390 widths of these groups, WebKit, touch.
+
+## Decision 95f — one panel frame for every tool tab
+
+Owner (tool tabs by hand): Sessions lack space, spacing differs from tab to tab, Memory and Sessions look unlike, Notes is untidy.
+Rule: Sessions, Memory, Notes, Usage, Agents, Details and Changes share `primitives/Panel`; a screen supplies content and sets
+no outer padding and no header of its own. Header 40 (title, dim meta, actions at the right: the single main action a
+secondary `Button` sm, others quiet), at most one filter row of 36 (`FilterTabs` first, then a search), view tabs with the
+frame's only hairline, list area with one inset (edges 8, text 16, top 4), rows 32 or 40, one detail header (`DetailHeader`:
+Back in one column, title, meta, actions on one 28px line). Single-column bodies are left aligned at every width (no centred
+columns). Measurements and screenshots: `docs/superpowers/research/2026-11-13-panel-frame.md`.
+
+### As built — decision 95f
+
+- `Panel`, `PanelFilters`, `PanelBody`, `PanelEmpty`, `DetailHeader` in `primitives/Panel.tsx` (gallery section, unit test with
+  `react-dom/server`); `FilterTabs` chips are 24px / 8px padding and take `bare`; `ListDetail` hides its Back row when the
+  detail has a `DetailHeader` (CSS `:has`, no effect) and gives the list a 4px top inset.
+- On the frame: Sessions, Memory (three views and search results), Notes, Usage, Agents, Details, Changes. Not on it: the Files
+  list, Review, the side question.
+- `spacing-audit.mjs` state `panel-frame` opens each tab and compares header height, header text inset, list inset and list top
+  gap; it names the deviating tab and reports a tab without `[data-panel]` as "not in a Panel". `panel-measure.mjs` prints the
+  table and screenshots.
+- Verified: type check, eslint (0 errors), prettier, cycles, ui tests, spacing audit, width stability, frame colours on the
+  dev server with `?demo=1`, dark and light at 1440x900, 900x600 and 390x700. Not verified: WebKit (`:has` is supported there
+  but untested), the live harness.

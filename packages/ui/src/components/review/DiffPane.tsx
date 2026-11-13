@@ -6,6 +6,7 @@ import { hunksToTexts } from "../../lib/review/changes";
 import { plural, sizeChange, splitPath } from "../../lib/review/files";
 import type { Anchor } from "../../lib/review/position";
 import { Button, IconButton } from "../primitives/Button";
+import { Checkbox } from "../primitives/Checkbox";
 import { MenuButton } from "../primitives/MenuButton";
 import { Spinner } from "../primitives/Status";
 import { ImageDiff } from "./ImageDiff";
@@ -63,13 +64,9 @@ export function DiffPane(props: {
           {props.sinceReview && <span className="shrink-0 text-xs text-warn">since your review</span>}
         </span>
         <span className="flex shrink-0 items-center gap-1">
-          <label
-            title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"}
-            className="flex h-7 cursor-pointer items-center gap-2 rounded-sm px-2 text-sm text-fg-2 hover:bg-hover hover:text-fg max-md:h-10"
-          >
-            <input type="checkbox" className="size-3.5 accent-[var(--octo-primary)]" checked={f.viewed} onChange={(e) => props.onViewed(e.target.checked)} />
-            Viewed
-          </label>
+          <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"} className="px-2">
+            <Checkbox label="Viewed" checked={f.viewed} onChange={props.onViewed} />
+          </span>
           <IconButton icon={ChevronUp} label="Previous change (k)" onClick={() => props.onStepChange(-1)} className="max-md:size-10" />
           <IconButton icon={ChevronDown} label="Next change (j)" onClick={() => props.onStepChange(1)} className="max-md:size-10" />
           <MenuButton

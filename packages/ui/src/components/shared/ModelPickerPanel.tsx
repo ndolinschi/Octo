@@ -1,9 +1,7 @@
 import { Check, ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
-import { Fragment, useId, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { cn } from "../../lib/cn";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { parseAcp } from "../../lib/models";
 import {
-  EXPERIMENTAL_TIP,
   USE_ANYWAY_NOTE,
   cleanModelName,
   emptyListNote,
@@ -22,13 +20,12 @@ import { IconButton } from "../primitives/IconButton";
 import { SearchField } from "../primitives/SearchField";
 import { TextField } from "../primitives/TextField";
 import { ProviderMark } from "../primitives/ProviderMark";
-import { Highlight } from "../primitives/Highlight";
+import { PopupList, popupOptionId } from "../primitives/PopupList";
+import { popupTarget } from "../primitives/popupNav";
+import type { PickerSection } from "../../lib/picker";
 import { Popover } from "../primitives/Popover";
 import type { ModelPickerProps } from "./modelPickerProps";
 
-/** Rows visible before the list scrolls (28px each). */
-const VISIBLE = 9;
-const ROW = 28;
 const STALE_NOTE = "not offered in the last session";
 
 /** A model typed by hand: at the top level (project settings) a model id of any provider, in an agent's list a name for that agent. */
@@ -57,7 +54,6 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
   const [stillOut, setStillOut] = useState<string | null>(null);
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
-  const other = useRef<HTMLInputElement>(null);
   const { load, view, refresh, refreshModels, addModel, removeModel, refreshing } = useModelPicker(bridge, { query, agent: inside, current: props.value });
   const top = useMemo(() => (load.status === "ready" || load.status === "error" ? (load.list ? pickerView(load.list, { query: "" }) : null) : null), [load]);
   const typed = query.trim();
@@ -75,7 +71,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
           : null;
   const entries: (PickerRow | Custom)[] = custom ? [custom, ...rows] : rows;
   const at = entries.length ? Math.min(selected, entries.length - 1) : -1;
-  const optionId = (i: number) => `${listId}-o${i}`;
+  const optionId = (i: number) => popupOptionId(listId, entries[i]?.key ?? "");
 
   const choose = (value: string, name?: { agent: string; model: string }) => {
     if (name) addModel(name.agent, name.model);
@@ -120,7 +116,7 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     setSelected(0);
     setTyping(false);
     setRefreshNote(null);
-    input.current?.focus();
+    refocus();
   };
   const back = () => {
     const from = inside;
@@ -130,12 +126,21 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     setRefreshNote(null);
     const index = top ? pickerRows(top).findIndex((r) => r.kind === "agent" && r.providerId === from) : -1;
     setSelected(Math.max(0, index));
-    input.current?.focus();
+    refocus();
   };
   const startTyping = () => {
     setTyping(true);
     setDraft("");
-    requestAnimationFrame(() => other.current?.focus());
+  };
+  // Focus goes back to the search field after the view changed (an effect: the closures that ask for it run during row building).
+  const [focusAsk, setFocusAsk] = useState(0);
+  const refocus = () => setFocusAsk((n) => n + 1);
+  useEffect(() => {
+    if (focusAsk > 0) input.current?.focus();
+  }, [focusAsk]);
+  const leaveTyping = () => {
+    setTyping(false);
+    refocus();
   };
   const commitTyped = () => {
     const name = cleanModelName(draft);
@@ -154,7 +159,17 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
     const row = at >= 0 ? entries[at] : undefined;
     if ((e.key === "ArrowDown" || e.key === "ArrowUp") && n) {
       e.preventDefault();
-      setSelected((at + (e.key === "ArrowDown" ? 1 : -1) + n) % n);
+      const to = popupTarget(
+        e.key,
+        entries.map((x) => x.key),
+        row?.key ?? null,
+      );
+      setSelected(
+        Math.max(
+          0,
+          entries.findIndex((x) => x.key === to),
+        ),
+      );
       return;
     }
     if (e.key === "Enter") {
@@ -208,6 +223,98 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
         ? "Nothing matches"
         : "Nothing can run yet. Connect a provider."
       : null;
+  const rowOf = (r: PickerRow | Custom): PickerSection["rows"][number] => {
+    const base = { id: r.key, title: rowTitle(r), run: () => act(r) };
+    if (r.kind === "other" && typing)
+      return {
+        ...base,
+        label: "",
+        lead: null,
+        content: (
+          <OtherField
+            draft={draft}
+            label={`Model name for ${agent?.label ?? "the agent"}`}
+            example={agent?.example ?? "opus"}
+            onDraft={setDraft}
+            onCommit={commitTyped}
+            onLeave={leaveTyping}
+          />
+        ),
+      };
+    if (r.kind === "custom") return { ...base, label: `Use “${r.label}”`, hint: r.agentId ? "model name" : "model id" };
+    if (r.kind === "connect") {
+      const text = r.unsupported ? (r.reason ?? r.state) : r.unverified ? r.state : `${r.state} · ${r.action}`;
+      return {
+        ...base,
+        label: r.label,
+        quiet: true,
+        hint: text,
+        lead: <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />,
+        ...(r.experimental ? { detail: "experimental" } : {}),
+        ...(r.unverified
+          ? {
+              trailing: (
+                <UnverifiedActions
+                  checking={checking === r.providerId}
+                  still={stillOut === r.providerId}
+                  onCheck={() => void checkAgain(r.providerId)}
+                  {...(props.onChooseUnverified ? { onUse: () => pickAnyway(r.providerId) } : {})}
+                />
+              ),
+            }
+          : {}),
+      };
+    }
+    if (r.kind === "other") return { ...base, label: r.label, quiet: true };
+    if (r.kind === "agent")
+      return {
+        ...base,
+        label: r.label,
+        lead: <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />,
+        trailing: <Glyph icon={ChevronRight} size={14} className="-mr-0.5 shrink-0 text-fg-3" />,
+        ...(r.experimental ? { detail: "experimental" } : {}),
+        ...(r.detail ? { hint: r.detail } : {}),
+      };
+    const lead = isCurrent(r) ? <Glyph icon={Check} size={14} className="text-fg" /> : null;
+    if (r.kind === "default") return { ...base, label: r.label, lead, ...(r.detail ? { hint: r.detail } : {}) };
+    return {
+      ...base,
+      label: r.agentLabel ? `${r.agentLabel} · ${r.label}` : r.label,
+      lead,
+      quiet: r.stale === true,
+      ...(r.isDefault ? { detail: "default" } : {}),
+      ...(r.stale ? { hint: STALE_NOTE } : {}),
+      ...(r.removable
+        ? {
+            trailing: (
+              <IconButton
+                icon={X}
+                size="xs"
+                tabIndex={-1}
+                label={`Remove ${r.label}`}
+                title={`Remove ${r.label} from this list`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (inside) removeModel(inside, r.value.slice(`acp:${inside}/`.length));
+                }}
+                className="-mr-1 opacity-0 group-hover:opacity-100"
+              />
+            ),
+          }
+        : {}),
+    };
+  };
+  const sections: PickerSection[] = [];
+  entries.forEach((r, i) => {
+    const title = heading(i);
+    let last = sections[sections.length - 1];
+    if (!last || title !== null) {
+      last = { title: title ?? "", rows: [] };
+      sections.push(last);
+    }
+    last.rows.push(rowOf(r));
+  });
+
   const activeRow = at >= 0 ? entries[at] : undefined;
   const unverifiedNote = activeRow?.kind === "connect" && activeRow.unverified && props.onChooseUnverified !== undefined;
   const why = agent ? emptyListNote({ ...agent, error: refreshNote ?? agent.error }, refreshing) : null;
@@ -275,108 +382,35 @@ export function ModelPickerPanel(props: ModelPickerProps & { anchor: RefObject<H
           {error}
         </p>
       )}
-      <div
+      <PopupList
         id={listId}
-        role="listbox"
-        aria-label={agent ? `${agent.label} models` : "Models and agents"}
-        className="overflow-y-auto overscroll-contain p-1"
-        style={{ maxHeight: VISIBLE * ROW + 8 }}
-      >
-        {entries.map((r, i) => {
-          const group = heading(i);
-          const checked = r.kind !== "custom" && isCurrent(r);
-          if (r.kind === "other" && typing)
-            return (
-              <div key={r.key} className="flex h-row items-center gap-2 rounded-sm bg-active px-2">
-                <span className="size-4 shrink-0" />
-                <TextField
-                  ref={other}
-                  variant="bare"
-                  value={draft}
-                  aria-label={`Model name for ${agent?.label ?? "the agent"}`}
-                  placeholder={`e.g. ${agent?.example ?? "opus"}`}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      commitTyped();
-                    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-                      e.preventDefault();
-                      setTyping(false);
-                      input.current?.focus();
-                    }
-                  }}
-                />
-              </div>
-            );
-          return (
-            <Fragment key={r.key}>
-              {group && <div className="flex h-row items-center px-2 text-xs text-fg-3">{group}</div>}
-              <div
-                id={optionId(i)}
-                role="option"
-                aria-selected={i === at}
-                title={rowTitle(r)}
-                onMouseDown={(e) => e.preventDefault()}
-                onPointerMove={() => i !== at && setSelected(i)}
-                onClick={() => act(r)}
-                className={cn("group flex h-row items-center gap-2 rounded-sm px-2 press-row", i === at && "bg-active")}
-              >
-                <span className="grid size-4 shrink-0 place-items-center text-fg">
-                  {checked && r.kind !== "agent" && <Glyph icon={Check} size={14} />}
-                  {r.kind === "connect" && <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />}
-                  {r.kind === "agent" && <ProviderMark id={r.providerId} label={r.label} className="text-fg-3" />}
-                </span>
-                <RowBody row={r} query={query} />
-                {r.kind === "connect" && r.unverified && (
-                  <UnverifiedActions
-                    checking={checking === r.providerId}
-                    still={stillOut === r.providerId}
-                    onCheck={() => void checkAgain(r.providerId)}
-                    {...(props.onChooseUnverified ? { onUse: () => pickAnyway(r.providerId) } : {})}
-                  />
-                )}
-                {r.kind === "agent" && <Glyph icon={ChevronRight} size={14} className="-mr-0.5 shrink-0 text-fg-3" />}
-                {r.kind === "model" && r.removable && (
-                  <IconButton
-                    icon={X}
-                    size="xs"
-                    tabIndex={-1}
-                    label={`Remove ${r.label}`}
-                    title={`Remove ${r.label} from this list`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (inside) removeModel(inside, r.value.slice(`acp:${inside}/`.length));
-                    }}
-                    className="-mr-1 opacity-0 group-hover:opacity-100"
-                  />
-                )}
-              </div>
-            </Fragment>
-          );
-        })}
-        {empty && (
-          <div className="flex min-h-row items-center gap-2 px-2 text-xs text-fg-3">
+        label={agent ? `${agent.label} models` : "Models and agents"}
+        sections={sections}
+        activeId={at >= 0 ? (entries[at]?.key ?? null) : null}
+        onActive={(id) =>
+          setSelected(
+            Math.max(
+              0,
+              entries.findIndex((x) => x.key === id),
+            ),
+          )
+        }
+        onChoose={(r) => r.run()}
+        query={query}
+        maxRows={9}
+        empty={
+          <>
             <span className="min-w-0 flex-1">{empty}</span>
             {!view && load.status === "error" && (
               <Button variant="quiet" size="xs" onClick={() => void refresh()}>
                 Try again
               </Button>
             )}
-          </div>
-        )}
-      </div>
+          </>
+        }
+      />
       {props.footer && !agent && <div className="shrink-0 border-t border-line px-3 py-1.5">{props.footer}</div>}
     </Popover>
-  );
-}
-
-/** The dim word after an agent's label whose launch command has not been run with Octo. */
-function Experimental() {
-  return (
-    <span className="shrink-0 text-xs text-fg-3" title={EXPERIMENTAL_TIP}>
-      experimental
-    </span>
   );
 }
 
@@ -419,44 +453,27 @@ function rowTitle(r: PickerRow | Custom): string {
   return note ? `${r.value} (${note})` : r.value;
 }
 
-/** The label and the quiet words after it. */
-function RowBody({ row, query }: { row: PickerRow | Custom; query: string }) {
-  if (row.kind === "custom")
-    return (
-      <>
-        <span className="min-w-0 truncate text-fg">Use “{row.label}”</span>
-        <span className="shrink-0 text-xs text-fg-3">{row.agentId ? "model name" : "model id"}</span>
-      </>
-    );
-  if (row.kind === "connect")
-    return (
-      <>
-        <span className="min-w-0 truncate text-fg-2">{row.label}</span>
-        {row.experimental && <Experimental />}
-        <span className="min-w-0 flex-1 truncate text-right text-xs text-fg-3">
-          {row.unsupported ? (row.reason ?? row.state) : row.unverified ? row.state : `${row.state} · ${row.action}`}
-        </span>
-      </>
-    );
-  if (row.kind === "other") return <span className="min-w-0 truncate text-fg-2">{row.label}</span>;
-  if (row.kind === "agent" || row.kind === "default")
-    return (
-      <>
-        <span className="min-w-0 truncate text-fg">
-          <Highlight text={row.label} query={query} />
-        </span>
-        {row.kind === "agent" && row.experimental && <Experimental />}
-        {row.detail && <span className="min-w-0 flex-1 truncate text-right text-xs text-fg-3">{row.detail}</span>}
-      </>
-    );
-  const label = row.agentLabel ? `${row.agentLabel} · ${row.label}` : row.label;
+/** The "Other model…" row while typing: a bare field inside the list; Enter commits, ↑/↓ go back to the search field. */
+function OtherField(props: { draft: string; label: string; example: string; onDraft(value: string): void; onCommit(): void; onLeave(): void }) {
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => field.current?.focus(), []);
   return (
-    <>
-      <span className={cn("min-w-0 truncate", row.stale ? "text-fg-3" : "text-fg")}>
-        <Highlight text={label} query={query} />
-      </span>
-      {row.isDefault && <span className="shrink-0 text-xs text-fg-3">default</span>}
-      {row.stale && <span className="min-w-0 flex-1 truncate text-right text-xs text-fg-3">{STALE_NOTE}</span>}
-    </>
+    <TextField
+      ref={field}
+      variant="bare"
+      value={props.draft}
+      aria-label={props.label}
+      placeholder={`e.g. ${props.example}`}
+      onChange={(e) => props.onDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          props.onCommit();
+        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          props.onLeave();
+        }
+      }}
+    />
   );
 }

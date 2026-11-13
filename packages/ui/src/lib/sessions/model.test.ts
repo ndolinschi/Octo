@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   blockedText,
+  canDelete,
+  deleteCopy,
+  hasNoRequests,
+  sessionStateWord,
   currentTitle,
   earlierSession,
   filterCounts,
@@ -180,4 +184,34 @@ test("one open row at a time", () => {
   assert.equal(toggleOpen(null, "a"), "a");
   assert.equal(toggleOpen("a", "a"), null);
   assert.equal(toggleOpen("a", "b"), "b");
+});
+
+test("Delete: not the current session, nothing running in it or in its agents", () => {
+  const get = (id: string) => {
+    const x = list.find((y) => y.id === id);
+    assert.ok(x);
+    return x;
+  };
+  assert.equal(canDelete(list, get("m3")), false); // current
+  assert.equal(canDelete(list, get("m2")), true);
+  assert.equal(canDelete(list, get("a1")), true);
+  assert.equal(canDelete(list, get("a3")), false); // running agent
+  const busyChild = [s("p", { children: 1 }), agent("c", "p", { state: "working" })];
+  assert.equal(canDelete(busyChild, busyChild[0] ?? s("x")), false);
+});
+
+test("an empty session says it has no requests; working comes from a running turn only", () => {
+  const fresh = s("f", { exchanges: 0, current: true });
+  assert.equal(hasNoRequests(fresh), true);
+  assert.equal(sessionStateWord(fresh), "No requests yet");
+  assert.equal(sessionRow(fresh, NOW, (v) => v).description.includes("No requests yet"), true);
+  const running = s("r", { exchanges: 0, current: true, state: "working" });
+  assert.equal(sessionStateWord(running), "Working");
+  assert.equal(sessionRow(running, NOW, (v) => v).description.includes("First request running"), true);
+  assert.equal(sessionStateWord(s("d")), "Idle");
+});
+
+test("the delete confirmation says what goes and what stays", () => {
+  assert.match(deleteCopy({ kind: "main" }).description, /transcript.*agents.*remembered.*stays/);
+  assert.match(deleteCopy({ kind: "agent" }).title, /agent session/);
 });

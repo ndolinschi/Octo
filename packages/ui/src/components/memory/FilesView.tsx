@@ -15,6 +15,7 @@ import { Glyph } from "../primitives/Glyph";
 import { ListDetail } from "../primitives/ListDetail";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
+import { DetailHeader } from "../primitives/Panel";
 import { SkeletonText } from "../primitives/Skeleton";
 import { TextArea, TextField } from "../primitives/TextField";
 import { Prose } from "../shared/Prose";
@@ -47,7 +48,6 @@ export function FilesView(props: {
       loading={props.load.status === "loading"}
       selected={current?.path ?? null}
       onSelect={(path) => props.onSelect(path)}
-      detailClassName="px-pane pb-6"
       list={(select) =>
         sorted.map((f) => (
           <ListRow
@@ -95,29 +95,29 @@ function FileDetail(props: { projectId: string; file: MemoryFile; now: number; o
   const put = bridge.putMemoryFile;
   return (
     <article aria-label={file.path} className={DETAIL_MAX}>
-      <header className="flex flex-col gap-0.5 px-2 pt-3 pb-2">
-        <div className="flex min-w-0 items-start gap-2">
-          <h2 className="min-w-0 flex-1 text-heading break-words text-fg">{fileName(file.path)}</h2>
-          {!editing && (
-            <span className="-mr-1 flex shrink-0 gap-0.5">
-              {put && (
-                <Button variant="quiet" size="sm" icon={Pencil} onClick={() => setEditing(true)} disabled={load.status !== "ok"}>
-                  Edit
-                </Button>
-              )}
-              {remove && (
-                <Button variant="quiet" size="sm" icon={Trash2} onClick={() => setConfirm(true)}>
-                  Delete
-                </Button>
-              )}
-            </span>
-          )}
-        </div>
-        <p className="truncate text-xs text-fg-3">
-          {[fileDir(file.path), formatBytes(file.size), `Written ${formatDay(file.updated_at, now)}`].filter(Boolean).join(" · ")}
-        </p>
-        {file.summary && <p className="pt-1 text-sm break-words text-fg-2">{file.summary}</p>}
-      </header>
+      <DetailHeader
+        title={fileName(file.path)}
+        meta={[fileDir(file.path), formatBytes(file.size), `Written ${formatDay(file.updated_at, now)}`].filter(Boolean).join(" · ")}
+        {...(editing
+          ? {}
+          : {
+              actions: (
+                <>
+                  {put && (
+                    <Button variant="quiet" size="sm" icon={Pencil} onClick={() => setEditing(true)} disabled={load.status !== "ok"}>
+                      Edit
+                    </Button>
+                  )}
+                  {remove && (
+                    <Button variant="quiet" size="sm" icon={Trash2} onClick={() => setConfirm(true)}>
+                      Delete
+                    </Button>
+                  )}
+                </>
+              ),
+            })}
+      />
+      {file.summary && <p className="px-2 pb-2 text-sm break-words text-fg-2">{file.summary}</p>}
       <div className="px-2">
         {load.status === "loading" && <SkeletonText lines={4} className="pt-2" />}
         {load.status === "error" && <MemoryError message={load.message} onRetry={() => setRevision((r) => r + 1)} />}

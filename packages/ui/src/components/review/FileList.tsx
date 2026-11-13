@@ -3,8 +3,11 @@ import type { ReviewFile, ReviewGroup } from "@octo/agent-client";
 import { cn } from "../../lib/cn";
 import { reasonLabel, splitPath, type FileSection } from "../../lib/review/files";
 import { threadCountText } from "../../lib/review/threads";
-import { IconButton } from "../primitives/Button";
+import { IconButton } from "../primitives/IconButton";
+import { Checkbox } from "../primitives/Checkbox";
 import { Glyph } from "../primitives/Glyph";
+import { ListRow } from "../primitives/ListRow";
+import { Select, type SelectOption } from "../primitives/Select";
 import { LineStat } from "./parts";
 
 const STATUS_LETTER = { added: "A", modified: "M", deleted: "D", renamed: "R", copied: "C", typechange: "T" } as const;
@@ -29,18 +32,21 @@ export function FileList(props: {
         return (
           <section key={s.group} aria-label={`${s.label}, ${s.files.length} files`} className="flex flex-col">
             {s.folded ? (
-              <button
-                type="button"
-                aria-expanded={open}
+              <ListRow
+                size="sm"
+                tone="quiet"
+                expanded={open}
                 onClick={() => props.onToggleGroup(s.group)}
-                className="flex h-7 w-full items-center gap-1 rounded-sm px-2 text-left text-xs text-fg-3 press-row focus-inset hover:bg-hover hover:text-fg max-md:h-10"
-              >
-                <Glyph icon={open ? ChevronDown : ChevronRight} size={14} />
-                <span className="shrink-0 font-medium">{s.label}</span>
-                <span className="min-w-0 truncate">
-                  {s.files.length} folded: {[...new Set(s.files.map((f) => reasonLabel(f.reason)))].join(", ")}
-                </span>
-              </button>
+                leading={<Glyph icon={open ? ChevronDown : ChevronRight} size={14} />}
+                title={
+                  <span className="flex min-w-0 items-center gap-1">
+                    <span className="shrink-0 font-medium">{s.label}</span>
+                    <span className="min-w-0 truncate text-xs">
+                      {s.files.length} folded: {[...new Set(s.files.map((f) => reasonLabel(f.reason)))].join(", ")}
+                    </span>
+                  </span>
+                }
+              />
             ) : (
               <h3 className="flex h-7 items-center px-2 text-xs font-medium text-fg-3">
                 {s.label}
@@ -75,92 +81,90 @@ function FileRow(props: { file: ReviewFile; selected: boolean; onSelect(path: st
   ]
     .filter(Boolean)
     .join(", ");
+  const unresolved = f.unresolved_threads ?? 0;
   return (
-    <div className={cn("flex h-7 min-w-0 items-center rounded-sm max-md:h-10", props.selected ? "bg-active" : "hover:bg-hover")}>
-      <label className="grid h-full w-7 shrink-0 cursor-pointer place-items-center max-md:w-10" title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"}>
-        <input
-          type="checkbox"
-          className="size-3.5 accent-[var(--octo-primary)]"
-          checked={f.viewed}
-          aria-label={`Viewed: ${f.path}`}
-          onChange={(e) => props.onViewed(f.path, e.target.checked)}
-        />
-      </label>
-      <button
-        type="button"
-        data-row
-        data-path={f.path}
-        aria-current={props.selected ? "true" : undefined}
-        title={`${f.path}${note ? ` (${note})` : ""}`}
-        onClick={() => props.onSelect(f.path)}
-        className={cn(
-          "flex h-full min-w-0 flex-1 items-center gap-2 rounded-sm pr-2 text-left text-sm press-row focus-inset",
-          props.selected ? "text-fg" : "text-fg-2",
-        )}
-      >
-        <span aria-label={f.status} className={cn("w-3 shrink-0 text-center font-mono text-xs font-medium", STATUS_TONE[letter])}>
+    <ListRow
+      size="sm"
+      tone={props.selected ? "default" : "quiet"}
+      selected={props.selected}
+      tip={`${f.path}${note ? ` (${note})` : ""}`}
+      onClick={() => props.onSelect(f.path)}
+      control={
+        <span title={f.viewed ? "Viewed (v)" : "Mark as viewed (v)"}>
+          <Checkbox hideLabel label={`Viewed: ${f.path}`} checked={f.viewed} onChange={(next) => props.onViewed(f.path, next)} />
+        </span>
+      }
+      leading={
+        <span aria-label={f.status} className={cn("font-mono text-xs font-medium", STATUS_TONE[letter])}>
           {letter}
         </span>
-        <span className={cn("shrink-0 truncate", f.viewed && !f.changed_since_viewed && "text-fg-3")}>{name}</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
-          <bdi>{dir}</bdi>
+      }
+      title={
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={cn("shrink-0 truncate", f.viewed && !f.changed_since_viewed && "text-fg-3")}>{name}</span>
+          <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
+            <bdi>{dir}</bdi>
+          </span>
         </span>
-        {f.changed_since_viewed && (
-          <span className="shrink-0 rounded-xs border border-line px-1 text-[11px] leading-4 text-warn" title="Changed since you viewed it">
-            changed
-          </span>
-        )}
-        {(f.threads ?? 0) > 0 && (
-          <span
-            className={cn("flex shrink-0 items-center gap-0.5 text-xs", (f.unresolved_threads ?? 0) > 0 ? "text-fg" : "text-fg-3")}
-            title={threadCountText(f.threads ?? 0, f.unresolved_threads ?? 0)}
-          >
-            <Glyph icon={MessageCircle} size={14} />
-            {(f.unresolved_threads ?? 0) > 0 ? f.unresolved_threads : f.threads}
-          </span>
-        )}
-        {f.pending_comments > 0 && (
-          <span className="flex shrink-0 items-center gap-0.5 text-xs text-fg-2" title={`${f.pending_comments} pending comments`}>
-            <Glyph icon={MessageSquare} size={14} />
-            {f.pending_comments}
-          </span>
-        )}
-        <LineStat file={f} />
-      </button>
-    </div>
+      }
+      meta={
+        <span className="inline-flex items-center gap-2">
+          {f.changed_since_viewed && (
+            <span className="shrink-0 rounded-xs border border-line px-1 text-[11px] leading-4 text-warn" title="Changed since you viewed it">
+              changed
+            </span>
+          )}
+          {(f.threads ?? 0) > 0 && (
+            <span
+              className={cn("flex shrink-0 items-center gap-0.5", unresolved > 0 ? "text-fg" : "text-fg-3")}
+              title={threadCountText(f.threads ?? 0, unresolved)}
+            >
+              <Glyph icon={MessageCircle} size={14} />
+              {unresolved > 0 ? unresolved : f.threads}
+            </span>
+          )}
+          {f.pending_comments > 0 && (
+            <span className="flex shrink-0 items-center gap-0.5 text-fg-2" title={`${f.pending_comments} pending comments`}>
+              <Glyph icon={MessageSquare} size={14} />
+              {f.pending_comments}
+            </span>
+          )}
+          <LineStat file={f} />
+        </span>
+      }
+    />
   );
 }
 
 /** Narrow windows: the list becomes a picker above the diff, with previous / next. */
 export function FilePicker(props: { sections: readonly FileSection[]; selected: string | null; onSelect(path: string): void; onStep(dir: 1 | -1): void }) {
+  const options: SelectOption[] = props.sections.flatMap((s) =>
+    s.files.map((f) => ({
+      value: f.path,
+      group: `${s.label} (${s.files.length})`,
+      label: [
+        f.viewed ? "✓ " : "",
+        f.path,
+        f.changed_since_viewed ? " (changed)" : "",
+        f.pending_comments ? ` · ${f.pending_comments} pending` : "",
+        f.unresolved_threads ? ` · ${f.unresolved_threads} unresolved` : "",
+      ].join(""),
+    })),
+  );
   return (
     <div className="flex shrink-0 items-center gap-1 border-b border-line p-2">
-      <label className="sr-only" htmlFor="review-file-picker">
-        File
-      </label>
-      <select
+      <Select
         id="review-file-picker"
+        label="File"
+        size="lg"
         value={props.selected ?? ""}
-        onChange={(e) => props.onSelect(e.target.value)}
-        className="h-10 min-w-0 flex-1 rounded-md border border-input-border bg-panel px-2 text-input-touch text-fg focus:border-fg focus:outline-none"
-      >
-        {props.selected === null && <option value="">Choose a file</option>}
-        {props.sections.map((s) => (
-          <optgroup key={s.group} label={`${s.label} (${s.files.length})`}>
-            {s.files.map((f) => (
-              <option key={f.path} value={f.path}>
-                {f.viewed ? "✓ " : ""}
-                {f.path}
-                {f.changed_since_viewed ? " (changed)" : ""}
-                {f.pending_comments ? ` · ${f.pending_comments} pending` : ""}
-                {f.unresolved_threads ? ` · ${f.unresolved_threads} unresolved` : ""}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-      <IconButton icon={ChevronUp} label="Previous file" className="size-10" onClick={() => props.onStep(-1)} />
-      <IconButton icon={ChevronDown} label="Next file" className="size-10" onClick={() => props.onStep(1)} />
+        placeholder="Choose a file"
+        options={options}
+        onChange={props.onSelect}
+        className="min-w-0 flex-1"
+      />
+      <IconButton icon={ChevronUp} label="Previous file" size="lg" onClick={() => props.onStep(-1)} />
+      <IconButton icon={ChevronDown} label="Next file" size="lg" onClick={() => props.onStep(1)} />
     </div>
   );
 }

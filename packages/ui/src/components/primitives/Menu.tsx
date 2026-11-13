@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { usePresence } from "./Presence";
+import { createPointerGate } from "./popupNav";
 
 export type MenuItem =
   | {
@@ -41,6 +42,7 @@ export function Menu(props: {
 }) {
   const { onClose } = props;
   const ref = useRef<HTMLDivElement>(null);
+  const gate = useRef(createPointerGate());
   const opener = useRef<HTMLElement | null>(null);
   const state = usePresence();
   const open = state === "open";
@@ -170,7 +172,7 @@ export function Menu(props: {
               }
             }}
             onPointerMove={(e) => {
-              if (!item.disabled) e.currentTarget.focus();
+              if (gate.current(e) && !item.disabled) e.currentTarget.focus();
             }}
             className={cn(
               // Radius 6 = menu radius (10) − its padding (4).

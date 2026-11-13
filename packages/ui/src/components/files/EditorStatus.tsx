@@ -4,6 +4,8 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooks";
 import type { EditorIntel, Problem, ProblemSeverity } from "../../lsp/hub";
+import { Button } from "../primitives/Button";
+import { ListRow } from "../primitives/ListRow";
 import { Popover } from "../primitives/Popover";
 import { Presence } from "../primitives/Presence";
 import { Spinner } from "../primitives/Status";
@@ -67,13 +69,9 @@ export function EditorStatus({
         </span>
       )}
       {status && broken && (
-        <button
-          type="button"
-          onClick={() => intel.retry(fileKey)}
-          className="h-6 shrink-0 press rounded-sm px-2 text-xs text-fg-2 hover:bg-hover hover:text-fg"
-        >
+        <Button variant="quiet" size="xs" onClick={() => intel.retry(fileKey)}>
           Retry
-        </button>
+        </Button>
       )}
     </>
   );
@@ -93,20 +91,18 @@ function ProblemsButton({ problems, onJump }: { problems: Problem[]; onJump(prob
   const sorted = [...problems].sort((a, b) => a.line - b.line || a.column - b.column);
   return (
     <>
-      <button
+      <Button
         ref={anchor}
-        type="button"
+        variant="quiet"
+        size="xs"
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((x) => !x)}
-        className={cn(
-          "flex h-6 shrink-0 press items-center gap-1.5 rounded-sm px-2 tabular-nums hover:bg-hover hover:text-fg",
-          open ? "bg-active text-fg" : "text-fg-2",
-        )}
+        className={cn("tabular-nums", open && "bg-active text-fg")}
       >
         <Glyph icon={Icon} size={14} className={top.className} />
         {n}&nbsp;{n === 1 ? "problem" : "problems"}
-      </button>
+      </Button>
       <Presence show={open}>
         <Popover anchor={anchor} label="Problems in this file" align="end" onClose={() => setOpen(false)} className="w-[min(420px,calc(100vw-16px))]">
           <ul className="overflow-y-auto overscroll-contain p-1">
@@ -115,23 +111,22 @@ function ProblemsButton({ problems, onJump }: { problems: Problem[]; onJump(prob
               const PIcon = s.icon;
               return (
                 <li key={i}>
-                  <button
-                    type="button"
+                  <ListRow
+                    size="md"
+                    tip={p.message}
+                    leading={<Glyph icon={PIcon} size={14} className={s.className} />}
+                    title={
+                      <>
+                        <span className="sr-only">{s.label}: </span>
+                        {p.message}
+                      </>
+                    }
+                    description={`${p.source ? `${p.source} · ` : ""}Ln ${p.line}, Col ${p.column}`}
                     onClick={() => {
                       setOpen(false);
                       onJump(p);
                     }}
-                    className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left press-row hover:bg-hover focus-visible:bg-active focus-visible:shadow-none"
-                  >
-                    <span className="grid h-5 shrink-0 place-items-center">
-                      <Glyph icon={PIcon} size={14} aria-label={s.label} className={s.className} />
-                    </span>
-                    <span className="line-clamp-2 min-w-0 flex-1 text-sm text-fg">{p.message}</span>
-                    <span className="flex h-5 shrink-0 items-center text-xs text-fg-3 tabular-nums">
-                      {p.source && <span className="mr-2">{p.source}</span>}
-                      Ln&nbsp;{p.line}, Col&nbsp;{p.column}
-                    </span>
-                  </button>
+                  />
                 </li>
               );
             })}

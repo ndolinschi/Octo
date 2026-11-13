@@ -9,7 +9,6 @@ import { useApp } from "../../state/app";
 import { useCode } from "../../state/code";
 import { useProject } from "../../state/project";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { FloatRoom } from "../primitives/floatRoom";
 import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
 import { GLYPH } from "../primitives/glyphs";
@@ -17,7 +16,7 @@ import { Button } from "../primitives/Button";
 import { INFO_ROW, MoreRow } from "../primitives/InfoList";
 import { ListRow } from "../primitives/ListRow";
 import { Notice } from "../primitives/Notice";
-import { ScrollArea } from "../primitives/ScrollArea";
+import { Panel, PanelBody } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
 import { StatusIcon } from "../primitives/Status";
@@ -56,17 +55,20 @@ export function DetailsPanel() {
   if (!project) return null;
   return (
     // Rows reaching the fold fade out instead of being cut (the list's scrollbar is hidden, like the sidebar's).
-    <ScrollArea fade data-details className="h-full min-h-0 px-pane pt-pane pb-4">
-      <div ref={rows} className="mx-auto flex w-full max-w-details flex-col gap-5">
-        <Folders />
-        <Context />
-        <Team />
-        <Outputs />
-        <PluginsInUse />
-        <Activity />
-      </div>
-      <FloatRoom />
-    </ScrollArea>
+    <div data-details className="h-full min-h-0">
+      <Panel name="details" title="Details">
+        <PanelBody fade>
+          <div ref={rows} className="flex w-full max-w-details flex-col gap-4">
+            <Folders />
+            <Context />
+            <Team />
+            <Outputs />
+            <PluginsInUse />
+            <Activity />
+          </div>
+        </PanelBody>
+      </Panel>
+    </div>
   );
 }
 

@@ -1,8 +1,10 @@
 import type { ProjectSession } from "@octo/agent-client";
 import type { KeyboardEvent } from "react";
-import { sessionRow, type SessionNode } from "../../lib/sessions/model";
+import { canDelete, sessionRow, type SessionNode } from "../../lib/sessions/model";
 import { useModelNames } from "../../state/models";
+import { IconMenu } from "../primitives/IconMenu";
 import { ListRow } from "../primitives/ListRow";
+import type { MenuItem } from "../primitives/Menu";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { ROW_TAIL, RowLine } from "./parts";
 
@@ -21,10 +23,24 @@ export function SessionRows(props: {
   onChoose(session: ProjectSession): void;
   /** →/← on a main row: open or close it without choosing it (a choice would open the detail in a one-column pane). */
   onToggle(session: ProjectSession): void;
+  /** The "⋯" of a row: Resume, Archive and Delete. Without it rows only reserve the room. */
+  menu?: {
+    list: readonly ProjectSession[];
+    onResume(session: ProjectSession): void;
+    onArchive(session: ProjectSession, archived: boolean): void;
+    onDelete(session: ProjectSession): void;
+  };
 }) {
   const { name } = useModelNames();
   const rows = (s: ProjectSession, expanded?: boolean) => {
     const r = sessionRow(s, props.now, name);
+    const menu = props.menu;
+    const items: MenuItem[] = [];
+    if (menu) {
+      if (s.kind === "main" && !s.current) items.push({ id: "resume", label: "Resume", run: () => menu.onResume(s) });
+      if (!s.current) items.push({ id: "archive", label: s.archived ? "Unarchive" : "Archive", run: () => menu.onArchive(s, !s.archived) });
+      if (canDelete(menu.list, s)) items.push({ id: "delete", label: "Delete", run: () => menu.onDelete(s) });
+    }
     return (
       <ListRow
         size="md"
@@ -40,7 +56,7 @@ export function SessionRows(props: {
         tip={r.title}
         {...(expanded === undefined ? {} : { expanded })}
         onClick={() => props.onChoose(s)}
-        trailing={ROW_TAIL}
+        trailing={items.length > 0 ? <IconMenu label={`Actions for ${r.title}`} size="xs" items={items} /> : ROW_TAIL}
       />
     );
   };

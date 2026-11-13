@@ -67,14 +67,32 @@ export function Popover(props: {
     };
   }, [anchor]);
 
+  // Decision 95 b: focus lands where the arrow keys work. The field a popover marks `data-autofocus` wins, then any text
+  // field (a `SearchField` does not carry the mark: the first *button* used to win, so keys did nothing until a click), then
+  // a button, then the panel itself.
   useEffect(() => {
+    const el = ref.current;
     const opener = anchor.current;
-    const first = ref.current?.querySelector<HTMLElement>("[data-autofocus], button:not(:disabled), [tabindex='0']");
-    (first ?? ref.current)?.focus({ preventScroll: true });
+    const first =
+      el?.querySelector<HTMLElement>("[data-autofocus]") ??
+      el?.querySelector<HTMLElement>("input:not(:disabled), textarea:not(:disabled), [role='combobox']") ??
+      el?.querySelector<HTMLElement>("button:not(:disabled), [tabindex='0']");
+    (first ?? el)?.focus({ preventScroll: true });
     return () => {
-      if (opener?.isConnected && ref.current?.contains(document.activeElement ?? null)) opener.focus({ preventScroll: true });
+      // Unmounted with focus lost to the page (no exit animation): the opener takes it back.
+      const a = document.activeElement;
+      if (opener?.isConnected && (!a || a === document.body)) opener.focus({ preventScroll: true });
     };
   }, [anchor]);
+
+  // Back to the opener the moment the exit starts (the panel goes inert, which would drop focus to the page), and when it unmounts.
+  useEffect(() => {
+    if (open) return;
+    const a = document.activeElement;
+    const opener = anchor.current;
+    // Only while focus is still in the panel or lost: a dialog that the choice opened keeps it.
+    if (opener?.isConnected && (!a || a === document.body || ref.current?.contains(a))) opener.focus({ preventScroll: true });
+  }, [open, anchor]);
 
   useEffect(() => {
     if (!open) return;

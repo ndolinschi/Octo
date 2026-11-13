@@ -20,6 +20,14 @@ export type PickerRow = {
   busy?: boolean;
   /** The current value of a choice. */
   checked?: boolean;
+  /** `detail` is a path: cut from the left so its end (nearest the file) stays visible. */
+  pathDetail?: boolean;
+  /** After the hint: a chevron, row actions (kept out of the tab order). */
+  trailing?: ReactNode;
+  /** Replaces the row's text (a field inside the list); the row keeps its size and fill. */
+  content?: ReactNode;
+  /** The name is dim (a provider that is not connected). */
+  quiet?: boolean;
   run(): void;
 };
 

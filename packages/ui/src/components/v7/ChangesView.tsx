@@ -126,10 +126,10 @@ export function ChangesView(props: ChangesViewProps) {
   return (
     <div ref={box} className="flex h-full min-h-0 min-w-0 bg-panel" data-v7-changes>
       {body ? (
-        <div className="flex-1 overflow-auto p-2">{body}</div>
+        <div className="flex-1 overflow-auto px-2 pt-1 pb-2">{body}</div>
       ) : two ? (
         <>
-          <nav aria-label="Changed files" className="@container/list flex w-72 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line p-2">
+          <nav aria-label="Changed files" className="@container/list flex w-72 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-2 pt-1 pb-2">
             {list}
           </nav>
           {diff}
@@ -137,7 +137,7 @@ export function ChangesView(props: ChangesViewProps) {
       ) : showDiff && diff ? (
         diff
       ) : (
-        <nav aria-label="Changed files" className="@container/list flex flex-1 flex-col gap-2 overflow-y-auto p-2">
+        <nav aria-label="Changed files" className="@container/list flex flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-2">
           {list}
         </nav>
       )}

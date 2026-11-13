@@ -25,6 +25,33 @@ const oldest = (a: ProjectSession, b: ProjectSession): number => startedMs(a) - 
 
 export const isWorking = (s: Pick<ProjectSession, "state">): boolean => s.state === "working" || s.state === "waiting";
 
+/**
+ * "Delete" is offered on a session that is not the current one and has nothing running (itself or, for a main session,
+ * an agent session it started). The harness refuses the rest with `current_session` / `session_running`.
+ */
+export function canDelete(list: readonly ProjectSession[], s: ProjectSession): boolean {
+  if (s.kind === "main" && s.current) return false;
+  if (isWorking(s)) return false;
+  return s.kind === "agent" || !list.some((x) => x.kind === "agent" && x.parent_session_id === s.id && isWorking(x));
+}
+
+/** The confirmation before a delete: what goes, and what stays (decision 95 c). Memory's entries are not deleted with a session. */
+export function deleteCopy(s: Pick<ProjectSession, "kind">): { title: string; description: string } {
+  return s.kind === "main"
+    ? {
+        title: "Delete this session?",
+        description:
+          "Its transcript and the sessions of the agents it started are deleted. What the project remembered from it stays, marked as from a deleted session. This cannot be undone.",
+      }
+    : {
+        title: "Delete this agent session?",
+        description: "This agent's transcript is deleted. Your conversation and what the project remembered stay as they are. This cannot be undone.",
+      };
+}
+
+/** A main session that nobody has asked anything yet (a new one, or one just made by `/clear`): idle with no exchange. */
+export const hasNoRequests = (s: Pick<ProjectSession, "kind" | "state" | "exchanges">): boolean => s.kind === "main" && s.state === "idle" && s.exchanges === 0;
+
 function childrenOf(list: readonly ProjectSession[], main: ProjectSession, keep: (s: ProjectSession) => boolean): ProjectSession[] {
   return list.filter((s) => s.kind === "agent" && s.parent_session_id === main.id && keep(s)).sort(oldest);
 }
@@ -96,17 +123,23 @@ const STATE_WORD: Record<ProjectSessionState, string> = {
 };
 export const stateWord = (state: ProjectSessionState): string => STATE_WORD[state];
 
+/** The state in words for a session: "No requests yet" for an empty one (it is idle, not working), else the state's word. */
+export const sessionStateWord = (s: Pick<ProjectSession, "kind" | "state" | "exchanges">): string =>
+  hasNoRequests(s) ? "No requests yet" : stateWord(s.state);
+
+const exchangesOf = (s: ProjectSession): string => (s.exchanges > 0 ? exchangeCount(s.exchanges) : isWorking(s) ? "First request running" : "No requests yet");
+
 /** What a row says: state glyph, title, "Nov 12 · 5 exchanges · Opus 5.5" and, at the right, "current" or the last activity. */
 export type SessionRowModel = { id: string; glyph: GlyphState; state: string; title: string; description: string; tail: string; current: boolean };
 
 export function sessionRow(s: ProjectSession, now: number, modelName: (value: string) => string): SessionRowModel {
   const parts = [formatDay(s.started_at, now)];
-  if (s.kind === "main") parts.push(exchangeCount(s.exchanges));
+  if (s.kind === "main") parts.push(exchangesOf(s));
   if (s.model !== "") parts.push(modelName(s.model));
   return {
     id: s.id,
     glyph: glyphOf(s.state),
-    state: stateWord(s.state),
+    state: sessionStateWord(s),
     title: s.title.trim() === "" ? (s.kind === "main" ? "New session" : "Agent session") : s.title,
     description: parts.join(" · "),
     tail: s.current ? "current" : formatWhen(s.last_activity_at, now),
@@ -117,7 +150,7 @@ export function sessionRow(s: ProjectSession, now: number, modelName: (value: st
 /** The line under a session's title in its detail: the day, size, model and, for a main session, how many agents it started. */
 export function detailLine(s: ProjectSession, now: number, modelName: (value: string) => string): string {
   const parts = [formatDay(s.started_at, now)];
-  if (s.kind === "main") parts.push(exchangeCount(s.exchanges));
+  if (s.kind === "main") parts.push(exchangesOf(s));
   if (s.kind === "main" && s.children > 0) parts.push(`${s.children} ${s.children === 1 ? "agent" : "agents"}`);
   if (s.model !== "") parts.push(modelName(s.model));
   if (s.archived) parts.push("archived");

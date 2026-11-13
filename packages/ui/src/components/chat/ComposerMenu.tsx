@@ -2,24 +2,22 @@ import type { Bridge, PluginAgent } from "@octo/agent-client";
 import { Image as ImageIcon, MessageSquare, Search, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
-import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "../../lib/cn";
 import { useApp } from "../../state/app";
 import { useOptionalCode } from "../../state/code";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
-import { Highlight } from "../primitives/Highlight";
+import type { PickerSection } from "../../lib/picker";
 import { fileIcon } from "../primitives/fileIcons";
 import { usePresence } from "../primitives/Presence";
+import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
+import { popupTarget } from "../primitives/popupNav";
 
 /** What picking an entry does: text goes into the composer at the trigger (or the caret); `run` does something else. */
 export type MenuPick = { insert: string } | { run(): void };
 
 type Entry = { id: string; group: string; label: string; detail?: string; hint: string; icon: LucideIcon; match: string; pick: MenuPick };
 
-/** Rows shown at most (28px each); the list scrolls past that. */
-const VISIBLE = 8;
-const ROW = 28;
 const FILES_SHOWN = 6;
 /** Above the composer box when typed; 4px above the "+" chip when opened by it (decision 56). */
 const GAP = 6;
@@ -66,7 +64,8 @@ export const ComposerMenu = forwardRef<
     /** "Image…": the host's file dialog or the platform's. */
     onPickImage(): void;
     onPick(pick: MenuPick): void;
-    onClose(): void;
+    /** `escape`: Esc closed it (opened by the button, focus goes back to the button; after a pick or a click it goes to the text). */
+    onClose(reason?: "escape"): void;
   }
 >(function ComposerMenu(props, handle) {
   const { bridge } = useApp();
@@ -76,11 +75,13 @@ export const ComposerMenu = forwardRef<
   const [ownQuery, setOwnQuery] = useState("");
   const query = (props.query ?? ownQuery).trim().toLowerCase();
   const [agents, setAgents] = useState<PluginAgent[]>([]);
-  const [selected, setSelected] = useState(0);
+  // The pick belongs to the query it was made under: typing starts again from the first row.
+  const [pick, setPick] = useState<{ query: string; id: string | null }>({ query: "", id: null });
+  const selected = pick.query === query ? pick.id : null;
+  const setSelected = (id: string) => setPick({ query, id });
   const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
-  const baseId = useId();
   const { onActive, onClose } = props;
 
   useEffect(() => {
@@ -155,14 +156,12 @@ export const ComposerMenu = forwardRef<
     return query ? out.filter((e) => e.group === "Files" || e.match.toLowerCase().includes(query)) : out;
   }, [code?.loadedFiles, agents, props.pendingComments, props.onOpenComments, props.onPickImage, ws, query]);
 
-  const current = entries.length ? Math.min(selected, entries.length - 1) : -1;
-  const optionId = (i: number) => `${baseId}-opt-${i}`;
-  useEffect(() => setSelected(0), [query]);
-  useEffect(() => onActive(current >= 0 ? optionId(current) : null));
+  // Entries are keyed by id; the selection survives the list changing under it while its row is still there.
+  const current = entries.find((e) => e.id === selected) ?? entries[0] ?? null;
+  const currentId = current?.id ?? null;
+  const optionId = (id: string) => popupOptionId(props.listId, id);
+  useEffect(() => onActive(currentId === null ? null : optionId(currentId)));
   useEffect(() => () => onActive(null), [onActive]);
-  useEffect(() => {
-    if (current >= 0) panel.current?.querySelector(`#${CSS.escape(optionId(current))}`)?.scrollIntoView({ block: "nearest" });
-  });
 
   // Above its anchor, on the anchor's left edge, as wide as the composer box (up to 480px) and never past the window.
   useLayoutEffect(() => {
@@ -196,19 +195,22 @@ export const ComposerMenu = forwardRef<
   const choose = (e: Entry | undefined) => e && props.onPick(e.pick);
 
   const keys = (e: KeyboardEvent): boolean => {
-    const n = entries.length;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      if (!n) return true;
-      setSelected((current + (e.key === "ArrowDown" ? 1 : -1) + n) % n);
+      const to = popupTarget(
+        e.key,
+        entries.map((x) => x.id),
+        currentId,
+      );
+      if (to !== null) setSelected(to);
       return true;
     }
     if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
-      if (!n) return false;
-      choose(entries[current]);
+      if (!current) return false;
+      choose(current);
       return true;
     }
     if (e.key === "Escape") {
-      onClose();
+      onClose("escape");
       return true;
     }
     return false;
@@ -216,16 +218,25 @@ export const ComposerMenu = forwardRef<
   useImperativeHandle(handle, () => ({ onKeyDown: keys }));
 
   if (!pos) return null;
-  let index = -1;
-  const groups = [...new Set(entries.map((e) => e.group))];
+  const sections: PickerSection[] = [...new Set(entries.map((e) => e.group))].map((g) => ({
+    title: g,
+    rows: entries
+      .filter((e) => e.group === g)
+      .map((e) => {
+        const Icon = e.icon;
+        return {
+          id: e.id,
+          label: e.label,
+          hint: e.hint,
+          lead: <Glyph icon={Icon} size={14} />,
+          run: () => choose(e),
+          ...(e.detail ? { title: e.detail } : {}),
+          ...(e.detail && e.group === "Files" ? { detail: e.detail.slice(0, e.detail.lastIndexOf("/")), pathDetail: true } : {}),
+        };
+      }),
+  }));
   return createPortal(
-    <div
-      ref={panel}
-      data-composer-menu
-      data-state={state}
-      style={{ left: pos.left, bottom: pos.bottom, width: pos.width }}
-      className="octo-overlay fixed z-[60] flex flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop [--octo-origin:0%_100%]"
-    >
+    <div ref={panel} data-composer-menu data-state={state} style={{ left: pos.left, bottom: pos.bottom, width: pos.width }} className={POPUP_PANEL}>
       {props.query === null && (
         <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
           <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />
@@ -234,7 +245,7 @@ export const ComposerMenu = forwardRef<
             role="combobox"
             aria-expanded="true"
             aria-controls={props.listId}
-            aria-activedescendant={current >= 0 ? optionId(current) : undefined}
+            aria-activedescendant={currentId !== null ? optionId(currentId) : undefined}
             aria-label="Search files, agents and actions"
             placeholder="Search files, agents, actions"
             value={ownQuery}
@@ -249,62 +260,17 @@ export const ComposerMenu = forwardRef<
           />
         </div>
       )}
-      <div
+      <PopupList
         id={props.listId}
-        role="listbox"
-        aria-label="Insert or run"
-        className="overflow-y-auto overscroll-contain p-1"
-        style={{ maxHeight: VISIBLE * ROW + 8 }}
-      >
-        {groups.map((g) => (
-          <div key={g} role="group" aria-labelledby={`${baseId}-${g}`}>
-            <div id={`${baseId}-${g}`} className="flex h-row items-center px-2 text-xs text-fg-3">
-              {g}
-            </div>
-            {entries
-              .filter((e) => e.group === g)
-              .map((e) => {
-                index += 1;
-                const i = index;
-                const Icon = e.icon;
-                const isSelected = i === current;
-                return (
-                  <div
-                    key={e.id}
-                    id={optionId(i)}
-                    role="option"
-                    aria-selected={isSelected}
-                    title={e.detail}
-                    onMouseDown={(ev) => ev.preventDefault()}
-                    onPointerMove={() => i !== current && setSelected(i)}
-                    onClick={() => choose(e)}
-                    className={cn("flex h-row items-center gap-2 rounded-sm px-2 press-row", isSelected ? "bg-active text-fg" : "text-fg")}
-                  >
-                    <span aria-hidden className="grid size-4 shrink-0 place-items-center text-fg-3">
-                      <Glyph icon={Icon} size={14} />
-                    </span>
-                    <span className="min-w-0 shrink-0 truncate">
-                      <Highlight text={e.label} query={query} />
-                    </span>
-                    {e.detail && e.group === "Files" && (
-                      <span className="min-w-0 flex-1 truncate text-xs text-fg-3" dir="rtl">
-                        {/* RTL truncation keeps the end of the path (nearest the file) visible. */}
-                        <bdi>{e.detail.slice(0, e.detail.lastIndexOf("/"))}</bdi>
-                      </span>
-                    )}
-                    {/* The hint slot is reserved on every row, so selecting one never shifts its folder column. */}
-                    <span aria-hidden={!isSelected} className={cn("ml-auto shrink-0 pl-2 text-xs text-fg-3", !isSelected && "invisible")}>
-                      {e.hint}
-                    </span>
-                  </div>
-                );
-              })}
-          </div>
-        ))}
-        {!entries.length && (
-          <p className="flex h-row items-center px-2 text-xs text-fg-3">{code?.fileIndex.status === "loading" ? "Searching…" : "Nothing matches"}</p>
-        )}
-      </div>
+        label="Insert or run"
+        sections={sections}
+        activeId={currentId}
+        onActive={setSelected}
+        onChoose={(r) => r.run()}
+        query={query}
+        hintOnActive
+        empty={code?.fileIndex.status === "loading" ? "Searching…" : "Nothing matches"}
+      />
     </div>,
     document.body,
   );

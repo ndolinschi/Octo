@@ -1269,6 +1269,8 @@ export type Task = {
   closed_reason?: string;
   /** M6: the memory session the task started in (absent on a task from before sessions). */
   session_id?: string;
+  /** Decision 95 c: true when that session was deleted by the person. The record and its facts stay. */
+  session_deleted?: boolean;
   /** M6: the exchanges (M4) of the turns that worked on the task, oldest first. */
   exchange_ids?: string[];
 };

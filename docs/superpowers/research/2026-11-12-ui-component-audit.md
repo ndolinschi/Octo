@@ -324,17 +324,21 @@ library and adds none). Per folder of `packages/ui/src/components`:
 
 | Folder | Warnings |
 | --- | --- |
-| `review` | 19 |
-| `files` | 14 |
+| `review` | 0 (was 19; B3) |
+| `files` | 0 (was 14; B5) |
 | `chat` | 9 |
 | `v7` | 3 |
 | `shared` | 2 |
 | `dock` | 1 |
 | `project` | 1 |
 | every other folder (`settings`, `memory`, `notes`, `usage`, `agents`, `details`, `side`, `sessions`, `home`, `shell`, `status`, `commands`, `providers`, `primitives`) | 0 |
-| **Total** | **49** |
+| **Total** | **16** (was 49) |
 
-Batches still open from the table above: B3 (`review`), B4 (`v7`), B5 (`files`), B6 (`shared`), B8 (`shell`, `dock`, `status`
+B3 (`review`) and B5 (`files`) are done (2026-11-13): `review` and `files` report 0 of this rule. Three native elements stay, each with an
+`eslint-disable-next-line` and its reason: `review/PullList.tsx` `PullRow` (a wrapping badge line that `ListRow`'s one-line description cannot
+show), `review/BranchList.tsx` `BranchRow` (name, ahead/behind and subject re-flow by container query) and `files/editor/EditorComments.tsx`
+(an 18px gutter mark placed over Monaco by measured left/top). All other warnings of the two folders (not from this rule): review 41 to 18,
+files 33 to 15 in total. Batches still open from the table above: B4 (`v7`), B6 (`shared`), B8 (`shell`, `dock`, `status`
 for the one `dock` hit), B9 (`chat`), B7 (`project`), then B10 (rule to `error`). The other lint warnings on the tree
 (209 in all, 160 not from this rule) are the older baseline of `no-deprecated`, `no-unnecessary-condition`, `prefer-optional-chain`
 and the React hooks rules; the integration pass added none and no error remains.
