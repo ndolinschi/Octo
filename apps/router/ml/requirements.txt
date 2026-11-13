@@ -1,0 +1,16 @@
+# Python 3.13; pinned to the versions this pipeline was run with (2026-11-13)
+huggingface_hub==2.4.0
+lightgbm==4.7.0
+matplotlib==3.11.2
+numpy==2.5.4
+onnx==1.23.2
+onnxmltools==1.16.0
+onnxruntime==1.32.0
+pandas==3.1.1
+pyarrow==26.0.1
+pytest==9.2.0
+PyYAML==6.0.3
+scikit-learn==1.9.1
+scipy==1.18.1
+skl2onnx==1.20.0
+tokenizers==0.23.3
