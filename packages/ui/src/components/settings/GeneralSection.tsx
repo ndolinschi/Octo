@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { PREFS, usePersistentState } from "../../lib/storage";
+import { PREFS, usePersistentState, writePref } from "../../lib/storage";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { Segmented } from "../primitives/Segmented";
@@ -30,7 +30,12 @@ export function GeneralSection() {
                 { id: "home", label: "Home" },
               ]}
               value={startup}
-              onChange={(v) => void run(async () => setStartup(v))}
+              onChange={(v) =>
+                void run(async () => {
+                  if (!writePref(PREFS.startup, startupCodec.stringify(v))) throw new Error("Could not save. The browser's storage is full or blocked");
+                  setStartup(v);
+                })
+              }
             />
           }
         />

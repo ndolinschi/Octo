@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { stateText, type Tone } from "../../lib/providers";
+import { EXPERIMENTAL_TIP, stateText, type Tone } from "../../lib/providers";
 import type { Provider } from "@octo/agent-client";
 import { ProviderMark } from "../primitives/ProviderMark";
 import { SectionHeader } from "../primitives/SectionHeader";
@@ -15,15 +15,15 @@ export function SectionTitle({ children, aside }: { children: ReactNode; aside?:
 }
 
 /** Mark, name, state and the dim "Experimental": the detail's title (without its buttons). */
-export function ProviderTitle({ provider, tone }: { provider: Provider; tone: Tone }) {
+export function ProviderTitle({ provider, tone, stateLabel }: { provider: Provider; tone: Tone; stateLabel?: string }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
       <ProviderMark id={provider.id} label={provider.label} size={20} className="text-fg-2" />
       <h2 className="min-w-0 truncate text-title text-fg">{provider.label}</h2>
       <span className="flex shrink-0 items-center gap-2 text-sm text-fg-3">
         <ToneDot tone={tone} />
-        {stateText(provider.state)}
-        {provider.experimental && <span>· Experimental</span>}
+        {stateLabel ?? stateText(provider.state)}
+        {provider.experimental && <span title={EXPERIMENTAL_TIP}>· Experimental</span>}
       </span>
     </div>
   );

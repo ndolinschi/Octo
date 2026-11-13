@@ -43,7 +43,7 @@ export function ProviderModels({ provider: p }: { provider: Provider }) {
         Models
       </SectionTitle>
       <p className="text-xs text-fg-3">{modelsSummary(p, now)}</p>
-      {p.models_error && <Notice tone="warn">The last look failed: {p.models_error}. The list below is what was known before.</Notice>}
+      {p.models_error && <Notice tone="warn">The last look failed: {p.models_error.replace(/\.$/, "")}. The list below is what was known before.</Notice>}
       {p.models_note && <p className="text-xs text-fg-3">{p.models_note}</p>}
       {p.models.length === 0 ? (
         <p className="text-sm text-fg-2">{p.kind === "agent" ? "The agent picks its own model." : "No models listed."}</p>

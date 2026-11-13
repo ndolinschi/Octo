@@ -1,6 +1,7 @@
 import type { Limit, Project, ProjectInput } from "@octo/agent-client";
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from "react";
 import { errorMessage } from "../../lib/format";
+import { modelName } from "../../lib/models";
 import { useApp } from "../../state/app";
 import { Notice } from "../primitives/Notice";
 import { Select } from "../primitives/Select";
@@ -94,7 +95,7 @@ export function EditorSection() {
               key={p.id}
               project={p}
               value={value}
-              options={known ? COMPLETION : [...COMPLETION, { id: value, label: value }]}
+              options={known ? COMPLETION : [...COMPLETION, { id: value, label: modelName(value) }]}
               title="Inline completion"
               description={value === "off" ? "No suggestions." : "Suggestions on."}
               patch={(v) => ({ models: { completion: v } })}

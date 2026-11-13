@@ -1,25 +1,18 @@
 import type { Provider } from "@octo/agent-client";
+import { SETTING_IDS } from "@octo/agent-client";
 import { useRef, useState } from "react";
-import {
-  EXPERIMENTAL_TIP,
-  billingLine,
-  commandsIn,
-  extraReason,
-  primaryAction,
-  reasonLine,
-  recheckAgent,
-  refreshProviders,
-  stateTone,
-} from "../../lib/providers";
+import { billingLine, commandsIn, extraReason, primaryAction, reasonLine, recheckAgent, refreshProviders, stateTone } from "../../lib/providers";
 import { cn } from "../../lib/cn";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
 import { ListFrame } from "../primitives/Card";
 import { CommandLine } from "../primitives/CommandLine";
+import { Rich } from "../shared/providers/ConnectSteps";
 import { Notice } from "../primitives/Notice";
 import { AgentPrefs } from "./AgentPrefsPane";
 import { ProviderKey } from "./ProviderKey";
 import { ProviderModels } from "./ProviderModels";
+import { useHarnessSettings } from "./harnessSettings";
 import { CONTROL_CAP } from "./parts";
 import { ProviderTitle, SectionTitle } from "./ProviderParts";
 
@@ -29,6 +22,7 @@ import { ProviderTitle, SectionTitle } from "./ProviderParts";
  */
 export function ProviderDetail({ provider: p }: { provider: Provider }) {
   const { bridge } = useApp();
+  const harness = useHarnessSettings();
   const action = primaryAction(p);
   const pane = useRef<HTMLDivElement>(null);
   const [checking, setChecking] = useState(false);
@@ -47,17 +41,13 @@ export function ProviderDetail({ provider: p }: { provider: Provider }) {
   };
   const connect = () => pane.current?.querySelector<HTMLInputElement>("input[type=password]")?.focus();
   const reason = reasonLine(p);
+  const restartNeeded = p.kind === "api" && harness.needsRestart(SETTING_IDS.anthropicApiKey);
   return (
     <div ref={pane} className="@container flex min-w-0 flex-1 flex-col">
       <ListFrame>
         <div data-provider-detail className="flex min-w-0 flex-col gap-6 p-5">
           <div className="flex min-h-8 flex-wrap items-center gap-x-4 gap-y-2">
-            <ProviderTitle provider={p} tone={stateTone(p)} />
-            {p.experimental && (
-              <span className="text-xs text-fg-3" title={EXPERIMENTAL_TIP}>
-                experimental
-              </span>
-            )}
+            <ProviderTitle provider={p} tone={restartNeeded ? "warn" : stateTone(p)} {...(restartNeeded ? { stateLabel: "Restart needed" } : {})} />
             {action && (
               <div className="flex items-center gap-2">
                 {checked && !checking && p.state !== "ready" && <Notice tone="warn">Still not ready.</Notice>}
@@ -92,8 +82,14 @@ function Reason({ provider: p, text }: { provider: Provider; text: string }) {
   const extra = extraReason(p);
   return (
     <section className="flex flex-col gap-3">
-      <p className="text-sm text-fg-2">{text}</p>
-      {extra && p.state !== "error" && <p className="text-xs text-fg-3">{extra}</p>}
+      <p className="text-sm text-fg-2">
+        <Rich text={text} />
+      </p>
+      {extra && p.state !== "error" && (
+        <p className="text-xs text-fg-3">
+          <Rich text={extra} />
+        </p>
+      )}
       {p.state !== "error" &&
         steps.map((s) => {
           const commands = commandsIn(s.hint);
@@ -103,7 +99,9 @@ function Reason({ provider: p, text }: { provider: Provider; text: string }) {
               {commands.map((c) => (
                 <CommandLine key={c} command={c} label={`${s.title.toLowerCase()} command`} />
               ))}
-              {commands.length === 0 && <p className="text-sm text-fg-3">{s.hint || "The agent's plugin gives no instructions; see its documentation."}</p>}
+              {commands.length === 0 && (
+                <p className="text-sm text-fg-3">{s.hint ? <Rich text={s.hint} /> : "The agent's plugin gives no instructions; see its documentation."}</p>
+              )}
             </div>
           );
         })}

@@ -45,7 +45,7 @@ test("every key is declared once: unique, prefixed by its kind, none a prefix of
 test("keys are stored under the octo. prefix; a missing key reads null", () => {
   const data = fakeStorage();
   assert.equal(readPref(PREFS.theme), null);
-  writePref(PREFS.theme, "dark");
+  assert.equal(writePref(PREFS.theme, "dark"), true);
   assert.equal(data.get("octo.theme"), "dark");
   assert.equal(readPref(PREFS.theme), "dark");
 });
@@ -54,6 +54,7 @@ test("unavailable storage reads null and swallows writes", () => {
   fakeStorage({}, true);
   assert.equal(readPref(PREFS.theme), null);
   assert.doesNotThrow(() => writePref(PREFS.theme, "dark"));
+  assert.equal(writePref(PREFS.theme, "dark"), false);
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true, writable: true });
   assert.equal(readPref(PREFS.theme), null);
 });

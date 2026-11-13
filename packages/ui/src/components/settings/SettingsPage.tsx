@@ -105,7 +105,7 @@ export function SettingsPage(props: {
             >
               <div className="flex flex-col gap-3 settings:hidden">
                 <div className="flex items-center gap-2">
-                  <Button variant="quiet" icon={ArrowLeft} onClick={onBack} className="-ml-2">
+                  <Button variant="quiet" icon={ArrowLeft} onClick={onBack} title="Back to the app" className="-ml-2">
                     Back
                   </Button>
                   <span className="flex-1" />

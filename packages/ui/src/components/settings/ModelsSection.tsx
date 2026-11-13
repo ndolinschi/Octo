@@ -105,15 +105,17 @@ function DefaultModelRow({ def, list }: { def: ModelRow; list: ProviderList }) {
       description={s.editable ? def.description : (s.note ?? `Set by the ${s.source}.`)}
       status={<SaveStatus state={saved} />}
       control={
-        <Select
-          id={id}
-          label={def.title}
-          value={value}
-          options={options}
-          disabled={!s.editable || list.providers.every((p) => p.state !== "ready")}
-          onChange={(v) => void run(() => harness.save({ set: { [def.id]: v } }))}
-          className={CONTROL_W.lg}
-        />
+        // The width sits on a wrapper: the select's own `w-full` would win over a `w-64` on it and size it by its text.
+        <div className={CONTROL_W.lg}>
+          <Select
+            id={id}
+            label={def.title}
+            value={value}
+            options={options}
+            disabled={!s.editable || list.providers.every((p) => p.state !== "ready")}
+            onChange={(v) => void run(() => harness.save({ set: { [def.id]: v } }))}
+          />
+        </div>
       }
     />
   );

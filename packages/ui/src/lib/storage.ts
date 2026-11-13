@@ -90,11 +90,13 @@ export function readPref(k: PrefKey): string | null {
   }
 }
 
-export function writePref(k: PrefKey, value: string): void {
+/** Writes `value`; `false` when storage is missing, blocked or full (the preference then stays in memory only). */
+export function writePref(k: PrefKey, value: string): boolean {
   try {
     window.localStorage.setItem(`${PREFIX}${k}`, value);
+    return true;
   } catch {
-    /* storage unavailable; preference stays in memory */
+    return false;
   }
 }
 

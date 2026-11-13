@@ -1,6 +1,6 @@
 import type { Provider } from "@octo/agent-client";
 import { SETTING_IDS } from "@octo/agent-client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../primitives/Button";
 import { SecretForm } from "../shared/SecretForm";
 import { useHarnessSettings } from "./harnessSettings";
@@ -19,6 +19,17 @@ export function ProviderKey({ provider }: { provider: Provider }) {
   const { restart } = useSettingsActions();
   const [saved, run] = useSave();
   const [confirm, setConfirm] = useState(false);
+  // Esc while "Confirm remove key" is armed takes the confirmation back; it must not also leave Settings (capture: before the page's own Esc).
+  useEffect(() => {
+    if (!confirm) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setConfirm(false);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [confirm]);
   const id = SETTING_IDS.anthropicApiKey;
   const s = harness.get(id);
   return (
@@ -47,6 +58,7 @@ export function ProviderKey({ provider }: { provider: Provider }) {
               set={s.set === true}
               hint={s.hint}
               placeholder="sk-ant-…"
+              showSaved={!harness.needsRestart(id)}
               onSave={(value) => harness.save({ set: { [id]: value } })}
             />
           </div>

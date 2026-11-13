@@ -68,7 +68,9 @@ function ProjectModelRow(props: {
               Reset to default
             </Button>
           )}
-          <Select id={id} label={`${row.title} of ${project.name}`} value={value} options={options} onChange={set} className={CONTROL_W.lg} />
+          <div className={CONTROL_W.lg}>
+            <Select id={id} label={`${row.title} of ${project.name}`} value={value} options={options} onChange={set} />
+          </div>
         </>
       }
     />

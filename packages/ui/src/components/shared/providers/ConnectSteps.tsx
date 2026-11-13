@@ -38,6 +38,45 @@ function useSettingsView() {
   return { load, save };
 }
 
+/** Prose from the harness or a plugin, where text in backticks is code: shown as inline code, never as literal backticks. */
+export function Rich({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/`([^`\n]+)`/).map((part, i) =>
+        i % 2 === 1 ? (
+          <code key={i} className="font-mono text-xs text-fg">
+            {part}
+          </code>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
+/** The sentence behind a "Details" fold: the commands are already shown as copy lines (decision 89 d: no "set X" as prose). */
+function Details({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-1">
+      <div>
+        <Button size="sm" variant="quiet" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-ml-2">
+          {open ? "Hide details" : "Details"}
+        </Button>
+      </div>
+      {open && (
+        <p className="text-sm text-fg-2">
+          <Rich text={text} />
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** An environment variable name in prose (`COPILOT_GITHUB_TOKEN`): an instruction that belongs under "Details". */
+const ENV_VAR = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/;
+
 /** An agent's install and login steps as commands to copy (decision 53); a ready agent shows its models. */
 export function AgentSteps({ provider: p }: { provider: Provider }) {
   if (isReady(p))
@@ -53,7 +92,11 @@ export function AgentSteps({ provider: p }: { provider: Provider }) {
   steps.push({ title: "Log in", text: p.login_hint, commands: commandsIn(p.login_hint) });
   return (
     <div className="flex flex-col gap-4">
-      {extraReason(p) && <p className="text-xs text-fg-3">{extraReason(p)}</p>}
+      {extraReason(p) && (
+        <p className="text-xs text-fg-3">
+          <Rich text={extraReason(p)} />
+        </p>
+      )}
       <ol className="flex flex-col gap-4">
         {steps.map((s, i) => (
           <li key={s.title} className="flex flex-col gap-2">
@@ -61,10 +104,17 @@ export function AgentSteps({ provider: p }: { provider: Provider }) {
               {steps.length > 1 ? `${i + 1}. ` : ""}
               {s.title}
             </h3>
-            {s.text && <p className="text-sm text-fg-2">{s.text}</p>}
             {s.commands.map((c) => (
               <CommandLine key={c} command={c} label={`${s.title.toLowerCase()} command`} />
             ))}
+            {s.text &&
+              (s.commands.length > 0 || ENV_VAR.test(s.text) ? (
+                <Details text={s.text} />
+              ) : (
+                <p className="text-sm text-fg-2">
+                  <Rich text={s.text} />
+                </p>
+              ))}
             {!s.text && <p className="text-sm text-fg-3">The agent's plugin gives no instructions; see its documentation.</p>}
           </li>
         ))}

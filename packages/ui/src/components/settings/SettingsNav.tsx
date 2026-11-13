@@ -24,7 +24,7 @@ export function SettingsNav(props: { section: SectionId; searching: boolean; que
   return (
     <nav aria-label="Settings" className="flex h-full w-sidebar shrink-0 flex-col bg-window py-gutter pl-gutter max-settings:hidden">
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-pane">
-        <ListRow size="md" tone="quiet" title="Back" leading={<Glyph icon={ArrowLeft} size={16} />} onClick={props.onBack} />
+        <ListRow size="md" tone="quiet" title="Back" tip="Back to the app" leading={<Glyph icon={ArrowLeft} size={16} />} onClick={props.onBack} />
         <SearchField label="Search settings" value={props.query} onChange={props.onQuery} />
         <ScrollArea className="flex min-h-0 flex-1 flex-col">
           {SECTIONS.map((s) => (

@@ -133,12 +133,10 @@ export function SaveStatus(props: { state: SaveState; restart?: boolean; onResta
             <Button variant="link" size="xs" onClick={props.onRestart}>
               Restart now
             </Button>
-          ) : (
-            <span className="text-fg-3">Quit and reopen the app.</span>
-          )
+          ) : undefined
         }
       >
-        Saved. Applies after a restart.
+        {props.onRestart ? "Saved. Applies after a restart." : "Saved. Applies after a restart — quit and reopen the app."}
       </Notice>
     );
   if (state.kind === "saved")

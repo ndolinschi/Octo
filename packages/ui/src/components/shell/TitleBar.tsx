@@ -49,8 +49,8 @@ export function TitleBar(props: { title?: string }) {
             onClick={toggleSidebar}
             {...(props.title !== undefined ? { className: "invisible", tabIndex: -1 } : {})}
           />
-          <IconButton icon={ArrowLeft} label="Back" onClick={() => window.history.back()} disabled={!history.back} />
-          <IconButton icon={ArrowRight} label="Forward" onClick={() => window.history.forward()} disabled={!history.forward} />
+          <IconButton icon={ArrowLeft} label="Previous page" onClick={() => window.history.back()} disabled={!history.back} />
+          <IconButton icon={ArrowRight} label="Next page" onClick={() => window.history.forward()} disabled={!history.forward} />
         </div>
         {props.title && (
           <span className="pointer-events-none ml-2 truncate font-medium" style={{ maxWidth: `calc(100vw - ${controlsWidth(insetStart)}px)` }}>

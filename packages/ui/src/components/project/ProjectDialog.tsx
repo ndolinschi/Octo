@@ -13,6 +13,7 @@ import { useId, useState, type FormEvent } from "react";
 import { cn } from "../../lib/cn";
 import { errorMessage } from "../../lib/format";
 import { folderName, labelsForFolders } from "../../lib/folderPick";
+import { canRun, chipLabel, useProviders } from "../../lib/providers";
 import { useApp } from "../../state/app";
 import { Button, IconButton } from "../primitives/Button";
 import { Dialog } from "../primitives/Dialog";
@@ -38,7 +39,8 @@ function isAbsolute(path: string) {
 }
 
 export function ProjectDialog(props: { project?: Project; onClose(): void; onSubmit(input: ProjectInput): Promise<void>; onDelete?(): Promise<void> }) {
-  const { config } = useApp();
+  const { config, bridge } = useApp();
+  const providers = useProviders(bridge);
   const editing = Boolean(props.project);
   const initialModels = props.project?.models ?? config?.default_models ?? FALLBACK_MODELS;
   const [name, setName] = useState(props.project?.name ?? "");
@@ -55,6 +57,16 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
   const [budget, setBudget] = useState(props.project?.budget_usd ? String(props.project.budget_usd) : "");
   const [policy, setPolicy] = useState<TierPolicy>(props.project?.models.tier_policy ?? "auto");
   const router = config?.router === true;
+  const list = providers.status === "ready" ? providers.list : null;
+  const unrunnable = list
+    ? [
+        ...new Set(
+          MODEL_FIELDS.map((m) => models[m.key])
+            .filter((v) => v !== "" && !canRun(list, v))
+            .map((v) => chipLabel(v, list)),
+        ),
+      ]
+    : [];
   const [advanced, setAdvanced] = useState(false);
   /** The folder row whose picker opens by itself ("Add folder"). */
   const [openFolderKey, setOpenFolderKey] = useState<number | null>(null);
@@ -285,6 +297,13 @@ export function ProjectDialog(props: { project?: Project; onClose(): void; onSub
           </Button>
           {advanced && (
             <div className="mt-3 grid gap-3">
+              {/* The same notice as Settings → Models: said once above the group, not by the tone of each value. */}
+              {providers.status === "ready" && unrunnable.length > 0 && (
+                <Notice tone="warn">
+                  {unrunnable.join(", ")} {unrunnable.length > 1 ? "cannot run: their providers are" : "cannot run: its provider is"} not connected. Connect a
+                  provider in Settings → Providers.
+                </Notice>
+              )}
               <div className="grid gap-3 @min-[520px]/dialog:grid-cols-2">
                 {MODEL_FIELDS.map((m) => (
                   // Decision 27 / ACP in the UI: a model, a tier's model or an ACP agent on a subscription; any other id by typing it.

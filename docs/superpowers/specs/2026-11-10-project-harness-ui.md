@@ -2999,3 +2999,19 @@ orchestrator. All x values are CSS px at 1440×900.
 - Gates: `tsc`, 619 unit tests, eslint 0 errors, prettier, `spacing-audit` total=0 (2 skips, both the stale `tool-tables`
   step), `width-stability` at 1440×900 and 900×600, `frame-colours`, `backdrop-check`, `flicker` ok; keyboard of tabs,
   palette, sidebar and drawer checked by script. Not verified: WebKit, the macOS title bar inset, touch, a screen reader.
+
+### As built — fixes after the UI verification, batch 4 (Settings, connecting a provider)
+
+- B5: the connect steps render backtick spans as inline code (`ConnectSteps` `Rich`); a step with copy lines shows the lines
+  and a "Details" fold with the full sentence, so commands are not repeated and an environment variable is not surface prose
+  (decision 89d). Left: `KeySteps` still has an error branch "Set <ENV> in the harness's environment". B46: `Notice` (line
+  form) keeps its glyph beside the first line; text and action wrap in one column. B48: `writePref` returns whether it wrote;
+  On startup shows "Could not save. The browser's storage is full or blocked." instead of "Saved" (test). B49: the window
+  arrows are "Previous page" / "Next page"; the Settings page's "Back" has the tooltip "Back to the app". B50: after a key is
+  saved there is one message ("Saved. Applies after a restart — quit and reopen the app.") and the title says "Restart
+  needed". B51: the Defaults selects in Models are 256 wide with one left edge (1440, 1100, 900). B52, in part: the project
+  dialog says once above the model group which models cannot run; the values keep the warning tone (it comes from
+  `shared/ModelPicker`). B3, Settings part: Settings → Editor shows "Haiku 5.5". Also: no doubled dot in the refresh failure,
+  "Experimental" once, Esc disarms "Confirm remove key" before it leaves Settings, Add command opens on its first field.
+  Not done: the "Choose" dialog's first focus (needs `Checkbox` to take `data-autofocus`). Not seen in the UI: the Copilot
+  connect dialog from the model chip, `?refresh=fail`, Antigravity.
