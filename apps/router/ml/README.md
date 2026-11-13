@@ -39,6 +39,12 @@ Stage 3 (checks; report: `results/stage3_report.txt`; `make stage3` runs all fou
 - `make gencost`: what generating more step labels would cost with the benchmark's algorithm and prices (estimate; no API calls).
 - `make triples`: concrete cheap/mid/dear model triples: outcome tables, noise-bounded oracle, text and early-trajectory detectors, honest cascade.
 
+Stage 4 (the three learned parts; report: `results/stage4_report.txt`; `make stage4` runs all three):
+
+- `make ladder`: L1, a ladder that learns itself: cost-aware bandits over 33 concrete models (one run per model), list-price and leaderboard ladders, constrained objective, a new / degrading model mid-stream, a leaderboard from a held-out half.
+- `make controller`: L3, a quality controller (lower confidence bound on the stream's quality ratio) against the offline mixture tuned on a held-out half; tiers and models (~10 min).
+- `make workload`: L2, the workload recognised from the first request only (TwinRouterBench), the per-workload tier policy on the benchmark's own metric, leave-one-workload-out with a safe-tier fallback.
+
 Note: the OpenRouter catalogue has no revision. `fetch` keeps the first snapshot it downloads
 (2026-11-13 for the numbers in REPORT.md); a fresh clone gets today's catalogue, which can change the
 prices of the 9 models sourced from it (`results/models.csv`, column `source`).
@@ -55,6 +61,7 @@ prices of the 9 models sourced from it (`results/models.csv`, column `source`).
 | `src/routerml/figures.py` | figures |
 | `tests/test_pipeline.py` | pytest suite |
 | `src/routerml/{stage2,ceiling,cascade,traj_fetch,trajectories,steps,bandit}.py`, `tests/test_stage2.py` | stage 2 |
+| `src/routerml/stage4_{common,ladder,controller,workload}.py`, `tests/test_stage4.py` | stage 4 (L1-L3) |
 | `results/` | small derived tables and every number in REPORT.md (`build.json`, `metrics.json`, `onnx_check.json`) |
 | `figures/` | cost–quality curve, reliability diagrams, per-repository bars |
 | `models/` | `m1_joint.onnx` (27 KB) and the LightGBM text dump |

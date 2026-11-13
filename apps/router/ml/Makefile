@@ -2,7 +2,7 @@
 PY := .venv/bin/python
 RUN := PYTHONPATH=src $(PY) -m
 
-.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit stage3 audit steps3 gencost triples
+.PHONY: all venv fetch build features evaluate quick onnx figures test stage2 ceiling cascade traj-fetch trajectories steps bandit stage3 audit steps3 gencost triples stage4 ladder workload controller
 
 all: fetch build features test evaluate onnx figures
 
@@ -55,3 +55,13 @@ gencost:    ## 3: cost estimate of generating more step labels with the benchmar
 triples:    ## 2: concrete cheap/mid/dear model triples (fetches haiku-4.5 trajectories, ~400 MB, if missing)
 	$(RUN) routerml.traj_fetch 20260217_mini-v2.0.0_claude-4-5-haiku-high
 	$(RUN) routerml.stage3_triples
+
+# ---- stage 4: the three learned parts L1-L3 (results/stage4_*.json, figures/stage4_*.png, results/stage4_report.txt)
+stage4: ladder controller workload
+
+ladder:     ## L1: a ladder that learns itself - bandits over 33 concrete models, 3 stream orders x 200 streams (~3 min)
+	$(RUN) routerml.stage4_ladder
+controller: ## L3: quality controller (lower-confidence-bound) vs the offline mixture tuned on a held-out half (~3 min)
+	$(RUN) routerml.stage4_controller
+workload:   ## L2: workload classifier from the first request only + per-workload tier policy, TwinRouterBench metric (~3 min)
+	$(RUN) routerml.stage4_workload

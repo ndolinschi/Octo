@@ -229,3 +229,30 @@ version and effort) is not in public data; a router that switches rarely and esc
   matters (+0.025 to +0.046) and price per token misorders models by cost per solved task; (3) the kind of workload is
   the strongest routing signal measured (81.1 against 63.6); (4) an operating point can be held online at a declared
   quality target; (5) with prompt caching, per-step switching inside a coding session does not pay.
+
+# Stage 4: the three learned parts of revision 2 (2026-11-13)
+
+Full text: `results/stage4_report.txt`; numbers: `results/stage4_{ladder,controller,workload}.json`. 33 tests pass.
+No paid API. Earlier stages untouched.
+
+**Headline: on this data none of the three learned parts beats its strongest simple baseline.**
+
+| Part | Result | Strongest baseline | Clears it? |
+| --- | --- | --- | --- |
+| L1, a bandit over 33 concrete models (reward = solved − cost / V, V = $1 per solved task) | 0.550 [0.469, 0.602] per task | a ladder read off a leaderboard measured on a held-out half: 0.686 (the list-price ladder, as production is configured: 0.310) | beats the list-price ladder at every V but quality-only; **does not beat the leaderboard**; never within 0.02 per task of the best model in 500 tasks |
+| L2, recognising the kind of work from the first request | accuracy 1.000 (0.996 from message shape alone); per-workload policy 81.1 [79.2, 83.1] on TwinRouterBench | the same policy given the true workload: 81.1 | equal — **a lookup of the scaffold, not a learning problem**; an unseen workload falls to 61 without a fallback, 54–56 with a safe one (99–100 % of trajectories pass) |
+| L3, a controller holding "quality ≥ 95 % of always-high" (lower-confidence-bound, conf 0.9) | quality 0.962, saving 10.7 % [7.5, 15.9], target violated in 11 % of streams | an offline mixture tuned on a held-out half at the same violation rate: 10.6 % | **ties on tiers, worse by 0–22 points of the bill on models**; its declared confidence under-covers about twofold |
+
+What L1 does show: adaptation. A new best model withheld until task 250 is adopted in a median of 35–50 tasks; a model
+that degrades is dropped in 16–55 (forgetting halves that and costs 35–90 % more regret when nothing changes). A
+price-band prior speeds adoption only when the band's other models are good under the objective. Exploring costs
+$12–143 and 3–52 solves over 500 tasks against always using the hindsight-best model.
+
+On stationary traffic of the same kind of tasks a leaderboard aggregate is sufficient and learning only adds
+exploration. The case where a learned ladder should win — the router's own work ranks models differently from the
+public leaderboard — cannot be shown with one benchmark; it is what stage 5 tests across benchmarks.
+
+For a production integration the router would have to log per session: a scaffold fingerprint (hash of the system
+prompt and the sorted tool names), the served model and cost, its decision probabilities, and an outcome proxy (the
+last test run in tool output — already parsed into `session_outcomes`; accept / rewind in the harness; a follow-up
+correction). All are noisy proxies of unknown noise rate.
