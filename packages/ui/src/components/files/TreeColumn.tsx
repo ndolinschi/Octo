@@ -1,3 +1,4 @@
+import { usePhone } from "../../lib/phone";
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { cn } from "../../lib/cn";
 import { useCode } from "../../state/code";
@@ -42,10 +43,12 @@ export function TreeColumn(props: {
 
   // "Show files" (header) and "Reveal in tree" land in the visible view's filter input — also when the
   // request is what mounted this column (the Files tab opening, the column being shown).
+  // Direction 7: not on the phone, where a focused field raises the on-screen keyboard over the tree.
   const { takeFocusRequest } = fv;
+  const phone = usePhone();
   useEffect(() => {
-    if (shown && ws.isVisible(props.tab) && takeFocusRequest()) input.current?.focus({ preventScroll: true });
-  }, [fv.focusTreeTick, ws, props.tab, takeFocusRequest, shown]);
+    if (shown && ws.isVisible(props.tab) && takeFocusRequest() && !phone) input.current?.focus({ preventScroll: true });
+  }, [fv.focusTreeTick, ws, props.tab, takeFocusRequest, shown, phone]);
 
   const onInputKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {

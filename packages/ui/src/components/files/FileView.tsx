@@ -179,7 +179,10 @@ export function FileView({ tab, fileKey, floatingComposer }: { tab: TabId; fileK
       {/* The hairline is an inset shadow, so the 40px row keeps a 40px content box (no half-pixel centring). Polish step 4, E1:
           navigation · crumbs · one status slot (meta words: saving, unsaved, the language server when it is not ready) · one
           right-hand group of 28px controls with 16px glyphs, 4 apart. In page mode the Files / Editor switch is the first item. */}
-      <div data-file-bar className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]">
+      <div
+        data-file-bar={fileKey ? "file" : "tree"}
+        className="flex h-bar shrink-0 items-center gap-1 px-2 text-xs text-fg-3 shadow-[inset_0_-1px_0_var(--octo-line)]"
+      >
         {page &&
           fileKey &&
           (narrow ? (

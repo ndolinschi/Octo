@@ -16,6 +16,7 @@ import {
   type SendResult,
 } from "@octo/agent-client";
 import { rewoundLabel } from "../lib/compact";
+import { withDeadline } from "../lib/deadline";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./app";
 import { useActivity } from "./activity";
@@ -113,7 +114,10 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
       loaded.current.add(agentId);
       try {
         // The transcript carries the compaction markers (decision 37). (`listMessages` reads the same URL: no fallback to it.)
-        const transcript = await bridge.getTranscript(projectId, agentId, scope?.sessionId === undefined ? undefined : { sessionId: scope.sessionId });
+        // P2-4: a read never answered fails after its deadline, and the load retry takes over.
+        const transcript = await withDeadline(
+          bridge.getTranscript(projectId, agentId, scope?.sessionId === undefined ? undefined : { sessionId: scope.sessionId }),
+        );
         // A resumed session's conversation replaces what the state held (ids of two sessions must not mix).
         if (scope) dispatch({ type: "transcript", agentId, messages: transcript.messages, markers: transcript.compactions });
         else {
@@ -147,19 +151,27 @@ export function ProjectProvider({ projectId, children }: { projectId: string; ch
 
   const syncAll = useCallback(async () => {
     try {
-      const [p, agents, notes, sessions] = await Promise.all([
-        bridge.getProject(projectId),
-        bridge.listAgents(projectId),
-        bridge.listNotes(projectId),
-        // Project sessions: an older harness has none; a failed read leaves the list as it is (`session.*` events keep it current).
-        bridge.listSessions ? bridge.listSessions(projectId, { limit: 200, archived: "all" }).catch(() => null) : null,
-      ]);
+      const [p, agents, notes, sessions] = await withDeadline(
+        Promise.all([
+          bridge.getProject(projectId),
+          bridge.listAgents(projectId),
+          bridge.listNotes(projectId),
+          // Project sessions: an older harness has none; a failed read leaves the list as it is (`session.*` events keep it current).
+          bridge.listSessions ? withDeadline(bridge.listSessions(projectId, { limit: 200, archived: "all" })).catch(() => null) : null,
+        ]),
+      );
       setProject(p);
       orchestratorRef.current = p.orchestrator_agent_id;
       ok("");
       dispatch({ type: "agents", agents });
       dispatch({ type: "notes", notes });
       if (sessions) dispatch({ type: "sessions", sessions });
+      // NEW-3: what waits for the person (a helper waiting for an approval reads "Waiting for your approval", not "Thinking…"),
+      // also when it was asked before this window opened. Unreadable: events still bring new ones.
+      void Promise.all([
+        bridge.listApprovals ? withDeadline(bridge.listApprovals(projectId)).catch(() => null) : null,
+        bridge.listInputs ? withDeadline(bridge.listInputs(projectId)).catch(() => null) : null,
+      ]).then(([approvals, inputs]) => dispatch({ type: "waits", approvals, inputs }));
       // A resumed (older) session stays what the conversation shows after a reload or reconnect (before parallel sessions only:
       // since then each session is its own root's messages).
       const parallel = sessions?.some((s) => s.kind === "main" && s.default !== undefined) ?? false;

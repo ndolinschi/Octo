@@ -1,6 +1,7 @@
-import { createHttpBridge, type Bridge } from "@octo/agent-client";
-import { OctoApp } from "@octo/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { abortingReads, createHttpBridge, type Bridge } from "@octo/agent-client";
+import { OctoApp, type HostCapabilities } from "@octo/ui";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { deviceChanged, deviceOf, WEB_PHONE_QUERY } from "./device";
 import { guardedFetch } from "./guardedFetch";
 import {
   NOTICE_DENIED,
@@ -13,6 +14,7 @@ import {
   startPhase,
   whoAmI,
   type FetchFn,
+  type Me,
   type Phase,
   type StorageLike,
 } from "./pairing";
@@ -76,6 +78,8 @@ export default function App() {
         whoAmI(pageFetch, base, token).then(
           (me) => {
             if (waiting && me.status === "active") setPhase({ kind: "ready", token, me });
+            // The computer switched this device to read-only (or back): the UI follows without a reload.
+            else if (!waiting && me.status === "active") setPhase((p) => (p.kind === "ready" && deviceChanged(p.me, me) ? { ...p, me } : p));
           },
           (e: unknown) => {
             if (e instanceof PairingError && isDeviceGone(e.status, e.code)) gone(waiting ? NOTICE_DENIED : NOTICE_DISCONNECTED);
@@ -94,14 +98,36 @@ export default function App() {
   }, []);
 
   if (fatal) return <PairingScreen base={base} phase={{ kind: "pair", code: hashCode ?? "", notice: fatal }} onPaired={onPaired} />;
-  if (phase.kind === "ready") return <Remote token={phase.token} base={base} onGone={lost} />;
+  if (phase.kind === "ready") return <Remote token={phase.token} base={base} me={phase.me} onGone={lost} />;
   return <PairingScreen key={phase.kind} base={base} phase={phase} onPaired={onPaired} />;
 }
 
-function Remote({ token, base, onGone }: { token: string; base: string; onGone(): void }) {
+/** Whether the window is phone-sized (`WEB_PHONE_QUERY`), following rotation and resizing. */
+function usePhoneWindow(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mql = window.matchMedia(WEB_PHONE_QUERY);
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(WEB_PHONE_QUERY).matches,
+  );
+}
+
+function Remote({ token, base, me, onGone }: { token: string; base: string; me: Me; onGone(): void }) {
   const bridge = useMemo<Bridge>(() => {
     const f = guardedFetch(window.fetch.bind(window), onGone);
-    return createHttpBridge({ baseUrl: base, token, fetch: f.fetch, fetchBinary: f.fetchBinary, EventSource: pollingEventSource({ token, fetch: f.poll }) });
+    // P2-4: a read never answered gives its connection back after 12 s (the long poll passes its own signal and deadline).
+    return createHttpBridge({
+      baseUrl: base,
+      token,
+      fetch: abortingReads(f.fetch),
+      fetchBinary: f.fetchBinary,
+      EventSource: pollingEventSource({ token, fetch: f.poll }),
+    });
   }, [token, base, onGone]);
-  return <OctoApp bridge={bridge} bridgeUrl={base} shell="web" />;
+  const phone = usePhoneWindow();
+  // The layout is the web host's choice (see `WEB_PHONE_QUERY`); what the device may do comes from `/pair/me`.
+  const host = useMemo<HostCapabilities>(() => ({ layout: phone ? "phone" : "desktop", remoteDevice: deviceOf(me) }), [phone, me]);
+  return <OctoApp bridge={bridge} bridgeUrl={base} shell="web" host={host} />;
 }

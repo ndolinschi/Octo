@@ -33,7 +33,7 @@ import type { QueuedMessage } from "./ComposerPills";
 import { useAttachments } from "./useAttachments";
 import { useImages } from "./useImages";
 import { useHost } from "../../state/host";
-import { FileInput, type FileInputHandle } from "../primitives/FileInput";
+import type { FileInputHandle } from "../primitives/FileInput";
 import { useAgentName } from "./agentName";
 import { errorCode as errorCodeOf, structuredError } from "../../lib/format";
 import type { SlashMenuHandle } from "./SlashMenu";
@@ -45,6 +45,8 @@ import { clearStopping, markStopping, STILL_STOPPING_MS, useStopping } from "../
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { mayNearLimit, plainShaping, triggerAt } from "../../lib/composerInput";
 import type * as SizeModule from "../../lib/messageSize";
+import { usePhone } from "../../lib/phone";
+import { deviceMay, ON_YOUR_COMPUTER } from "../../lib/remoteDevice";
 
 const ErrorNotice = lazy(() => import("../shared/ErrorNotice").then((m) => ({ default: m.ErrorNotice })));
 const ModelRefusedActions = lazy(() => import("../shared/ModelRefusedActions").then((m) => ({ default: m.ModelRefusedActions })));
@@ -59,6 +61,8 @@ const SlashMenu = lazy(() => import("./SlashMenu").then((m) => ({ default: m.Sla
 const ContextRing = lazy(() => import("./ContextRing").then((m) => ({ default: m.ContextRing })));
 /** Decision 96: the session chip at the top of the box (its own chunk; its row is reserved meanwhile, so nothing moves). */
 const SessionChip = lazy(() => import("./SessionChip").then((m) => ({ default: m.SessionChip })));
+/** The hidden file input behind "Attach image…": its own chunk, fetched with the composer's first render (entry budget). */
+const FileInput = lazy(() => import("../primitives/FileInput").then((m) => ({ default: m.FileInput })));
 const ComposerHighlight = lazy(() => import("./ComposerHighlight").then((m) => ({ default: m.ComposerHighlight })));
 
 export type ComposerHandle = {
@@ -152,6 +156,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const slashListId = useId();
   const listId = useId();
   const slots = useChatSlots();
+  const phone = usePhone();
   // G5: Stop answers at once ("Stopping…", here and on the turn's live row) and says what is true if the turn takes long.
   const ownKey = useId();
   const stopKey = useOptionalWorkspace()?.projectId ?? ownKey;
@@ -371,6 +376,45 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   };
   const agentName = useAgentName(model?.value);
   const action = props.running ? (hasContent ? "queue" : "stop") : "send";
+  // The mode, model and folder chips: on the control row, and (direction 7, phone) in the "+" menu, which shows them there only.
+  const chips = (
+    <>
+      {props.mode && (
+        <Suspense fallback={<span aria-hidden className="size-7 shrink-0" />}>
+          <ModeChip
+            value={props.mode.value}
+            isDefault={props.mode.isDefault}
+            onChoose={props.mode.choose}
+            onMakeDefault={() => void props.mode?.makeDefault().catch(() => undefined)}
+            bare={false}
+            disabled={disabled}
+            onOpenChange={onChip}
+          />
+        </Suspense>
+      )}
+      {model && (
+        <ModelChip
+          value={model.value}
+          title={model.title}
+          unavailable={model.unavailable === true}
+          onChoose={chooseModel}
+          onChooseUnverified={(value) => chooseModel(value, true)}
+          openRequest={modelRequest}
+          footer={
+            props.tier ? (
+              <Suspense fallback={null}>
+                <RoutingLine value={props.tier.value} onChoose={(p) => void props.tier?.choose(p).catch(() => undefined)} />
+              </Suspense>
+            ) : undefined
+          }
+          bare={false}
+          disabled={disabled}
+          onOpenChange={onChip}
+        />
+      )}
+      <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={false} disabled={disabled} onOpenChange={onChip} />
+    </>
+  );
 
   return (
     <div data-composer-wrap>
@@ -537,7 +581,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 if (inlineOpen) setMenu(null);
                 setSlash(null);
               }}
-              placeholder={props.disabledReason ?? "Ask anything, @ to mention a file"}
+              placeholder={props.disabledReason ?? (phone ? "Ask anything" : "Ask anything, @ to mention a file")}
               aria-autocomplete="list"
               aria-expanded={inlineOpen || slash !== null}
               aria-controls={slash ? slashListId : inlineOpen ? listId : undefined}
@@ -558,41 +602,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               disabled={disabled}
               onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
             />
-            {props.mode && (
-              <Suspense fallback={<span aria-hidden className="size-7 shrink-0" />}>
-                <ModeChip
-                  value={props.mode.value}
-                  isDefault={props.mode.isDefault}
-                  onChoose={props.mode.choose}
-                  onMakeDefault={() => void props.mode?.makeDefault().catch(() => undefined)}
-                  bare={false}
-                  disabled={disabled}
-                  onOpenChange={onChip}
-                />
-              </Suspense>
-            )}
-            {model && (
-              <ModelChip
-                value={model.value}
-                title={model.title}
-                unavailable={model.unavailable === true}
-                onChoose={chooseModel}
-                onChooseUnverified={(value) => chooseModel(value, true)}
-                openRequest={modelRequest}
-                footer={
-                  props.tier ? (
-                    <Suspense fallback={null}>
-                      <RoutingLine value={props.tier.value} onChoose={(p) => void props.tier?.choose(p).catch(() => undefined)} />
-                    </Suspense>
-                  ) : undefined
-                }
-                bare={false}
-                disabled={disabled}
-                onOpenChange={onChip}
-              />
-            )}
-            <FolderChip folders={props.folders} onAdd={props.onAddFolder} bare={false} disabled={disabled} onOpenChange={onChip} />
-            <span className="min-w-0 flex-1" />
+            {chips}
+            <span data-composer-spacer className="min-w-0 flex-1" />
             {props.context.used && props.context.size ? (
               <Suspense fallback={null}>
                 <ContextRing used={props.context.used} size={props.context.size} />
@@ -613,11 +624,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 Stopping…
               </span>
             )}
-            <SendButton action={action} stopping={stopping !== null} enabled={action === "stop" ? !disabled && stopping === null : canSend} onStop={stop} />
+            {/* Remote access: no Send (or Stop) on a device that may not use it; the field says why, this says where it changes. */}
+            {deviceMay(host.remoteDevice, action === "stop" ? "stop" : "send") ? (
+              <SendButton
+                action={action}
+                stopping={stopping !== null}
+                enabled={action === "stop" ? !disabled && stopping === null : canSend && !size?.over}
+                onStop={stop}
+              />
+            ) : (
+              <span data-composer-note className="shrink-0 px-1 text-xs text-fg-3">
+                {ON_YOUR_COMPUTER}
+              </span>
+            )}
           </div>
         </form>
       </div>
-      <FileInput ref={picker} label="Attach images" accept="image/png,image/jpeg,image/webp,image/gif,image/*" multiple onFiles={pics.add} />
+      <Suspense fallback={null}>
+        <FileInput ref={picker} label="Attach images" accept="image/png,image/jpeg,image/webp,image/gif,image/*" multiple onFiles={pics.add} />
+      </Suspense>
       <Presence show={menu !== null} exitMs={0}>
         {menu && (
           <Suspense fallback={null}>
@@ -633,6 +658,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onPickImage={pickImage}
               onPick={pick}
               onClose={closeMenu}
+              chips={chips}
             />
           </Suspense>
         )}

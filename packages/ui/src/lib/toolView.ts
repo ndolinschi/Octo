@@ -74,11 +74,13 @@ export function clockTime(iso: string | null | undefined, locale?: string): stri
  * One plain line for a call a stop, a refusal or an interruption cut short — never the agent's or the harness's own text (that
  * stays under Raw). `at`: when the result was stored ("" when unknown).
  */
-export function stoppedLine(result: { content: unknown; is_error: boolean } | undefined, end: TurnEnd, at: string): string {
+export function stoppedLine(result: { content: unknown; is_error: boolean } | undefined, end: TurnEnd, at: string, interrupted = false): string {
   const when = at ? ` at ${at}` : "";
   const text = typeof result?.content === "string" ? result.content.trim() : "";
   const denied = HARNESS_DENIED.exec(text);
   if (denied) return `Declined by you${when}${denied[1]?.trim() ? ` — “${denied[1].trim()}”` : ""}. It did not run.`;
+  // A turn a restart interrupted (its exchange is `interrupted`): the restart cut the call, not the person.
+  if (interrupted) return `Interrupted${when} — Octo's local service restarted before this finished.`;
   if (end === "cancelled") return `Stopped by you${when}.`;
   if (result && AGENT_REFUSAL.test(text)) return `Declined${when}. It did not run.`;
   if (end === "failed") return `Interrupted${when} — the request ended before this finished.`;
@@ -471,10 +473,11 @@ export function groupState(states: readonly StepState[]): StepState {
 }
 
 /** "1 failed · 2 stopped" (empty when nothing went wrong). */
-export function groupProblems(states: readonly StepState[]): string {
+/** `stoppedWord`: what a stopped call is called ("interrupted" in a turn a restart interrupted). */
+export function groupProblems(states: readonly StepState[], stoppedWord = "stopped"): string {
   const failed = states.filter((s) => s === "error").length;
   const stopped = states.filter((s) => s === "stopped").length;
-  return [failed ? `${failed} failed` : "", stopped ? `${stopped} stopped` : ""].filter(Boolean).join(" · ");
+  return [failed ? `${failed} failed` : "", stopped ? `${stopped} ${stoppedWord}` : ""].filter(Boolean).join(" · ");
 }
 
 type Msg = { created_at: string; content: readonly { type: string; id?: string; tool_use_id?: string }[] };

@@ -29,10 +29,19 @@ export type ProjectRecord = {
   /** Folder labels whose sample content has been loaded (see `ensureSeeded`). */
   seeded: Set<string>;
   /**
-   * How each orchestrator request ended, as the harness stores it in the current session's exchanges (no error text: the
-   * harness keeps none there, so a failed earlier turn after a reload has only what the transcript holds — NEW-1).
+   * How each orchestrator request ended, as the harness stores it in the default session's exchanges (schema 15): a failed
+   * one with its `error` (code, message, hint), one a restart cut `interrupted`, and for any that did not complete whether
+   * text it had written is kept (`kept_text`).
    */
-  endings?: { turn_id: number; status: "completed" | "failed" | "stopped"; started_at: string; duration_ms: number }[];
+  endings?: {
+    turn_id: number;
+    status: "completed" | "failed" | "stopped";
+    started_at: string;
+    duration_ms: number;
+    error?: { code: string; message: string; hint?: string };
+    interrupted?: boolean;
+    kept_text?: boolean;
+  }[];
 };
 
 let idCounter = 0;

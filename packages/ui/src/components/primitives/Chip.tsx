@@ -1,5 +1,5 @@
 import { ChevronsUpDown, type LucideIcon } from "lucide-react";
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { Glyph } from "./Glyph";
 import { MiddleText } from "./MiddleText";
@@ -20,8 +20,13 @@ export const Chip = forwardRef<
     bare?: boolean;
     open?: boolean;
     warn?: boolean;
+    /**
+     * Item 10: `label` in two parts ("Claude Code · " + "Opus 5.5"): when the chip must shorten, the first part goes first
+     * (whole, never half-cut) and the second keeps the chip's line, cut at its end only when it alone does not fit.
+     */
+    parts?: { provider: string; model: string } | null | undefined;
   }
->(function Chip({ icon, lead, label, name, tip, bare = false, open = false, warn = false, className, ...rest }, ref) {
+>(function Chip({ icon, lead, label, name, tip, bare = false, open = false, warn = false, parts, className, ...rest }, ref) {
   return (
     <button
       ref={ref}
@@ -41,10 +46,50 @@ export const Chip = forwardRef<
       {lead ?? (icon && <Glyph icon={icon} size={14} className="shrink-0" />)}
       {!bare && (
         <span data-chip-label className="flex min-w-0 items-center gap-1.5">
-          <MiddleText text={label} />
+          {parts ? <PartsLabel key={label} parts={parts} /> : <MiddleText text={label} />}
           <Glyph icon={ChevronsUpDown} size={14} className="shrink-0 text-fg-3" />
         </span>
       )}
     </button>
   );
 });
+
+/**
+ * Item 10: the label of a chip with two parts. When the whole label does not fit the room the chip gets (its max width, or
+ * what its row leaves it), only the model part shows: the provider part goes whole, never half-cut, and the chip shrinks to
+ * what it shows. The model part is cut at its end only when it alone does not fit. The whole label comes back when the row
+ * grows past the width at which it was dropped.
+ */
+function PartsLabel({ parts }: { parts: { provider: string; model: string } }) {
+  const shown = useRef<HTMLSpanElement>(null);
+  const [short, setShort] = useState(false);
+  const droppedAt = useRef(0);
+  useLayoutEffect(() => {
+    const el = shown.current;
+    const row = el?.closest("button")?.parentElement;
+    if (!el || !row) return;
+    const check = () => {
+      if (!short) {
+        if (el.scrollWidth > el.clientWidth + 0.5) {
+          droppedAt.current = row.clientWidth;
+          setShort(true);
+        }
+      } else if (row.clientWidth > droppedAt.current + 0.5) setShort(false);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(row);
+    // The label's width changes when the web font arrives, the row's does not.
+    let alive = true;
+    void document.fonts.ready.then(() => alive && check());
+    return () => {
+      alive = false;
+      ro.disconnect();
+    };
+  }, [short, parts.provider, parts.model]);
+  return (
+    <span ref={shown} className="min-w-0 truncate">
+      {short ? parts.model : `${parts.provider}${parts.model}`}
+    </span>
+  );
+}

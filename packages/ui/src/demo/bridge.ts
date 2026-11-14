@@ -44,7 +44,7 @@ import { withDemoV7 } from "./v7";
 import { withDemoSlash } from "./slash";
 import { manyProjectNames, requestsHistory, stressHistory } from "./stress";
 import { acpOrchestratorHistory, routeAgents, tablesTurn } from "./routed";
-import { act, say, sleep, turn, type Ctx } from "./runtime";
+import { act, Interrupted, say, sleep, turn, type Ctx } from "./runtime";
 import { clone, emit, newId, orchestratorOf, type ProjectRecord } from "./store";
 
 /** full: the regular demo (plus a Stress test project) · empty: no projects · one: a single project ·
@@ -308,8 +308,8 @@ function seed(): ProjectRecord[] {
       await say(c, orch, "We handle 14 event types; `charge.dispute.*` and `payout.*` fall through to the default branch and are ignored.");
     });
     await sleep(ctx, 40 * 60_000);
-    // NEW-1: two earlier failed turns whose stored exchange has no error (as after a reload): the first says what its own
-    // failed step said, the second has nothing to say and reads "This request failed." with Retry.
+    // NEW-1: earlier failed turns keep their reason after a reload: the harness stores each failure (code, message, hint)
+    // with its exchange. Two turns a restart cut (item 7): one had written text (kept), one had not.
     await turn(ctx, "Which events are stuck in the retry queue?", async (c, orch) => {
       await act(c, orch, [
         {
@@ -325,7 +325,20 @@ function seed(): ProjectRecord[] {
     await sleep(ctx, 5 * 60_000);
     await turn(ctx, "Draft a reply to the ticket about duplicate charges.", async (c, orch) => {
       await say(c, orch, "Reading the ticket and the two charges it mentions…");
-      throw new Error("overloaded");
+      throw Object.assign(new Error("The model did not answer."), {
+        code: "model_call_failed",
+        hint: "Try again. If it keeps happening, check the provider in Settings.",
+      });
+    });
+    await sleep(ctx, 6 * 60_000);
+    await turn(ctx, "Summarise the refunds issued last week.", async (c, orch) => {
+      await say(c, orch, "Last week's refunds so far: 12 issued, 3 of them partial; the largest was €480 for a duplicate annual plan.");
+      throw new Interrupted();
+    });
+    await sleep(ctx, 4 * 60_000);
+    await turn(ctx, "Check whether the retry queue drops events after 24 hours.", async () => {
+      await Promise.resolve();
+      throw new Interrupted();
     });
     await sleep(ctx, 10 * 60_000);
     await turn(ctx, "Replay yesterday's failed webhooks against staging.", async (c, orch) => {

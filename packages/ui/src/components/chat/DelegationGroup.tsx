@@ -1,4 +1,5 @@
 import { agentBySpawnToolUse, descendantCount, type Agent } from "@octo/agent-client";
+import { usePhone } from "../../lib/phone";
 import { roleText } from "../../lib/orchestrator";
 import { agentActivity } from "../../lib/orchestrator";
 import { agentDuration } from "../../lib/duration";
@@ -22,14 +23,14 @@ import { requestSession } from "../../state/workspace/sessionsStart";
 
 const FINISHED = new Set<SpawnStatus>(["completed", "failed", "cancelled"]);
 
-function progress(statuses: SpawnStatus[]): string {
+function progress(statuses: SpawnStatus[], interrupted = false): string {
   const total = statuses.length;
   const done = statuses.filter((s) => FINISHED.has(s)).length;
   if (done < total) return `${done}/${total} done`;
   const failed = statuses.filter((s) => s === "failed").length;
   const cancelled = statuses.filter((s) => s === "cancelled").length;
   if (failed) return `${failed} failed`;
-  if (cancelled) return "Stopped";
+  if (cancelled) return interrupted ? "Interrupted" : "Stopped";
   return "Done";
 }
 
@@ -37,15 +38,31 @@ function progress(statuses: SpawnStatus[]): string {
  * One round of delegation, unframed: a meta caption ("3 agents · 1/3 done"), then one `ActivityRow` per
  * sub-agent (decision 91d): state glyph, role, dim title, and on the right what it does or the model, then the time.
  */
-export function DelegationGroup({ uses, live = false, end = null }: { uses: ToolUse[]; live?: boolean; end?: TurnEnd }) {
+export function DelegationGroup({
+  uses,
+  live = false,
+  end = null,
+  interrupted = false,
+}: {
+  uses: ToolUse[];
+  live?: boolean;
+  end?: TurnEnd;
+  /** A restart cut the turn: a delegation its interruption closed reads stopped, not failed. */
+  interrupted?: boolean;
+}) {
   const { state } = useProject();
   const { results } = useTranscript();
   const agents = uses.map((u) => agentBySpawnToolUse(state, u.id));
   // A call that failed before its agent existed (validation) settles from its result; a finished turn leaves no spinner.
-  const statuses = uses.map((u, i) => spawnStatus(agents[i]?.status, results.get(u.id), live, end));
+  // 3: in a turn a restart cut, a helper the restart failed ("interrupted") reads stopped, like its call.
+  const statuses = uses.map((u, i) => {
+    const a = agents[i];
+    const cut = interrupted && a?.status === "failed" && /^interrupted\b/i.test((a.error ?? "").trim());
+    return spawnStatus(cut ? "cancelled" : a?.status, results.get(u.id), live, end, interrupted);
+  });
   const caption = uses.length === 1 ? "1\u00a0agent" : `${uses.length}\u00a0agents`;
   // A stopped turn's head already says "Stopped after 14s": the caption does not say it again (the rows say "stopped").
-  const status = end === "cancelled" && progress(statuses) === "Stopped" ? null : progress(statuses);
+  const status = end === "cancelled" && progress(statuses) === "Stopped" ? null : progress(statuses, interrupted);
 
   return (
     // Polish step 3, C3: no frame of its own. A meta caption ("3 agents · 1/3 done") over activity rows on the steps' glyph column.
@@ -58,7 +75,7 @@ export function DelegationGroup({ uses, live = false, end = null }: { uses: Tool
       <ul className="flex flex-col">
         {uses.map((u, i) => (
           <li key={u.id}>
-            <DelegationRow use={u} agent={agents[i]} status={statuses[i] ?? "pending"} />
+            <DelegationRow use={u} agent={agents[i]} status={statuses[i] ?? "pending"} interrupted={interrupted} />
           </li>
         ))}
       </ul>
@@ -74,11 +91,12 @@ export function retryText(role: string, task: string | undefined): string {
 
 const STATE: Record<string, ActivityState> = { running: "running", completed: "done", failed: "failed", cancelled: "stopped", pending: "running" };
 
-function DelegationRow({ use, agent, status }: { use: ToolUse; agent: Agent | undefined; status: SpawnStatus }) {
+function DelegationRow({ use, agent, status, interrupted }: { use: ToolUse; agent: Agent | undefined; status: SpawnStatus; interrupted: boolean }) {
   const { projectId, state } = useProject();
   const ws = useOptionalWorkspace();
   const { now, onOpenSession, results } = useTranscript();
   const names = useModelNames();
+  const phone = usePhone();
   // The agent's session (project sessions): "Open session" selects it in the Sessions tab, in place when the transcript is in that tab.
   const session = agent ? state.sessions.list.find((s) => s.agent_id === agent.id) : undefined;
   const openSession = () => {
@@ -115,7 +133,9 @@ function DelegationRow({ use, agent, status }: { use: ToolUse; agent: Agent | un
           : status === "failed"
             ? "failed"
             : status === "cancelled"
-              ? "stopped"
+              ? interrupted
+                ? "interrupted"
+                : "stopped"
               : model;
   const tip =
     (note && raw ? `${note}\n\n${raw}` : null) ??
@@ -132,6 +152,7 @@ function DelegationRow({ use, agent, status }: { use: ToolUse; agent: Agent | un
         </>
       }
       detail={title}
+      stacked={phone}
       aside={aside}
       duration={duration}
       note={note}

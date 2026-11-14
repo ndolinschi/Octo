@@ -1,9 +1,9 @@
 import { warmBridgeClient } from "@octo/agent-client";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "../lib/cn";
 import { loadPref, PREFS, sidebarViewCodec } from "../lib/storage";
-import { useEscape, useLatest, useMediaQuery } from "../lib/hooks";
-import { holdTypeahead, takeTypeahead } from "../lib/typeahead";
+import { useEscape, useMediaQuery } from "../lib/hooks";
+import { palette as paletteGate } from "../lib/typeahead";
 import { focusSoon, visibleComposer } from "../lib/focus";
 import { navigate, resolveProjectRoute, settingsHref, useGuardedRoute, useSettingsSection } from "../lib/route";
 import { useProviders } from "../lib/providers/useProviders";
@@ -29,6 +29,7 @@ import { warmDrag } from "../components/dock/drag";
 import { transcriptPart } from "../components/chat/transcriptPart";
 import { ActivityProvider } from "../state/activity";
 import { DRAWER_QUERY } from "../lib/constants";
+import { usePhone } from "../lib/phone";
 
 /** Home loads on first visit (its own chunk); the app usually opens a project. */
 /** The palette loads after the first paint (idle) or on first use, whichever comes first (its own chunk). */
@@ -67,6 +68,8 @@ const SidebarDrawer = lazy(() => import("../components/shell/SidebarDrawer").the
 const loadTree = () => import("../components/sessions/SessionTree");
 const treeChunk = loadTree().catch(() => undefined);
 const SessionTree = lazy(() => treeChunk.then((m) => m ?? loadTree()).then((m) => ({ default: m.SessionTree })));
+/** Direction 7: the phone layout's frame (the top bar off a project, keyboard and touch helpers); its own chunk, only in that mode. */
+const PhoneChrome = lazy(() => import("./phone/PhoneChrome"));
 
 export function AppShell() {
   return (
@@ -88,6 +91,7 @@ function Shell() {
   const { route, pending, proceed, stay } = useGuardedRoute(
     (next, current) => current.projectId !== null && next.projectId !== current.projectId && nav.unsavedCount() > 0,
   );
+  const phone = usePhone();
   const drawerMode = useMediaQuery(DRAWER_QUERY);
 
   const [inlineOpen, setInlineOpen] = useState(true);
@@ -119,8 +123,10 @@ function Shell() {
   const providers = useProviders(bridge, health === "online");
   const noProvider = providers.status === "ready" && providers.list.connected === 0;
   useStoredMotion();
-  const [palette, setPalette] = useState(false);
-  const paletteOpen = useLatest(palette);
+  // NEW-7: the palette's phase and number (`lib/typeahead`): each open is a new palette, so one reopened while the last one
+  // still plays its exit mounts fresh (its field takes focus and the keys held for it).
+  const paletteState = useSyncExternalStore(paletteGate.subscribe, paletteGate.snapshot);
+  const palette = paletteState.phase === "opening" || paletteState.phase === "open";
   const drawerOpener = useRef<HTMLElement | null>(null);
   // The two ends of the status bar that the open project fills (see `ProjectStatus`).
   const [statusStart, setStatusStart] = useState<HTMLElement | null>(null);
@@ -228,7 +234,7 @@ function Shell() {
   // the New project dialog (its draft is kept). The shortcuts sheet closes itself the same way.
   useEffect(() => {
     const close = () => {
-      setPalette(false);
+      paletteGate.close();
       setCreating(false);
     };
     window.addEventListener("hashchange", close);
@@ -242,9 +248,7 @@ function Shell() {
         e.preventDefault();
         e.stopPropagation();
         // P2-7: what is typed before the palette's field has focus goes to the field, not to the composer.
-        if (paletteOpen.current) takeTypeahead();
-        else holdTypeahead();
-        setPalette(!paletteOpen.current);
+        paletteGate.toggle();
       }
       // Ctrl/Cmd+L: the caret into the visible composer, from anywhere (Monaco keeps Tab for indenting).
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "l" && !document.querySelector('[aria-modal="true"]')) {
@@ -258,7 +262,7 @@ function Shell() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [paletteOpen]);
+  }, []);
 
   const toggleSidebar = () => {
     if (!drawerMode) return setInlineOpen((o) => !o);
@@ -277,7 +281,7 @@ function Shell() {
   };
   const openPalette = () => {
     setDrawerOpen(false);
-    setPalette(true);
+    paletteGate.open();
   };
 
   // P2-3: unreachable before anything loaded takes the panel; after that a banner sits over the workspace, which stays.
@@ -336,7 +340,8 @@ function Shell() {
       setDrawerOpen(false);
       nav.workspace()?.openTool("review");
     },
-    onSettings: () => openSettings(),
+    // Direction 7: the phone opens the list of sections (`#/settings/`), the desktop its first section.
+    onSettings: () => openSettings(phone ? "" : undefined),
     // Picking a project closes the drawer even when it is the one already open (the route does not change then).
     onPick: () => setDrawerOpen(false),
     tree,
@@ -354,7 +359,7 @@ function Shell() {
   return (
     <ShellContext.Provider value={{ sidebarOpen, toggleSidebar, openConnect }}>
       <StatusSlotsContext.Provider value={{ start: statusStart, end: statusEnd }}>
-        <div className="relative flex h-full flex-col overflow-clip bg-window text-fg">
+        <div data-app-root className="relative flex h-full flex-col overflow-clip bg-window text-fg">
           {/* Decision 67: the top row is the window's, 40px across it: the controls float over its left corner and, with a project
             open, the tab strips of the dock groups are the row. Home and Settings have the bare row (and Settings its title). */}
           <TitleBar {...(settings !== null ? { title: "Settings" } : {})} />
@@ -381,7 +386,9 @@ function Shell() {
             <div
               className={cn(
                 "relative flex min-w-0 flex-1 flex-col p-gutter pt-0 pb-0 max-sm:p-0",
-                !(workspace && route.projectId) && "pt-bar",
+                // Direction 7: the phone's window header lies over the panel's top (Home, the connect screen, the no-projects hero):
+                // their content and the streak band start under it, as Settings' do (decision 91a: nothing sits on the band).
+                !(workspace && route.projectId) && "pt-bar phone:pt-bar",
                 !workspace && main === null && startsInProject && "max-sm:pt-bar",
               )}
               inert={drawerShown}
@@ -410,6 +417,11 @@ function Shell() {
             </div>
           </div>
           <StatusBar home={route.projectId === null && settings === null} startRef={setStatusStart} endRef={setStatusEnd} />
+          {phone && (
+            <Suspense fallback={null}>
+              <PhoneChrome />
+            </Suspense>
+          )}
           <Presence show={drawerShown}>
             <Suspense fallback={null}>
               <SidebarDrawer onClose={() => setDrawerOpen(false)} opener={drawerOpener}>
@@ -440,13 +452,12 @@ function Shell() {
           <Presence show={palette}>
             <Suspense fallback={null}>
               <CommandPalette
+                key={paletteState.id}
+                paletteId={paletteState.id}
                 openProjectId={known ? route.projectId : null}
                 actions={actions}
                 settingsIndex={loadSettingsIndex}
-                onClose={() => {
-                  takeTypeahead();
-                  setPalette(false);
-                }}
+                onClose={() => paletteGate.close(paletteState.id)}
               />
             </Suspense>
           </Presence>

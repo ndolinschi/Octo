@@ -1872,3 +1872,279 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--octo-focus);
 }
+
+/* ============================================================================================================================
+   Direction 7: the phone layout. `OctoApp` sets `data-phone` on the root element from `PHONE_QUERY` (lib/phone.ts); the `phone:`
+   variant and every rule below hang off it, so the desktop and tablet layouts are untouched while it is off. WebKit notes: no
+   `:has`, no container queries and no `dvh` here; `env(safe-area-inset-*)` needs `viewport-fit=cover` in the host's viewport
+   meta (0 without it); the visual-viewport variables come from `app/phone/useVisualViewport` (100vh before it runs). */
+@custom-variant phone (&:where([data-phone], [data-phone] *));
+
+:root[data-phone] {
+  /* Every touch target is at least 44px: the touch row and control size, and the hit area around smaller controls. */
+  --spacing-ctl-lg: 44px;
+  --spacing-touch: 44px;
+  --octo-safe-top: env(safe-area-inset-top, 0px);
+  --octo-safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* The header line under the top inset; Home and Settings leave this much room above their content (`pt-bar`). */
+  --spacing-bar: calc(var(--spacing-ctl-lg) + var(--octo-safe-top));
+  -webkit-tap-highlight-color: transparent;
+}
+/* The keyboard covers the home indicator: no bottom inset while it is up. */
+:root[data-phone][data-keyboard] {
+  --octo-safe-bottom: 0px;
+}
+/* The frame follows the visual viewport: the composer sits right above the on-screen keyboard. */
+:root[data-phone] [data-app-root] {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--octo-vv-top, 0px);
+  height: var(--octo-vvh, 100vh);
+}
+[data-phone] :is(a, button, [role="button"], [role="treeitem"]) {
+  -webkit-touch-callout: none;
+}
+.octo-phone-header {
+  height: var(--spacing-bar);
+  padding-top: var(--octo-safe-top);
+}
+.octo-phone-tip {
+  bottom: calc(var(--octo-kb, 0px) + var(--octo-safe-bottom) + 96px);
+}
+
+/* Sheets (primitives/Sheet): from the bottom, at most 85% of what is visible, above the keyboard; or the whole screen. */
+.octo-sheet[data-sheet="bottom"] {
+  bottom: var(--octo-kb, 0px);
+  max-height: calc(var(--octo-vvh, 100vh) * 0.85);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding-bottom: var(--octo-safe-bottom);
+  box-shadow: var(--octo-shadow-pop);
+  animation: octo-sheet-in 200ms var(--ease-out-quint) both;
+}
+.octo-sheet[data-sheet="full"] {
+  top: var(--octo-vv-top, 0px);
+  height: var(--octo-vvh, 100vh);
+  padding-bottom: var(--octo-safe-bottom);
+  background: var(--octo-window);
+  animation: octo-fade-in 160ms var(--ease-out-quint) both;
+}
+.octo-sheet[data-state="closed"] {
+  animation: octo-sheet-out 120ms ease-out both;
+}
+@keyframes octo-sheet-in {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+}
+@keyframes octo-sheet-out {
+  to {
+    opacity: 0;
+    translate: 0 16px;
+  }
+}
+
+/* Menus, popovers and pickers (Menu, Popover, Select, Picker, the model and folder pickers) become bottom sheets: one rule for
+   every popup portalled into the body. The scrim is a shadow; `useTouchHelpers` keeps a tap on it from reaching what is
+   under it. The typing menus (slash, mention) stay above the composer, full width. */
+:root[data-phone] body > :is(.octo-overlay, [role="menu"]).fixed:not([data-slash-menu], [data-composer-menu][data-inline]) {
+  inset: auto 0 var(--octo-kb, 0px) 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  max-height: calc(var(--octo-vvh, 100vh) * 0.85) !important;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
+  padding-bottom: var(--octo-safe-bottom);
+  box-shadow:
+    0 0 0 100vmax var(--octo-scrim),
+    var(--octo-shadow-pop) !important;
+  animation: octo-sheet-in 200ms var(--ease-out-quint) both;
+}
+:root[data-phone] body > :is([data-slash-menu], [data-composer-menu][data-inline]) {
+  left: 8px !important;
+  right: 8px;
+  width: auto !important;
+}
+:root[data-phone] body > [role="menu"].fixed {
+  padding: 8px;
+}
+/* The command palette is a full-screen search. */
+:root[data-phone] [role="dialog"][aria-label="Command palette"] {
+  position: fixed;
+  inset: var(--octo-vv-top, 0px) 0 auto 0;
+  height: var(--octo-vvh, 100vh);
+  max-height: none;
+  max-width: none;
+  border-radius: 0;
+  padding-top: var(--octo-safe-top);
+  padding-bottom: var(--octo-safe-bottom);
+}
+
+/* Conversation: body text 16/24, the column is the measure; no turn rail; code scrolls inside its block. */
+[data-phone] [data-conv] .octo-prose:not(.octo-prose-compact, .octo-prose-sm) {
+  font-size: 16px;
+  line-height: 24px;
+}
+[data-phone] [data-conv] .octo-prose:not(.octo-prose-compact, .octo-prose-sm) :not(pre) > code {
+  font-size: 14px;
+}
+[data-phone] [data-conv] .octo-prose :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  max-width: none;
+}
+[data-phone] [data-conv] [data-bubble] {
+  font-size: 16px;
+  line-height: 24px;
+}
+[data-phone] [data-conv] [data-rail] {
+  display: none;
+}
+[data-phone] [data-conv] pre {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+/* Tool rows and their bodies: no second indent, the whole column. */
+[data-phone] [data-activity-body] {
+  padding-left: 0;
+}
+/* The per-turn footer wraps instead of running out of the column. */
+[data-phone] [data-conv] [data-turn-footer] {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+/* Composer: one line — "+", the field (growing to six lines), the context ring and Send/Stop; a queue chip above it. The
+   control row's own box dissolves into the composer's line (`display: contents`); mode, model and folder are in the "+" sheet. */
+[data-phone] [data-composer] {
+  flex-flow: row wrap;
+  align-items: flex-end;
+  padding: 2px;
+}
+[data-phone] [data-composer] > * {
+  flex-basis: 100%;
+}
+[data-phone] [data-composer] > [data-composer-pad] {
+  order: 2;
+  flex: 1 1 0;
+  min-width: 0;
+  padding-block: 12px;
+}
+[data-phone] [data-composer] [data-composer-row] {
+  display: contents;
+}
+[data-phone] [data-composer-row] > * {
+  order: 3;
+}
+[data-phone] [data-composer-row] > :first-child {
+  order: 1;
+}
+[data-phone] [data-composer-row] > [data-composer-spacer] {
+  display: none;
+}
+/* 32px controls on the field's first line (the 44px target is the touch hit area around them). */
+[data-phone] [data-composer-row] > button {
+  width: var(--spacing-ctl-md);
+  height: var(--spacing-ctl-md);
+  margin: 0 4px 6px;
+}
+[data-phone] [data-composer-row] > :is([data-composer-size], [data-composer-note]) {
+  align-self: center;
+}
+[data-phone] [data-composer] textarea.octo-composer-input {
+  padding-inline: 4px;
+  font-size: 16px;
+  line-height: 20px;
+  /* Six lines, fewer when the keyboard leaves little room: the conversation keeps most of the screen. */
+  max-height: min(120px, calc(var(--octo-vvh, 100vh) * 0.2));
+}
+[data-phone] [data-composer-wrap] {
+  padding-bottom: var(--octo-safe-bottom);
+}
+
+/* Files: the tree is the Files panel itself (the header names it); a file opens as its own screen, its bar reduced to the
+   path and the file's "⋯" (no page switch, no back and forward: the system Back returns to the tree). */
+[data-phone] [data-file-bar="tree"] {
+  display: none;
+}
+[data-phone] [data-file-bar="file"] > button {
+  display: none;
+}
+/* Approval and form cards: the whole column, their buttons 44px. */
+[data-phone] :is([data-v7-approval], [data-v7-form]) button:not([aria-label], [role="radio"], [role="checkbox"]) {
+  min-height: var(--spacing-touch);
+  padding-inline: 16px;
+}
+/* The desktop's window row and status bar have no place on the phone: the header and the "⋯" sheet carry what they hold. */
+[data-phone] :is([data-title-bar], header[aria-label="Window"]:not([data-phone-header]), [data-status-bar]) {
+  display: none;
+}
+[data-phone] [data-composer-session] {
+  display: none;
+}
+[data-phone]
+  [data-composer-row]
+  > :not(:first-child, [data-composer-spacer], [data-composer-size], [data-composer-note], [role="status"], [data-context-ring], button[data-action]) {
+  display: none;
+}
+/* An empty field is one line: the placeholder never wraps the composer to two. */
+[data-phone] [data-composer] textarea.octo-composer-input:placeholder-shown {
+  height: 20px;
+  overflow: hidden;
+}
+[data-phone] [data-strip] {
+  display: none;
+}
+/* Home: a lower band, the sentence at title size, the four tiles as one compact row that scrolls sideways, then the list of
+   sessions that need you and that work (the triage list) right under them. */
+[data-phone] [data-home] {
+  --octo-band-h: 32px;
+}
+[data-phone] #home-title {
+  font-size: var(--text-title);
+  line-height: 24px;
+}
+[data-phone] [data-home] [aria-label="Filter projects by state"] {
+  display: flex;
+  margin-inline: -16px;
+  padding-inline: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+[data-phone] [data-home] [data-triage] {
+  flex: none;
+}
+/* Diffs: a compact gutter (the new line's number and the sign; the old number goes), so code gets the width. */
+[data-phone] .octo-diff {
+  --diff-gap: 4px;
+}
+[data-phone] .octo-diff[data-numbered] {
+  --diff-gutter-w: calc(8px + var(--diff-digits) + 1ch + 2 * var(--diff-gap));
+}
+[data-phone] .octo-diff-gutter {
+  padding-inline: 8px var(--diff-gap);
+}
+[data-phone] .octo-diff[data-numbered] .octo-diff-gutter > .octo-diff-num:first-child {
+  display: none;
+}
+
+/* The navigation's tree rows: the row actions (a project's "+" and chevron, a session's "⋯") are always shown on the phone and
+   take their own place at the row's end instead of a padding the title gives up to them. */
+[data-phone] [data-tree-row] {
+  display: flex;
+  align-items: center;
+}
+[data-phone] [data-tree-row] > :first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+[data-phone] [data-tree-row] > [data-tree-actions] {
+  position: static;
+  gap: 4px;
+  padding-right: 4px;
+}
+[data-phone] [data-tree-row] [data-row] {
+  padding-right: 8px;
+}
+/* No hover on a phone: a reply's footer (copy, time, model) is always shown, and wraps (above). */
+[data-phone] [data-conv] [data-turn-footer] {
+  opacity: 1;
+}

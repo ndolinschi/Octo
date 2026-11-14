@@ -6,6 +6,8 @@ import { useApp } from "../../state/app";
 import { MOD } from "../../state/workspace/WorkspaceProvider";
 import { ListRow } from "../primitives/ListRow";
 import { SkeletonList } from "../primitives/Skeleton";
+import { usePhone } from "../../lib/phone";
+import { useHost } from "../../state/host";
 
 /** The "Projects" view's list: its own chunk, asked for at once (decision 96: the default view is the tree, `SessionTree`). */
 const listChunk = import("./ProjectList").catch(() => undefined);
@@ -48,13 +50,19 @@ export function Sidebar(props: {
 }) {
   const { projects, health } = useApp();
   const canCreate = health === "online";
+  const phone = usePhone();
+  // Remote access: a device never creates a project (local only, and it needs the computer's folder dialog).
+  const device = useHost().remoteDevice !== undefined;
 
   return (
-    <nav aria-label="Projects" className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter">
+    <nav
+      aria-label="Projects"
+      className="flex h-full w-sidebar shrink-0 flex-col bg-window pl-gutter phone:min-h-0 phone:w-full phone:flex-1 phone:bg-transparent phone:pl-0"
+    >
       <div className="flex min-h-0 flex-1 flex-col p-pane">
         <div className="flex shrink-0 flex-col">
           <NavRow icon={House} label="Home" onClick={() => navigate(null)} current={props.home} disabled={!projects?.length} />
-          <NavRow icon={Search} label="Search" onClick={props.onSearch} shortcut={{ hint: `${MOD}K`, keys: "Control+K Meta+K" }} />
+          <NavRow icon={Search} label="Search" onClick={props.onSearch} {...(phone ? {} : { shortcut: { hint: `${MOD}K`, keys: "Control+K Meta+K" } })} />
           {props.activeProjectId === null ? (
             // Unavailable on Home: a focusable wrapper carries the reason (a disabled button gets no focus or tooltip).
             <span
@@ -70,7 +78,7 @@ export function Sidebar(props: {
           ) : (
             <NavRow icon={GitPullRequest} label="Review" onClick={props.onReview} />
           )}
-          <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />
+          {!device && <NavRow icon={Plus} label="New project" onClick={props.onNewProject} disabled={!canCreate} />}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">

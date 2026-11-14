@@ -8,7 +8,7 @@ import { rankGroups } from "../../lib/matchMore";
 import { navigate, settingsHref } from "../../lib/route";
 import { focusSoon } from "../../lib/focus";
 import { useMediaQuery } from "../../lib/hooks";
-import { takeTypeahead } from "../../lib/typeahead";
+import { palette as paletteGate } from "../../lib/typeahead";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
 import { workspaceActions, workspaceTabs } from "../../state/workspace/paletteCommands";
@@ -94,6 +94,8 @@ function openSetting(section: string, row?: string) {
  * Hovering highlights a row without moving the keyboard selection.
  */
 export function CommandPalette(props: {
+  /** NEW-7: which open this palette is (`lib/typeahead`): it takes only the keys held for it. */
+  paletteId: number;
   openProjectId: string | null;
   actions: PaletteAction[];
   settingsIndex: () => Promise<SettingsIndex>;
@@ -355,8 +357,10 @@ export function CommandPalette(props: {
   // P2-7: the keys typed since Ctrl/Cmd+K (held while this chunk loaded) go into the field when it takes focus; a held
   // Enter runs the first row once the rows for that text are in (the render after the query is set).
   const typedEnter = useRef<string | null>(null);
+  const { paletteId } = props;
+  useEffect(() => () => paletteGate.exited(paletteId), [paletteId]);
   const takeTyped = () => {
-    const typed = takeTypeahead();
+    const typed = paletteGate.ready(paletteId);
     if (typed.text) {
       if (typed.enter) typedEnter.current = typed.text;
       setQuery(typed.text);

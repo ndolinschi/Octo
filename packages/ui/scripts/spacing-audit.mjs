@@ -29,10 +29,27 @@ const ALLOW = [
     reason:
       "the first tab strip of a window whose sidebar is closed starts after the window controls' inset and the three window buttons (decision 67); the width is computed from the host's inset, not authored spacing",
   },
+  {
+    rule: "gutter",
+    selector: "[data-phone] [data-dock-group]",
+    reason: "direction 7: on the phone the one-line header (44px, a touch row) sits above the dock; the group starts under it",
+  },
+  {
+    rule: "scale",
+    selector: "[data-phone] .pt-bar",
+    reason: "direction 7: room for the phone's 44px header line (the bar token, a touch row height, not authored spacing)",
+  },
+  {
+    rule: "scale",
+    selector: ".sr-only",
+    reason: "the visually hidden pattern (1px box, -1px margins): never laid out for the eye",
+  },
 ];
 
 const SCALE = [2, 4, 6, 8, 12, 16, 20, 24, 32, 40];
 const ROW_HEIGHTS = [24, 28, 32, 36, 40];
+/** Direction 7: in the phone layout every touch row is 44px (`--spacing-ctl-lg` there). */
+const PHONE_ROW_HEIGHTS = [...ROW_HEIGHTS, 44];
 const TOL = 0.5;
 const ICON_GAP_MIN = 6;
 const RULES = ["scale", "row-height", "gutter", "edges", "icon-gap", "overlap", "inset-balance", "dialog-bounds", "field-row", "key-hint", "panel-frame"];
@@ -207,8 +224,38 @@ async function openFileMatching(page, re, what) {
 
 /** @type {{ id: string; viewports: {width:number;height:number}[]; run(page, ctx): Promise<void>; checks?: string[] }[]} */
 /** Opens a tool tab through the last strip's "+" picker (decision 25). */
+/** Direction 7: the phone reaches the same tools from the header's "⋯" sheet (`PhoneMoreSheet`), by these labels. */
+const PHONE_PANELS = {
+  files: "Files",
+  changes: "Changes",
+  sessions: "Sessions",
+  memory: "Memory",
+  notes: "Notes",
+  usage: "Usage",
+  agents: "Agents",
+  details: "Details",
+  side: "Side question",
+  review: "Review",
+};
+
 async function openTool(page, label) {
   const plus = page.locator("[data-tab-plus]:visible").last();
+  const more = page.locator("[data-phone-header]").getByRole("button", { name: "More" }).first();
+  if (!(await plus.count()) && (await more.isVisible().catch(() => false))) {
+    // The phone layout (a window under 480px is one, touch or not): the tool opens from the "⋯" sheet, as a person would.
+    const name = PHONE_PANELS[TOOL_ROWS[label] ?? label];
+    if (!name) skip(`"${label}" has no row on the phone's "⋯" sheet`);
+    await more.click({ timeout: T });
+    const row = page.locator("[data-phone-more]").getByRole("button", { name, exact: true });
+    try {
+      await row.waitFor({ timeout: T });
+    } catch {
+      skip(`"${name}" not on the phone's "⋯" sheet`);
+    }
+    await row.click({ timeout: T });
+    await settle(page, 900);
+    return;
+  }
   if (!(await plus.count())) skip('no "+" in the tab strip');
   await plus.click({ timeout: T });
   const row = page.locator(`[role=option][data-picker-row="tool:${TOOL_ROWS[label] ?? label}"]`).first();
@@ -984,7 +1031,84 @@ const STATES = [
       await settle(page, 2500);
     },
   },
+  ...PHONE_STATES(),
 ];
+
+/**
+ * Direction 7: the phone layout, in touch-emulating contexts (`touch: true`: `hasTouch` and `isMobile`) at three phone sizes.
+ * Ids start with `phone-`; run them alone with `--only phone-home,phone-nav,...`.
+ */
+function PHONE_STATES() {
+  const vps = [
+    { width: 390, height: 844, touch: true },
+    { width: 430, height: 932, touch: true },
+    { width: 360, height: 640, touch: true },
+  ];
+  const session = async (page) => {
+    await page.getByRole("button", { name: "Menu" }).first().click({ timeout: T });
+    await page
+      .getByRole("treeitem", { name: /Run the API tests/ })
+      .first()
+      .click({ timeout: T });
+    try {
+      await page.locator("[data-composer]").first().waitFor({ state: "visible", timeout: T });
+    } catch {
+      skip("the session did not open");
+    }
+    await settle(page, 1200);
+  };
+  const more = async (page) => {
+    await session(page);
+    await page.getByRole("button", { name: "More" }).first().click({ timeout: T });
+    await settle(page, 500);
+  };
+  const panel = (name) => async (page) => {
+    await more(page);
+    await page.locator("[data-phone-more]").getByRole("button", { name, exact: true }).click({ timeout: T });
+    await settle(page, 1200);
+  };
+  return [
+    {
+      id: "phone-home",
+      viewports: vps,
+      async run(page) {
+        await page.evaluate(() => (window.location.hash = "#/"));
+        await page.locator("[data-home]").first().waitFor({ timeout: T });
+        await settle(page, 1500);
+      },
+    },
+    {
+      id: "phone-nav",
+      viewports: vps,
+      async run(page) {
+        await page.getByRole("button", { name: "Menu" }).first().click({ timeout: T });
+        await settle(page, 600);
+      },
+    },
+    { id: "phone-session", viewports: vps, run: session },
+    { id: "phone-more", viewports: vps, run: more },
+    {
+      id: "phone-plus",
+      viewports: vps,
+      async run(page) {
+        await session(page);
+        await page.getByRole("button", { name: "Attach, mention or run" }).first().click({ timeout: T });
+        await settle(page, 600);
+      },
+    },
+    { id: "phone-files", viewports: vps, run: panel("Files") },
+    { id: "phone-changes", viewports: vps, run: panel("Changes") },
+    {
+      id: "phone-settings",
+      viewports: vps,
+      async run(page) {
+        await page.evaluate(() => (window.location.hash = "#/settings/"));
+        await page.locator("[data-settings]").first().waitFor({ timeout: T });
+        await settle(page, 800);
+      },
+    },
+  ];
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // In-page audit. Runs in the browser; everything it needs comes through `cfg`.
@@ -1504,7 +1628,7 @@ async function main() {
         measures: {},
         scanned: 0,
       };
-      const ctx = await browser.newContext({ viewport: vp });
+      const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, hasTouch: vp.touch === true, isMobile: vp.touch === true });
       await ctx.addInitScript(() => {
         try {
           localStorage.setItem("octo.theme", "dark");
@@ -1554,7 +1678,8 @@ async function main() {
               (document.querySelector("[data-column]")?.closest(".overflow-y-auto") ?? document.body).appendChild(t);
             });
           }
-          const res = await page.evaluate(auditInPage, { SCALE, ROW_HEIGHTS, TOL, ICON_GAP_MIN, allow: ALLOW, rules: pass.rules });
+          const rows = vp.touch ? PHONE_ROW_HEIGHTS : ROW_HEIGHTS;
+          const res = await page.evaluate(auditInPage, { SCALE, ROW_HEIGHTS: rows, TOL, ICON_GAP_MIN, allow: ALLOW, rules: pass.rules });
           merged.violations.push(...res.violations);
           for (const [k, v] of Object.entries(res.suppressed)) merged.suppressed[k] = (merged.suppressed[k] ?? 0) + v;
           Object.assign(merged.measures, res.measures);

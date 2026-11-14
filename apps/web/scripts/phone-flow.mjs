@@ -12,6 +12,7 @@ const opt = (n, d) => {
 };
 const OUT = opt("--out", "/tmp/octo-phone-flow");
 const THEME = opt("--theme", "dark");
+const HEIGHT = Number(opt("--height", "844"));
 const { BRIDGE, PHONE, LOCAL_TOKEN, PROJECT_DIR } = process.env;
 
 function loadPlaywright() {
@@ -64,7 +65,7 @@ log(`on at ${st.url} (listener ${st.listen}), code ${st.pairing.code}`);
 
 const { chromium } = loadPlaywright();
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: 390, height: 700 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+const ctx = await browser.newContext({ viewport: { width: 390, height: HEIGHT }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
   userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" });
 await ctx.addInitScript((theme) => {
   try {
@@ -137,6 +138,36 @@ try {
   }, 60000);
   await page.waitForTimeout(800);
   await shot("8-approved");
+
+  // What a device may not change (HostCapabilities.remoteDevice): no Run group on "⋯", Project settings disabled, the
+  // local-only Settings sections disabled with "Change this on your computer".
+  await page.getByRole("button", { name: "More" }).click();
+  const sheet = page.getByRole("dialog", { name: "More" });
+  await sheet.waitFor();
+  await page.waitForTimeout(400);
+  await shot("10-more");
+  if (await sheet.getByRole("region", { name: "Run" }).count()) throw new Error("the Run group shows on a device");
+  if (!(await sheet.getByText("Change this on your computer").count())) throw new Error("Project settings is not marked as the computer's");
+  await sheet.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "General" }).waitFor({ timeout: 10000 });
+  await page.waitForTimeout(400);
+  await shot("11-settings");
+  const locked = await page.getByText("Change this on your computer").filter({ visible: true }).count();
+  if (locked !== 9) throw new Error(`locked settings sections: ${locked}, want 9`);
+  await page.getByRole("button", { name: "Appearance" }).click();
+  await page.getByText("Theme").first().waitFor({ timeout: 10000 });
+  await shot("12-appearance");
+  await page.goBack();
+  await page.goBack();
+  await composer.waitFor({ timeout: 10000 });
+
+  // Read-only on the computer: the composer has no Send and says why, within the 30 s check.
+  const dev0 = (await computer("GET", "/v1/remote")).devices[0];
+  await computer("PATCH", `/v1/remote/devices/${dev0.id}`, { read_only: true });
+  await page.getByPlaceholder("Read-only", { exact: true }).waitFor({ timeout: 40000 });
+  if (await page.getByRole("button", { name: /^Send/ }).count()) throw new Error("Send shows on a read-only device");
+  await shot("13-read-only");
+  await computer("PATCH", `/v1/remote/devices/${dev0.id}`, { read_only: false });
 
   const dev = (await computer("GET", "/v1/remote")).devices[0];
   await computer("DELETE", `/v1/remote/devices/${dev.id}`);

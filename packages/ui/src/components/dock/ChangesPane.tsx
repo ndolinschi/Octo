@@ -4,6 +4,7 @@ import { useLatest } from "../../lib/hooks";
 import { useOptionalComments } from "../../state/comments";
 import { useOptionalCode } from "../../state/code";
 import { Panel } from "../primitives/Panel";
+import { PanelPurpose } from "../shared/PanelPurpose";
 import { ChangesTab } from "../v7/ChangesTab";
 
 const loadMonaco = () => import("../files/monaco");
@@ -31,7 +32,7 @@ export function ChangesPane() {
     return () => io.disconnect();
   }, [latest]);
   return (
-    <Panel name="changes" title="Changes">
+    <Panel name="changes" title="Changes" lead={<PanelPurpose tool="changes" />}>
       <span ref={mark} aria-hidden className="block h-0 w-0" />
       <ChangesTab
         loadMonaco={loadMonaco}

@@ -23,6 +23,18 @@ export function chipLabel(value: string, list: ProvidersResponse | null): string
   return displayId(value);
 }
 
+/**
+ * Item 10: a chip label in its two parts when it names an agent's model ("Claude Code · " and "Opus 5.5"): a chip that must
+ * shorten drops the provider part first (the mark beside it still says whose model it is; the tooltip keeps the full name).
+ * Null for a label of one part.
+ */
+export function chipParts(label: string): { provider: string; model: string } | null {
+  const at = label.indexOf(" · ");
+  if (at <= 0) return null;
+  const model = label.slice(at + 3).trim();
+  return model ? { provider: label.slice(0, at + 3), model } : null;
+}
+
 /** Whether a model setting can run now (decision 53 a): its provider is ready and still lists it. */
 export function canRun(list: ProvidersResponse, value: string): boolean {
   if (!value) return false;

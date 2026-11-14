@@ -1,6 +1,6 @@
 /**
  * Walk B13: what each tool tab is for, in one line a newcomer understands. The panels show it behind the (i) after their
- * title; the palette and the tab picker can adopt the same strings (one source).
+ * title; the palette searches it (with `TOOL_HINT` as the row's detail), so both say the same thing (one source).
  */
 export const TOOL_PURPOSE = {
   sessions: "Your conversations with the orchestrator, and the agent sessions it started.",
@@ -16,3 +16,17 @@ export const TOOL_PURPOSE = {
 } as const satisfies Record<string, string>;
 
 export type PurposeTool = keyof typeof TOOL_PURPOSE;
+
+/** The same purposes, short: the detail of the palette's "Show …" rows (lowercase, no full stop). */
+export const TOOL_HINT = {
+  sessions: "conversations and agent sessions",
+  agents: "what each agent is doing",
+  notes: "decisions and facts agents read",
+  files: "folders; open a file to read or edit",
+  details: "folders, models, tokens, activity",
+  changes: "what the agents changed",
+  review: "pick one, read it, comment, submit",
+  memory: "what the project remembers",
+  usage: "tokens, cost, limits",
+  side: "not added to the conversation",
+} as const satisfies Record<PurposeTool, string>;

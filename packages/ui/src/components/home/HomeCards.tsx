@@ -11,6 +11,9 @@ import { ListRow } from "../primitives/ListRow";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { SkeletonList } from "../primitives/Skeleton";
 import { RunningDot } from "../primitives/Status";
+import { StateGlyph } from "../primitives/StateGlyph";
+import { WAIT_TEXT, type AgentWait } from "../../lib/agentWaiting";
+import { useAgentWaits } from "./useAgentWaits";
 import type { ProjectAgents } from "./useOverview";
 
 const TEAM_ROWS = 5;
@@ -22,6 +25,8 @@ const TEAM_ROWS = 5;
 export function TeamCard({ projects, agents }: { projects: ProjectSummary[] | null; agents: ProjectAgents[] | null }) {
   const running = useMemo(() => (agents ?? []).flatMap(({ project, agents: list }) => runningAgents(list).map((a) => ({ project, agent: a }))), [agents]);
   const now = useNow(running.length > 0);
+  // NEW-3: an agent that waits for an approval or an answer says so instead of looking busy.
+  const waits = useAgentWaits(projects);
   const list = useRef<HTMLDivElement>(null);
   useRowKeys(list);
   const shown = running.slice(0, TEAM_ROWS);
@@ -37,7 +42,7 @@ export function TeamCard({ projects, agents }: { projects: ProjectSummary[] | nu
       ) : (
         <div ref={list} role="list" className="flex flex-col">
           {shown.map(({ project, agent }) => (
-            <TeamRow key={agent.id} project={project} agent={agent} now={now} />
+            <TeamRow key={agent.id} project={project} agent={agent} now={now} wait={waits.get(agent.id) ?? null} />
           ))}
           {running.length > TEAM_ROWS && <p className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">+{running.length - TEAM_ROWS} more running</p>}
         </div>
@@ -46,15 +51,15 @@ export function TeamCard({ projects, agents }: { projects: ProjectSummary[] | nu
   );
 }
 
-function TeamRow({ project, agent, now }: { project: ProjectSummary; agent: Agent; now: number }) {
+function TeamRow({ project, agent, now, wait }: { project: ProjectSummary; agent: Agent; now: number; wait: AgentWait | null }) {
   const ms = agentDuration(agent, now);
   return (
     <ListRow
       size="md"
       role="listitem"
-      leading={<RunningDot box={16} />}
+      leading={wait ? <StateGlyph state="needs" box={16} /> : <RunningDot box={16} />}
       title={`${roleText(agent.role)}${agent.title ? ` · ${agent.title}` : ""}`}
-      meta={`${project.name}${ms !== null ? ` · ${formatDuration(ms)}` : ""}`}
+      meta={wait ? `${project.name} · ${WAIT_TEXT[wait]}` : `${project.name}${ms !== null ? ` · ${formatDuration(ms)}` : ""}`}
       tip={`${agent.role}${agent.title ? `: ${agent.title}` : ""} — ${project.name}`}
       onClick={() => navigate(project.id, agent.id)}
     />

@@ -257,3 +257,11 @@ test("groupState: the worst state only when every call ended that way; problems 
   assert.equal(groupProblems(["done", "error", "stopped", "stopped"]), "1 failed · 2 stopped");
   assert.equal(groupProblems(["done"]), "");
 });
+
+test("3: a call a restart interrupted says so in its plain line, and the group counts it as interrupted", () => {
+  const closed = { content: "interrupted: the tool call did not complete", is_error: true };
+  assert.equal(stoppedLine(closed, "failed", "11:39", true), "Interrupted at 11:39 — Octo's local service restarted before this finished.");
+  assert.equal(stoppedLine(closed, "failed", ""), "Interrupted — the request ended before this finished.");
+  assert.equal(groupProblems(["done", "stopped", "error"], "interrupted"), "1 failed · 1 interrupted");
+  assert.equal(groupProblems(["stopped"]), "1 stopped");
+});

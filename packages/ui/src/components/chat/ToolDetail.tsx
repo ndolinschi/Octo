@@ -38,14 +38,25 @@ const RESULT_CAP = 200;
  * lines, an edit's inline diff (a run of edits of one file as one diff), anything else as a key–value view. A call a stop or a
  * refusal cut short is one plain line. Every body ends in one action line with "Raw" (what the agent sent and got back).
  */
-export function ToolDetail({ use, more = [], end = null }: { use: ToolUse; more?: readonly ToolUse[]; end?: TurnEnd }) {
+export function ToolDetail({
+  use,
+  more = [],
+  end = null,
+  interrupted = false,
+}: {
+  use: ToolUse;
+  more?: readonly ToolUse[];
+  end?: TurnEnd;
+  /** A restart cut the turn (its stored exchange is `interrupted`). */
+  interrupted?: boolean;
+}) {
   const ctx = useTranscript();
   const result = ctx.results.get(use.id);
-  const state = viewState(stepState(result, ctx.agentRunning, end), result);
+  const state = viewState(stepState(result, ctx.agentRunning, end, interrupted), result);
   const times = useCallTimes(use);
   const kind = toolKind(use.name, use.input);
   const output = result ? result.content : null;
-  const stopped = state === "stopped" ? stoppedLine(result, end, clockTime(times.end)) : null;
+  const stopped = state === "stopped" ? stoppedLine(result, end, clockTime(times.end), interrupted) : null;
   const failed = state === "error" ? (output ?? "").trim() || "The tool reported an error with no message." : null;
   const uses = useMemo(() => [use, ...more], [use, more]);
   const raw = useMemo(

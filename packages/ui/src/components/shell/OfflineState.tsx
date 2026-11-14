@@ -17,15 +17,19 @@ export function OfflineState() {
       {health === "checking" ? "Checking…" : "Retry"}
     </Button>
   );
-  // P2-4: it answered, with something that is not JSON (a broken proxy, a crash mid-write).
-  if (cause === "unreadable") {
+  // P2-4: it answered with something that is not JSON (a broken proxy, a crash mid-write), or took the connection and never
+  // answered. Either way the app checks again by itself (1–30 s, on focus); Retry checks now.
+  if (cause === "unreadable" || cause === "unanswered") {
     return (
       <section aria-labelledby="offline-title" className="grid h-full place-items-center px-6">
         <div className="w-full max-w-[440px] min-w-0">
           <h1 id="offline-title" className="text-title text-fg">
-            Octo's local service sent an answer that couldn't be read
+            {cause === "unreadable" ? "Octo's local service sent an answer that couldn't be read" : "Octo's local service didn't answer in time"}
           </h1>
-          <p className="mt-1 text-sm text-fg-2">It's running, but what it sent isn't valid. Try again; if it keeps happening, restart Octo.</p>
+          <p className="mt-1 text-sm text-fg-2">
+            {cause === "unreadable" ? "It's running, but what it sent isn't valid." : "It took the request but sent nothing back."} Octo keeps trying by itself;
+            if it keeps happening, restart Octo.
+          </p>
           <div className="mt-5 flex gap-2">
             {retryButton}
             {host.restart && (
@@ -139,8 +143,10 @@ export function OfflineBanner() {
     cause === "refused"
       ? "Octo's local service didn't accept this window: it restarted with a new access key."
       : cause === "unreadable"
-        ? "Octo's local service sent an answer that couldn't be read."
-        : "Octo's local service isn't answering. What's on screen stays readable; sending is off until it's back.";
+        ? "Octo's local service sent an answer that couldn't be read. Octo keeps trying."
+        : cause === "unanswered"
+          ? "Octo's local service didn't answer in time. Octo keeps trying."
+          : "Octo's local service isn't answering. What's on screen stays readable; sending is off until it's back.";
   return (
     <Notice
       tone="warn"

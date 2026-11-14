@@ -1,4 +1,4 @@
-import type { ContentBlock, Message } from "@octo/agent-client";
+import type { ContentBlock, ErrorFields, Message } from "@octo/agent-client";
 import { harnessTool, SPAWN_TOOL } from "./toolName";
 import { excerpt, formatDuration } from "./format";
 
@@ -86,10 +86,11 @@ const resultText = (r: Result) => (typeof r.content === "string" ? r.content.tri
  * Whether an error result is a stop's doing rather than a failure: the harness's own interruption texts unless the turn is
  * known to have failed; an agent's cancel answer only in a turn that was stopped.
  */
-export function isInterruption(result: Result, end: TurnEnd): boolean {
+export function isInterruption(result: Result, end: TurnEnd, interrupted = false): boolean {
   if (!result.is_error) return false;
   const text = resultText(result);
-  if (HARNESS_INTERRUPTED.test(text)) return end !== "failed";
+  // A failed turn the harness closed after a restart (its exchange is `interrupted`): its own interruption texts are that restart's.
+  if (HARNESS_INTERRUPTED.test(text)) return end !== "failed" || interrupted;
   return end === "cancelled" && AGENT_INTERRUPTED.test(text);
 }
 
@@ -115,11 +116,14 @@ export function turnFailureText(turn: Pick<Turn, "items">, results: ReadonlyMap<
 
 export type StepState = "running" | "done" | "error" | "stopped";
 
-/** A tool call's state: no result runs while the agent runs and was stopped otherwise; an error result a stop wrote is stopped. */
-export function stepState(result: Result | undefined, running: boolean, end: TurnEnd): StepState {
+/**
+ * A tool call's state: no result runs while the agent runs and was stopped otherwise; an error result a stop wrote is stopped,
+ * and so is one the harness wrote for a turn a restart interrupted (`interrupted`: the turn's stored exchange says so).
+ */
+export function stepState(result: Result | undefined, running: boolean, end: TurnEnd, interrupted = false): StepState {
   if (!result) return running ? "running" : "stopped";
   if (!result.is_error) return "done";
-  return isInterruption(result, end) ? "stopped" : "error";
+  return isInterruption(result, end, interrupted) ? "stopped" : "error";
 }
 
 /**
@@ -127,6 +131,9 @@ export function stepState(result: Result | undefined, running: boolean, end: Tur
  * restart: `usererr.TurnInterrupted`, the orchestrator row's error and an exchange's `interrupted`).
  */
 export const RESTART_INTERRUPTION = "Octo's local service restarted while this request was running.";
+/** NEW-9: the harness's hints for that interruption (`usererr.TurnInterrupted`): text was kept, or nothing had been written. */
+export const RESTART_KEPT_HINT = "What it had written before the restart is kept. Retry to run the request again.";
+export const RESTART_EMPTY_HINT = "Nothing had been written yet. Retry to run the request again.";
 
 /** Whether a turn error is the harness's restart interruption (the latest turn after a reload carries only the row's text). */
 export function isRestartInterruption(error: string | null | undefined): boolean {
@@ -155,9 +162,19 @@ export function turnHead(
 
 /**
  * How a request ended as the harness stored it (its exchange): status, start and duration (`lib/storedEndings`); a failed one
- * the harness closed after a restart is `interrupted`, with the sentence of that ending as `error`.
+ * carries the failure as a live one does (`error` the sentence, `fields` its hint and action, `code` the catalogue's code); one
+ * the harness closed after a restart is `interrupted`. `keptText`: whether text it had written stays in the conversation.
  */
-export type StoredEnding = { status: Exclude<TurnEnd, null>; startedAt: number; ms: number; interrupted?: true; error?: string };
+export type StoredEnding = {
+  status: Exclude<TurnEnd, null>;
+  startedAt: number;
+  ms: number;
+  interrupted?: true;
+  error?: string;
+  fields?: ErrorFields;
+  code?: string;
+  keptText?: boolean;
+};
 
 /**
  * How long a finished turn worked (B4), to the turn's end rather than to its last item (a stop or a failure can come long after
@@ -184,9 +201,15 @@ export type SpawnStatus = "pending" | "running" | "completed" | "failed" | "canc
  * success is completed; no result is pending only while the turn runs, then failed in a failed turn and stopped otherwise.
  * A finished turn never leaves a spinner.
  */
-export function spawnStatus(agent: Exclude<SpawnStatus, "pending"> | "idle" | undefined, result: Result | undefined, live: boolean, end: TurnEnd): SpawnStatus {
+export function spawnStatus(
+  agent: Exclude<SpawnStatus, "pending"> | "idle" | undefined,
+  result: Result | undefined,
+  live: boolean,
+  end: TurnEnd,
+  interrupted = false,
+): SpawnStatus {
   if (agent) return agent === "idle" ? "completed" : agent;
-  if (result) return result.is_error ? (isInterruption(result, end) ? "cancelled" : "failed") : "completed";
+  if (result) return result.is_error ? (isInterruption(result, end, interrupted) ? "cancelled" : "failed") : "completed";
   if (live) return "pending";
   return end === "failed" ? "failed" : "cancelled";
 }

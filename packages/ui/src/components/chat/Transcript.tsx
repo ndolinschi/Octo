@@ -111,7 +111,13 @@ export const Transcript = memo(function Transcript(props: {
   const lastTurn = isOrchestrator ? state.lastTurn : null;
   const lastPrompt = turns[turns.length - 1]?.prompt ?? null;
   // B4: how each request ended as the harness stored it, so a stopped turn reads the same after a reload as it did live.
-  const { lookup: storedEndingOf, settled: endingsSettled } = useStoredEndings(isOrchestrator && !running, `${turns.length}:${state.lastTurn?.status ?? ""}`);
+  // The sessions the conversation's messages were stored in (a transcript can show an earlier session's turns too).
+  const messageSessions = useMemo(() => [...new Set(messages.flatMap((m) => (m.session_id ? [m.session_id] : [])))].sort().join(" "), [messages]);
+  const { lookup: storedEndingOf, settled: endingsSettled } = useStoredEndings(
+    isOrchestrator && !running,
+    `${turns.length}:${state.lastTurn?.status ?? ""}`,
+    messageSessions,
+  );
   const storedLast = isOrchestrator ? storedEndingOf(lastPrompt) : undefined;
   const markers = state.compactions[agent.id];
   const slots = useMemo(
@@ -138,9 +144,20 @@ export const Transcript = memo(function Transcript(props: {
     lastOutcome && lastOutcome.status !== "completed"
       ? withOwnReason({ status: lastOutcome.status, error: lastOutcome.error, ...errorFieldsOf(lastOutcome) })
       : isOrchestrator && (agent.status === "failed" || (agent.error && !turnWarning(agent.error)))
-        ? withOwnReason({ status: "failed" as const, error: agent.error, ...(agent.error_hint ? { hint: agent.error_hint } : {}) })
+        ? // NEW-1: the agent row's error, else the stored one (the row can come back without it), before the turn's own step.
+          withOwnReason(
+            agent.error
+              ? {
+                  status: "failed" as const,
+                  // The row keeps no action; the stored failure of the same turn has it (the Retry a live failure shows).
+                  ...(storedLast?.error === agent.error ? storedLast.fields : {}),
+                  error: agent.error,
+                  ...(agent.error_hint ? { hint: agent.error_hint } : {}),
+                }
+              : { status: "failed" as const, error: storedLast?.error ?? null, ...storedLast?.fields },
+          )
         : !lastTurn && (storedLast?.status === "cancelled" || storedLast?.status === "failed")
-          ? withOwnReason({ status: storedLast.status, error: storedLast.error ?? null })
+          ? withOwnReason({ status: storedLast.status, error: storedLast.error ?? null, ...storedLast.fields })
           : null;
   const usageLine = useTurnLine(agent, isOrchestrator, running);
   const login = useLoginHint(isOrchestrator && failure ? agent.model : null);
@@ -199,7 +216,7 @@ export const Transcript = memo(function Transcript(props: {
             !isOrchestrator || last
               ? null
               : ((turn.prompt ? state.turnOutcomes[turn.prompt.id] : undefined) ??
-                (stored ? { status: stored.status, error: stored.error ?? null } : cut ? { status: "cancelled", error: null } : null));
+                (stored ? { status: stored.status, error: stored.error ?? null, ...stored.fields } : cut ? { status: "cancelled", error: null } : null));
           // How the turn ended, for its head row and its steps (a stopped turn's interrupted call reads "stopped").
           const end: TurnEnd =
             last && running
@@ -258,7 +275,7 @@ export const Transcript = memo(function Transcript(props: {
               {/* C5: a stopped earlier turn says so once, in its head; only a failure keeps its notice. */}
               {ended?.status === "failed" && (
                 <Suspense fallback={null}>
-                  {/* NEW-1: no stored error (the harness keeps none with an exchange): the turn's own last error, else "This request failed." */}
+                  {/* NEW-1: the stored error (code, message, hint) wins; else the turn's own last error, else "This request failed." */}
                   <TurnBanner
                     status={ended.status}
                     error={ended.error ?? turnFailureText(turn, ctx.results)}
@@ -486,7 +503,9 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   const worked = ms !== null && ms >= 1000 ? ms : null;
   const ending = props.end ?? null;
   const toolUses = turn.items.flatMap((item) => (item.kind === "tools" ? item.uses : []));
-  const steps = toolUses.map((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending));
+  // 3: a turn a restart interrupted (its stored exchange says so): the calls the interruption closed read "interrupted".
+  const interrupted = props.stored?.interrupted === true && ending === "failed";
+  const steps = toolUses.map((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending, interrupted));
   // Open by default when a step failed or was stopped (the head of a stopped turn shows what the stop cut).
   const showSteps = worked === null || (stepsOpen ?? steps.some((s) => s === "error" || s === "stopped"));
   const head = worked === null ? null : turnHead(ending, worked, steps, props.stored);
@@ -504,7 +523,7 @@ const AssistantTurn = memo(function AssistantTurn(props: {
       ? props.thinking
         ? "thinking"
         : null
-      : lastItem.kind === "tools" && lastItem.uses.some((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending) === "running")
+      : lastItem.kind === "tools" && lastItem.uses.some((u) => stepState(ctx.results.get(u.id), ctx.agentRunning, ending, interrupted) === "running")
         ? "tool"
         : null;
   const prose = proseClass(compact ? "compact" : "reading");
@@ -538,7 +557,11 @@ const AssistantTurn = memo(function AssistantTurn(props: {
         if (item.kind === "tools" && !showSteps) return null;
         return (
           <Suspense key={item.key} fallback={null}>
-            {item.kind === "tools" ? <ToolGroup uses={item.uses} end={ending} /> : <DelegationGroup uses={item.uses} live={live} end={ending} />}
+            {item.kind === "tools" ? (
+              <ToolGroup uses={item.uses} end={ending} interrupted={interrupted} />
+            ) : (
+              <DelegationGroup uses={item.uses} live={live} end={ending} interrupted={interrupted} />
+            )}
           </Suspense>
         );
       })}
@@ -570,7 +593,7 @@ const NO_ENDINGS: StoredEndingLookup = () => undefined;
  * long it worked), read when no turn runs and again when one ends (`refresh`). Nothing without project sessions. The lookup
  * (`lib/storedEndings`) is its own chunk, fetched with the session.
  */
-function useStoredEndings(enabled: boolean, refresh: string): { lookup: StoredEndingLookup; settled: boolean } {
+function useStoredEndings(enabled: boolean, refresh: string, messageSessions: string): { lookup: StoredEndingLookup; settled: boolean } {
   const { bridge } = useApp();
   const { projectId, state } = useProject();
   // The conversation's own session (decision 96), else the project's default one.
@@ -588,9 +611,13 @@ function useStoredEndings(enabled: boolean, refresh: string): { lookup: StoredEn
     // empty conversation reads its endings), or the turns would stay held back for good.
     const done = () => setLoaded(true);
     const wait = window.setTimeout(done, ENDINGS_WAIT_MS);
-    Promise.all([bridge.getSession(projectId, sessionId), import("../../lib/storedEndings")])
+    // NEW-1: this session's exchanges first, then those of any other session whose messages the transcript shows.
+    const others = messageSessions.split(" ").filter((id) => id && id !== sessionId);
+    const getSession = bridge.getSession;
+    const read = (id: string) => getSession(projectId, id).then((d) => d.exchanges);
+    Promise.all([read(sessionId), Promise.all(others.map((id) => read(id).catch(() => []))), import("../../lib/storedEndings")])
       .then(
-        ([d, m]) => alive && setLookup(() => m.storedEndingLookup(d.exchanges)),
+        ([own, rest, m]) => alive && setLookup(() => m.storedEndingLookup(own, ...rest)),
         // Unreadable: the turns keep what the transcript itself says.
         () => undefined,
       )
@@ -599,7 +626,7 @@ function useStoredEndings(enabled: boolean, refresh: string): { lookup: StoredEn
       alive = false;
       window.clearTimeout(wait);
     };
-  }, [enabled, sessionId, bridge, projectId, refresh]);
+  }, [enabled, sessionId, bridge, projectId, refresh, messageSessions]);
   return { lookup, settled: loaded || unneeded };
 }
 

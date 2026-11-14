@@ -13,6 +13,8 @@ import { Menu, type MenuItem } from "../primitives/Menu";
 import { Notice } from "../primitives/Notice";
 import { Presence } from "../primitives/Presence";
 import { SectionHeader } from "../primitives/SectionHeader";
+import { Sheet } from "../primitives/Sheet";
+import { usePhone } from "../../lib/phone";
 
 export type QueueListProps = {
   paused: boolean;
@@ -37,6 +39,29 @@ type Pending = { kind: "remove" | "send" | "stop"; id: string } | { kind: "resum
  * now" and remove; folded past three; the paused state with Resume / Clear. Nothing when the queue is empty, paused or not (P2-8).
  */
 export function QueueList(props: QueueListProps) {
+  const phone = usePhone();
+  const [open, setOpen] = useState(false);
+  if (!phone) return <QueueBody {...props} />;
+  // Direction 7: on the phone the queue is one chip above the field ("2 queued") that opens the list in a bottom sheet.
+  const count = props.messages.length;
+  if (!count) return null;
+  return (
+    <div data-phone-queue className="flex px-1 pt-1">
+      <Button variant="quiet" size="sm" icon={props.paused ? Pause : Clock} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
+        {props.paused ? `${count} queued · paused` : `${count} queued`}
+      </Button>
+      <Presence show={open}>
+        <Sheet label="Waiting to send" onClose={() => setOpen(false)}>
+          <div className="px-2 pb-2">
+            <QueueBody {...props} />
+          </div>
+        </Sheet>
+      </Presence>
+    </div>
+  );
+}
+
+function QueueBody(props: QueueListProps) {
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState<Pending>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());

@@ -31,5 +31,6 @@ test("texts", () => {
   assert.equal(connectionText("checking")?.text, "Connecting…");
   assert.equal(connectionText("offline", "refused")?.text, "Access refused");
   assert.equal(connectionText("offline", "unreadable")?.text, "Unreadable answer");
+  assert.equal(connectionText("offline", "unanswered")?.text, "Not answering");
   assert.equal(connectionText("online", "refused"), null);
 });

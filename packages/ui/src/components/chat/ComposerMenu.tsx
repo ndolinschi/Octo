@@ -2,7 +2,18 @@ import type { Bridge, PluginAgent } from "@octo/agent-client";
 import { AtSign, Image as ImageIcon, MessageSquare, Search, type LucideIcon } from "lucide-react";
 import { GLYPH } from "../primitives/glyphs";
 import { Glyph } from "../primitives/Glyph";
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { useApp } from "../../state/app";
 import { useOptionalCode } from "../../state/code";
@@ -13,6 +24,8 @@ import { usePresence } from "../primitives/Presence";
 import { PopupList, popupOptionId, POPUP_PANEL } from "../primitives/PopupList";
 import { popupMove } from "../primitives/popupNav";
 import { useLatest } from "../../lib/hooks";
+import { usePhone } from "../../lib/phone";
+import { PhoneComposerSheet } from "./PhoneComposerSheet";
 
 /** What picking an entry does: text goes into the composer at the trigger (or the caret); `run` does something else. */
 export type MenuPick = { insert: string } | { run(): void };
@@ -71,6 +84,8 @@ export const ComposerMenu = forwardRef<
     onPick(pick: MenuPick): void;
     /** `escape`: Esc closed it (opened by the button, focus goes back to the button; after a pick or a click it goes to the text). */
     onClose(reason?: "escape"): void;
+    /** Direction 7: the mode, model and folder chips, which the phone's "+" sheet carries (the row has no room for them). */
+    chips?: ReactNode;
   }
 >(function ComposerMenu(props, handle) {
   const { bridge } = useApp();
@@ -88,6 +103,8 @@ export const ComposerMenu = forwardRef<
   const search = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const { onActive, onClose } = props;
+  // Direction 7: on the phone the "+" opens a sheet first (attach, mention or run, mode, model, folder); "Mention" opens this list.
+  const [sheet, setSheet] = useState(usePhone() && props.query === null);
 
   useEffect(() => {
     let alive = true;
@@ -190,8 +207,8 @@ export const ComposerMenu = forwardRef<
   // Opened by the button, the search field takes focus once the panel exists (it renders after `pos`).
   const placed = pos !== null;
   useEffect(() => {
-    if (props.query === null && placed) search.current?.focus();
-  }, [props.query, placed]);
+    if (props.query === null && placed && !sheet) search.current?.focus();
+  }, [props.query, placed, sheet]);
   // Focus that leaves the "+" menu's search for anything but the menu or its button closes it (decision 95); a move to nothing
   // (the window lost focus) does not.
   const plus = props.query === null;
@@ -204,15 +221,16 @@ export const ComposerMenu = forwardRef<
     };
     el.addEventListener("focusout", left);
     return () => el.removeEventListener("focusout", left);
-  }, [plus, placed, onClose, props.anchor]);
+  }, [plus, placed, onClose, props.anchor, sheet]);
   useEffect(() => {
+    if (sheet) return;
     const outside = (e: PointerEvent) => {
       const t = e.target as Node;
       if (!panel.current?.contains(t) && !props.anchor.current?.contains(t) && !props.box.current?.contains(t)) onClose();
     };
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
-  }, [onClose, props.anchor, props.box]);
+  }, [onClose, props.anchor, props.box, sheet]);
 
   const choose = (e: Entry | undefined) => e && props.onPick(e.pick);
 
@@ -260,8 +278,27 @@ export const ComposerMenu = forwardRef<
         };
       }),
   }));
+  if (sheet)
+    return (
+      <PhoneComposerSheet
+        chips={props.chips}
+        onClose={() => onClose()}
+        onImage={() => {
+          onClose();
+          props.onPickImage();
+        }}
+        onMenu={() => setSheet(false)}
+      />
+    );
   return createPortal(
-    <div ref={panel} data-composer-menu data-state={state} style={{ left: pos.left, bottom: pos.bottom, width: pos.width }} className={POPUP_PANEL}>
+    <div
+      ref={panel}
+      data-composer-menu
+      data-inline={props.query !== null || undefined}
+      data-state={state}
+      style={{ left: pos.left, bottom: pos.bottom, width: pos.width }}
+      className={POPUP_PANEL}
+    >
       {props.query === null && (
         <div className="flex h-bar shrink-0 items-center gap-2 border-b border-line px-3">
           <Glyph icon={Search} size={14} className="shrink-0 text-fg-3" />

@@ -2,7 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { middleTruncate } from "../../lib/format";
-import { canRun, chipLabel } from "../../lib/providers/providers";
+import { canRun, chipLabel, chipParts } from "../../lib/providers/providers";
 import { useProviders } from "../../lib/providers/useProviders";
 import { parseAcp } from "../../lib/models";
 import { useApp } from "../../state/app";
@@ -94,6 +94,7 @@ export function ModelPicker(props: ModelPickerProps) {
         }
         name={props.label}
         label={text}
+        parts={typeof label === "string" ? chipParts(text) : null}
         bare={props.bare ?? false}
         open={open}
         disabled={props.disabled ?? false}

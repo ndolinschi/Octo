@@ -10,12 +10,12 @@ import { useTranscript } from "./transcriptContext";
 
 /** A tool call's input and result load with the first one opened (their own chunk: links, tables, diff colours). */
 const ToolDetailLazy = lazy(() => import("./ToolDetail").then((m) => ({ default: m.ToolDetail })));
-function ToolDetail({ uses, end }: { uses: readonly ToolUse[]; end: TurnEnd }) {
+function ToolDetail({ uses, end, interrupted }: { uses: readonly ToolUse[]; end: TurnEnd; interrupted: boolean }) {
   const [use, ...more] = uses;
   if (!use) return null;
   return (
     <Suspense fallback={<div className="h-row rounded-md bg-code-bg" aria-busy />}>
-      <ToolDetailLazy use={use} more={more} end={end} />
+      <ToolDetailLazy use={use} more={more} end={end} interrupted={interrupted} />
     </Suspense>
   );
 }
@@ -84,25 +84,25 @@ function tipOf(run: readonly Item[]): string {
  * past-tense verb, the object, a quiet qualifier; its state is the leading glyph and, when it is not "done", a quiet word at the
  * right. Consecutive edits of one file are one row with one combined diff. The group's summary leads with what was done and puts
  * problems as a quiet suffix; its glyph shows the worst state only when every call ended that way (`groupState`).
- * `end`: how the turn ended (a stop's call reads "stopped").
+ * `end`: how the turn ended (a stop's call reads "stopped"); `interrupted`: a restart cut the turn (its calls read "interrupted").
  */
-export function ToolGroup({ uses, end = null }: { uses: ToolUse[]; end?: TurnEnd }) {
+export function ToolGroup({ uses, end = null, interrupted = false }: { uses: ToolUse[]; end?: TurnEnd; interrupted?: boolean }) {
   const ctx = useTranscript();
   const code = useOptionalCode();
   const locate = useMemo(() => (code ? (p: string) => locateInProject(code.folders, p) : () => null), [code]);
   // A refusal (the agent's "rejected", the harness's deny) reads as stopped, never failed (retest3 G1).
   const items: Item[] = uses.map((use) => {
     const result = ctx.results.get(use.id);
-    return { use, state: viewState(stepState(result, ctx.agentRunning, end), result), row: callRow(use.name, use.input, locate) };
+    return { use, state: viewState(stepState(result, ctx.agentRunning, end, interrupted), result), row: callRow(use.name, use.input, locate) };
   });
   const runs = mergeRuns(items, (it) =>
     it.state === "done" && it.row.path && toolKind(it.use.name, it.use.input) === "edit" ? `${it.row.folder}\u0001${it.row.path}` : "",
   );
   const folder = (code?.folders.length ?? 0) > 1 && new Set(items.map((it) => it.row.folder).filter(Boolean)).size > 1;
   const [only] = runs;
-  if (runs.length === 1 && only) return <ToolRow run={only} folder={folder} end={end} />;
+  if (runs.length === 1 && only) return <ToolRow run={only} folder={folder} end={end} interrupted={interrupted} />;
   const states = items.map((it) => it.state);
-  const problems = groupProblems(states);
+  const problems = groupProblems(states, interrupted ? "interrupted" : "stopped");
   return (
     <ActivityRow
       state={ROW_STATE[groupState(states)]}
@@ -116,16 +116,16 @@ export function ToolGroup({ uses, end = null }: { uses: ToolUse[]; end?: TurnEnd
       tip={[groupSummary(uses), problems].filter(Boolean).join(" · ")}
     >
       {runs.map((run) => (
-        <ToolRow key={run[0]?.use.id} run={run} folder={folder} end={end} />
+        <ToolRow key={run[0]?.use.id} run={run} folder={folder} end={end} interrupted={interrupted} />
       ))}
     </ActivityRow>
   );
 }
 
-function ToolRow({ run, folder, end }: { run: readonly Item[]; folder: boolean; end: TurnEnd }) {
+function ToolRow({ run, folder, end, interrupted }: { run: readonly Item[]; folder: boolean; end: TurnEnd; interrupted: boolean }) {
   const [first] = run;
   if (!first) return null;
-  const word = WORD[first.state];
+  const word = interrupted && first.state === "stopped" ? "interrupted" : WORD[first.state];
   return (
     <ActivityRow
       state={ROW_STATE[first.state]}
@@ -134,7 +134,7 @@ function ToolRow({ run, folder, end }: { run: readonly Item[]; folder: boolean; 
       tip={tipOf(run)}
       {...(word ? { aside: word } : {})}
     >
-      <ToolDetail uses={run.map((r) => r.use)} end={end} />
+      <ToolDetail uses={run.map((r) => r.use)} end={end} interrupted={interrupted} />
     </ActivityRow>
   );
 }

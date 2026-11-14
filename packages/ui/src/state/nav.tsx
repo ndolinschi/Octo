@@ -11,7 +11,8 @@ type Listener = (turn: TurnRef) => void;
 export type ToolRequest = { projectId: string; tool: "usage"; scope: "project" | "all" };
 
 /** One palette row offered by the open workspace (tabs and tab actions). */
-export type WorkspaceCommand = { id: string; label: string; detail?: string; shortcut?: string; run(): void };
+/** `search`: text that is searched but not shown (a tool's purpose). */
+export type WorkspaceCommand = { id: string; label: string; detail?: string; search?: string; shortcut?: string; run(): void };
 
 /** What the palette's workspace rows need from the open workspace (`workspace/paletteCommands`). */
 export type PaletteWorkspace = {

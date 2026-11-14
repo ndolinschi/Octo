@@ -8,6 +8,8 @@ import { ScrollArea } from "../primitives/ScrollArea";
 import { SearchField } from "../primitives/SearchField";
 import { cn } from "../../lib/cn";
 import { navGroups } from "./navGroups";
+import { useHost } from "../../state/host";
+import { ON_YOUR_COMPUTER, sectionLocked } from "../../lib/remoteDevice";
 import type { SectionId } from "./settingsIndex";
 
 const GROUPS = navGroups();
@@ -40,6 +42,7 @@ export function SettingsNav(props: {
   // S4: ↑/↓, Home and End move between the sections (the sidebar's list keys); Enter opens one.
   const sections = useRef<HTMLDivElement>(null);
   useRowKeys(sections);
+  const device = useHost().remoteDevice;
   return (
     <nav aria-label="Settings" className="flex h-full w-sidebar shrink-0 flex-col bg-window py-gutter pl-gutter max-settings:hidden">
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-pane">
@@ -58,9 +61,11 @@ export function SettingsNav(props: {
                   size="md"
                   title={s.label}
                   leading={<Glyph icon={GLYPHS[s.id]} size={16} />}
-                  href={settingsHref(s.id)}
+                  {...(sectionLocked(device, s.id)
+                    ? // Remote access: a section the device may not change (the harness refuses it) stays in the list, disabled.
+                      { description: ON_YOUR_COMPUTER, disabled: true }
+                    : { href: settingsHref(s.id), onClick: () => props.onQuery("") })}
                   selected={!props.searching && s.id === props.section}
-                  onClick={() => props.onQuery("")}
                 />
               ))}
             </div>

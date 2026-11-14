@@ -97,3 +97,23 @@ test("a network failure is retried after a pause", async () => {
   assert.equal(es.readyState, 1);
   es.close();
 });
+
+test("a poll that never answers is abandoned after its deadline and the stream reopens", async () => {
+  let n = 0;
+  const pauses: number[] = [];
+  const f: FetchFn = (_url, init) => {
+    n++;
+    if (n === 1) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ stream: "ps", events: [] }) });
+    // A stalled tunnel: no answer until the poll's signal gives up on it.
+    return new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+  };
+  const Ctor = pollingEventSource({ token: "t", fetch: f, deadlineMs: 20, sleep: (ms) => (pauses.push(ms), Promise.resolve()) });
+  const es = new Ctor("/v1/projects/p1/events");
+  let errors = 0;
+  es.onerror = () => errors++;
+  await new Promise((r) => setTimeout(r, 60));
+  es.close();
+  assert.ok(errors >= 1, "the stalled poll counts as a failure");
+  assert.equal(pauses[0], 1000);
+  assert.ok(n >= 3, "a new stream was opened after the stalled poll");
+});

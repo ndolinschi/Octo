@@ -1,4 +1,9 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
+import { usePhone } from "../../lib/phone";
+import { ON_YOUR_COMPUTER, sectionLocked } from "../../lib/remoteDevice";
+import { useHost } from "../../state/host";
+import { Notice } from "../primitives/Notice";
+import { Glyph } from "../primitives/Glyph";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { useEscape } from "../../lib/hooks";
 import { useRowKeys } from "../../lib/hooksMore";
@@ -7,7 +12,7 @@ import { settingsHref } from "../../lib/route";
 import { openShortcuts } from "../../lib/openShortcuts";
 import { useApp } from "../../state/app";
 import { Button } from "../primitives/Button";
-import { ListFrame } from "../primitives/Card";
+import { Card, ListFrame } from "../primitives/Card";
 import { ListRow } from "../primitives/ListRow";
 import { ScrollArea } from "../primitives/ScrollArea";
 import { SearchField } from "../primitives/SearchField";
@@ -25,6 +30,9 @@ import { ProvidersSection } from "./ProvidersSection";
 import { SettingsGroup, SettingsRow } from "./parts";
 import { SettingsNav } from "./SettingsNav";
 import { searchSettings, SECTIONS, sectionLabel, sectionOf, type IndexedRow, type SectionId } from "./settingsIndex";
+
+/** Direction 7: the phone's section screen was opened from the list in this visit (its Back is then the history's). */
+let fromList = false;
 
 const IntegrationsView = lazy(() => import("./IntegrationsView").then((m) => ({ default: m.IntegrationsView })));
 
@@ -62,6 +70,10 @@ export function SettingsPage(props: {
   projectId?: string | null;
 }) {
   const section = sectionOf(props.section);
+  // Direction 7: on the phone `#/settings/` is the list of sections and a section is a screen of its own, Back between them.
+  const phone = usePhone();
+  const device = useHost().remoteDevice;
+  const index = phone && props.section === "";
   const [query, setQuery] = useState("");
   const searching = query.trim() !== "";
   const results = useMemo(() => searchSettings(query), [query]);
@@ -98,6 +110,11 @@ export function SettingsPage(props: {
     return () => window.clearTimeout(id);
   }, [target, section]);
 
+  const backToSections = () => {
+    if (fromList) window.history.back();
+    else window.location.replace(settingsHref(""));
+    fromList = false;
+  };
   const open = (r: IndexedRow) => {
     setQuery("");
     window.location.hash = settingsHref(r.section);
@@ -138,8 +155,14 @@ export function SettingsPage(props: {
               // group captions and the rows' labels.
               className="mx-auto flex w-full max-w-settings-page flex-col gap-6 px-6 pt-8 pb-10 max-sm:px-4 max-sm:pt-4"
             >
+              {phone && !index && !searching && (
+                <Button variant="quiet" icon={ArrowLeft} onClick={backToSections} className="-ml-2 self-start">
+                  Settings
+                </Button>
+              )}
+              {index && <SearchField label="Search settings" value={query} onChange={setQuery} onKeyDown={searchKeys} />}
               {/* S4: under the floor the page's Back and the section menu are one header line, the search under it. */}
-              <div className="flex flex-col gap-2 settings:hidden">
+              <div className={cn("flex flex-col gap-2 settings:hidden", phone && "hidden")}>
                 <div className="flex h-ctl-lg items-center gap-2">
                   <Button variant="quiet" icon={ArrowLeft} onClick={onBack} title="Back to the app" className="-ml-2 shrink-0">
                     Back
@@ -148,23 +171,49 @@ export function SettingsPage(props: {
                     <Select
                       label="Section"
                       value={section}
-                      options={SECTIONS.map((x) => ({ value: x.id, label: x.label }))}
+                      options={SECTIONS.filter((x) => !sectionLocked(device, x.id) || x.id === section).map((x) => ({ value: x.id, label: x.label }))}
                       onChange={(v) => (window.location.hash = settingsHref(sectionOf(v)))}
                     />
                   </div>
                 </div>
                 <SearchField label="Search settings" value={query} onChange={setQuery} onKeyDown={searchKeys} />
               </div>
-              <h1 id="settings-title" className="px-settings-inset text-display font-medium text-fg">
-                {searching ? "Search" : sectionLabel(section)}
+              <h1 id="settings-title" className={cn("px-settings-inset text-display font-medium text-fg", index && !searching && "sr-only")}>
+                {searching ? "Search" : index ? "Settings" : sectionLabel(section)}
               </h1>
-              {searching ? (
+              {index && !searching ? (
+                <Card surface="panel" padding="sm">
+                  {SECTIONS.map((x) =>
+                    sectionLocked(device, x.id) ? (
+                      // Remote access: what this device may not change stays listed, disabled, with where to change it.
+                      <ListRow key={x.id} size="lg" title={x.label} description={ON_YOUR_COMPUTER} disabled />
+                    ) : (
+                      <ListRow
+                        key={x.id}
+                        size="lg"
+                        title={x.label}
+                        trailing={<Glyph icon={ChevronRight} size={16} className="text-fg-3" />}
+                        trailingShown
+                        onClick={() => {
+                          fromList = true;
+                          window.location.hash = settingsHref(x.id);
+                        }}
+                      />
+                    ),
+                  )}
+                </Card>
+              ) : searching ? (
                 <Results query={query} results={results} onOpen={open} list={resultList} />
               ) : (
                 // Cross-part leftovers (a): the row sections keep a reading measure (`settings-rows`) from the same left edge, so a
                 // row's control sits near its label; Providers keeps the column for its list | detail surface.
                 <div className={cn("flex flex-col gap-6", section !== "providers" && section !== "usage" && "max-w-settings-rows")}>
-                  {CONTENT[section](props.projectId ?? null)}
+                  {sectionLocked(device, section) ? (
+                    // Reached by a link or a search result: the harness would refuse every change here.
+                    <Notice tone="info">{`${sectionLabel(section)} can't be changed from this device. ${ON_YOUR_COMPUTER}.`}</Notice>
+                  ) : (
+                    CONTENT[section](props.projectId ?? null)
+                  )}
                 </div>
               )}
             </div>

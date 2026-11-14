@@ -49,6 +49,8 @@ export function ActivityRow(props: {
   note?: ReactNode;
   className?: string;
   data?: string;
+  /** Direction 7 (phone): the detail goes on a second line under the verb, so neither is cut to fit the other. */
+  stacked?: boolean;
 }) {
   const [inner, setInner] = useState(props.defaultOpen ?? false);
   const open = props.open ?? inner;
@@ -88,13 +90,14 @@ export function ActivityRow(props: {
         title={
           <span className="flex min-w-0 items-center gap-1">
             <span className="flex min-w-0 items-baseline gap-1.5">
-              <span className={props.detail === undefined || props.detail === null ? "min-w-0 truncate" : "shrink-0"}>{props.verb}</span>
-              {props.detail !== undefined && props.detail !== null && <span className="min-w-0 truncate text-fg-3">{props.detail}</span>}
+              <span className={props.detail === undefined || props.detail === null || props.stacked ? "min-w-0 truncate" : "shrink-0"}>{props.verb}</span>
+              {!props.stacked && props.detail !== undefined && props.detail !== null && <span className="min-w-0 truncate text-fg-3">{props.detail}</span>}
             </span>
             {expandable && <Glyph icon={ChevronRight} size={14} className={cn("shrink-0 text-fg-3 transition-[rotate] duration-150", open && "rotate-90")} />}
           </span>
         }
         {...(showMeta ? { meta } : {})}
+        {...(props.stacked && props.detail !== undefined && props.detail !== null ? { description: props.detail } : {})}
         {...(expandable ? { onClick: toggle, expanded: open } : props.onClick ? { onClick: props.onClick } : {})}
         {...(props.href ? { href: props.href } : {})}
         {...(props.tip ? { tip: props.tip } : {})}
@@ -106,7 +109,7 @@ export function ActivityRow(props: {
       {props.note && <p className="-mt-1 truncate pb-1 pl-8 text-xs text-fg-3">{props.note}</p>}
       {nested && open && (
         // C1: what a row opens sits on the row's text line (16 glyph + 8 gap), so the nesting reads at a glance.
-        <div id={id} className="mt-1 mb-1 pl-6">
+        <div id={id} data-activity-body className="mt-1 mb-1 pl-6">
           {props.children}
         </div>
       )}

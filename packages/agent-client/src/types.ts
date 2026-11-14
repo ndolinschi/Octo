@@ -1378,6 +1378,8 @@ export type MemoryExchange = {
   interrupted?: boolean;
   /** Schema 15: why a failed turn failed (the catalogue's code, message and hint); absent otherwise and on older records. */
   error?: { code: string; message: string; hint?: string };
+  /** A turn that did not complete (failed, stopped, interrupted): whether text it had written stays in the conversation; absent on a completed or forgotten exchange. */
+  kept_text?: boolean;
 };
 export type MemorySessionDetail = { session: MemorySession; exchanges: MemoryExchange[] };
 

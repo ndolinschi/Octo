@@ -3505,3 +3505,44 @@ the Agents panel marks in the browser; the line-number click in the Changes diff
 
 Not verified: images on a live harness and at 390px; the review workspace open; real ACP titles in tool rows; "+N
 more" in the footer; anything in WebKit.
+
+## As built — the phone layout mode and the fourth re-test (2026-11-14)
+
+- **Phone layout mode** (the owner: "the mobile version is too cramped"; it is the main view of the mobile web client).
+  One switch: `lib/phone.ts` `PHONE_QUERY = "(max-width: 640px) and (pointer: coarse), (max-width: 479.98px)"`, read
+  once in `OctoApp` (a host may force it with `HostCapabilities.layout`), exposed as `usePhone()` and `data-phone` on
+  `<html>`; every phone rule hangs off it and nothing changes while it is off (static desktop screens: 0 changed
+  pixels). A desktop window under 480px is in phone mode.
+  - Header: one 44px line — menu, the session title with the project as meta, a state glyph, "⋯". In a panel or file:
+    Back, the name, "⋯". The "⋯" sheet groups: this session's tabs and New session; Run; Panels; Status (changed
+    files, running commands, budget, other projects' agents, the remote indicator); Project settings; Settings.
+  - Navigation: the sidebar is a full-screen sheet with 44px rows; picking closes it.
+  - Composer: one line ("+", the field, the context ring, Send/Stop) growing to `min(120px, 20 %)`; "+" opens a sheet
+    (attach, mention, mode, model, folder); the queue is a chip that opens a sheet; no session chip. It follows the
+    visual viewport (`app/phone/useVisualViewport`) so it stays above the on-screen keyboard; safe-area insets.
+  - No title bar and no status bar. Conversation: prose 16/24, helper rows on two lines, tool bodies at full column
+    width, the diff without the old-number column, 44px buttons on cards, no turn rail, reply footers always shown.
+  - Panels and files are full-screen with Back; menus, popovers, selects and pickers are bottom sheets (the new `Sheet`
+    primitive); the palette is a full-screen search; Settings is a list of sections, then the section. Sheets, panels
+    and navigation are history entries (`lib/historyLayer.ts`): Back closes them in order. A long press shows a
+    control's description.
+  - Open: system Back inside a panel leaves the panel instead of stepping from detail to list; a panel's own title
+    repeats the header; the editor opens editable; "Rewind to here" overlaps the prompt bubble's edge.
+- **Send is disabled over the 1 MB limit** in every layout (NEW-11).
+- **A remote device** (`lib/remoteDevice.ts`, the mobile web host): entry points the harness would refuse are hidden
+  or say "Change this on your computer"; a read-only device has no Send.
+- **Fourth re-test.** A failed turn's stored `error` is read for every session a transcript shows (action from the
+  code through `ACTION_BY_CODE`, to be kept in step with the harness catalogue); the interrupted banner's hint follows
+  `kept_text`; calls and helpers of an interrupted turn read "interrupted"; first reads have a 10 s deadline
+  (`lib/deadline.ts`) with a new "didn't answer in time" state, retries at 1–30 s, on focus and on stream reopen, and
+  the hosts abort a hung GET after 12 s (the owner's "malformed" proxy mode never answered and held all six
+  connections); the palette's open/close is a small state machine (`lib/typeahead.ts`) so keys typed during a reopen
+  are delivered once; pending approvals and forms load on sync, so a helper reads "Waiting for your approval" after a
+  reload and in Home's "Agents at work"; the demo's stored endings carry `error`, `interrupted`, `kept_text`; Monaco's
+  diff uses the conversation's tints (lines 9/8 %, words 18/15 %, gutter transparent); Changes has its purpose (i); a
+  narrow model chip reads "Opus 5.5" with the agent's mark.
+- **Entry bundle 149.98 kB of 158.90**: everything the page loads at start is one chunk (`codeSplitting` group
+  `$initial` in `apps/desktop/vite.config.ts`) — the same code as ~40 preloaded chunks compressed worse.
+
+Not verified: a real phone, WebKit, the real on-screen keyboard, a screen reader; NEW-7 before the change (it did not
+reproduce here; the cause was read from the code); built-in tool rows of a real interrupted turn.

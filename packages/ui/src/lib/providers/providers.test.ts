@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BridgeConfig, Plugin, ProviderList, SettingsView } from "@octo/agent-client";
 import { deriveProviders } from "./derive";
-import { canRun, chipLabel } from "./providers";
+import { canRun, chipLabel, chipParts } from "./providers";
 import { tidyAgentLabel } from "../models";
 import { API_PROVIDER, ROUTER_PROVIDER, connectAction, providerOf, stateText } from "./providersMore";
 import { extraReason } from "./reasons";
@@ -150,4 +150,12 @@ test("extraReason drops a reason that only repeats the state", () => {
   assert.equal(extraReason({ state: "not_logged_in", reason: "not logged in" }), "");
   assert.equal(extraReason({ state: "not_installed", reason: "grok: command not found on PATH" }), "grok: command not found on PATH");
   assert.equal(extraReason({ state: "ready", reason: "" }), "");
+});
+
+test("item 10: an agent model's chip label splits so the provider gives way first", () => {
+  assert.deepEqual(chipParts(chipLabel("acp:claude-code/claude-opus-5-5", list)), { provider: "Claude Code · ", model: "Opus 5.5" });
+  assert.equal(chipParts(chipLabel("claude-haiku-5-5", list)), null);
+  assert.equal(chipParts("Claude Code"), null);
+  assert.equal(chipParts(" · Opus"), null);
+  assert.equal(chipParts("Claude Code · "), null);
 });

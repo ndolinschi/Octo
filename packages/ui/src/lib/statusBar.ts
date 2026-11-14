@@ -20,9 +20,11 @@ export function workingText(projectsRunning: number): string | null {
 /** The connection item: only when the bridge is not fine, and what to do. */
 export function connectionText(
   health: "checking" | "online" | "offline",
-  cause: "refused" | "unreadable" | null = null,
+  cause: "refused" | "unreadable" | "unanswered" | null = null,
 ): { text: string; hint: string } | null {
   if (health === "online") return null;
+  // P2-4: it took the connection and never answered; Octo keeps trying.
+  if (cause === "unanswered") return { text: "Not answering", hint: "Octo's local service didn't answer in time. Octo keeps trying; select to retry now." };
   // A15: it answered, and refused this window's token.
   // A15 / P2-4: it answered, so not "offline"; the notice above says what to do.
   if (cause)

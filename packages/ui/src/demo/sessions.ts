@@ -650,25 +650,40 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
   const inSession = (id: string, sid: string | undefined) => (a: { session_id?: string }) =>
     sid === undefined ? true : a.session_id ? a.session_id === sid : isDefaultId(id, sid);
 
-  const exchangesOf = (m: Main): MemoryExchange[] => {
+  /**
+   * A seeded session's exchanges, on its own messages (`turn_id` and `message_id` are the ids of its request and answer, so
+   * the conversation finds each request's stored ending); the last one ends as the session did, with the harness's fields.
+   */
+  const exchangesOf = (id: string, m: Main): MemoryExchange[] => {
     const talk = m.seed?.talk ?? [];
-    return talk.map(([request, answer], i) => ({
-      id: `${m.id}_x${i + 1}`,
-      session_id: m.id,
-      turn_id: i + 1,
-      message_id: i + 2,
-      request,
-      answer,
-      answer_truncated: false,
-      status: m.seed?.state === "failed" && i === talk.length - 1 ? "failed" : m.seed?.state === "stopped" && i === talk.length - 1 ? "stopped" : "completed",
-      started_at: new Date(Date.parse(m.started_at) + i * 600_000).toISOString(),
-      duration_ms: 20_000,
-      model: m.model,
-      files: [],
-      agents: [],
-      tokens: { input: 2000, output: 400 },
-      cost_usd: null,
-    }));
+    const own = (records.get(id)?.messages ?? []).filter((x) => x.agent_id === m.root);
+    const asked = own.filter((x) => x.role === "user");
+    return talk.map(([request, answer], i): MemoryExchange => {
+      const prompt = asked[i];
+      const reply = own.find((x) => x.role === "assistant" && prompt !== undefined && x.id > prompt.id);
+      const last = i === talk.length - 1;
+      const status = last && m.seed?.state === "failed" ? "failed" : last && m.seed?.state === "stopped" ? "stopped" : "completed";
+      return {
+        id: `${m.id}_x${i + 1}`,
+        session_id: m.id,
+        turn_id: prompt?.id ?? 0,
+        message_id: reply?.id ?? 0,
+        request,
+        answer,
+        answer_truncated: false,
+        status,
+        started_at: prompt?.created_at ?? new Date(Date.parse(m.started_at) + i * 600_000).toISOString(),
+        duration_ms: 20_000,
+        model: m.model,
+        files: [],
+        agents: [],
+        tokens: { input: 2000, output: 400 },
+        cost_usd: null,
+        // The same failure as the session's root agent row (`parallel.ts`), as the harness stores it.
+        ...(status === "failed" ? { error: { code: "agent_failed", message: "The model returned an error." } } : {}),
+        ...(status !== "completed" ? { kept_text: reply !== undefined } : {}),
+      };
+    });
   };
   const defaultExchanges = (id: string, m: Main): MemoryExchange[] =>
     (records.get(id)?.endings ?? []).map((x, i) => ({
@@ -687,6 +702,9 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
       agents: [],
       tokens: { input: 0, output: 0 },
       cost_usd: null,
+      ...(x.error ? { error: x.error } : {}),
+      ...(x.interrupted ? { interrupted: true } : {}),
+      ...(x.kept_text === undefined ? {} : { kept_text: x.kept_text }),
     }));
 
   const agentTranscript = async (id: string, sid: string) => {
@@ -735,7 +753,7 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
       const m = mainOf(id, sid);
       const children = (await snapshot(id)).filter((s) => s.parent_session_id === sid).sort((a, b) => a.started_at.localeCompare(b.started_at));
       const agent = session.agent_id ? (await bridge.listAgents(id)).find((a) => a.id === session.agent_id) : undefined;
-      const exchanges = m ? (isDefault(rec, m) ? defaultExchanges(id, m) : exchangesOf(m)) : [];
+      const exchanges = m ? (isDefault(rec, m) ? defaultExchanges(id, m) : exchangesOf(id, m)) : [];
       return { session, exchanges, children, ...(agent ? { agent } : {}) };
     },
     getSessionTranscript: async (id, sid) => {

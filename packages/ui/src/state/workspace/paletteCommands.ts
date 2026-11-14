@@ -1,8 +1,9 @@
 import { MOD_LABEL } from "../../lib/keys";
+import { TOOL_HINT, TOOL_PURPOSE, type PurposeTool } from "../../lib/toolPurpose";
 import type { PaletteWorkspace, WorkspaceCommand } from "../nav";
 import { tabButton } from "./ids";
 import * as L from "./layout";
-import type { TabId } from "./layout";
+import type { TabId, ToolTab } from "./layout";
 
 /* The open workspace's rows of the palette (its tab actions and its tabs): built only when the palette opens, so this module
  * loads with the palette's chunk and not with the app. */
@@ -14,17 +15,25 @@ export function workspaceActions(ws: PaletteWorkspace): WorkspaceCommand[] {
   const layout = ws.layout;
   const active = L.focusedGroup(layout).active;
   const name = label(active);
+  // Item 9: a tool row's detail and search text are the tool's purpose (`lib/toolPurpose`, the panels' (i) says the same).
+  const tool = (t: PurposeTool & ToolTab, text: string): WorkspaceCommand => ({
+    id: `tool-${t}`,
+    label: text,
+    detail: TOOL_HINT[t],
+    search: `${TOOL_HINT[t]} ${TOOL_PURPOSE[t]}`,
+    run: () => ws.openTool(t),
+  });
   const out: WorkspaceCommand[] = [
-    { id: "tool-sessions", label: "Show sessions", detail: "conversations and agent sessions", run: () => ws.openTool("sessions") },
-    { id: "tool-agents", label: "Show agents", run: () => ws.openTool("agents") },
-    { id: "tool-notes", label: "Show notes", run: () => ws.openTool("notes") },
-    { id: "tool-files", label: "Show files", run: () => ws.openTool("files") },
-    { id: "tool-details", label: "Show project details", run: () => ws.openTool("details") },
-    { id: "tool-changes", label: "Show changes", detail: "what the agents changed", run: () => ws.openTool("changes") },
-    { id: "tool-review", label: "Review a pull request", detail: "pick one, read it, comment, submit", run: () => ws.openTool("review") },
-    { id: "tool-memory", label: "Show memory", detail: "what the project remembers", run: () => ws.openTool("memory") },
-    { id: "tool-usage", label: "Show usage", detail: "tokens, cost, limits", run: () => ws.openTool("usage") },
-    { id: "tool-side", label: "Ask a side question", detail: "not added to the conversation", shortcut: `${MOD_LABEL};`, run: () => ws.openTool("side") },
+    tool("sessions", "Show sessions"),
+    tool("agents", "Show agents"),
+    tool("notes", "Show notes"),
+    tool("files", "Show files"),
+    tool("details", "Show project details"),
+    tool("changes", "Show changes"),
+    tool("review", "Review a pull request"),
+    tool("memory", "Show memory"),
+    tool("usage", "Show usage"),
+    { ...tool("side", "Ask a side question"), shortcut: `${MOD_LABEL};` },
     { id: "new-tab", label: "Open a tab…", detail: "tools, files, agents", shortcut: `${MOD_LABEL}T`, run: () => ws.openPicker() },
   ];
   if (ws.canMoveToOtherSide(active))

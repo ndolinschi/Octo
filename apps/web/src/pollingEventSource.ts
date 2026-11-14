@@ -19,6 +19,11 @@ export type PollingOptions = {
   /** Seconds a poll may wait for an event (the harness caps it at 25; Cloudflare ends silent requests near 100 s). */
   wait?: number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * P2-4: how long one poll may take before it is abandoned (a tunnel that stalls must not hold the stream for good); then it
+   * counts as a network failure and the stream reopens. Default: `wait` + 20 s.
+   */
+  deadlineMs?: number;
 };
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -34,6 +39,7 @@ type Listener = (ev: { data?: unknown }) => void;
 export function pollingEventSource(opts: PollingOptions): EventSourceCtor {
   const sleep = opts.sleep ?? defaultSleep;
   const wait = opts.wait ?? 20;
+  const deadlineMs = opts.deadlineMs ?? (wait + 20) * 1000;
   return class PollingEventSource implements EventSourceLike {
     readyState = 0;
     onopen: ((ev: unknown) => void) | null = null;
@@ -74,7 +80,19 @@ export function pollingEventSource(opts: PollingOptions): EventSourceCtor {
     }
 
     private async get(url: string): Promise<{ status: number; body: unknown }> {
-      const res = await opts.fetch(url, { headers: { Authorization: `Bearer ${opts.token}` }, signal: this.abort.signal });
+      // This poll's own signal: aborted by `close()` or by its deadline.
+      const one = new AbortController();
+      const stop = () => one.abort();
+      this.abort.signal.addEventListener("abort", stop);
+      const timer = setTimeout(stop, deadlineMs);
+      one.signal.addEventListener("abort", () => clearTimeout(timer));
+      let res: Awaited<ReturnType<FetchFn>>;
+      try {
+        res = await opts.fetch(url, { headers: { Authorization: `Bearer ${opts.token}` }, signal: one.signal });
+      } finally {
+        clearTimeout(timer);
+        this.abort.signal.removeEventListener("abort", stop);
+      }
       let body: unknown = null;
       try {
         body = await res.json();

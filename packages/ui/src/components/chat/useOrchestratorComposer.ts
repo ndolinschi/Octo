@@ -14,6 +14,8 @@ import type { QueuedMessage } from "./ComposerPills";
 import { slot, type TabMemory } from "../../state/workspace/tabMemory";
 import type { TabId } from "../../state/workspace/layout";
 import { useSessionScope } from "../../state/session";
+import { useHost } from "../../state/host";
+import { deviceMay } from "../../lib/remoteDevice";
 
 /** Composers sharing a draft key (the Chat tab's and the floating one) hear each other's edits. */
 type Listener = () => void;
@@ -76,6 +78,7 @@ function useQueue(memory: TabMemory | undefined, tab: TabId) {
  */
 export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "comments"> & { commentCount: number } {
   const { health, config, bridge } = useApp();
+  const device = useHost().remoteDevice;
   const { project, state, running, send, cancel, live, update, projectId } = useProject();
   const comments = useOptionalComments();
   const memory = useOptionalWorkspace()?.memory;
@@ -163,8 +166,16 @@ export function useOrchestratorComposer(tab: TabId): Omit<ComposerProps, "commen
     session: sessionChip,
     running,
     // P2-3: the conversation stays on screen while the service is away; the composer says why it is off.
-    disabledReason:
-      health === "offline" ? "Octo's local service isn't answering. Sending is off until it's back." : live === "reconnecting" ? "Reconnecting…" : null,
+    // Remote access: a device that may not send (read-only, or sends not allowed); the composer says where that changes.
+    disabledReason: !deviceMay(device, "send")
+      ? device?.readOnly
+        ? "Read-only"
+        : "Sending is off"
+      : health === "offline"
+        ? "Octo's local service isn't answering. Sending is off until it's back."
+        : live === "reconnecting"
+          ? "Reconnecting…"
+          : null,
     folders: project?.folders ?? [],
     notice: noKey
       ? {

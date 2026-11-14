@@ -332,3 +332,14 @@ test("N7: rail targets stay 12 tall while the conversation's height holds them, 
   assert.equal(dense.pitch, 6);
   assert.equal(dense.height, 600);
 });
+
+test("3: in a turn a restart interrupted, the calls its interruption closed read stopped, not failed", () => {
+  const closed = { content: "interrupted: the tool call did not complete", is_error: true };
+  const failedCall = { content: "exit status 1", is_error: true };
+  assert.equal(stepState(closed, false, "failed"), "error");
+  assert.equal(stepState(closed, false, "failed", true), "stopped");
+  assert.equal(stepState(failedCall, false, "failed", true), "error");
+  assert.equal(stepState(undefined, false, "failed", true), "stopped");
+  assert.equal(spawnStatus(undefined, closed, false, "failed", true), "cancelled");
+  assert.equal(spawnStatus(undefined, closed, false, "failed"), "failed");
+});

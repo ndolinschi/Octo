@@ -1,5 +1,6 @@
 import type { Bridge, ProviderList } from "@octo/agent-client";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { withDeadline } from "../deadline";
 import { errorMessage } from "../format";
 
 export type ProvidersLoad =
@@ -58,7 +59,8 @@ export function refreshProviders(bridge: Bridge): Promise<void> {
   if (e.inflight) return e.inflight;
   const prev = e.load;
   if (prev.status === "ready") set(e, { ...prev, refreshing: true });
-  e.inflight = fetchProviders(bridge)
+  // P2-4: a read never answered ends as a failure after its deadline, so "Check again" (which joins the read in flight) can run.
+  e.inflight = withDeadline(fetchProviders(bridge))
     .then(
       (list) => set(e, { status: "ready", list, refreshing: false }),
       (err: unknown) => set(e, { status: "error", message: errorMessage(err), list: prev.status === "ready" ? prev.list : null }),
@@ -81,7 +83,9 @@ export function useProviders(bridge: Bridge, enabled = true): ProvidersLoad & { 
   );
   const load = useSyncExternalStore(subscribe, () => entry(bridge).load);
   useEffect(() => {
-    if (enabled && entry(bridge).load.status === "loading" && !entry(bridge).inflight) void refreshProviders(bridge);
+    // A list that failed is read again when the bridge comes back (`enabled` turns true again after an offline spell).
+    const { status } = entry(bridge).load;
+    if (enabled && (status === "loading" || status === "error") && !entry(bridge).inflight) void refreshProviders(bridge);
   }, [bridge, enabled]);
   const refresh = useCallback(() => refreshProviders(bridge), [bridge]);
   return useMemo(() => ({ ...load, refresh }), [load, refresh]);

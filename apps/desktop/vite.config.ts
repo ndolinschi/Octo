@@ -38,6 +38,14 @@ const collectInitialChunks: Plugin = {
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss(), collectInitialChunks],
   build: {
+    rolldownOptions: {
+      output: {
+        // Everything the page loads at start (the entry and its static imports, `$initial`) in ONE chunk. Left to itself the
+        // bundler cut it into ~40 preloaded chunks (each module that a lazy chunk also imports became its own chunk), and
+        // gzip compresses one stream far better than forty small files: 160.4 -> 149.7 kB. Lazy chunks import from it.
+        codeSplitting: { groups: [{ name: "index", tags: ["$initial" as const] }] },
+      },
+    },
     modulePreload: {
       // Only for preloads written into JS: the HTML keeps its own modulepreload links.
       resolveDependencies: (_file: string, deps: string[], context: { hostType: "html" | "js" }) =>

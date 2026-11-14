@@ -1,7 +1,9 @@
 import {
   applyEvent,
   withAgents,
+  withApprovals,
   withCompactions,
+  withInputs,
   withMessages,
   withNotes,
   withSessions,
@@ -12,8 +14,10 @@ import {
   withSideMessages,
   withTurnCleared,
   type Agent,
+  type Approval,
   type BridgeEvent,
   type CompactionMarker,
+  type InputRequest,
   type Message,
   type Note,
   type ProjectSession,
@@ -27,6 +31,8 @@ export type Action =
   | { type: "agents"; agents: Agent[] }
   | { type: "messages"; agentId: string; messages: Message[] }
   | { type: "notes"; notes: Note[] }
+  /** NEW-3: the pending approvals and open forms as read (a reload, a reopened stream); events keep them current. */
+  | { type: "waits"; approvals: Approval[] | null; inputs: InputRequest[] | null }
   | { type: "sessions"; sessions: ProjectSession[] }
   | { type: "compactions"; agentId: string; markers: CompactionMarker[] }
   /** The agent's conversation replaced by another one (a resumed session): messages, markers and any streamed text. */
@@ -51,6 +57,12 @@ export function projectReducer(state: ProjectState, action: Action): ProjectStat
       return withMessages(state, action.agentId, action.messages);
     case "notes":
       return withNotes(state, action.notes);
+    case "waits": {
+      // Merged with what events brought while the lists were read (one asked meanwhile is not dropped).
+      const merge = <T extends { id: string }>(read: T[], live: readonly T[]) => [...read, ...live.filter((x) => !read.some((r) => r.id === x.id))];
+      const a = action.approvals ? withApprovals(state, merge(action.approvals, state.approvals)) : state;
+      return action.inputs ? withInputs(a, merge(action.inputs, a.inputs)) : a;
+    }
     case "sessions":
       return withSessions(state, action.sessions);
     case "transcript":

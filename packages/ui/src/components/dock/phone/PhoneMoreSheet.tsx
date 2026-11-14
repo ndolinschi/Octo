@@ -1,0 +1,195 @@
+import { Play, Plus, Settings, SlidersHorizontal } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { menuOrder } from "../../../lib/commands/config";
+import { runningRuns } from "../../../lib/projectRuns";
+import { navigate, settingsHref } from "../../../lib/route";
+import { workingText } from "../../../lib/statusBar";
+import { errorMessage } from "../../../lib/format";
+import { deviceMay, mayChangeProject, ON_YOUR_COMPUTER } from "../../../lib/remoteDevice";
+import { useHost } from "../../../state/host";
+import { useActivity } from "../../../state/activity";
+import { useApp } from "../../../state/app";
+import { useCode } from "../../../state/code";
+import { useOptionalComments } from "../../../state/comments";
+import { useProject } from "../../../state/project";
+import { useRunsSelector, useRunsStore } from "../../../state/projectRuns";
+import { StatusSlotsContext } from "../../../state/statusSlots";
+import { toolTab, type TabId, type ToolTab } from "../../../state/workspace/layout";
+import { useWorkspace } from "../../../state/workspace/WorkspaceProvider";
+import type { FileKey } from "../../../lib/files";
+import { startProjectRun } from "../../commands/startRun";
+import { useCommandsApi } from "../../commands/useCommandsApi";
+import { Glyph } from "../../primitives/Glyph";
+import { ListRow } from "../../primitives/ListRow";
+import { Notice } from "../../primitives/Notice";
+import { Sheet } from "../../primitives/Sheet";
+import { Spinner } from "../../primitives/Status";
+import { StateGlyph } from "../../primitives/StateGlyph";
+import { ProjectStatus } from "../../status/ProjectStatus";
+import { RemoteIndicator } from "../../status/RemoteIndicator";
+import { tabInfo, TOOL_TABS } from "../tabInfo";
+
+/** The panels the phone reaches from "⋯", in this order (direction 7). */
+const PANELS: readonly ToolTab[] = ["files", "changes", "sessions", "memory", "notes", "usage", "agents", "details", "side", "review"];
+
+/**
+ * The phone header's "⋯" (direction 7): everything the desktop's top row and status bar carry, as one bottom sheet of 44px
+ * rows in groups — this session (its open tabs, a new session), the project's commands, the panels, the status (changed
+ * files, running commands, budget, agents at work in other projects, remote access) and the settings. Every choice closes the
+ * sheet first (its history entry goes), then acts.
+ */
+export default function PhoneMoreSheet(props: { active: TabId; tabs: TabId[]; sessionId: string | null; onClose(): void }) {
+  const ws = useWorkspace();
+  const code = useCode();
+  const counts = useOptionalComments()?.counts;
+  const { state, project, projectId } = useProject();
+  const { bridge, projects } = useApp();
+  const activity = useActivity();
+  // Remote access: on a paired device the commands and project settings are the computer's; sends need the permission.
+  const device = useHost().remoteDevice;
+  const commandsApi = useCommandsApi();
+  const api = mayChangeProject(device) ? commandsApi : null;
+  const store = useRunsStore();
+  const busyKey = useRunsSelector((s) =>
+    runningRuns(s)
+      .map((r) => r.name.toLowerCase())
+      .join("\n"),
+  );
+  const [problem, setProblem] = useState<string | null>(null);
+  const [start, setStart] = useState<HTMLElement | null>(null);
+  const [end, setEnd] = useState<HTMLElement | null>(null);
+  const slots = useMemo(() => ({ start, end }), [start, end]);
+  const ctx = {
+    state,
+    projectName: project?.name,
+    orchestratorId: project?.orchestrator_agent_id,
+    chatSessionId: ws.chatSessionId,
+    file: code.file,
+    comments: (key: FileKey) => counts?.get(key) ?? 0,
+    runStatus: (name: string) => ws.runStatuses[name.toLowerCase()] ?? null,
+  };
+  // The action runs once the sheet has given focus back to its opener (which would otherwise take the focus, and the dock's
+  // shown group, back to the conversation).
+  const then = (fn: () => void) => () => {
+    props.onClose();
+    window.setTimeout(fn, 0);
+  };
+  const busy = new Set(busyKey ? busyKey.split("\n") : []);
+  const commands = project ? menuOrder(project.commands ?? []) : [];
+  const run = async (name: string) => {
+    if (busy.has(name.toLowerCase()) || !api) return ws.openRun(name);
+    const r = await startProjectRun(api, store, name);
+    if ("problem" in r) setProblem(r.problem);
+    else ws.openRun(name);
+  };
+  const others = (projects ?? []).filter((p) => p.status === "running" && p.id !== projectId).length;
+  const working = workingText(others);
+  return (
+    <Sheet label="More" onClose={props.onClose}>
+      <div data-phone-more className="flex flex-col pb-2">
+        {problem && (
+          <div className="px-4 pb-2">
+            <Notice tone="error">{problem}</Notice>
+          </div>
+        )}
+        <Group title="This session">
+          {props.tabs.map((t) => {
+            const info = tabInfo(t, ctx);
+            return (
+              <ListRow
+                key={t}
+                size="lg"
+                selected={t === props.active}
+                leading={info.glyph && info.glyph !== "idle" ? <StateGlyph state={info.glyph} size={14} box={16} /> : <Glyph icon={info.icon} size={16} />}
+                title={info.name ?? info.label}
+                onClick={then(() => ws.activate(t))}
+              />
+            );
+          })}
+          {deviceMay(device, "send") && (
+            <ListRow
+              size="lg"
+              leading={<Glyph icon={Plus} size={16} />}
+              title="New session"
+              onClick={then(() => {
+                bridge.createSession(projectId).then(
+                  ({ session }) => {
+                    activity.refreshSessions();
+                    navigate(projectId, null, session.id);
+                  },
+                  (e: unknown) => setProblem(`The session was not created: ${errorMessage(e).replace(/\.$/, "")}. Try again from the menu.`),
+                );
+              })}
+            />
+          )}
+        </Group>
+        {api && (
+          <Group title="Run">
+            {commands.map((c) => (
+              <ListRow
+                key={c.name}
+                size="lg"
+                leading={busy.has(c.name.toLowerCase()) ? <Spinner /> : <Glyph icon={Play} size={16} />}
+                title={c.name}
+                description={busy.has(c.name.toLowerCase()) ? "Running: show it" : c.command}
+                onClick={then(() => void run(c.name))}
+              />
+            ))}
+            <ListRow
+              size="lg"
+              leading={<Glyph icon={SlidersHorizontal} size={16} />}
+              title={commands.length > 0 ? "Edit commands" : "Add commands"}
+              onClick={then(() => window.location.assign(settingsHref("commands")))}
+            />
+          </Group>
+        )}
+        <Group title="Panels">
+          {PANELS.map((tool) => {
+            const t = TOOL_TABS[tool];
+            if (!t) return null;
+            return (
+              <ListRow
+                key={tool}
+                size="lg"
+                selected={props.active === toolTab(tool)}
+                leading={<Glyph icon={t.icon} size={16} />}
+                title={t.label}
+                onClick={then(() => ws.openTool(tool))}
+              />
+            );
+          })}
+        </Group>
+        <StatusSlotsContext.Provider value={slots}>
+          <Group title="Status">
+            <div data-phone-status className="flex flex-col">
+              <div ref={setStart} className="contents" />
+              <div ref={setEnd} className="contents" />
+              {working && (
+                <ListRow size="lg" leading={<StateGlyph state="working" size={14} box={16} />} title={working} onClick={then(() => navigate(null))} />
+              )}
+              <RemoteIndicator />
+            </div>
+            <ProjectStatus />
+          </Group>
+        </StatusSlotsContext.Provider>
+        <Group title="Settings">
+          {mayChangeProject(device) ? (
+            <ListRow size="lg" leading={<Glyph icon={SlidersHorizontal} size={16} />} title="Project settings" onClick={then(() => ws.openSettings())} />
+          ) : (
+            <ListRow size="lg" leading={<Glyph icon={SlidersHorizontal} size={16} />} title="Project settings" description={ON_YOUR_COMPUTER} disabled />
+          )}
+          <ListRow size="lg" leading={<Glyph icon={Settings} size={16} />} title="Settings" onClick={then(() => window.location.assign(settingsHref("")))} />
+        </Group>
+      </div>
+    </Sheet>
+  );
+}
+
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section aria-label={title} className="flex flex-col px-2 pt-2">
+      <h3 className="flex h-ctl-sm items-center px-2 text-xs text-fg-3">{title}</h3>
+      {children}
+    </section>
+  );
+}

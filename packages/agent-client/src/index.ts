@@ -8,3 +8,4 @@ export * from "./messageBridge";
 export * from "./sessionBridge";
 export * from "./fileBytes";
 export * from "./remoteAccess";
+export * from "./readDeadline";

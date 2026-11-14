@@ -282,6 +282,14 @@ function under(rec: ProjectRecord, agentId: string, rootId: string): boolean {
  * (default: the project's default session); turns of different sessions run side by side, each one's events carry its
  * `session_id` (the root's), and a stop or a failure touches only that session's agents.
  */
+/** The harness's restart texts (`usererr.TurnInterrupted`): a scripted turn that throws `Interrupted` ends as one a restart cut. */
+const RESTARTED = "Octo's local service restarted while this request was running.";
+export class Interrupted extends Error {
+  constructor() {
+    super(RESTARTED);
+  }
+}
+
 export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestratorId: string) => Promise<void>): Promise<void> {
   const rec = ctx.rec;
   const orch = ctx.root ? agentById(rec, ctx.root) : orchestratorOf(rec);
@@ -296,12 +304,19 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
   let status: "completed" | "failed" | "cancelled" = "completed";
   let error: string | null = null;
   let hint: string | undefined;
+  let code = "agent_failed";
+  let interrupted = false;
   try {
     await body(ctx, orch.id);
   } catch (e) {
     status = e === CANCELLED ? "cancelled" : "failed";
     error = e === CANCELLED ? null : errorMessage(e);
     if (e instanceof Error && "hint" in e && typeof e.hint === "string") hint = e.hint;
+    if (e instanceof Error && "code" in e && typeof e.code === "string") code = e.code;
+    if (e instanceof Interrupted) {
+      interrupted = true;
+      code = "turn_interrupted";
+    }
     // A cancel happens now; a scripted failure in the past keeps its own time.
     if (status === "cancelled") ctx.t = Math.max(ctx.t, Date.now());
     for (const a of rec.agents) {
@@ -318,15 +333,32 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
   if (rec.turn === ctx.signal) rec.turn = null;
   (rec.lastStatus ??= new Map()).set(orch.id, status);
   if (rec.turns.size === 0) rec.project.status = "idle";
+  // Like the harness: the text written before the end stays (`kept_text`); a restart's hint says which way it went.
+  const kept = rec.messages.some((m) => m.agent_id === orch.id && m.role === "assistant" && m.id > asked.id);
+  if (interrupted)
+    hint = kept
+      ? "What it had written before the restart is kept. Retry to run the request again."
+      : "Nothing had been written yet. Retry to run the request again.";
   if (orch.id === rec.project.orchestrator_agent_id)
     (rec.endings ??= []).push({
       turn_id: asked.id,
       status: status === "cancelled" ? "stopped" : status,
       started_at: asked.created_at,
       duration_ms: Math.max(0, ctx.t - Date.parse(asked.created_at)),
+      ...(status === "failed" && error ? { error: { code, message: error, ...(hint ? { hint } : {}) } } : {}),
+      ...(interrupted ? { interrupted: true } : {}),
+      ...(status !== "completed" ? { kept_text: kept } : {}),
     });
   touch(ctx);
   emit(rec, { type: "project.updated", project: clone(rec.project) });
-  emit(rec, { type: "turn.finished", status, error, ...(hint ? { hint } : {}), ...scoped, agent_id: orch.id });
+  emit(rec, {
+    type: "turn.finished",
+    status,
+    error,
+    ...(hint ? { hint } : {}),
+    ...(interrupted ? { action: "retry" as const } : {}),
+    ...scoped,
+    agent_id: orch.id,
+  });
   rec.afterTurn?.(orch.id);
 }

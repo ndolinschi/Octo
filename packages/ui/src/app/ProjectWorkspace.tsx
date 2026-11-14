@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { navigate } from "../lib/route";
+import { usePhone } from "../lib/phone";
 import { useApp } from "../state/app";
 import { CodeProvider, useCode } from "../state/code";
 import { CommentsProvider } from "../state/comments";
@@ -17,6 +18,9 @@ import { MainSkeleton } from "../components/shell/MainSkeleton";
 
 /** The status bar's project items load after first paint (its own chunk; the row itself is always there, so nothing shifts). */
 const ProjectStatus = lazy(() => import("../components/status/ProjectStatus").then((m) => ({ default: m.ProjectStatus })));
+
+/** Direction 7: the phone layout's one-line header in place of the tab strips (its own chunk, only in that mode). */
+const PhoneHeader = lazy(() => import("../components/dock/phone/PhoneHeader"));
 
 /** Keeps the project's command runs current for the top row, the run tabs and the status bar (decision 68). */
 const ProjectRunsFeed = lazy(() => import("../components/commands/ProjectRunsFeed"));
@@ -51,6 +55,7 @@ const CHAT_SLOTS: ChatSlots = {
 /** One project: header row, then the dock of tab groups. */
 export function ProjectWorkspace(props: { agentId: string | null; sessionId?: string | null; onLost(): void }) {
   const [settings, setSettings] = useState(false);
+  const phone = usePhone();
   const openSettings = useCallback(() => setSettings(true), []);
   const { projectId, live, loadError, project } = useProject();
   // P1-4: a stream that drops or a load that fails may mean the project was deleted elsewhere: the shell looks it up.
@@ -68,6 +73,7 @@ export function ProjectWorkspace(props: { agentId: string | null; sessionId?: st
             <Suspense fallback={null}>
               <ProjectStatus />
               <ProjectRunsFeed />
+              {phone && <PhoneHeader />}
             </Suspense>
             <Body />
           </ChatSlotsProvider>

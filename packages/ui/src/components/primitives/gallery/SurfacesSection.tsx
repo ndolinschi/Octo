@@ -10,6 +10,8 @@ import { ScrollArea } from "../ScrollArea";
 import { SectionHeader } from "../SectionHeader";
 import { Skeleton, SkeletonList, SkeletonText } from "../Skeleton";
 import { Checkbox } from "../Checkbox";
+import { Presence } from "../Presence";
+import { Sheet } from "../Sheet";
 import { Section, Variants } from "./parts";
 
 const TONES = ["info", "warn", "error", "success"] as const;
@@ -86,6 +88,7 @@ export function RowsSection() {
 }
 
 export function SurfacesSection() {
+  const [sheet, setSheet] = useState<"bottom" | "full" | null>(null);
   return (
     <Section
       id="surfaces"
@@ -131,6 +134,18 @@ export function SurfacesSection() {
           <ListRow title="ListFrame row 1" onClick={() => undefined} />
           <ListRow title="ListFrame row 2" onClick={() => undefined} />
         </ListFrame>
+      </Variants>
+      <Variants label="Sheet (phone layout): bottom or full screen; a history entry, so Back closes it">
+        <Button onClick={() => setSheet("bottom")}>Bottom sheet</Button>
+        <Button onClick={() => setSheet("full")}>Full-screen sheet</Button>
+        <Presence show={sheet !== null}>
+          <Sheet label={sheet === "full" ? "Full-screen sheet" : "Bottom sheet"} variant={sheet ?? "bottom"} onClose={() => setSheet(null)}>
+            <div className="flex flex-col px-2 pb-2">
+              <ListRow size="lg" title="A 44px row on the phone" onClick={() => setSheet(null)} />
+              <ListRow size="lg" title="Another row" onClick={() => setSheet(null)} />
+            </div>
+          </Sheet>
+        </Presence>
       </Variants>
       <Variants label="Skeleton: bar, block, circle, text, list (28 and two-line), shimmer while loading">
         <Skeleton width={96} />

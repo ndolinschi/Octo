@@ -74,7 +74,17 @@ const LIGHT = CODE_LIGHT;
  * the column's hairline; the selection is `--octo-selection`; a find match is the accent at twice the selection's strength
  * (the current one) or at half of it (the others); the current line is the hover tint, never a box.
  */
-type Chrome = { background: string; selection: string; selectionInactive: string; findMatch: string; findOthers: string; currentLine: string };
+type Chrome = {
+  background: string;
+  selection: string;
+  selectionInactive: string;
+  findMatch: string;
+  findOthers: string;
+  currentLine: string;
+  /** `--octo-ok` / `--octo-err`: the diff tints (see `diffColors`). */
+  ok: string;
+  err: string;
+};
 const DARK_CHROME: Chrome = {
   background: "#171717",
   selection: "#5c9dff52",
@@ -82,6 +92,8 @@ const DARK_CHROME: Chrome = {
   findMatch: "#5c9dff8c",
   findOthers: "#5c9dff33",
   currentLine: "#ffffff0d",
+  ok: "#5fbf7f",
+  err: "#f6847e",
 };
 const LIGHT_CHROME: Chrome = {
   background: "#ffffff",
@@ -90,7 +102,38 @@ const LIGHT_CHROME: Chrome = {
   findMatch: "#0a66e066",
   findOthers: "#0a66e01f",
   currentLine: "#00000009",
+  ok: "#1a7f45",
+  err: "#b42a23",
 };
+
+/**
+ * Item 8: the diff editors (Changes, Review) use the conversation's diff tints (styles.css, `.octo-diff`): a changed line is
+ * the ok / err token at 9 % / 8 % (it runs under the line numbers too), a changed word at 18 % / 15 % (alpha hex: 9 % = 17,
+ * 8 % = 14, 18 % = 2e, 15 % = 26). The gutter keys stay transparent: in the inline layout Monaco paints the removed-gutter
+ * colour down the old-number column of the whole hunk, inserted lines included. No borders; the overview marks are at 60 %.
+ */
+function diffColors(chrome: Chrome, p: Palette): Record<string, string> {
+  const none = "#00000000";
+  return {
+    "diffEditor.insertedLineBackground": `${chrome.ok}17`,
+    "diffEditor.removedLineBackground": `${chrome.err}14`,
+    "diffEditor.insertedTextBackground": `${chrome.ok}2e`,
+    "diffEditor.removedTextBackground": `${chrome.err}26`,
+    "diffEditorGutter.insertedLineBackground": none,
+    "diffEditorGutter.removedLineBackground": none,
+    "diffEditor.insertedTextBorder": none,
+    "diffEditor.removedTextBorder": none,
+    "diffEditor.border": p.tint("17"),
+    "diffEditor.diagonalFill": p.tint("14"),
+    "diffEditorOverview.insertedForeground": `${chrome.ok}99`,
+    "diffEditorOverview.removedForeground": `${chrome.err}99`,
+    "diffEditor.unchangedRegionBackground": p.raised,
+    "diffEditor.unchangedRegionForeground": p.muted,
+    "diffEditor.unchangedCodeBackground": none,
+    "diffEditor.move.border": p.tint("33"),
+    "diffEditor.moveActive.border": p.tint("60"),
+  };
+}
 
 function theme(base: "vs" | "vs-dark", p: Palette, chrome: Chrome): monaco.editor.IStandaloneThemeData {
   const background = chrome.background;
@@ -244,6 +287,7 @@ function theme(base: "vs" | "vs-dark", p: Palette, chrome: Chrome): monaco.edito
       "scrollbarSlider.background": p.tint("1f"),
       "scrollbarSlider.hoverBackground": p.tint("38"),
       "scrollbarSlider.activeBackground": p.tint("4d"),
+      ...diffColors(chrome, p),
     },
   };
 }

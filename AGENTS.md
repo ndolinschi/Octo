@@ -28,7 +28,7 @@ This repository is an **apps-directory monorepo**. Applications live under `apps
   apps/router/            # Octo proxy
   apps/harness/           # Go agent harness (own go.mod); scripts/ has the e2e scripts
   apps/desktop/           # Vite host + Tauri shell; src-tauri/sidecar is the octo-sidecar crate
-  apps/web/               # future static web shell (README only)
+  apps/web/               # mobile web client (@octo/web), served by the harness through Remote access
   packages/ui/            # shared React UI
   packages/agent-client/  # harness bridge client (HTTP + SSE, reducer, message-port bridge)
   scripts/                # dev.sh, build-sidecar.sh, install.sh, test-dev-sh.sh, install-go-toolchain.sh, checks
