@@ -18,6 +18,8 @@ import {
   isRestartInterruption,
   RESTART_INTERRUPTION,
   spawnStatus,
+  turnFailureText,
+  railLayout,
 } from "./transcript";
 
 let nextId = 1;
@@ -298,4 +300,35 @@ test("B4: a finished turn's duration runs to its end, not to its last item", () 
   assert.equal(turnDurationMs(start, { live: false, lastAt, finishedAt: "2026-11-10T09:00:00Z" }), 1_000);
   assert.equal(turnDurationMs(start, { live: true, lastAt, finishedAt: null }), null);
   assert.equal(turnDurationMs(null, { live: false, lastAt }), null);
+});
+
+test("NEW-1: a failed turn's own reason is its last error result that a stop did not write", () => {
+  const r = (id: string, content: string, isError = true) => [id, { content, is_error: isError }] as const;
+  const turn = must(
+    buildTurns([user("go", T(0)), msg("assistant", [use("a"), use("b")], T(1)), msg("assistant", [use("c")], T(2)), msg("assistant", [text("x")], T(3))])[0],
+  );
+  // The newest error result wins; a success after it does not hide it.
+  assert.equal(
+    turnFailureText(turn, new Map([r("a", "first"), r("b", "GitHub Copilot is not logged in."), r("c", "ok", false)])),
+    "GitHub Copilot is not logged in.",
+  );
+  // A stop's texts are no reason; an earlier real error is.
+  assert.equal(turnFailureText(turn, new Map([r("a", "boom"), r("c", "interrupted: the tool call did not complete.")])), "boom");
+  assert.equal(turnFailureText(turn, new Map([r("b", "Tool use was rejected")])), null);
+  // No error at all, or an empty one: nothing to say.
+  assert.equal(turnFailureText(turn, new Map([r("a", "  ")])), null);
+  assert.equal(turnFailureText(turn, new Map()), null);
+});
+
+test("N7: rail targets stay 12 tall while the conversation's height holds them, then shrink to nearest-wins cells", () => {
+  // Few requests: 16 apart, inside the 60% share.
+  assert.deepEqual(railLayout(5, 600, 8), { pitch: 16, height: 96 });
+  // 30 requests in 600px: 360/30 = 12 still fits the share.
+  assert.deepEqual(railLayout(30, 600, 8), { pitch: 12, height: 376 });
+  // 40 requests: the share would give 9; the whole height (584) still holds 40 x 12, so the rail grows instead.
+  assert.deepEqual(railLayout(40, 600, 8), { pitch: 12, height: 496 });
+  // 120 requests: no room for 12 each — cells of the whole height, at least 6, and the rail scrolls.
+  const dense = railLayout(120, 600, 8);
+  assert.equal(dense.pitch, 6);
+  assert.equal(dense.height, 600);
 });

@@ -7,7 +7,7 @@ import { ListRow } from "../primitives/ListRow";
 import { StateGlyph } from "../primitives/StateGlyph";
 import { Spinner } from "../primitives/Status";
 
-export type ActivityState = "running" | "done" | "failed" | "stopped" | "pending";
+export type ActivityState = "running" | "done" | "failed" | "stopped" | "pending" | "needs";
 
 /**
  * Decision 91d: the one row of a turn's steps (thinking, tool groups, searches, sub-agent steps, plan steps). State glyph
@@ -66,6 +66,8 @@ export function ActivityRow(props: {
       <StateGlyph state="failed" size={14} />
     ) : props.state === "stopped" ? (
       <StateGlyph state="idle" size={14} />
+    ) : props.state === "needs" ? (
+      <StateGlyph state="needs" size={14} />
     ) : props.state === "pending" ? (
       <Glyph icon={Circle} size={14} />
     ) : (

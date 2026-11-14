@@ -59,6 +59,17 @@ const THEMES = [
   ["system", "System"],
 ] as const;
 
+/** Rows of "Recent" with an empty query (G12). */
+const RECENT = 3;
+
+/** The projects last worked in, newest first, without the one that is open. */
+function recentProjects<P extends { id: string; updated_at: string }>(projects: readonly P[], openId: string | undefined): P[] {
+  return projects
+    .filter((p) => p.id !== openId)
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    .slice(0, RECENT);
+}
+
 /** Opens a settings section and, for a row, scrolls to it and focuses its control once the page has it. */
 function openSetting(section: string, row?: string) {
   window.location.hash = settingsHref(section);
@@ -278,11 +289,9 @@ export function CommandPalette(props: {
           { title: "Agents", items: rank(agentRows) },
         ]
       : [
+          // G12: an empty query shows little — what a newcomer needs and the three projects last worked in; the rest on typing.
           { title: "Suggested", items: SUGGESTED.flatMap((id) => actions.find((a) => a.id === id) ?? []) },
-          { title: "Tabs", items: tabRows.slice(0, LIMIT) },
-          { title: "Projects", items: projectRows.slice(0, LIMIT) },
-          { title: "Requests", items: [...loaded.slice(0, LIMIT), ...past] },
-          { title: "Agents", items: agentRows.slice(0, LIMIT) },
+          { title: "Recent", items: recentProjects(projects ?? [], pid).flatMap((p) => projectRows.find((r) => r.id === `p:${p.id}`) ?? []) },
         ];
     // Groups follow the quality of their best match (lib/match.ts: word-start before mid-word before loose).
     return rankGroups(
@@ -364,7 +373,7 @@ export function CommandPalette(props: {
         aria-modal="true"
         aria-label="Command palette"
         data-state={state}
-        className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay shadow-pop"
+        className="octo-overlay relative flex max-h-[70vh] w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-transparent bg-overlay shadow-pop"
       >
         <SearchField
           variant="header"

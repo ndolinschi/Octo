@@ -9,7 +9,7 @@ import { useV7Events } from "./useV7Events";
 
 const LABEL_MAX = 60;
 
-export type ChangesTabProps = Pick<ChangesViewProps, "loadMonaco" | "focusTurn" | "onAddComment" | "commentsFor" | "onOpenFile">;
+export type ChangesTabProps = Pick<ChangesViewProps, "loadMonaco" | "focusTurn" | "focusFile" | "onShowAll" | "onAddComment" | "commentsFor" | "onOpenFile">;
 
 /**
  * Dock tab (v7 §1, decision 47): what the agents changed in the open project. Binds `listChanges` / `getChange` /

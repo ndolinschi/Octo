@@ -30,11 +30,14 @@ function useLoginSteps(id: string | undefined, wanted: boolean): LoginSteps | nu
 
 /**
  * The notice under a failed or stopped turn (decision 94b) with its Retry. A chunk of its own, warmed right after first
- * paint: the error mapping and the notice are not in the entry bundle.
+ * paint: the error mapping and the notice are not in the entry bundle. G13: it comes in with the one calm fade (`.octo-fade`,
+ * opacity only, 120 ms; none under reduced motion).
  */
 export function TurnBanner(props: {
   status: "failed" | "cancelled";
   error: string | null;
+  /** NEW-1: `error` is the text of the turn's own failed step, not the turn's error: mapped like an older harness's bare text. */
+  fromStep?: boolean;
   retryText: string | null;
   /** hint, command, action and details of the failure, as the harness sent them. */
   fields?: ErrorFields | undefined;
@@ -62,7 +65,7 @@ export function TurnBanner(props: {
 
   if (!failed) {
     return (
-      <div data-turn-outcome="cancelled">
+      <div data-turn-outcome="cancelled" className="octo-fade">
         <Notice tone="info">{retryText !== null ? "Stopped. Send a message to continue." : "Stopped."}</Notice>
       </div>
     );
@@ -76,9 +79,9 @@ export function TurnBanner(props: {
       }
     : undefined;
   return (
-    <div data-turn-outcome="failed">
+    <div data-turn-outcome="failed" className="octo-fade">
       <ErrorNotice
-        fields={isStructured(structured) ? structured : undefined}
+        fields={!props.fromStep && isStructured(structured) ? structured : undefined}
         raw={legacy.error || null}
         hint={legacy.hint}
         agent={props.agent}

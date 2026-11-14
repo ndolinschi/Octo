@@ -8,6 +8,7 @@ import { agentDuration } from "../../lib/duration";
 import { useNow } from "../../lib/hooks";
 import { useRowKeys } from "../../lib/hooksMore";
 import { agentActivity } from "../../lib/orchestrator";
+import { agentWaiting, WAIT_TEXT } from "../../lib/agentWaiting";
 import { agentGlyph } from "../../lib/stateGlyph";
 import { useProject } from "../../state/project";
 import { toolTab } from "../../state/workspace/layout";
@@ -17,6 +18,7 @@ import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { Button } from "../primitives/Button";
 import { Glyph } from "../primitives/Glyph";
 import { ListRow } from "../primitives/ListRow";
+import { ProviderMark } from "../primitives/ProviderMark";
 import { Panel, PanelBody, PanelEmpty } from "../primitives/Panel";
 import { SectionHeader } from "../primitives/SectionHeader";
 import { StateGlyph } from "../primitives/StateGlyph";
@@ -140,12 +142,22 @@ function AgentRow(props: { agent: Agent; now: number; quiet: boolean; via?: stri
   const a = props.agent;
   const running = a.status === "running";
   const duration = agentDuration(a, props.now);
-  const line = running ? agentActivity(state, a.id) : a.status === "failed" ? (a.error ? plainError(a.error).sentence : a.title) : a.title;
+  // NEW-3: an approval or a form of this agent waits for the person: that wins over what it was doing.
+  const wait = running ? agentWaiting(state, a.id) : null;
+  const line = wait
+    ? WAIT_TEXT[wait]
+    : running
+      ? agentActivity(state, a.id)
+      : a.status === "failed"
+        ? a.error
+          ? plainError(a.error).sentence
+          : a.title
+        : a.title;
   return (
     <ListRow
       size="md"
       tone={props.quiet ? "quiet" : "default"}
-      leading={<StateGlyph state={agentGlyph(a.status)} />}
+      leading={<StateGlyph state={wait ? "needs" : agentGlyph(a.status)} />}
       title={
         <>
           {props.via && <span className="mr-1.5 text-fg-3">↳ {props.via}</span>}
@@ -153,7 +165,13 @@ function AgentRow(props: { agent: Agent; now: number; quiet: boolean; via?: stri
           <span className="ml-2 text-xs text-fg-3">{line}</span>
         </>
       }
-      meta={duration !== null ? <span className="tabular-nums">{formatDuration(duration)}</span> : undefined}
+      // N9: the mark of the model's vendor (or the agent CLI it runs through) beside the time, as on the model chips.
+      meta={
+        <span className="flex items-center gap-1.5 tabular-nums">
+          {a.model && <ProviderMark id={a.model} label={a.model} size={14} />}
+          {duration !== null && formatDuration(duration)}
+        </span>
+      }
       tip={`${a.role}${a.title ? `: ${a.title}` : ""}${a.status === "failed" && a.error ? ` — failed: ${a.error}` : ""}\nOpens in its own tab`}
       onClick={(e) => props.onOpen(e.altKey)}
     />

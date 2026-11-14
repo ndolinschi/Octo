@@ -183,7 +183,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
                   onPointerMove={(e) => gate.current(e) && !o.disabled && setActive(i)}
                   data-option={i}
                   className={cn(
-                    "flex min-w-0 items-center gap-2 rounded-sm px-2 press-row touch:min-h-ctl-lg",
+                    "flex min-w-0 items-center gap-2 rounded-md px-2 press-row touch:min-h-ctl-lg",
                     o.description ? "min-h-ctl-lg py-1" : "h-ctl-sm",
                     o.disabled ? "text-fg-3" : i === active ? "bg-active text-fg" : "text-fg",
                   )}

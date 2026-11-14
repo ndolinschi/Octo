@@ -11,7 +11,7 @@ import { Presence } from "../primitives/Presence";
 import type { DiffMonaco } from "./DiffEditor";
 import { DiffPanel } from "./DiffPanel";
 import { TurnFiles } from "./TurnFiles";
-import { useChanges, type ChangesApi, type Selection } from "./useChanges";
+import { useChanges, type ChangesApi, type FocusFile, type Selection } from "./useChanges";
 import { useWidth } from "./useWidth";
 
 /** Below this pane width the list and the diff take turns (the list first, Back returns to it). */
@@ -26,13 +26,17 @@ export type ChangesViewProps = {
   refreshKey?: number;
   /** Show one turn only (the transcript's "Review"); null or absent: every turn, newest first. */
   focusTurn?: number | null;
+  /** One file of the focused turn to select and show ("Open diff"); `seq` distinguishes a repeated request. */
+  focusFile?: FocusFile | null;
+  /** The filter bar's "Show all" (shown while `focusTurn` is set). */
+  onShowAll?(): void;
   /** The request that started a turn (its first words); default "Earlier request" with the time of its first change. */
   turnLabel?(turn: TurnChanges): string;
   /** Decision 47: a line comment goes to the composer's pending comments. */
   onAddComment?(comment: { folder: string; path: string; start: number; end: number; text: string }): void;
   /** Lines of a file that already carry a pending comment. */
   commentsFor?(folder: string, path: string): readonly { start: number; end: number }[];
-  onOpenFile?(folder: string, path: string): void;
+  onOpenFile?(folder: string, path: string, line?: number): void;
 };
 
 type Confirm = { kind: "file"; selection: Selection } | { kind: "turn"; turn: TurnChanges } | null;
@@ -44,9 +48,15 @@ export function ChangesView(props: ChangesViewProps) {
   const box = useRef<HTMLDivElement>(null);
   const width = useWidth(box);
   const wideWindow = useMediaQuery(`(min-width: ${DIFF_SPLIT_MIN}px)`);
-  const c = useChanges(props.api, props.refreshKey ?? 0, props.focusTurn ?? null);
+  const c = useChanges(props.api, props.refreshKey ?? 0, props.focusTurn ?? null, props.focusFile ?? null);
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
+  const [showDiff, setShowDiff] = useState(props.focusFile != null);
+  // A new "Open diff" request on a narrow pane shows the diff (adjusting state during render, not in an effect).
+  const [seenSeq, setSeenSeq] = useState(props.focusFile?.seq ?? 0);
+  if ((props.focusFile?.seq ?? 0) !== seenSeq) {
+    setSeenSeq(props.focusFile?.seq ?? 0);
+    if (props.focusFile) setShowDiff(true);
+  }
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [turnBusy, setTurnBusy] = useState<number | null>(null);
   const two = width === null || width >= TWO_COLUMNS_MIN;
@@ -119,38 +129,48 @@ export function ChangesView(props: ChangesViewProps) {
       onToggleWhitespace={() => setIgnoreWhitespace((x) => !x)}
       onRevert={() => setConfirm({ kind: "file", selection: sel })}
       onRetry={c.retryDiff}
-      {...(props.onOpenFile ? { onOpenFile: () => props.onOpenFile?.(sel.file.folder, sel.file.path) } : {})}
+      {...(props.onOpenFile ? { onOpenFile: (line?: number) => props.onOpenFile?.(sel.file.folder, sel.file.path, line) } : {})}
       {...(props.onAddComment ? { onAddComment: (x) => props.onAddComment?.({ folder: sel.file.folder, ...x }) } : {})}
     />
   );
 
   return (
-    <div ref={box} className="flex h-full min-h-0 min-w-0 bg-panel" data-v7-changes>
-      {body ? (
-        // A flex column, so an empty or failed load is the frame's one centred empty state (P1, B4).
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto px-2 pt-1 pb-2">
-          {body}
-          <FloatRoom />
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-panel" data-v7-changes>
+      {props.focusTurn != null && props.onShowAll && (
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3 text-sm text-fg-2">
+          <span className="min-w-0 flex-1 truncate">Showing one request</span>
+          <Button variant="ghost" size="sm" className="max-md:h-10" onClick={props.onShowAll}>
+            Show all
+          </Button>
         </div>
-      ) : two ? (
-        <>
-          <nav aria-label="Changed files" className="@container/list flex w-72 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-2 pt-1 pb-2">
+      )}
+      <div ref={box} className="flex min-h-0 min-w-0 flex-1">
+        {body ? (
+          // A flex column, so an empty or failed load is the frame's one centred empty state (P1, B4).
+          <div className="flex min-h-0 flex-1 flex-col overflow-auto px-2 pt-1 pb-2">
+            {body}
+            <FloatRoom />
+          </div>
+        ) : two ? (
+          <>
+            <nav aria-label="Changed files" className="@container/list flex w-72 shrink-0 flex-col gap-2 overflow-y-auto border-r border-line px-2 pt-1 pb-2">
+              {list}
+              <FloatRoom />
+            </nav>
+            {diff}
+          </>
+        ) : showDiff && diff ? (
+          diff
+        ) : (
+          <nav aria-label="Changed files" className="@container/list flex flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-2">
             {list}
             <FloatRoom />
           </nav>
-          {diff}
-        </>
-      ) : showDiff && diff ? (
-        diff
-      ) : (
-        <nav aria-label="Changed files" className="@container/list flex flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-2">
-          {list}
-          <FloatRoom />
-        </nav>
-      )}
-      <Presence show={confirm !== null}>
-        {confirm && <RevertDialog confirm={confirm} onCancel={() => setConfirm(null)} onConfirm={() => void runConfirm()} />}
-      </Presence>
+        )}
+        <Presence show={confirm !== null}>
+          {confirm && <RevertDialog confirm={confirm} onCancel={() => setConfirm(null)} onConfirm={() => void runConfirm()} />}
+        </Presence>
+      </div>
     </div>
   );
 }

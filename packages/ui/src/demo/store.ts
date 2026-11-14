@@ -21,6 +21,11 @@ export type ProjectRecord = {
   files: Map<string, Map<string, DemoFile>>;
   /** Folder labels whose sample content has been loaded (see `ensureSeeded`). */
   seeded: Set<string>;
+  /**
+   * How each orchestrator request ended, as the harness stores it in the current session's exchanges (no error text: the
+   * harness keeps none there, so a failed earlier turn after a reload has only what the transcript holds — NEW-1).
+   */
+  endings?: { turn_id: number; status: "completed" | "failed" | "stopped"; started_at: string; duration_ms: number }[];
 };
 
 let idCounter = 0;

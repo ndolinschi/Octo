@@ -40,6 +40,8 @@ import { octoCommandFor, slashQuery, type SlashRow } from "../../lib/slash";
 import { useSlashCommands, useSlashRunner } from "./useSlash";
 import { useComposerText, type ComposerDraft } from "./useComposerText";
 import { SENDING_NOTICE_MS } from "../../lib/constants";
+import { clearStopping, markStopping, STILL_STOPPING_MS, useStopping } from "../../lib/stopping";
+import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { mayNearLimit, plainShaping, triggerAt } from "../../lib/composerInput";
 import type * as SizeModule from "../../lib/messageSize";
 
@@ -145,6 +147,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const slashListId = useId();
   const listId = useId();
   const slots = useChatSlots();
+  // G5: Stop answers at once ("Stopping…", here and on the turn's live row) and says what is true if the turn takes long.
+  const ownKey = useId();
+  const stopKey = useOptionalWorkspace()?.projectId ?? ownKey;
+  const stopping = useStopping(stopKey, props.running);
+  const [lateFor, setLateFor] = useState<number | null>(null);
+  useEffect(() => {
+    if (stopping === null) return;
+    const t = window.setTimeout(() => setLateFor(stopping), Math.max(0, stopping + STILL_STOPPING_MS - Date.now()));
+    return () => window.clearTimeout(t);
+  }, [stopping]);
+  const stillStopping = stopping !== null && lateFor === stopping;
+  const stop = () => {
+    if (stopping !== null) return;
+    markStopping(stopKey);
+    // A refused cancel gives the button back (the turn still runs; pressing again asks again).
+    props.onCancel().catch(() => clearStopping(stopKey));
+  };
 
   const modeChoose = props.mode?.choose;
   useImperativeHandle(
@@ -327,7 +346,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     if (e.key === "Escape" && props.running && !menu) {
       e.preventDefault();
-      void props.onCancel();
+      stop();
     }
   };
 
@@ -411,6 +430,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       {props.notice && (
         <p className="mb-2 px-3 text-sm text-fg-3" title={props.notice.title}>
           {props.notice.text}
+        </p>
+      )}
+      {stillStopping && (
+        <p role="status" data-still-stopping className="octo-fade mb-2 px-3 text-sm text-fg-3">
+          Still stopping — a running command has to finish
         </p>
       )}
       {props.mode && modeNote(props.mode.value) && <p className="mb-2 px-3 text-sm text-fg-3">{modeNote(props.mode.value)}</p>}
@@ -572,7 +596,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 Sending…
               </span>
             )}
-            <SendButton action={action} enabled={action === "stop" ? !disabled : canSend} onStop={() => void props.onCancel()} />
+            {stopping !== null && action === "stop" && (
+              <span role="status" className="px-1 text-xs text-fg-3">
+                Stopping…
+              </span>
+            )}
+            <SendButton action={action} stopping={stopping !== null} enabled={action === "stop" ? !disabled && stopping === null : canSend} onStop={stop} />
           </div>
         </form>
       </div>
@@ -613,10 +642,12 @@ const SEND = {
   queue: { icon: Clock, label: "Queue: send when this turn ends (Enter)" },
   stop: { icon: Square, label: "Stop the turn (Esc)" },
 } as const;
+const STOPPING_LABEL = "Stopping… the turn ends once its current step does";
 
 /** One 28px round button: Send (dim while empty), Stop while working, Queue while working with text (decision 62). */
-function SendButton({ action, enabled, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; onStop(): void }) {
-  const { icon, label } = SEND[action];
+function SendButton({ action, enabled, stopping, onStop }: { action: "send" | "queue" | "stop"; enabled: boolean; stopping: boolean; onStop(): void }) {
+  const { icon } = SEND[action];
+  const label = action === "stop" && stopping ? STOPPING_LABEL : SEND[action].label;
   const solid = enabled && action !== "stop";
   return (
     <IconButton
@@ -628,7 +659,8 @@ function SendButton({ action, enabled, onStop }: { action: "send" | "queue" | "s
       onClick={action === "stop" ? onStop : undefined}
       disabled={!enabled}
       data-action={action}
-      className={cn(!solid && action === "stop" && "bg-active text-fg")}
+      data-stopping={(action === "stop" && stopping) || undefined}
+      className={cn(!solid && action === "stop" && !stopping && "bg-active text-fg")}
     />
   );
 }

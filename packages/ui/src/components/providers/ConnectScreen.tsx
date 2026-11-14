@@ -56,7 +56,7 @@ export function ConnectScreen() {
           {list && (
             // Decision 91b: list and detail side by side in one frame from 880px of content; below it the list is a page and a row
             // opens the detail as another page with a back control (as Settings → Providers on a phone).
-            <div className="flex flex-col overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel @min-[880px]:flex-row @min-[880px]:items-start">
+            <div className="flex flex-col overflow-hidden rounded-xl border border-panel-edge bg-panel shadow-panel @min-[880px]:flex-row @min-[880px]:items-start">
               <ProviderRows
                 framed={false}
                 groups={groups}

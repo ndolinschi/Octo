@@ -1561,7 +1561,7 @@ export const GROUPS = {
     },
   ],
 
-  gallery: ["buttons", "fields", "rows", "surfaces"].map((id) => ({
+  gallery: ["buttons", "fields", "rows", "surfaces", "scales"].map((id) => ({
     name: id,
     text: `Component library gallery (?gallery=1), section "${id}".`,
     sizes: "one",

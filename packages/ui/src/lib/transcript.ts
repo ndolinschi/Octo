@@ -93,6 +93,26 @@ export function isInterruption(result: Result, end: TurnEnd): boolean {
   return end === "cancelled" && AGENT_INTERRUPTED.test(text);
 }
 
+/**
+ * NEW-1: the reason a failed turn holds itself, for a turn whose ending carries no error (an earlier turn after a reload: the
+ * harness stores no error with an exchange). The text of the turn's last error result that is not a stop's doing (the
+ * harness's interruption texts and an agent's cancel answers say nothing about why it failed); null when there is none.
+ * The caller maps it like a live failure (`lib/errors/plain`).
+ */
+export function turnFailureText(turn: Pick<Turn, "items">, results: ReadonlyMap<string, Result>): string | null {
+  for (let i = turn.items.length - 1; i >= 0; i--) {
+    const item = turn.items[i];
+    if (item?.kind !== "tools" && item?.kind !== "delegations") continue;
+    for (let j = item.uses.length - 1; j >= 0; j--) {
+      const r = results.get(item.uses[j]?.id ?? "");
+      if (!r?.is_error) continue;
+      const text = resultText(r);
+      if (text && !HARNESS_INTERRUPTED.test(text) && !AGENT_INTERRUPTED.test(text)) return text;
+    }
+  }
+  return null;
+}
+
 export type StepState = "running" | "done" | "error" | "stopped";
 
 /** A tool call's state: no result runs while the agent runs and was stopped otherwise; an error result a stop wrote is stopped. */
@@ -259,3 +279,27 @@ export const RAIL_MIN_REQUESTS = 5;
 export function showRail(requests: number): boolean {
   return requests >= RAIL_MIN_REQUESTS;
 }
+
+/**
+ * The request rail's tick pitch and list height (decision 57, N7). With room the pitch grows to 16; a tick's target stays
+ * at least 12 tall as long as the conversation's height holds the ticks at that pitch (the rail may then pass its 60% share);
+ * only past that do the cells shrink (to 6 at least, each the part of the rail nearest its tick) and the rail scroll.
+ * `maxHeight` is the room beside the conversation; `edge` the padding above the first and below the last tick.
+ */
+export function railLayout(n: number, maxHeight: number, edge: number): { pitch: number; height: number } {
+  const count = Math.max(1, n);
+  const share = Math.max(RAIL_MIN_PITCH * 3, Math.floor(maxHeight * RAIL_SHARE));
+  const full = Math.max(share, maxHeight - 2 * edge);
+  const fit = Math.floor(share / count);
+  const pitch =
+    fit >= RAIL_MIN_TARGET
+      ? Math.min(RAIL_MAX_PITCH, fit)
+      : count * RAIL_MIN_TARGET <= full
+        ? RAIL_MIN_TARGET
+        : Math.max(RAIL_MIN_PITCH, Math.floor(full / count));
+  return { pitch, height: Math.min(pitch >= RAIL_MIN_TARGET ? Math.max(share, pitch * count) : full, pitch * count) + 2 * edge };
+}
+const RAIL_MIN_PITCH = 6;
+const RAIL_MIN_TARGET = 12;
+const RAIL_MAX_PITCH = 16;
+const RAIL_SHARE = 0.6;

@@ -23,7 +23,7 @@ const TALL_HEIGHT =
 
 /** The panel look of every popup list that floats on its own (slash and mention menus; the pickers get it from `Popover`). */
 export const POPUP_PANEL =
-  "octo-overlay fixed z-[60] flex flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop [--octo-origin:0%_100%]";
+  "octo-overlay fixed z-[60] flex flex-col overflow-hidden rounded-xl border border-transparent bg-overlay text-sm shadow-pop [--octo-origin:0%_100%]";
 
 /** The DOM id of a row's option, for `aria-activedescendant` (the owner of the keys sets it on its input). */
 export function popupOptionId(listId: string, rowId: string): string {
@@ -136,7 +136,7 @@ export function PopupList(props: {
                     props.onActive(r.id);
                   }}
                   className={cn(
-                    "group flex min-w-0 items-center gap-2 rounded-sm px-2 press-row touch:h-ctl-lg",
+                    "group flex min-w-0 items-center gap-2 rounded-md px-2 press-row touch:h-ctl-lg",
                     r.sub ? "h-10" : "h-row",
                     r.disabled ? "text-fg-3" : on ? "bg-active text-fg" : "text-fg",
                   )}

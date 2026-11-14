@@ -26,7 +26,7 @@ export function PanelSection() {
       note="Header 40, filter row 36, rows 32 or 40; edges at 8, text at 16."
     >
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="h-96 overflow-hidden rounded-lg border border-line bg-panel">
+        <div className="h-96 overflow-hidden rounded-xl border border-line bg-panel">
           <Panel
             name="gallery-list"
             title="Sessions"
@@ -58,7 +58,7 @@ export function PanelSection() {
             </PanelBody>
           </Panel>
         </div>
-        <div className="h-96 overflow-hidden rounded-lg border border-line bg-panel">
+        <div className="h-96 overflow-hidden rounded-xl border border-line bg-panel">
           <Panel
             name="gallery-views"
             title="Memory"
@@ -91,7 +91,7 @@ export function PanelSection() {
             </PanelBody>
           </Panel>
         </div>
-        <div className="h-96 overflow-hidden rounded-lg border border-line bg-panel">
+        <div className="h-96 overflow-hidden rounded-xl border border-line bg-panel">
           <Panel name="gallery-empty" title="Agents">
             <PanelEmpty
               title="No agents yet"

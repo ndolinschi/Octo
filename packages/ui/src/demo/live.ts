@@ -1,5 +1,5 @@
 import { emit } from "./store";
-import { act, say, sleep, turn, type Ctx } from "./runtime";
+import { act, delegate, say, sleep, turn, type Ctx } from "./runtime";
 
 /** Demo-only: a turn that shows live activity — thinks 2 s, publishes a plan, runs three tools 700 ms apart, streams text. */
 export const LIVE_TRIGGER = /live activity/i;
@@ -68,5 +68,49 @@ export async function liveTurn(ctx: Ctx, prompt: string): Promise<void> {
     emit(rec, { type: "agent.plan", agent_id: orch, entries: [...plan(3)] });
     emit(rec, { type: "agent.activity", agent_id: orch, kind: "text", label: "Writing" });
     await say(c, orch, "All three steps are done: the entry point is fine, the budget rule lives in `src/budget.ts`, and the tests pass.");
+  });
+}
+
+/** Demo-only: "helper approval" — a sub-agent whose command waits for the person's approval (NEW-3: its row says so). */
+export const APPROVAL_TRIGGER = /helper approval/i;
+
+export async function approvalTurn(ctx: Ctx, prompt: string): Promise<void> {
+  await turn(ctx, prompt, async (c, orch) => {
+    await delegate(
+      c,
+      orch,
+      [
+        {
+          role: "Command runner",
+          title: "Run the migration check",
+          task: "Run `pnpm db:check` and report what it says.",
+          tier: "fast",
+          run: async (cc) => {
+            // Waits (for the approval `withDemoV7` adds) until the turn is stopped or ten minutes pass.
+            await sleep(cc, 600_000);
+            return "No pending migrations.";
+          },
+        },
+      ],
+      "A helper will run the migration check.",
+    );
+    await say(c, orch, "The migration check passed: nothing is pending.");
+  });
+}
+
+/**
+ * Demo-only: "stubborn stop" — a running command that ends 8 s after Stop is pressed, as a built-in sub-agent's bash does at the
+ * harness (G5: the composer says "Still stopping — a running command has to finish" after 5 s).
+ */
+export const STUBBORN_TRIGGER = /stubborn stop/i;
+
+export async function stubbornTurn(ctx: Ctx, prompt: string): Promise<void> {
+  await turn(ctx, prompt, async (c, orch) => {
+    await say(c, orch, "Running `sleep 40; echo done` — this takes a while.");
+    const until = Date.now() + 120_000;
+    while (!c.signal.cancelled && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+    if (c.signal.cancelled) await new Promise((r) => setTimeout(r, 8_000));
+    await sleep(c, 0);
+    await say(c, orch, "done");
   });
 }

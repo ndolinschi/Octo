@@ -207,6 +207,17 @@ function Shell() {
     return () => window.clearTimeout(id);
   }, []);
 
+  // NEW-6: Back / Forward (or any hash change) closes the transient overlays that are not the new route's own: the palette and
+  // the New project dialog (its draft is kept). The shortcuts sheet closes itself the same way.
+  useEffect(() => {
+    const close = () => {
+      setPalette(false);
+      setCreating(false);
+    };
+    window.addEventListener("hashchange", close);
+    return () => window.removeEventListener("hashchange", close);
+  }, []);
+
   // Ctrl/Cmd+K toggles the palette from anywhere, the editor included (capture phase).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

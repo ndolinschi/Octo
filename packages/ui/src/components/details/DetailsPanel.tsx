@@ -12,6 +12,7 @@ import { useProject } from "../../state/project";
 import { useWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { fileIcon } from "../primitives/fileIcons";
 import { Glyph } from "../primitives/Glyph";
+import { ProviderMark } from "../primitives/ProviderMark";
 import { GLYPH } from "../primitives/glyphs";
 import { Button } from "../primitives/Button";
 import { INFO_ROW, MoreRow } from "../primitives/InfoList";
@@ -238,8 +239,12 @@ function Team() {
               title={stuck ? "Cannot run: this model's provider is not connected. Change it in project settings." : served ? served.long : project.models[key]}
             >
               <span className="shrink-0 text-fg-2">{label}</span>
-              <span className={cn("ml-auto min-w-0 truncate pl-2", stuck ? "text-warn" : "text-fg")}>
-                {served ? served.name : names.name(project.models[key])}
+              {/* N9: the vendor's mark before the model, as on the model chips. */}
+              <span className={cn("ml-auto flex min-w-0 items-center gap-1.5 pl-2", stuck ? "text-warn" : "text-fg")}>
+                {project.models[key] !== "" && (
+                  <ProviderMark id={project.models[key]} label={names.name(project.models[key])} size={14} className="text-fg-3" />
+                )}
+                <span className="min-w-0 truncate">{served ? served.name : names.name(project.models[key])}</span>
               </span>
             </div>
             {served?.asked && <p className="-mt-1 truncate px-2 pb-1 text-right text-xs text-fg-3">asked for {served.asked}</p>}
@@ -318,7 +323,7 @@ function PluginsInUse() {
       {servers &&
         load?.agents.map((a) => (
           <div key={a.id} className={INFO_ROW}>
-            <Slot icon={GLYPH.agent} />
+            <ProviderMark id={a.id} label={a.label} className="text-fg-3" />
             <span className="min-w-0 shrink-0 truncate text-fg">{a.label}</span>
             <span className="ml-auto min-w-0 truncate pl-2 text-xs text-fg-3">Agent</span>
           </div>

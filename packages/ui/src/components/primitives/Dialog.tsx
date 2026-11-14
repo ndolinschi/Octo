@@ -46,7 +46,7 @@ export function Dialog(props: {
         aria-describedby={props.description ? descId : undefined}
         data-state={state}
         className={cn(
-          "octo-overlay @container/dialog relative flex max-h-[calc(100dvh-24px)] min-h-0 w-full max-w-[calc(100vw-24px)] shrink flex-col overscroll-contain rounded-lg border border-transparent bg-overlay shadow-pop",
+          "octo-overlay @container/dialog relative flex max-h-[calc(100dvh-24px)] min-h-0 w-full max-w-[calc(100vw-24px)] shrink flex-col overscroll-contain rounded-xl border border-transparent bg-overlay shadow-pop",
           props.width === "sm" ? "sm:max-w-[400px]" : props.width === "lg" ? "sm:max-w-dialog-wide" : "sm:max-w-[520px]",
           SHEET_PANEL,
         )}

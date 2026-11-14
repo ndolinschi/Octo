@@ -3,6 +3,7 @@ import { Button } from "./Button";
 import { ButtonsSection } from "./gallery/ButtonsSection";
 import { FieldsSection } from "./gallery/FieldsSection";
 import { PanelSection } from "./gallery/PanelSection";
+import { ScalesSection } from "./gallery/ScalesSection";
 import { RowsSection, SurfacesSection } from "./gallery/SurfacesSection";
 import { ScrollArea } from "./ScrollArea";
 
@@ -36,6 +37,7 @@ export function Gallery() {
         <RowsSection />
         <SurfacesSection />
         <PanelSection />
+        <ScalesSection />
       </div>
     </ScrollArea>
   );

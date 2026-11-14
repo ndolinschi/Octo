@@ -3423,3 +3423,49 @@ user messages in a row; tool rows of an interrupted turn read "error"; the real 
 Tauri's "Restart Octo"; IME input; all numbers are from the dev server. Gates on the final tree: lint with cycles,
 format, 693 UI / 157 client / 42 desktop tests, `go test -race ./...`, `cargo test -p octo-sidecar`, the build, and
 the browser scripts including `spacing-audit` total=0.
+
+## As built — the owner's third re-test (2026-11-14)
+
+The owner re-tested `6a15218` (round 3, before the stress-test fixes) and listed new findings and a "distance to
+premium" table (G1–G15). What changed for it:
+
+- **A tool call reads as an action (G1).** The expanded body depends on the kind (`lib/toolView.ts`,
+  `components/chat/tools/`): a command shows its line with copy, the last 8 lines of output ("N earlier lines"
+  expands, 1000 at a time), and the end in words ("Exited 0 · 4s", "Failed (exit 1)"); output is never red. A read is
+  a `folder/path:lines` link. An edit shows "+N −M", "Open diff", "Go to line N" and a compact inline diff (12 rows,
+  "Show all"; a plain line list, no Monaco). Other tools get a one-line summary and key–value input. A call cut short
+  reads "Stopped by you at 9:51 AM." / "Declined … It did not run." / "Interrupted …"; the agent's or harness's own
+  refusal text is only under "Raw". A refusal's row reads "stopped", not "failed". The group summary is per kind.
+- **Changes in the conversation (G2).** Under a finished reply that changed files: "2 files changed +6 −3 · Expand
+  all · Review changes" (`chat/TurnChanges.tsx`). "Open diff" and "Review changes" open the Changes tab on that request
+  (and file) through `lib/changesFocus`; Changes shows "Showing one request · Show all" and drops the focus when it is
+  opened any other way. The Changes diff header has "Go to line N"; a line number on the modified side opens the file
+  there. Review's diff header is a separate component and has no "Go to line".
+- **Why a turn failed survives a reload (NEW-1).** A failed turn's reason is its stored error, else its own last error
+  result (`turnFailureText`), else "This request failed." with Retry; earlier failed turns have Retry. The sentence
+  "no reason was reported" is gone. (The harness now stores `error` on a failed exchange; `lib/storedEndings.ts` does
+  not read it yet.)
+- **Stop gives feedback at once (G5).** `lib/stopping.ts`: the button is disabled with "Stopping…", the live row says
+  "Stopping…", and after 5 s the composer says "Still stopping — a running command has to finish". Nothing reads as
+  stopped before the harness ends the turn.
+- **A helper waiting for the person (NEW-3)** reads "Waiting for your approval" / "…your answer" with the needs-you
+  glyph in the conversation and the Agents panel (`lib/agentWaiting.ts`). Not in Home's "Agents at work".
+- **No change of a turn after it is shown (NEW-4, G13).** Turns stay invisible until the first stored-endings read
+  answers (at most 800 ms); a head that changes later, notices and waiting rows fade in (`.octo-fade`, 120 ms).
+  Measured CLS at 1440: the long chat 0.211 → 0.000, Atlas 0.046 → 0.012; at 640–900 it was already 0.002–0.003 here
+  (the owner measured 0.16–0.24 on live data: not reproduced).
+- **Overlays and the palette (NEW-6, G12).** A hash change closes the palette, the shortcuts sheet and the New project
+  dialog. An empty query shows "Suggested" and the three projects last worked in.
+- **Turn rail (N7).** The button itself is 24px wide; targets stay 16, then at least 12 high while the height can hold
+  them (`railLayout`); 100 requests give 24×7.
+- **Vendor marks** in Integrations, Details and the Agents panel (N9).
+- **Evenness (G7–G9).** Every lucide icon draws a 1.5px stroke at every size through `--icon-stroke` and a CSS rule
+  (36 icons used outside `Glyph` drew 1.17px); inline code is 13px in 14px prose and 12px in 13px prose (no fractional
+  sizes); the radius scale is 6 / 8 / 12 and pill, with 2 and 4 for small marks — `--radius-lg` (10) is gone, surfaces
+  are 12 and rows inside them 8; Settings rows and provider details use `--spacing-card` (12).
+
+Open: the vendor marks are filled and look heavier than the line icons at 12–14px; 14px has two line heights (22 for
+prose, 20 for semibold headings); a previous failed turn's notice stays beside a send error (NEW-5 was not reproduced
+without the owner's proxy); the exit code of a built-in `bash` is parsed from its output; G10, G11, G14, G15 and the
+@-contexts of G6 are not started. Not verified: anything against a live harness; real ACP diff payloads; Details and
+the Agents panel marks in the browser; the line-number click in the Changes diff.

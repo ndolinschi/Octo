@@ -44,7 +44,7 @@ export function ProviderRows(props: {
       data-unpicked={props.unpicked || undefined}
       className={cn(
         "flex flex-col p-1",
-        props.framed !== false && "overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel",
+        props.framed !== false && "overflow-hidden rounded-xl border border-panel-edge bg-panel shadow-panel",
         props.className,
       )}
     >

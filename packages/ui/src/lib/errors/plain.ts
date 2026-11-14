@@ -116,6 +116,8 @@ const BY_CODE: Record<string, (c: Ctx) => Pick<PlainError, "sentence" | "next" |
 };
 
 const TOO_LONG = "This message is too long to send (limit 1 MB). Send less at a time.";
+/** A failure that came with no text. */
+export const NO_TEXT = "This request failed.";
 
 /** Maps a failure to its plain form. `code` is the typed error code when there is one, `raw` the message text. */
 export function plainError(raw: string | null | undefined, ctx: Ctx & { code?: string | null | undefined } = {}): PlainError {
@@ -125,7 +127,8 @@ export function plainError(raw: string | null | undefined, ctx: Ctx & { code?: s
   const byCode = ctx.code ? BY_CODE[ctx.code] : undefined;
   if (byCode) return { ...byCode(ctx), details };
   const known = (sentence: string, next: NextStep | null): PlainError => ({ sentence, next, details });
-  if (!text) return known("Something went wrong, and no reason was reported.", { kind: "retry" });
+  // NEW-1: no text at all (a failed turn after a reload, a bare 500): say what is true, with Retry; never "no reason".
+  if (!text) return known(NO_TEXT, { kind: "retry" });
   if (has(text, "request body too large", "request_too_large", "too much to send at once")) return known(TOO_LONG, null);
   if (has(text, "refused the harness", "ran without harness tools"))
     return known(`${name} ran this request without Octo's own tools (agents, notes, plans).`, null);

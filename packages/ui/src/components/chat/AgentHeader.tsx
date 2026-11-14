@@ -106,7 +106,7 @@ export function AgentHeader({ agent, now }: { agent: Agent; now: number }) {
       )}
       {agent.status === "failed" && (
         <p role="note" className="mt-1.5 text-sm text-fg-2">
-          <span className="text-err">{(agent.error || "No error details were reported").replace(/\.$/, "")}.</span>{" "}
+          <span className="text-err">{(agent.error || "This helper failed").replace(/\.$/, "")}.</span>{" "}
           {ws ? (
             <Button
               variant="link"

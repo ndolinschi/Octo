@@ -2,7 +2,7 @@ import { memo, useCallback, useLayoutEffect, useRef, useState, type KeyboardEven
 import { cn } from "../../lib/cn";
 import { requestTitle } from "../../lib/comments";
 import { formatDuration, timeAgo } from "../../lib/format";
-import type { RequestSummary } from "../../lib/transcript";
+import { railLayout, type RequestSummary } from "../../lib/transcript";
 import { useNav, useNavState } from "../../state/nav";
 
 const STATE_TEXT = { done: "Done", working: "Working…", failed: "Failed", stopped: "Stopped" } as const;
@@ -12,11 +12,6 @@ function firstWords(text: string, n = 6): string {
   return words.length > n ? `${words.slice(0, n).join(" ")}…` : words.join(" ");
 }
 
-/** Decision 57: ticks 6px apart; the rail takes at most 60% of the conversation's height, then scrolls. */
-const PITCH = 6;
-/** Round 3: with room (few requests) the pitch grows to 16px so each target is 24x16; a dense rail shrinks back to PITCH. */
-const MAX_PITCH = 16;
-const MAX_SHARE = 0.6;
 /**
  * The rail's padding above the first tick and below the last: their targets reach 14px tall (8 + 6). Between ticks
  * each target is its own 6px cell, the part of the rail nearest its tick, so a dense rail has no overlapping targets.
@@ -52,9 +47,8 @@ export const TurnRail = memo(function TurnRail({
   const current = viewTurn?.projectId === projectId ? viewTurn.messageId : null;
   const tabStop = focus ?? current ?? requests[requests.length - 1]?.id;
   const n = requests.length;
-  const avail = Math.max(PITCH * 3, Math.floor(maxHeight * MAX_SHARE));
-  const pitch = Math.min(MAX_PITCH, Math.max(PITCH, Math.floor(avail / Math.max(1, n))));
-  const height = Math.min(avail, pitch * n) + 2 * EDGE;
+  // N7: targets 16 tall with room, at least 12 while the height holds them, then nearest-wins cells (`railLayout`).
+  const { pitch, height } = railLayout(n, maxHeight, EDGE);
 
   // The request in view stays inside a scrolling rail.
   const currentIndex = requests.findIndex((r) => r.id === current);
@@ -171,9 +165,10 @@ const RailTick = memo(function RailTick({ req, index: i, last, pitch, active, ta
           setShown(() => req.id);
         }}
         onBlur={() => setShown((s) => (s === req.id ? null : s))}
-        // Decision 36: 24px wide (it grows leftwards, away from the column) × its cell; the end ticks reach into the rail's padding (14 tall).
+        // Decision 36, N7: the button itself is 24px wide × its cell (the mark is drawn at its right edge, so the ticks keep their
+        // place); the end ticks reach into the rail's padding with a pseudo-element of the same width.
         className={cn(
-          "group/mark relative flex h-full w-3 items-center justify-end before:absolute before:inset-y-0 before:right-0 before:w-6 before:content-['']",
+          "group/mark relative flex h-full w-6 items-center justify-end before:absolute before:inset-x-0 before:inset-y-0 before:content-['']",
           i === 0 && "before:-top-2",
           last && "before:-bottom-2",
           "focus-visible:shadow-none focus-visible:after:absolute focus-visible:after:-inset-x-1 focus-visible:after:-inset-y-0.5 focus-visible:after:rounded-2xs focus-visible:after:shadow-[0_0_0_1px_var(--octo-focus)] focus-visible:after:content-['']",

@@ -45,7 +45,7 @@ export function ProviderDetail({ provider: p, onRouter }: { provider: Provider; 
   return (
     // S1/S5: the right half of the Providers surface (no frame of its own): the title line, then groups in the page's
     // style — a meta caption over its rows, 24 apart.
-    <div data-provider-detail className="@container flex min-w-0 flex-1 flex-col gap-6 p-5">
+    <div data-provider-detail className="@container flex min-w-0 flex-1 flex-col gap-6 p-card">
       <div className="flex min-h-ctl-md flex-wrap items-center gap-x-4 gap-y-2">
         <ProviderTitle provider={p} tone={restartNeeded ? "warn" : stateTone(p)} {...(restartNeeded ? { stateLabel: "Restart needed" } : {})} />
         {action && (

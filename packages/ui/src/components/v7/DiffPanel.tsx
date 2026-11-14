@@ -1,9 +1,10 @@
-import { ArrowLeft, ChevronDown, ChevronUp, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowLeft, ChevronDown, ChevronUp, CornerDownRight, ExternalLink, Pilcrow, Undo2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { useDelayedLoading } from "../../lib/hooksMore";
 import { kindLabel, kindLetter, splitPath, type DiffLayout } from "../../lib/v7/changes";
 import { Button, IconButton } from "../primitives/Button";
+import { IconButton as GoToButton } from "../primitives/IconButton";
 import { FloatRoom } from "../primitives/floatRoom";
 import { Spinner } from "../primitives/Status";
 import { DiffEditor, type DiffMonaco } from "./DiffEditor";
@@ -33,7 +34,8 @@ export function DiffPanel(props: {
   onToggleWhitespace(): void;
   onRevert(): void;
   onRetry(): void;
-  onOpenFile?(): void;
+  /** Opens the file in the editor, at a line when given. */
+  onOpenFile?(line?: number): void;
   onAddComment?(c: LineComment): void;
 }) {
   const { file } = props.selection;
@@ -42,6 +44,7 @@ export function DiffPanel(props: {
   const reverted = props.row !== undefined && "reverted" in props.row;
   const reverting = props.row !== undefined && "reverting" in props.row;
   const problem = props.row !== undefined && "problem" in props.row ? props.row.problem : null;
+  const [firstLine, setFirstLine] = useState<number | null>(null);
   const loading = useDelayedLoading(props.diff.status === "loading");
   return (
     <div className="@container/diff flex min-h-0 min-w-0 flex-1 flex-col">
@@ -79,8 +82,11 @@ export function DiffPanel(props: {
               onClick={props.onToggleWhitespace}
             />
           </span>
+          {props.onOpenFile && file.kind !== "deleted" && firstLine !== null && (
+            <GoToButton icon={CornerDownRight} label={`Go to line ${firstLine}`} onClick={() => props.onOpenFile?.(firstLine)} className="max-md:size-10" />
+          )}
           {props.onOpenFile && file.kind !== "deleted" && (
-            <IconButton icon={ExternalLink} label="Open file" onClick={props.onOpenFile} className="max-md:size-10" />
+            <IconButton icon={ExternalLink} label="Open file" onClick={() => props.onOpenFile?.()} className="max-md:size-10" />
           )}
           <Button
             variant="secondary"
@@ -102,7 +108,7 @@ export function DiffPanel(props: {
           tone="err"
           action={
             problem.kind !== "other" && props.onOpenFile ? (
-              <Button size="sm" variant="secondary" className="h-6 px-2" onClick={props.onOpenFile}>
+              <Button size="sm" variant="secondary" className="h-6 px-2" onClick={() => props.onOpenFile?.()}>
                 Open file
               </Button>
             ) : null
@@ -123,6 +129,8 @@ export function DiffPanel(props: {
             ignoreWhitespace={props.ignoreWhitespace}
             flashKey={props.flash}
             commented={props.commented}
+            onFirstLine={setFirstLine}
+            {...(props.onOpenFile && file.kind !== "deleted" ? { onGoToLine: (line: number) => props.onOpenFile?.(line) } : {})}
             {...(props.onAddComment ? { onAddComment: props.onAddComment } : {})}
           />
         ) : props.diff.status === "ready" ? (

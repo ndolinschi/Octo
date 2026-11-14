@@ -387,6 +387,24 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
       cost_usd: null,
     }));
   };
+  const currentExchanges = (id: string, m: Main): MemoryExchange[] =>
+    (records.get(id)?.endings ?? []).map((x, i) => ({
+      id: `${m.id}_r${i + 1}`,
+      session_id: m.id,
+      turn_id: x.turn_id,
+      message_id: 0,
+      request: "",
+      answer: "",
+      answer_truncated: false,
+      status: x.status,
+      started_at: x.started_at,
+      duration_ms: x.duration_ms,
+      model: m.model,
+      files: [],
+      agents: [],
+      tokens: { input: 0, output: 0 },
+      cost_usd: null,
+    }));
   const transcriptOf = async (id: string, sid: string) => {
     const e = await entryOf(id);
     const orch = await orchestratorId(id);
@@ -436,7 +454,9 @@ export function withDemoSessions(bridge: Bridge, records: Map<string, ProjectRec
       const main = e.mains.find((m) => m.id === sid);
       const children = (await snapshot(id)).filter((s) => s.parent_session_id === sid).sort((a, b) => a.started_at.localeCompare(b.started_at));
       const agent = session.agent_id ? (await bridge.listAgents(id)).find((a) => a.id === session.agent_id) : undefined;
-      return { session, exchanges: main ? exchangesOf(main) : [], children, ...(agent ? { agent } : {}) };
+      // The current session's own exchanges: how each request of the conversation ended (the demo runtime records them).
+      const own = main && !main.seed && main.id === e.currentId ? currentExchanges(id, main) : null;
+      return { session, exchanges: own ?? (main ? exchangesOf(main) : []), children, ...(agent ? { agent } : {}) };
     },
     getSessionTranscript: async (id, sid) => {
       await delay();

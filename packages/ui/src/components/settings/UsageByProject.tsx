@@ -102,7 +102,7 @@ export function UsageByProject() {
           </div>
         }
       />
-      <div className="px-2 py-1">
+      <div className="px-1 py-1">
         {report.status === "loading" && <SkeletonList count={3} size="lg" twoLine />}
         {report.status === "error" && (
           <Notice tone="error" className="p-2">

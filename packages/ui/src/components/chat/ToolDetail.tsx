@@ -1,137 +1,140 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { Button } from "../primitives/Button";
 import { cn } from "../../lib/cn";
-import { resolveFolder } from "../../lib/files";
 import { structured } from "../../lib/table";
-import { acpCall, toolMeta } from "../../lib/tools";
-import { locateInProject, looksLikeDiff, toolPath } from "../../lib/toolsMore";
-import type { ToolUse } from "../../lib/transcript";
+import { acpCall } from "../../lib/tools";
+import { locateInProject, looksLikeDiff } from "../../lib/toolsMore";
 import { useOptionalCode } from "../../state/code";
-import { useHost } from "../../state/host";
+import {
+  callSummary,
+  clockTime,
+  commandOf,
+  editView,
+  inputPairs,
+  rawInput,
+  readTarget,
+  stoppedLine,
+  toolKind,
+  viewState,
+  type ToolKind,
+} from "../../lib/toolView";
+import { stepState, type ToolUse, type TurnEnd } from "../../lib/transcript";
 import { HighlightedCode } from "../shared/Markdown";
+import { EditBody } from "./tools/EditBody";
+import { FRAME, INSET, Raw, useCallTimes } from "./tools/parts";
+import { ReadBody } from "./tools/ReadBody";
+import { ShellBody } from "./tools/ShellBody";
 import { useTranscript } from "./transcriptContext";
 
 /** Tabular tool results load the table component with the first one (its own chunk). */
 const DataTable = lazy(() => import("../shared/DataTable").then((m) => ({ default: m.DataTable })));
 const Pairs = lazy(() => import("../shared/DataTable").then((m) => ({ default: m.Pairs })));
 
-/** The opened tool call: its input (with a link to the file it names) and its result — a table when tabular (decision 44). */
-export function ToolDetail({ use }: { use: ToolUse }) {
+/** At most this many lines of an unknown tool's text result are drawn. */
+const RESULT_CAP = 200;
+
+/**
+ * The opened tool call (retest3 G1): an action with its outcome, by kind — a command with its output tail and exit, a read as
+ * `path:lines`, an edit as a compact diff, anything else as a summary and a key–value view. A call a stop or a refusal cut short is
+ * one plain line; what the agent or the harness answered stays under "Raw".
+ */
+export function ToolDetail({ use, end = null }: { use: ToolUse; end?: TurnEnd }) {
   const ctx = useTranscript();
   const result = ctx.results.get(use.id);
+  const state = viewState(stepState(result, ctx.agentRunning, end), result);
+  const times = useCallTimes(use);
+  const kind = toolKind(use.name, use.input);
+  const output = result ? result.content : null;
+  const stopped = state === "stopped" ? stoppedLine(result, end, clockTime(times.end)) : null;
+  const failed = state === "error" ? (output ?? "").trim() || "The tool reported an error with no message." : null;
+  const raw = <Raw input={rawInput(use.name, use.input)} result={output} />;
+
+  const body = (() => {
+    if (kind === "shell") {
+      const command = commandOf(use.name, use.input);
+      if (command)
+        return (
+          <ShellBody command={command} output={stopped ? null : output} state={state} start={times.start} end={times.end} {...(stopped ? { stopped } : {})} />
+        );
+    }
+    if (stopped) return <Stopped text={stopped} />;
+    if (kind === "read") {
+      const target = readTarget(use.name, use.input);
+      if (target) return <ReadBody target={target} content={output} failed={failed} />;
+    }
+    if (kind === "edit") {
+      const view = editView(use.name, use.input, output ?? "");
+      if (view) return <EditBody view={view} start={times.start} failed={failed} />;
+    }
+    return <OtherBody use={use} kind={kind} output={output} failed={failed} />;
+  })();
+
   return (
-    <div className="overflow-hidden rounded-md bg-code-bg text-xs">
-      {/* Decision 63: no "Input" section with nothing to say (no arguments, `{}`). */}
-      {formatInput(use) && (
-        <ToolSection label="Input" body={formatInput(use)} action={acpCall(use.name, use.input) ? <AcpLocations use={use} /> : <PathLink use={use} />} />
-      )}
-      {result && <ToolSection label={result.is_error ? "Error" : "Result"} body={result.content} error={result.is_error} structured={!result.is_error} />}
+    <div data-tool-detail className="flex min-w-0 flex-col gap-1">
+      {body}
+      <div className="pl-2">{raw}</div>
     </div>
   );
 }
 
-/**
- * The path of a file tool call as a link: an embedding host's `openFile` wins; otherwise it
- * opens the file (or, for list_dir, reveals the folder) in the Files tab. Only shown when
- * there is somewhere to open it.
- */
-function PathLink({ use }: { use: ToolUse }) {
-  const { openFile } = useHost();
+/** A call cut short: the one line, quiet (never the error tone). */
+function Stopped({ text }: { text: string }) {
+  return (
+    <div data-tool-body="stopped" className={cn(FRAME, INSET, "text-fg-2")}>
+      {text}
+    </div>
+  );
+}
+
+/** Search, fetch and unknown tools: one summary line, the input as key–value rows, the result (a table when tabular, decision 44). */
+function OtherBody({ use, kind, output, failed }: { use: ToolUse; kind: ToolKind; output: string | null; failed: string | null }) {
   const code = useOptionalCode();
-  const path = toolPath(use.name, use.input);
-  const folder = toolMeta(use.name, use.input).folder;
-  if (!path) return null;
-  const target = code ? resolveFolder(code.folders, folder || undefined) : null;
-  if (!openFile && !target) return null;
-  const dir = use.name === "list_dir";
-  const open = () => {
-    if (openFile) return openFile(path, folder || undefined);
-    if (!code || !target) return;
-    if (dir) code.revealDir(target, path);
-    else code.openFile(target, path);
+  const shorten = (path: string) => {
+    const hit = code && path.startsWith("/") ? locateInProject(code.folders, path) : null;
+    return hit ? `${hit.folder}/${hit.path}` : path;
   };
-  return (
-    <Button
-      variant="link"
-      tone="quiet"
-      mono
-      size="xs"
-      aria-label={dir && !openFile ? `Show ${path} in files` : `Open ${path} in editor`}
-      title={target ? `${target}/${path.replace(/^\.\/?/, "")}` : path}
-      onClick={open}
-      className="min-w-0 truncate"
-    >
-      {path}
-    </Button>
-  );
-}
-
-/** An ACP call's file locations (absolute paths) as links into the project's files, with the line when given. */
-function AcpLocations({ use }: { use: ToolUse }) {
-  const { openFile } = useHost();
-  const code = useOptionalCode();
+  const summary = callSummary(kind, use.name, use.input, failed ? null : output, shorten);
+  const pairs = useMemo(() => inputPairs(use.name, use.input), [use.name, use.input]);
   const acp = acpCall(use.name, use.input);
-  if (!acp?.locations.length) return null;
   return (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
-      {acp.locations.map((l, i) => {
-        const hit = code ? locateInProject(code.folders, l.path) : null;
-        const label = hit ? `${hit.folder}/${hit.path}${l.line ? `:${l.line}` : ""}` : l.path;
-        if (!openFile && !hit)
-          return (
-            <span key={i} className="min-w-0 truncate font-mono text-fg-3">
-              {label}
-            </span>
-          );
-        return (
-          <Button
-            key={i}
-            variant="link"
-            tone="quiet"
-            mono
-            size="xs"
-            aria-label={`Open ${label} in editor`}
-            title={l.path}
-            onClick={() => (openFile ? openFile(l.path) : hit && code?.openFile(hit.folder, hit.path, l.line ? { line: l.line } : undefined))}
-            className="min-w-0 truncate"
-          >
-            {label}
-          </Button>
-        );
-      })}
-    </span>
+    <div data-tool-body="other" className={FRAME}>
+      {summary && <p className={cn(INSET, "text-fg-2")}>{summary}</p>}
+      {pairs.length > 0 && (
+        <dl className={cn("grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1", INSET, summary && "border-t border-line")}>
+          {pairs.map((p) => (
+            <div key={p.key} className="contents">
+              <dt className="text-fg-3">{p.key}</dt>
+              <dd className={cn("min-w-0 break-words text-fg-2", p.mono && "font-mono")}>{p.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {failed ? (
+        <p className={cn(INSET, "border-t border-line text-err")}>{failed}</p>
+      ) : (
+        output !== null && <ResultView body={output} bordered={Boolean(summary) || pairs.length > 0} />
+      )}
+      {!summary && pairs.length === 0 && output === null && !failed && <p className={cn(INSET, "text-fg-3")}>{acp ? acp.title : use.name}: no input.</p>}
+    </div>
   );
 }
 
-function ToolSection({
-  label,
-  body,
-  error,
-  action,
-  structured: tryTable = false,
-}: {
-  label: string;
-  body: string;
-  error?: boolean;
-  action?: ReactNode;
-  structured?: boolean;
-}) {
-  // Decision 44: a tabular result (CSV, JSON rows) is a table and a short key–value result a list; "Raw" shows the text.
-  const shape = useMemo(() => (tryTable ? structured(body) : null), [tryTable, body]);
-  const [raw, setRaw] = useState(false);
+function ResultView({ body, bordered }: { body: string; bordered: boolean }) {
+  // Decision 44: a tabular result (CSV, JSON rows) is a table and a short key–value result a list; "Text" shows it as text.
+  const shape = useMemo(() => structured(body), [body]);
+  const [text, setText] = useState(false);
+  const lines = useMemo(() => body.split("\n"), [body]);
   return (
-    <div className="border-line not-first:border-t">
-      <div className={cn("flex items-baseline gap-2 px-3 pt-3", error ? "text-err" : "text-fg-3")}>
-        {label}
-        {action}
-        {shape && (
-          <Button variant="quiet" size="xs" pressed={raw} onClick={() => setRaw((x) => !x)} className="-my-1 ml-auto">
-            {raw ? "Table" : "Raw"}
+    <div className={cn(bordered && "border-t border-line")}>
+      {shape && (
+        <div className="flex justify-end px-2 pt-1">
+          <Button variant="quiet" size="xs" pressed={text} onClick={() => setText((x) => !x)}>
+            {text ? "Table" : "Text"}
           </Button>
-        )}
-      </div>
-      {shape && !raw ? (
-        <div data-tool-table className="max-h-96 overflow-y-auto px-3 pt-1 pb-1">
+        </div>
+      )}
+      {shape && !text ? (
+        <div data-tool-table className="max-h-96 overflow-y-auto px-3 pb-1">
           <Suspense fallback={<p className="h-row" aria-busy />}>
             {shape.kind === "table" ? (
               <DataTable table={shape.table} tone="code" />
@@ -142,21 +145,15 @@ function ToolSection({
             )}
           </Suspense>
         </div>
-      ) : (
-        <pre className="max-h-64 overflow-auto px-3 pt-1 pb-3 font-mono text-xs leading-5 whitespace-pre-wrap text-fg-2">
-          {/* A diff (an ACP edit's result, a patch) gets the chat's diff colours. */}
-          {body ? <HighlightedCode code={body} lang={looksLikeDiff(body) ? "diff" : undefined} /> : "(empty)"}
+      ) : body.trim() ? (
+        <pre className="max-h-64 overflow-auto px-3 py-2 font-mono leading-5 whitespace-pre-wrap text-fg-2">
+          {/* A diff (a patch) gets the chat's diff colours. */}
+          <HighlightedCode code={lines.slice(0, RESULT_CAP).join("\n")} lang={looksLikeDiff(body) ? "diff" : undefined} />
+          {lines.length > RESULT_CAP && `\n… ${lines.length - RESULT_CAP} more lines (Raw has them all)`}
         </pre>
+      ) : (
+        <p className={cn(INSET, "text-fg-3")}>No output.</p>
       )}
     </div>
   );
-}
-
-function formatInput(use: ToolUse): string {
-  const input = use.input as Record<string, unknown> | null;
-  // ACP: the title is the row; what the agent passed is `raw_input`.
-  const json = (v: unknown) => (v === undefined || v === null || (typeof v === "object" && Object.keys(v).length === 0) ? "" : JSON.stringify(v, null, 2));
-  if (acpCall(use.name, use.input)) return json(input?.raw_input);
-  if (use.name === "bash" && input && typeof input.command === "string") return input.command;
-  return json(use.input);
 }

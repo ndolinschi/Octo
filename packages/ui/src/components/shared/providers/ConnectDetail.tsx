@@ -39,7 +39,7 @@ export function ConnectDetail({ provider: p, framed = true }: { provider: Provid
   };
   const agent = p.kind === "agent" && p.state !== "not_supported" && !isReady(p);
   return (
-    <div data-connect-detail className={cn("flex min-w-0 flex-1 flex-col gap-4 p-5", framed && "rounded-lg border border-panel-edge bg-panel shadow-panel")}>
+    <div data-connect-detail className={cn("flex min-w-0 flex-1 flex-col gap-4 p-card", framed && "rounded-xl border border-panel-edge bg-panel shadow-panel")}>
       <div className="flex min-w-0 items-center gap-3">
         <ProviderMark id={p.id} label={p.label} size={20} className="text-fg-2" />
         <h2 className="min-w-0 flex-1 truncate text-title text-fg">{p.label}</h2>

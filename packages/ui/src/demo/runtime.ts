@@ -268,7 +268,7 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
   const rec = ctx.rec;
   const orch = orchestratorOf(rec);
   rec.turn = ctx.signal;
-  addMessage(ctx, orch.id, "user", [{ type: "text", text: prompt }]);
+  const asked = addMessage(ctx, orch.id, "user", [{ type: "text", text: prompt }]);
   updateAgent(ctx, orch.id, { status: "running", started_at: iso(ctx), finished_at: null });
   rec.project.status = "running";
   emit(rec, { type: "project.updated", project: clone(rec.project) });
@@ -296,6 +296,12 @@ export async function turn(ctx: Ctx, prompt: string, body: (ctx: Ctx, orchestrat
   updateAgent(ctx, orch.id, status === "failed" ? { status: "failed", error, finished_at: iso(ctx) } : { status: "idle", error: null, finished_at: iso(ctx) });
   rec.project.status = "idle";
   rec.turn = null;
+  (rec.endings ??= []).push({
+    turn_id: asked.id,
+    status: status === "cancelled" ? "stopped" : status,
+    started_at: asked.created_at,
+    duration_ms: Math.max(0, ctx.t - Date.parse(asked.created_at)),
+  });
   touch(ctx);
   emit(rec, { type: "project.updated", project: clone(rec.project) });
   emit(rec, { type: "turn.finished", status, error, ...(hint ? { hint } : {}) });

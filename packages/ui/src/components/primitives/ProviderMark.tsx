@@ -24,7 +24,7 @@ export function ProviderMark({ id, label, size = 16, className }: { id: string; 
   if (mark && !url && "d" in mark)
     return (
       <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden data-provider-mark={id} className={`shrink-0 ${className ?? ""}`}>
-        <path d={mark.d} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+        <path d={mark.d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         <text x="8" y={mark.y} textAnchor="middle" fontSize="7.5" fontWeight="600" fill="currentColor" fontFamily="inherit">
           {mark.initial}
         </text>

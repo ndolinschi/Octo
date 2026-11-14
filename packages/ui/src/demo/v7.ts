@@ -11,6 +11,8 @@ import {
   type TurnChanges,
 } from "@octo/agent-client";
 import { emit, newId, orchestratorOf, type ProjectRecord } from "./store";
+import { CLIENT_AFTER, CLIENT_BEFORE, RETRY_AFTER, RETRY_BEFORE, SHOWCASE_PROMPT } from "./toolShowcase";
+import { countLines, lineDiff } from "./reviewDiff";
 
 /**
  * v7 for the demo bridge: a pending approval, an open form, queued messages and two turns with changes on the Atlas
@@ -108,6 +110,16 @@ function seed(rec: ProjectRecord): V7 {
     "wide line: " + "0123456789 ".repeat(40) + "changed\n",
   );
   add(change(5, turnB, orch.id, "src/stale.ts", "modified", 1, 1), "export const retries = 2;\n", "export const retries = 5;\n");
+  // retest3 G2: the tool showcase turn's two edited files (real before / after, so the chat's previews and Changes agree).
+  const showcase = users.find((m) => m.content.some((b) => b.type === "text" && b.text === SHOWCASE_PROMPT))?.id;
+  if (showcase !== undefined) {
+    const real = (id: number, path: string, before: string, after: string) => {
+      const n = countLines(lineDiff(before, after, 0, false));
+      add(change(id, showcase, orch.id, path, "modified", n.added, n.removed, { folder: "atlas-api", source: "write_file" }), before, after);
+    };
+    real(7, "src/http/retry.ts", RETRY_BEFORE, RETRY_AFTER);
+    real(8, "src/http/client.ts", CLIENT_BEFORE, CLIENT_AFTER);
+  }
   v.approvals.push({
     id: newId("apr"),
     agent_id: orch.id,
@@ -191,6 +203,41 @@ function liveScript(rec: ProjectRecord, v: V7): void {
   });
 }
 
+/**
+ * "helper approval" (NEW-3): once the turn's sub-agent runs, its command asks for an approval; the approval goes when the
+ * agent stops running (a stop, or the end of the turn).
+ */
+function helperApproval(rec: ProjectRecord, v: V7): void {
+  const turn = rec.messages.filter((m) => m.agent_id === orchestratorOf(rec).id && m.role === "user").at(-1)?.id ?? 0;
+  let once = false;
+  const timer = setInterval(() => {
+    const helper = rec.agents.find((a) => a.parent_id !== null && a.status === "running" && a.role === "Command runner");
+    const asked = v.approvals.find((a) => a.agent_label === "Command runner");
+    if (helper && !asked && !once) {
+      once = true;
+      const approval: Approval = {
+        id: newId("apr"),
+        agent_id: helper.id,
+        agent_label: "Command runner",
+        turn_id: turn,
+        kind: "command",
+        title: "pnpm db:check",
+        detail: { command: "pnpm db:check" },
+        created_at: iso(),
+      };
+      v.approvals.push(approval);
+      emit(rec, { type: "approval.requested", approval: structuredClone(approval) });
+      attention(rec, v);
+    }
+    if (!helper && asked) {
+      v.approvals = v.approvals.filter((a) => a !== asked);
+      emit(rec, { type: "approval.resolved", id: asked.id, decision: "deny" });
+      attention(rec, v);
+    }
+    if (!helper && (asked || rec.turn === null)) clearInterval(timer);
+  }, 1000);
+}
+
 /** Adds the v7 members (and a "v7" script on `sendMessage`) to a demo bridge. */
 export function withDemoV7(base: Bridge, records: Map<string, ProjectRecord>): Bridge {
   const states = new Map<string, V7>();
@@ -213,6 +260,10 @@ export function withDemoV7(base: Bridge, records: Map<string, ProjectRecord>): B
     if (/v7/i.test(text)) {
       const { rec, v } = state(id);
       liveScript(rec, v);
+    }
+    if (/helper approval/i.test(text)) {
+      const { rec, v } = state(id);
+      helperApproval(rec, v);
     }
     return sent;
   };

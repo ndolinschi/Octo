@@ -162,7 +162,7 @@ export function Popover(props: {
       inert={!open}
       style={pos ? ({ left: pos.left, top: pos.top, "--octo-origin": pos.origin } as CSSProperties) : { left: -9999, top: 0 }}
       className={cn(
-        "octo-overlay fixed z-[60] flex max-h-[min(420px,calc(100dvh-24px))] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-lg border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
+        "octo-overlay fixed z-[60] flex max-h-[min(420px,calc(100dvh-24px))] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-xl border border-transparent bg-overlay text-sm shadow-pop focus:outline-none focus-visible:shadow-pop",
         props.className,
       )}
     >

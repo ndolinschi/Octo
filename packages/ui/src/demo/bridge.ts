@@ -1,4 +1,17 @@
-import { FAIL_TRIGGER, LIVE_TRIGGER, SLOW_TRIGGER, SPAWN_REFUSED_TRIGGER, failTurn, liveTurn, slowTurn, spawnRefusedTurn } from "./live";
+import {
+  APPROVAL_TRIGGER,
+  FAIL_TRIGGER,
+  LIVE_TRIGGER,
+  SLOW_TRIGGER,
+  SPAWN_REFUSED_TRIGGER,
+  STUBBORN_TRIGGER,
+  approvalTurn,
+  failTurn,
+  liveTurn,
+  slowTurn,
+  spawnRefusedTurn,
+  stubbornTurn,
+} from "./live";
 import {
   BridgeError,
   type Agent,
@@ -275,6 +288,26 @@ function seed(): ProjectRecord[] {
       await say(c, orch, "We handle 14 event types; `charge.dispute.*` and `payout.*` fall through to the default branch and are ignored.");
     });
     await sleep(ctx, 40 * 60_000);
+    // NEW-1: two earlier failed turns whose stored exchange has no error (as after a reload): the first says what its own
+    // failed step said, the second has nothing to say and reads "This request failed." with Retry.
+    await turn(ctx, "Which events are stuck in the retry queue?", async (c, orch) => {
+      await act(c, orch, [
+        {
+          name: "bash",
+          input: { command: "pnpm queue:inspect --stuck" },
+          result: "Redis at 127.0.0.1:6379 is not running. Start it with `docker compose up redis`, then ask again.",
+          ms: 600,
+          error: true,
+        },
+      ]);
+      throw new Error("Redis at 127.0.0.1:6379 is not running.");
+    });
+    await sleep(ctx, 5 * 60_000);
+    await turn(ctx, "Draft a reply to the ticket about duplicate charges.", async (c, orch) => {
+      await say(c, orch, "Reading the ticket and the two charges it mentions…");
+      throw new Error("overloaded");
+    });
+    await sleep(ctx, 10 * 60_000);
     await turn(ctx, "Replay yesterday's failed webhooks against staging.", async (c, orch) => {
       await act(c, orch, [
         {
@@ -668,7 +701,11 @@ export function createDemoBridge(options: DemoOptions = {}): Bridge {
               ? spawnRefusedTurn(ctx, text)
               : SLOW_TRIGGER.test(text)
                 ? slowTurn(ctx, text)
-                : genericTurn(ctx, text),
+                : APPROVAL_TRIGGER.test(text)
+                  ? approvalTurn(ctx, text)
+                  : STUBBORN_TRIGGER.test(text)
+                    ? stubbornTurn(ctx, text)
+                    : genericTurn(ctx, text),
       );
       const orch = orchestratorOf(rec);
       const sent = [...rec.messages].reverse().find((m) => m.agent_id === orch.id && m.role === "user");

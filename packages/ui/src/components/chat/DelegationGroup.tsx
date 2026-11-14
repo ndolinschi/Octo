@@ -9,6 +9,7 @@ import { useProject } from "../../state/project";
 import { useOptionalWorkspace } from "../../state/workspace/WorkspaceProvider";
 import { isTier, tierLabel } from "../primitives/statusMore";
 import { plainError } from "../../lib/errors/plain";
+import { agentWaiting, WAIT_TEXT } from "../../lib/agentWaiting";
 import { ActivityRow, type ActivityState } from "./ActivityRow";
 import { useModelNames } from "../../state/modelNames";
 import { useTranscript } from "./transcriptContext";
@@ -93,16 +94,19 @@ function DelegationRow({ use, agent, status }: { use: ToolUse; agent: Agent | un
   const nested = agent ? descendantCount(state, agent.id) : 0;
   const duration = agent ? agentDuration(agent, now) : null;
   const running = agent?.status === "running";
+  // NEW-3: an approval or a form of this agent waits for the person: the row says so (waiting wins over working).
+  const wait = agent?.status === "running" ? agentWaiting(state, agent.id) : null;
   // Through the failed-turn mapping (a raw "overloaded (529) after 3 retries" never shows); the raw text stays in the tooltip.
   // Without an agent the reason is the call's own error result (a spawn refused before the agent was created).
   const result = results.get(use.id);
   const raw = agent ? agent.error : result?.is_error && typeof result.content === "string" ? result.content.trim() : null;
-  const note = status === "failed" ? (raw ? plainError(raw).sentence : "No error details were reported.") : null;
+  const note = status === "failed" ? (raw ? plainError(raw).sentence : "This helper failed.") : null;
   // A compact place: the served model's name alone (decision 37), the requested one in the row's tooltip.
   const served = agent ? names.served(agent) : null;
   const model = served ? served.name : tier ? tierLabel(tier) : "";
-  const aside =
-    running && agent
+  const aside = wait
+    ? WAIT_TEXT[wait]
+    : running && agent
       ? agentActivity(state, agent.id)
       : status === "pending"
         ? "starting"
@@ -118,7 +122,9 @@ function DelegationRow({ use, agent, status }: { use: ToolUse; agent: Agent | un
     (agent?.task ? `${agent.task}\n\nAlt-click opens it on the other side.` : served?.asked ? `${served.asked} → ${served.name} (chosen → served)` : undefined);
   return (
     <ActivityRow
-      state={STATE[status] ?? "running"}
+      // A waiting agent is not working: no spinner (ActivityRow has no needs-you glyph yet; "pending" is its still circle).
+      state={wait ? "needs" : (STATE[status] ?? "running")}
+      {...(wait ? { className: "octo-fade", data: "waiting" } : {})}
       verb={
         <>
           {role}

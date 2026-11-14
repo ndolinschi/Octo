@@ -188,17 +188,20 @@
   /* Inputs on touch screens stay at 16px so iOS does not zoom. */
   --text-input-touch: 16px;
   --text-input-touch--line-height: 20px;
-  /* Radius scale. Concentric: a child at inset i inside radius R takes R − i.
-     2xs 2 kbd hints · xs 4 inline code, delegation rows (card 8 − 4) · sm 6 every selectable row (sidebar,
-     tree, tabs, palette, menus, "+" menu), controls, buttons · md 8 cards, inputs, code blocks ·
-     lg 10 overlays holding rows at a 4px inset (menus, popovers, palette, dialogs) · xl 12 panels, composer.
-     Nothing rounder. */
+  /* Radius scale (retest3 evenness): 6 · 8 · 12 + pill, plus 2 and 4 for tiny marks only. Concentric: a child at
+     inset i inside radius R takes R − i.
+     2xs 2 kbd hints, composer marks · xs 4 inline code, focus marks, delegation rows (card 8 − 4) ·
+     sm 6 chips, segments, tiny buttons (a segment sits 2px inside the 8px track) ·
+     md 8 fields, buttons, every selectable row (a row sits 4px inside a 12px overlay), cards, code blocks ·
+     xl 12 surfaces: panels, grouped-list cards, overlays (menu, popover, palette, dialog), composer.
+     There is no 10: `--radius-lg` was removed, `rounded-lg` now falls back to Tailwind's 8px. Pill is `rounded-full`. */
   --radius-2xs: 2px;
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 10px;
   --radius-xl: 12px;
+  /* One rendered stroke for every lucide icon at every size (12 14 16 20): see "retest3: evenness" below. */
+  --icon-stroke: 1.5px;
   /* Semantic spacing (all on the scale). */
   --spacing-gutter: 8px; /* window edge → panel, panel → panel, sidebar → panel: one value everywhere */
   --spacing-pane: 8px; /* panel or sidebar edge → its tab strip, rows, bars (one inset rule) */
@@ -617,7 +620,7 @@
 }
 .octo-prose :not(pre) > code {
   font-family: var(--font-mono);
-  font-size: 0.86em;
+  font-size: 13px;
   padding: 2px 4px;
   border-radius: 4px;
   background: var(--octo-active);
@@ -1377,7 +1380,7 @@
   --spacing-settings-page: 880px;
   /* S1: the one left edge inside the column: page title, group captions, row labels and footers sit this far in from the
      surfaces' edge (a row's own side padding). */
-  --spacing-settings-inset: 16px;
+  --spacing-settings-inset: var(--spacing-card); /* retest3: Settings rows share the card inset (12) with conversation cards */
   /* S2: a settings row is a label line (20) and one explanation line (16) between 12px paddings: 60. A row without an
      explanation keeps the height and centres its one line. */
   --spacing-settings-row: 60px;
@@ -1461,7 +1464,7 @@
   padding: 0 4px;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  line-height: 1;
+  line-height: var(--text-xs--line-height);
   opacity: 0.7;
 }
 
@@ -1536,10 +1539,14 @@
 }
 /* end cross-part leftovers */
 
-/* audit B: inline code at 0.93em (13px in 14px prose, 12px in 13px prose; the compact prose pins 12px in Prose.css); a tall
-   popup list fades its scrolling ends by 12px (the data-fade attribute comes from useScrollFade, like fade-y). */
+/* audit B: inline code is a whole pixel size (retest3 evenness): 13px in 14px prose, 12px in 13px prose (the compact prose pins
+   12px in Prose.css); a tall popup list fades its scrolling ends by 12px (the data-fade attribute comes from useScrollFade, like fade-y). */
 .octo-prose :not(pre) > code {
-  font-size: 0.93em;
+  font-size: 13px;
+}
+.octo-prose .octo-table :not(pre) > code,
+.octo-prose.octo-prose-sm :not(pre) > code {
+  font-size: 12px;
 }
 .octo-popup-fade[data-fade~="start"] {
   mask-image: linear-gradient(to bottom, transparent, #000 12px);
@@ -1709,4 +1716,70 @@
 .octo-table td code {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* ── retest3: evenness ───────────────────────────────────────────────────────────────────────────────────────────────────
+   G7 icon stroke: lucide scales its stroke with the icon (2px of 24 → 1.17px at 14) unless told otherwise, and the
+   `absoluteStrokeWidth` attribute fix reads as 2.57 / 2.25 in computed style. One rule instead: the stroke is `--icon-stroke`
+   in screen pixels (non-scaling) at every size, for every lucide icon whether it comes through Glyph or directly, so no
+   per-use `strokeWidth` can drift. The custom drawings (StateGlyph ring family, ProviderMark initials, ContextRing) draw
+   the same 1.5px in their own 1:1 viewBoxes; vendor logos are filled masks. */
+svg.lucide {
+  stroke-width: var(--icon-stroke);
+}
+svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
+  vector-effect: non-scaling-stroke;
+}
+/* G8 mono is whole pixels, set where it is defined (not here): inline code 13px in 14px prose (`.octo-prose` above), 12px in
+   compact 13px prose (Prose.css); code blocks and tables 12px. Line boxes are the parent's, so the swap from 0.93em changes no
+   height. */
+
+/* retest3: toolcalls — the inline diff of an edit call and of a turn's changed files (G1/G2): +/− tints over the code background,
+   line numbers in the gutter (a new-side number opens the file at that line), the sign column, a gap row for folded lines. */
+.octo-diff-row[data-kind="add"] {
+  background: color-mix(in srgb, var(--octo-ok) 12%, transparent);
+}
+.octo-diff-row[data-kind="del"] {
+  background: color-mix(in srgb, var(--octo-err) 9%, transparent);
+}
+.octo-diff-num {
+  flex-shrink: 0;
+  box-sizing: content-box;
+  padding-inline: 4px;
+  text-align: right;
+  color: var(--octo-fg-3);
+  opacity: 0.8;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.octo-diff-num:first-child {
+  padding-inline-start: 8px;
+}
+.octo-diff-num + .octo-diff-num {
+  padding-inline-start: 2px;
+}
+.octo-diff-go {
+  cursor: pointer;
+}
+.octo-diff-go:hover {
+  color: var(--octo-link);
+  opacity: 1;
+  text-decoration: underline;
+}
+.octo-diff-go:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--octo-focus);
+}
+.octo-diff-sign {
+  flex-shrink: 0;
+  width: 2ch;
+  padding-inline-start: 4px;
+  color: var(--octo-fg-3);
+  user-select: none;
+}
+.octo-diff-row[data-kind="add"] .octo-diff-sign {
+  color: var(--octo-ok);
+}
+.octo-diff-row[data-kind="del"] .octo-diff-sign {
+  color: var(--octo-err);
 }

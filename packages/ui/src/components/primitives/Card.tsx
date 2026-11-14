@@ -54,7 +54,7 @@ export const Card = forwardRef<
 });
 
 /**
- * The grouped-list frame (settings groups, provider lists): panel surface, 10px radius, `panel-edge` hairline, hairlines
+ * The grouped-list frame (settings groups, provider lists): panel surface, 12px radius, `panel-edge` hairline, hairlines
  * between its children. Children are rows (`ListRow`, a settings row) that bring their own padding.
  *
  * Not for: loose content (`Card`).
@@ -62,7 +62,7 @@ export const Card = forwardRef<
 export function ListFrame(props: { as?: "div" | "ul"; className?: string; children: ReactNode }) {
   const Tag = props.as ?? "div";
   return (
-    <Tag className={cn("flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-panel-edge bg-panel shadow-panel", props.className)}>
+    <Tag className={cn("flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-panel-edge bg-panel shadow-panel", props.className)}>
       {props.children}
     </Tag>
   );

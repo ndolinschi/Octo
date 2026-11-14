@@ -93,11 +93,15 @@ export default function ShortcutsSheet() {
       const typing = t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
       if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing && !document.querySelector('[aria-modal="true"]')) show();
     };
+    // NEW-6: navigating (Back / Forward, a hash change) closes the sheet, as it does the palette.
+    const hide = () => setOpen(false);
     window.addEventListener(SHORTCUTS_EVENT, show);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("hashchange", hide);
     return () => {
       window.removeEventListener(SHORTCUTS_EVENT, show);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("hashchange", hide);
     };
   }, []);
   return <Presence show={open}>{open && <Sheet onClose={() => setOpen(false)} />}</Presence>;

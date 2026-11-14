@@ -1,4 +1,4 @@
-import { errorFieldsOf, type Agent, type Message, type PlanEntry, type TurnOutcome } from "@octo/agent-client";
+import { errorFieldsOf, type Agent, type ErrorFields, type Message, type PlanEntry, type TurnOutcome } from "@octo/agent-client";
 import { Check, Copy } from "lucide-react";
 
 import { markSteered } from "../../lib/v7/steer";
@@ -13,6 +13,7 @@ import {
   promptText,
   stepState,
   turnDurationMs,
+  turnFailureText,
   turnHead,
   turnWarning,
   type StoredEnding,
@@ -20,6 +21,7 @@ import {
   type TurnEnd,
 } from "../../lib/transcript";
 import type { StoredEndingLookup } from "../../lib/storedEndings";
+import { useStopping } from "../../lib/stopping";
 import { hasLongWord } from "../../lib/composerInput";
 import { useApp } from "../../state/app";
 import { useProject } from "../../state/project";
@@ -41,6 +43,7 @@ const SentComments = lazy(() => import("./SentComments").then((m) => ({ default:
 /** The plan card loads with the first plan (parity B3). */
 const CompactedMarker = lazy(() => import("./CompactedMarker").then((m) => ({ default: m.CompactedMarker })));
 const PlanForTurn = lazy(() => import("./PlanCard").then((m) => ({ default: m.PlanForTurn })));
+const TurnChanges = lazy(() => import("./TurnChanges").then((m) => ({ default: m.TurnChanges })));
 
 /** Plan cards are looked for under this many of the newest requests (a plan belongs to the newest plan turn). */
 const PLAN_TURNS = 5;
@@ -77,7 +80,9 @@ export const Transcript = memo(function Transcript(props: {
   onOpenSession?: ((agentId: string) => void) | undefined;
 }) {
   const { agent, messages, now } = props;
-  const { state, steered } = useProject();
+  const { state, steered, projectId, running: projectRunning } = useProject();
+  // G5: the person pressed Stop and the harness has not ended the turn yet.
+  const stopping = useStopping(projectId, projectRunning) !== null;
   // Decision 55 e: streamed text shows at most every 50 ms.
   const streaming = useBatched(state.streaming[agent.id] ?? "");
   const thinking = state.thinking[agent.id] ?? "";
@@ -105,7 +110,7 @@ export const Transcript = memo(function Transcript(props: {
   const lastTurn = isOrchestrator ? state.lastTurn : null;
   const lastPrompt = turns[turns.length - 1]?.prompt ?? null;
   // B4: how each request ended as the harness stored it, so a stopped turn reads the same after a reload as it did live.
-  const storedEndingOf = useStoredEndings(isOrchestrator && !running, `${turns.length}:${state.lastTurn?.status ?? ""}`);
+  const { lookup: storedEndingOf, settled: endingsSettled } = useStoredEndings(isOrchestrator && !running, `${turns.length}:${state.lastTurn?.status ?? ""}`);
   const storedLast = isOrchestrator ? storedEndingOf(lastPrompt) : undefined;
   const markers = state.compactions[agent.id];
   const slots = useMemo(
@@ -119,13 +124,22 @@ export const Transcript = memo(function Transcript(props: {
   // A completed turn can carry a `warning:` error (an ACP orchestrator that runs without harness tools): a quiet notice.
   // A failed turn shows from the live event, or after a reload from the orchestrator's own state (failed, or an error
   // that is not a warning: an ACP orchestrator that could not start). Its login hint comes along when the agent has one.
+  // NEW-5: a send that fails clears `lastTurn` before the harness answers; the latest request's own live outcome stays.
+  const lastOutcome = lastTurn ?? (isOrchestrator && lastPrompt ? state.turnOutcomes[lastPrompt.id] : undefined) ?? null;
+  // NEW-1: without an error of its own (the agent row's is gone after a reload), a failed turn says what it holds itself.
+  const lastTurnItems = turns[turns.length - 1];
+  type Failure = { status: "failed" | "cancelled"; error: string | null } & ErrorFields;
+  const withOwnReason = (f: Failure): Failure & { fromStep: boolean } => {
+    const own = f.status === "failed" && !f.error && lastTurnItems ? turnFailureText(lastTurnItems, ctx.results) : null;
+    return { ...f, error: f.error ?? own, fromStep: own !== null };
+  };
   const failure =
-    lastTurn && lastTurn.status !== "completed"
-      ? { status: lastTurn.status, error: lastTurn.error, ...errorFieldsOf(lastTurn) }
+    lastOutcome && lastOutcome.status !== "completed"
+      ? withOwnReason({ status: lastOutcome.status, error: lastOutcome.error, ...errorFieldsOf(lastOutcome) })
       : isOrchestrator && (agent.status === "failed" || (agent.error && !turnWarning(agent.error)))
-        ? { status: "failed" as const, error: agent.error, ...(agent.error_hint ? { hint: agent.error_hint } : {}) }
-        : !lastTurn && storedLast?.status === "cancelled"
-          ? { status: "cancelled" as const, error: null }
+        ? withOwnReason({ status: "failed" as const, error: agent.error, ...(agent.error_hint ? { hint: agent.error_hint } : {}) })
+        : !lastTurn && (storedLast?.status === "cancelled" || storedLast?.status === "failed")
+          ? withOwnReason({ status: storedLast.status, error: storedLast.error ?? null })
           : null;
   const usageLine = useTurnLine(agent, isOrchestrator, running);
   const login = useLoginHint(isOrchestrator && failure ? agent.model : null);
@@ -165,7 +179,9 @@ export const Transcript = memo(function Transcript(props: {
 
   return (
     <TranscriptContext.Provider value={ctx}>
-      <div ref={turnsRoot} className="flex flex-col gap-8">
+      {/* NEW-4: until the stored endings are in (the first read only, at most ENDINGS_WAIT_MS) the turns are laid out but not
+          shown, so no row changes under the reader and no placeholder is seen being replaced. */}
+      <div ref={turnsRoot} className={cn("flex flex-col gap-8", !endingsSettled && "invisible")}>
         {turns.map((turn, i) => {
           if (!isMounted(i)) return shell(turn, i);
           const last = i === turns.length - 1;
@@ -219,6 +235,7 @@ export const Transcript = memo(function Transcript(props: {
                 turn={turn}
                 speaker={props.speaker}
                 live={last && running}
+                stopping={last && running && stopping}
                 watched={props.watched}
                 agentId={agent.id}
                 streaming={last ? streaming : ""}
@@ -240,7 +257,15 @@ export const Transcript = memo(function Transcript(props: {
               {/* C5: a stopped earlier turn says so once, in its head; only a failure keeps its notice. */}
               {ended?.status === "failed" && (
                 <Suspense fallback={null}>
-                  <TurnBanner status={ended.status} error={ended.error} retryText={null} fields={errorFieldsOf(ended)} agent={agentName} />
+                  {/* NEW-1: no stored error (the harness keeps none with an exchange): the turn's own last error, else "This request failed." */}
+                  <TurnBanner
+                    status={ended.status}
+                    error={ended.error ?? turnFailureText(turn, ctx.results)}
+                    fromStep={!ended.error}
+                    retryText={turn.prompt ? promptText(turn.prompt) : null}
+                    fields={errorFieldsOf(ended)}
+                    agent={agentName}
+                  />
                 </Suspense>
               )}
             </section>
@@ -274,7 +299,7 @@ export const Transcript = memo(function Transcript(props: {
         )}
         {failure?.status === "cancelled" && !running && (
           // C5: the head already says "Stopped after 8s"; the notice keeps only what to do next.
-          <p data-turn-outcome="cancelled" className="text-sm text-fg-3">
+          <p data-turn-outcome="cancelled" className="octo-fade text-sm text-fg-3">
             Send a message to continue.
           </p>
         )}
@@ -283,6 +308,7 @@ export const Transcript = memo(function Transcript(props: {
             <TurnBanner
               status={failure.status}
               error={failure.error}
+              fromStep={failure.fromStep}
               retryText={lastPrompt ? promptText(lastPrompt) : null}
               fields={{
                 ...failure,
@@ -429,6 +455,8 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   turn: Turn;
   speaker: string;
   live: boolean;
+  /** G5: Stop was pressed; the live row says "Stopping…" until the turn ends. */
+  stopping?: boolean;
   watched: boolean;
   agentId: string;
   streaming: string;
@@ -452,7 +480,6 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   // Polish step 3, C1: a finished turn's tool rows fold under its "Worked for…" head; null = the default (open only when a step failed).
   const [stepsOpen, setStepsOpen] = useState<boolean | null>(null);
   const empty = turn.items.length === 0 && !streaming && !props.thinking;
-  if (empty && !live) return null;
   const start = props.startedAt ? Date.parse(props.startedAt) : null;
   const ms = turnDurationMs(start, { live, lastAt: turn.lastAt, finishedAt: props.finishedAt, stored: props.stored });
   const worked = ms !== null && ms >= 1000 ? ms : null;
@@ -462,6 +489,11 @@ const AssistantTurn = memo(function AssistantTurn(props: {
   // Open by default when a step failed or was stopped (the head of a stopped turn shows what the stop cut).
   const showSteps = worked === null || (stepsOpen ?? steps.some((s) => s === "error" || s === "stopped"));
   const head = worked === null ? null : turnHead(ending, worked, steps, props.stored);
+  // G13: a head that changes after it was first shown (a live turn ending, a stop confirmed) comes in with the calm fade;
+  // one that mounts as it is (a turn scrolled into view) does not.
+  const [firstHead] = useState(() => head?.label ?? null);
+  const headChanged = head !== null && head.label !== firstHead;
+  if (empty && !live) return null;
   const reply = turn.items.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n\n");
   // The newest step row above, when it already says what the activity line would: a streaming thinking row (nothing after it), a running tool group.
   const lastItem = turn.items[turn.items.length - 1];
@@ -488,7 +520,9 @@ const AssistantTurn = memo(function AssistantTurn(props: {
         // C1: the head of the turn's activity, in the steps' own row and glyph column; it opens and folds the tool rows.
         // It says how the turn ended: done, stopped ("Stopped after 8s") or failed; a failed step inside keeps its own tone.
         <ActivityRow
+          key={headChanged ? head.label : "head"}
           data="head"
+          {...(headChanged ? { className: "octo-fade" } : {})}
           state={head.state}
           verb={<span className="tabular-nums">{head.label}</span>}
           {...(toolUses.length > 0 ? { expands: true, open: showSteps, onOpenChange: setStepsOpen } : {})}
@@ -508,8 +542,14 @@ const AssistantTurn = memo(function AssistantTurn(props: {
         );
       })}
       {streaming && <Markdown text={streaming} className={prose} streaming fileLinks />}
-      {live && (
+      {live && props.stopping && <ActivityRow data="stopping" className="octo-fade" state="running" still={!props.watched} verb="Stopping…" />}
+      {live && !props.stopping && (
         <ActivityLine agentId={props.agentId} agentName={props.speaker} startedAt={start} now={props.now} watched={props.watched} current={currentStep} />
+      )}
+      {props.footer && !live && turn.prompt && (
+        <Suspense fallback={null}>
+          <TurnChanges turnId={turn.prompt.id} />
+        </Suspense>
       )}
       {props.footer && !live && reply && turn.lastAt && (
         <TurnFooter reply={reply} at={turn.lastAt} now={props.now} usage={props.usage ?? null} compact={compact} />
@@ -529,25 +569,38 @@ const NO_ENDINGS: StoredEndingLookup = () => undefined;
  * long it worked), read when no turn runs and again when one ends (`refresh`). Nothing without project sessions. The lookup
  * (`lib/storedEndings`) is its own chunk, fetched with the session.
  */
-function useStoredEndings(enabled: boolean, refresh: string): StoredEndingLookup {
+function useStoredEndings(enabled: boolean, refresh: string): { lookup: StoredEndingLookup; settled: boolean } {
   const { bridge } = useApp();
   const { projectId, state } = useProject();
   const sessionId = state.sessions.currentId;
   const [lookup, setLookup] = useState<StoredEndingLookup>(() => NO_ENDINGS);
+  // NEW-4: the first answer (or its failure, or the wait running out) lets the turns mount, so a turn's head is laid out once
+  // with its stored ending instead of changing ("Stopped after…") under the reader. Later reads never hold the turns back.
+  const [loaded, setLoaded] = useState(false);
+  // A conversation opened while it works (or without sessions) mounts at once and is never held back later (a turn ending).
+  const [unneeded] = useState(() => !enabled || !sessionId || !bridge.getSession);
   useEffect(() => {
     if (!enabled || !sessionId || !bridge.getSession) return;
     let alive = true;
-    Promise.all([bridge.getSession(projectId, sessionId), import("../../lib/storedEndings")]).then(
-      ([d, m]) => alive && setLookup(() => m.storedEndingLookup(d.exchanges)),
-      // Unreadable: the turns keep what the transcript itself says.
-      () => undefined,
-    );
+    const done = () => alive && setLoaded(true);
+    const wait = window.setTimeout(done, ENDINGS_WAIT_MS);
+    Promise.all([bridge.getSession(projectId, sessionId), import("../../lib/storedEndings")])
+      .then(
+        ([d, m]) => alive && setLookup(() => m.storedEndingLookup(d.exchanges)),
+        // Unreadable: the turns keep what the transcript itself says.
+        () => undefined,
+      )
+      .finally(done);
     return () => {
       alive = false;
+      window.clearTimeout(wait);
     };
   }, [enabled, sessionId, bridge, projectId, refresh]);
-  return lookup;
+  return { lookup, settled: loaded || unneeded };
 }
+
+/** How long the turns wait for the stored endings before they mount without them. */
+const ENDINGS_WAIT_MS = 800;
 
 /**
  * Muted row under a finished orchestrator reply: copy it, when it finished, and the usage. Every segment is `whitespace-nowrap`
