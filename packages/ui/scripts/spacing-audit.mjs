@@ -743,7 +743,14 @@ const STATES = [
     async run(page, ctx) {
       await openProject(page, ctx, "Atlas API");
       await waitChat(page);
-      await page.locator("[data-composer] [data-model-picker]").first().click({ timeout: T });
+      // Phone layout: the model chip is in the composer's "+" sheet.
+      const chip = page.locator("[data-composer] [data-model-picker]").first();
+      if (await chip.isVisible().catch(() => false)) await chip.click({ timeout: T });
+      else {
+        await page.getByRole("button", { name: "Attach, mention or run" }).first().click({ timeout: T });
+        await settle(page, 600);
+        await page.locator("[data-model-picker]:visible").first().click({ timeout: T });
+      }
       try {
         await page.getByRole("dialog", { name: /^Choose /i }).waitFor({ timeout: T });
       } catch {
@@ -816,6 +823,11 @@ const STATES = [
     async run(page) {
       const open = page.getByRole("button", { name: "Show sidebar" }).first();
       if (await open.isVisible().catch(() => false)) await open.click({ timeout: T });
+      else {
+        // Phone layout: the navigation opens from the header's first button (the menu).
+        const menu = page.locator("[data-phone-header] button").first();
+        if (await menu.isVisible().catch(() => false)) await menu.click({ timeout: T });
+      }
       await settle(page, 300);
       const btn = page.getByRole("button", { name: "New project", exact: true }).first();
       if (!(await btn.count())) skip("no New project button");
@@ -886,9 +898,8 @@ const STATES = [
     viewports: [...WIDE, { width: 390, height: 844 }],
     async run(page, ctx) {
       await openProject(page, ctx, "Atlas API");
-      await page.locator("[data-tab-plus]:visible").last().click({ timeout: T });
       try {
-        await page.locator('[role=option][data-picker-row="tool:review"]').first().click({ timeout: T });
+        await openTool(page, "review");
         await page.getByRole("tab", { name: "Local branches" }).first().click({ timeout: T });
         await page.locator("[data-review-tab] [data-row]").first().waitFor({ timeout: T });
       } catch {
@@ -1678,7 +1689,8 @@ async function main() {
               (document.querySelector("[data-column]")?.closest(".overflow-y-auto") ?? document.body).appendChild(t);
             });
           }
-          const rows = vp.touch ? PHONE_ROW_HEIGHTS : ROW_HEIGHTS;
+          // A window under 480px is the phone layout whether or not it is a touch context (`lib/phone.ts`).
+          const rows = vp.touch || vp.width < 480 ? PHONE_ROW_HEIGHTS : ROW_HEIGHTS;
           const res = await page.evaluate(auditInPage, { SCALE, ROW_HEIGHTS: rows, TOL, ICON_GAP_MIN, allow: ALLOW, rules: pass.rules });
           merged.violations.push(...res.violations);
           for (const [k, v] of Object.entries(res.suppressed)) merged.suppressed[k] = (merged.suppressed[k] ?? 0) + v;
