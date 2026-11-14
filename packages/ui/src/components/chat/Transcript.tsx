@@ -455,12 +455,13 @@ const UserPrompt = memo(function UserPrompt({
         )}
       </div>
       {onRewind && (
-        // On the bubble's lower edge, in the gap to the answer: it takes no room and shows on hover or focus (always on touch).
+        // On the bubble's lower edge, in the gap to the answer: it takes no room and shows on hover or focus. On touch (no hover)
+        // it is always shown, so it goes under the bubble as a quiet action at its right instead of covering the bubble's edge.
         <Button
           variant="secondary"
           size="xs"
           onClick={() => onRewind(messageId)}
-          className="absolute right-3 -bottom-3 z-10 rounded-full bg-overlay opacity-0 shadow-float group-focus-within/prompt:opacity-100 group-hover/prompt:opacity-100 pointer-coarse:opacity-100"
+          className="absolute right-3 -bottom-3 z-10 rounded-full bg-overlay opacity-0 shadow-float group-focus-within/prompt:opacity-100 group-hover/prompt:opacity-100 pointer-coarse:static pointer-coarse:mt-1 pointer-coarse:ml-auto pointer-coarse:flex pointer-coarse:w-fit pointer-coarse:border-transparent pointer-coarse:bg-transparent pointer-coarse:text-fg-3 pointer-coarse:opacity-100 pointer-coarse:shadow-none"
         >
           Rewind to here
         </Button>
@@ -539,12 +540,13 @@ const AssistantTurn = memo(function AssistantTurn(props: {
       {head && (
         // C1: the head of the turn's activity, in the steps' own row and glyph column; it opens and folds the tool rows.
         // It says how the turn ended: done, stopped ("Stopped after 8s") or failed; a failed step inside keeps its own tone.
+        // Balance pass: its words are dim (fg-3), one step under the summary row that says what was done.
         <ActivityRow
           key={headChanged ? head.label : "head"}
           data="head"
           {...(headChanged ? { className: "octo-fade" } : {})}
           state={head.state}
-          verb={<span className="tabular-nums">{head.label}</span>}
+          verb={<span className="text-fg-3 tabular-nums">{head.label}</span>}
           {...(toolUses.length > 0 ? { expands: true, open: showSteps, onOpenChange: setStepsOpen } : {})}
         />
       )}

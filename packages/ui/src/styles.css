@@ -425,6 +425,41 @@
   }
 }
 
+/* Balance pass: the same rule for a turn's activity rows with a hover-only action (a helper's "Open session"): the action
+   sits where the duration is and the duration gives way, so every row of a turn keeps its meta on one right edge. */
+[data-row-overlay] {
+  position: relative;
+}
+[data-row-overlay] > [data-row-actions] {
+  position: absolute;
+  top: 2px;
+  right: -4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 100ms;
+}
+[data-row-overlay]:is(:hover, :focus-within) > [data-row-actions] {
+  opacity: 1;
+}
+[data-row-overlay]:is(:hover, :focus-within) [data-row-meta] {
+  visibility: hidden;
+}
+[data-row-overlay]:is(:hover, :focus-within) [data-row] {
+  padding-right: 32px;
+}
+@media (pointer: coarse) {
+  [data-row-overlay] > [data-row-actions] {
+    opacity: 1;
+  }
+  [data-row-overlay] [data-row-meta] {
+    visibility: hidden;
+  }
+  [data-row-overlay] [data-row] {
+    padding-right: 32px;
+  }
+}
+
 /* Under the pinned prompt: 8px of panel, then an ease-in fade (content reappears from ~0%, so a line passing
    under the pin has no visible cut edge; multi-stop, no band). */
 .octo-pin-fade {
@@ -1175,7 +1210,8 @@
   /* Requests become right-aligned bubbles; answers stay full width with no card. */
   [data-conv] [data-prompt] {
     display: flex;
-    justify-content: flex-end;
+    flex-direction: column;
+    align-items: flex-end;
   }
   [data-conv] [data-prompt] > [data-bubble] {
     max-width: 86%;
@@ -2080,6 +2116,44 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-composer-session] {
   display: none;
 }
+/* Balance pass: the session chip (the row's last chip) takes the free room itself, so it, not the model or folder chip, is
+   the one cut when the row is tight. On the phone it is hidden and the spacer pushes Send to the end again. */
+:root:not([data-phone]) [data-composer-session] + [data-composer-spacer] {
+  display: none;
+}
+[data-composer-session="row"] {
+  container: composer-session / inline-size;
+  min-width: var(--spacing-ctl-sm);
+}
+[data-composer-session="top"] {
+  display: none;
+}
+/* A narrow composer (beside a panel) has no room for it in the row: it keeps the line of its own at the top of the box. */
+@container composer (max-width: 479.98px) {
+  :root:not([data-phone]) [data-composer-session="top"] {
+    display: flex;
+  }
+  :root:not([data-phone]) .octo-composer:has(> [data-composer-session="top"]) > [data-composer-pad] {
+    padding-top: 4px;
+  }
+  [data-composer-session="row"] {
+    display: none;
+  }
+  :root:not([data-phone]) [data-composer-session] + [data-composer-spacer] {
+    display: block;
+  }
+}
+/* Too little room for words: the chip is its glyph alone (the session's name is in its tooltip and accessible name). */
+@container composer-session (max-width: 119.98px) {
+  [data-composer-session] [data-composer-chip] {
+    width: var(--spacing-ctl-sm);
+    padding: 0;
+    justify-content: center;
+  }
+  [data-composer-session] [data-chip-label] {
+    display: none;
+  }
+}
 [data-phone]
   [data-composer-row]
   > :not(:first-child, [data-composer-spacer], [data-composer-size], [data-composer-note], [role="status"], [data-context-ring], button[data-action]) {
@@ -2144,6 +2218,31 @@ svg.lucide :where(path, circle, rect, line, polyline, polygon, ellipse) {
 [data-phone] [data-tree-row] [data-row] {
   padding-right: 8px;
 }
+/* Balance pass: the phone header already names the panel (Back, the name, "⋯"), so the panel's own title is said once, to a
+   screen reader only; its (i), count and actions keep their row, on the rows' text edge. A header with nothing else goes. */
+[data-phone] [data-panel-title]:not(:has(> :nth-child(2))),
+[data-phone] [data-panel-title] > span:first-child:not(:only-child) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+[data-phone] [data-panel-title]:not(:has(> :nth-child(2))) + [data-panel-lead] {
+  padding-left: 8px;
+}
+[data-phone] [data-panel-actions] {
+  margin-left: auto;
+}
+[data-phone] [data-panel-header]:not(:has([data-panel-lead], [data-panel-actions])):has([data-panel-title] > :only-child) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 /* No hover on a phone: a reply's footer (copy, time, model) is always shown, and wraps (above). */
 [data-phone] [data-conv] [data-turn-footer] {
   opacity: 1;

@@ -1,12 +1,18 @@
 import { Menu as MenuIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { IconButton } from "../../components/primitives/IconButton";
+import { SECTIONS } from "../../components/settings/settingsIndex";
 import { useShell } from "../../state/shell";
 import { useVisualViewport } from "./useVisualViewport";
 import { useTouchHelpers } from "./useTouchHelpers";
 
 /** The screen's name for the top bar; null where a project's own header shows (`dock/phone/PhoneHeader`). */
 function screenTitle(hash: string): string | null {
+  // Balance pass: in a section the header names the section (the page's own title goes to a screen reader only, and the page's
+  // "Settings" back control is the one place that says Settings).
+  const section = /^#\/settings\/([a-z-]+)/.exec(hash)?.[1];
+  const known = section ? SECTIONS.find((s) => s.id === section) : undefined;
+  if (known) return known.label;
   if (hash.startsWith("#/settings")) return "Settings";
   return hash.startsWith("#/p/") ? null : "Home";
 }

@@ -3546,3 +3546,27 @@ more" in the footer; anything in WebKit.
 
 Not verified: a real phone, WebKit, the real on-screen keyboard, a screen reader; NEW-7 before the change (it did not
 reproduce here; the cause was read from the code); built-in tool rows of a real interrupted turn.
+
+## As built — neatness, minimalism, balance (2026-11-14)
+
+The owner: "Check neatness and minimalism; everything must be balanced." A measured pass over both layouts; findings
+and before/after pairs were kept in the session scratchpad.
+
+- The composer's session chip is the last chip of its control row and takes the row's free room (the composer with two
+  queued messages: about 191 → 167px at 1440); under a 480px composer it keeps its own top line (two placements, CSS
+  shows one). It cuts the title at its end (`Chip` `cut="end"`); "default" is in its name and tooltip.
+- A turn's row with a hover-only action (a helper's "Open session") puts the action where the duration is
+  (`data-row-overlay`), so durations in a delegation group end on one edge; always shown on touch.
+- A turn head's words are `fg-3`: the head is quieter than the work under it.
+- Phone: a panel's own title and a Settings section's page title are for screen readers only (the header names
+  them); "Rewind to here" sits under the bubble on touch.
+- Home's triage groups are 8px apart; the empty project's heading, note and suggestions share the composer's text
+  edge; Details' "All files" sits on the right edge; the palette lists a session that is open as a tab once.
+- Measured and left: diff tints are not stronger in light than in dark (ΔE76 light 6.1 / 7.0, dark 8.4 / 7.7).
+
+For the owner to decide: Settings row sections sit left of centre at 1440 (660px rows in the 880 column, by the earlier
+S1 decision); Usage and budget has two right edges (880 table, 660 rows); the top bar's right cluster is heavier than
+its left; the phone navigation shows row actions on every row (no hover on touch).
+
+Not looked at in this pass: the shortcuts sheet, Review with an open pull request, the offline banner, several panels
+in light. Not verified: WebKit, a real phone, a screen reader.

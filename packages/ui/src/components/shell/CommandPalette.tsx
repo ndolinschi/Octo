@@ -12,6 +12,7 @@ import { palette as paletteGate } from "../../lib/typeahead";
 import { useApp } from "../../state/app";
 import { useNav } from "../../state/nav";
 import { workspaceActions, workspaceTabs } from "../../state/workspace/paletteCommands";
+import { sessionTab } from "../../state/workspace/layout";
 import { hitRow } from "../../lib/requestSearch";
 import { useRequests } from "../../state/requests";
 import { useRequestSearch } from "../../state/requestSearch";
@@ -272,15 +273,20 @@ export function CommandPalette(props: {
         })
       : [];
     const tabRows: Item[] = workspace ? workspace.tabs.map((t) => ({ ...t, run: go(t.run) })) : [];
-    // Decision 96: every main session (title, project, state glyph), and "New session in <project>".
-    const sessionRows: Item[] = mainSessions(sessionIndex.all).map((s) => ({
-      id: `ses:${s.id}`,
-      label: sessionTitle(s),
-      detail: [s.project_name, sessionMeta(s, now)].filter(Boolean).join(" · "),
-      search: s.project_name,
-      glyph: sessionGlyph(s),
-      run: go(() => navigate(s.project_id, null, s.id)),
-    }));
+    // Decision 96: every main session (title, project, state glyph), and "New session in <project>". Balance pass: a session
+    // already open as a tab is listed once, as the tab (the row above it said the same thing).
+    // (The conversation's own tab is "chat", named "Project / Session title".)
+    const openTabs = new Set(tabRows.flatMap((t) => [t.id, t.label]));
+    const sessionRows: Item[] = mainSessions(sessionIndex.all)
+      .filter((s) => !openTabs.has(`tab:${sessionTab(s.id)}`) && !openTabs.has(`${s.project_name} / ${sessionTitle(s)}`))
+      .map((s) => ({
+        id: `ses:${s.id}`,
+        label: sessionTitle(s),
+        detail: [s.project_name, sessionMeta(s, now)].filter(Boolean).join(" · "),
+        search: s.project_name,
+        glyph: sessionGlyph(s),
+        run: go(() => navigate(s.project_id, null, s.id)),
+      }));
     const newSessions: Item[] = (projects ?? []).map((p) => ({
       id: `n:${p.id}`,
       label: `New session in ${p.name}`,

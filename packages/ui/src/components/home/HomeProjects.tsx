@@ -88,7 +88,7 @@ export function Projects({
   return (
     <div className="flex flex-col gap-1">
       <Card padding="sm">
-        <div ref={list} role="group" aria-label="Projects" className="flex flex-col">
+        <div ref={list} role="group" aria-label="Projects" className="flex flex-col gap-2">
           {data.projects === null && <SkeletonList count={3} size="lg" twoLine />}
           {filter && shown === 0 && (
             <p className="flex h-ctl-lg items-center px-2 text-sm text-fg-3">No projects {filter === "idle" ? "are idle" : `in ${TRIAGE_LABEL[filter]}`}.</p>

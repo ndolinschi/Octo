@@ -20,13 +20,15 @@ export const Chip = forwardRef<
     bare?: boolean;
     open?: boolean;
     warn?: boolean;
+    /** A title (a session's) is cut at its end; a path or name keeps both ends (the default, `MiddleText`). */
+    cut?: "middle" | "end";
     /**
      * Item 10: `label` in two parts ("Claude Code · " + "Opus 5.5"): when the chip must shorten, the first part goes first
      * (whole, never half-cut) and the second keeps the chip's line, cut at its end only when it alone does not fit.
      */
     parts?: { provider: string; model: string } | null | undefined;
   }
->(function Chip({ icon, lead, label, name, tip, bare = false, open = false, warn = false, parts, className, ...rest }, ref) {
+>(function Chip({ icon, lead, label, name, tip, bare = false, open = false, warn = false, cut = "middle", parts, className, ...rest }, ref) {
   return (
     <button
       ref={ref}
@@ -46,7 +48,7 @@ export const Chip = forwardRef<
       {lead ?? (icon && <Glyph icon={icon} size={14} className="shrink-0" />)}
       {!bare && (
         <span data-chip-label className="flex min-w-0 items-center gap-1.5">
-          {parts ? <PartsLabel key={label} parts={parts} /> : <MiddleText text={label} />}
+          {parts ? <PartsLabel key={label} parts={parts} /> : cut === "end" ? <span className="min-w-0 truncate">{label}</span> : <MiddleText text={label} />}
           <Glyph icon={ChevronsUpDown} size={14} className="shrink-0 text-fg-3" />
         </span>
       )}

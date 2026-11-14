@@ -530,7 +530,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           className={cn("octo-composer @container/composer relative isolate flex flex-col bg-raised", disabled && "opacity-80")}
         >
           {props.session && (
-            <div data-composer-session className="flex min-w-0 px-1.5 pt-1.5">
+            // A narrow composer (beside a panel) has no room for the session chip in the control row: there it keeps a line of its
+            // own at the top of the box (styles.css shows one of the two places, never both).
+            <div data-composer-session="top" className="flex min-w-0 px-1.5 pt-1.5">
               <Suspense fallback={<span aria-hidden className="h-ctl-sm" />}>
                 <SessionChip session={props.session} bare={false} disabled={false} onOpenChange={onChip} />
               </Suspense>
@@ -554,7 +556,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             Message the orchestrator
           </label>
           {/* C6: the top padding sits outside the scrolling text, so a long prompt never scrolls it away. */}
-          <div data-composer-pad className={cn("relative", props.session ? "pt-1" : "pt-3")}>
+          <div data-composer-pad className="relative pt-3">
             <Suspense fallback={null}>
               <ComposerHighlight text={text} area={area} />
             </Suspense>
@@ -603,6 +605,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onClick={() => setMenu((m) => (m?.mode === "button" ? null : { mode: "button" }))}
             />
             {chips}
+            {props.session && (
+              // Balance pass: the session the composer sends to is the last chip of the control row (it was a line of its own at
+              // the top of the box). It takes the row's free room (the spacer gives way, styles.css), so it is the one to shorten.
+              <span data-composer-session="row" className="flex min-w-0 flex-1">
+                <Suspense fallback={<span aria-hidden className="h-ctl-sm" />}>
+                  <SessionChip session={props.session} bare={false} disabled={false} onOpenChange={onChip} />
+                </Suspense>
+              </span>
+            )}
             <span data-composer-spacer className="min-w-0 flex-1" />
             {props.context.used && props.context.size ? (
               <Suspense fallback={null}>

@@ -75,15 +75,19 @@ export function ActivityRow(props: {
     ) : (
       <Glyph icon={Check} size={14} />
     );
+  // Balance pass: a hover-only action (a helper's "Open session") takes the meta's place on hover, as the sidebar tree's do,
+  // instead of reserving its width on every row: the durations of a delegation group and the live row under it stay in one
+  // column. A stacked (phone) row and a row whose action always shows keep it in the row.
+  const overlay = props.trailing !== undefined && props.trailing !== null && !props.trailingShown && !props.stacked;
   const meta = (
-    <span className="flex min-w-0 items-center gap-1.5 tabular-nums">
+    <span data-row-meta={overlay || undefined} className="flex min-w-0 items-center gap-1.5 tabular-nums">
       {props.aside !== undefined && props.aside !== null && <span className="min-w-0 truncate">{props.aside}</span>}
       {props.duration !== undefined && props.duration !== null && <span>{formatDuration(props.duration)}</span>}
     </span>
   );
   const showMeta = (props.duration !== undefined && props.duration !== null) || (props.aside !== undefined && props.aside !== null);
   return (
-    <div data-activity-row={props.data ?? ""} className={cn("min-w-0", props.className)}>
+    <div data-activity-row={props.data ?? ""} data-row-overlay={overlay || undefined} className={cn("min-w-0", props.className)}>
       <ListRow
         tone="quiet"
         leading={leading}
@@ -101,10 +105,11 @@ export function ActivityRow(props: {
         {...(expandable ? { onClick: toggle, expanded: open } : props.onClick ? { onClick: props.onClick } : {})}
         {...(props.href ? { href: props.href } : {})}
         {...(props.tip ? { tip: props.tip } : {})}
-        {...(props.trailing ? { trailing: props.trailing, trailingShown: props.trailingShown } : {})}
+        {...(props.trailing && !overlay ? { trailing: props.trailing, trailingShown: props.trailingShown } : {})}
         className="-mx-2"
         {...(expandable ? { id: `${id}-row` } : {})}
       />
+      {overlay && <span data-row-actions>{props.trailing}</span>}
       {props.error && <p className="-mt-1 truncate pb-1 pl-8 text-xs text-err">{props.error}</p>}
       {props.note && <p className="-mt-1 truncate pb-1 pl-8 text-xs text-fg-3">{props.note}</p>}
       {nested && open && (

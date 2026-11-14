@@ -21,7 +21,9 @@ export function EmptyTitle({ project }: { project: Project }) {
       : null;
   const noFolder = project.folders.length === 0 ? "No folder is chosen, so agents have nothing to work in. Choose one with the folder button below." : null;
   return (
-    <div className="relative mx-auto w-full max-w-float text-center">
+    // Balance pass: on the composer's text edge (12px in), like Home's one left edge (F5): no centred heading over the left-aligned
+    // composer and suggestions.
+    <div className="relative mx-auto w-full max-w-float px-3">
       {/* Decision 28: one sentence in two tones — the lead-in muted, the statement in fg. */}
       {/* P2-10: a long name without spaces wraps anywhere and the sentence stops at two lines; the tooltip has it all. */}
       <h1 className="relative line-clamp-2 text-display wrap-anywhere text-fg" title={`${project.name}. What should we work on?`}>

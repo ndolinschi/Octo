@@ -26,7 +26,7 @@ export function RememberedHeader(props: { count: number; onAdd?: (() => void) | 
         <>
           <span className="tabular-nums">{props.count}</span>
           {props.onAdd && (
-            <Button variant="quiet" size="xs" icon={Plus} className="-mr-1" onClick={props.onAdd}>
+            <Button variant="quiet" size="xs" icon={Plus} className="-mr-2" onClick={props.onAdd}>
               Add
             </Button>
           )}

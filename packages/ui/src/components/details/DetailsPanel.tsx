@@ -427,7 +427,7 @@ function Outputs() {
     );
   };
   const toggle = groups && groups.length > 0 && (
-    <Button variant="quiet" size="xs" pressed={all} className="-mr-1" onClick={() => setAll((x) => !x)}>
+    <Button variant="quiet" size="xs" pressed={all} className="-mr-2" onClick={() => setAll((x) => !x)}>
       {all ? "This request" : "All files"}
     </Button>
   );

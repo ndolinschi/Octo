@@ -178,7 +178,11 @@ export function SettingsPage(props: {
                 </div>
                 <SearchField label="Search settings" value={query} onChange={setQuery} onKeyDown={searchKeys} />
               </div>
-              <h1 id="settings-title" className={cn("px-settings-inset text-display font-medium text-fg", index && !searching && "sr-only")}>
+              <h1
+                id="settings-title"
+                // The phone's header names the open section; the title here is for a screen reader only.
+                className={cn("px-settings-inset text-display font-medium text-fg", !searching && (index || phone) && "sr-only")}
+              >
                 {searching ? "Search" : index ? "Settings" : sectionLabel(section)}
               </h1>
               {index && !searching ? (
