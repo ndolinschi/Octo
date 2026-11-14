@@ -531,6 +531,11 @@ Usage view.
 6. **Results back from a worktree.** Is "Apply to main checkout" plus the branch enough for v1, with the pull request
    later? *Default: yes.*
 
+**Owner, 2026-11-14:** "Do it; decide yourself what is better." Work proceeds with every default above. One addition
+by the orchestrator: because `ask_session` is answered from declared and observed state, a session's briefing tells it
+to call `declare_plan` (and `claim_files` for files it is about to edit) at the start of a turn whenever another live
+session shares its workspace, so the answers are not empty.
+
 ## As built
 
 Nothing built yet.
